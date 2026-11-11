@@ -29,8 +29,13 @@ pub const REAUTHENTICATE: &str = "reauthenticate";
 pub const TOKEN_EXPIRING: &str = "tokenExpiring";
 pub const SESSION_TERMINATED: &str = "sessionTerminated";
 
-const MAX_SERVER_DISCONNECT_RETRIES: u32 = 3;
-const MAX_SERVER_DISCONNECT_BACKOFF: Duration = Duration::from_secs(10);
+/// The wait after the server ends a connection without saying why, before connecting again.
+///
+/// `SocketProvider.tsx` counts these and signs out at three, backing off 1 s, 2 s, 4 s, but it
+/// resets the count on every connect, and every reconnect connects first, so the count never
+/// passes one: it always waits 1 s and never signs out. This says that directly. A server that
+/// keeps refusing the session refuses the handshake instead (AUTH_FAILED), and that path signs out.
+const SERVER_DISCONNECT_DELAY: Duration = Duration::from_secs(1);
 const SESSION_REFRESH_DELAYS: [Duration; 3] = [
     Duration::from_secs(1),
     Duration::from_secs(2),
@@ -169,7 +174,6 @@ impl SocketClient {
             next_ack_id: 0,
             pending: HashMap::new(),
             attempts: 0,
-            server_disconnects: 0,
             session_end_reason: None,
             refresh_at: None,
             last_ping: Instant::now(),
@@ -283,7 +287,6 @@ struct Actor {
     next_ack_id: u64,
     pending: HashMap<u64, oneshot::Sender<Result<Vec<Value>, EmitError>>>,
     attempts: u32,
-    server_disconnects: u32,
     session_end_reason: Option<String>,
     refresh_at: Option<Instant>,
     last_ping: Instant,
@@ -384,12 +387,9 @@ impl Actor {
 
     /// socket.io-client's backoff: base times 2^attempts, randomized, capped.
     fn next_backoff(&mut self) -> Duration {
-        let exponential =
-            self.config.reconnect_delay.as_secs_f64() * 2f64.powi(self.attempts.min(20) as i32);
+        let delay = backoff_delay(&self.config, self.attempts, jitter_unit());
         self.attempts += 1;
-        let spread = (2.0 * jitter_unit() - 1.0) * self.config.randomization;
-        let delay = exponential * (1.0 + spread);
-        Duration::from_secs_f64(delay.min(self.config.reconnect_delay_max.as_secs_f64()))
+        delay
     }
 
     /// One attempt: WebSocket, Engine.IO open, namespace connect with the latest token.
@@ -452,7 +452,6 @@ impl Actor {
         (ws, interval, ping_timeout, sid): (Ws, u64, u64, String),
     ) {
         self.attempts = 0;
-        self.server_disconnects = 0;
         self.session_end_reason = None;
         self.emit_event(SocketEvent::Connected { sid });
         let ended = self
@@ -503,15 +502,7 @@ impl Actor {
             self.recover_session().await;
             return;
         }
-        self.server_disconnects += 1;
-        if self.server_disconnects >= MAX_SERVER_DISCONNECT_RETRIES {
-            self.emit_event(SocketEvent::AuthLost { reason: None });
-            self.want = Want::Stopped;
-            return;
-        }
-        let delay = Duration::from_secs(1 << (self.server_disconnects - 1))
-            .min(MAX_SERVER_DISCONNECT_BACKOFF);
-        self.wait(delay).await;
+        self.wait(SERVER_DISCONNECT_DELAY).await;
     }
 
     /// `SocketProvider.recoverSession`: a fresh token is the only way back. Signs out only when
@@ -778,6 +769,15 @@ async fn next_frame(ws: &mut Ws) -> Option<Result<Frame, socketio::FrameError>> 
             Ok(_) => {}
         }
     }
+}
+
+/// The `attempts`th reconnect delay for a `jitter` in [0, 1): base times 2^attempts, spread by
+/// `randomization` either way, capped at the maximum.
+fn backoff_delay(config: &SocketConfig, attempts: u32, jitter: f64) -> Duration {
+    let exponential = config.reconnect_delay.as_secs_f64() * 2f64.powi(attempts.min(20) as i32);
+    let spread = (2.0 * jitter - 1.0) * config.randomization;
+    let delay = exponential * (1.0 + spread);
+    Duration::from_secs_f64(delay.min(config.reconnect_delay_max.as_secs_f64()))
 }
 
 /// Uniform in [0, 1). Backoff jitter needs spread, not quality, and this avoids a rand dependency.
@@ -1080,6 +1080,47 @@ mod tests {
             handshake(&auth),
             json!({ "token": "Bearer first", "protocol": 2 })
         );
+    }
+
+    #[test]
+    fn backoff_doubles_from_the_base_and_stops_at_the_cap() {
+        let mut config = SocketConfig::new("http://x");
+        config.randomization = 0.0;
+        let delays: Vec<u64> = (0..8)
+            .map(|attempts| backoff_delay(&config, attempts, 0.5).as_millis() as u64)
+            .collect();
+        assert_eq!(
+            delays,
+            [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000]
+        );
+        // However many attempts: the exponent stops growing, and nothing overflows.
+        assert_eq!(
+            backoff_delay(&config, u32::MAX, 0.5),
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn backoff_jitter_spreads_by_the_randomization_either_way() {
+        let config = SocketConfig::new("http://x");
+        // Randomization 0.5: from half to one and a half times the step.
+        assert_eq!(backoff_delay(&config, 1, 0.0), Duration::from_millis(1_000));
+        assert_eq!(backoff_delay(&config, 1, 0.5), Duration::from_millis(2_000));
+        assert_eq!(backoff_delay(&config, 1, 0.999_999).as_millis(), 2_999);
+        // Spread never lifts a delay past the cap.
+        assert_eq!(
+            backoff_delay(&config, 5, 0.999_999),
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn backoff_with_a_zero_base_is_zero() {
+        let mut config = SocketConfig::new("http://x");
+        config.reconnect_delay = Duration::ZERO;
+        for attempts in [0, 1, 30] {
+            assert_eq!(backoff_delay(&config, attempts, 0.9), Duration::ZERO);
+        }
     }
 
     #[test]

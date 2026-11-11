@@ -346,6 +346,207 @@ mod tests {
         );
     }
 
+    fn malformed_frame(text: &str) -> bool {
+        matches!(parse_frame(text), Err(FrameError::Malformed { .. }))
+    }
+
+    #[test]
+    fn a_bad_open_packet_is_malformed() {
+        for text in [
+            "0",
+            "0{",
+            "0[]",
+            r#"0{"pingInterval":1,"pingTimeout":1}"#,
+            r#"0{"sid":"a","pingTimeout":1}"#,
+            r#"0{"sid":"a","pingInterval":1}"#,
+            r#"0{"sid":7,"pingInterval":1,"pingTimeout":1}"#,
+            r#"0{"sid":"a","pingInterval":-1,"pingTimeout":1}"#,
+            r#"0{"sid":"a","pingInterval":"25000","pingTimeout":1}"#,
+        ] {
+            assert!(malformed_frame(text), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn socket_packets_with_missing_or_wrong_parts_are_malformed() {
+        for text in [
+            "4",
+            "40",
+            "40{}",
+            r#"40{"sid":1}"#,
+            "42",
+            "42[]",
+            r#"42{"a":1}"#,
+            "42[1]",
+            "42[null]",
+            r#"42[["x"]]"#,
+            "4217",
+            "43",
+            r#"43["ACK"]"#,
+            "439",
+            r#"439{"a":1}"#,
+            "44",
+            "44not json",
+            r#"4299999999999999999999999["x"]"#,
+        ] {
+            assert!(malformed_frame(text), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_refusal_without_a_message_is_still_a_refusal() {
+        assert_eq!(
+            parse_frame("44{}"),
+            Ok(Frame::ConnectRefused {
+                message: String::new()
+            })
+        );
+        assert_eq!(
+            parse_frame(r#"44{"message":5}"#),
+            Ok(Frame::ConnectRefused {
+                message: String::new()
+            })
+        );
+    }
+
+    #[test]
+    fn unknown_socket_packet_types_and_namespaces_are_refused() {
+        assert!(matches!(
+            parse_frame("47[]"),
+            Err(FrameError::UnknownType(_))
+        ));
+        assert!(matches!(parse_frame("4x"), Err(FrameError::UnknownType(_))));
+        assert_eq!(parse_frame("46"), Err(FrameError::Binary));
+        assert!(matches!(
+            parse_frame("40/admin,{}"),
+            Err(FrameError::Namespace(_))
+        ));
+        assert!(matches!(
+            parse_frame("41/admin,"),
+            Err(FrameError::Namespace(_))
+        ));
+        for text in ["7", "a", "\u{e9}", " 2", "\u{0}"] {
+            assert!(
+                matches!(parse_frame(text), Err(FrameError::UnknownType(_))),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn engine_packets_ignore_what_follows_their_type() {
+        assert_eq!(parse_frame("2probe"), Ok(Frame::Ping));
+        assert_eq!(parse_frame("3probe"), Ok(Frame::Pong));
+        assert_eq!(parse_frame("5"), Ok(Frame::Noop));
+        assert_eq!(parse_frame("41anything"), Ok(Frame::ServerDisconnect));
+    }
+
+    #[test]
+    fn an_event_with_one_null_argument_reads_as_no_payload() {
+        assert_eq!(
+            parse_frame(r#"42["x",null]"#),
+            Ok(Frame::Event {
+                name: "x".into(),
+                payload: Value::Null,
+                ack_id: None
+            })
+        );
+    }
+
+    #[test]
+    fn an_ack_id_of_zero_and_the_largest_id_parse() {
+        assert_eq!(
+            parse_frame(r#"430[]"#),
+            Ok(Frame::Ack {
+                id: 0,
+                args: vec![]
+            })
+        );
+        assert_eq!(
+            parse_frame(&format!("43{}[]", u64::MAX)),
+            Ok(Frame::Ack {
+                id: u64::MAX,
+                args: vec![]
+            })
+        );
+    }
+
+    #[test]
+    fn a_long_malformed_frame_is_cut_in_the_error() {
+        let text = format!("42{}", "x".repeat(10_000));
+        let Err(FrameError::Malformed { frame, .. }) = parse_frame(&text) else {
+            panic!("not malformed");
+        };
+        assert_eq!(frame.chars().count(), 120);
+        // A cut never lands inside a character.
+        let text = format!("42{}", "\u{1F600}".repeat(500));
+        assert!(malformed_frame(&text));
+    }
+
+    mod properties {
+        use super::*;
+        use proptest::prelude::*;
+        use proptest::test_runner::{Config, RngSeed};
+
+        fn config() -> Config {
+            Config {
+                cases: 512,
+                rng_seed: RngSeed::Fixed(0x5e3a_7102),
+                ..Config::default()
+            }
+        }
+
+        fn json() -> impl Strategy<Value = Value> {
+            let leaf = prop_oneof![
+                Just(Value::Null),
+                any::<bool>().prop_map(Value::Bool),
+                any::<i64>().prop_map(Value::from),
+                ".{0,12}".prop_map(Value::String),
+            ];
+            leaf.prop_recursive(3, 24, 4, |inner| {
+                prop_oneof![
+                    prop::collection::vec(inner.clone(), 0..4).prop_map(Value::Array),
+                    prop::collection::btree_map("[a-z]{0,6}", inner, 0..4)
+                        .prop_map(|map| Value::Object(map.into_iter().collect())),
+                ]
+            })
+        }
+
+        proptest! {
+            #![proptest_config(config())]
+
+            #[test]
+            fn any_text_parses_or_errs_without_panicking(text in ".{0,64}") {
+                let _ = parse_frame(&text);
+            }
+
+            #[test]
+            fn any_text_after_a_socket_prefix_parses_or_errs(kind in "[0-9]", text in ".{0,64}") {
+                let _ = parse_frame(&format!("4{kind}{text}"));
+                let _ = parse_frame(&format!("0{text}"));
+            }
+
+            #[test]
+            fn an_encoded_event_reads_back_as_itself(
+                name in ".{0,16}",
+                payload in json(),
+                ack_id in proptest::option::of(any::<u64>()),
+            ) {
+                let frame = parse_frame(&encode_event(&name, &payload, ack_id));
+                // Arrays are kept as one argument when there are more of them; a single array is
+                // still the one payload.
+                prop_assert_eq!(frame, Ok(Frame::Event { name, payload, ack_id }));
+            }
+
+            #[test]
+            fn an_encoded_connect_carries_its_auth(auth in json()) {
+                let packet = encode_connect(&auth);
+                prop_assert!(packet.starts_with("40"));
+                prop_assert_eq!(serde_json::from_str::<Value>(&packet[2..]).unwrap(), auth);
+            }
+        }
+    }
+
     #[test]
     fn builds_the_socket_url() {
         assert_eq!(

@@ -12,6 +12,8 @@ fixtures = []
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
+# Inline, not workspace, for the same reason as chrono below.
+proptest = "1.12"
 
 # Keep [dependencies] last: scripts/test-policy.sh appends a dependency line to this file.
 # Rule, enforced by scripts/check-core-boundary.py: no UI crate, no desktop-only crate,

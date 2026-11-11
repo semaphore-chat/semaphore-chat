@@ -8276,6 +8276,7 @@ dependencies = [
  "getrandom 0.4.3",
  "jiff",
  "log",
+ "proptest",
  "semaphore-wire",
  "serde",
  "serde_json",
