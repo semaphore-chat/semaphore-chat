@@ -431,3 +431,42 @@ diff -ruN a/src/lib.rs b/src/lib.rs
  pub mod candidate;
  pub mod data_channel;
  #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+diff -ruN a/src/video_encoder_factory.cpp b/src/video_encoder_factory.cpp
+--- a/src/video_encoder_factory.cpp
++++ b/src/video_encoder_factory.cpp
+@@ -41,14 +41,9 @@
+ #include "rtc_base/synchronization/mutex.h"
+ #include "rust/cxx.h"
+ 
+-#if defined(RTC_USE_LIBAOM_AV1_ENCODER)
+-#include "api/video_codecs/video_encoder_factory_template_libaom_av1_adapter.h"
+-#endif
+-#if defined(WEBRTC_USE_H264)
+-#include "api/video_codecs/video_encoder_factory_template_open_h264_adapter.h"
+-#endif
++// Semaphore patch: VP8 is the only software encoder. The app publishes VP8 only, and listing the
++// OpenH264, libaom AV1 and VP9 adapters links their encoders (3.8 MB). Decoders are untouched.
+ #include "api/video_codecs/video_encoder_factory_template_libvpx_vp8_adapter.h"
+-#include "api/video_codecs/video_encoder_factory_template_libvpx_vp9_adapter.h"
+ 
+ #ifdef WEBRTC_ANDROID
+ #include "livekit/android.h"
+@@ -292,15 +287,9 @@
+ 
+ }  // namespace
+ 
+-using Factory = webrtc::VideoEncoderFactoryTemplate<
+-    webrtc::LibvpxVp8EncoderTemplateAdapter,
+-#if defined(WEBRTC_USE_H264)
+-    webrtc::OpenH264EncoderTemplateAdapter,
+-#endif
+-#if defined(RTC_USE_LIBAOM_AV1_ENCODER)
+-    webrtc::LibaomAv1EncoderTemplateAdapter,
+-#endif
+-    webrtc::LibvpxVp9EncoderTemplateAdapter>;
++// Semaphore patch: VP8 only, see the include above.
++using Factory =
++    webrtc::VideoEncoderFactoryTemplate<webrtc::LibvpxVp8EncoderTemplateAdapter>;
+ 
+ rust::Vec<VideoEncoderBackend> video_encoder_backend_list() {
+   rust::Vec<VideoEncoderBackend> backends;

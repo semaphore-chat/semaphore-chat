@@ -315,22 +315,39 @@ same profile changes it should land around 10-11 MB compressed (estimate: Linux 
 
 ## Recommendation
 
-### Change now (safe, measured)
+### Applied
 
-1. `lto = "fat"` and `codegen-units = 1` in `[profile.release]`: -11 to -12 MB raw, -0.8 to -1.4 MB
-   compressed, no runtime cost; release builds take 2-4 minutes longer.
-2. `-Wl,--icf=all` in the Linux rustflags: -3.4 MB raw. (The MSVC equivalent, `/OPT:ICF`, is already
-   the default for release links.)
-3. The image-format patch to gpui-pre (`bmp gif ico jpeg png webp`): -1.4 MB raw. GPUI's
-   `ImageFormat` still names TIFF/PNM/ICO, so those formats keep compiling; images in the dropped
-   formats (TIFF, TGA, EXR, HDR, ...) would no longer decode, for example a TIFF pasted from the
-   clipboard. The app's own decoding uses gif/jpeg/png/webp only.
-4. The VP8-only encoder factory in the webrtc-sys glue: -3.8 MB raw, -1.2 MB compressed.
+The "change now" set is in the tree:
 
-Together (measured as `now-safe`): **65.7 MB raw (-22.8), 19.4 MB xz -6 (-3.6), 21.1 MB zstd -19,
-25.1 MB AppImage-style.** No runtime cost expected (opt-level stays 3, unwinding stays).
+1. **`[profile.dist]`** in `native/Cargo.toml`: inherits `release`, adds `lto = "fat"` and
+   `codegen-units = 1`. `[profile.release]` is unchanged, so `verify.sh`, CI and the rigs keep their
+   build time; packaging builds `--profile dist` (output in `target/dist/`).
+2. **`-Wl,--icf=all`** for every Linux link (`native/.cargo/config.toml`). The linker is lld 23.1.4,
+   from the build image, which CI's Linux job also uses (it runs `verify.sh`). Windows is left alone:
+   rustc already passes `/OPT:REF,ICF` to MSVC `link.exe` in optimised builds.
+3. **gpui-pre's `image` formats** cut to `bmp gif ico jpeg png webp` (`patches/gpui-pre.patch`, see
+   `third_party/README.md`). Kept: everything the backend accepts for attachments, avatars, banners
+   and custom emoji (PNG, JPEG, GIF, WebP; SVG goes through resvg), plus BMP and ICO for link
+   previews. Bytes in a dropped format fail `files::decodable` and draw as a file row.
+4. **VP8 as the only software video encoder** in the `webrtc-sys` glue (`patches/webrtc-sys.patch`,
+   see `third_party/PATCHES.md`). All decoders stay, and so do the hardware encoder factories.
 
-### Needs a decision (trade-offs)
+Measured on the merged tree (`spike/native-gpui` at `fd8553df` merged in), in the image:
+
+| Build | raw MB | xz -6 MB | build |
+|---|---:|---:|---|
+| baseline before this change (`release`) | 88.5 | 23.0 | |
+| `release` with ICF and both patches | 80.0 | 21.1 | `verify.sh`'s build, unchanged profile |
+| **`dist`** (`cargo build --locked --profile dist -p semaphore-app`) | **65.7** | **19.4** | 4 min 8 s on top of a warm `release` build |
+
+Checked with `verify.sh` (all 24 steps exit 0), `slice-e2e.sh` (46 static shots, 0 differ) and
+`slice-e2e.sh --voice` (pass; LiveKit's room listing during the run showed our camera and screen
+share as `video/VP8`, and the demo publisher's `video/H264` decoded into a tile, so decoders are intact).
+
+### Decisions pending
+
+Not applied; each needs a decision first.
+
 
 5. **`opt-level = "s"`** is the single biggest lever (-18.7 MB raw, -4.7 MB compressed alone; the
    difference between `combo-o3` and `combo-s` is -12.8 MB raw, -3.2 MB xz). Cost: in the fling rig,
@@ -346,6 +363,16 @@ Together (measured as `now-safe`): **65.7 MB raw (-22.8), 19.4 MB xz -6 (-3.6), 
    the release build (needs ≥ 2.36).
 8. **Replace `keyring` with `oo7` on Linux**: about -3.5 MB raw (estimate) by dropping the second D-Bus
    stack. A small code change in `semaphore-platform-desktop`; behaviour is the same Secret Service.
+
+### Release build environment
+
+The binary built in the image needs **glibc 2.44** (`objdump -T` shows `GLIBC_2.44`; the image is Arch
+from November 2026). Ubuntu 24.04 has 2.39 and Debian 13 2.41, so a package built in the
+image won't start on them. **Release builds must come from an older-glibc environment**: a build
+image on the oldest distribution we support (for example Ubuntu 22.04, glibc 2.35, with clang 21+ and
+lld from LLVM's apt repository, since libwebrtc needs them), or `cargo zigbuild` against a glibc
+target. Whatever floor is chosen also decides RELR (needs 2.36). The packaging unit owns this; the
+size numbers here won't move much with it (estimate).
 
 ### Not worth it now
 

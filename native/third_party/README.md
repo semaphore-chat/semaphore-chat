@@ -6,7 +6,7 @@
 | File | What |
 |---|---|
 | `series` | Each vendored crate: version, sha256 of its `.crate`, its patch |
-| `patches/gpui-pre.patch` | `VideoSurfaceId`, `Nv12Frame`, `VideoUploader`, `Window::video_uploader`, `Window::paint_video_surface` |
+| `patches/gpui-pre.patch` | `VideoSurfaceId`, `Nv12Frame`, `VideoUploader`, `Window::video_uploader`, `Window::paint_video_surface`; `image` formats cut to what the app can receive, see below |
 | `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling; images (polychrome sprites) filtered from tile-local coordinates; emoji to the colour emoji font, see below |
 | `patches/gpui-pre-windows.patch` | Windows: the same over D3D11: a `Surface` shader, dynamic R8 and R8G8 textures, parked frames flushed before each draw |
 | `patches/webrtc-sys.patch`, `patches/libwebrtc.patch` | Capture options libwebrtc has but doesn't expose (frame rate cap, PipeWire target size, WGC off) and a camera binding over its `VideoCaptureModule`. Each change and why: [PATCHES.md](PATCHES.md) |
@@ -56,6 +56,15 @@ sequence; VS15 opts out) to the installed colour emoji font, the first face `che
 knows, when that font has the character. Everything else is shaped exactly as before. It adds
 `unicode-properties` (already in the lock) for the emoji property. If a GPUI or cosmic-text bump
 changes `layout_line_no_separators`, port it and check the `emoji-default` story shot.
+
+## Image formats (ours)
+
+gpui-pre turns on 15 `image` formats. Its `Cargo.toml` now keeps `bmp gif ico jpeg png webp`: the
+backend accepts PNG, JPEG, GIF and WebP (and SVG, which resvg draws) for attachments, avatars, banners
+and custom emoji, and link previews can be any web image, of which BMP and ICO (favicons) are the
+ones browsers draw that `image` has. Dropped: `dds exr ff hdr pnm qoi rayon tga tiff`, 1.4 MB of the
+app ([docs/size.md](../docs/size.md)). Bytes in a dropped format fail `files::decodable` as
+`NotAnImage` and draw as a file row. A gpui-pre bump that changes this table needs the hunk redone.
 
 ## Swapping in a new patch set
 
