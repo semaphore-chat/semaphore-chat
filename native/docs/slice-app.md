@@ -122,7 +122,18 @@ participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, 
   and it stays there while the channel is open.
 - [ ] Anything the server refuses shows its message in a bar above the composer.
 
-Not in this build, so not bugs yet: DM voice, DMs, notifications.
+- [ ] Direct messages: the rail's chat button lists them; one opens under its header with search;
+  sending, editing, reactions and threads work as in a channel; "+" starts a DM or a named group.
+- [ ] Friends: the sidebar's Friends tab, its pending requests (accept, decline, cancel), Add Friend.
+- [ ] The bell opens the notification centre beside the messages; a row opens its message; "Mark all
+  as read" clears the count on the rail, the tray and the dock.
+- [ ] A mention or DM while you're elsewhere raises a desktop notification with its sound (the
+  account menu's "Notification settings" has the switches and a test button); clicking it opens the
+  conversation; reading the conversation takes the notification down.
+- [ ] The @ button in a channel's header sets that channel's notification level.
+
+Not in this build, so not bugs yet: DM voice and calls, the settings page (notification settings sit
+in the account menu until then).
 
 Please report anything that looks wrong with a screenshot, and the terminal output with
 `SEMAPHORE_LOG=info`.
@@ -131,8 +142,9 @@ Please report anything that looks wrong with a screenshot, and the terminal outp
 
 The tray, close to tray, single instance, `semaphore://` links and window restore (W2-desktop).
 `scripts/desktop-probe.sh` proves hide/show on Xvfb and headless weston and the tray on a private
-bus; everything below needs a real panel, compositor or Windows. Notification clicks come with the
-notifier (later).
+bus, and the notifier on a private bus with a fake `org.freedesktop.Notifications` (replace by tag,
+click with its activation token, closed cleanup, withdraw); everything below needs a real panel,
+compositor, notification daemon or Windows.
 
 A packaged build (built with `SEMAPHORE_PACKAGED=1`) registers `semaphore://` for itself on every
 start (Linux: a desktop entry and icon under `~/.local/share` and the default in
@@ -152,12 +164,14 @@ app once so it registers itself again. `SEMAPHORE_REGISTER_SCHEME=0` forbids it 
 | Hyprland | Links | `xdg-open 'semaphore://direct-messages'` with the app running, then quit it and run it again | Running: the window comes forward and the log (`SEMAPHORE_LOG=info`) shows the link received. Cold: the app starts and logs it (routing comes with the app-wiring unit) |
 | Hyprland | Window restore | Resize, quit, start | Same size (Wayland won't let a client place itself, so not the position); maximized stays maximized |
 | Hyprland | Unread dot | Once core reports unread (app-wiring unit) | A red dot on the tray icon, the count in its tooltip |
+| Hyprland | Notifications | Once core raises them (app-wiring unit), with mako or dunst running: two messages in one DM, then click | One notification for the DM (the newer replaced the older), the window comes forward (focused with `misc:focus_on_activate`) on that DM; reading the DM elsewhere takes it down |
 | KDE or GNOME (optional) | Same rows | | Also the count on the task manager or dock (`com.canonical.Unity.LauncherEntry`) |
 | Windows VM | Tray | Icon in the notification area (maybe under the overflow arrow); click and right-click | Click toggles the window, the menu as on Linux |
 | Windows VM | Explorer restart | Task Manager, restart Windows Explorer | The icon comes back |
 | Windows VM | Close to tray, restore | Close, then the tray; move to the second monitor, quit, start; unplug that monitor, start | Hides and returns; reopens where it was; centred when that monitor is gone |
 | Windows VM | Links | Win+R `semaphore://direct-messages`, and a link in a browser | The app comes forward (or starts) with the link logged; a second launch never opens a second window |
 | Windows VM | Unread | Once core reports unread | Dotted tray icon and a dot overlay on the taskbar button |
+| Windows VM | Toasts | Once core raises them: two messages in one DM, then click the toast | One toast for the DM, named Semaphore; a click brings the app forward on that DM |
 
 ## The headless proof
 
@@ -179,6 +193,17 @@ a thread with a reply and the bell, a first reply shown while the thread's count
 a moderator's removal with a reason, pin, the pins panel, its jump and unpin, a reaction from the
 emoji picker and its tooltip, the composer's emoji button, search with a jump to a thread reply, a
 message link in the web's `/#/` form, and the unread divider.
+
+`w2.steps` drives wave 2: a `semaphore://` link passed before sign-in that the session lands on; the
+DM list and a DM under its header; sending, editing, a unicode reaction, a thread and search in it
+(no pin and no custom emoji offered); a group of two picked from searches and named; a friend
+request from another user (`friend_request_as`) accepted; a mention from another user (`post_as`
+with `mentionUserId`) that the rig's recording notifier shows with its sound on the virtual speaker,
+withdrawn once the channel is read; a DM from another user (`post_dm_as`) whose notification is
+clicked, opening the DM and marking it read on the server; the notification centre and mark all
+read emptying the badge; and links while signed in to a DM (through `parse_deep_link`) and a
+channel. The rig activates its window first, as a user's would be: the pane marks what it shows read
+only in an active window.
 
 The default run executes every `rigs/slice/scripts/*.steps` except `voice.steps`, in sorted order,
 each twice with a fresh fake server per run, so a wave adds its own steps file instead of growing

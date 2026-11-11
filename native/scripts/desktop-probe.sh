@@ -5,8 +5,10 @@
 # - Close to tray's hide and show on the patched GPUI: rig-window-hide on X11 (Xvfb) and on Wayland
 #   (weston's headless backend), both on lavapipe.
 # - The Linux tray on a private dbus-daemon with a fake StatusNotifierWatcher
-#   (crates/semaphore-platform-desktop/tests/tray_linux.rs), which plain `cargo test` skips because
-#   the build image can't start a bus.
+#   (crates/semaphore-platform-desktop/tests/tray_linux.rs), and the notifier on one with a fake
+#   org.freedesktop.Notifications (tests/notify_linux.rs: replace by tag, click with its activation
+#   token, closed cleanup, withdraw). Plain `cargo test` skips both because the build image can't
+#   start a bus.
 #
 #   native/scripts/desktop-probe.sh
 #
@@ -66,7 +68,7 @@ else
   echo "desktop-probe: no weston in this image" >&2
   status=1
 fi
-echo "=== tray on a private session bus"
-SEMAPHORE_REQUIRE_DBUS=1 nice -n 10 cargo test --locked -q -p semaphore-platform-desktop --test tray_linux \
-  || status=1
+echo "=== tray and notifications on private session buses"
+SEMAPHORE_REQUIRE_DBUS=1 nice -n 10 cargo test --locked -q -p semaphore-platform-desktop \
+  --test tray_linux --test notify_linux || status=1
 exit $status

@@ -50,6 +50,8 @@ pub enum PaneEvent {
         community_id: String,
         channel_id: String,
     },
+    /// Go to a DM: a jump or a link to a message in one. Core has already opened it there.
+    OpenDm { dm_id: String },
     /// The header's pin badge.
     PinnedCount(u32),
 }

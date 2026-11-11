@@ -122,6 +122,8 @@ pub enum DmHeaderEvent {
     JoinCall,
     /// Only offered with `members_button`: the members drawer in a narrow window.
     OpenMembers,
+    /// Only offered with `search`: the search panel, for this conversation.
+    Search,
 }
 
 pub struct DmHeader {
@@ -129,6 +131,7 @@ pub struct DmHeader {
     back: bool,
     can_call: bool,
     members_button: bool,
+    search: bool,
 }
 
 impl EventEmitter<DmHeaderEvent> for DmHeader {}
@@ -140,6 +143,7 @@ impl DmHeader {
             back: false,
             can_call: false,
             members_button: false,
+            search: false,
         }
     }
 
@@ -159,6 +163,12 @@ impl DmHeader {
     /// A call button. Off until DM calls are wired.
     pub fn set_can_call(&mut self, can_call: bool, cx: &mut Context<Self>) {
         self.can_call = can_call;
+        cx.notify();
+    }
+
+    /// A search button, as the channel header's: messages in this conversation.
+    pub fn set_search(&mut self, shown: bool, cx: &mut Context<Self>) {
+        self.search = shown;
         cx.notify();
     }
 

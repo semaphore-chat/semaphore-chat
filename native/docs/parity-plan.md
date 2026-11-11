@@ -126,7 +126,7 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Feature | Web client | Native |
 |---|---|---|
 | Notification centre and page (list, mark read, unread count) | `components/Notifications/`, `pages/NotificationsPage.tsx`, `hooks/useNotifications.ts` | not started (core reads the unread count only) |
-| OS notifications for mentions/DMs, click to open | `hooks/useNotificationSideEffects.ts`, `utils/notifications.ts`, `electron/main.ts` `notification:*` | partial: `DesktopNotifier` exists; core has no "notify" event, no click handling |
+| OS notifications for mentions/DMs, click to open | `hooks/useNotificationSideEffects.ts`, `utils/notifications.ts`, `electron/main.ts` `notification:*` | partial: core's `Notify`/`WithdrawNotifications` and the notifier (freedesktop on Linux with replace by tag and click with activation token, GPUI toasts on Windows) exist; wiring is W2-app |
 | Notification settings: sound, quiet hours (DND), per-channel | `components/Settings/NotificationSettings.tsx`, `utils/dnd.ts` | not started |
 | Auto-mark notifications read on view | `hooks/useAutoMarkNotificationsRead.ts` | not started |
 | Unread badge (taskbar / tray) | `hooks/useAppBadge.ts` | partial: core `Tray::set_unread` trait; no implementation |

@@ -497,11 +497,19 @@ pub(crate) struct PostExtras {
     pub emoji: Option<(String, String)>,
     /// A link preview, as the server's unfurler would have made it.
     pub link_preview: Option<serde_json::Value>,
+    /// A `@mention` of this user after the text, which notifies them.
+    pub mention: Option<(String, String)>,
+}
+
+/// Where a `post_as` message goes.
+pub(crate) enum PostTarget<'a> {
+    Channel(&'a str),
+    DirectMessage(&'a str),
 }
 
 pub(crate) fn post_as(
     inner: &Inner,
-    channel_id: &str,
+    target: PostTarget<'_>,
     author_id: &str,
     text: &str,
     broadcast: bool,
@@ -520,19 +528,31 @@ pub(crate) fn post_as(
             ..SendSpan::default()
         }));
     }
+    if let Some((user_id, username)) = &extras.mention {
+        spans.push(span_from(&SendSpan {
+            kind: "USER_MENTION".into(),
+            text: Some(format!("@{username}")),
+            user_id: Some(user_id.clone()),
+            ..SendSpan::default()
+        }));
+    }
     let link_previews = extras
         .link_preview
         .and_then(|preview| serde_json::from_value(preview).ok())
         .map(|preview| vec![preview]);
+    let (channel_id, dm_id) = match target {
+        PostTarget::Channel(id) => (Some(id.to_owned()), None),
+        PostTarget::DirectMessage(id) => (None, Some(id.to_owned())),
+    };
     let message = MessageDto {
         attachments: Vec::new(),
         author_id: Some(author_id.to_owned()),
-        channel_id: Some(channel_id.to_owned()),
+        channel_id: channel_id.clone(),
         client_nonce: None,
         deleted_at: None,
         deleted_by: None,
         deleted_by_reason: None,
-        direct_message_group_id: None,
+        direct_message_group_id: dm_id.clone(),
         edited_at: None,
         id: inner.next_message_id(),
         last_reply_at: None,
@@ -550,26 +570,35 @@ pub(crate) fn post_as(
         spans,
         webhook: None,
     };
-    let notifications = {
+    let (notifications, dm_members) = {
         let mut data = lock(&inner.data);
-        let messages = data
-            .channel_messages
-            .entry(channel_id.to_owned())
-            .or_default();
+        let messages = match (&channel_id, &dm_id) {
+            (Some(channel), _) => data.channel_messages.entry(channel.clone()).or_default(),
+            (_, Some(group)) => data.dm_messages.entry(group.clone()).or_default(),
+            (None, None) => unreachable!("a post has a target"),
+        };
         messages.push(message.clone());
         sorted(messages);
+        let dm_members = dm_id
+            .as_deref()
+            .and_then(|group| crate::social::dm_member_ids(&data, group));
         // The notification is made whether or not anyone hears the message (a client that is
         // disconnected misses both).
-        crate::social::notify_message(inner, &mut data, &message)
+        (
+            crate::social::notify_message(inner, &mut data, &message),
+            dm_members,
+        )
     };
     if broadcast {
-        let payload = NewMessagePayloadDto {
+        let payload = serde_json::to_value(NewMessagePayloadDto {
             message: message.clone(),
-        };
-        inner.broadcast(
-            "newMessage",
-            serde_json::to_value(&payload).expect("a payload serializes"),
-        );
+        })
+        .expect("a payload serializes");
+        match (dm_id.is_some(), dm_members) {
+            (false, _) => inner.broadcast("newMessage", payload),
+            (true, Some(members)) => inner.emit_to_users(&members, "newDirectMessage", payload),
+            (true, None) => inner.broadcast("newDirectMessage", payload),
+        }
         crate::social::flush(inner, notifications);
     }
     message

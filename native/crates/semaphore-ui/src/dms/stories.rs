@@ -325,6 +325,7 @@ fn header_story(state: DmHeaderState, call: bool, window: &mut Window, cx: &mut 
         header.set_back(phone, cx);
         header.set_can_call(call, cx);
         header.set_members_button(call, cx);
+        header.set_search(true, cx);
         header
     });
     cx.new(|_| HeaderFrame { header }).into()
