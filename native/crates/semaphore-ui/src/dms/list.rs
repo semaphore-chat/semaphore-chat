@@ -41,7 +41,7 @@ impl DmListView {
             let online = row
                 .members
                 .first()
-                .map(|user| self.online.contains(&user.id));
+                .map(|user| row.online || self.online.contains(&user.id));
             match row.members.first() {
                 Some(user) => user_face(user, 40., online, cx),
                 None => group_face(40., cx),

@@ -90,6 +90,7 @@ fn dm(id: &str, members: Vec<UserView>, last: Option<(&str, i64)>, unread: u32) 
         }),
         unread,
         mentions: 0,
+        online: false,
     }
 }
 
