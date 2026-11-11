@@ -688,7 +688,7 @@ export class CommunityRolesService {
     // compressed for large communities so no role reaches Member at 100.
     const spacing = Math.max(
       1,
-      Math.min(10, Math.floor(99 / (reorderableIds.length + 1))),
+      Math.min(10, Math.floor(99 / reorderableIds.length)),
     );
 
     await this.databaseService.$transaction(async (tx) => {

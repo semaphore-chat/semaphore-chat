@@ -688,9 +688,13 @@ export class VoicePresenceService {
       .scard(dmMembersKey)
       .exec();
 
-    if (!results) {
+    // EXEC answers null when the transaction is discarded, and a per-command
+    // error tuple when one write fails: either way nothing is announced.
+    const failed = results?.find(([error]) => error);
+    if (!results || failed) {
       this.logger.warn(
         `Could not register DM voice presence for ${userId} in ${dmGroupId}`,
+        failed?.[0],
       );
       return;
     }

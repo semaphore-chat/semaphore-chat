@@ -1026,6 +1026,32 @@ describe('VoicePresenceService', () => {
       mockRedis.multi.mockImplementation(() => mockMulti);
     });
 
+    it('announces nothing when a write inside the DM join transaction fails', async () => {
+      const dmGroupId = 'dm-write-fails';
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        id: dmGroupId,
+      });
+      mockRedis.get.mockResolvedValue(null);
+      mockDatabaseService.user.findUnique.mockResolvedValue(mockUser);
+      // EXEC resolves, but one command inside it reports an error.
+      mockMulti.exec.mockResolvedValueOnce([
+        [null, 'OK'],
+        [new Error('WRONGTYPE'), null],
+        [null, 1],
+        [null, 1],
+      ]);
+      websocketService.sendToRoom.mockClear();
+
+      await service.handleWebhookParticipantJoined(dmGroupId, mockUser.id);
+
+      const announced = websocketService.sendToRoom.mock.calls.filter(
+        ([, event]) =>
+          event === ServerEvents.DM_VOICE_CALL_STARTED ||
+          event === ServerEvents.DM_VOICE_USER_JOINED,
+      );
+      expect(announced).toHaveLength(0);
+    });
+
     it('participant_left for a DM room removes the presence entry', async () => {
       const dmGroupId = 'dm-ghost';
       const userData = {
