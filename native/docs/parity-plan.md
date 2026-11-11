@@ -308,11 +308,44 @@ identical static shots). "Stories" means the unit's stories render in `rigs/shot
 | Unit | Delivers | Touches | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | W4-core | DM voice (dm-token, DM presence, incoming call), soundboard list/play, moderator voice actions (mute participant, remove), server-mute state, replay start/stop/capture/clips/share, voice diagnostics report | core lane files, net, fake server | W3-core | L | core tests for call state machine incl. incoming-call accept/decline; fake server endpoints |
-| W4-media | Soundboard mixing into the published track, processing/PTT/volume settings applied from settings, device test loopback and level meter, join/leave sounds, keep-awake during calls (logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (inhibit only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
+| W4-media | Soundboard on its own published `soundboard` track (`MediaEngine::play_soundboard`, decoding chosen by this unit; the default build works without the player feature), the VAD threshold applied (devices, processing, PTT and the mic preset are applied since W3-app), device test loopback and level meter (`LiveKitEngine::start_input_test`), participant volume through `MediaEngine::set_participant_volume`, `MediaEngine::diagnostics`, `LocalMediaView::{may_speak, screen_tracks}` in reports, keep-awake during calls (`keep_awake.rs`: logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (`keep_awake.rs` only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
 | W4-ui-voice | Incoming call banner, DM call controls, participant context menu (volume, moderator mute/remove), soundboard button, float card and dock zones, voice debug panel | `ui/src/voice` | W4 freeze | L | stories: each state, moderator vs member, phone |
 | W4-ui-replay | Capture modal, trim timeline, clip library, share dialog | new `ui/src/replay` | W4 freeze, W3-player | M | stories: empty library, long clip, capture failure |
 | W4-av-publish (placeholder) | Camera publish, screen share publish with quality, source picker, screen audio | designed separately | separate design | L | defined by that design |
 | W4-app | Wire DM calls, soundboard, moderator actions, replay, debug panel | `semaphore-app/src/{voice,root}.rs`, `rigs/slice/scripts/voice-w4.steps` | W4-core, W4-media, W4-ui-* | M | `slice-e2e.sh --voice` with the new steps: DM call between rig and publisher, soundboard play, server mute, capture a clip |
+
+**W4 freeze** (2026-11-11). Two changes to the table above: join, leave and ring sounds are
+decided by core (`CoreEvent::Sound { cue: SoundCue }`) and played by W4-app (`sounds.rs` with the
+web's WAV files), not W4-media; and W4-media's remaining scope is the row as written above. After the
+freeze, each lane owns these files:
+
+| Lane | Owns |
+|---|---|
+| W4-core | `semaphore-core/src/{commands/{calls,voice,soundboard,replay,diagnostics}.rs, events.rs, client.rs (effects), backend/*}`, `semaphore-net/src/backend/{voice,replay,soundboard,moderation}.rs`, `semaphore-core/tests/{w4.rs, w4_wire.rs, common/w4.rs, media.rs}`, the bodies in `semaphore-ffi/src/voice_w4.rs`. Model changes only additive, with the coordinator |
+| W4-fake | `semaphore-fake-server/src/http/{voice.rs, replay.rs (new), soundboard.rs (new)}`, new `src/calls.rs` (DM presence, replay state), control arms in `http/mod.rs`, fixture sounds, clips and segments |
+| W4-media | `semaphore-media-livekit/src/{engine.rs, input_test.rs, soundboard.rs (new), audio/*}`, `semaphore-platform-desktop/src/keep_awake.rs` |
+| W4-ui-voice | `semaphore-ui/src/voice/*` (new `incoming.rs`, `menu.rs`, `soundboard.rs`, `debug.rs`, `dock.rs`) |
+| W4-ui-replay | `semaphore-ui/src/replay/*` |
+| W4-app | `semaphore-app/src/{voice,root,sounds,services}.rs`, sound assets, `rigs/slice/scripts/voice-w4.steps` |
+
+**W4 defaults** (chosen for the owner, who may overrule; 2026-11-11):
+
+- Declining an incoming call is local only: the caller isn't told (as on the web; telling them needs
+  a backend event, below).
+- The replay buffer starts by itself when a screen share is published in a channel call, and stops
+  with the share or the call, as on the web. Never in a DM call.
+- The voice participant menu offers "Kick" (removal from the community) behind a simple confirm in
+  W4; W5's moderation dialogs replace it later.
+- Group DM calls ring every member.
+- No automatic leave when alone in a DM call.
+- One ring at a time, the newest wins; a ring lasts 30 s and also stops when the call is answered on
+  another of my devices or the caller gives up (its presence empties). The web does neither.
+- Keep-awake holds off system sleep only, not the display (Electron's `prevent-app-suspension`).
+- Soundboard sounds go out on a separate `soundboard` track, as on the web, not mixed into the mic:
+  the mic's mute, push to talk and server mute don't hold them back.
+- Participant volume goes through the `MediaEngine` trait, so a mobile engine can take it.
+- Join failures are classified and kept for the debug panel only: nothing is reported until the
+  backend accepts a native platform.
 
 ### Wave 5: community administration and moderation
 
@@ -430,3 +463,16 @@ decision.
 | Parse `unreadOnly` as a boolean on `GET /notifications` | Any value, `false` included, is read as true, so `unreadOnly=false` returns only unread rows | Never sends the parameter (`unread_only` only as `Some(true)`) |
 | `total` on `GET /notifications` that counts the list | It is the size of the page sent, so a client can't page by it | A full page means "more may follow" |
 
+### Backend asks W4
+
+Found while designing W4 (2026-11-11). None blocks W4; each has a workaround or a default above.
+
+| Ask | Why | Native's workaround meanwhile |
+|---|---|---|
+| Put `TrackSource.UNKNOWN` (the soundboard's source) in `publishGrantFor`'s `canPublishSources` | Whenever the grant lists sources (no VIDEO or SCREEN_SHARE permission, server-muted, timed out), the `soundboard` track is refused. The web has the same failure | Shows the engine's refusal as the play's error |
+| A permission (and a rate limit) for playing soundboard sounds | `READ_SOUNDBOARD_SOUND` gates the list only; anyone who may publish can play, as often as they like | none (server gap) |
+| A native value in `ReportJoinFailureDto.platform` | `VOICE_CLIENT_PLATFORMS` is `web` and `electron` only | Join failures stay local, in the debug panel |
+| Decline, missed-call or cancel events for DM calls, and a REST leave for DM voice presence | Only `dmVoiceCallStarted`/`UserJoined`/`UserLeft` exist, and DM presence leaves only by LiveKit's webhook or the 90 s TTL | Decline is local; ringing stops when the call's presence empties |
+| Make the "first user" check in `handleWebhookDmParticipantJoined` atomic | `smembers` then a pipeline: two members joining at once can both emit `dmVoiceCallStarted` | A ring for a DM whose call we're in or joining is ignored |
+| A "remove from call" endpoint, and whether I outrank someone | The web's voice "remove" is a community kick; server mute needs outranking, which a client can't see | Kick behind a confirm; the menu offers mute by role and shows the server's 403 |
+| Check that `replay/start`'s track ids belong to the caller | `channelId`, `roomName`, `videoTrackId`, `audioTrackId` and `participantIdentity` come from the client; not verified whether the server checks them | none (not checked) |
