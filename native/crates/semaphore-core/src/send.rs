@@ -185,7 +185,11 @@ pub fn read_ack(args: &[Value]) -> SendOutcome {
     let Some(first) = args.first() else {
         return unreadable();
     };
+    // An empty id names no message: a row promoted to it would match nothing on the server.
     if let Some(message_id) = first.as_str() {
+        if message_id.is_empty() {
+            return unreadable();
+        }
         return SendOutcome::Delivered {
             message_id: message_id.to_owned(),
         };
@@ -194,6 +198,9 @@ pub fn read_ack(args: &[Value]) -> SendOutcome {
         return unreadable();
     };
     if let (true, Some(message_id)) = (ack.ok, ack.message_id) {
+        if message_id.is_empty() {
+            return unreadable();
+        }
         return SendOutcome::Delivered { message_id };
     }
     let Some(error) = ack.error else {

@@ -126,3 +126,16 @@ fn a_message_deleted_while_sending_is_its_own_outcome() {
         SendOutcome::DeletedWhileSending
     );
 }
+
+// --- bug:empty-id ---
+#[test]
+fn an_ack_with_an_empty_id_is_not_a_delivery() {
+    // A row promoted to id "" would collide with every other such row and with nothing on the
+    // server: the send can't be settled from it.
+    assert_eq!(read_ack(&[json!("")]), unreadable());
+    assert_eq!(
+        read_ack(&[json!({ "ok": true, "messageId": "" })]),
+        unreadable()
+    );
+}
+// --- end bug:empty-id ---
