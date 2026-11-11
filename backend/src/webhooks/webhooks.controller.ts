@@ -55,10 +55,11 @@ export class WebhooksController {
     @Body() dto: CreateWebhookDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<CreateWebhookResponseDto> {
-    // req.protocol honours TRUST_PROXY (X-Forwarded-Proto); req.get('host')
-    // is the host the request was addressed to. Without PUBLIC_APP_URL this
-    // is how the one-time execution URL becomes absolute.
-    const host = req.get('host');
+    // req.protocol and req.host both honour TRUST_PROXY (X-Forwarded-Proto and
+    // X-Forwarded-Host are only believed from a trusted proxy; otherwise it is
+    // the Host header, port included). Without PUBLIC_APP_URL this is how the
+    // one-time execution URL becomes absolute.
+    const host = req.host;
     const origin = host ? `${req.protocol}://${host}` : undefined;
     return this.webhooksService.create(channelId, dto, req.user.id, origin);
   }

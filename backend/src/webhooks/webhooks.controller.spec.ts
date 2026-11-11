@@ -104,8 +104,7 @@ describe('WebhooksController', () => {
       const req = {
         user: { id: 'user-1' },
         protocol: 'https',
-        get: (name: string) =>
-          name === 'host' ? 'chat.example.com' : undefined,
+        host: 'chat.example.com',
       } as unknown as AuthenticatedRequest;
       const created = { id: 'wh-1', url: 'https://x/api/webhooks/wh-1/tok' };
       webhooksService.create.mockResolvedValue(created as any);
