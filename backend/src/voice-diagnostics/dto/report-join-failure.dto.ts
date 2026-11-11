@@ -26,7 +26,7 @@ export const VOICE_JOIN_ERROR_CLASSES = [
 export type VoiceJoinErrorClass = (typeof VOICE_JOIN_ERROR_CLASSES)[number];
 
 export const ICE_CANDIDATE_TYPES = ['host', 'srflx', 'prflx', 'relay'] as const;
-export const VOICE_CLIENT_PLATFORMS = ['web', 'electron'] as const;
+export const VOICE_CLIENT_PLATFORMS = ['web', 'electron', 'native'] as const;
 
 export const JOIN_FAILURE_MESSAGE_MAX = 500;
 

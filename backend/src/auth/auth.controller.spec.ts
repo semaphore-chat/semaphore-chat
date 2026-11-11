@@ -13,6 +13,8 @@ import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { UserFactory, createMockDatabase } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
+import { AuthenticatedRequest } from '@/types';
+import { ErrorCode } from '@semaphore-chat/shared';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -1552,6 +1554,32 @@ describe('AuthController', () => {
           ).rejects.toThrow('Invalid or expired sign-in code');
         }
       });
+    });
+  });
+
+  describe('revokeAllOtherSessions', () => {
+    it('answers 400 with a specific code, not 401, when the current session is unknown (#655)', async () => {
+      // Signed in via bearer token, but no cookie and no usable `sid`
+      const req = {
+        user: mockUser,
+        cookies: {},
+        headers: { authorization: 'Bearer token-without-sid' },
+        // The controller only reads cookies, headers and user.
+      } as unknown as AuthenticatedRequest;
+      jwtService.decode.mockReturnValue({ sub: mockUser.id });
+
+      const error = await controller
+        .revokeAllOtherSessions(req)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getStatus()).toBe(400);
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        statusCode: 400,
+        message: 'Could not determine current session',
+        errorCode: ErrorCode.CURRENT_SESSION_UNKNOWN,
+      });
+      expect(authService.revokeAllOtherSessions).not.toHaveBeenCalled();
     });
   });
 });

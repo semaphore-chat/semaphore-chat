@@ -1,5 +1,5 @@
 import { ModerationAction, Prisma, InstanceRole } from '@prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ModerationActionValues,
   InstanceRoleValues,
@@ -67,6 +67,9 @@ export class ModerationLogDto {
   communityId: string;
   moderatorId: string | null;
   targetUserId: string | null;
+  /** The message a message action (delete, pin) was taken on. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  targetMessageId?: string | null;
   @ApiProperty({ enum: ModerationActionValues, enumName: 'ModerationAction' })
   action: ModerationAction;
   reason: string | null;

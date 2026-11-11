@@ -513,11 +513,13 @@ export class LivekitReplayService
       }
     }
 
-    // Update session status in database (even if egress was already gone)
+    // Update session status in database (even if egress was already gone).
+    // 'stopped_by_user' tells the stale-session heal this end was deliberate
+    // (the caller knows), so it must not re-send replayBufferStopped (#670).
     await this.databaseService.egressSession.update({
       where: { id: session.id },
       data: {
-        status: 'stopped',
+        status: 'stopped_by_user',
         endedAt: new Date(),
       },
     });
@@ -895,6 +897,9 @@ export class LivekitReplayService
    * - Egress genuinely gone → emit the missing REPLAY_BUFFER_STOPPED/FAILED
    *   event so the client clears its UI, then throw an accurate
    *   NotFoundException.
+   * - Row stopped by the stop path ('stopped_by_user') → the caller knows it
+   *   ended, and no event was missed: throw the plain NotFoundException
+   *   without asking LiveKit or emitting.
    * - LiveKit unreachable (listEgress throws) → we cannot tell whether the
    *   recording is alive, so throw a retryable ServiceUnavailableException
    *   without emitting any event or touching the DB row.
@@ -913,6 +918,17 @@ export class LivekitReplayService
     });
 
     if (!recentSession) {
+      throw new NotFoundException(
+        'No active replay found. Start screen sharing first.',
+      );
+    }
+
+    // The stop path (the client's stop button, leaving the channel, or a
+    // restart) already ended this session and the client that asked knows:
+    // there is no missed event to send. Recovery exists for rows that ended
+    // without it (#670) — re-emitting here duplicated replayBufferStopped on
+    // the first session-info GET after a normal stop.
+    if (recentSession.status === 'stopped_by_user') {
       throw new NotFoundException(
         'No active replay found. Start screen sharing first.',
       );

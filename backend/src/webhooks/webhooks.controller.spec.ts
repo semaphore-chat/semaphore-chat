@@ -17,6 +17,7 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { IS_PUBLIC_KEY } from '@/auth/public.decorator';
+import { AuthenticatedRequest } from '@/types';
 
 describe('WebhooksController', () => {
   let controller: WebhooksController;
@@ -98,9 +99,14 @@ describe('WebhooksController', () => {
   });
 
   describe('create', () => {
-    it('delegates to the service with the authenticated user as creator', async () => {
+    it('delegates to the service with the authenticated user as creator and the request origin', async () => {
       const dto = { name: 'CI Bot' };
-      const req = { user: { id: 'user-1' } } as any;
+      const req = {
+        user: { id: 'user-1' },
+        protocol: 'https',
+        get: (name: string) =>
+          name === 'host' ? 'chat.example.com' : undefined,
+      } as unknown as AuthenticatedRequest;
       const created = { id: 'wh-1', url: 'https://x/api/webhooks/wh-1/tok' };
       webhooksService.create.mockResolvedValue(created as any);
 
@@ -111,6 +117,7 @@ describe('WebhooksController', () => {
         'channel-1',
         dto,
         'user-1',
+        'https://chat.example.com',
       );
     });
   });

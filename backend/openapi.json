@@ -6701,7 +6701,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/ModerationAction"
             }
           }
         ],
@@ -11517,6 +11517,11 @@
       "CreateRoleDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1
+          },
           "actions": {
             "type": "array",
             "minItems": 1,
@@ -11529,20 +11534,21 @@
             "minimum": 1,
             "maximum": 100000,
             "description": "Position for ordering (lower = higher priority)"
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 50
           }
         },
         "required": [
-          "actions",
-          "name"
+          "name",
+          "actions"
         ]
       },
       "UpdateRoleDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1
+          },
           "actions": {
             "type": "array",
             "minItems": 1,
@@ -11555,10 +11561,6 @@
             "minimum": 1,
             "maximum": 100000,
             "description": "Position for ordering (lower = higher priority)"
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 50
           }
         }
       },
@@ -14307,6 +14309,11 @@
       "ModerationLogDto": {
         "type": "object",
         "properties": {
+          "targetMessageId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The message a message action (delete, pin) was taken on."
+          },
           "action": {
             "allOf": [
               {
@@ -15496,7 +15503,8 @@
         "type": "string",
         "enum": [
           "web",
-          "electron"
+          "electron",
+          "native"
         ]
       },
       "ReportJoinFailureDto": {
@@ -17992,6 +18000,7 @@
           "TIMED_OUT",
           "NONCE_CONFLICT",
           "MESSAGE_DELETED",
+          "CURRENT_SESSION_UNKNOWN",
           "ATTACH_NOT_ALLOWED",
           "FILE_NOT_OWNED",
           "UPLOAD_TARGET_NOT_ALLOWED",

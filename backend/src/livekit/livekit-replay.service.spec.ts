@@ -217,7 +217,7 @@ describe('LivekitReplayService', () => {
         expect.objectContaining({
           where: { id: 'old-session' },
           data: expect.objectContaining({
-            status: 'stopped',
+            status: 'stopped_by_user',
           }),
         }),
       );
@@ -288,7 +288,7 @@ describe('LivekitReplayService', () => {
         expect.objectContaining({
           where: { id: 'session-1' },
           data: expect.objectContaining({
-            status: 'stopped',
+            status: 'stopped_by_user',
           }),
         }),
       );
@@ -354,7 +354,7 @@ describe('LivekitReplayService', () => {
       expect(databaseService.egressSession.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'session-1' },
-          data: expect.objectContaining({ status: 'stopped' }),
+          data: expect.objectContaining({ status: 'stopped_by_user' }),
         }),
       );
     });
@@ -767,6 +767,7 @@ describe('LivekitReplayService', () => {
       const result = await service.getSessionInfo('user-123');
 
       expect(result.hasActiveSession).toBe(false);
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'user:user-123',
         ServerEvents.REPLAY_BUFFER_STOPPED,
@@ -776,6 +777,46 @@ describe('LivekitReplayService', () => {
           channelId: 'channel-1',
         }),
       );
+    });
+
+    it('sends nothing for the first session-info after a normal stop (#670)', async () => {
+      const activeSession = {
+        id: 'session-1',
+        userId: 'user-123',
+        channelId: 'channel-1',
+        egressId: 'egress-123',
+        status: 'active',
+        segmentPath: 'session-1',
+        startedAt: new Date(Date.now() - 10 * 60 * 1000),
+      };
+      databaseService.egressSession.findFirst.mockResolvedValueOnce(
+        activeSession,
+      );
+      mockEgressClient.stopEgress.mockResolvedValue(undefined);
+      storageService.deleteSegmentDirectory.mockResolvedValue(undefined);
+
+      await service.stopReplayBuffer('user-123');
+      const written = databaseService.egressSession.update.mock.calls[0][0] as {
+        data: { status: string };
+      };
+      expect(written.data.status).toBe('stopped_by_user');
+
+      // Now the frontend's first status poll: no active session, and the
+      // row the stop path wrote as its most recent one.
+      databaseService.egressSession.findFirst.mockReset();
+      databaseService.egressSession.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          ...activeSession,
+          status: written.data.status,
+          endedAt: new Date(),
+        });
+
+      const result = await service.getSessionInfo('user-123');
+
+      expect(result.hasActiveSession).toBe(false);
+      expect(mockEgressClient.listEgress).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
 
     it('should propagate a 503 instead of reporting inactive when LiveKit cannot be checked during the heal', async () => {

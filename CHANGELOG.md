@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Reordering community roles keeps every role above the Member role, even with ten or more custom roles. (#691)
 - The web role editor can grant and revoke the replay capture permission. (#693)
 - Adding a member to a private channel now returns the added user with the membership. (#697)
+- Creating or renaming a role no longer accepts a blank name: surrounding spaces are trimmed and the name must keep at least one character. (#702)
+- Moderation log entries now say which message they are about, so a deleted or pinned message can be linked from the log. (#703)
+- Creating a webhook returns a full URL even when `PUBLIC_APP_URL` is not configured, built from the address you reached the server on. (#696)
+- Revoking all other sessions answers 400 with a specific error code when the current session can't be identified, instead of a 401 that clients took for an expired login. (#655)
+- A replay buffer you stopped normally no longer announces `replayBufferStopped` a second time on the next session-info poll. (#670)
+- Refreshing DM call presence refuses a non-member with 403 and reports a failed refresh instead of pretending it succeeded. (#672)
+- The soundboard track is accepted when a member's publishing is restricted but they may speak; a server-muted or timed-out member still can't publish it. (#659)
+- Native clients can report a failed voice join with the platform value `native`. (#661)
+- The moderation log action filter rejects unknown values with a 400 and lists the allowed values in the API contract. (#687)
 
 ## [0.9.0] - 2026-11-11
 
