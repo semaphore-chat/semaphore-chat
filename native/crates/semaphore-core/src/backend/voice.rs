@@ -3,9 +3,9 @@
 use async_trait::async_trait;
 use semaphore_wire::types as wire;
 
-use super::BackendResult;
+use super::{BackendResult, unsupported};
 
-/// Part of [`Backend`](super::Backend).
+/// Part of [`Backend`](super::Backend). W4's calls default to unsupported until a backend has them.
 #[async_trait]
 pub trait VoiceBackend: Send + Sync {
     // Voice
@@ -37,4 +37,34 @@ pub trait VoiceBackend: Send + Sync {
         channel_id: String,
         body: wire::UpdateDeafenStateDto,
     ) -> BackendResult<wire::RefreshPresenceResponseDto>;
+
+    // W4: DM calls and moderator voice actions.
+    /// A token for the DM group's room (`roomId` is the group's id).
+    async fn livekit_controller_generate_dm_token(
+        &self,
+        _body: wire::CreateTokenDto,
+    ) -> BackendResult<wire::TokenResponseDto> {
+        Err(unsupported("DM call tokens"))
+    }
+    async fn dm_voice_presence_controller_get_dm_presence(
+        &self,
+        _dm_group_id: String,
+    ) -> BackendResult<wire::DmVoicePresenceResponseDto> {
+        Err(unsupported("DM call presence"))
+    }
+    /// Also registers this user when the server doesn't list them, as a join would: the DM's
+    /// presence otherwise comes from LiveKit's webhook only. There's no leave.
+    async fn dm_voice_presence_controller_refresh_dm_presence(
+        &self,
+        _dm_group_id: String,
+    ) -> BackendResult<wire::RefreshDmPresenceResponseDto> {
+        Err(unsupported("refreshing DM call presence"))
+    }
+    async fn livekit_controller_mute_participant(
+        &self,
+        _channel_id: String,
+        _body: wire::MuteParticipantDto,
+    ) -> BackendResult<wire::SuccessResponseDto> {
+        Err(unsupported("server mute"))
+    }
 }

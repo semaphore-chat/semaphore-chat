@@ -21,6 +21,7 @@ use semaphore_core::model::{
     UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
     WebhookView,
 };
+use semaphore_core::model::{ReplayState, ShareTracks, SoundCue, VoiceRoom};
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
 use std::sync::Arc;
@@ -37,6 +38,7 @@ mod onboarding;
 mod profile;
 mod reading;
 mod social;
+mod voice_w4;
 
 #[uniffi::remote(Enum)]
 pub enum Conversation {
@@ -371,18 +373,22 @@ pub struct ParticipantView {
     pub camera: Option<VideoTrackView>,
     pub screen_share: Option<VideoTrackView>,
     pub quality: ConnectionQuality,
+    pub server_muted: bool,
 }
 
 #[uniffi::remote(Record)]
 pub struct VoiceView {
     pub status: VoiceStatus,
     pub channel_id: Option<String>,
+    pub room: Option<VoiceRoom>,
     pub muted: bool,
     pub deafened: bool,
     pub participants: Vec<ParticipantView>,
     pub reconnect_attempt: Option<u32>,
     pub error: Option<String>,
     pub local: LocalMediaView,
+    pub server_muted: bool,
+    pub replay: ReplayState,
 }
 
 #[uniffi::remote(Enum)]
@@ -400,6 +406,8 @@ pub struct LocalMediaView {
     pub screen_audio: LocalShare,
     pub may_camera: bool,
     pub may_share: bool,
+    pub may_speak: bool,
+    pub screen_tracks: Option<ShareTracks>,
 }
 
 #[uniffi::remote(Enum)]
@@ -448,6 +456,12 @@ pub enum ViewKey {
     InvitePreview { code: String },
     BrowserSignIn,
     InstancePermissions,
+    IncomingCall,
+    Soundboard { community_id: String },
+    Clips,
+    UserClips { user_id: String },
+    ReplaySession,
+    VoiceDiagnostics,
 }
 
 #[uniffi::remote(Record)]
@@ -576,6 +590,9 @@ pub enum CoreEvent {
     DesktopSignedIn {
         ip_address: Option<String>,
         at_ms: i64,
+    },
+    Sound {
+        cue: SoundCue,
     },
 }
 

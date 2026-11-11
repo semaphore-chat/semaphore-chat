@@ -100,6 +100,10 @@ pub(crate) struct State {
     pub w2: crate::commands::notify::W2State,
     /// W3's profile edits, sessions and appearance: gone with the session.
     pub w3: crate::commands::account::W3State,
+    /// W4's incoming call: gone with the session.
+    pub w4: crate::commands::calls::W4State,
+    /// W4's platform seams (the sleep inhibitor): they outlive sessions.
+    pub w4_platform: crate::commands::calls::W4Platform,
     /// W3's signed-out work (the server in use, invites, sign in with browser): it outlives sessions.
     pub auth: crate::commands::browser_sign_in::AuthState,
     /// Numbers each session: bumped at sign-out, so work begun in one session can tell, when it
@@ -157,6 +161,8 @@ impl State {
             reading: Default::default(),
             w2: Default::default(),
             w3: Default::default(),
+            w4: Default::default(),
+            w4_platform: Default::default(),
             auth: Default::default(),
             session_epoch: 0,
             next_change: 0,

@@ -44,4 +44,14 @@ pub trait ModerationBackend: Send + Sync {
     ) -> BackendResult<wire::UserRolesResponseDto> {
         Err(unsupported("reading channel roles"))
     }
+    /// W4: removes a member from the community, which also ends their call (the voice menu's
+    /// "Kick").
+    async fn moderation_controller_kick_user(
+        &self,
+        _community_id: String,
+        _user_id: String,
+        _body: wire::KickUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        Err(unsupported("kicking a member"))
+    }
 }

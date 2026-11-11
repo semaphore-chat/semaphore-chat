@@ -8,7 +8,9 @@
 pub mod account;
 pub(crate) mod actions;
 pub mod browser_sign_in;
+pub mod calls;
 mod communities;
+mod diagnostics;
 mod dms;
 mod messages;
 pub(crate) mod notify;
@@ -16,8 +18,10 @@ pub mod onboarding;
 mod profile;
 mod queries;
 pub(crate) mod reading;
+mod replay;
 mod session;
 pub mod social;
+mod soundboard;
 mod voice;
 
 use crate::cache::{CacheValue, MemberPages, QueryKey, keys};
@@ -145,6 +149,7 @@ impl State {
         self.reading = Default::default();
         self.w2 = Default::default();
         self.w3 = Default::default();
+        self.w4 = Default::default();
         self.session_epoch += 1;
         self.effects.clear();
         self.main_conversation = None;
