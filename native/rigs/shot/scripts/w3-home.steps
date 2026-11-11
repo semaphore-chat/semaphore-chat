@@ -1,0 +1,104 @@
+# W3 home: each section's states, caught up, the next step for a user in no communities, the phone's gate and the create community dialog.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w3-home.steps
+story home-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-loading-desktop
+story home-loading 390 844 light-blue-balanced
+wait idle
+shot w3-home-loading-phone
+story home-communities-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-communities-failed-desktop
+story home-communities-failed 390 844 light-blue-balanced
+wait idle
+shot w3-home-communities-failed-phone
+story home-sections 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-sections-desktop
+story home-sections 390 844 light-blue-balanced
+wait idle
+shot w3-home-sections-phone
+story home-sections-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-sections-loading-desktop
+story home-sections-loading 390 844 light-blue-balanced
+wait idle
+shot w3-home-sections-loading-phone
+story home-sections-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-sections-failed-desktop
+story home-sections-failed 390 844 light-blue-balanced
+wait idle
+shot w3-home-sections-failed-phone
+story home-mentions-only 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-mentions-only-desktop
+story home-mentions-only 390 844 light-blue-balanced
+wait idle
+shot w3-home-mentions-only-phone
+story home-caught-up 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-caught-up-desktop
+story home-caught-up 390 844 light-blue-balanced
+wait idle
+shot w3-home-caught-up-phone
+story home-long 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-long-desktop
+story home-long 390 844 light-blue-balanced
+wait idle
+shot w3-home-long-phone
+story home-zero-can-create 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-zero-can-create-desktop
+story home-zero-can-create 390 844 light-blue-balanced
+wait idle
+shot w3-home-zero-can-create-phone
+story home-zero-cannot-create 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-zero-cannot-create-desktop
+story home-zero-cannot-create 390 844 light-blue-balanced
+wait idle
+shot w3-home-zero-cannot-create-phone
+story home-gate-can-create 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-gate-can-create-desktop
+story home-gate-can-create 390 844 light-blue-balanced
+wait idle
+shot w3-home-gate-can-create-phone
+story home-gate-cannot-create 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-gate-cannot-create-desktop
+story home-gate-cannot-create 390 844 light-blue-balanced
+wait idle
+shot w3-home-gate-cannot-create-phone
+story home-create-community 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-create-community-desktop
+story home-create-community 390 844 light-blue-balanced
+wait idle
+shot w3-home-create-community-phone
+story home-create-community-filled 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-create-community-filled-desktop
+story home-create-community-filled 390 844 light-blue-balanced
+wait idle
+shot w3-home-create-community-filled-phone
+story home-create-community-errors 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-create-community-errors-desktop
+story home-create-community-errors 390 844 light-blue-balanced
+wait idle
+shot w3-home-create-community-errors-phone
+story home-create-community-busy 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-create-community-busy-desktop
+story home-create-community-busy 390 844 light-blue-balanced
+wait idle
+shot w3-home-create-community-busy-phone
+story home-create-community-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-home-create-community-failed-desktop
+story home-create-community-failed 390 844 light-blue-balanced
+wait idle
+shot w3-home-create-community-failed-phone
