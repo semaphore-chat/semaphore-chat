@@ -6,7 +6,9 @@ use super::common::{
     Confirm, action_icon, card, list, loading_rows, locked_button, page, row, server_error,
     tone_chip,
 };
-use super::rules::{OpAction, Outcome, Pending, check_group_name, needs, op_about};
+use super::rules::{
+    Outcome, Pending, act, check_group_name, failure_of, needs, running, running_of,
+};
 use crate::kit::{
     Alert, Button, Checkbox, Chip, Severity, TextField, Variant, spacing, text, text_state,
 };
@@ -16,10 +18,22 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    AliasGroupRow, AliasGroupView, AliasGroupsView, CommunityCaps, LoadState, MemberList, UserView,
+    AdminActionKind, AdminOp, AliasGroupRow, AliasGroupView, AliasGroupsView, CommunityCaps,
+    LoadState, MemberList, UserView,
 };
 use semaphore_design::Icon as DesignIcon;
 use std::collections::BTreeSet;
+
+/// What the group list's op reports: making and deleting groups.
+const LIST_KINDS: &[AdminActionKind] = &[
+    AdminActionKind::CreateAliasGroup,
+    AdminActionKind::DeleteAliasGroup,
+];
+/// What one group's op reports for a save: the rename, then the member list.
+const SAVE_KINDS: &[AdminActionKind] = &[
+    AdminActionKind::RenameAliasGroup,
+    AdminActionKind::SetAliasGroupMembers,
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MentionGroupsEvent {
@@ -58,8 +72,7 @@ pub struct MentionGroupsTab {
     group: AliasGroupView,
     community: Option<MemberList>,
     caps: CommunityCaps,
-    last: Option<OpAction>,
-    pending: Option<Pending>,
+    pending: Vec<Pending>,
     editor: Option<Editor>,
     name: Entity<InputState>,
     search: Entity<InputState>,
@@ -82,8 +95,7 @@ impl MentionGroupsTab {
             group: AliasGroupView::default(),
             community: None,
             caps: CommunityCaps::default(),
-            last: None,
-            pending: None,
+            pending: Vec::new(),
             editor: None,
             name,
             search,
@@ -99,18 +111,14 @@ impl MentionGroupsTab {
 
     /// `Core::alias_groups(community)`.
     pub fn set_groups(&mut self, view: AliasGroupsView, cx: &mut Context<Self>) {
-        self.observe(&view.op, |action| {
-            matches!(action, OpAction::CreateGroup | OpAction::DeleteGroup { .. })
-        });
+        self.observe(&view.op, LIST_KINDS);
         self.view = view;
         cx.notify();
     }
 
     /// `Core::alias_group(id)` for the group open in the editor.
     pub fn set_group(&mut self, view: AliasGroupView, window: &mut Window, cx: &mut Context<Self>) {
-        self.observe(&view.op, |action| {
-            matches!(action, OpAction::SaveGroup { .. })
-        });
+        self.observe(&view.op, SAVE_KINDS);
         if let Some(editor) = self.editor.as_mut()
             && editor.group_id.as_deref() == Some(view.group_id.as_str())
             && !editor.loaded
@@ -133,25 +141,28 @@ impl MentionGroupsTab {
         cx.notify();
     }
 
-    fn observe(&mut self, op: &semaphore_core::model::AdminOp, mine: impl Fn(&OpAction) -> bool) {
-        let Some(pending) = self.pending.as_mut() else {
-            return;
-        };
-        if !mine(&pending.action) {
-            return;
-        }
-        match pending.observe(op) {
-            Outcome::Waiting => {}
-            Outcome::Failed => self.pending = None,
-            Outcome::Succeeded => {
-                if matches!(
-                    pending.action,
-                    OpAction::CreateGroup | OpAction::SaveGroup { .. }
-                ) {
-                    self.editor = None;
-                }
-                self.pending = None;
+    /// Follows the changes this view reports on. A create, or a save's member list (which every
+    /// save sends, after any rename), closes the editor once it succeeds.
+    fn observe(&mut self, op: &AdminOp, kinds: &[AdminActionKind]) {
+        let mut close = false;
+        self.pending.retain_mut(|pending| {
+            if !kinds.contains(&pending.action.kind) {
+                return true;
             }
+            match pending.observe(op) {
+                Outcome::Waiting => true,
+                Outcome::Failed => false,
+                Outcome::Succeeded => {
+                    close |= matches!(
+                        pending.action.kind,
+                        AdminActionKind::CreateAliasGroup | AdminActionKind::SetAliasGroupMembers
+                    );
+                    false
+                }
+            }
+        });
+        if close {
+            self.editor = None;
         }
     }
 
@@ -177,12 +188,9 @@ impl MentionGroupsTab {
         self.search
             .update(cx, |field, cx| field.set_value(search, window, cx));
     }
-
-    /// As if `action` was sent: for stories and tests.
+    /// As if Save was pressed once: field errors show. For stories.
     #[cfg(feature = "stories")]
-    pub(crate) fn mark_sent(&mut self, action: OpAction, tried: bool) {
-        self.last = Some(action.clone());
-        self.pending = Some(Pending::new(action));
+    pub(crate) fn set_tried(&mut self, tried: bool) {
         if let Some(editor) = self.editor.as_mut() {
             editor.tried = tried;
         }
@@ -241,49 +249,51 @@ impl MentionGroupsTab {
             return;
         }
         let member_ids: Vec<String> = editor.selected.iter().cloned().collect();
-        let (action, event) = match editor.group_id.clone() {
+        let event = match editor.group_id.clone() {
             None => {
                 if !self.caps.create_alias_group {
                     return;
                 }
-                (
-                    OpAction::CreateGroup,
-                    MentionGroupsEvent::Create { name, member_ids },
-                )
+                self.pending.push(Pending::new(
+                    act(AdminActionKind::CreateAliasGroup, None),
+                    &self.view.op,
+                ));
+                MentionGroupsEvent::Create { name, member_ids }
             }
             Some(group_id) => {
                 if !editor.loaded {
                     return;
                 }
                 let renamed = name != editor.original_name;
-                (
-                    OpAction::SaveGroup {
-                        group_id: group_id.clone(),
-                    },
-                    MentionGroupsEvent::Save {
-                        group_id,
-                        name: renamed.then_some(name),
-                        member_ids,
-                    },
-                )
+                if renamed {
+                    self.pending.push(Pending::new(
+                        act(AdminActionKind::RenameAliasGroup, Some(&group_id)),
+                        &self.group.op,
+                    ));
+                }
+                self.pending.push(Pending::new(
+                    act(AdminActionKind::SetAliasGroupMembers, Some(&group_id)),
+                    &self.group.op,
+                ));
+                MentionGroupsEvent::Save {
+                    group_id,
+                    name: renamed.then_some(name),
+                    member_ids,
+                }
             }
         };
-        self.last = Some(action.clone());
-        self.pending = Some(Pending::new(action));
         cx.emit(event);
         cx.notify();
     }
 
+    /// A create or a save is on its way.
     fn busy(&self) -> bool {
-        self.pending.is_some() && (self.view.op.busy || self.group.op.busy)
+        running(&self.view.op, &act(AdminActionKind::CreateAliasGroup, None))
+            || running_of(&self.group.op, SAVE_KINDS).next().is_some()
     }
 
     fn list_view(&self, cx: &mut Context<Self>) -> AnyElement {
         let sem = cx.sem().clone();
-        let deleting = match op_about(&self.view.op, self.last.as_ref(), |_| true) {
-            Some(OpAction::DeleteGroup { group_id }) if self.view.op.busy => Some(group_id),
-            _ => None,
-        };
         let edit_locked = (!self.caps.update_alias_group && !self.caps.manage_alias_members)
             .then(|| needs("Edit mention groups"));
         let delete_locked = (!self.caps.delete_alias_group).then(|| needs("Delete mention groups"));
@@ -317,7 +327,10 @@ impl MentionGroupsTab {
                     .map(|group| {
                         let (edit_id, delete_row) = (group.id.clone(), group.clone());
                         let count = group.member_count;
-                        let busy = deleting.as_deref() == Some(group.id.as_str());
+                        let busy = running(
+                            &self.view.op,
+                            &act(AdminActionKind::DeleteAliasGroup, Some(&group.id)),
+                        );
                         row(SharedString::from(format!("group-{}", group.id)), format!("@{}", group.name), cx)
                             .child(design_icon_at(cx))
                             .child(
@@ -367,10 +380,8 @@ impl MentionGroupsTab {
                 list("groups-list", "Mention groups").children(rows).into_any_element()
             }
         };
-        let error = op_about(&self.view.op, self.last.as_ref(), |action| {
-            matches!(action, OpAction::DeleteGroup { .. })
-        })
-        .and_then(|_| server_error(self.view.op.error.as_ref()));
+        let error = failure_of(&self.view.op, &[AdminActionKind::DeleteAliasGroup])
+            .and_then(|(_, error)| server_error(Some(error)));
         div()
             .flex()
             .flex_col()
@@ -416,10 +427,12 @@ impl MentionGroupsTab {
         } else {
             &self.view.op
         };
-        let error = op_about(op, self.last.as_ref(), |action| {
-            matches!(action, OpAction::CreateGroup | OpAction::SaveGroup { .. })
-        })
-        .and_then(|_| server_error(op.error.as_ref()));
+        let kinds: &[AdminActionKind] = if editing {
+            SAVE_KINDS
+        } else {
+            &[AdminActionKind::CreateAliasGroup]
+        };
+        let error = failure_of(op, kinds).and_then(|(_, error)| server_error(Some(error)));
         let waiting_group = editing && !editor.loaded;
         let group_failed = editing && matches!(self.group.state, LoadState::Failed { .. });
         let members: AnyElement = if group_failed {
@@ -660,9 +673,8 @@ impl Render for MentionGroupsTab {
                     confirm
                         .update(cx, |tab, cx| {
                             tab.deleting = None;
-                            let action = OpAction::DeleteGroup { group_id: id.clone() };
-                            tab.last = Some(action.clone());
-                            tab.pending = Some(Pending::new(action));
+                            let action = act(AdminActionKind::DeleteAliasGroup, Some(&id));
+                            tab.pending.push(Pending::new(action, &tab.view.op));
                             cx.emit(MentionGroupsEvent::Delete { group_id: id.clone() });
                             cx.notify();
                         })

@@ -3,14 +3,13 @@
 //! The edit dialog (`EditChannelDialog.tsx`) renames only; a text channel's webhooks live in it
 //! (`WebhookManagement.tsx`), and its Permissions tab is the roles lane's override editor (a slot).
 
-use super::OpLedger;
 use super::common::{
     Confirm, action_icon, card, empty_line, list, loading_rows, locked_button, locked_note, mono,
     page, phone, row, server_error, tone_chip,
 };
 use super::rules::{
-    OpAction, Outcome, Pending, check_channel_name, check_webhook_name, date_label, needs,
-    op_about, preset_label,
+    Outcome, Pending, act, check_channel_name, check_webhook_name, date_label, failure, needs,
+    preset_label, running, running_of,
 };
 use crate::kit::{
     Alert, Button, ButtonSize, Dialog, IconButton, Severity, Switch, TextField, Variant, spacing,
@@ -23,8 +22,8 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    AdminOp, ChannelDraft, ChannelKind, ChannelMove, ChannelRow, CommunityCaps, CreatedWebhook,
-    LoadState, WebhooksView,
+    AdminAction, AdminActionKind, AdminOp, ChannelDraft, ChannelKind, ChannelMove, ChannelRow,
+    CommunityCaps, CreatedWebhook, LoadState, WebhooksView,
 };
 use semaphore_design::Icon as DesignIcon;
 
@@ -83,9 +82,9 @@ pub struct ChannelsTab {
     state: LoadState,
     channels: Vec<ChannelRow>,
     caps: CommunityCaps,
-    ledger: OpLedger,
     op: AdminOp,
-    pending: Option<Pending>,
+    /// Channel changes on their way, each followed through its own entry.
+    pending: Vec<Pending>,
     creating: bool,
     create_tried: bool,
     create_kind: ChannelKind,
@@ -95,8 +94,7 @@ pub struct ChannelsTab {
     edit_name: Entity<InputState>,
     deleting: Option<String>,
     webhooks: WebhooksView,
-    webhook_last: Option<OpAction>,
-    webhook_pending: Option<Pending>,
+    webhook_pending: Vec<Pending>,
     webhook_tried: bool,
     webhook_name: Entity<InputState>,
     webhook_avatar: Entity<InputState>,
@@ -118,14 +116,6 @@ fn kind_label(kind: ChannelKind) -> &'static str {
 
 impl ChannelsTab {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::with_ledger(OpLedger::default(), window, cx)
-    }
-
-    pub(crate) fn with_ledger(
-        ledger: OpLedger,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
         let create_name = text_state(window, cx, false);
         let edit_name = text_state(window, cx, false);
         let webhook_name = text_state(window, cx, false);
@@ -138,9 +128,8 @@ impl ChannelsTab {
             state: LoadState::Loading,
             channels: Vec::new(),
             caps: CommunityCaps::default(),
-            ledger,
             op: AdminOp::default(),
-            pending: None,
+            pending: Vec::new(),
             creating: false,
             create_tried: false,
             create_kind: ChannelKind::Text,
@@ -150,8 +139,7 @@ impl ChannelsTab {
             edit_name,
             deleting: None,
             webhooks: WebhooksView::default(),
-            webhook_last: None,
-            webhook_pending: None,
+            webhook_pending: Vec::new(),
             webhook_tried: false,
             webhook_name,
             webhook_avatar,
@@ -188,21 +176,27 @@ impl ChannelsTab {
 
     /// `CommunitySettingsView::op`, which channel changes report on.
     pub fn set_op(&mut self, op: AdminOp, cx: &mut Context<Self>) {
-        if let Some(pending) = self.pending.as_mut() {
-            match pending.observe(&op) {
-                Outcome::Waiting => {}
-                Outcome::Failed => self.pending = None,
+        let mut done = Vec::new();
+        self.pending
+            .retain_mut(|pending| match pending.observe(&op) {
+                Outcome::Waiting => true,
+                Outcome::Failed => false,
                 Outcome::Succeeded => {
-                    match pending.action {
-                        OpAction::CreateChannel => self.creating = false,
-                        OpAction::UpdateChannel { .. } if self.editing.is_some() => {
-                            self.editing = None;
-                            cx.emit(ChannelsEvent::CloseEdit);
-                        }
-                        _ => {}
-                    }
-                    self.pending = None;
+                    done.push(pending.action.clone());
+                    false
                 }
+            });
+        for action in done {
+            match action.kind {
+                AdminActionKind::CreateChannel => self.creating = false,
+                AdminActionKind::UpdateChannel
+                    if self.editing.as_ref().map(|e| e.channel_id.as_str())
+                        == action.target_id.as_deref() =>
+                {
+                    self.editing = None;
+                    cx.emit(ChannelsEvent::CloseEdit);
+                }
+                _ => {}
             }
         }
         self.op = op;
@@ -216,21 +210,22 @@ impl ChannelsTab {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(pending) = self.webhook_pending.as_mut() {
-            match pending.observe(&view.op) {
-                Outcome::Waiting => {}
-                Outcome::Failed => self.webhook_pending = None,
+        let mut created = false;
+        self.webhook_pending
+            .retain_mut(|pending| match pending.observe(&view.op) {
+                Outcome::Waiting => true,
+                Outcome::Failed => false,
                 Outcome::Succeeded => {
-                    if pending.action == OpAction::CreateWebhook {
-                        self.webhook_name
-                            .update(cx, |field, cx| field.set_value("", window, cx));
-                        self.webhook_avatar
-                            .update(cx, |field, cx| field.set_value("", window, cx));
-                        self.webhook_tried = false;
-                    }
-                    self.webhook_pending = None;
+                    created |= pending.action.kind == AdminActionKind::CreateWebhook;
+                    false
                 }
-            }
+            });
+        if created {
+            self.webhook_name
+                .update(cx, |field, cx| field.set_value("", window, cx));
+            self.webhook_avatar
+                .update(cx, |field, cx| field.set_value("", window, cx));
+            self.webhook_tried = false;
         }
         self.webhooks = view;
         cx.notify();
@@ -282,47 +277,26 @@ impl ChannelsTab {
         }
     }
 
-    /// As if `action` was sent: for stories and tests.
-    #[cfg(feature = "stories")]
-    pub(crate) fn mark_sent(&mut self, action: OpAction) {
-        if matches!(
-            action,
-            OpAction::CreateWebhook | OpAction::DeleteWebhook { .. }
-        ) {
-            self.webhook_last = Some(action.clone());
-            self.webhook_pending = Some(Pending::new(action));
-        } else {
-            self.ledger.sent(action.clone());
-            self.pending = Some(Pending::new(action));
-        }
-    }
-
     #[cfg(feature = "stories")]
     pub(crate) fn open_delete(&mut self, channel_id: &str) {
         self.deleting = Some(channel_id.to_owned());
     }
 
-    fn send(&mut self, action: OpAction, event: ChannelsEvent, cx: &mut Context<Self>) {
-        self.ledger.sent(action.clone());
-        self.pending = Some(Pending::new(action));
+    fn send(&mut self, action: AdminAction, event: ChannelsEvent, cx: &mut Context<Self>) {
+        self.pending.push(Pending::new(action, &self.op));
         cx.emit(event);
         cx.notify();
     }
 
-    fn about(&self) -> Option<OpAction> {
-        op_about(&self.op, self.ledger.last().as_ref(), |action| {
-            matches!(
-                action,
-                OpAction::CreateChannel
-                    | OpAction::UpdateChannel { .. }
-                    | OpAction::DeleteChannel { .. }
-                    | OpAction::MoveChannel { .. }
-            )
-        })
+    fn create_action() -> AdminAction {
+        act(AdminActionKind::CreateChannel, None)
     }
 
-    fn busy_with(&self) -> Option<OpAction> {
-        self.about().filter(|_| self.op.busy)
+    /// A move is on its way: the web moves one channel at a time.
+    fn moving(&self) -> bool {
+        running_of(&self.op, &[AdminActionKind::MoveChannel])
+            .next()
+            .is_some()
     }
 
     fn start_edit(&mut self, channel_id: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -354,7 +328,7 @@ impl ChannelsTab {
     }
 
     pub(crate) fn submit_create(&mut self, cx: &mut Context<Self>) {
-        if !self.caps.create_channel || self.busy_with().is_some() {
+        if !self.caps.create_channel || running(&self.op, &Self::create_action()) {
             return;
         }
         self.create_tried = true;
@@ -369,7 +343,7 @@ impl ChannelsTab {
             is_private: self.create_private,
             slowmode_seconds: 0,
         };
-        self.send(OpAction::CreateChannel, ChannelsEvent::Create(draft), cx);
+        self.send(Self::create_action(), ChannelsEvent::Create(draft), cx);
     }
 
     pub(crate) fn submit_edit(&mut self, cx: &mut Context<Self>) {
@@ -397,9 +371,7 @@ impl ChannelsTab {
             slowmode_seconds: channel.slowmode_seconds,
         };
         self.send(
-            OpAction::UpdateChannel {
-                channel_id: channel_id.clone(),
-            },
+            act(AdminActionKind::UpdateChannel, Some(&channel_id)),
             ChannelsEvent::Update { channel_id, draft },
             cx,
         );
@@ -409,7 +381,8 @@ impl ChannelsTab {
         let Some(editing) = &self.editing else {
             return;
         };
-        if !self.caps.manage_webhooks || self.webhooks.op.busy {
+        let create = act(AdminActionKind::CreateWebhook, None);
+        if !self.caps.manage_webhooks || running(&self.webhooks.op, &create) {
             return;
         }
         self.webhook_tried = true;
@@ -419,8 +392,8 @@ impl ChannelsTab {
             return;
         }
         let avatar = self.webhook_avatar.read(cx).value().trim().to_owned();
-        self.webhook_last = Some(OpAction::CreateWebhook);
-        self.webhook_pending = Some(Pending::new(OpAction::CreateWebhook));
+        self.webhook_pending
+            .push(Pending::new(create, &self.webhooks.op));
         cx.emit(ChannelsEvent::CreateWebhook {
             channel_id: editing.channel_id.clone(),
             name,
@@ -451,14 +424,15 @@ impl ChannelsTab {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let sem = cx.sem().clone();
-        let busy = self.busy_with();
-        let moving = matches!(busy, Some(OpAction::MoveChannel { .. }));
-        let this_busy = busy.as_ref().is_some_and(|action| match action {
-            OpAction::DeleteChannel { channel_id } | OpAction::MoveChannel { channel_id } => {
-                *channel_id == channel.id
-            }
-            _ => false,
-        });
+        let moving = self.moving();
+        let delete_action = act(AdminActionKind::DeleteChannel, Some(&channel.id));
+        let move_action = act(AdminActionKind::MoveChannel, Some(&channel.id));
+        let deleting_this = running(&self.op, &delete_action);
+        let this_busy = deleting_this || running(&self.op, &move_action);
+        // This row's own failure: its delete's, else its move's.
+        let row_error = failure(&self.op, &delete_action)
+            .or_else(|| failure(&self.op, &move_action))
+            .map(|error| error.message.clone());
         let update_locked = (!self.caps.update_channel).then(|| needs("Edit channels"));
         let delete_locked = (!self.caps.delete_channel).then(|| needs("Delete channels"));
         let id = channel.id.clone();
@@ -469,7 +443,7 @@ impl ChannelsTab {
             DesignIcon::Tag
         };
         let preset = preset_label(channel.preset).map(|label| tone_chip(label, sem.info));
-        row(
+        let row = row(
             SharedString::from(format!("channel-row-{id}")),
             channel.name.clone(),
             cx,
@@ -515,9 +489,7 @@ impl ChannelsTab {
                     None,
                     cx.listener(move |tab, _, _, cx| {
                         tab.send(
-                            OpAction::MoveChannel {
-                                channel_id: up.clone(),
-                            },
+                            act(AdminActionKind::MoveChannel, Some(&up)),
                             ChannelsEvent::Move {
                                 channel_id: up.clone(),
                                 direction: ChannelMove::Up,
@@ -535,9 +507,7 @@ impl ChannelsTab {
                     None,
                     cx.listener(move |tab, _, _, cx| {
                         tab.send(
-                            OpAction::MoveChannel {
-                                channel_id: down.clone(),
-                            },
+                            act(AdminActionKind::MoveChannel, Some(&down)),
                             ChannelsEvent::Move {
                                 channel_id: down.clone(),
                                 direction: ChannelMove::Down,
@@ -560,15 +530,32 @@ impl ChannelsTab {
                     DesignIcon::Delete,
                     format!("Delete {}", channel.name),
                     delete_locked,
-                    this_busy,
+                    deleting_this,
                     Some(sem.error),
                     cx.listener(move |tab, _, _, cx| {
                         tab.deleting = Some(delete.clone());
                         cx.notify();
                     }),
                 )),
-        )
-        .into_any_element()
+        );
+        match row_error {
+            None => row.into_any_element(),
+            Some(message) => div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(row)
+                .child(
+                    div()
+                        .id(SharedString::from(format!("channel-error-{id}")))
+                        .test_support()
+                        .role(Role::Alert)
+                        .aria_label(SharedString::from(message.clone()))
+                        .px(spacing(1.5))
+                        .child(super::common::field_error(message, cx)),
+                )
+                .into_any_element(),
+        }
     }
 
     fn group_card(&self, kind: ChannelKind, cx: &mut Context<Self>) -> AnyElement {
@@ -604,9 +591,8 @@ impl ChannelsTab {
 
     fn create_dialog(&self, cx: &mut Context<Self>) -> Dialog {
         let sem = cx.sem().clone();
-        let about = self.about();
-        let mine = matches!(about, Some(OpAction::CreateChannel));
-        let busy = mine && self.op.busy;
+        let busy = running(&self.op, &Self::create_action());
+        let create_error = failure(&self.op, &Self::create_action()).cloned();
         let name_error = check_channel_name(&self.create_name.read(cx).value())
             .err()
             .filter(|_| self.create_tried);
@@ -662,7 +648,7 @@ impl ChannelsTab {
                     .flex()
                     .flex_col()
                     .gap(spacing(2.))
-                    .children(mine.then(|| server_error(self.op.error.as_ref())).flatten())
+                    .children(server_error(create_error.as_ref()))
                     .child(name)
                     .child(
                         div()
@@ -731,7 +717,7 @@ impl ChannelsTab {
             .on_close(move |_, cx| {
                 close
                     .update(cx, |tab, cx| {
-                        if !matches!(tab.busy_with(), Some(OpAction::CreateChannel)) {
+                        if !running(&tab.op, &Self::create_action()) {
                             tab.creating = false;
                             cx.notify();
                         }
@@ -751,8 +737,9 @@ impl ChannelsTab {
                 .child(locked_note("webhooks-locked", needs("Manage webhooks"), cx))
                 .into_any_element();
         }
-        let about = op_about(&self.webhooks.op, self.webhook_last.as_ref(), |_| true);
-        let creating = matches!(about, Some(OpAction::CreateWebhook)) && self.webhooks.op.busy;
+        let create = act(AdminActionKind::CreateWebhook, None);
+        let creating = running(&self.webhooks.op, &create);
+        let create_error = failure(&self.webhooks.op, &create).cloned();
         let name_error = check_webhook_name(&self.webhook_name.read(cx).value())
             .err()
             .filter(|_| self.webhook_tried);
@@ -787,12 +774,6 @@ impl ChannelsTab {
                         .on_click(cx.listener(|tab, _, _, cx| tab.submit_webhook(cx))),
                 ),
             );
-        let deleting = match &about {
-            Some(OpAction::DeleteWebhook { webhook_id }) if self.webhooks.op.busy => {
-                Some(webhook_id.clone())
-            }
-            _ => None,
-        };
         let listing: AnyElement = match &self.webhooks.state {
             LoadState::Loading => loading_rows("webhooks-loading", "Loading webhooks", 2),
             LoadState::Failed { .. } => error_block(
@@ -812,7 +793,10 @@ impl ChannelsTab {
                     .iter()
                     .map(|hook| {
                         let id = hook.id.clone();
-                        let busy = deleting.as_deref() == Some(hook.id.as_str());
+                        let delete = act(AdminActionKind::DeleteWebhook, Some(&hook.id));
+                        let busy = running(&self.webhooks.op, &delete);
+                        let delete_error =
+                            failure(&self.webhooks.op, &delete).map(|error| error.message.clone());
                         row(
                             SharedString::from(format!("webhook-{id}")),
                             hook.name.clone(),
@@ -836,6 +820,10 @@ impl ChannelsTab {
                                         format!("Created {}", date_label(hook.created_at_ms)),
                                     )
                                     .text_color(sem.text_secondary),
+                                )
+                                .children(
+                                    delete_error
+                                        .map(|message| super::common::field_error(message, cx)),
                                 ),
                         )
                         .child(action_icon(
@@ -874,7 +862,7 @@ impl ChannelsTab {
                 )
                 .text_color(sem.text_secondary),
             )
-            .children(about.and_then(|_| server_error(self.webhooks.op.error.as_ref())))
+            .children(server_error(create_error.as_ref()))
             .child(form)
             .child(listing)
             .into_any_element()
@@ -887,9 +875,9 @@ impl ChannelsTab {
             .iter()
             .find(|c| c.id == editing.channel_id)?
             .clone();
-        let about = self.about();
-        let mine = matches!(&about, Some(OpAction::UpdateChannel { channel_id }) if *channel_id == channel.id);
-        let busy = mine && self.op.busy;
+        let update = act(AdminActionKind::UpdateChannel, Some(&channel.id));
+        let busy = running(&self.op, &update);
+        let update_error = failure(&self.op, &update).cloned();
         let can_permissions = self.caps.manage_channel_permissions;
         let tab = if can_permissions {
             editing.tab
@@ -959,7 +947,7 @@ impl ChannelsTab {
             dialog = dialog
                 .body(
                     body.pt(spacing(1.))
-                        .children(mine.then(|| server_error(self.op.error.as_ref())).flatten())
+                        .children(server_error(update_error.as_ref()))
                         .child(name)
                         .children(webhooks),
                 )
@@ -1100,7 +1088,7 @@ impl ChannelsTab {
                             .update(cx, |tab, cx| {
                                 tab.deleting = None;
                                 tab.send(
-                                    OpAction::DeleteChannel { channel_id: id.clone() },
+                                    act(AdminActionKind::DeleteChannel, Some(&id)),
                                     ChannelsEvent::Delete { channel_id: id.clone() },
                                     cx,
                                 );
@@ -1147,9 +1135,10 @@ impl ChannelsTab {
                         confirm
                             .update(cx, |tab, cx| {
                                 tab.deleting_webhook = None;
-                                let action = OpAction::DeleteWebhook { webhook_id: webhook_id.clone() };
-                                tab.webhook_last = Some(action.clone());
-                                tab.webhook_pending = Some(Pending::new(action));
+                                let action =
+                                    act(AdminActionKind::DeleteWebhook, Some(&webhook_id));
+                                tab.webhook_pending
+                                    .push(Pending::new(action, &tab.webhooks.op));
                                 cx.emit(ChannelsEvent::DeleteWebhook {
                                     channel_id: channel_id.clone(),
                                     webhook_id: webhook_id.clone(),
@@ -1194,12 +1183,6 @@ impl Render for ChannelsTab {
             create_locked,
             cx,
         );
-        let tab_error = match self.about() {
-            Some(OpAction::DeleteChannel { .. } | OpAction::MoveChannel { .. }) => {
-                server_error(self.op.error.as_ref())
-            }
-            _ => None,
-        };
         let body: AnyElement = match &self.state {
             LoadState::Loading => loading_rows("channels-loading", "Loading channels", 5),
             LoadState::Failed { .. } => error_block(
@@ -1216,7 +1199,6 @@ impl Render for ChannelsTab {
                     .flex()
                     .flex_col()
                     .gap(spacing(3.))
-                    .children(tab_error)
                     .child(text_card)
                     .child(voice_card)
                     .into_any_element()

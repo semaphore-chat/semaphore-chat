@@ -20,9 +20,9 @@
 //! - `InvitesTab` (`InviteManagement.tsx`, which the web never mounts): my invites that include
 //!   this community.
 //!
-//! Several changes share one op (`CommunitySettingsView::op`). `rules::op_about` decides which tab
-//! an op's busy state and error belong to; `CommunitySettingsScreen::set_settings` hands that op
-//! to the tabs that send on it.
+//! Several changes share one op (`CommunitySettingsView::op`), which core keeps per change
+//! (`AdminOp::actions`): each tab and row reads only its own change's entry (`rules::state_of`), and
+//! `CommunitySettingsScreen::set_settings` hands that op to the tabs that send on it.
 
 mod channels;
 mod common;
@@ -47,28 +47,11 @@ pub use invites::{InvitesEvent, InvitesTab};
 pub use members::{MembersEvent, MembersTab};
 pub use overview::{CommunityImage, OverviewEvent, OverviewTab};
 pub use private::{PrivateChannelsEvent, PrivateChannelsTab};
-pub use rules::{CommunityTab, ExpiryPreset, InviteStatus, OpAction};
+pub use rules::{CommunityTab, ExpiryPreset, InviteStatus};
 pub use sounds::{SoundboardEvent, SoundboardTab};
 
 use gpui_kit::*;
 use semaphore_core::model::{CommunityPermissionsView, CommunitySettingsView, LoadState};
-use std::cell::RefCell;
-use std::rc::Rc;
-
-/// The last change sent on an op several tabs share, for `rules::op_about`. Goes once
-/// `AdminOp::action` says it.
-#[derive(Clone, Default)]
-pub(crate) struct OpLedger(Rc<RefCell<Option<OpAction>>>);
-
-impl OpLedger {
-    pub fn sent(&self, action: OpAction) {
-        *self.0.borrow_mut() = Some(action);
-    }
-
-    pub fn last(&self) -> Option<OpAction> {
-        self.0.borrow().clone()
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommunityShellEvent {
@@ -109,7 +92,6 @@ impl CommunitySettingsScreen {
         cx: &mut Context<Self>,
     ) -> Self {
         let community_id = community_id.into();
-        let ledger = OpLedger::default();
         Self {
             permissions: CommunityPermissionsView {
                 community_id: community_id.clone(),
@@ -119,13 +101,13 @@ impl CommunitySettingsScreen {
             tab: CommunityTab::Overview,
             tab_chosen: false,
             phone_open: false,
-            overview: cx.new(|cx| OverviewTab::with_ledger(ledger.clone(), window, cx)),
-            members: cx.new(|cx| MembersTab::with_ledger(ledger.clone(), window, cx)),
-            channels: cx.new(|cx| ChannelsTab::with_ledger(ledger.clone(), window, cx)),
+            overview: cx.new(|cx| OverviewTab::new(window, cx)),
+            members: cx.new(|cx| MembersTab::new(window, cx)),
+            channels: cx.new(|cx| ChannelsTab::new(window, cx)),
             private_channels: cx.new(|cx| PrivateChannelsTab::new(window, cx)),
             mention_groups: cx.new(|cx| MentionGroupsTab::new(window, cx)),
             emoji: cx.new(|cx| EmojiTab::new(window, cx)),
-            soundboard: cx.new(|cx| SoundboardTab::with_ledger(ledger, window, cx)),
+            soundboard: cx.new(|cx| SoundboardTab::new(window, cx)),
             invites: cx.new(|cx| InvitesTab::new(window, cx)),
             roles: None,
             moderation: None,

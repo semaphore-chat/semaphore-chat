@@ -7,8 +7,8 @@ use super::common::{
     server_error, tone_chip,
 };
 use super::rules::{
-    ExpiryPreset, InviteStatus, OpAction, Outcome, Pending, date_label, invite_status, invite_url,
-    needs, op_about, parse_max_uses, uses_label,
+    ExpiryPreset, InviteStatus, Outcome, Pending, act, date_label, failure, failure_of,
+    invite_status, invite_url, needs, parse_max_uses, running, uses_label,
 };
 use crate::kit::{Button, ButtonSize, Dialog, TextField, Variant, spacing, text, text_state};
 use crate::panel::PanelClock;
@@ -17,7 +17,9 @@ use crate::theme::SemTheme;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{CommunityCaps, InviteDraft, InviteRow, InvitesView, LoadState};
+use semaphore_core::model::{
+    AdminAction, AdminActionKind, CommunityCaps, InviteDraft, InviteRow, InvitesView, LoadState,
+};
 use semaphore_design::Icon as DesignIcon;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,8 +37,7 @@ pub struct InvitesTab {
     caps: CommunityCaps,
     clock: PanelClock,
     link_base: String,
-    last: Option<OpAction>,
-    pending: Option<Pending>,
+    pending: Vec<Pending>,
     creating: bool,
     tried: bool,
     max_uses: Entity<InputState>,
@@ -57,8 +58,7 @@ impl InvitesTab {
             caps: CommunityCaps::default(),
             clock: PanelClock::default(),
             link_base: String::new(),
-            last: None,
-            pending: None,
+            pending: Vec::new(),
             creating: false,
             tried: false,
             max_uses,
@@ -76,17 +76,18 @@ impl InvitesTab {
 
     /// `Core::community_invites(community)`.
     pub fn set_view(&mut self, view: InvitesView, cx: &mut Context<Self>) {
-        if let Some(pending) = self.pending.as_mut() {
-            match pending.observe(&view.op) {
-                Outcome::Waiting => {}
-                Outcome::Failed => self.pending = None,
+        let mut created = false;
+        self.pending
+            .retain_mut(|pending| match pending.observe(&view.op) {
+                Outcome::Waiting => true,
+                Outcome::Failed => false,
                 Outcome::Succeeded => {
-                    if pending.action == OpAction::CreateInvite {
-                        self.creating = false;
-                    }
-                    self.pending = None;
+                    created |= pending.action.kind == AdminActionKind::CreateInvite;
+                    false
                 }
-            }
+            });
+        if created {
+            self.creating = false;
         }
         self.view = view;
         cx.notify();
@@ -123,24 +124,17 @@ impl InvitesTab {
             .update(cx, |field, cx| field.set_value(max_uses, window, cx));
     }
 
-    /// As if `action` was sent: for stories and tests.
-    #[cfg(feature = "stories")]
-    pub(crate) fn mark_sent(&mut self, action: OpAction) {
-        self.last = Some(action.clone());
-        self.pending = Some(Pending::new(action));
-    }
-
     #[cfg(feature = "stories")]
     pub(crate) fn mark_copied(&mut self, code: &str) {
         self.copied = Some(code.to_owned());
     }
 
-    fn about(&self) -> Option<OpAction> {
-        op_about(&self.view.op, self.last.as_ref(), |_| true)
+    fn create_action() -> AdminAction {
+        act(AdminActionKind::CreateInvite, None)
     }
 
     fn busy_creating(&self) -> bool {
-        matches!(self.about(), Some(OpAction::CreateInvite)) && self.view.op.busy
+        running(&self.view.op, &Self::create_action())
     }
 
     pub(crate) fn submit(&mut self, cx: &mut Context<Self>) {
@@ -152,8 +146,8 @@ impl InvitesTab {
             cx.notify();
             return;
         };
-        self.last = Some(OpAction::CreateInvite);
-        self.pending = Some(Pending::new(OpAction::CreateInvite));
+        self.pending
+            .push(Pending::new(Self::create_action(), &self.view.op));
         cx.emit(InvitesEvent::Create(InviteDraft {
             max_uses,
             valid_until_ms: self.expiry.valid_until(self.clock.now_ms()),
@@ -178,8 +172,10 @@ impl InvitesTab {
         let copy_code = code.clone();
         let delete_code = code.clone();
         let copied = self.copied.as_deref() == Some(code.as_str());
-        let deleting = matches!(self.about(), Some(OpAction::DeleteInvite { code: busy }) if busy == code)
-            && self.view.op.busy;
+        let deleting = running(
+            &self.view.op,
+            &act(AdminActionKind::DeleteInvite, Some(&code)),
+        );
         let mut details = vec![uses_label(invite)];
         if let Some(until) = invite.valid_until_ms {
             details.push(format!("Expires: {}", date_label(until)));
@@ -246,7 +242,7 @@ impl InvitesTab {
     fn create_dialog(&self, cx: &mut Context<Self>) -> Dialog {
         let sem = cx.sem().clone();
         let busy = self.busy_creating();
-        let mine = matches!(self.about(), Some(OpAction::CreateInvite));
+        let create_error = failure(&self.view.op, &Self::create_action()).cloned();
         let uses_error = parse_max_uses(&self.max_uses.read(cx).value()).err();
         let mut uses = TextField::new("invite-max-uses", &self.max_uses, "Max Uses")
             .placeholder("Unlimited")
@@ -297,10 +293,7 @@ impl InvitesTab {
                     .flex()
                     .flex_col()
                     .gap(spacing(2.))
-                    .children(
-                        mine.then(|| server_error(self.view.op.error.as_ref()))
-                            .flatten(),
-                    )
+                    .children(server_error(create_error.as_ref()))
                     .child(
                         text(
                             Variant::Body2,
@@ -376,10 +369,8 @@ impl Render for InvitesTab {
             }),
             cx,
         );
-        let delete_error = match self.about() {
-            Some(OpAction::DeleteInvite { .. }) => server_error(self.view.op.error.as_ref()),
-            _ => None,
-        };
+        let delete_error = failure_of(&self.view.op, &[AdminActionKind::DeleteInvite])
+            .and_then(|(_, error)| server_error(Some(error)));
         let now = self.clock.now_ms();
         let listing: AnyElement = match &self.view.state {
             LoadState::Loading => loading_rows("invites-loading", "Loading invites", 3),
@@ -434,9 +425,8 @@ impl Render for InvitesTab {
                         confirm
                             .update(cx, |tab, cx| {
                                 tab.deleting = None;
-                                let action = OpAction::DeleteInvite { code: code.clone() };
-                                tab.last = Some(action.clone());
-                                tab.pending = Some(Pending::new(action));
+                                let action = act(AdminActionKind::DeleteInvite, Some(&code));
+                                tab.pending.push(Pending::new(action, &tab.view.op));
                                 cx.emit(InvitesEvent::Delete { code: code.clone() });
                                 cx.notify();
                             })

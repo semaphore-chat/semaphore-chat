@@ -235,6 +235,12 @@ shot w5-community-channels-error-desktop
 story community-settings-channels-error 390 844 light-blue-balanced
 wait idle
 shot w5-community-channels-error-phone
+story community-settings-channels-overlap 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-overlap-desktop
+story community-settings-channels-overlap 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-overlap-phone
 story community-settings-channels-readonly 1280 800 dark-blue-balanced
 wait idle
 shot w5-community-channels-readonly-desktop
