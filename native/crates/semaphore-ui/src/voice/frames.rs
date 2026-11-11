@@ -121,7 +121,7 @@ impl VideoFrames {
 
     /// Paints inside `bounds`, rounded. Does nothing before the first frame, so whatever is behind
     /// it stays visible.
-    pub(super) fn paint(
+    pub(crate) fn paint(
         &self,
         track_sid: &str,
         bounds: Bounds<Pixels>,
@@ -174,7 +174,7 @@ impl VideoFrames {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum Fit {
+pub(crate) enum Fit {
     /// The whole frame, with bars if the shape differs. For screens, where a cropped edge is lost
     /// content.
     Contain,

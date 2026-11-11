@@ -55,6 +55,8 @@ pub fn all() -> Vec<Story> {
         crate::profile::stories(),
         crate::settings::stories(),
         crate::home::stories(),
+        crate::player::stories(),
+        crate::replay::stories(),
     ]
     .into_iter()
     .flatten()

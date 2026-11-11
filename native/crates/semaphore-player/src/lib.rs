@@ -24,7 +24,9 @@ mod engine;
 mod ffi;
 pub mod resample;
 
+pub mod buffered;
 pub mod range;
+pub use buffered::BufferedReport;
 
 pub use engine::{Cancel, DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
 

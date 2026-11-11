@@ -118,6 +118,10 @@ pub enum MessageListEvent {
     OpenAttachment {
         file_id: String,
     },
+    /// An inline player can't play this file: hand it to the OS's default app.
+    OpenExternally {
+        file_id: String,
+    },
     OpenThread {
         message_id: String,
     },
@@ -207,6 +211,8 @@ pub struct ListOptions {
     /// Off for stories: the kit's scrollbar fades on a real clock, so with it two renders of the
     /// same frame differ, and T10 needs them identical.
     pub scrollbar: bool,
+    /// Audio and video attachments play inline with these; `None` keeps them file rows.
+    pub players: Option<crate::player::Players>,
 }
 
 impl Default for ListOptions {
@@ -216,6 +222,7 @@ impl Default for ListOptions {
             palette: Palette::dark(),
             follow_theme: false,
             scrollbar: true,
+            players: None,
         }
     }
 }
@@ -289,6 +296,8 @@ impl MessageList {
             hovered_reaction: RefCell::new(None),
             reaction_users: RefCell::new(HashMap::new()),
             phone: Cell::new(false),
+            players: options.players,
+            list_players: crate::player::ListPlayers::default(),
         });
         let count = shared.rows.borrow().len();
         let list = ListState::new(count, ListAlignment::Top, OVERDRAW);
@@ -664,6 +673,10 @@ impl MessageList {
             self.freeze_anchor_decor(index.saturating_add(*count) as usize);
         }
         let change = self.shared.rows.borrow_mut().apply(op);
+        // A deleted or removed message's player goes with it, and stops.
+        self.shared
+            .list_players
+            .retain_rows(self.shared.rows.borrow().iter().map(|row| row.as_ref()));
         match change {
             RowChange::Reset { count } => {
                 self.shared.prepared.borrow_mut().clear();
@@ -737,6 +750,11 @@ impl MessageList {
             }
             !out_of_view
         });
+    }
+
+    /// The inline players this list holds, drawn or not.
+    pub fn players(&self) -> Vec<crate::player::AttachmentPlayer> {
+        self.shared.list_players.players()
     }
 
     pub fn row_count(&self) -> usize {
@@ -1176,6 +1194,7 @@ impl MessageList {
 impl Render for MessageList {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.shared.visible.borrow_mut().clear();
+        self.shared.list_players.next_frame();
         self.release_frozen_decor();
         if self.follow_theme
             && let Some(sem) = cx.try_global::<crate::theme::Sem>()

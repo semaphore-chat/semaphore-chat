@@ -13,12 +13,14 @@
 //!   the fetches in flight; dropping the source does too, and frees its blocks.
 
 use crate::Source;
+use crate::buffered::{BufferedReport, merged_ranges};
 use crate::engine::{Cancel, Opener};
 use semaphore_core::player::{PlaybackSource, PlayerError};
 use semaphore_net::HttpBackend;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::io::{self, Read, Seek, SeekFrom};
+use std::ops::Range;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -92,6 +94,16 @@ impl RangeFetch for HttpFile {
     }
 }
 
+struct Listener {
+    file: Arc<str>,
+    size: u64,
+    report: BufferedReport,
+    runtime: Option<Handle>,
+}
+
+/// Reports owed after a change, sent once the cache's lock is released.
+type Owed = Vec<(BufferedReport, Vec<Range<f32>>, Option<Handle>)>;
+
 struct Entry {
     data: Arc<Vec<u8>>,
     owner: u64,
@@ -104,6 +116,8 @@ struct CacheInner {
     owned: HashMap<u64, usize>,
     /// Released owners: a fetch of theirs that finishes late inserts nothing.
     gone: HashSet<u64>,
+    /// Sources that report their file's fetched ranges, by owner.
+    listeners: HashMap<u64, Listener>,
     total: usize,
     tick: u64,
 }
@@ -144,10 +158,16 @@ impl BlockCache {
     }
 
     fn insert(&self, owner: u64, file: Arc<str>, index: u64, data: Arc<Vec<u8>>) {
+        let owed = self.insert_locked(owner, file, index, data);
+        Self::pay(owed);
+    }
+
+    fn insert_locked(&self, owner: u64, file: Arc<str>, index: u64, data: Arc<Vec<u8>>) -> Owed {
         let mut inner = self.lock();
         if inner.gone.contains(&owner) {
-            return;
+            return Vec::new();
         }
+        let mut changed: HashSet<Arc<str>> = HashSet::from([file.clone()]);
         inner.tick += 1;
         let used = inner.tick;
         let key = (file, index);
@@ -163,41 +183,113 @@ impl BlockCache {
         *inner.owned.entry(owner).or_default() += len;
         // The owner's oldest first, then anyone's, never the block just added.
         while inner.owned.get(&owner).copied().unwrap_or(0) > self.per_owner {
-            if !Self::evict(&mut inner, Some(owner), &key) {
-                break;
-            }
+            match Self::evict(&mut inner, Some(owner), &key) {
+                Some(file) => changed.insert(file),
+                None => break,
+            };
         }
         while inner.total > self.total {
-            if !Self::evict(&mut inner, None, &key) {
-                break;
-            }
+            match Self::evict(&mut inner, None, &key) {
+                Some(file) => changed.insert(file),
+                None => break,
+            };
+        }
+        Self::owed(&inner, &changed)
+    }
+
+    /// What each listener on a `changed` file now holds.
+    fn owed(inner: &CacheInner, changed: &HashSet<Arc<str>>) -> Owed {
+        inner
+            .listeners
+            .values()
+            .filter(|l| changed.contains(&l.file))
+            .map(|l| {
+                (
+                    l.report.clone(),
+                    Self::ranges_locked(inner, &l.file, l.size),
+                    l.runtime.clone(),
+                )
+            })
+            .collect()
+    }
+
+    fn pay(owed: Owed) {
+        for (report, ranges, runtime) in owed {
+            report.report(ranges, runtime.as_ref());
         }
     }
 
-    fn evict(inner: &mut CacheInner, owner: Option<u64>, keep: &(Arc<str>, u64)) -> bool {
+    fn ranges_locked(inner: &CacheInner, file: &Arc<str>, size: u64) -> Vec<Range<f32>> {
+        let indices = inner
+            .blocks
+            .keys()
+            .filter(|(f, _)| f == file)
+            .map(|(_, index)| *index)
+            .collect();
+        merged_ranges(indices, BLOCK as u64, size)
+    }
+
+    /// The fetched parts of `file` (`size` bytes), as fractions of it.
+    pub fn ranges(&self, file: &str, size: u64) -> Vec<Range<f32>> {
+        Self::ranges_locked(&self.lock(), &Arc::from(file), size)
+    }
+
+    /// `owner` reports `file`'s ranges from now on (and once now), until released.
+    fn listen(&self, owner: u64, listener: Listener) {
+        let owed = {
+            let mut inner = self.lock();
+            if inner.gone.contains(&owner) {
+                return;
+            }
+            let now = (
+                listener.report.clone(),
+                Self::ranges_locked(&inner, &listener.file, listener.size),
+                listener.runtime.clone(),
+            );
+            inner.listeners.insert(owner, listener);
+            vec![now]
+        };
+        Self::pay(owed);
+    }
+
+    /// Removes a block and returns its file, or `None` when nothing may go.
+    fn evict(
+        inner: &mut CacheInner,
+        owner: Option<u64>,
+        keep: &(Arc<str>, u64),
+    ) -> Option<Arc<str>> {
         let victim = inner
             .blocks
             .iter()
             .filter(|(key, entry)| *key != keep && owner.is_none_or(|o| entry.owner == o))
             .min_by_key(|(_, entry)| entry.used)
             .map(|(key, _)| key.clone());
-        let Some(victim) = victim else {
-            return false;
-        };
+        let victim = victim?;
         if let Some(entry) = inner.blocks.remove(&victim) {
             inner.total -= entry.data.len();
             *inner.owned.entry(entry.owner).or_default() -= entry.data.len();
         }
-        true
+        Some(victim.0)
     }
 
     /// Frees every block `owner` fetched (its player went away).
     pub fn release(&self, owner: u64) {
-        let mut inner = self.lock();
-        inner.blocks.retain(|_, entry| entry.owner != owner);
-        inner.owned.remove(&owner);
-        inner.gone.insert(owner);
-        inner.total = inner.blocks.values().map(|e| e.data.len()).sum();
+        let owed = {
+            let mut inner = self.lock();
+            let changed: HashSet<Arc<str>> = inner
+                .blocks
+                .iter()
+                .filter(|(_, entry)| entry.owner == owner)
+                .map(|((file, _), _)| file.clone())
+                .collect();
+            inner.blocks.retain(|_, entry| entry.owner != owner);
+            inner.owned.remove(&owner);
+            inner.listeners.remove(&owner);
+            inner.gone.insert(owner);
+            inner.total = inner.blocks.values().map(|e| e.data.len()).sum();
+            Self::owed(&inner, &changed)
+        };
+        Self::pay(owed);
     }
 
     /// Bytes held in all.
@@ -275,6 +367,21 @@ impl RangeSource {
             source.size = learned;
         }
         Ok(source)
+    }
+
+    /// Reports this file's fetched ranges to `report` (now, and after each block lands or is
+    /// evicted) until the source is dropped.
+    pub fn with_buffered(self, report: BufferedReport) -> Self {
+        self.cache.listen(
+            self.owner,
+            Listener {
+                file: self.file.clone(),
+                size: self.size,
+                report,
+                runtime: Some(self.runtime.clone()),
+            },
+        );
+        self
     }
 
     /// This source's share of the cache.
@@ -444,21 +551,23 @@ impl Drop for RangeSource {
 
 /// Opens attachments from the backend: a [`RangeSource`] over [`HttpFile`], sharing `cache`.
 pub fn http_opener(backend: HttpBackend, cache: Arc<BlockCache>, runtime: Handle) -> Opener {
-    Arc::new(move |source: &PlaybackSource, cancel: &Cancel| {
-        let fetch = Arc::new(HttpFile::new(backend.clone(), source.file_id.clone()));
-        let size = (source.size > 0).then_some(source.size);
-        RangeSource::open(
-            fetch,
-            &source.file_id,
-            size,
-            cache.clone(),
-            runtime.clone(),
-            cancel.clone(),
-        )
-        .map(|range| Box::new(range) as Box<dyn Source>)
-        .map_err(|error| {
-            log::warn!("player: cannot open {}: {error}", source.file_id);
-            PlayerError::Network
-        })
-    })
+    Arc::new(
+        move |source: &PlaybackSource, cancel: &Cancel, buffered: &BufferedReport| {
+            let fetch = Arc::new(HttpFile::new(backend.clone(), source.file_id.clone()));
+            let size = (source.size > 0).then_some(source.size);
+            RangeSource::open(
+                fetch,
+                &source.file_id,
+                size,
+                cache.clone(),
+                runtime.clone(),
+                cancel.clone(),
+            )
+            .map(|range| Box::new(range.with_buffered(buffered.clone())) as Box<dyn Source>)
+            .map_err(|error| {
+                log::warn!("player: cannot open {}: {error}", source.file_id);
+                PlayerError::Network
+            })
+        },
+    )
 }

@@ -93,6 +93,8 @@ pub struct AppRoot {
     /// The settings, as changed in this run; saved on each change.
     settings: SettingsStore,
     media: Option<Rc<AppMedia>>,
+    /// Inline audio and video players, when the app is built with them (`crate::player`).
+    players: Option<semaphore_ui::player::Players>,
     /// An image open in the viewer, and the decodes it draws from.
     viewer: Option<AttachmentView>,
     viewer_focus: FocusHandle,
@@ -202,6 +204,7 @@ impl AppRoot {
             stage: None,
             voice_channel_name: String::new(),
             media: None,
+            players: None,
             viewer: None,
             viewer_focus: cx.focus_handle(),
             images: None,
@@ -219,6 +222,11 @@ impl AppRoot {
     }
 
     /// Moves whenever an event or a command result arrives, for the headless rig.
+    /// The inline players, when the app is built with them.
+    pub fn players(&self) -> Option<&semaphore_ui::player::Players> {
+        self.players.as_ref()
+    }
+
     pub fn activity(&self) -> Arc<Activity> {
         self.activity.clone()
     }
@@ -302,6 +310,7 @@ impl AppRoot {
         // Voice: frames for this window, the controls, and the stage, made once.
         let frames = VideoFrames::for_window(window);
         services.frames.attach(frames.clone());
+        self.players = crate::player::players(&services, self.activity.clone(), frames.clone());
         let (requests, asks) = async_channel::unbounded();
         let voice = Arc::new(AppVoice {
             core: services.core.clone(),
@@ -453,6 +462,44 @@ impl AppRoot {
             return;
         }
         self.save_attachment(attachment, cx);
+    }
+
+    /// Fetches the file into a private temporary folder and hands it to the OS's default app: an
+    /// attachment the inline player can't play.
+    fn open_externally(&mut self, attachment: AttachmentView, cx: &mut Context<Self>) {
+        let Some(services) = &self.services else {
+            return;
+        };
+        let directory = std::env::temp_dir().join("semaphore-chat-open");
+        let path = directory.join(format!(
+            "{}-{}",
+            files::safe_file_name(&attachment.file_id),
+            files::safe_file_name(&attachment.filename)
+        ));
+        let (core, handle) = (services.core.clone(), services.exec.handle().clone());
+        cx.spawn(async move |_, cx| {
+            let file_id = attachment.file_id.clone();
+            let target = path.clone();
+            let written = handle
+                .spawn(async move {
+                    let bytes = core.file(file_id, false).await.map_err(|e| e.to_string())?;
+                    tokio::task::spawn_blocking(move || {
+                        std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+                        std::fs::write(&target, bytes).map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?
+                })
+                .await;
+            match written {
+                Ok(Ok(())) => {
+                    let url = format!("file://{}", path.display());
+                    cx.update(|cx| crate::open_url(&url, cx));
+                }
+                other => log::warn!("opening {} externally: {other:?}", attachment.filename),
+            }
+        })
+        .detach();
     }
 
     /// Asks where, then fetches the file and writes it there, off the UI thread.
@@ -700,9 +747,12 @@ impl AppRoot {
             SessionState::SignedOut
             | SessionState::SignInFailed { .. }
             | SessionState::SigningIn => {
-                // Nothing of the last session's files stays in memory.
+                // Nothing of the last session's files stays in memory, or keeps playing.
                 if matches!(session, SessionState::SignedOut) {
                     files::store().clear();
+                }
+                if let Some(players) = &self.players {
+                    players.stop_all(cx);
                 }
                 self.viewer = None;
                 self.shell = None;
@@ -848,9 +898,16 @@ impl AppRoot {
         let media = self.media.clone().expect("media is set up with core");
         let opener = cx.entity().downgrade();
         let open_attachment: crate::conversation::OpenAttachment =
-            Rc::new(move |attachment, window, cx| {
+            Rc::new(move |attachment, how, window, cx| {
                 opener
-                    .update(cx, |root, cx| root.open_attachment(attachment, window, cx))
+                    .update(cx, |root, cx| match how {
+                        crate::conversation::OpenHow::View => {
+                            root.open_attachment(attachment, window, cx)
+                        }
+                        crate::conversation::OpenHow::Externally => {
+                            root.open_externally(attachment, cx)
+                        }
+                    })
                     .ok();
             });
         let backend = services.backend.clone();
@@ -864,6 +921,7 @@ impl AppRoot {
                 time,
                 scrollbar,
                 media,
+                self.players.clone(),
                 open_attachment,
                 server_url,
                 window,

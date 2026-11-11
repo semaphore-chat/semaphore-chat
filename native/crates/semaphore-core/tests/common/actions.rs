@@ -263,6 +263,23 @@ impl ModerationBackend for FakeBackend {
         })
     }
 
+    async fn moderation_controller_kick_user(
+        &self,
+        community_id: String,
+        user_id: String,
+        body: wire::KickUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        self.w4
+            .answers
+            .lock()
+            .unwrap()
+            .insert("kick", json!({ "message": "kicked", "success": true }));
+        let reason = body.reason.unwrap_or_default();
+        self.w4
+            .run("kick", &[&community_id, &user_id, &reason])
+            .await
+    }
+
     async fn roles_controller_get_my_roles_for_channel(
         &self,
         channel_id: String,

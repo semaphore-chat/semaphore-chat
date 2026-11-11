@@ -78,13 +78,18 @@ impl Rig {
         io.set_speaker(Box::new(move |frame| {
             heard.lock().unwrap().extend_from_slice(frame);
         }));
-        let opener: Opener = Arc::new(|source: &PlaybackSource, _: &semaphore_player::Cancel| {
-            if source.file_id == "missing" {
-                return Err(PlayerError::Network);
-            }
-            Ok(Box::new(Cursor::new(fixture(&source.file_id)))
-                as Box<dyn semaphore_player::Source>)
-        });
+        let opener: Opener = Arc::new(
+            |source: &PlaybackSource,
+             _: &semaphore_player::Cancel,
+             buffered: &semaphore_player::BufferedReport| {
+                if source.file_id == "missing" {
+                    return Err(PlayerError::Network);
+                }
+                buffered.full();
+                Ok(Box::new(Cursor::new(fixture(&source.file_id)))
+                    as Box<dyn semaphore_player::Source>)
+            },
+        );
         Self {
             players: DesktopPlayers::new(Arc::new(io), opener),
             speaker,
@@ -159,9 +164,24 @@ fn plays_to_the_end(file: &str) {
     let rig = Rig::new();
     let surface = Arc::new(Surface::default());
     let (player, rx) = rig.open(file, Some(surface.clone()));
-    until(&rx, "paused with the poster", state(PlaybackState::Paused));
+    let opening = until(&rx, "paused with the poster", state(PlaybackState::Paused));
+    assert_eq!(
+        opening
+            .iter()
+            .filter(|e| matches!(e, PlayerEvent::Buffered(_)))
+            .collect::<Vec<_>>(),
+        [&PlayerEvent::Buffered(vec![0.0..1.0])]
+    );
     player.play();
     let events = until(&rx, "the end", state(PlaybackState::Ended));
+    let buffered: Vec<_> = events
+        .iter()
+        .filter(|e| matches!(e, PlayerEvent::Buffered(_)))
+        .collect();
+    assert!(
+        buffered.is_empty(),
+        "a file in memory reports [0.0..1.0] once, on open: {buffered:?}"
+    );
 
     let positions: Vec<Duration> = events
         .iter()

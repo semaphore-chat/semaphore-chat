@@ -1,25 +1,42 @@
 //! Voice bar and video tiles. Unit U11.
 
 mod bar;
-mod frames;
+mod debug;
+pub mod dock;
+mod float;
+pub(crate) mod frames;
 mod icons;
+mod incoming;
+mod menu;
 mod model;
 mod picker;
+mod soundboard;
 mod stage;
 #[cfg(feature = "stories")]
 mod stories;
+#[cfg(feature = "stories")]
+mod stories_w4;
 mod theme;
 
+pub use debug::{DebugActions, voice_debug_panel};
+pub use dock::{PipAnchor, PipPlacement, dock_zones};
+pub use float::{FloatCard, FloatEvent};
 pub use frames::VideoFrames;
+pub use incoming::{
+    DmCallActions, DmCallState, IncomingActions, IncomingProps, dm_call_controls,
+    incoming_call_banner, incoming_subtitle,
+};
+pub use menu::{ParticipantMenu, ParticipantMenuEvent, ParticipantMenuModel, toggled_volume};
 pub use model::{
     NoController, PttState, QualityLevel, ShareLook, TileDemand, VoiceController, VoiceStageModel,
-    bar_subtitle, build_tiles, camera_label, grid_columns, screen_label,
+    bar_subtitle, build_tiles, camera_label, grid_columns, mic_blocked_reason, screen_label,
 };
 pub use picker::{
     PickerActions, PickerModel, PickerSource, PickerState, THUMBNAIL_PX, source_picker,
     thumbnail_image,
 };
-pub use stage::VoiceStage;
+pub use soundboard::{SoundboardActions, SoundboardBar, soundboard_popover};
+pub use stage::{VoiceBadge, VoiceBadgeKind, VoiceStage, voice_badges};
 
 /// The call's bar on its own, for the shell to show under the columns away from the call.
 pub fn voice_bar_element(
@@ -27,8 +44,24 @@ pub fn voice_bar_element(
     narrow: bool,
     controller: std::sync::Arc<dyn VoiceController>,
 ) -> gpui_kit::AnyElement {
+    voice_bar_element_with(model, &SoundboardBar::default(), narrow, controller)
+}
+
+/// W4: the bar with the soundboard's button (channel calls) and its popover.
+pub fn voice_bar_element_with(
+    model: &VoiceStageModel,
+    soundboard: &SoundboardBar,
+    narrow: bool,
+    controller: std::sync::Arc<dyn VoiceController>,
+) -> gpui_kit::AnyElement {
     use gpui_kit::IntoElement as _;
-    bar::voice_bar(model, narrow, controller).into_any_element()
+    bar::VoiceBar {
+        model: model.clone(),
+        soundboard: soundboard.clone(),
+        narrow,
+        controller,
+    }
+    .into_any_element()
 }
 
 use gpui_kit::{Window, WindowOptions};
@@ -81,7 +114,11 @@ pub fn video_window_options(options: WindowOptions) -> WindowOptions {
 }
 
 #[cfg(feature = "stories")]
-pub use stories::stories;
+pub fn stories() -> Vec<crate::stories::Story> {
+    let mut all = stories::stories();
+    all.extend(stories_w4::stories());
+    all
+}
 
 #[cfg(test)]
 mod tests {

@@ -40,7 +40,10 @@ impl Core {
                     }
                     state.cache.set(key.clone(), value, now);
                     state.failed_queries.remove(&key);
+                    // W4: an answer that was out when its data changed is from before the change.
+                    state.w4.answer_dirty = dirty;
                     state.query_changed(&key);
+                    state.w4.answer_dirty = false;
                     if dirty {
                         // It changed while this was in flight, so this answer may be old.
                         state.invalidate(&key);
@@ -183,6 +186,36 @@ impl Core {
             keys::APPEARANCE => CacheValue::Appearance(
                 backend
                     .appearance_settings_controller_get_settings()
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::DM_VOICE_PRESENCE => CacheValue::DmVoicePresence(
+                backend
+                    .dm_voice_presence_controller_get_dm_presence(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::SOUNDBOARD => CacheValue::Soundboard(
+                backend
+                    .soundboard_controller_list_community_sounds(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::CLIPS => CacheValue::Clips(
+                backend
+                    .livekit_controller_get_my_clips()
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::USER_CLIPS => CacheValue::Clips(
+                backend
+                    .livekit_controller_get_user_public_clips(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::REPLAY_SESSION => CacheValue::ReplaySession(
+                backend
+                    .livekit_controller_get_session_info()
                     .await
                     .map_err(|error| self.backend_failed(error))?,
             ),

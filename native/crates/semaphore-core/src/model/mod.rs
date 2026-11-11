@@ -7,8 +7,10 @@
 
 mod account;
 mod actions;
+mod calls;
 mod common;
 mod communities;
+mod diagnostics;
 mod dms;
 mod files;
 mod messages;
@@ -16,14 +18,18 @@ mod notify;
 mod onboarding;
 mod profile;
 mod reading;
+mod replay;
 mod session;
 mod social;
+mod soundboard;
 mod voice;
 
 pub use account::*;
 pub use actions::*;
+pub use calls::*;
 pub use common::*;
 pub use communities::*;
+pub use diagnostics::*;
 pub use dms::*;
 pub use files::*;
 pub use messages::*;
@@ -31,6 +37,8 @@ pub use notify::*;
 pub use onboarding::*;
 pub use profile::*;
 pub use reading::*;
+pub use replay::*;
 pub use session::*;
 pub use social::*;
+pub use soundboard::*;
 pub use voice::*;

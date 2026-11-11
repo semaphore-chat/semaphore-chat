@@ -19,7 +19,7 @@ use super::*;
 /// (so the same authorization and deadlines), same `api-version`. Its error is the generated
 /// client's, as the calls it stands in for return.
 #[allow(clippy::result_large_err)]
-async fn raw(
+pub(super) async fn raw(
     client: &Client,
     method: Method,
     path: &str,

@@ -308,11 +308,52 @@ identical static shots). "Stories" means the unit's stories render in `rigs/shot
 | Unit | Delivers | Touches | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | W4-core | DM voice (dm-token, DM presence, incoming call), soundboard list/play, moderator voice actions (mute participant, remove), server-mute state, replay start/stop/capture/clips/share, voice diagnostics report | core lane files, net, fake server | W3-core | L | core tests for call state machine incl. incoming-call accept/decline; fake server endpoints |
-| W4-media | Soundboard mixing into the published track, processing/PTT/volume settings applied from settings, device test loopback and level meter, join/leave sounds, keep-awake during calls (logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (inhibit only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
+| W4-media | Soundboard on its own published `soundboard` track (`MediaEngine::play_soundboard`, decoding chosen by this unit; the default build works without the player feature), the VAD threshold applied (devices, processing, PTT and the mic preset are applied since W3-app), device test loopback and level meter (`LiveKitEngine::start_input_test`), participant volume through `MediaEngine::set_participant_volume`, `MediaEngine::diagnostics`, `LocalMediaView::{may_speak, screen_tracks}` in reports, keep-awake during calls (`keep_awake.rs`: logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (`keep_awake.rs` only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
 | W4-ui-voice | Incoming call banner, DM call controls, participant context menu (volume, moderator mute/remove), soundboard button, float card and dock zones, voice debug panel | `ui/src/voice` | W4 freeze | L | stories: each state, moderator vs member, phone |
 | W4-ui-replay | Capture modal, trim timeline, clip library, share dialog | new `ui/src/replay` | W4 freeze, W3-player | M | stories: empty library, long clip, capture failure |
 | W4-av-publish (placeholder) | Camera publish, screen share publish with quality, source picker, screen audio | designed separately | separate design | L | defined by that design |
 | W4-app | Wire DM calls, soundboard, moderator actions, replay, debug panel | `semaphore-app/src/{voice,root}.rs`, `rigs/slice/scripts/voice-w4.steps` | W4-core, W4-media, W4-ui-* | M | `slice-e2e.sh --voice` with the new steps: DM call between rig and publisher, soundboard play, server mute, capture a clip |
+
+**W4 freeze** (2026-11-11). Two changes to the table above: join, leave and ring sounds are
+decided by core (`CoreEvent::Sound { cue: SoundCue }`) and played by W4-app (`sounds.rs` with the
+web's WAV files), not W4-media; and W4-media's remaining scope is the row as written above. After the
+freeze, each lane owns these files:
+
+| Lane | Owns |
+|---|---|
+| W4-core | `semaphore-core/src/{commands/{calls,voice,soundboard,replay,diagnostics}.rs, events.rs, client.rs (effects), backend/*}`, `semaphore-net/src/backend/{voice,replay,soundboard,moderation}.rs`, `semaphore-core/tests/{w4.rs, w4_wire.rs, common/w4.rs, media.rs}`, the bodies in `semaphore-ffi/src/voice_w4.rs`. Model changes only additive, with the coordinator |
+| W4-fake | `semaphore-fake-server/src/http/{voice.rs, replay.rs (new), soundboard.rs (new)}`, new `src/calls.rs` (DM presence, replay state), control arms in `http/mod.rs`, fixture sounds, clips and segments |
+| W4-media | `semaphore-media-livekit/src/{engine.rs, input_test.rs, soundboard.rs (new), audio/*}`, `semaphore-platform-desktop/src/keep_awake.rs` |
+| W4-ui-voice | `semaphore-ui/src/voice/*` (new `incoming.rs`, `menu.rs`, `soundboard.rs`, `debug.rs`, `dock.rs`) |
+| W4-ui-replay | `semaphore-ui/src/replay/*` |
+| W4-app | `semaphore-app/src/{voice,root,sounds,services}.rs`, sound assets, `rigs/slice/scripts/voice-w4.steps` |
+
+**W4-media owes core the share's track ids.** The replay buffer starts from
+`LocalMediaView::screen_tracks` in the engine's reports, and the LiveKit engine reports `None`
+there today (`semaphore-media-livekit/src/engine.rs`, `local_media`). Until it fills the published
+screen share's video sid (and its audio sid once that track is published), no replay buffer starts
+on desktop. Core waits `REPLAY_AUDIO_WAIT_MS` (2 s) for a share's audio track, as the web does; the
+host calls `Core::expire_replay_audio_wait` at `VoiceView::replay_audio_wait_until_ms`, and an
+engine report of `screen_audio: Failed` starts the video alone at once.
+
+**W4 defaults** (chosen for the owner, who may overrule; 2026-11-11):
+
+- Declining an incoming call is local only: the caller isn't told (as on the web; telling them needs
+  a backend event, below).
+- The replay buffer starts by itself when a screen share is published in a channel call, and stops
+  with the share or the call, as on the web. Never in a DM call.
+- The voice participant menu offers "Kick" (removal from the community) behind a simple confirm in
+  W4; W5's moderation dialogs replace it later.
+- Group DM calls ring every member.
+- No automatic leave when alone in a DM call.
+- One ring at a time, the newest wins; a ring lasts 30 s and also stops when the call is answered on
+  another of my devices or the caller gives up (its presence empties). The web does neither.
+- Keep-awake holds off system sleep only, not the display (Electron's `prevent-app-suspension`).
+- Soundboard sounds go out on a separate `soundboard` track, as on the web, not mixed into the mic:
+  the mic's mute, push to talk and server mute don't hold them back.
+- Participant volume goes through the `MediaEngine` trait, so a mobile engine can take it.
+- Join failures are classified and kept for the debug panel only: nothing is reported until the
+  backend accepts a native platform.
 
 ### Wave 5: community administration and moderation
 
@@ -391,42 +432,54 @@ Checked against `backend/` on this branch (same as `main` v0.7.0 for these files
 
 Things the contract makes awkward for a non-web client, found while designing W1-core (2026-11-10). None blocks W1; each has a workaround in core.
 
-| Ask | Why | Native's workaround meanwhile |
-|---|---|---|
-| `pin`, `deleteAny` and `seeRemoved` flags on `ChannelCapabilitiesDto` | The web decides pin and moderator delete from RBAC actions (`useCanPerformAction`); native already reads channel capabilities for everything else | Reads `rolesControllerGetMyRolesForChannel` and checks the role actions |
-| Say soft or hard in the `deleteMessage` payload | A moderator's soft removal and a hard delete send the same payload, so a client can't tell whether moderators should keep the row | A reader with DELETE_ANY_MESSAGE refetches `GET /messages/{id}`: a removed row stays, a 404 goes |
-| A specific `ErrorCode` for a blocked 1:1 DM | `assertNotBlockedInDm` throws a plain FORBIDDEN ("You cannot message this user") for sends, thread replies and edits | Shows the server's message; the composer can't lock itself |
-| A block check on reactions in 1:1 DMs | `reactions.service` has none, so a blocked user can still react | none (server gap) |
-| Paging for message search | `search/{channel,group,community}` take `q` and `limit` only, newest first | Asks for one page; the UI says when results stop at the limit |
-| Effective per-channel capabilities for pin, unpin, delete-any and see-removed | `rolesControllerGetMyRolesForChannel` returns community roles without the channel's permission overwrites, so a channel that denies or grants these is shown wrong (the web client has the same gap) | Uses the community roles, as the web does; the server still refuses what it denies |
+| Ask | Why | Native's workaround meanwhile | Issue |
+|---|---|---|---|
+| `pin`, `deleteAny` and `seeRemoved` flags on `ChannelCapabilitiesDto` | The web decides pin and moderator delete from RBAC actions (`useCanPerformAction`); native already reads channel capabilities for everything else | Reads `rolesControllerGetMyRolesForChannel` and checks the role actions | #639 |
+| Say soft or hard in the `deleteMessage` payload | A moderator's soft removal and a hard delete send the same payload, so a client can't tell whether moderators should keep the row | A reader with DELETE_ANY_MESSAGE refetches `GET /messages/{id}`: a removed row stays, a 404 goes | #640 |
+| A specific `ErrorCode` for a blocked 1:1 DM | `assertNotBlockedInDm` throws a plain FORBIDDEN ("You cannot message this user") for sends, thread replies and edits | Shows the server's message; the composer can't lock itself | #641 |
+| A block check on reactions in 1:1 DMs | `reactions.service` has none, so a blocked user can still react | none (server gap) | #642 |
+| Paging for message search | `search/{channel,group,community}` take `q` and `limit` only, newest first | Asks for one page; the UI says when results stop at the limit | #643 |
+| Effective per-channel capabilities for pin, unpin, delete-any and see-removed | `rolesControllerGetMyRolesForChannel` returns community roles without the channel's permission overwrites, so a channel that denies or grants these is shown wrong (the web client has the same gap) | Uses the community roles, as the web does; the server still refuses what it denies | #644 |
 
 ### Asks from W2 for the backend lane
 
 Found while building W2-core (2026-11-11). None blocks W2; each has a workaround in core.
 
-| Ask | Why | Native's workaround meanwhile |
-|---|---|---|
-| Socket events for friendship changes (request sent, accepted, declined, cancelled, removed) | `friends` emits nothing at all, so a client learns of a request only by asking | Reads friends again after its own changes, on reconnect, and when shown while older than 30 s |
-| Socket events for DM group changes (created, member added, member left) | `dm-group.*` are internal EventEmitter events only; other members see a new group at its first message | A message for a group the list lacks reads the list again |
-| `notificationRead` (or a count event) for read-all, dismiss and the context reads `markAsRead` does | Only a single mark-read is announced, so other devices' badges stay stale | Reads the count again after its own changes and its own `readReceiptUpdated` |
-| Leave dismissed rows out of `GET /notifications` (or a filter) | The list returns them, and `total` counts them, so paging and "more" include rows nobody shows | Filters them out; "more" compares raw rows to `total` |
-| `channelName` on list rows, `parentMessageId` on `newNotification` | The list DTO lacks the name the event has; the event lacks the thread the list has | Takes names from cached channels; a thread reply's OS notification opens the channel |
-| A JSON `null` for "no override" from `GET /notifications/channels/{id}/override` | It answers 200 with an empty body, which the generated client can't decode | A hand-written request for that one call |
-| A way to clear a DND time in `UpdateNotificationSettingsDto` that the contract can express | Clearing needs an explicit `null`, which the generated optional field can't send | A hand-written body for settings saves |
+| Ask | Why | Native's workaround meanwhile | Issue |
+|---|---|---|---|
+| Socket events for friendship changes (request sent, accepted, declined, cancelled, removed) | `friends` emits nothing at all, so a client learns of a request only by asking | Reads friends again after its own changes, on reconnect, and when shown while older than 30 s | #645 |
+| Socket events for DM group changes (created, member added, member left) | `dm-group.*` are internal EventEmitter events only; other members see a new group at its first message | A message for a group the list lacks reads the list again | #646 |
+| `notificationRead` (or a count event) for read-all, dismiss and the context reads `markAsRead` does | Only a single mark-read is announced, so other devices' badges stay stale | Reads the count again after its own changes and its own `readReceiptUpdated` | #647 |
+| Leave dismissed rows out of `GET /notifications` (or a filter) | The list returns them, and `total` counts them, so paging and "more" include rows nobody shows | Filters them out; "more" compares raw rows to `total` | #648 |
+| `channelName` on list rows, `parentMessageId` on `newNotification` | The list DTO lacks the name the event has; the event lacks the thread the list has | Takes names from cached channels; a thread reply's OS notification opens the channel | #649 |
+| A JSON `null` for "no override" from `GET /notifications/channels/{id}/override` | It answers 200 with an empty body, which the generated client can't decode | A hand-written request for that one call | #650 |
+| A way to clear a DND time in `UpdateNotificationSettingsDto` that the contract can express | Clearing needs an explicit `null`, which the generated optional field can't send | A hand-written body for settings saves | #651 |
 
 ### Asks from W3 for the backend lane
 
 Found while building W3-core (2026-11-11). None blocks W3; each has a workaround in core or a product
 decision.
 
+| Ask | Why | Native's workaround meanwhile | Issue |
+|---|---|---|---|
+| Honour `registrationMode` in `POST /users` | `createUser` demands a valid invite code whatever the mode: `OPEN` still refuses a sign-up without one, and `CLOSED` still accepts a valid one. The web's register page doesn't read the mode either | Follows the advertised mode: Register hidden when `CLOSED`, an invite code asked for otherwise | #652 |
+| An endpoint for a signed-in user to accept an instance invite (join its default communities) | `/join/:code` only creates a new account (`register` with the code); an existing account can't use an invite | Signed in, `register` refuses with a message saying the account exists and the invite can't be applied from here | #589 |
+| `GET /invite/public/{code}`: a JSON `null` (or a 404 with a reason) for a code it won't honour | It answers 200 with an empty body, the same for unknown, expired, used up and disabled, which the generated client can't decode and nobody can tell apart | Reads an empty answer as "can't be used", with no reason | #653 |
+| An instance-role change event for the user (or `roleAssigned`/`roleUpdated` covering instance roles) | `GET /roles/my/instance` decides "Create community"; nothing says when it changes | Read when shown, again on a new connection | #654 |
+| `revokeAllOtherSessions` naming the reason when it can't tell the current session | It answers 401 "Could not determine current session", the code a client takes for a lost session | Core doesn't sign out on a 401 from that call; the slice's real-backend step 10 proves the app's own session survives | #655 |
+| An idle or away status other users can see | Presence is a boolean; `presenceOnline { idle }` only stops push | Sends idle; shows nobody as idle | #656 |
+| Parse `unreadOnly` as a boolean on `GET /notifications` | Any value, `false` included, is read as true, so `unreadOnly=false` returns only unread rows | Never sends the parameter (`unread_only` only as `Some(true)`) | #657 |
+| `total` on `GET /notifications` that counts the list | It is the size of the page sent, so a client can't page by it | A full page means "more may follow" | #658 |
+
+### Backend asks W4
+
+Found while designing W4 (2026-11-11). None blocks W4; each has a workaround or a default above.
+
 | Ask | Why | Native's workaround meanwhile |
 |---|---|---|
-| Honour `registrationMode` in `POST /users` | `createUser` demands a valid invite code whatever the mode: `OPEN` still refuses a sign-up without one, and `CLOSED` still accepts a valid one. The web's register page doesn't read the mode either | Follows the advertised mode: Register hidden when `CLOSED`, an invite code asked for otherwise |
-| An endpoint for a signed-in user to accept an instance invite (join its default communities) | `/join/:code` only creates a new account (`register` with the code); an existing account can't use an invite | Signed in, `register` refuses with a message saying the account exists and the invite can't be applied from here |
-| `GET /invite/public/{code}`: a JSON `null` (or a 404 with a reason) for a code it won't honour | It answers 200 with an empty body, the same for unknown, expired, used up and disabled, which the generated client can't decode and nobody can tell apart | Reads an empty answer as "can't be used", with no reason |
-| An instance-role change event for the user (or `roleAssigned`/`roleUpdated` covering instance roles) | `GET /roles/my/instance` decides "Create community"; nothing says when it changes | Read when shown, again on a new connection |
-| `revokeAllOtherSessions` naming the reason when it can't tell the current session | It answers 401 "Could not determine current session", the code a client takes for a lost session | Core doesn't sign out on a 401 from that call; the slice's real-backend step 10 proves the app's own session survives |
-| An idle or away status other users can see | Presence is a boolean; `presenceOnline { idle }` only stops push | Sends idle; shows nobody as idle |
-| Parse `unreadOnly` as a boolean on `GET /notifications` | Any value, `false` included, is read as true, so `unreadOnly=false` returns only unread rows | Never sends the parameter (`unread_only` only as `Some(true)`) |
-| `total` on `GET /notifications` that counts the list | It is the size of the page sent, so a client can't page by it | A full page means "more may follow" |
-
+| Put `TrackSource.UNKNOWN` (the soundboard's source) in `publishGrantFor`'s `canPublishSources` | Whenever the grant lists sources (no VIDEO or SCREEN_SHARE permission, server-muted, timed out), the `soundboard` track is refused. The web has the same failure | Shows the engine's refusal as the play's error |
+| A permission (and a rate limit) for playing soundboard sounds | `READ_SOUNDBOARD_SOUND` gates the list only; anyone who may publish can play, as often as they like | none (server gap) |
+| A native value in `ReportJoinFailureDto.platform` | `VOICE_CLIENT_PLATFORMS` is `web` and `electron` only | Join failures stay local, in the debug panel |
+| Decline, missed-call or cancel events for DM calls, and a REST leave for DM voice presence | Only `dmVoiceCallStarted`/`UserJoined`/`UserLeft` exist, and DM presence leaves only by LiveKit's webhook or the 90 s TTL | Decline is local; ringing stops when the call's presence empties |
+| Make the "first user" check in `handleWebhookDmParticipantJoined` atomic | `smembers` then a pipeline: two members joining at once can both emit `dmVoiceCallStarted` | A ring for a DM whose call we're in or joining is ignored |
+| A "remove from call" endpoint, and whether I outrank someone | The web's voice "remove" is a community kick; server mute needs outranking, which a client can't see | Kick behind a confirm; the menu offers mute by role and shows the server's 403 |

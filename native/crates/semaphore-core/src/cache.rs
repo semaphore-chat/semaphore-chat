@@ -69,6 +69,12 @@ pub mod keys {
     pub const SESSIONS: &str = "authControllerGetSessions";
     pub const APPEARANCE: &str = "appearanceSettingsControllerGetSettings";
     pub const INSTANCE_ROLES: &str = "rolesControllerGetMyInstanceRoles";
+    // W4
+    pub const DM_VOICE_PRESENCE: &str = "dmVoicePresenceControllerGetDmPresence";
+    pub const SOUNDBOARD: &str = "soundboardControllerListCommunitySounds";
+    pub const CLIPS: &str = "livekitControllerGetMyClips";
+    pub const USER_CLIPS: &str = "livekitControllerGetUserPublicClips";
+    pub const REPLAY_SESSION: &str = "livekitControllerGetSessionInfo";
 
     pub fn scoped(op: &str, id: &str) -> QueryKey {
         QueryKey::new(&[op, id])
@@ -114,6 +120,14 @@ pub enum CacheValue {
     Appearance(wire::AppearanceSettingsResponseDto),
     /// W3: this user's instance roles.
     InstanceRoles(wire::UserRolesResponseDto),
+    /// W4: who's in a DM's call, keyed by DM group.
+    DmVoicePresence(wire::DmVoicePresenceResponseDto),
+    /// W4: a community's soundboard, keyed by community.
+    Soundboard(Vec<wire::SoundboardSoundDto>),
+    /// W4: my clips, or (keyed by user) another user's public ones.
+    Clips(Vec<wire::ClipResponseDto>),
+    /// W4: my replay buffer.
+    ReplaySession(wire::SessionInfoResponseDto),
 }
 
 /// Friends and pending requests, from two calls read as one.
@@ -219,6 +233,25 @@ impl QueryCache {
         wire::UserRolesResponseDto
     );
     typed_read!(sessions, sessions_mut, Sessions, Vec<wire::SessionInfoDto>);
+    typed_read!(
+        dm_voice_presence,
+        dm_voice_presence_mut,
+        DmVoicePresence,
+        wire::DmVoicePresenceResponseDto
+    );
+    typed_read!(
+        soundboard,
+        soundboard_mut,
+        Soundboard,
+        Vec<wire::SoundboardSoundDto>
+    );
+    typed_read!(clips, clips_mut, Clips, Vec<wire::ClipResponseDto>);
+    typed_read!(
+        replay_session,
+        replay_session_mut,
+        ReplaySession,
+        wire::SessionInfoResponseDto
+    );
     typed_read!(
         appearance,
         appearance_mut,

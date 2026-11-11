@@ -3,6 +3,7 @@
 
 pub mod audio;
 mod engine;
+mod input_test;
 #[cfg(target_os = "linux")]
 pub mod pipewire_stubs;
 pub mod testing;
@@ -12,6 +13,7 @@ pub use engine::{
     ConnectionQualityView, EngineChoices, EngineOptions, LiveKitEngine, MediaSnapshot, MicPreset,
     RejoinPolicy, TokenSource,
 };
+pub use input_test::InputTest;
 pub use video::local::{
     Capturing, NoVideoSources, OnEnded, OnFrame, SourceFrame, VideoCaptureSource, VideoSources,
 };

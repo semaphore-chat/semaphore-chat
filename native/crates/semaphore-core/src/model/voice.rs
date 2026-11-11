@@ -1,6 +1,28 @@
 //! Voice calls: participants, video tracks and tiles.
 
-use super::UserView;
+use super::{ReplayState, UserView};
+
+/// The room a call is in. LiveKit's room id is the channel's id or the DM group's id.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum VoiceRoom {
+    /// `community_id` from the cached channel lists; `None` when the channel isn't in one.
+    Channel {
+        channel_id: String,
+        community_id: Option<String>,
+    },
+    /// W4: a call in a DM or group DM.
+    Dm { dm_group_id: String },
+}
+
+impl VoiceRoom {
+    /// The LiveKit room id.
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Channel { channel_id, .. } => channel_id,
+            Self::Dm { dm_group_id } => dm_group_id,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum VoiceStatus {
@@ -51,17 +73,28 @@ pub struct ParticipantView {
     pub user: UserView,
     pub is_self: bool,
     pub speaking: bool,
+    /// Muted by the user or by a moderator: what the speaker icon shows.
     pub muted: bool,
     pub deafened: bool,
     pub camera: Option<VideoTrackView>,
     pub screen_share: Option<VideoTrackView>,
     pub quality: ConnectionQuality,
+    /// W4: a moderator's server mute (from voice presence), which outlives the call. A moderator's
+    /// menu offers to lift it.
+    pub server_muted: bool,
+    /// W4: how loud they play here, 0 to 200 percent (100 is as sent), as set with
+    /// `Core::set_participant_volume` this session.
+    pub volume_percent: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VoiceView {
     pub status: VoiceStatus,
+    /// The channel of a channel call; `None` in a DM call (W4), whose room is in `room`.
     pub channel_id: Option<String>,
+    /// W4: the room the call is in, channel or DM. `Some` exactly while `status` isn't
+    /// `Disconnected`.
+    pub room: Option<VoiceRoom>,
     pub muted: bool,
     pub deafened: bool,
     pub participants: Vec<ParticipantView>,
@@ -71,6 +104,14 @@ pub struct VoiceView {
     pub error: Option<String>,
     /// What we send besides the mic: camera, screen and the screen's audio.
     pub local: LocalMediaView,
+    /// W4: a moderator server-muted me in this channel. The mic can't be turned on until they lift
+    /// it; `Core::set_muted(false)` is refused meanwhile.
+    pub server_muted: bool,
+    /// W4: the replay buffer of my screen share (channel calls only).
+    pub replay: ReplayState,
+    /// W4: the share's video is published and its audio track isn't yet: the buffer waits for it
+    /// until then, when the host calls `Core::expire_replay_audio_wait` and it starts video-only.
+    pub replay_audio_wait_until_ms: Option<u64>,
 }
 
 /// One thing we may send, as its button shows it.
@@ -97,6 +138,18 @@ pub struct LocalMediaView {
     /// permissions, as the media engine reports them. False until it has.
     pub may_camera: bool,
     pub may_share: bool,
+    /// W4: whether the room lets us send the mic: false while server-muted or without SPEAK.
+    pub may_speak: bool,
+    /// W4: the LiveKit sids of our screen share's tracks while it's published, for the replay
+    /// buffer. The audio sid can come later than the video's.
+    pub screen_tracks: Option<ShareTracks>,
+}
+
+/// Our published screen share, as the server's replay buffer names it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ShareTracks {
+    pub video_sid: String,
+    pub audio_sid: Option<String>,
 }
 
 /// How big a screen share is sent: the box it's scaled to fit, keeping its shape, or its own size.

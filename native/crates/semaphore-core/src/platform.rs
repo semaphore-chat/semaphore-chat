@@ -6,7 +6,8 @@
 use crate::cache::QueryKey;
 use crate::lifecycle::ConnectionState;
 use crate::model::{
-    Conversation, ListOp, OsNotification, ScreenShareRequest, VideoDemand, ViewKey,
+    Conversation, ListOp, MediaDiagnostics, OsNotification, ScreenShareRequest, SoundCue,
+    VideoDemand, ViewKey,
 };
 use async_trait::async_trait;
 
@@ -52,6 +53,10 @@ pub enum CoreEvent {
     DesktopSignedIn {
         ip_address: Option<String>,
         at_ms: i64,
+    },
+    /// W4: play this sound. `IncomingRingStart` loops until `IncomingRingStop`.
+    Sound {
+        cue: SoundCue,
     },
 }
 
@@ -194,6 +199,39 @@ pub trait MediaEngine: Send + Sync {
 
     /// Stops the screen share and its audio, if one runs.
     async fn stop_screen_share(&self) {}
+
+    /// W4: plays a soundboard sound into the call, on a track of its own named `soundboard` (as the
+    /// web does, so the mic's mute and push to talk don't hold it back), and on our own speakers.
+    /// `bytes` is the sound's file as uploaded (MP3, WAV, OGG, WebM or AAC, at most 1 MiB); the
+    /// engine decodes it and may keep it by `sound_id`. A sound playing already stops. Returns once
+    /// it has started. Only during a call.
+    async fn play_soundboard(&self, _sound_id: String, _bytes: Vec<u8>) -> Result<(), CoreError> {
+        Err(CoreError::Unavailable {
+            what: "soundboard".into(),
+        })
+    }
+
+    /// W4: stops the soundboard sound playing, if any.
+    fn stop_soundboard(&self) {}
+
+    /// W4: how loud this participant plays here, 0 to 200 percent (100 is as sent). Remembered
+    /// across calls, like the other setters.
+    fn set_participant_volume(&self, _identity: String, _percent: u32) {}
+
+    /// W4: what the engine measures about the call now, for the debug panel. `None` outside a call
+    /// or when it can't tell.
+    async fn diagnostics(&self) -> Option<MediaDiagnostics> {
+        None
+    }
+}
+
+/// W4: keeps the system from sleeping during a call (not the display), as Electron's
+/// `prevent-app-suspension`. Core turns it on when a call starts connecting and off when it ends,
+/// never twice in a row the same way. Desktop: `semaphore-platform-desktop`'s `keep_awake` (a logind
+/// inhibitor; `SetThreadExecutionState` on a thread of its own on Windows). Set with
+/// `Core::set_keep_awake`.
+pub trait KeepAwake: Send + Sync {
+    fn set(&self, on: bool) -> Result<(), CoreError>;
 }
 
 /// Sign in with browser's one-shot HTTP listener on the loopback interface (RFC 8252 section 7.3).

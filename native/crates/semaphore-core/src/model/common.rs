@@ -98,6 +98,22 @@ pub enum ViewKey {
     BrowserSignIn,
     /// `Core::instance_permissions`.
     InstancePermissions,
+    /// W4: `Core::incoming_call`.
+    IncomingCall,
+    /// W4: `Core::soundboard`.
+    Soundboard {
+        community_id: String,
+    },
+    /// W4: `Core::clips`, my clip library.
+    Clips,
+    /// W4: `Core::user_clips`.
+    UserClips {
+        user_id: String,
+    },
+    /// W4: `Core::replay_session`.
+    ReplaySession,
+    /// W4: `Core::voice_diagnostics`.
+    VoiceDiagnostics,
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to

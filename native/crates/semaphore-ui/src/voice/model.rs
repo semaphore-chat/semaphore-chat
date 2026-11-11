@@ -86,6 +86,26 @@ pub trait VoiceController: Send + Sync {
     fn set_camera(&self, _on: bool) {}
     /// Share a screen or window (the app chooses how to pick one), or stop the share.
     fn toggle_screen_share(&self) {}
+    /// W4: the soundboard's button. `open` is what it should be now.
+    fn toggle_soundboard(&self, _open: bool) {}
+    /// W4: a sound in the soundboard: `Core::play_sound(sound_id)`.
+    fn play_sound(&self, _sound_id: String) {}
+    /// W4: the soundboard's list failed and the user asked again: `Core::retry_failed`.
+    fn retry_soundboard(&self) {}
+    /// W4: a right-click (or long press) on someone's tile, at `position` in the window: the owner
+    /// opens a `ParticipantMenu` there.
+    fn open_participant_menu(
+        &self,
+        _identity: String,
+        _position: gpui_kit::Point<gpui_kit::Pixels>,
+    ) {
+    }
+}
+
+/// W4: why the mic can't be turned on, when it can't: a moderator's server mute. (`may_speak` is
+/// false until the engine reports, and fakes never do, so it doesn't block the button on its own.)
+pub fn mic_blocked_reason(voice: &VoiceView) -> Option<&'static str> {
+    voice.server_muted.then_some("A moderator muted you")
 }
 
 /// How a camera or screen button looks, from core's `LocalShare` and the call's permission.
@@ -156,6 +176,9 @@ pub fn bar_subtitle(model: &VoiceStageModel) -> String {
         (LocalShare::On, _) => return "Sharing your screen".into(),
         (LocalShare::Starting, _) => return "Choosing what to share\u{2026}".into(),
         _ => {}
+    }
+    if model.voice.server_muted {
+        return "Muted by a moderator".into();
     }
     if model.is_dm {
         "DM Voice Call".into()

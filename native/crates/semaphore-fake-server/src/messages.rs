@@ -499,6 +499,8 @@ pub(crate) struct PostExtras {
     pub link_preview: Option<serde_json::Value>,
     /// A `@mention` of this user after the text, which notifies them.
     pub mention: Option<(String, String)>,
+    /// Files it carries (a replay clip's, W4).
+    pub attachments: Vec<AttachmentDto>,
 }
 
 /// Where a `post_as` message goes.
@@ -516,7 +518,7 @@ pub(crate) fn post_as(
     extras: PostExtras,
 ) -> MessageDto {
     let mut spans = vec![span_from(&SendSpan {
-        kind: "PLAIN".into(),
+        kind: "PLAINTEXT".into(),
         text: Some(text.to_owned()),
         ..SendSpan::default()
     })];
@@ -545,7 +547,7 @@ pub(crate) fn post_as(
         PostTarget::DirectMessage(id) => (None, Some(id.to_owned())),
     };
     let message = MessageDto {
-        attachments: Vec::new(),
+        attachments: extras.attachments,
         author_id: Some(author_id.to_owned()),
         channel_id: channel_id.clone(),
         client_nonce: None,
@@ -604,6 +606,34 @@ pub(crate) fn post_as(
     message
 }
 
+/// The backend's `FileUploadService::getFileTypeFromMimeType`, rule for rule.
+pub(crate) fn file_type_for(mime: &str) -> FileType {
+    const DOCUMENT_PREFIXES: [&str; 8] = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml",
+        "text/",
+    ];
+    if mime.starts_with("image/") {
+        FileType::Image
+    } else if mime.starts_with("video/") {
+        FileType::Video
+    } else if mime.starts_with("audio/") {
+        FileType::Audio
+    } else if DOCUMENT_PREFIXES
+        .iter()
+        .any(|prefix| mime.starts_with(prefix))
+    {
+        FileType::Document
+    } else {
+        FileType::Other
+    }
+}
+
 /// Adds an uploaded file to a message, or with none just releases a pending slot, and broadcasts
 /// the message as `updateMessage`. `None` if the message or the file isn't there.
 pub(crate) fn add_attachment(
@@ -616,11 +646,7 @@ pub(crate) fn add_attachment(
         Some(file_id) => {
             let file = data.files.get(file_id)?.clone();
             Some(AttachmentDto {
-                file_type: if file.mime_type.starts_with("image/") {
-                    FileType::Image
-                } else {
-                    FileType::Document
-                },
+                file_type: file_type_for(&file.mime_type),
                 filename: file.filename,
                 has_thumbnail: false,
                 id: file_id.to_owned(),
@@ -865,21 +891,38 @@ pub(crate) fn voice_presence(inner: &Inner, channel_id: &str) -> Value {
 pub(crate) fn voice_join(inner: &Inner, channel_id: &str) -> Value {
     let now = inner.now();
     let me = &inner.scenario.me;
-    {
+    // A server mute outlives the call: the next join lists them muted (W4).
+    let server_muted = crate::calls::is_server_muted(inner, channel_id, &me.id);
+    let joined = {
         let mut data = lock(&inner.data);
         let users = data.voice.entry(channel_id.to_owned()).or_default();
         match users.iter_mut().find(|user| user.id == me.id) {
-            Some(user) => user.joined_at = now,
-            None => users.push(semaphore_wire::VoicePresenceUserDto {
-                avatar_url: me.avatar_url.clone(),
-                display_name: me.display_name.clone(),
-                id: me.id.clone(),
-                is_deafened: false,
-                is_server_muted: false,
-                joined_at: now,
-                username: me.username.clone(),
-            }),
+            Some(user) => {
+                user.joined_at = now;
+                None
+            }
+            None => {
+                let user = semaphore_wire::VoicePresenceUserDto {
+                    avatar_url: me.avatar_url.clone(),
+                    display_name: me.display_name.clone(),
+                    id: me.id.clone(),
+                    is_deafened: false,
+                    is_server_muted: server_muted,
+                    joined_at: now,
+                    username: me.username.clone(),
+                };
+                users.push(user.clone());
+                Some(user)
+            }
         }
+    };
+    // As the backend's `handleWebhookChannelParticipantJoined`: a new participant is announced to
+    // the channel; one already listed only has its presence refreshed.
+    if let Some(user) = joined {
+        inner.broadcast(
+            "voiceChannelUserJoined",
+            serde_json::json!({ "channelId": channel_id, "user": user }),
+        );
     }
     presence_result(channel_id, "Joined voice channel")
 }
@@ -920,4 +963,25 @@ fn presence_result(channel_id: &str, message: &str) -> Value {
         "message": message,
         "channelId": channel_id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_types_follow_the_backend() {
+        for (mime, expected) in [
+            ("image/png", FileType::Image),
+            ("video/webm", FileType::Video),
+            ("audio/ogg", FileType::Audio),
+            ("text/plain", FileType::Document),
+            ("application/pdf", FileType::Document),
+            ("application/zip", FileType::Other),
+            ("application/octet-stream", FileType::Other),
+            ("application/json", FileType::Other),
+        ] {
+            assert_eq!(file_type_for(mime), expected, "{mime}");
+        }
+    }
 }

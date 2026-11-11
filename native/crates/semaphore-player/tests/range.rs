@@ -212,6 +212,88 @@ fn the_cache_keeps_its_caps_and_dropping_a_source_frees_its_blocks() {
     assert_eq!(cache.bytes(), 0);
 }
 
+fn coverage(ranges: &[std::ops::Range<f32>]) -> f32 {
+    ranges.iter().map(|r| r.end - r.start).sum()
+}
+
+/// Buffered reports until one matches `done`, or panics after a deadline.
+fn buffered_until(
+    rx: &mpsc::Receiver<PlayerEvent>,
+    done: impl Fn(&[std::ops::Range<f32>]) -> bool,
+) -> Vec<Vec<std::ops::Range<f32>>> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut seen = Vec::new();
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(left) {
+            Ok(PlayerEvent::Buffered(ranges)) => {
+                let finished = done(&ranges);
+                seen.push(ranges);
+                if finished {
+                    return seen;
+                }
+            }
+            Ok(_) => {}
+            Err(_) => panic!("no matching Buffered report; saw {seen:?}"),
+        }
+    }
+}
+
+#[test]
+fn buffered_ranges_grow_as_blocks_arrive_and_shrink_on_eviction() {
+    let rt = runtime();
+    let cache = Arc::new(BlockCache::new(100 * BLOCK, 5 * BLOCK));
+    let (tx, rx) = mpsc::channel();
+    let tx = Mutex::new(tx);
+    let report = semaphore_player::BufferedReport::new(Arc::new(move |event| {
+        let _ = tx.lock().unwrap().send(event);
+    }));
+    let first = MemoryFile::new(10 * BLOCK);
+    let mut a = RangeSource::open(
+        first.clone(),
+        "first",
+        Some(10 * BLOCK as u64),
+        cache.clone(),
+        rt.handle().clone(),
+        Cancel::default(),
+    )
+    .unwrap()
+    .with_buffered(report);
+
+    // One byte: block 0 and four blocks of read-ahead.
+    a.read_exact(&mut [0u8; 1]).unwrap();
+    let growing = buffered_until(&rx, |r| r == [0.0..0.5]);
+    assert_eq!(growing[0], [], "reported once on open, before any block");
+    for pair in growing.windows(2) {
+        assert!(coverage(&pair[1]) >= coverage(&pair[0]), "{growing:?}");
+        assert!(pair[1].windows(2).all(|w| w[0].end < w[1].start), "merged");
+    }
+    assert!(
+        growing.len() <= 6,
+        "at most one report per change: {growing:?}"
+    );
+    assert_eq!(cache.ranges("first", 10 * BLOCK as u64), [0.0..0.5]);
+
+    // Another file's blocks push the first file's out of the 5-block cache.
+    let second = MemoryFile::new(10 * BLOCK);
+    let mut b = RangeSource::open(
+        second,
+        "second",
+        Some(10 * BLOCK as u64),
+        cache.clone(),
+        rt.handle().clone(),
+        Cancel::default(),
+    )
+    .unwrap();
+    b.read_exact(&mut [0u8; 1]).unwrap();
+    let shrinking = buffered_until(&rx, |r| r.is_empty());
+    for pair in shrinking.windows(2) {
+        assert!(coverage(&pair[1]) <= coverage(&pair[0]), "{shrinking:?}");
+    }
+    drop(a);
+    drop(b);
+}
+
 #[derive(Default)]
 struct MemSecrets(Mutex<HashMap<String, String>>);
 

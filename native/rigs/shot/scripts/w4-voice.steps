@@ -1,0 +1,313 @@
+# W4 voice: incoming call, DM call buttons, participant menu and kick confirm, server mutes,
+# soundboard, float card and dock zones, debug panel. Desktop dark, phone light, and the float
+# card and menus in desktop light too.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w4-voice.steps
+story voice-incoming 1280 800 dark-blue-balanced
+wait idle
+shot w4-incoming-desktop
+story voice-incoming 390 844 light-blue-balanced
+wait idle
+shot w4-incoming-phone
+story voice-incoming-group 1280 800 dark-blue-balanced
+wait idle
+shot w4-incoming-group-desktop
+story voice-incoming-group 390 844 light-blue-balanced
+wait idle
+shot w4-incoming-group-phone
+story voice-incoming-group 1280 800 light-rose-vibrant
+wait idle
+shot w4-incoming-group-desktop-light
+story voice-incoming-long 1280 800 dark-blue-balanced
+wait idle
+shot w4-incoming-long-desktop
+story voice-incoming-long 390 844 light-blue-balanced
+wait idle
+shot w4-incoming-long-phone
+story voice-incoming-accepting 1280 800 dark-blue-balanced
+wait idle
+shot w4-incoming-accepting-desktop
+story voice-incoming-accepting 390 844 light-blue-balanced
+wait idle
+shot w4-incoming-accepting-phone
+story voice-incoming-error 1280 800 dark-blue-balanced
+wait idle
+shot w4-incoming-error-desktop
+story voice-incoming-error 390 844 light-blue-balanced
+wait idle
+shot w4-incoming-error-phone
+story voice-dm-controls 1280 800 dark-blue-balanced
+wait idle
+shot w4-dm-controls-desktop
+story voice-dm-controls 390 844 light-blue-balanced
+wait idle
+shot w4-dm-controls-phone
+story voice-menu-member 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-member-desktop
+story voice-menu-member 390 844 light-blue-balanced
+wait idle
+shot w4-menu-member-phone
+story voice-menu-self 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-self-desktop
+story voice-menu-self 390 844 light-blue-balanced
+wait idle
+shot w4-menu-self-phone
+story voice-menu-moderator 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-moderator-desktop
+story voice-menu-moderator 390 844 light-blue-balanced
+wait idle
+shot w4-menu-moderator-phone
+story voice-menu-moderator 1280 800 light-rose-vibrant
+wait idle
+shot w4-menu-moderator-desktop-light
+story voice-menu-server-muted 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-server-muted-desktop
+story voice-menu-server-muted 390 844 light-blue-balanced
+wait idle
+shot w4-menu-server-muted-phone
+story voice-menu-server-muted 1280 800 light-rose-vibrant
+wait idle
+shot w4-menu-server-muted-desktop-light
+story voice-menu-mute-only 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-mute-only-desktop
+story voice-menu-mute-only 390 844 light-blue-balanced
+wait idle
+shot w4-menu-mute-only-phone
+story voice-menu-kick-only 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-kick-only-desktop
+story voice-menu-kick-only 390 844 light-blue-balanced
+wait idle
+shot w4-menu-kick-only-phone
+story voice-menu-silenced 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-silenced-desktop
+story voice-menu-silenced 390 844 light-blue-balanced
+wait idle
+shot w4-menu-silenced-phone
+story voice-menu-loud 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-loud-desktop
+story voice-menu-loud 390 844 light-blue-balanced
+wait idle
+shot w4-menu-loud-phone
+story voice-menu-dm 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-dm-desktop
+story voice-menu-dm 390 844 light-blue-balanced
+wait idle
+shot w4-menu-dm-phone
+story voice-kick-confirm 1280 800 dark-blue-balanced
+wait idle
+shot w4-kick-confirm-desktop
+story voice-kick-confirm 390 844 light-blue-balanced
+wait idle
+shot w4-kick-confirm-phone
+story voice-kick-reason 1280 800 dark-blue-balanced
+wait idle
+shot w4-kick-reason-desktop
+story voice-kick-reason 390 844 light-blue-balanced
+wait idle
+shot w4-kick-reason-phone
+story voice-kick-busy 1280 800 dark-blue-balanced
+wait idle
+shot w4-kick-busy-desktop
+story voice-kick-busy 390 844 light-blue-balanced
+wait idle
+shot w4-kick-busy-phone
+story voice-kick-error 1280 800 dark-blue-balanced
+wait idle
+shot w4-kick-error-desktop
+story voice-kick-error 390 844 light-blue-balanced
+wait idle
+shot w4-kick-error-phone
+story voice-kick-error 1280 800 light-rose-vibrant
+wait idle
+shot w4-kick-error-desktop-light
+story voice-server-muted-me 1280 800 dark-blue-balanced
+wait idle
+shot w4-server-muted-me-desktop
+story voice-server-muted-me 390 844 light-blue-balanced
+wait idle
+shot w4-server-muted-me-phone
+story voice-server-muted-me 1280 800 light-rose-vibrant
+wait idle
+shot w4-server-muted-me-desktop-light
+story voice-server-muted-others 1280 800 dark-blue-balanced
+wait idle
+shot w4-server-muted-others-desktop
+story voice-server-muted-others 390 844 light-blue-balanced
+wait idle
+shot w4-server-muted-others-phone
+story voice-server-muted-others 1280 800 light-rose-vibrant
+wait idle
+shot w4-server-muted-others-desktop-light
+story voice-soundboard-closed 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-closed-desktop
+story voice-soundboard-closed 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-closed-phone
+story voice-soundboard-loading 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-loading-desktop
+story voice-soundboard-loading 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-loading-phone
+story voice-soundboard-empty 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-empty-desktop
+story voice-soundboard-empty 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-empty-phone
+story voice-soundboard-error 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-error-desktop
+story voice-soundboard-error 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-error-phone
+story voice-soundboard-grid 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-grid-desktop
+story voice-soundboard-grid 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-grid-phone
+story voice-soundboard-grid 1280 800 light-rose-vibrant
+wait idle
+shot w4-soundboard-grid-desktop-light
+story voice-soundboard-many 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-many-desktop
+story voice-soundboard-many 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-many-phone
+story voice-soundboard-starting 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-starting-desktop
+story voice-soundboard-starting 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-starting-phone
+story voice-soundboard-play-error 1280 800 dark-blue-balanced
+wait idle
+shot w4-soundboard-play-error-desktop
+story voice-soundboard-play-error 390 844 light-blue-balanced
+wait idle
+shot w4-soundboard-play-error-phone
+story voice-float-avatar 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-avatar-desktop
+story voice-float-avatar 390 844 light-blue-balanced
+wait idle
+shot w4-float-avatar-phone
+story voice-float-avatar 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-avatar-desktop-light
+story voice-float-camera 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-camera-desktop
+story voice-float-camera 390 844 light-blue-balanced
+wait idle
+shot w4-float-camera-phone
+story voice-float-camera 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-camera-desktop-light
+story voice-float-screen 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-screen-desktop
+story voice-float-screen 390 844 light-blue-balanced
+wait idle
+shot w4-float-screen-phone
+story voice-float-screen 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-screen-desktop-light
+story voice-float-server-muted 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-server-muted-desktop
+story voice-float-server-muted 390 844 light-blue-balanced
+wait idle
+shot w4-float-server-muted-phone
+story voice-float-server-muted 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-server-muted-desktop-light
+story voice-float-pill 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-pill-desktop
+story voice-float-pill 390 844 light-blue-balanced
+wait idle
+shot w4-float-pill-phone
+story voice-float-pill 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-pill-desktop-light
+story voice-float-long-name 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-long-name-desktop
+story voice-float-long-name 390 844 light-blue-balanced
+wait idle
+shot w4-float-long-name-phone
+story voice-float-long-name 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-long-name-desktop-light
+story voice-float-long-name-pill 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-long-name-pill-desktop
+story voice-float-long-name-pill 390 844 light-blue-balanced
+wait idle
+shot w4-float-long-name-pill-phone
+story voice-float-long-name-pill 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-long-name-pill-desktop-light
+story voice-float-drag 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-drag-desktop
+story voice-float-drag 390 844 light-blue-balanced
+wait idle
+shot w4-float-drag-phone
+story voice-float-drag 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-drag-desktop-light
+story voice-float-drag-free 1280 800 dark-blue-balanced
+wait idle
+shot w4-float-drag-free-desktop
+story voice-float-drag-free 390 844 light-blue-balanced
+wait idle
+shot w4-float-drag-free-phone
+story voice-float-drag-free 1280 800 light-rose-vibrant
+wait idle
+shot w4-float-drag-free-desktop-light
+story voice-debug-disconnected 1280 800 dark-blue-balanced
+wait idle
+shot w4-debug-disconnected-desktop
+story voice-debug-disconnected 390 844 light-blue-balanced
+wait idle
+shot w4-debug-disconnected-phone
+story voice-debug-connecting 1280 800 dark-blue-balanced
+wait idle
+shot w4-debug-connecting-desktop
+story voice-debug-connecting 390 844 light-blue-balanced
+wait idle
+shot w4-debug-connecting-phone
+story voice-debug-connected 1280 800 dark-blue-balanced
+wait idle
+shot w4-debug-connected-desktop
+story voice-debug-connected 390 844 light-blue-balanced
+wait idle
+shot w4-debug-connected-phone
+story voice-debug-connected 1280 800 light-rose-vibrant
+wait idle
+shot w4-debug-connected-desktop-light
+story voice-debug-failure 1280 800 dark-blue-balanced
+wait idle
+shot w4-debug-failure-desktop
+story voice-debug-failure 390 844 light-blue-balanced
+wait idle
+shot w4-debug-failure-phone
+story voice-debug-long-log 1280 800 dark-blue-balanced
+wait idle
+shot w4-debug-long-log-desktop
+story voice-debug-long-log 390 844 light-blue-balanced
+wait idle
+shot w4-debug-long-log-phone

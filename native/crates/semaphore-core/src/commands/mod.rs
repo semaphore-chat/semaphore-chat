@@ -8,7 +8,9 @@
 pub mod account;
 pub(crate) mod actions;
 pub mod browser_sign_in;
+pub mod calls;
 mod communities;
+mod diagnostics;
 mod dms;
 mod messages;
 pub(crate) mod notify;
@@ -16,8 +18,10 @@ pub mod onboarding;
 mod profile;
 mod queries;
 pub(crate) mod reading;
+mod replay;
 mod session;
 pub mod social;
+mod soundboard;
 mod voice;
 
 use crate::cache::{CacheValue, MemberPages, QueryKey, keys};
@@ -84,6 +88,10 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::SESSIONS => Some(ViewKey::Sessions),
         keys::APPEARANCE => Some(ViewKey::Appearance),
         keys::INSTANCE_ROLES => Some(ViewKey::InstancePermissions),
+        keys::SOUNDBOARD => Some(ViewKey::Soundboard { community_id: id() }),
+        keys::CLIPS => Some(ViewKey::Clips),
+        keys::USER_CLIPS => Some(ViewKey::UserClips { user_id: id() }),
+        keys::REPLAY_SESSION => Some(ViewKey::ReplaySession),
         keys::USER => Some(ViewKey::Profile { user_id: id() }),
         _ => None,
     }
@@ -109,6 +117,10 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         ViewKey::Sessions => Some(keys::op(keys::SESSIONS)),
         ViewKey::Appearance => Some(keys::op(keys::APPEARANCE)),
         ViewKey::InstancePermissions => Some(keys::op(keys::INSTANCE_ROLES)),
+        ViewKey::Soundboard { community_id } => Some(keys::scoped(keys::SOUNDBOARD, community_id)),
+        ViewKey::Clips => Some(keys::op(keys::CLIPS)),
+        ViewKey::UserClips { user_id } => Some(keys::scoped(keys::USER_CLIPS, user_id)),
+        ViewKey::ReplaySession => Some(keys::op(keys::REPLAY_SESSION)),
         _ => None,
     }
 }
@@ -133,7 +145,8 @@ fn core_error_view(error: &CoreError) -> ErrorView {
 impl State {
     /// Everything a session leaves behind, forgotten. Sign-out and a lost session both end here.
     pub(crate) fn reset_signed_out(&mut self) {
-        let call_live = self.voice.channel_id.is_some();
+        let call_live = self.voice.channel_id.is_some() || self.voice.room.is_some();
+        self.w4_signed_out();
         self.cache.clear();
         self.fetching.clear();
         self.failed_queries.clear();
@@ -145,8 +158,11 @@ impl State {
         self.reading = Default::default();
         self.w2 = Default::default();
         self.w3 = Default::default();
+        self.w4 = Default::default();
         self.session_epoch += 1;
-        self.effects.clear();
+        // The sleep inhibitor isn't the session's: a change to it queued just now still runs.
+        self.effects
+            .retain(|effect| matches!(effect, Effect::KeepAwake { .. }));
         self.main_conversation = None;
         self.thread_conversation = None;
         self.me = None;
@@ -263,7 +279,10 @@ impl State {
                 self.w2_presence_changed();
             }
             keys::NOTIFICATION_COUNT => self.badge_changed(),
-            keys::DMS => self.view_changed(ViewKey::DirectMessages),
+            keys::DMS => {
+                self.view_changed(ViewKey::DirectMessages);
+                self.w4_dms_arrived();
+            }
             keys::FRIENDS => self.view_changed(ViewKey::Friends),
             keys::NOTIFICATIONS => self.view_changed(ViewKey::Notifications),
             keys::NOTIFY_SETTINGS => {
@@ -280,6 +299,14 @@ impl State {
             keys::SESSIONS => self.view_changed(ViewKey::Sessions),
             keys::APPEARANCE => self.view_changed(ViewKey::Appearance),
             keys::INSTANCE_ROLES => self.view_changed(ViewKey::InstancePermissions),
+            keys::DM_VOICE_PRESENCE => {
+                self.view_changed(ViewKey::Voice);
+                self.w4_ring_presence(&id);
+            }
+            keys::SOUNDBOARD => self.view_changed(ViewKey::Soundboard { community_id: id }),
+            keys::CLIPS => self.view_changed(ViewKey::Clips),
+            keys::USER_CLIPS => self.view_changed(ViewKey::UserClips { user_id: id }),
+            keys::REPLAY_SESSION => self.view_changed(ViewKey::ReplaySession),
             keys::THREAD_META => self.reading_meta_arrived(id),
             keys::UNREAD => {
                 self.reading_counts_arrived();
