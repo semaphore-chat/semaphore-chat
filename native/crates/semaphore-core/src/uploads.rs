@@ -114,7 +114,9 @@ impl State {
 
     /// The send behind these uploads was acknowledged: they can start.
     pub(crate) fn uploads_may_start(&mut self, nonce: &str, message_id: &str) {
-        if let Some(job) = self.uploads.get_mut(nonce) {
+        if let Some(job) = self.uploads.get_mut(nonce)
+            && job.message_id.is_none()
+        {
             job.message_id = Some(message_id.to_owned());
             self.push_effect(Effect::Upload(nonce.to_owned()));
         }

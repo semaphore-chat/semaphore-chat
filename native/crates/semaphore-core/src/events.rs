@@ -305,6 +305,8 @@ impl State {
         let is_mine = !self.me_id().is_empty() && dto.author_id.as_deref() == Some(self.me_id());
         if is_mine && let Some(nonce) = &dto.client_nonce {
             self.sends.remove(nonce);
+            // The echo can beat the ack: either one means the message exists to upload against.
+            self.uploads_may_start(nonce, &dto.id);
         }
         if let Some(window) = self.windows.get_mut(&conversation) {
             // A detached window doesn't take it, but a page on its way may be the one that reattaches
@@ -534,6 +536,7 @@ impl State {
                 let is_mine = event.reply.author_id.as_deref() == Some(self.me_id());
                 if is_mine && let Some(nonce) = &event.reply.client_nonce {
                     self.sends.remove(nonce);
+                    self.uploads_may_start(nonce, &event.reply.id);
                 }
                 if let Some(window) = self.windows.get_mut(&conversation) {
                     window.note_upsert(&event.reply.id, Some(event.reply.clone()));

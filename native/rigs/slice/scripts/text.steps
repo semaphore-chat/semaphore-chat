@@ -142,6 +142,66 @@ click restore-retry
 wait core session signed-in
 wait core channel cc-general
 
+# 13. Media: avatars and images drawn, files sent after their message, a refused upload retried and
+# one removed, the image viewer, a custom emoji, and a link preview with its image off, then on.
+wait core file-ready sc-avatar-u-priya within 10
+wait core file-ready sc-img-pit within 10
+wait idle
+shot 18-media
+attach rigs/slice/fixtures/sketch.png
+attach rigs/slice/fixtures/notes.txt
+wait idle
+shot 19-composer-files
+type "two files"
+press enter
+wait core sent "two files"
+wait core attachments "two files" 2 within 15
+wait core uploads "two files" 0
+wait core pending-files "two files" 0
+expect requests FileUploadController_uploadFile >= 2
+expect requests MessagesController_addAttachment >= 2
+wait idle
+shot 20-files-sent
+server fail_route "{\"operationId\": \"FileUploadController_uploadFile\", \"status\": 413, \"code\": \"PAYLOAD_TOO_LARGE\"}"
+attach rigs/slice/fixtures/notes.txt
+type "too big at first"
+press enter
+wait core upload-failed "too big at first" within 15
+wait idle
+shot 21-upload-failed
+click-row upload-retry "too big at first" 0
+wait core attachments "too big at first" 1 within 15
+wait core uploads "too big at first" 0
+server fail_route "{\"operationId\": \"FileUploadController_uploadFile\", \"status\": 413, \"code\": \"PAYLOAD_TOO_LARGE\"}"
+attach rigs/slice/fixtures/notes.txt
+type "never mind the file"
+press enter
+wait core upload-failed "never mind the file" within 15
+click-row upload-remove "never mind the file" 0
+wait core uploads "never mind the file" 0
+wait core pending-files "never mind the file" 0 within 15
+click-row image "two files" 0
+wait core viewer open
+wait idle
+shot 22-viewer
+press escape
+wait core viewer closed
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"look at this \", \"emoji\": {\"id\": \"emoji-party\", \"name\": \"party\"}, \"linkPreview\": {\"url\": \"https://example.invalid/article\", \"title\": \"An article with a picture\", \"description\": \"The picture is on another site.\", \"siteName\": \"Example\", \"imageUrl\": \"http://127.0.0.1:3999/__fixtures/preview.png\"}}"
+wait core text "look at this"
+wait core file-ready emoji-party within 10
+wait idle
+shot 23-preview-image-off
+expect core requests Fixture_image == 0
+link-images on
+restart
+wait core session signed-in
+wait core channel cc-general
+wait core text "look at this"
+wait core requests Fixture_image >= 1 within 10
+wait idle
+shot 24-preview-image-on
+link-images off
+
 # 12. Sign out from the account menu: the stored session goes, the server is remembered.
 click rail-account
 wait core label "Sign out"

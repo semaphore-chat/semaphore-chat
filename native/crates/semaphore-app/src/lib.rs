@@ -8,6 +8,7 @@
 //! - `voice`: the LiveKit engine wired to core, the stage's controls, video frames.
 
 pub mod conversation;
+pub mod files;
 pub mod root;
 pub mod runtime;
 pub mod services;
@@ -42,6 +43,9 @@ pub struct AppConfig {
     pub audio: Option<Arc<dyn semaphore_media_livekit::audio::AudioIo>>,
     /// How often voice presence is refreshed: `voice::HEARTBEAT`, or less in the rig.
     pub heartbeat: std::time::Duration,
+    /// Load link previews' images from the sites they're on. Off by default: each one tells that
+    /// site the viewer's address.
+    pub link_preview_images: bool,
 }
 
 /// Once per process, before the first window.

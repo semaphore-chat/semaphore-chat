@@ -85,8 +85,20 @@ participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, 
 - [ ] Leave from the bar; join, then close the window: the others see you leave at once.
 - [ ] Stay in a call for an hour (T6 later runs 24): you stay on the roster throughout.
 
-Not in this build, so not bugs yet: publishing your camera or screen, DM voice, images and
-avatars (placeholders), attachments, the emoji picker, threads, DMs, editing, notifications.
+### Files and images
+
+- [ ] Attach from the paperclip (the portal's file dialog), by pasting a screenshot, and by dropping
+  files from the file manager; send. The message shows at once, then each file's progress, then the
+  files themselves.
+- [ ] A large file over a slow link: the bar moves steadily, and the upload doesn't time out.
+- [ ] Click an image: it fills the window; Escape closes it. Click a file: Save as offers its name.
+- [ ] Avatars everywhere you'd expect them; custom emoji in messages and reactions.
+- [ ] Link previews show title and description, but no image: loading third-party images is off
+  until you decide (it tells those sites your address).
+- [ ] Scroll a long channel full of images for a while: memory settles (it's bounded).
+
+Not in this build, so not bugs yet: publishing your camera or screen, DM voice, the emoji picker,
+threads, DMs, editing, notifications.
 
 Please report anything that looks wrong with a screenshot, and the terminal output with
 `SEMAPHORE_LOG=info`.
@@ -102,6 +114,10 @@ native/scripts/slice-e2e.sh --voice                       # on the host: LiveKit
 `rigs/slice/scripts/voice.steps` twice: join, the publisher's video reaching a tile, the heartbeat,
 mute and deafen, Share audio failing cleanly (no PipeWire in a container), the bar elsewhere, a
 moderator removing us (the call ends here and on the server), a second call, and leaving.
+
+The default run also covers media: avatars and images drawn, two files sent after their message, a
+refused upload retried and one removed, the image viewer, a custom emoji, and a link preview whose
+image stays unrequested until the switch is turned on (the fake server's log proves it).
 
 `rig-slice` runs the app's own code in GPUI's headless context on lavapipe, against a fake server in
 the same container, through `rigs/slice/scripts/text.steps`: probe and sign in, lists, selection and

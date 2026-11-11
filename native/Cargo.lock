@@ -8086,8 +8086,12 @@ name = "semaphore-app"
 version = "0.0.0"
 dependencies = [
  "async-channel",
+ "futures-util",
  "gpui-kit",
+ "image",
  "log",
+ "reqwest 0.13.5",
+ "rustls",
  "semaphore-core",
  "semaphore-media-livekit",
  "semaphore-net",

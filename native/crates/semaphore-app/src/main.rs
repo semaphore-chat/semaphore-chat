@@ -5,7 +5,6 @@ use gpui_kit::*;
 use semaphore_app::AppConfig;
 use semaphore_core::platform::AppPaths as _;
 use semaphore_platform_desktop::{DesktopPaths, KeyringSecrets, SystemClock};
-use semaphore_ui::kit::UiAssets;
 use semaphore_ui::messages::TimeFormat;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -85,7 +84,7 @@ fn main() -> ExitCode {
     };
 
     gpui_kit::application()
-        .with_assets(UiAssets)
+        .with_assets(semaphore_app::files::AppAssets)
         .run(move |cx| {
             semaphore_app::init(cx);
             let config = AppConfig {
@@ -98,6 +97,8 @@ fn main() -> ExitCode {
                 watch_os: true,
                 audio: None,
                 heartbeat: semaphore_app::voice::HEARTBEAT,
+                // Waiting on Mike: loading them reveals the viewer's address to third-party sites.
+                link_preview_images: false,
             };
             let options = semaphore_app::window_options(WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(

@@ -137,3 +137,22 @@ async fn uploads_wait_for_the_message_and_go_with_a_discarded_send() {
     rig.settle().await;
     assert!(rig.backend.uploads.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn an_echo_before_the_ack_starts_the_uploads_too() {
+    let (mut rig, nonce) = sent_with(&[("a.txt", 10)]).await;
+    // The echo lands before the queued send has even gone: it settles the send by itself.
+    let mut echoed = message("real", ME, "with files");
+    echoed.client_nonce = Some(nonce.clone());
+    rig.core.ingest(event(
+        "newMessage",
+        serde_json::json!({ "message": echoed }),
+    ));
+    rig.settle().await;
+    assert_eq!(
+        rig.backend.uploads.lock().unwrap().len(),
+        1,
+        "once, not twice"
+    );
+    assert_eq!(rig.backend.attaches.lock().unwrap().len(), 1);
+}

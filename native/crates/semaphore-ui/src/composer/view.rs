@@ -1300,6 +1300,7 @@ impl Render for Composer {
                 selected: open.selected,
                 scroll: &self.menu_scroll,
                 on_pick,
+                avatars: cx.try_global::<crate::kit::AvatarImages>(),
             };
             deferred(AtCaret::new(self.text.clone(), menu(data, viewport, &p))).with_priority(1)
         });

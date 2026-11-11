@@ -69,7 +69,7 @@ inside `cache.rs`, which U5 replaces with typed entries.
 ## U13 must do
 
 U13 is in four phases, each leaving the app runnable: **1 text client (done)**, **2 voice (done)**,
-**3 session restore and OS lifecycle (done)**, 4 media and attachments. How to run it: [docs/slice-app.md](../slice-app.md).
+**3 session restore and OS lifecycle (done)**, **4 media and attachments (done)**. How to run it: [docs/slice-app.md](../slice-app.md).
 
 **Done in phase 1:** the app (`semaphore-app` as a library and binary; core on a Tokio runtime of its
 own, events to GPUI through a channel), `CoreSource` over core's load states, members (with the
@@ -113,13 +113,27 @@ Wi-Fi to Wi-Fi move with no state change goes unnoticed until the socket's ping 
 without NetworkManager (iwd, systemd-networkd) report nothing; Windows modern standby may skip
 `PBT_APMSUSPEND`; the restored sign-in screen names the server by its host until it is probed again.
 
-**Phase 4, media.** `MediaSource` over a memory-only file cache (`Core::file`), avatars, custom emoji
-from `Core::custom_emojis` with unknown ones drawn as `:name:`, mention avatars, the emoji picker,
-the file dialog, and uploads on `Send`. **Decided (2026-11-10): follow the server's contract as the
-web uses it** (`useMessageFileUpload.ts`): send the message first with `pendingAttachments` set to
-the file count, then upload each file with `resourceType: MESSAGE_ATTACHMENT` and the message's id.
-Core's draft model changes to match (`MessageDraft` carries the files to upload, not
-`attachment_file_ids`); the backend doesn't. The e2e's upload step (step 6) comes with it.
+**Done in phase 4:** attachments drawn in messages (images inline, other files as a card with name
+and size, an in-window viewer for images, Save as with a sanitised name for the rest), avatars
+(list, shell, members, mention menu), custom emoji, and link-preview cards. Files come through
+`Core::file` into one in-memory LRU of encoded bytes (64 MB, cleared at sign-out); GPUI decodes them
+off the UI thread through the app's asset source into the bounded caches. Every image is checked from
+its header before anyone decodes it: past 16 MB or 64 megapixels (4 for GIF and WebP) it's drawn as
+its file card or initials. Sending follows the server's contract as the web uses it: the message
+first with `pendingAttachments`, then each upload (streamed, with progress) attached to it; a refused
+upload shows the server's reason with Retry and Remove, and core drops each file's bytes as it's
+attached or removed. Files come from the file dialog, a paste or a drop. Link-preview images load only
+with `AppConfig.link_preview_images`, off by default (waiting on Mike): http(s) only, image types
+only, 5 MB, 10 s, three redirects, no session headers.
+
+Left out of phase 4, as follow-ups: thumbnails sized by the server (U12) so image boxes stop being a
+fixed size; a frame count limit for animated images beyond the pixel limit; streaming a large upload
+from disk instead of holding its bytes; `:name:` for an unknown custom emoji in message text (a
+placeholder shows instead; copying gives `:name:` already). GPUI packs images edge to edge in its atlas and has no
+padding, so an image drawn larger than its pixels samples a sliver of its atlas neighbour along its
+edge: the headless run showed it on 16-pixel test avatars (which is why the fake server's images are
+now larger than they draw). Real avatars and photos are larger than they draw; custom emoji scaled up
+may show a faint edge, unconfirmed on a real machine.
 
 Some UI comments still say core lacks these (`voice/model.rs`). Drop each as its gap closes.
 

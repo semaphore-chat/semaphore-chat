@@ -4,28 +4,33 @@
 //! a mirror for what the list doesn't expose (the reply quotes it draws, the newest id for read
 //! marks, and the rig's checks), and answers what the list and composer ask by calling core.
 
+use crate::files::AppMedia;
 use crate::runtime::Exec;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::cache::keys;
+use semaphore_core::model::{AttachmentView, DraftFile};
 use semaphore_core::model::{
     ChannelPermissions, ChannelRow, Conversation, ListOp, MentionCandidate, MessageRow,
     SessionState, ViewKey,
 };
 use semaphore_core::{Core, CoreEvent};
 use semaphore_ui::composer::{
-    Availability, Composer, ComposerConfig, ComposerEvent, DraftStore, MentionSource,
+    AttachmentSource, Availability, Composer, ComposerConfig, ComposerEvent, DraftStore,
+    MentionSource, PendingAttachment,
 };
 use semaphore_ui::kit::on_core_event;
 use semaphore_ui::messages::{
-    ListData, ListOptions, ListStatus, MessageList, MessageListEvent, NoMedia, ReplyPreview,
-    TimeFormat,
+    ListData, ListOptions, ListStatus, MessageList, MessageListEvent, ReplyPreview, TimeFormat,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// What the app does with a clicked attachment: the image viewer, or Save as.
+pub type OpenAttachment = Rc<dyn Fn(AttachmentView, &mut Window, &mut App)>;
 
 /// The web sends `typingStart` at most this often while keys keep coming.
 const TYPING_EVERY: Duration = Duration::from_secs(3);
@@ -72,16 +77,22 @@ pub struct ConversationPane {
     last_typing: Option<Instant>,
     marked_read: Option<String>,
     focused: bool,
+    media: Rc<AppMedia>,
+    /// The app opens an attachment: the image viewer, or Save as.
+    open_attachment: OpenAttachment,
     list_subscription: Option<Subscription>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl ConversationPane {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         core: Arc<Core>,
         exec: Exec,
         time: TimeFormat,
         scrollbar: bool,
+        media: Rc<AppMedia>,
+        open_attachment: OpenAttachment,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -107,6 +118,8 @@ impl ConversationPane {
             last_typing: None,
             marked_read: None,
             focused: window.is_window_active(),
+            media,
+            open_attachment,
             list_subscription: None,
             _subscriptions: Vec::new(),
         }
@@ -123,6 +136,10 @@ impl ConversationPane {
 
     pub fn list(&self) -> Option<&Entity<MessageList>> {
         self.list.as_ref()
+    }
+
+    pub fn composer(&self) -> Option<&Entity<Composer>> {
+        self.composer.as_ref()
     }
 
     pub fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
@@ -148,6 +165,7 @@ impl ConversationPane {
                 != channel.as_ref().map(|row| row.slowmode_seconds);
         self.channel = channel;
         *self.mentions.community_id.borrow_mut() = community_id.clone();
+        *self.media.community.borrow_mut() = community_id.clone();
         self.community_id = community_id;
         if changed {
             self.open(conversation, window, cx);
@@ -166,6 +184,7 @@ impl ConversationPane {
             _ => String::new(),
         };
         let (time, scrollbar) = (self.time, self.scrollbar);
+        let media: Rc<dyn semaphore_ui::messages::MediaSource> = self.media.clone();
         let list = cx.new(|cx| {
             MessageList::new(
                 ListData {
@@ -174,7 +193,7 @@ impl ConversationPane {
                     replies: HashMap::new(),
                     status: ListStatus::Loading,
                 },
-                Rc::new(NoMedia),
+                media,
                 ListOptions {
                     time,
                     scrollbar,
@@ -248,9 +267,9 @@ impl ConversationPane {
             .as_ref()
             .and_then(|row| row.permissions.as_ref())
         else {
-            // Attachments are phase 4: until uploads exist, offering the button would be a lie.
+            // Fail open while permissions load, as the web does: the server enforces them.
             return Availability::Open {
-                can_attach: false,
+                can_attach: true,
                 channel_name,
             };
         };
@@ -305,10 +324,16 @@ impl ConversationPane {
                 }
                 self.mark_read(cx);
             }
-            // Mention candidates arrive after the query that asked: show them.
+            // Mention candidates arrive after the query that asked: show them. Custom emoji ride
+            // the same view, so the list draws them now too.
             CoreEvent::ViewChanged {
                 view: ViewKey::Mentionables { .. } | ViewKey::Members { .. },
-            } => self.refresh_composer(cx),
+            } => {
+                self.refresh_composer(cx);
+                if let Some(list) = &self.list {
+                    list.update(cx, |_, cx| cx.notify());
+                }
+            }
             _ => {}
         }
     }
@@ -476,8 +501,34 @@ impl ConversationPane {
                 );
             }),
             MessageListEvent::OpenAttachment { file_id } => {
-                log::info!("opening attachment {file_id}: attachments are phase 4");
+                let attachment = self
+                    .rows
+                    .iter()
+                    .flat_map(|row| row.attachments.iter())
+                    .find(|attachment| attachment.file_id == file_id)
+                    .cloned();
+                if let Some(attachment) = attachment {
+                    (self.open_attachment)(attachment, window, cx);
+                }
             }
+            MessageListEvent::RetryUpload {
+                client_nonce,
+                index,
+            } => self.exec.fire(async move {
+                log_failure(
+                    "retrying an upload",
+                    core.retry_upload(client_nonce, index).await,
+                );
+            }),
+            MessageListEvent::RemoveUpload {
+                client_nonce,
+                index,
+            } => self.exec.fire(async move {
+                log_failure(
+                    "removing an upload",
+                    core.remove_upload(client_nonce, index).await,
+                );
+            }),
             MessageListEvent::OpenThread { message_id } => {
                 log::info!("opening the thread of {message_id}: the thread pane is a follow-up");
             }
@@ -498,16 +549,6 @@ impl ConversationPane {
                 draft,
                 attachments,
             } => {
-                if !attachments.is_empty() {
-                    composer.update(cx, |composer, cx| {
-                        composer.send_settled(
-                            Err("Attachments can't be sent from this build yet.".into()),
-                            window,
-                            cx,
-                        )
-                    });
-                    return;
-                }
                 self.last_typing = None;
                 let stop_for = conversation.clone();
                 let typing_core = core.clone();
@@ -515,10 +556,34 @@ impl ConversationPane {
                     let _ = typing_core.send_typing(stop_for, false).await;
                 });
                 let composer = composer.downgrade();
+                let handle = self.exec.handle().clone();
+                // What can cross threads: a path to read, or the bytes a paste brought.
+                let attachments: Vec<FileSource> = attachments
+                    .iter()
+                    .map(|file| match &file.source {
+                        AttachmentSource::Path(path) => {
+                            FileSource::Path(file.name.to_string(), path.clone())
+                        }
+                        AttachmentSource::Image(image) => {
+                            FileSource::Bytes(file.name.to_string(), image.bytes.clone())
+                        }
+                    })
+                    .collect();
                 self.exec.run(
                     window,
                     cx,
-                    async move { core.send_message(conversation, draft).await },
+                    async move {
+                        // Reading the files is blocking work, off the async workers too.
+                        let files = handle
+                            .spawn_blocking(move || read_files(&attachments))
+                            .await
+                            .map_err(|error| semaphore_core::CoreError::Failed {
+                                message: error.to_string(),
+                            })??;
+                        let mut draft = draft;
+                        draft.files = files;
+                        core.send_message(conversation, draft).await
+                    },
                     move |_, result, window, cx| {
                         let result = result.map(|_| ()).map_err(|error| error.to_string());
                         composer
@@ -552,7 +617,30 @@ impl ConversationPane {
                 log::info!("the emoji picker is phase 4");
                 composer.update(cx, |composer, cx| composer.set_emoji_picker_open(false, cx));
             }
-            ComposerEvent::OpenFilePicker => log::info!("attachments are phase 4"),
+            ComposerEvent::OpenFilePicker => {
+                let picked = cx.prompt_for_paths(PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: true,
+                    prompt: Some("Attach".into()),
+                });
+                let composer = composer.downgrade();
+                cx.spawn_in(window, async move |_, cx| {
+                    let Ok(Ok(Some(paths))) = picked.await else {
+                        return;
+                    };
+                    let files: Vec<PendingAttachment> = paths
+                        .iter()
+                        .map(|path| PendingAttachment::from_path(path))
+                        .collect();
+                    composer
+                        .update_in(cx, |composer, window, cx| {
+                            composer.add_attachments(files, window, cx)
+                        })
+                        .ok();
+                })
+                .detach();
+            }
             ComposerEvent::EditLastMessage => log::info!("editing is a follow-up"),
         }
     }
@@ -616,10 +704,66 @@ pub fn availability_for(
         };
     }
     Availability::Open {
-        // Phase 4 brings uploads; until then the button stays away.
-        can_attach: false,
+        can_attach: permissions.attach,
         channel_name,
     }
+}
+
+/// A composer file, as it can cross to a blocking thread.
+enum FileSource {
+    Path(String, std::path::PathBuf),
+    Bytes(String, Vec<u8>),
+}
+
+/// The composer's files as core takes them: bytes, a name and a MIME type. Fails the send, with
+/// the composer's draft put back, if one can't be read.
+fn read_files(files: &[FileSource]) -> Result<Vec<DraftFile>, semaphore_core::CoreError> {
+    files
+        .iter()
+        .map(|file| {
+            let (name, bytes) = match file {
+                FileSource::Path(name, path) => (
+                    name,
+                    std::fs::read(path).map_err(|error| semaphore_core::CoreError::Failed {
+                        message: format!("couldn't read {name}: {error}"),
+                    })?,
+                ),
+                FileSource::Bytes(name, bytes) => (name, bytes.clone()),
+            };
+            Ok(DraftFile {
+                name: name.clone(),
+                mime_type: mime_for(name),
+                bytes,
+            })
+        })
+        .collect()
+}
+
+/// A MIME type from a file name's extension: the common ones, and octet-stream for the rest.
+pub fn mime_for(name: &str) -> String {
+    let extension = name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .unwrap_or_default();
+    match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "txt" | "log" | "md" => "text/plain",
+        "json" => "application/json",
+        "zip" => "application/zip",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mp3" => "audio/mpeg",
+        "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        _ => "application/octet-stream",
+    }
+    .to_owned()
 }
 
 impl Render for ConversationPane {
@@ -666,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn availability_follows_the_permissions_and_fails_open_on_attachments_only() {
+    fn availability_follows_the_permissions() {
         let now = Instant::now();
         assert!(matches!(
             availability_for(&permissions(), None, 1_000, now),
@@ -675,6 +819,19 @@ mod tests {
                 ..
             }
         ));
+        let attach = ChannelPermissions {
+            attach: true,
+            ..permissions()
+        };
+        assert!(matches!(
+            availability_for(&attach, None, 1_000, now),
+            Availability::Open {
+                can_attach: true,
+                ..
+            }
+        ));
+        assert_eq!(mime_for("Photo.JPG"), "image/jpeg");
+        assert_eq!(mime_for("notes"), "application/octet-stream");
         let read_only = ChannelPermissions {
             post: false,
             posting_role_names: vec!["Mods".into()],

@@ -229,6 +229,11 @@ impl State {
     /// `reconcileAfterSend`. Ack and echo can come in either order, and whichever is second finds
     /// the work done: a row that settled is no longer a placeholder.
     pub fn settle_send(&mut self, nonce: &str, outcome: SendOutcome, now: u64) {
+        // Before the check below: an echo may have settled the send already, and its files still
+        // wait for the message's id.
+        if let SendOutcome::Delivered { message_id } = &outcome {
+            self.uploads_may_start(nonce, message_id);
+        }
         let Some(send) = self.sends.get_mut(nonce) else {
             return;
         };
@@ -251,7 +256,6 @@ impl State {
             }
             SendOutcome::Delivered { message_id } => {
                 self.sends.remove(nonce);
-                self.uploads_may_start(nonce, &message_id);
                 let Some(window) = self.windows.get_mut(&conversation) else {
                     return;
                 };

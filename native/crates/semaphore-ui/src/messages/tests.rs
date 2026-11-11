@@ -900,7 +900,7 @@ impl MediaSource for LateMedia {
         self.arrived
             .borrow()
             .get(&attachment.file_id)
-            .map_or(MediaRef::Missing, |image| MediaRef::Ready(image.clone()))
+            .map_or(MediaRef::Pending, |image| MediaRef::Ready(image.clone()))
     }
     fn emoji(&self, _: &str) -> MediaRef {
         MediaRef::Missing

@@ -1,0 +1,1 @@
+Notes for the slice e2e: a plain text attachment.

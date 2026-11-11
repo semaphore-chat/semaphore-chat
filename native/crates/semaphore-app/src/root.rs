@@ -4,11 +4,13 @@
 
 use crate::AppConfig;
 use crate::conversation::ConversationPane;
+use crate::files::{self, AppMedia, PreviewFetcher};
 use crate::runtime::Activity;
 use crate::services::{self, Services, StartOptions};
 use crate::voice::{AppVoice, ShareState, VoiceRequest};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use semaphore_core::model::{AttachmentKind, AttachmentView};
 use semaphore_core::model::{
     ChannelKind, CommunityRow, ErrorView, LoadState, RestoreOutcome, SessionState, SignOutReason,
     ViewKey,
@@ -18,6 +20,7 @@ use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
 use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep, BrowserLogin};
 use semaphore_ui::kit::{Button, Dialog, Spinner, Variant, emit_core_event, on_core_event, text};
+use semaphore_ui::messages::{LruImageCache, MediaRef};
 use semaphore_ui::nav::Route;
 use semaphore_ui::shell::{ContentProps, CoreSource, ShellEvent};
 use semaphore_ui::theme::SemTheme as _;
@@ -73,6 +76,11 @@ pub struct AppRoot {
     /// The voice channel's name, from when it was joined.
     voice_channel_name: String,
     devices_open: bool,
+    media: Option<Rc<AppMedia>>,
+    /// An image open in the viewer, and the decodes it draws from.
+    viewer: Option<AttachmentView>,
+    viewer_focus: FocusHandle,
+    images: Option<Entity<LruImageCache>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -141,6 +149,10 @@ impl AppRoot {
             stage: None,
             voice_channel_name: String::new(),
             devices_open: false,
+            media: None,
+            viewer: None,
+            viewer_focus: cx.focus_handle(),
+            images: None,
             _subscriptions: vec![activation],
         }
     }
@@ -171,12 +183,49 @@ impl AppRoot {
 
     fn started(&mut self, services: Services, window: &mut Window, cx: &mut Context<Self>) {
         let core = services.core.clone();
+        // Files: one store for the process, redrawn into whenever a fetch lands.
+        let (arrived, landed) = async_channel::unbounded();
+        cx.spawn(async move |_, cx| {
+            while landed.recv().await.is_ok() {
+                while landed.try_recv().is_ok() {}
+                cx.update(|cx| cx.refresh_windows());
+            }
+        })
+        .detach();
+        let media = Rc::new(AppMedia {
+            core: core.clone(),
+            exec: services.exec.clone(),
+            store: files::store(),
+            previews: Arc::new(PreviewFetcher::new(self.config.link_preview_images)),
+            arrived,
+            community: std::cell::RefCell::new(None),
+        });
+        let avatars = media.clone();
+        let small = LruImageCache::new(semaphore_ui::messages::SMALL_BUDGET_BYTES, cx);
+        cx.set_global(semaphore_ui::kit::AvatarImages {
+            resolve: Rc::new(move |file_id| avatars.avatar_resource(file_id)),
+            cache: small,
+        });
+        self.images = Some(LruImageCache::new(
+            semaphore_ui::messages::IMAGE_BUDGET_BYTES,
+            cx,
+        ));
+        self.media = Some(media.clone());
+        let opener = cx.entity().downgrade();
+        let open_attachment: crate::conversation::OpenAttachment =
+            Rc::new(move |attachment, window, cx| {
+                opener
+                    .update(cx, |root, cx| root.open_attachment(attachment, window, cx))
+                    .ok();
+            });
         let pane = cx.new(|cx| {
             ConversationPane::new(
                 core,
                 services.exec.clone(),
                 self.config.time,
                 self.config.scrollbar,
+                media,
+                open_attachment,
                 window,
                 cx,
             )
@@ -327,6 +376,114 @@ impl AppRoot {
         cx.notify();
     }
 
+    /// An attachment clicked in the list: images open in the viewer, anything else goes to Save as.
+    fn open_attachment(
+        &mut self,
+        attachment: AttachmentView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if attachment.kind == AttachmentKind::Image {
+            self.viewer = Some(attachment);
+            window.focus(&self.viewer_focus, cx);
+            cx.notify();
+            return;
+        }
+        self.save_attachment(attachment, cx);
+    }
+
+    /// Asks where, then fetches the file and writes it there, off the UI thread.
+    fn save_attachment(&mut self, attachment: AttachmentView, cx: &mut Context<Self>) {
+        let Some(services) = &self.services else {
+            return;
+        };
+        let name = files::safe_file_name(&attachment.filename);
+        let directory = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
+        let (core, handle) = (services.core.clone(), services.exec.handle().clone());
+        cx.spawn(async move |_, _| {
+            let Ok(Ok(Some(path))) = chosen.await else {
+                return;
+            };
+            let file_id = attachment.file_id.clone();
+            let saved = handle
+                .spawn(async move {
+                    let bytes = core.file(file_id, false).await.map_err(|e| e.to_string())?;
+                    tokio::task::spawn_blocking(move || {
+                        std::fs::write(&path, bytes).map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?
+                })
+                .await;
+            match saved {
+                Ok(Ok(())) => log::info!("saved {}", attachment.filename),
+                other => log::warn!("saving {}: {other:?}", attachment.filename),
+            }
+        })
+        .detach();
+    }
+
+    /// The open image, fit to the window. Escape or a click outside it closes it.
+    fn viewer_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let attachment = self.viewer.as_ref()?;
+        let media = self.media.as_ref()?;
+        let images = self.images.clone()?;
+        let full = media.full_image(attachment);
+        let close = cx.entity().downgrade();
+        let escape = close.clone();
+        let picture: AnyElement = match full {
+            MediaRef::Resource(resource) => img(ImageSource::Resource(resource))
+                .image_cache(&images)
+                .size_full()
+                .object_fit(ObjectFit::Contain)
+                .into_any_element(),
+            MediaRef::Pending => Spinner::new("viewer-loading").into_any_element(),
+            _ => text(Variant::Body1, "This image can't be shown.").into_any_element(),
+        };
+        Some(
+            div()
+                .id("image-viewer")
+                .track_focus(&self.viewer_focus)
+                .role(Role::Dialog)
+                .aria_label(attachment.filename.clone())
+                .absolute()
+                .inset_0()
+                .p(px(32.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(hsla(0., 0., 0., 0.85))
+                .text_color(gpui_kit::white())
+                .on_key_down(move |event, _, cx| {
+                    if event.keystroke.key == "escape" {
+                        escape
+                            .update(cx, |root, cx| {
+                                root.viewer = None;
+                                cx.notify();
+                            })
+                            .ok();
+                    }
+                })
+                .on_click(move |_, _, cx| {
+                    close
+                        .update(cx, |root, cx| {
+                            root.viewer = None;
+                            cx.notify();
+                        })
+                        .ok();
+                })
+                .child(picture)
+                .into_any_element(),
+        )
+    }
+
+    pub fn viewer_open(&self) -> bool {
+        self.viewer.is_some()
+    }
+
     /// The stage, for the rig's checks.
     pub fn stage(&self) -> Option<&Entity<VoiceStage>> {
         self.stage.as_ref()
@@ -473,6 +630,11 @@ impl AppRoot {
             SessionState::SignedOut
             | SessionState::SignInFailed { .. }
             | SessionState::SigningIn => {
+                // Nothing of the last session's files stays in memory.
+                if matches!(session, SessionState::SignedOut) {
+                    files::store().clear();
+                }
+                self.viewer = None;
                 self.shell = None;
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
@@ -996,7 +1158,8 @@ impl Render for AppRoot {
                 })
                 .when(self.devices_open, |root| {
                     root.child(self.devices_dialog(cx))
-                });
+                })
+                .children(self.viewer_overlay(cx));
         }
         if let Some(auth) = &self.auth {
             return root.child(auth.clone());

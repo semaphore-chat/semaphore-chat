@@ -1,5 +1,5 @@
-//! Avatar faces. No image bytes reach the UI yet, so an avatar is initials on a colour: the web's own
-//! fallback for a community, and for a user. Fixtures use `avatar:<key>:<label>` file ids, which the
+//! Avatar faces: the file through the app's `AvatarImages` once it has the bytes, and initials on a
+//! colour until then, or without one: the web's own fallback for a community, and for a user. Fixtures use `avatar:<key>:<label>` file ids, which the
 //! web's sandbox turns into exactly such an SVG (`stories/fixtures/avatars.ts`), so stories match.
 
 use crate::kit::Avatar;
@@ -61,7 +61,10 @@ pub fn community_avatar(id: &str, name: &str, file_id: Option<&str>, size: f32) 
         Some((initials, color)) => (initials.into(), color),
         None => (community_initials(name).into(), string_to_color(id)),
     };
-    Avatar::new(label).size(size).background(color)
+    Avatar::new(label)
+        .size(size)
+        .background(color)
+        .file(file_id.filter(|id| !id.starts_with("avatar:")))
 }
 
 /// `UserAvatar` falls back to the first letter on MUI's grey.
@@ -74,7 +77,7 @@ pub fn user_avatar(name: &str, file_id: Option<&str>, size: f32) -> Avatar {
                 .next()
                 .map(|c| c.to_uppercase().to_string())
                 .unwrap_or_else(|| "?".into());
-            Avatar::new(initial).size(size)
+            Avatar::new(initial).size(size).file(file_id)
         }
     }
 }

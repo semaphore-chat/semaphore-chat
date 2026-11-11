@@ -62,6 +62,8 @@ const UPLOAD_CHUNK: usize = 64 * 1024;
 impl Client {
     /// [`upload_file`](Self::upload_file) from shared bytes, streamed so `progress` hears how many
     /// have gone. Fails as the generated calls do, so a caller can refresh and retry the same way.
+    // The generated calls' error type, so `HttpBackend` refreshes and retries this the same way.
+    #[allow(clippy::result_large_err)]
     pub async fn upload_file_streamed(
         &self,
         filename: &str,

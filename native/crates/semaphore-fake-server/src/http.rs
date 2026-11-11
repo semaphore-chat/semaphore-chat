@@ -121,6 +121,8 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         ("GET", "/api/instance/settings/public") => "InstanceController_getPublicSettings",
         ("POST", "/api/file-upload") => "FileUploadController_uploadFile",
         ("POST", "/api/messages/{id}/attachments") => "MessagesController_addAttachment",
+        // Not the backend's: a stand-in third-party site, recorded so a test can see it was asked.
+        ("GET", "/__fixtures/{name}") => "Fixture_image",
         ("POST", "/api/auth/refresh") => "AuthController_refresh",
         ("POST", "/api/auth/logout") => "AuthController_logout",
         ("GET", "/api/users/profile") => "UserController_getProfile",
@@ -207,6 +209,7 @@ fn is_public(operation: Option<&str>) -> bool {
             "AuthController_login"
                 | "AuthController_refresh"
                 | "InstanceController_getPublicSettings"
+                | "Fixture_image"
         )
     )
 }

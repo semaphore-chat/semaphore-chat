@@ -15,6 +15,10 @@ path = "src/main.rs"
 
 [dependencies]
 async-channel = "2"
+futures-util.workspace = true
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+reqwest = { workspace = true, features = ["stream"] }
+rustls = { version = "0.23", default-features = false }
 gpui-kit.workspace = true
 log.workspace = true
 semaphore-core.workspace = true
@@ -24,3 +28,6 @@ semaphore-platform-desktop.workspace = true
 semaphore-sysaudio.workspace = true
 semaphore-ui.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "net", "io-util", "rt-multi-thread"] }
