@@ -114,6 +114,22 @@ impl VideoPlayer {
         &self.focus
     }
 
+    /// The attachment this plays.
+    pub fn source(&self) -> &semaphore_core::player::PlaybackSource {
+        &self.playback.source
+    }
+
+    /// Stops for good and frees the file (a sign-out); the next play opens it again.
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.playback.close();
+        cx.notify();
+    }
+
+    /// A frame of this player's video is on its surface.
+    pub fn has_frame(&self) -> bool {
+        self.playback.has_frame()
+    }
+
     /// Whether the last frame asked for the next: only while video plays.
     #[cfg(test)]
     pub(super) fn animating(&self) -> bool {
@@ -409,7 +425,13 @@ impl VideoPlayer {
                     .flex()
                     .items_center()
                     .px(px(6.))
-                    .child(controls::scrubber(&self.playback, &self.scrub, ink, cx)),
+                    .child(controls::scrubber(
+                        &self.playback,
+                        &self.scrub,
+                        ink,
+                        controls::TipAt::Above,
+                        cx,
+                    )),
             )
             .child(
                 div()

@@ -77,6 +77,17 @@ impl AudioPlayer {
         &self.focus
     }
 
+    /// The attachment this plays.
+    pub fn source(&self) -> &semaphore_core::player::PlaybackSource {
+        &self.playback.source
+    }
+
+    /// Stops for good and frees the file (a sign-out); the next play opens it again.
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.playback.close();
+        cx.notify();
+    }
+
     #[cfg(test)]
     pub(super) fn playback_state(&self) -> &Playback {
         &self.playback
@@ -145,7 +156,14 @@ impl AudioPlayer {
             .into_any_element()
     }
 
-    fn failure_line(&self, failure: Failure, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The error and what to do about it. At phone width the action takes its own line, pulled
+    /// left by the button's inner padding so its icon lines up with the error's.
+    fn failure_line(
+        &self,
+        failure: Failure,
+        narrow: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let error = cx.sem().error;
         let (message, id) = match failure {
             Failure::Unsupported => ("Can't play this here", "player-unsupported"),
@@ -164,13 +182,15 @@ impl AudioPlayer {
                     view.commanded(cx);
                 })),
         };
+        let action = div()
+            .when(narrow, |el| el.ml(px(-BUTTON_PADDING_X)))
+            .child(action);
         div()
             .id(id)
             .test_support()
             .flex()
-            .flex_wrap()
-            .items_center()
-            .gap(px(8.))
+            .when(narrow, |el| el.flex_col().items_start().gap(px(2.)))
+            .when(!narrow, |el| el.flex_wrap().items_center().gap(px(8.)))
             .child(
                 div()
                     .flex()
@@ -183,6 +203,9 @@ impl AudioPlayer {
             .child(action)
     }
 }
+
+/// A medium text button's inner padding (`kit::Button`).
+const BUTTON_PADDING_X: f32 = 16.;
 
 impl PlayerView for AudioPlayer {
     fn playback(&mut self) -> &mut Playback {
@@ -232,37 +255,39 @@ impl Render for AudioPlayer {
                     .text_color(text_secondary)
                     .child(text(Variant::Caption, model::file_size(source.size))),
             );
-        let lower = match failure {
-            Some(failure) => self.failure_line(failure, cx).into_any_element(),
-            None => div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                // The thumb overhangs the track's end by its radius; keep it off the time.
-                .child(
-                    div()
-                        .flex()
-                        .flex_1()
-                        .min_w(px(40.))
-                        .pr(px(6.))
-                        .child(controls::scrubber(&self.playback, &self.scrub, ink, cx)),
-                )
-                .when(self.playback.phase == Phase::Buffering, |row| {
-                    row.child(
-                        div()
-                            .id("player-spinner")
-                            .test_support()
-                            .flex_none()
-                            .child(Spinner::new("player-spinner-icon").size(14.)),
-                    )
-                })
-                .child(controls::time::<Self>(&self.playback, ink))
-                .child(controls::mute_button(&self.playback, ink, cx))
-                .when(!narrow, |row| {
-                    row.child(controls::volume_slider(&self.volume))
-                })
-                .into_any_element(),
-        };
+        let lower =
+            match failure {
+                Some(failure) => self.failure_line(failure, narrow, cx).into_any_element(),
+                None => div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    // The thumb overhangs the track's end by its radius; keep it off the time.
+                    .child(div().flex().flex_1().min_w(px(40.)).pr(px(6.)).child(
+                        controls::scrubber(
+                            &self.playback,
+                            &self.scrub,
+                            ink,
+                            controls::TipAt::Below,
+                            cx,
+                        ),
+                    ))
+                    .when(self.playback.phase == Phase::Buffering, |row| {
+                        row.child(
+                            div()
+                                .id("player-spinner")
+                                .test_support()
+                                .flex_none()
+                                .child(Spinner::new("player-spinner-icon").size(14.)),
+                        )
+                    })
+                    .child(controls::time::<Self>(&self.playback, ink))
+                    .child(controls::mute_button(&self.playback, ink, cx))
+                    .when(!narrow, |row| {
+                        row.child(controls::volume_slider(&self.volume))
+                    })
+                    .into_any_element(),
+            };
         div()
             .id(("audio-player", cx.entity_id()))
             .track_focus(&self.focus)

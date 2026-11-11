@@ -17,6 +17,8 @@ mod format;
 mod icons;
 mod media;
 pub mod palette;
+#[cfg(test)]
+mod player_tests;
 mod row;
 mod selection;
 mod store;

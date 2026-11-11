@@ -49,6 +49,11 @@
 //! expect link-registrations 1         # the fake link handler was asked to register this often
 //! ```
 //!
+//! W3-player-wire (built with `--features player`): `player toggle NAME` plays or pauses the
+//! inline player of the newest attachment with that file name, as its main button does; conditions
+//! `player NAME idle|loading|playing|paused|buffering|ended|failed`, `player-frames NAME` (its video
+//! reached the window) and `players-open N` (players holding an open file).
+//!
 //! W3's conditions: `route PREFIX` (the shell's route, as `settings/voice`, `profile/ID`,
 //! `profile-edit`, `home`, `community/ID`, `channel/ID`, `dms`), `theme NAME` (the theme drawn,
 //! `light-teal-minimal`), `engine ptt on|off`, `engine preset standard|high|music`, `engine
@@ -259,6 +264,13 @@ enum Condition {
     Engine(String, String),
     ProfileOpen(String),
     DesktopSignIn(bool),
+    /// W3-player-wire: the inline player of the file with this name is in this phase
+    /// (`idle|loading|playing|paused|buffering|ended|failed`).
+    Player(String, String),
+    /// A frame of that file's video has reached the window.
+    PlayerFrames(String),
+    /// This many players hold an open file.
+    PlayersOpen(usize),
 }
 
 /// What a row step does to the element it finds.
@@ -321,6 +333,8 @@ enum Step {
     Exec(String),
     /// Moves GPUI's headless clock on: the stage redraws on a timer.
     Tick(u64),
+    /// Plays or pauses the inline player of the newest file with this name.
+    PlayerToggle(String),
     /// One frame to a PNG, without waiting for the window to stop changing: live video never does.
     Snap(String),
     /// Adds a file to the composer, as the file dialog, a drop or a paste would.
@@ -454,6 +468,9 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["desktop-sign-in", "shown"] => Condition::DesktopSignIn(true),
         ["desktop-sign-in", "gone"] => Condition::DesktopSignIn(false),
         ["voice", status] => Condition::Voice((*status).into()),
+        ["player", name, phase] => Condition::Player((*name).into(), (*phase).into()),
+        ["player-frames", name] => Condition::PlayerFrames((*name).into()),
+        ["players-open", count] => Condition::PlayersOpen(number(count)?),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
 }
@@ -528,6 +545,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["os", "network-up"] => Step::Os(OsEvent::Network(NetworkState::Available)),
             ["restart"] => Step::Restart,
             ["tick", ms] => Step::Tick(ms.parse().map_err(|_| at(anyhow!("tick ms")))?),
+            ["player", "toggle", name] => Step::PlayerToggle((*name).into()),
             ["snap", name] => Step::Snap((*name).into()),
             ["attach", path] => Step::Attach(PathBuf::from(path)),
             ["link-images", "on"] => Step::LinkImages(true),
@@ -1040,6 +1058,76 @@ impl Rig {
         io
     }
 
+    /// The inline player of the newest file with this name, in any of the window's lists.
+    fn player_named(
+        app: &Entity<AppRoot>,
+        name: &str,
+        cx: &gpui_kit::App,
+    ) -> Result<Option<semaphore_ui::player::AttachmentPlayer>> {
+        let root = app.read(cx);
+        let Some(players) = root.players() else {
+            bail!("this app has no players: build rig-slice with --features player");
+        };
+        Ok(players
+            .all()
+            .into_iter()
+            .rev()
+            .find(|player| player.filename(cx) == name))
+    }
+
+    /// W3-player-wire's step: play or pause, as the player's main button does.
+    fn player_toggle(&mut self, name: &str) -> Result<()> {
+        self.driver.settle()?;
+        let app = self.app()?.clone();
+        let player = self
+            .driver
+            .cx
+            .update(|cx| Self::player_named(&app, name, cx))?
+            .ok_or_else(|| anyhow!("no player for {name:?} is drawn"))?;
+        self.driver.cx.update(|cx| player.toggle(cx));
+        self.driver.settle()
+    }
+
+    /// W3-player-wire's conditions.
+    fn player_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
+        use semaphore_ui::player::Phase;
+        if !matches!(
+            condition,
+            Condition::Player(..) | Condition::PlayerFrames(_) | Condition::PlayersOpen(_)
+        ) {
+            return Ok(None);
+        }
+        let app = self.app()?.clone();
+        self.driver.cx.update(|cx| {
+            Ok(Some(match condition {
+                Condition::PlayersOpen(count) => app
+                    .read(cx)
+                    .players()
+                    .is_some_and(|players| players.open_count(cx) == *count),
+                Condition::PlayerFrames(name) => {
+                    Self::player_named(&app, name, cx)?.is_some_and(|player| player.has_frame(cx))
+                }
+                Condition::Player(name, phase) => {
+                    let Some(player) = Self::player_named(&app, name, cx)? else {
+                        return Ok(Some(false));
+                    };
+                    let now = player.phase(cx);
+                    match phase.as_str() {
+                        "idle" => now == Phase::Idle,
+                        "loading" => now == Phase::Loading,
+                        "playing" => now == Phase::Playing,
+                        "paused" => now == Phase::Paused,
+                        "buffering" => now == Phase::Buffering,
+                        "ended" => now == Phase::Ended,
+                        "failed" => matches!(now, Phase::Failed(_)),
+                        _ => bail!("unknown player phase {phase}"),
+                    }
+                }
+                _ => unreachable!("matched above"),
+            }))
+        })
+    }
+
     /// W2's conditions.
     fn w2_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
         let app = self.app()?.clone();
@@ -1096,6 +1184,9 @@ impl Rig {
     fn holds(&mut self, condition: &Condition) -> Result<bool> {
         if let Condition::Label(label) = condition {
             return self.driver.has_label(label);
+        }
+        if let Some(answer) = self.player_holds(condition)? {
+            return Ok(answer);
         }
         if let Some(answer) = self.voice_holds(condition)? {
             return Ok(answer);
@@ -1225,7 +1316,10 @@ impl Rig {
             | Condition::Theme(_)
             | Condition::Engine(..)
             | Condition::ProfileOpen(_)
-            | Condition::DesktopSignIn(_) => unreachable!("answered above"),
+            | Condition::DesktopSignIn(_)
+            | Condition::Player(..)
+            | Condition::PlayerFrames(_)
+            | Condition::PlayersOpen(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -1792,6 +1886,7 @@ impl Rig {
                     self.driver.cx.advance_clock(Duration::from_millis(*ms));
                     self.driver.settle()
                 }
+                Step::PlayerToggle(name) => self.player_toggle(name),
                 Step::LiveKitRemove { room, identity } => self.livekit_remove(room, identity),
                 Step::VideoFailNext { screen, why } => {
                     let slot = if *screen {

@@ -84,6 +84,59 @@ impl StoryList {
     }
 }
 
+/// The conversation at its attachments, with the window's players: the recording and the clip
+/// play inline (a fake engine), the log stays a file, and an AVI keeps the plain video row.
+fn attachment_players(window: &mut Window, cx: &mut App) -> AnyView {
+    use crate::player::Players;
+    use crate::player::fake::{FakeOpener, Script};
+    use semaphore_core::model::{AttachmentKind, AttachmentView};
+    init(cx);
+    let (mut rows, replies) = fixture::conversation();
+    let first = rows
+        .iter()
+        .position(|row| row.display.contains("Logs and a recording"))
+        .expect("the attachments row");
+    if let Some(video) = rows.get_mut(first + 1) {
+        video.attachments.push(AttachmentView {
+            file_id: "file-old.avi".into(),
+            filename: "old-capture.avi".into(),
+            mime_type: "video/x-msvideo".into(),
+            size_bytes: 9_437_184,
+            kind: AttachmentKind::Video,
+            has_thumbnail: false,
+            width: None,
+            height: None,
+        });
+        video.revision += 1;
+    }
+    let top = rows[first].seq;
+    let (opener, _) = FakeOpener::rc(Script::audio());
+    let players = Players::new(opener, crate::voice::VideoFrames::for_window(window));
+    cx.new(|cx| {
+        let list = MessageList::new(
+            ListData {
+                me_id: fixture::me().id,
+                rows,
+                replies,
+                status: ListStatus::Ready,
+            },
+            Rc::new(FixtureMedia::new()),
+            ListOptions {
+                time: TimeFormat::fixed(NOW_MS),
+                scrollbar: false,
+                players: Some(players),
+                // The players draw in the app's theme; the rows follow it as the app's do.
+                follow_theme: true,
+                ..ListOptions::default()
+            },
+            cx,
+        );
+        list.scroll_to_seq(top, 0.);
+        list
+    })
+    .into()
+}
+
 /// The busiest conversation in a scenario, oldest first.
 fn busiest(views: &ScenarioViews) -> Option<&Vec<MessageRow>> {
     views
@@ -454,6 +507,13 @@ pub fn stories() -> Vec<Story> {
 fn base_stories() -> Vec<Story> {
     vec![
         Story::new("messages-conversation", |_, _, cx| conversation(None, cx)),
+        Story::new("messages-attachment-players", |_, window, cx| {
+            attachment_players(window, cx)
+        }),
+        Story::new("messages-attachment-players-phone", |_, window, cx| {
+            let view = attachment_players(window, cx);
+            narrow(view, cx)
+        }),
         Story::new("messages-conversation-top", |_, _, cx| {
             conversation(Some(1), cx)
         }),

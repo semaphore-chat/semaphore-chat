@@ -52,6 +52,46 @@ impl PlaybackSource {
     }
 }
 
+/// Whether this client can try to play an attachment inline: Chromium's set (docs/player.md),
+/// by MIME type, or by extension when the type is generic. False for containers the player has no
+/// demuxer for (AVI, MPEG-TS, WMV...), which keep the plain file row. A file that only turns out
+/// unplayable once opened (HEVC in a MOV, Theora) shows the player's own "can't play" row.
+pub fn playable(mime_type: &str, filename: &str) -> bool {
+    let mime = mime_type.to_ascii_lowercase();
+    let mime = mime.split(';').next().unwrap_or_default().trim();
+    let by_mime = match mime {
+        "video/mp4" | "video/quicktime" | "video/webm" | "video/x-matroska" | "video/ogg"
+        | "audio/mp4" | "audio/x-m4a" | "audio/m4a" | "audio/aac" | "audio/aacp" | "audio/mpeg"
+        | "audio/mp3" | "audio/ogg" | "audio/opus" | "audio/webm" | "audio/flac"
+        | "audio/x-flac" | "audio/wav" | "audio/x-wav" | "audio/wave" | "audio/vnd.wave"
+        | "audio/x-matroska" => Some(true),
+        "" | "application/octet-stream" => None,
+        _ => Some(false),
+    };
+    by_mime.unwrap_or_else(|| {
+        let extension = filename
+            .rsplit_once('.')
+            .map(|(_, extension)| extension.to_ascii_lowercase())
+            .unwrap_or_default();
+        matches!(
+            extension.as_str(),
+            "mp4"
+                | "m4v"
+                | "mov"
+                | "webm"
+                | "mkv"
+                | "m4a"
+                | "aac"
+                | "mp3"
+                | "ogg"
+                | "oga"
+                | "opus"
+                | "flac"
+                | "wav"
+        )
+    })
+}
+
 /// Why playback stopped for good. Each maps to what a user can do: download or open externally
 /// (unsupported, corrupt), retry (network, device).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -616,6 +656,35 @@ mod tests {
         );
         exclusive.release(2);
         assert_eq!(exclusive.active(), None);
+    }
+
+    #[test]
+    fn playable_is_chromiums_set() {
+        for (mime, name) in [
+            ("video/mp4", "a.mp4"),
+            ("Video/QuickTime", "a.mov"),
+            ("video/webm", "a.webm"),
+            ("audio/ogg; codecs=opus", "a.ogg"),
+            ("audio/mpeg", "a.mp3"),
+            ("audio/flac", "a.flac"),
+            ("audio/wav", "a.wav"),
+            ("audio/mp4", "a.m4a"),
+            ("application/octet-stream", "voice.M4A"),
+            ("", "clip.mkv"),
+        ] {
+            assert!(playable(mime, name), "{mime} {name}");
+        }
+        for (mime, name) in [
+            ("video/x-msvideo", "a.avi"),
+            ("video/mp2t", "a.ts"),
+            ("video/x-ms-wmv", "a.wmv"),
+            ("audio/x-ms-wma", "a.wma"),
+            ("application/octet-stream", "a.avi"),
+            ("application/pdf", "a.mp4"),
+            ("text/plain", "notes.txt"),
+        ] {
+            assert!(!playable(mime, name), "{mime} {name}");
+        }
     }
 
     #[test]

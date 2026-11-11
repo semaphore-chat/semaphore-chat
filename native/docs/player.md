@@ -168,6 +168,27 @@ crate isn't linked at all. Bytes, MB = 10^6:
 - **The fake server** answers `Range` on `GET /api/file/{id}` as the backend does (206 with
   `Content-Range`, 416 with `bytes */size`).
 
-Not in this round: the UI (`ui/src/player`), the app wiring, HLS (the replay preview's
-MPEG-TS), and the feature on by default. Buffering is reported only once a slow read returns,
+Not in this round: HLS (the replay preview's MPEG-TS) and the feature on by default.
+
+## In the app (W3-player-wire)
+
+- **Who owns a player:** the message list a row is in (`semaphore_ui::player::ListPlayers`, keyed
+  by message and file). Rows are drawn by functions, so the player entity lives in the list and
+  survives re-rendering and virtualising. It goes, and playback stops, when its message leaves the
+  list (deleted, removed by a moderator, a reset) or the list goes (a channel switch). Idle players
+  not drawn lately are pruned once a list holds more than 32.
+- **The window's `Players`** (built by `semaphore-app/src/player.rs`) holds the engine opener, the
+  window's `VideoFrames` and a weak handle to every player; a sign-out calls `stop_all`. One
+  playing at a time is the engine's `Exclusive` rule across every list, threads and DMs included.
+- **Which attachments play:** audio or video whose type or extension is in Chromium's set
+  (`semaphore_core::player::playable`), on a message that isn't removed. The rest keep today's
+  rows; a file that only fails once opened (HEVC in a MOV) shows the player's "Can't play this
+  here" with Download and Open externally (a temporary copy handed to the OS).
+- **Feature off** (the default): no `Players`, and every attachment renders as before.
+- **Sound** goes through the app's `AudioIo`: the rig's virtual speaker in rigs, never the host's
+  devices. `scripts/in-image.sh scripts/slice-e2e.sh --player` runs
+  `rigs/slice/scripts/w3-player-wire.steps` against the fake server's Range responses.
+- **Not yet:** the voice settings' output device isn't passed to the players
+  (`DesktopPlayers::set_output_device`), and the video poster before the first play is the plain
+  box (the first decoded frame shows once opened). Buffering is reported only once a slow read returns,
 because the decode thread does the reading.

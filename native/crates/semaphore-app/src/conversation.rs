@@ -34,8 +34,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// What the app does with a clicked attachment: the image viewer, or Save as.
-pub type OpenAttachment = Rc<dyn Fn(AttachmentView, &mut Window, &mut App)>;
+/// What the app does with a clicked attachment: the image viewer, or Save as; or, for a file the
+/// inline player can't play, the OS's default app.
+pub type OpenAttachment = Rc<dyn Fn(AttachmentView, OpenHow, &mut Window, &mut App)>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenHow {
+    View,
+    Externally,
+}
 
 /// The server this session is on, for telling its message links from the rest.
 pub type ServerUrl = Rc<dyn Fn() -> Option<String>>;
@@ -117,6 +124,8 @@ pub struct ConversationPane {
     marked_read: Option<String>,
     focused: bool,
     media: Rc<AppMedia>,
+    /// Inline audio and video players for every list, or `None` (the app built without them).
+    players: Option<semaphore_ui::player::Players>,
     /// The app opens an attachment: the image viewer, or Save as.
     open_attachment: OpenAttachment,
     list_subscription: Option<Subscription>,
@@ -151,6 +160,7 @@ impl ConversationPane {
         time: TimeFormat,
         scrollbar: bool,
         media: Rc<AppMedia>,
+        players: Option<semaphore_ui::player::Players>,
         open_attachment: OpenAttachment,
         server_url: ServerUrl,
         window: &mut Window,
@@ -181,6 +191,7 @@ impl ConversationPane {
             marked_read: None,
             focused: window.is_window_active(),
             media,
+            players,
             open_attachment,
             list_subscription: None,
             server_url,
@@ -365,6 +376,7 @@ impl ConversationPane {
                     time,
                     scrollbar,
                     follow_theme: true,
+                    players: self.players.clone(),
                     ..ListOptions::default()
                 },
                 cx,
@@ -820,10 +832,18 @@ pub fn mime_for(name: &str) -> String {
         "txt" | "log" | "md" => "text/plain",
         "json" => "application/json",
         "zip" => "application/zip",
-        "mp4" => "video/mp4",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
         "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "ogv" => "video/ogg",
+        "avi" => "video/x-msvideo",
         "mp3" => "audio/mpeg",
-        "ogg" => "audio/ogg",
+        "m4a" => "audio/mp4",
+        "aac" => "audio/aac",
+        "ogg" | "oga" => "audio/ogg",
+        "opus" => "audio/opus",
+        "flac" => "audio/flac",
         "wav" => "audio/wav",
         _ => "application/octet-stream",
     }

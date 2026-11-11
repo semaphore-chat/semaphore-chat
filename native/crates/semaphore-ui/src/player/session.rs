@@ -279,6 +279,20 @@ impl Playback {
         }
     }
 
+    /// Stops for good and goes back to the first state, freeing the player and its surface (a
+    /// sign-out). The next play opens again.
+    pub fn close(&mut self) {
+        self.player = None;
+        self.generation += 1;
+        self.inbox.current.store(u64::MAX, Ordering::Release);
+        if let Some(frames) = &self.frames {
+            frames.end(&self.key());
+        }
+        self.phase = Phase::Idle;
+        self.position = Duration::ZERO;
+        self.buffered.clear();
+    }
+
     /// Opens a failed source again.
     pub fn retry(&mut self) {
         self.open();

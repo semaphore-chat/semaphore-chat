@@ -167,11 +167,9 @@ async fn upload_file(
     // Deterministic, so a run's screenshots and logs repeat: the nth upload's id is always the same.
     let next = lock(&inner.data).files.len() as u128 + 1;
     let id = uuid::Uuid::from_u128(0x0000_f11e_0000_4000_8000_0000_0000_0000 | next).to_string();
-    let file_type = if file.mime_type.starts_with("image/") {
-        "IMAGE"
-    } else {
-        "DOCUMENT"
-    };
+    let file_type = messages::file_type_for(&file.mime_type)
+        .as_str()
+        .into_owned();
     let record = json!({
         "id": id, "checksum": "fake", "deletedAt": null, "fileCommunityId": null,
         "fileMessageId": resource_id, "fileType": file_type, "fileUserId": null,

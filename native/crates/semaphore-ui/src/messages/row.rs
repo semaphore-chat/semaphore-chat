@@ -132,6 +132,9 @@ pub(crate) struct Shared {
     pub reaction_users: RefCell<HashMap<(String, String), ReactionUsers>>,
     /// Laid out at a phone's width last frame: the toolbar becomes one button, the menu a sheet.
     pub phone: Cell<bool>,
+    /// The window's players (`ListOptions::players`), and this list's own.
+    pub players: Option<crate::player::Players>,
+    pub list_players: crate::player::ListPlayers,
 }
 
 impl Shared {
@@ -1007,6 +1010,9 @@ fn render_link_previews(
 }
 
 fn render_video(attachment: &AttachmentView, palette: &Palette) -> impl IntoElement {
+    // The icon and caption sit on the black box in every theme, so they take the dark theme's
+    // ink: a light theme's secondary text would vanish there.
+    let ink = Palette::dark().text_secondary;
     card(palette)
         .relative()
         .w(px(VIDEO_WIDTH))
@@ -1018,16 +1024,77 @@ fn render_video(attachment: &AttachmentView, palette: &Palette) -> impl IntoElem
         .items_center()
         .justify_center()
         .gap(px(8.))
-        .child(icon(icons::PLAY, 48., palette.text_secondary))
+        .child(icon(icons::PLAY, 48., ink))
         .child(
             div()
                 .max_w_full()
                 .px(px(16.))
                 .truncate()
                 .text_size(px(CAPTION_SIZE))
-                .text_color(palette.text_secondary)
+                .text_color(ink)
                 .child(attachment.filename.clone()),
         )
+}
+
+/// An audio or video attachment with its inline player, which outlives the row's element.
+fn render_player(
+    shared: &Rc<Shared>,
+    players: &crate::player::Players,
+    row: &MessageRow,
+    index: usize,
+    attachment: &AttachmentView,
+    cx: &mut App,
+) -> AnyElement {
+    let weak = Rc::downgrade(shared);
+    let player = shared.list_players.get_or_create(
+        players,
+        row,
+        attachment,
+        |player, cx| {
+            let on_event = move |event: &crate::player::PlayerViewEvent, cx: &mut App| {
+                let Some(shared) = weak.upgrade() else {
+                    return;
+                };
+                let event = match event {
+                    crate::player::PlayerViewEvent::Download { file_id } => {
+                        MessageListEvent::OpenAttachment {
+                            file_id: file_id.clone(),
+                        }
+                    }
+                    crate::player::PlayerViewEvent::OpenExternally { file_id } => {
+                        MessageListEvent::OpenExternally {
+                            file_id: file_id.clone(),
+                        }
+                    }
+                    crate::player::PlayerViewEvent::Expanded(_) => return,
+                };
+                shared.emit(event, cx);
+            };
+            match player {
+                crate::player::AttachmentPlayer::Audio(view) => {
+                    cx.subscribe(view, move |_, event, cx| on_event(event, cx))
+                }
+                crate::player::AttachmentPlayer::Video(view) => {
+                    cx.subscribe(view, move |_, event, cx| on_event(event, cx))
+                }
+            }
+        },
+        cx,
+    );
+    div()
+        .id(("attachment-player", (row.seq as u64) << 8 | index as u64))
+        .test_support()
+        // Audio fills its width; video sizes itself from the clip's shape.
+        .when(
+            matches!(player, crate::player::AttachmentPlayer::Audio(_)),
+            |el| el.w(px(crate::player::model::AUDIO_MAX_WIDTH)),
+        )
+        .max_w_full()
+        .min_w_0()
+        // Presses on the controls are the player's, not the start of a text selection.
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(player.into_any_element())
+        .into_any_element()
 }
 
 fn render_attachments(
@@ -1054,6 +1121,15 @@ fn render_attachments(
                 cx,
             )
             .into_any_element(),
+            AttachmentKind::Video | AttachmentKind::Audio
+                if let Some(players) = shared
+                    .players
+                    .as_ref()
+                    // A removed message's files (a moderator sees them) don't play.
+                    .filter(|_| !row.removed && crate::player::Players::plays(attachment)) =>
+            {
+                render_player(shared, players, row, index, attachment, cx)
+            }
             AttachmentKind::Video => render_video(attachment, &palette).into_any_element(),
             AttachmentKind::Audio => {
                 render_file_card(shared, row.seq, index, attachment, icons::AUDIO_FILE)
