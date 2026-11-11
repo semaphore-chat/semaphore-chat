@@ -11,7 +11,7 @@ publish.workspace = true
 fixtures = []
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt", "sync"] }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 # Inline, not workspace, for the same reason as chrono below.
 proptest = "1.12"
 
