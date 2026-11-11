@@ -196,7 +196,9 @@ impl AppRoot {
             core: core.clone(),
             exec: services.exec.clone(),
             store: files::store(),
-            previews: Arc::new(PreviewFetcher::new(self.config.link_preview_images)),
+            previews: Arc::new(PreviewFetcher::new(
+                self.config.settings.get().link_preview_images,
+            )),
             arrived,
             community: std::cell::RefCell::new(None),
         });

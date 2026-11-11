@@ -8098,6 +8098,8 @@ dependencies = [
  "semaphore-platform-desktop",
  "semaphore-sysaudio",
  "semaphore-ui",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

@@ -1,0 +1,520 @@
+//! The local settings store: typed, versioned JSON at `<data dir>/settings.json`.
+//!
+//! - A missing file gives the defaults; unknown fields are ignored.
+//! - A file written by a newer build (`version` above [`CURRENT_VERSION`]) is never touched: the app
+//!   runs on defaults in memory and `save` refuses, so an older build can't overwrite newer settings.
+//! - A corrupt file is renamed to `settings.json.corrupt` and the defaults are used.
+//! - Saves are atomic: a temp file in the same directory, fsynced, renamed over the old file. Mode
+//!   0600 on Unix.
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
+
+/// The settings file's name inside the data directory.
+pub const SETTINGS_FILE: &str = "settings.json";
+/// The schema version this build reads and writes.
+pub const CURRENT_VERSION: u32 = 1;
+/// A user's volume, in percent, is clamped to this.
+pub const MAX_USER_VOLUME: u8 = 200;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VoiceSettings {
+    pub input_device: Option<String>,
+    pub output_device: Option<String>,
+    pub noise_suppression: bool,
+    pub echo_cancellation: bool,
+    pub auto_gain: bool,
+    pub push_to_talk: bool,
+    pub push_to_talk_key: Option<String>,
+}
+
+impl Default for VoiceSettings {
+    fn default() -> Self {
+        Self {
+            input_device: None,
+            output_device: None,
+            noise_suppression: true,
+            echo_cancellation: true,
+            auto_gain: true,
+            push_to_talk: false,
+            push_to_talk_key: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WindowState {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub version: u32,
+    pub voice: VoiceSettings,
+    /// Per-user playback volume in percent (0..=200), by user id.
+    pub user_volumes: BTreeMap<String, u8>,
+    pub close_to_tray: bool,
+    pub window: Option<WindowState>,
+    pub last_channel: Option<String>,
+    /// Load link previews' images from the sites they're on. Off by default: each one tells that
+    /// site the viewer's address.
+    pub link_preview_images: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_VERSION,
+            voice: VoiceSettings::default(),
+            user_volumes: BTreeMap::new(),
+            close_to_tray: false,
+            window: None,
+            last_channel: None,
+            link_preview_images: false,
+        }
+    }
+}
+
+/// Why a save didn't happen.
+#[derive(Debug)]
+pub enum SaveError {
+    /// The file on disk is from a newer build; it is left alone.
+    NewerOnDisk,
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for SaveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NewerOnDisk => {
+                f.write_str("settings.json is from a newer version; not overwriting")
+            }
+            Self::Io(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for SaveError {}
+
+impl From<std::io::Error> for SaveError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+/// The settings and where they live.
+#[derive(Debug, Clone)]
+pub struct SettingsStore {
+    path: PathBuf,
+    settings: Settings,
+    /// The file on disk is newer than this build knows: never write.
+    read_only: bool,
+}
+
+impl SettingsStore {
+    /// Loads `<data_dir>/settings.json`. Never fails: see the module docs for each bad case.
+    pub fn load(data_dir: &Path) -> Self {
+        let path = data_dir.join(SETTINGS_FILE);
+        let mut store = Self {
+            path,
+            settings: Settings::default(),
+            read_only: false,
+        };
+        let text = match std::fs::read_to_string(&store.path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return store,
+            Err(error) => {
+                // Unreadable (permissions, not UTF-8): don't clobber it either.
+                if error.kind() == std::io::ErrorKind::InvalidData {
+                    store.quarantine();
+                } else {
+                    log::warn!("cannot read {}: {error}", store.path.display());
+                    store.read_only = true;
+                }
+                return store;
+            }
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&text) else {
+            store.quarantine();
+            return store;
+        };
+        let Some(object) = value.as_object() else {
+            store.quarantine();
+            return store;
+        };
+        let version = match object.get("version") {
+            None => 0,
+            Some(v) => match v.as_u64().and_then(|v| u32::try_from(v).ok()) {
+                Some(v) => v,
+                None => {
+                    store.quarantine();
+                    return store;
+                }
+            },
+        };
+        if version > CURRENT_VERSION {
+            log::warn!(
+                "settings.json is version {version}, newer than {CURRENT_VERSION}: using defaults and leaving it alone"
+            );
+            store.read_only = true;
+            return store;
+        }
+        let migrated = migrate(version, value);
+        match serde_json::from_value::<Settings>(migrated) {
+            Ok(mut settings) => {
+                settings.version = CURRENT_VERSION;
+                for percent in settings.user_volumes.values_mut() {
+                    *percent = (*percent).min(MAX_USER_VOLUME);
+                }
+                store.settings = settings;
+            }
+            Err(_) => store.quarantine(),
+        }
+        store
+    }
+
+    /// Settings that live only in memory: `save` refuses. For rigs and tests of other code.
+    pub fn ephemeral(settings: Settings) -> Self {
+        Self {
+            path: PathBuf::new(),
+            settings,
+            read_only: true,
+        }
+    }
+
+    pub fn get(&self) -> &Settings {
+        &self.settings
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Whether `save` will refuse because a newer build's file is on disk.
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    /// Changes the settings in memory, then saves them.
+    pub fn update(&mut self, change: impl FnOnce(&mut Settings)) -> Result<(), SaveError> {
+        change(&mut self.settings);
+        self.settings.version = CURRENT_VERSION;
+        for percent in self.settings.user_volumes.values_mut() {
+            *percent = (*percent).min(MAX_USER_VOLUME);
+        }
+        self.save()
+    }
+
+    /// Sets one user's volume, clamped to 0..=200, and saves.
+    pub fn set_user_volume(&mut self, user_id: &str, percent: u32) -> Result<(), SaveError> {
+        let clamped =
+            u8::try_from(percent.min(u32::from(MAX_USER_VOLUME))).unwrap_or(MAX_USER_VOLUME);
+        self.update(|s| {
+            s.user_volumes.insert(user_id.to_owned(), clamped);
+        })
+    }
+
+    /// Writes the settings atomically. Refuses when a newer build's file is on disk.
+    pub fn save(&self) -> Result<(), SaveError> {
+        if self.read_only {
+            return Err(SaveError::NewerOnDisk);
+        }
+        let dir = self.path.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(dir)?;
+        let json = serde_json::to_vec_pretty(&self.settings).map_err(std::io::Error::other)?;
+        let tmp = dir.join(format!("{SETTINGS_FILE}.tmp-{}", std::process::id()));
+        let written = (|| -> std::io::Result<()> {
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt as _;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&tmp)?;
+            file.write_all(&json)?;
+            file.write_all(b"\n")?;
+            file.sync_all()?;
+            drop(file);
+            std::fs::rename(&tmp, &self.path)
+        })();
+        if written.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        Ok(written?)
+    }
+
+    /// Moves a file we can't parse aside, so the next save doesn't destroy what a person may want
+    /// to repair by hand.
+    fn quarantine(&mut self) {
+        let mut corrupt = self.path.clone().into_os_string();
+        corrupt.push(".corrupt");
+        if let Err(error) = std::fs::rename(&self.path, PathBuf::from(&corrupt)) {
+            log::warn!("cannot move the corrupt settings file aside: {error}");
+            // Couldn't move it: don't write over it either.
+            self.read_only = true;
+        } else {
+            log::warn!(
+                "settings.json was unreadable; kept as settings.json.corrupt, using defaults"
+            );
+        }
+    }
+}
+
+/// Brings an older file's JSON up to [`CURRENT_VERSION`], one step per version.
+fn migrate(from_version: u32, mut value: Value) -> Value {
+    let mut version = from_version;
+    while version < CURRENT_VERSION {
+        value = match version {
+            0 => migrate_v0_to_v1(value),
+            _ => value,
+        };
+        version += 1;
+    }
+    value
+}
+
+/// v0 had no `version` field and kept the push-to-talk and device choices at the top level.
+fn migrate_v0_to_v1(mut value: Value) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        let mut voice = match object.remove("voice") {
+            Some(Value::Object(voice)) => voice,
+            _ => serde_json::Map::new(),
+        };
+        for (old, new) in [
+            ("input_device", "input_device"),
+            ("output_device", "output_device"),
+            ("push_to_talk", "push_to_talk"),
+            ("push_to_talk_key", "push_to_talk_key"),
+        ] {
+            if let Some(v) = object.remove(old) {
+                voice.entry(new).or_insert(v);
+            }
+        }
+        object.insert("voice".to_owned(), Value::Object(voice));
+        object.insert("version".to_owned(), Value::from(1));
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            static NEXT: AtomicU32 = AtomicU32::new(0);
+            let dir = std::env::temp_dir().join(format!(
+                "semaphore-settings-test-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+        fn file(&self) -> PathBuf {
+            self.0.join(SETTINGS_FILE)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn missing_file_gives_defaults() {
+        let dir = TempDir::new();
+        let store = SettingsStore::load(&dir.0);
+        assert_eq!(store.get(), &Settings::default());
+        assert!(!store.is_read_only());
+        assert!(!store.get().link_preview_images);
+        assert!(!dir.file().exists(), "loading writes nothing");
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let dir = TempDir::new();
+        let mut store = SettingsStore::load(&dir.0);
+        store
+            .update(|s| {
+                s.voice.input_device = Some("mic".into());
+                s.voice.push_to_talk = true;
+                s.voice.push_to_talk_key = Some("F13".into());
+                s.close_to_tray = true;
+                s.last_channel = Some("cc-general".into());
+                s.link_preview_images = true;
+                s.window = Some(WindowState {
+                    x: -5,
+                    y: 10,
+                    width: 1280,
+                    height: 800,
+                    maximized: true,
+                });
+            })
+            .unwrap();
+        store.set_user_volume("u1", 150).unwrap();
+        let loaded = SettingsStore::load(&dir.0);
+        assert_eq!(loaded.get(), store.get());
+        assert_eq!(loaded.get().user_volumes["u1"], 150);
+    }
+
+    #[test]
+    fn unknown_fields_are_ignored() {
+        let dir = TempDir::new();
+        std::fs::write(
+            dir.file(),
+            r#"{"version":1,"close_to_tray":true,"from_the_future":{"a":1},"voice":{"auto_gain":false,"extra":3}}"#,
+        )
+        .unwrap();
+        let store = SettingsStore::load(&dir.0);
+        assert!(store.get().close_to_tray);
+        assert!(!store.get().voice.auto_gain);
+        assert!(
+            store.get().voice.noise_suppression,
+            "absent fields take defaults"
+        );
+    }
+
+    #[test]
+    fn newer_version_is_left_untouched() {
+        let dir = TempDir::new();
+        let text = r#"{"version":99,"close_to_tray":true,"shiny":[1,2,3]}"#;
+        std::fs::write(dir.file(), text).unwrap();
+        let mut store = SettingsStore::load(&dir.0);
+        assert_eq!(store.get(), &Settings::default(), "defaults in memory");
+        assert!(store.is_read_only());
+        assert!(matches!(
+            store.update(|s| s.close_to_tray = false),
+            Err(SaveError::NewerOnDisk)
+        ));
+        assert!(matches!(store.save(), Err(SaveError::NewerOnDisk)));
+        assert_eq!(std::fs::read_to_string(dir.file()).unwrap(), text);
+        assert!(!dir.0.join("settings.json.corrupt").exists());
+    }
+
+    #[test]
+    fn corrupt_file_is_renamed_and_defaults_used() {
+        let dir = TempDir::new();
+        std::fs::write(dir.file(), "{ not json").unwrap();
+        let mut store = SettingsStore::load(&dir.0);
+        assert_eq!(store.get(), &Settings::default());
+        assert!(!dir.file().exists());
+        assert_eq!(
+            std::fs::read_to_string(dir.0.join("settings.json.corrupt")).unwrap(),
+            "{ not json"
+        );
+        store.update(|s| s.close_to_tray = true).unwrap();
+        assert!(SettingsStore::load(&dir.0).get().close_to_tray);
+    }
+
+    #[test]
+    fn wrong_types_count_as_corrupt() {
+        let dir = TempDir::new();
+        std::fs::write(dir.file(), r#"{"version":1,"close_to_tray":"yes"}"#).unwrap();
+        let store = SettingsStore::load(&dir.0);
+        assert_eq!(store.get(), &Settings::default());
+        assert!(dir.0.join("settings.json.corrupt").exists());
+    }
+
+    #[test]
+    fn volumes_are_clamped_on_set_and_on_load() {
+        let dir = TempDir::new();
+        let mut store = SettingsStore::load(&dir.0);
+        store.set_user_volume("loud", 9000).unwrap();
+        store.set_user_volume("zero", 0).unwrap();
+        assert_eq!(store.get().user_volumes["loud"], 200);
+        assert_eq!(store.get().user_volumes["zero"], 0);
+        std::fs::write(
+            dir.file(),
+            r#"{"version":1,"user_volumes":{"a":250,"b":100}}"#,
+        )
+        .unwrap();
+        let loaded = SettingsStore::load(&dir.0);
+        assert_eq!(loaded.get().user_volumes["a"], 200);
+        assert_eq!(loaded.get().user_volumes["b"], 100);
+    }
+
+    #[test]
+    fn save_is_atomic_and_leaves_no_temp_file() {
+        let dir = TempDir::new();
+        let mut store = SettingsStore::load(&dir.0);
+        store.update(|s| s.close_to_tray = true).unwrap();
+        store.update(|s| s.close_to_tray = false).unwrap();
+        let names: Vec<String> = std::fs::read_dir(&dir.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec![SETTINGS_FILE.to_owned()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saved_file_is_private() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = TempDir::new();
+        let mut store = SettingsStore::load(&dir.0);
+        store.update(|s| s.close_to_tray = true).unwrap();
+        let mode = std::fs::metadata(dir.file()).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn creates_the_data_dir_on_save() {
+        let dir = TempDir::new();
+        let nested = dir.0.join("a").join("b");
+        let mut store = SettingsStore::load(&nested);
+        store.update(|s| s.close_to_tray = true).unwrap();
+        assert!(nested.join(SETTINGS_FILE).exists());
+    }
+
+    #[test]
+    fn migrates_v0_to_v1() {
+        let v0 = serde_json::json!({
+            "input_device": "old-mic",
+            "push_to_talk": true,
+            "push_to_talk_key": "F13",
+            "close_to_tray": true
+        });
+        let migrated = migrate(0, v0);
+        let settings: Settings = serde_json::from_value(migrated).unwrap();
+        assert_eq!(settings.version, 1);
+        assert_eq!(settings.voice.input_device.as_deref(), Some("old-mic"));
+        assert!(settings.voice.push_to_talk);
+        assert_eq!(settings.voice.push_to_talk_key.as_deref(), Some("F13"));
+        assert!(settings.close_to_tray);
+    }
+
+    #[test]
+    fn loading_a_v0_file_migrates_it() {
+        let dir = TempDir::new();
+        std::fs::write(
+            dir.file(),
+            r#"{"push_to_talk":true,"input_device":"old-mic"}"#,
+        )
+        .unwrap();
+        let store = SettingsStore::load(&dir.0);
+        assert_eq!(store.get().version, CURRENT_VERSION);
+        assert!(store.get().voice.push_to_talk);
+        assert_eq!(store.get().voice.input_device.as_deref(), Some("old-mic"));
+    }
+
+    #[test]
+    fn migrating_current_version_changes_nothing() {
+        let value = serde_json::to_value(Settings::default()).unwrap();
+        assert_eq!(migrate(CURRENT_VERSION, value.clone()), value);
+    }
+}
