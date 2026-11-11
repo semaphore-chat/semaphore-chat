@@ -474,3 +474,37 @@ pub(crate) fn flush(inner: &Inner, emits: Vec<Emit>) {
         inner.emit_to_user(&emit.user, emit.event, emit.payload);
     }
 }
+
+/// The `friend_request_as` control: `from` asks the signed-in user to be friends, as their own
+/// client's `sendFriendRequest` would. Like the backend, nothing goes over the socket: the request
+/// shows when the friends list is read next. `Err` if `from` isn't a user, is `me`, or a row
+/// between them exists already.
+pub(crate) fn friend_request_as(inner: &Inner, from: &str) -> Result<String, &'static str> {
+    let me = inner.scenario.me.clone();
+    let Some(other) = inner.scenario.user(from).cloned() else {
+        return Err("fromId is not a user of the scenario");
+    };
+    if other.id == me.id {
+        return Err("fromId is the signed-in user");
+    }
+    let now = inner.now();
+    let mut data = crate::lock(&inner.data);
+    let exists = data.social.friendships.iter().any(|row| {
+        (row.user_a_id == me.id && row.user_b_id == other.id)
+            || (row.user_a_id == other.id && row.user_b_id == me.id)
+    });
+    if exists {
+        return Err("a friendship or request between them exists already");
+    }
+    let id = data.social.new_id("friendship");
+    data.social.friendships.push(FriendshipWithUsersDto {
+        created_at: now,
+        id: id.clone(),
+        status: semaphore_wire::enums::FriendshipStatus::Pending,
+        user_a_id: other.id.clone(),
+        user_a: other,
+        user_b_id: me.id.clone(),
+        user_b: me,
+    });
+    Ok(id)
+}

@@ -1503,3 +1503,123 @@ async fn every_new_operation_can_be_failed_by_its_operation_id() {
         assert_eq!(body["errorCode"], "UNAVAILABLE", "{operation}");
     }
 }
+
+// ----- Controls that act as another user (the slice rig's W2 steps) ----------------------------
+
+#[tokio::test]
+async fn control_post_dm_as_reaches_the_dms_members_and_notifies_them() {
+    let (server, client, base) = showcase().await;
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut priya = connect_as(&base, &id("u-priya")).await;
+    let mut samira = connect_as(&base, &id("u-samira")).await;
+    let (status, posted) = post(
+        &client,
+        &base,
+        "/__control/post_dm_as",
+        json!({ "dmGroupId": id("dm-priya"), "authorId": id("u-priya"), "text": "lunch?" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{posted}");
+    let heard = settle(&server, &mut [&mut me, &mut priya, &mut samira]).await;
+    assert_eq!(
+        names(&heard[0]),
+        vec!["newDirectMessage", "newNotification"]
+    );
+    assert_eq!(heard[0][0].1["message"]["id"], posted["id"]);
+    assert_eq!(
+        heard[0][0].1["message"]["directMessageGroupId"],
+        id("dm-priya")
+    );
+    assert_eq!(heard[0][1].1["type"], "DIRECT_MESSAGE");
+    // The author hears their own message, and not a notification; a non-member hears nothing.
+    assert_eq!(names(&heard[1]), vec!["newDirectMessage"]);
+    assert!(heard[2].is_empty(), "{:?}", heard[2]);
+    let (_, groups) = get(&client, &base, "/api/direct-messages").await;
+    assert_eq!(groups[0]["id"], id("dm-priya"));
+    assert_eq!(groups[0]["lastMessage"]["id"], posted["id"]);
+
+    // Unknown DMs and authors are refused.
+    for body in [
+        json!({ "dmGroupId": id("dm-nope"), "authorId": id("u-priya"), "text": "x" }),
+        json!({ "dmGroupId": id("dm-priya"), "authorId": id("u-nope"), "text": "x" }),
+        json!({ "dmGroupId": id("dm-priya"), "authorId": id("u-priya") }),
+    ] {
+        let (status, _) = post(&client, &base, "/__control/post_dm_as", body).await;
+        assert_eq!(status, 400);
+    }
+}
+
+#[tokio::test]
+async fn control_post_as_with_a_mention_notifies_the_mentioned_user() {
+    let (server, client, base) = showcase().await;
+    let mut me = connect_as(&base, &id("me")).await;
+    let (status, posted) = post(
+        &client,
+        &base,
+        "/__control/post_as",
+        json!({
+            "channelId": "cc-general",
+            "authorId": id("u-priya"),
+            "text": "look at this ",
+            "mentionUserId": id("me"),
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "{posted}");
+    let heard = settle(&server, &mut [&mut me]).await;
+    assert_eq!(names(&heard[0]), vec!["newMessage", "newNotification"]);
+    let spans = heard[0][0].1["message"]["spans"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(spans[1]["type"], "USER_MENTION");
+    assert_eq!(spans[1]["userId"], id("me"));
+    assert_eq!(spans[1]["text"], "@alexk");
+    assert_eq!(heard[0][1].1["type"], "USER_MENTION");
+    assert_eq!(heard[0][1].1["messageId"], posted["id"]);
+}
+
+#[tokio::test]
+async fn control_friend_request_as_is_a_received_request_me_can_accept() {
+    let (server, client, base) = showcase().await;
+    let mut me = connect_as(&base, &id("me")).await;
+    let (status, made) = post(
+        &client,
+        &base,
+        "/__control/friend_request_as",
+        json!({ "fromId": id("u-zara") }),
+    )
+    .await;
+    assert_eq!(status, 200, "{made}");
+    // As the backend: no socket event; the list shows it.
+    let heard = settle(&server, &mut [&mut me]).await;
+    assert!(heard[0].is_empty(), "{:?}", heard[0]);
+    let (_, pending) = get(&client, &base, "/api/friends/requests").await;
+    assert_eq!(
+        ids_of(&pending["received"], "id"),
+        vec![
+            id("sc-friend-u-chloe"),
+            made["id"].as_str().unwrap().to_owned()
+        ]
+    );
+    assert_eq!(pending["received"][1]["userAId"], id("u-zara"));
+    assert_eq!(pending["received"][1]["userBId"], id("me"));
+
+    let path = format!("/api/friends/accept/{}", made["id"].as_str().unwrap());
+    let (status, accepted) = post(&client, &base, &path, json!({})).await;
+    assert_eq!(status, 201, "{accepted}");
+    let (_, friends) = get(&client, &base, "/api/friends").await;
+    assert!(ids_of(&friends, "id").contains(&id("u-zara")), "{friends}");
+
+    // Twice, from me, or from nobody: refused.
+    for from in [id("u-zara"), id("me"), id("u-nope")] {
+        let (status, _) = post(
+            &client,
+            &base,
+            "/__control/friend_request_as",
+            json!({ "fromId": from }),
+        )
+        .await;
+        assert_eq!(status, 400);
+    }
+}
