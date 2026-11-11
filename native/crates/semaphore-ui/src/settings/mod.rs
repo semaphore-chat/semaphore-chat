@@ -265,8 +265,18 @@ pub enum VoiceSettingsEvent {
     RefreshDevices,
 }
 
+/// What this build can't do yet, said in the tab where it would be. `None` = it can.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct VoiceLimits {
+    /// In place of the mic test's button and meter.
+    pub mic_test: Option<SharedString>,
+    /// Under the push-to-talk key, while push to talk is chosen.
+    pub push_to_talk: Option<SharedString>,
+}
+
 pub struct VoiceVideoSettings {
     state: VoiceVideoState,
+    limits: VoiceLimits,
     devices: DeviceLists,
     mic_level: Option<f32>,
     /// The voice-activity threshold to go back to after push to talk.
@@ -392,6 +402,10 @@ pub struct DesktopAppState {
     pub server_name: Option<String>,
     pub app_version: String,
     pub server_version: Option<String>,
+    /// A line under the links button: what registering would do here.
+    pub links_note: Option<String>,
+    /// Why registering is turned off; the button shows disabled with this under it.
+    pub links_blocked: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

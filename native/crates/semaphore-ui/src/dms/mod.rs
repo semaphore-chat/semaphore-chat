@@ -124,6 +124,8 @@ pub enum DmHeaderEvent {
     OpenMembers,
     /// Only offered with `search`: the search panel, for this conversation.
     Search,
+    /// A one-to-one DM's name: the other person's profile.
+    OpenProfile { user_id: String },
 }
 
 pub struct DmHeader {

@@ -172,6 +172,9 @@ fn main() -> ExitCode {
                 screen_capture: None,
                 heartbeat: semaphore_app::voice::HEARTBEAT,
                 notifier: desktop.notifier.clone(),
+                open_url: None,
+                pick_files: None,
+                links: Some(Arc::new(semaphore_app::desktop::DesktopLinks::from_env())),
             };
             let bounds =
                 semaphore_app::desktop::opening_bounds(config.settings.get().window.as_ref(), cx);

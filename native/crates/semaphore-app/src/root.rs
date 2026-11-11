@@ -7,7 +7,7 @@ use crate::conversation::{ConversationPane, PaneEvent};
 use crate::files::{self, AppMedia, PreviewFetcher};
 use crate::runtime::Activity;
 use crate::services::{self, Services, StartOptions};
-use crate::settings::{SHARE_FPS, SettingsStore, ShareSettings, ShareSize};
+use crate::settings::SettingsStore;
 use crate::voice::{AppVoice, VoiceRequest};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -20,10 +20,9 @@ use semaphore_core::platform::CaptureKind;
 use semaphore_core::{Core, CoreEvent};
 use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
-use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep, BrowserLogin};
+use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep};
 use semaphore_ui::kit::{
-    Button, Dialog, Menu, MenuItem, Radio, Spinner, Switch, Variant, emit_core_event,
-    on_core_event, text,
+    Button, Dialog, Menu, MenuItem, Spinner, Variant, emit_core_event, on_core_event, text,
 };
 use semaphore_ui::messages::{LruImageCache, MediaRef};
 use semaphore_ui::nav::Route;
@@ -37,7 +36,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+pub mod account;
 pub mod inbox;
+pub mod onboarding;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
@@ -69,7 +70,9 @@ pub struct AppRoot {
     server: Option<(String, String)>,
     auth: Option<Entity<AuthScreen>>,
     shell: Option<Entity<Shell>>,
+    /// This session's conversation pane (`build_pane`), and what it asks of the shell.
     pane: Option<Entity<ConversationPane>>,
+    pane_subscription: Option<Subscription>,
     /// The session the screens were last built for.
     shown: Option<SessionState>,
     /// Signed-in sessions go to their first community once, as the web's last route would.
@@ -83,7 +86,6 @@ pub struct AppRoot {
     stage: Option<Entity<VoiceStage>>,
     /// The voice channel's name, from when it was joined.
     voice_channel_name: String,
-    devices_open: bool,
     /// The narrow bar's "more" sheet.
     more_open: bool,
     /// Our screen picker, while it's open.
@@ -97,6 +99,12 @@ pub struct AppRoot {
     images: Option<Entity<LruImageCache>>,
     /// W2: DMs, friends, notifications, links and idle (`inbox`).
     inbox: inbox::Inbox,
+    /// W3: profiles, settings, Home, creating a community (`account`).
+    account: account::Account,
+    /// W3: the signed-out pages (`onboarding`).
+    onboarding: onboarding::Onboarding,
+    /// What the server said about itself when it was last probed.
+    server_info: Option<semaphore_core::model::ServerInfo>,
     window: AnyWindowHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -151,6 +159,25 @@ impl AppRoot {
             }
         });
         let settings = config.settings.clone();
+        cx.set_global(crate::Seams {
+            pick_files: config
+                .pick_files
+                .clone()
+                .unwrap_or_else(crate::system_pick_files),
+            open_url: config
+                .open_url
+                .clone()
+                .unwrap_or_else(|| Rc::new(|url: &str, cx: &mut App| cx.open_url(url))),
+        });
+        // The theme this app last showed, until the server's appearance arrives.
+        if let Some(choice) = settings
+            .get()
+            .theme
+            .as_deref()
+            .and_then(semaphore_ui::theme::ThemeChoice::parse)
+        {
+            semaphore_ui::theme::apply(choice, cx);
+        }
         // Any key in the window is input, for idle.
         let keys = cx.observe_keystrokes(|this, _, _, cx| this.input_seen(cx));
         Self {
@@ -164,6 +191,7 @@ impl AppRoot {
             auth: None,
             shell: None,
             pane: None,
+            pane_subscription: None,
             shown: None,
             landed: false,
             account_open: false,
@@ -173,12 +201,14 @@ impl AppRoot {
             voice: None,
             stage: None,
             voice_channel_name: String::new(),
-            devices_open: false,
             media: None,
             viewer: None,
             viewer_focus: cx.focus_handle(),
             images: None,
             inbox: inbox::Inbox::default(),
+            account: account::Account::default(),
+            onboarding: onboarding::Onboarding::default(),
+            server_info: None,
             window: window.window_handle(),
             _subscriptions: vec![activation, keys],
         }
@@ -234,6 +264,10 @@ impl AppRoot {
 
     fn started(&mut self, services: Services, window: &mut Window, cx: &mut Context<Self>) {
         let core = services.core.clone();
+        // Browser sign-in's listener on 127.0.0.1.
+        core.set_loopback(Arc::new(
+            semaphore_platform_desktop::loopback::DesktopLoopback,
+        ));
         // Files: one store for the process, redrawn into whenever a fetch lands.
         let (arrived, landed) = async_channel::unbounded();
         cx.spawn(async move |_, cx| {
@@ -264,30 +298,6 @@ impl AppRoot {
             cx,
         ));
         self.media = Some(media.clone());
-        let opener = cx.entity().downgrade();
-        let open_attachment: crate::conversation::OpenAttachment =
-            Rc::new(move |attachment, window, cx| {
-                opener
-                    .update(cx, |root, cx| root.open_attachment(attachment, window, cx))
-                    .ok();
-            });
-        let backend = services.backend.clone();
-        let server_url: crate::conversation::ServerUrl = Rc::new(move || backend.server_url());
-        let pane = cx.new(|cx| {
-            ConversationPane::new(
-                core,
-                services.exec.clone(),
-                self.config.time,
-                self.config.scrollbar,
-                media,
-                open_attachment,
-                server_url,
-                window,
-                cx,
-            )
-        });
-        self._subscriptions
-            .push(cx.subscribe_in(&pane, window, Self::on_pane_event));
         let last_server = services.last_server.clone();
         // Voice: frames for this window, the controls, and the stage, made once.
         let frames = VideoFrames::for_window(window);
@@ -305,7 +315,7 @@ impl AppRoot {
             while let Ok(ask) = asks.recv().await {
                 let gone = this
                     .update(cx, |this, cx| {
-                        this.voice_request(ask);
+                        this.voice_request(ask, cx);
                         this.refresh_stage(cx);
                         cx.notify();
                     })
@@ -316,11 +326,11 @@ impl AppRoot {
             }
         })
         .detach();
+        voice.apply_settings(&self.settings.get().voice);
         let controller: Arc<dyn VoiceController> = voice.clone();
         let model = VoiceStageModel::default();
         self.stage = Some(cx.new(|cx| VoiceStage::new(model, frames, controller, window, cx)));
         self.voice = Some(voice);
-        self.pane = Some(pane);
         let audio = services.audio.clone();
         self.services = Some(services);
         self.start_inbox(audio, cx);
@@ -404,6 +414,9 @@ impl AppRoot {
                 .find(|channel| channel.id == channel_id)
         {
             self.voice_channel_name = channel.name;
+        }
+        if let Some(voice) = &self.voice {
+            voice.apply_settings(&self.settings.get().voice);
         }
         let core = services.core.clone();
         let joining = channel_id.clone();
@@ -625,6 +638,8 @@ impl AppRoot {
             _ => {}
         }
         self.inbox_on_core(event, cx);
+        self.account_on_core(event, cx);
+        self.onboarding_on_core(event, cx);
     }
 
     /// After sign-in, the first community instead of an empty home.
@@ -671,9 +686,12 @@ impl AppRoot {
         match &session {
             SessionState::SignedIn { .. } => {
                 self.auth = None;
+                self.drop_onboarding_pages();
                 self.remember_server();
                 if self.shell.is_none() {
+                    self.pane = Some(self.build_pane(window, cx));
                     self.shell = Some(self.build_shell(core.clone(), window, cx));
+                    self.build_account(window, cx);
                     // A link that came before sign-in is where this session lands.
                     self.landed = self.route_pending_link(cx);
                     self.land(cx);
@@ -688,7 +706,10 @@ impl AppRoot {
                 }
                 self.viewer = None;
                 self.shell = None;
+                self.pane = None;
+                self.pane_subscription = None;
                 self.drop_inbox();
+                self.drop_account();
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -700,19 +721,19 @@ impl AppRoot {
                 if notice.is_some()
                     && let Some((url, name)) = self.server.clone()
                 {
-                    auth.update(cx, |auth, cx| {
-                        auth.set_step(sign_in_step(url, name, notice), cx)
-                    });
+                    let step = self.sign_in_step(url, name, notice);
+                    auth.update(cx, |auth, cx| auth.set_step(step, cx));
                 }
                 auth.update(cx, |auth, cx| auth.set_session(session.clone(), cx));
                 self.auth = Some(auth);
+                self.probe_for_sign_in(window, cx);
             }
         }
     }
 
     fn build_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<AuthScreen> {
         let step = match self.server.clone() {
-            Some((url, name)) => sign_in_step(url, name, None),
+            Some((url, name)) => self.sign_in_step(url, name, None),
             None => AuthStep::ServerUrl {
                 testing: false,
                 error: None,
@@ -761,12 +782,16 @@ impl AppRoot {
                     move |this, result, _, cx| {
                         let step = match result {
                             Ok(info) => {
+                                this.server_info = Some(info.clone());
                                 let shown = name
                                     .filter(|name| !name.trim().is_empty())
                                     .or(info.name)
                                     .unwrap_or_else(|| info.url.clone());
                                 this.server = Some((info.url.clone(), shown.clone()));
-                                sign_in_step(info.url, shown, None)
+                                let mode = info.registration;
+                                auth.update(cx, |auth, cx| auth.set_registration(mode, cx))
+                                    .ok();
+                                this.sign_in_step(info.url, shown, None)
                             }
                             Err(error) => AuthStep::ServerUrl {
                                 testing: false,
@@ -798,16 +823,55 @@ impl AppRoot {
                     )
                 });
             }
-            // The web client does these; send the user there.
-            AuthEvent::Register | AuthEvent::ForgotPassword => {
-                if let Some((url, _)) = &self.server {
-                    cx.open_url(url);
-                }
-            }
-            AuthEvent::BrowserSignIn { .. } | AuthEvent::CancelBrowserSignIn => {
-                log::info!("browser sign-in needs the client-type backend: a follow-up");
+            AuthEvent::Register => self.open_register(None, window, cx),
+            AuthEvent::ForgotPassword => self.open_forgot_password(window, cx),
+            AuthEvent::BrowserSignIn { .. } => self.start_browser_sign_in(window, cx),
+            AuthEvent::CancelBrowserSignIn => {
+                core.cancel_browser_sign_in();
+                self.refresh_sign_in_step(cx);
             }
         }
+    }
+
+    /// The conversation pane for this session. Built per session: nothing of the last one (its
+    /// conversation, rows, drafts, threads, unread marker) may reach the next, and a conversation
+    /// shown again must be opened in core again, since signing out forgot it there.
+    fn build_pane(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<ConversationPane> {
+        let services = self
+            .services
+            .as_ref()
+            .expect("the pane is built once core is");
+        let media = self.media.clone().expect("media is set up with core");
+        let opener = cx.entity().downgrade();
+        let open_attachment: crate::conversation::OpenAttachment =
+            Rc::new(move |attachment, window, cx| {
+                opener
+                    .update(cx, |root, cx| root.open_attachment(attachment, window, cx))
+                    .ok();
+            });
+        let backend = services.backend.clone();
+        let server_url: crate::conversation::ServerUrl = Rc::new(move || backend.server_url());
+        let (core, exec) = (services.core.clone(), services.exec.clone());
+        let (time, scrollbar) = (self.config.time, self.config.scrollbar);
+        let pane = cx.new(|cx| {
+            ConversationPane::new(
+                core,
+                exec,
+                time,
+                scrollbar,
+                media,
+                open_attachment,
+                server_url,
+                window,
+                cx,
+            )
+        });
+        self.pane_subscription = Some(cx.subscribe_in(&pane, window, Self::on_pane_event));
+        pane
     }
 
     fn build_shell(
@@ -872,9 +936,13 @@ impl AppRoot {
         &mut self,
         _: &Entity<ConversationPane>,
         event: &PaneEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let PaneEvent::OpenProfile { user_id } = event {
+            self.open_profile(user_id.clone(), window, cx);
+            return;
+        }
         let Some(shell) = self.shell.clone() else {
             return;
         };
@@ -903,6 +971,7 @@ impl AppRoot {
                 shell.pinned_count = count;
                 cx.notify();
             }),
+            PaneEvent::OpenProfile { .. } => {}
         }
     }
 
@@ -922,7 +991,12 @@ impl AppRoot {
                 self.account_open = true;
                 cx.notify();
             }
-            ShellEvent::Navigated(route) => self.inbox_navigated(route, cx),
+            ShellEvent::Navigated(route) => {
+                self.inbox_navigated(route, cx);
+                self.account_navigated(route, window, cx);
+            }
+            ShellEvent::CreateCommunity => self.open_create_community(window, cx),
+            ShellEvent::OpenProfile { user_id } => self.open_profile(user_id.clone(), window, cx),
             ShellEvent::OpenNotifications => self.toggle_centre(cx),
             ShellEvent::JoinVoice { channel_id } => self.join_voice(channel_id.clone(), cx),
             ShellEvent::OpenPins => {
@@ -970,23 +1044,39 @@ impl AppRoot {
         let close = cx.entity().downgrade();
         let cancel = close.clone();
         let sign_out = close.clone();
-        let notifications = close.clone();
+        let profile = close.clone();
+        let settings = close.clone();
         Dialog::new(format!("Signed in as {name}"))
             .body(text(
                 Variant::Body2,
                 "Signing out forgets this session on this computer.",
             ))
             .action(
-                Button::new("account-notifications", "Notification settings").on_click(
-                    move |_, window, cx| {
-                        notifications
-                            .update(cx, |this, cx| {
-                                this.account_open = false;
-                                this.open_notification_settings(window, cx);
-                            })
-                            .ok();
-                    },
-                ),
+                Button::new("account-profile", "Profile").on_click(move |_, _, cx| {
+                    profile
+                        .update(cx, |this, cx| {
+                            this.account_open = false;
+                            if let Some(me) = this.core().and_then(|core| match core.session() {
+                                SessionState::SignedIn { me } => Some(me.id),
+                                _ => None,
+                            }) {
+                                this.shell_navigate(Route::Profile { user_id: me }, cx);
+                            }
+                            cx.notify();
+                        })
+                        .ok();
+                }),
+            )
+            .action(
+                Button::new("account-settings", "Settings").on_click(move |_, _, cx| {
+                    settings
+                        .update(cx, |this, cx| {
+                            this.account_open = false;
+                            this.open_settings(semaphore_ui::settings::SettingsTab::default(), cx);
+                            cx.notify();
+                        })
+                        .ok();
+                }),
             )
             .action(
                 Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
@@ -1017,10 +1107,12 @@ impl AppRoot {
 }
 
 impl AppRoot {
-    fn voice_request(&mut self, ask: VoiceRequest) {
+    fn voice_request(&mut self, ask: VoiceRequest, cx: &mut Context<Self>) {
         match ask {
             VoiceRequest::Redraw => {}
-            VoiceRequest::OpenDevices => self.devices_open = true,
+            VoiceRequest::OpenDevices => {
+                self.open_settings(semaphore_ui::settings::SettingsTab::VoiceVideo, cx)
+            }
             VoiceRequest::OpenMore => self.more_open = true,
             VoiceRequest::OpenPicker => self.picker = Some(PickerModel::loading()),
             // Only into a picker still open and still loading: a cancelled one stays closed.
@@ -1126,7 +1218,10 @@ impl AppRoot {
                         settings
                             .update(cx, |root, cx| {
                                 shut(root, cx);
-                                root.devices_open = true;
+                                root.open_settings(
+                                    semaphore_ui::settings::SettingsTab::VoiceVideo,
+                                    cx,
+                                );
                             })
                             .ok();
                     }),
@@ -1137,173 +1232,6 @@ impl AppRoot {
             }))
             .on_close(move |_, cx| {
                 close.update(cx, shut).ok();
-            })
-    }
-
-    /// Saves a change to the screen-share settings, and hands it to the next share.
-    fn set_share_settings(
-        &mut self,
-        change: impl FnOnce(&mut ShareSettings),
-        cx: &mut Context<Self>,
-    ) {
-        let mut next = self.settings.get().voice.screen_share;
-        change(&mut next);
-        if let Err(error) = self.settings.update(|s| s.voice.screen_share = next) {
-            log::warn!("saving the screen-share settings: {error}");
-        }
-        if let Some(voice) = &self.voice {
-            voice.set_share_settings(next);
-        }
-        cx.notify();
-    }
-
-    /// Which microphone and speakers: the two lists the engine knows, nothing else.
-    fn devices_dialog(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let devices = self
-            .voice
-            .as_ref()
-            .map(|voice| voice.devices())
-            .unwrap_or_default();
-        let sem = cx.sem().clone();
-        let close = cx.entity().downgrade();
-        let done = close.clone();
-        let list = |title: &'static str,
-                    prefix: &'static str,
-                    devices: Vec<semaphore_media_livekit::audio::AudioDevice>,
-                    input: bool| {
-            let mut column = div()
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .child(text(Variant::Subtitle2, title).text_color(sem.text_primary));
-            if devices.is_empty() {
-                column = column.child(text(Variant::Body2, "None found"));
-            }
-            for (index, device) in devices.into_iter().enumerate() {
-                let voice = self.voice.clone();
-                let id = device.id.clone();
-                let label = if device.is_default {
-                    format!("{} (default)", device.name)
-                } else {
-                    device.name.clone()
-                };
-                column = column.child(
-                    Button::new(ElementId::NamedInteger(prefix.into(), index as u64), label)
-                        .on_click(move |_, _, _| {
-                            if let Some(voice) = &voice {
-                                if input {
-                                    voice.engine.select_input(Some(id.clone()));
-                                } else {
-                                    voice.engine.select_output(Some(id.clone()));
-                                }
-                            }
-                        }),
-                );
-            }
-            column
-        };
-        let cameras = self
-            .voice
-            .as_ref()
-            .map(|voice| voice.engine.cameras())
-            .unwrap_or_default();
-        let mut camera_column = div()
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .child(text(Variant::Subtitle2, "Camera").text_color(sem.text_primary));
-        if cameras.is_empty() {
-            camera_column = camera_column.child(text(Variant::Body2, "None found"));
-        }
-        for (index, (id, name)) in cameras.into_iter().enumerate() {
-            let voice = self.voice.clone();
-            camera_column = camera_column.child(
-                Button::new(
-                    ElementId::NamedInteger("device-camera".into(), index as u64),
-                    name,
-                )
-                .on_click(move |_, _, _| {
-                    if let Some(voice) = &voice {
-                        voice.engine.select_camera(Some(id.clone()));
-                    }
-                }),
-            );
-        }
-        let share = self.settings.get().voice.screen_share;
-        let this = cx.entity().downgrade();
-        let sizes = ShareSize::ALL.iter().map(|size| {
-            let (size, this) = (*size, this.clone());
-            Radio::new(
-                ElementId::Name(format!("share-size-{}", size.label()).into()),
-                size.label(),
-                share.resolution == size,
-            )
-            .on_select(move |_, cx| {
-                this.update(cx, |root, cx| {
-                    root.set_share_settings(|s| s.resolution = size, cx)
-                })
-                .ok();
-            })
-        });
-        let rates = SHARE_FPS.iter().map(|fps| {
-            let (fps, this) = (*fps, this.clone());
-            Radio::new(
-                ElementId::Name(format!("share-fps-{fps}").into()),
-                format!("{fps} fps"),
-                share.fps == fps,
-            )
-            .on_select(move |_, cx| {
-                this.update(cx, |root, cx| root.set_share_settings(|s| s.fps = fps, cx))
-                    .ok();
-            })
-        });
-        let audio_this = this.clone();
-        let share_column = div()
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .child(text(Variant::Subtitle2, "Screen share").text_color(sem.text_primary))
-            .child(div().flex().flex_wrap().children(sizes))
-            .child(div().flex().flex_wrap().children(rates))
-            .child(
-                Switch::new("share-audio", "Share system audio", share.audio).on_change(
-                    move |on, _, cx| {
-                        audio_this
-                            .update(cx, |root, cx| root.set_share_settings(|s| s.audio = on, cx))
-                            .ok();
-                    },
-                ),
-            );
-        Dialog::new("Voice settings")
-            .body(
-                div()
-                    .id("voice-settings-body")
-                    .max_h(px(520.))
-                    .overflow_y_scroll()
-                    .flex()
-                    .flex_col()
-                    .gap(px(16.))
-                    .child(list("Input", "device-input", devices.inputs, true))
-                    .child(list("Output", "device-output", devices.outputs, false))
-                    .child(camera_column)
-                    .child(share_column),
-            )
-            .action(
-                Button::new("devices-done", "Done").on_click(move |_, _, cx| {
-                    done.update(cx, |this, cx| {
-                        this.devices_open = false;
-                        cx.notify();
-                    })
-                    .ok();
-                }),
-            )
-            .on_close(move |_, cx| {
-                close
-                    .update(cx, |this, cx| {
-                        this.devices_open = false;
-                        cx.notify();
-                    })
-                    .ok();
             })
     }
 
@@ -1383,16 +1311,6 @@ fn apply_os_event(core: &Core, event: OsEvent) {
     }
 }
 
-fn sign_in_step(server_url: String, server_name: String, notice: Option<String>) -> AuthStep {
-    AuthStep::SignIn {
-        server_url,
-        server_name,
-        browser: BrowserLogin::Unavailable,
-        notice,
-        password_reset: false,
-    }
-}
-
 /// The middle column for a route.
 #[allow(clippy::too_many_arguments)]
 fn content(
@@ -1467,6 +1385,19 @@ fn content(
             .upgrade()
             .and_then(|root| inbox::dm_conversation(&root, dm_group_id, false, window, cx))
             .unwrap_or_else(|| placeholder("Loading".into(), "")),
+        (
+            route @ (Route::Settings { .. }
+            | Route::Profile { .. }
+            | Route::ProfileEdit
+            | Route::Home
+            | Route::Invite { .. }),
+            _,
+        ) if let Some(element) = root
+            .upgrade()
+            .and_then(|root| root.read(cx).account_content(route, cx)) =>
+        {
+            element
+        }
         (Route::DirectMessages, _) => placeholder(
             "Your messages".into(),
             "Pick a conversation, or start a new one.",
@@ -1508,21 +1439,22 @@ impl Render for AppRoot {
             .on_mouse_move(cx.listener(|this, _, _, cx| this.input_seen(cx)))
             .on_scroll(cx.listener(|this, _, _, cx| this.input_seen(cx)));
         if let Some(shell) = &self.shell {
-            let overlays = self.inbox_overlays(cx);
+            let mut overlays = self.inbox_overlays(cx);
+            overlays.extend(self.account_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)
                 .when(self.account_open, |root| {
                     root.child(self.account_dialog(cx))
                 })
-                .when(self.devices_open, |root| {
-                    root.child(self.devices_dialog(cx))
-                })
                 .when(self.more_open, |root| root.child(self.more_dialog(cx)))
                 .when_some(self.picker.clone(), |root, picker| {
                     root.child(self.picker_dialog(&picker, cx))
                 })
                 .children(self.viewer_overlay(cx));
+        }
+        if let Some(page) = self.onboarding_page() {
+            return root.child(page);
         }
         if let Some(auth) = &self.auth {
             return root.child(auth.clone());

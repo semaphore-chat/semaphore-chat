@@ -1,0 +1,249 @@
+# W3: account, settings, sign-in extras and communities in the real app, against the showcase
+# scenario (alexk). Nothing reaches the desktop: the rig answers file pickers, records the URLs
+# the app opens (and plays the browser for them), and fakes the link handler.
+
+app 1280 800
+window activate
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+
+# 1. Signing out and in again in the same window: the conversation shown again is opened again,
+# and a message sent in it shows at once and is acked.
+type "before signing out"
+press enter
+wait core sent "before signing out"
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+type "after signing in again"
+press enter
+wait core text "after signing in again" within 5
+wait core sent "after signing in again"
+wait idle
+shot 01-second-sign-in-sent
+
+# 2. A profile from a message's author: the card, the page, then editing my own name and avatar.
+# The avatar comes from the file picker, which the rig answers.
+click-row message-author "before signing out"
+wait core profile-open $ID(me)
+wait core element profile-modal
+wait idle
+shot 02-profile-card
+click profile-view-page
+wait core route profile/$ID(me)
+wait core element profile-edit
+wait idle
+shot 03-profile-page
+click profile-edit
+wait core route profile-edit
+wait core element profile-display-name
+click profile-display-name
+press ctrl-a
+type "Alex Kim"
+pick-file rigs/slice/fixtures/sketch.png
+click profile-avatar-change
+wait core element profile-avatar-remove
+wait idle
+shot 04-profile-edit-picked
+click profile-save
+wait core route profile/$ID(me)
+expect requests UserController_updateProfile >= 1
+expect requests FileUploadController_uploadFile >= 1
+wait core element profile-edit
+wait idle
+shot 05-profile-saved
+
+# 3. Settings from the account menu, replacing W2's dialogs. Voice and video: push to talk and a
+# processing switch, saved and handed to the engine at once.
+click rail-account
+wait core label "Settings"
+click account-settings
+wait core route settings/notifications
+wait idle
+shot 06-settings-notifications
+click settings-tab-voice
+wait core route settings/voice
+expect core engine ptt off
+click voice-mode-push-to-talk
+wait core engine ptt on
+click voice-noise-suppression
+expect settings /voice/input_mode/mode push_to_talk
+expect settings /voice/noise_suppression false
+wait core element voice-ptt-limit
+wait core element voice-mic-test-limit
+wait idle
+shot 07-settings-voice-ptt
+
+# 4. Sessions: another device's, revoked from the list.
+server add_session "{\"deviceName\": \"Laptop\", \"ipAddress\": \"10.0.0.7\", \"id\": \"$ID(w3-laptop)\"}"
+click settings-tab-sessions
+wait core route settings/sessions
+wait core element session-revoke-$ID(w3-laptop)
+wait idle
+shot 08-settings-sessions
+click session-revoke-$ID(w3-laptop)
+wait core no-element session-revoke-$ID(w3-laptop)
+expect requests AuthController_revokeSession >= 1
+wait idle
+shot 09-session-revoked
+
+# 5. A desktop app signs in to the account elsewhere: a banner until dismissed, with a way to the
+# sessions.
+click settings-tab-notifications
+server emit_desktop_sign_in "{\"ipAddress\": \"203.0.113.9\"}"
+wait core desktop-sign-in shown
+wait core element desktop-sign-in-banner
+wait idle
+shot 10-desktop-sign-in-banner
+click desktop-sign-in-review
+wait core route settings/sessions
+expect core desktop-sign-in gone
+
+# 6. The desktop tab: the link handler (the rig's fake) and the link preview images switch.
+click settings-tab-desktop
+wait core route settings/desktop
+wait core element desktop-links-note
+wait idle
+shot 11-settings-desktop
+click desktop-register-links
+wait core label "Semaphore opens semaphore:// links on this computer."
+expect link-registrations 1
+click desktop-link-preview-images
+expect settings /link_preview_images true
+click desktop-link-preview-images
+expect settings /link_preview_images false
+
+# 7. Appearance: light, at once, everywhere: the settings, the shell and a conversation, a dialog.
+click settings-tab-appearance
+wait core route settings/appearance
+wait core theme dark-teal-minimal
+click appearance-dark
+wait core theme light-teal-minimal
+expect requests AppearanceSettingsController_updateSettings >= 1
+expect settings /theme light-teal-minimal
+wait idle
+shot 12-appearance-light-settings
+link "semaphore://community/$ID(c-couch)/channel/$ID(cc-general)"
+wait core channel $ID(cc-general)
+wait idle
+shot 13-appearance-light-conversation
+click rail-account
+wait core label "Sign out"
+wait idle
+shot 14-appearance-light-dialog
+click account-cancel
+
+# 8. A restart keeps it all: the theme from the first frame, the voice settings in the engine and
+# in the tab.
+restart
+wait core session signed-in
+expect core theme light-teal-minimal
+wait core channel $ID(cc-general)
+expect core engine ptt on
+click rail-account
+wait core label "Settings"
+click account-settings
+click settings-tab-voice
+wait core route settings/voice
+wait core element voice-ptt-limit
+wait idle
+shot 15-restart-settings-voice
+
+# 9. Create a community from the rail's "+", and land in it.
+click rail-create-community
+wait core element create-community-name
+click create-community-name
+type "Board Games"
+click create-community-description
+type "Friday nights"
+wait idle
+shot 16-create-community
+click create-community-submit
+wait core requests CommunityController_create >= 1
+wait core no-element create-community-name
+wait core label "Board Games"
+wait idle
+shot 17-community-created
+
+# 10. Signed out: a forgotten password, then an invite link that registers someone new.
+server public_settings "{\"passwordResetEnabled\": true}"
+server seed_invite "{\"code\": \"w3-invite\"}"
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core element auth-forgot
+click auth-forgot
+wait core element forgot-email
+click forgot-email
+type "alexk@example.com"
+click forgot-submit
+wait core element forgot-sent
+expect requests AuthController_forgotPassword >= 1
+wait idle
+shot 18-forgot-password-sent
+click forgot-back
+wait core element auth-username
+link "semaphore://join/w3-invite"
+wait core element invite-accept
+expect requests InviteController_getPublicInvite >= 1
+wait idle
+shot 19-invite-page
+click invite-accept
+wait core element register-username
+click register-username
+type "newcomer"
+click register-email
+type "newcomer@example.com"
+click register-password
+type "Password123!"
+wait idle
+shot 20-register-by-invite
+click register-submit
+wait core session signed-in
+expect requests UserController_register >= 1
+wait core route home
+wait idle
+shot 21-registered-home
+
+# 11. Sign in with the browser, end to end: the app opens the instance's desktop-login page, the
+# rig plays the browser (the signed-in user approves, the browser follows the redirect to the
+# app's loopback listener), and the app redeems the code.
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core element auth-browser
+click auth-browser
+wait core element auth-browser-cancel
+expect opened-url "/#/desktop-login?challenge="
+wait idle
+shot 22-browser-waiting
+browser approve
+wait core session signed-in
+expect requests AuthController_redeemDesktopLogin >= 1
+wait core channel $ID(cc-general)
+wait idle
+shot 23-browser-signed-in

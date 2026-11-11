@@ -98,6 +98,21 @@ impl FriendsPanel {
                     });
                 }
             }));
+            let profile = item(
+                format!("friend-profile-{id}"),
+                DesignIcon::Person,
+                "View Profile",
+                sem.text_primary,
+            )
+            .on_click(cx.listener({
+                let user_id = user_id.clone();
+                move |panel, _, _, cx| {
+                    panel.menu = None;
+                    cx.emit(FriendsEvent::OpenProfile {
+                        user_id: user_id.clone(),
+                    });
+                }
+            }));
             let remove = item(
                 format!("friend-remove-{id}"),
                 DesignIcon::PersonRemove,
@@ -133,6 +148,7 @@ impl FriendsPanel {
                             cx.notify();
                         }))
                         .child(message)
+                        .child(profile)
                         .child(remove),
                 ),
             )

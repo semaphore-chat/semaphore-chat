@@ -269,7 +269,7 @@ fn act(shared: &Rc<Shared>, seq: i64, action: MessageAction, window: &mut Window
 fn tool_button(shared: &Rc<Shared>, row: &MessageRow, action: MessageAction) -> impl IntoElement {
     let (seq, pinned) = (row.seq, row.pinned);
     let label = action.label_for(row, shared.permissions.get());
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let color = match action {
         MessageAction::Delete => palette.error,
         MessageAction::Unpin if pinned => palette.primary,
@@ -306,7 +306,7 @@ pub(crate) fn render_toolbar(
     if actions.is_empty() {
         return None;
     }
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let seq = row.seq;
     let tools = div()
         .id("message-toolbar")
@@ -412,7 +412,7 @@ fn menu_item(
     action: MessageAction,
     touch: bool,
 ) -> impl IntoElement {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let seq = row.seq;
     let label = action.label_for(row, shared.permissions.get());
     let color = if action.destructive() {
@@ -450,7 +450,7 @@ fn menu_item(
 }
 
 fn menu_items(shared: &Rc<Shared>, row: &MessageRow, touch: bool) -> Vec<AnyElement> {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let mut items = Vec::new();
     let mut last_group = None;
     for action in message_actions(row, shared.permissions.get()) {
@@ -476,7 +476,7 @@ pub(crate) fn render_menu(
     position: Point<Pixels>,
     cx: &mut Context<MessageList>,
 ) -> impl IntoElement {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     deferred(
         anchored().position(position).snap_to_window().child(
             div()
@@ -505,7 +505,7 @@ pub(crate) fn render_sheet(
     row: &MessageRow,
     cx: &mut Context<MessageList>,
 ) -> impl IntoElement {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let seq = row.seq;
     let react = shared.permissions.get().react
         && message_actions(row, shared.permissions.get()).contains(&MessageAction::React);

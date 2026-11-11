@@ -149,6 +149,9 @@ pub(crate) struct Accounts {
     pub communities: Vec<CreatedCommunity>,
     pub profile_order: ProfileOrder,
     pub held: Vec<HeldEvent>,
+    /// Fields `GET /instance/public-settings` answers differently, from the `public_settings`
+    /// control.
+    pub public_settings: serde_json::Map<String, serde_json::Value>,
     legacy_claimed: bool,
     next: u64,
 }
@@ -165,6 +168,7 @@ impl Accounts {
             communities: Vec::new(),
             profile_order: ProfileOrder::default(),
             held: Vec::new(),
+            public_settings: serde_json::Map::new(),
             legacy_claimed: false,
             next: 0,
         }

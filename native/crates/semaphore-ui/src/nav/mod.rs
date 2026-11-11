@@ -74,6 +74,16 @@ pub enum Route {
     Invite {
         invite_code: String,
     },
+    /// The settings page, on a tab.
+    Settings {
+        tab: crate::settings::SettingsTab,
+    },
+    /// Someone's profile page.
+    Profile {
+        user_id: String,
+    },
+    /// This user's profile, being edited.
+    ProfileEdit,
     /// A web path this slice has no screen for yet.
     Unbuilt {
         pattern: &'static str,
@@ -126,6 +136,11 @@ impl Route {
                 "/join/:inviteCode" => Route::Invite {
                     invite_code: param(0),
                 },
+                "/settings" => Route::Settings {
+                    tab: crate::settings::SettingsTab::default(),
+                },
+                "/profile/edit" => Route::ProfileEdit,
+                "/profile/:userId" => Route::Profile { user_id: param(0) },
                 "/community/:communityId" => Route::Community {
                     community_id: param(0),
                 },
@@ -156,6 +171,9 @@ impl Route {
             Route::DirectMessages => "/direct-messages".into(),
             Route::DirectMessage { dm_group_id } => format!("/direct-messages/{dm_group_id}"),
             Route::Invite { invite_code } => format!("/join/{invite_code}"),
+            Route::Settings { .. } => "/settings".into(),
+            Route::Profile { user_id } => format!("/profile/{user_id}"),
+            Route::ProfileEdit => "/profile/edit".into(),
             Route::Unbuilt { path, .. } | Route::NotFound { path } => path.clone(),
         }
     }

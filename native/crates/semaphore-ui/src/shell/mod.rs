@@ -95,6 +95,10 @@ pub enum ShellEvent {
         community_id: String,
     },
     CreateCommunity,
+    /// A member's row: their profile.
+    OpenProfile {
+        user_id: String,
+    },
     /// The user asked to retry a failed list.
     Retry,
     /// The header's pin button: the owner shows the pins panel with [`Shell::set_side_panel`].
@@ -274,6 +278,25 @@ impl Shell {
         self.nav.navigate(route);
         self.settle_route();
         self.phone_rail_open = false;
+        self.phone_content = self.nav.current().channel_id().is_some();
+        self.focus_content.set(true);
+        cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
+        cx.notify();
+    }
+
+    /// Goes to `route` in place, adding no history: a settings tab, say.
+    pub fn replace_route(&mut self, route: Route, cx: &mut Context<Self>) {
+        self.nav.replace(route);
+        cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
+        cx.notify();
+    }
+
+    /// Back to where the user was before, as a page's Back or Close does; Home if nowhere.
+    pub fn go_back(&mut self, cx: &mut Context<Self>) {
+        if !self.nav.go_back() {
+            self.nav.navigate(Route::Home);
+        }
+        self.settle_route();
         self.phone_content = self.nav.current().channel_id().is_some();
         self.focus_content.set(true);
         cx.emit(ShellEvent::Navigated(self.nav.current().clone()));

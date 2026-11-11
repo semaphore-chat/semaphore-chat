@@ -668,6 +668,8 @@ fn desktop(
                 server_name: None,
                 app_version: "0.9.0".into(),
                 server_version: None,
+                links_note: None,
+                links_blocked: None,
             },
             cx,
         );

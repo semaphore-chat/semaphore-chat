@@ -53,7 +53,16 @@ pub fn with_alpha(color: Hsla, a: f32) -> Hsla {
 impl Palette {
     /// `generateTheme('dark', 'teal', 'minimal')`, the web's defaults.
     pub fn dark() -> Self {
-        let t = tokens(Mode::Dark, Accent::Teal, Intensity::Minimal);
+        Self::for_theme(crate::theme::ThemeChoice::new(
+            Mode::Dark,
+            Accent::Teal,
+            Intensity::Minimal,
+        ))
+    }
+
+    /// `generateTheme(mode, accent, intensity)`.
+    pub fn for_theme(choice: crate::theme::ThemeChoice) -> Self {
+        let t = tokens(choice.mode, choice.accent, choice.intensity);
         let primary = hsla(t.primary_main);
         Self {
             background: hsla(t.background_default),

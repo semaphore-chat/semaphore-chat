@@ -138,7 +138,7 @@ fn selected(view: &Entity<MessageList>, cx: &mut VisualTestContext) -> String {
 }
 
 fn painted_highlights(view: &Entity<MessageList>, cx: &mut VisualTestContext) -> usize {
-    let color = view.read_with(cx, |view, _| view.shared.palette.selection);
+    let color = view.read_with(cx, |view, _| view.shared.palette.get().selection);
     cx.update(|window, _| {
         let background: Background = color.into();
         window

@@ -236,6 +236,14 @@ fn member_row(member: &MemberRow, cx: &mut Context<Shell>) -> impl IntoElement +
         .cursor_pointer()
         .hover(move |style| style.bg(hover))
         .focus_visible(move |style| style.bg(hover))
+        .on_click({
+            let user_id = member.user.id.clone();
+            cx.listener(move |_, _, _, cx| {
+                cx.emit(super::ShellEvent::OpenProfile {
+                    user_id: user_id.clone(),
+                })
+            })
+        })
         .child(
             div().w(px(40.)).flex_shrink_0().child(
                 div()

@@ -350,6 +350,68 @@ async fn control(
                 Err(message) => invalid(message),
             };
         }
+        // W3's account hooks, as `Server::approve_desktop` and the rest do them for tests.
+        "approve_desktop" => {
+            let Some(challenge) = request.get("challenge").and_then(Value::as_str) else {
+                return invalid("challenge is required");
+            };
+            let me = inner.scenario.me.id.clone();
+            let code = lock(&inner.accounts).approve(challenge, &me, inner.now(), false);
+            return json_response(StatusCode::OK, json!({ "code": code }));
+        }
+        "emit_desktop_sign_in" => {
+            let me = inner.scenario.me.id.clone();
+            let ip = request.get("ipAddress").and_then(Value::as_str);
+            inner.emit_to_user(
+                &me,
+                "desktopSignIn",
+                json!({ "ipAddress": ip, "signedInAt": inner.now() }),
+            );
+        }
+        "seed_invite" => {
+            let Some(code) = request.get("code").and_then(Value::as_str) else {
+                return invalid("code is required");
+            };
+            let mut invite = crate::InviteSeed::new(code);
+            if let Some(max) = request.get("maxUses").and_then(Value::as_i64) {
+                invite.max_uses = Some(max);
+            }
+            lock(&inner.accounts).invites.push(crate::accounts::Invite {
+                code: invite.code,
+                uses: invite.uses,
+                max_uses: invite.max_uses,
+                valid_until: invite.valid_until,
+                disabled: invite.disabled,
+                created_by: invite.created_by,
+            });
+        }
+        "add_session" => {
+            let device = request
+                .get("deviceName")
+                .and_then(Value::as_str)
+                .unwrap_or("Another device");
+            let ip = request.get("ipAddress").and_then(Value::as_str);
+            let me = inner.scenario.me.id.clone();
+            let now = inner.now();
+            let mut accounts = lock(&inner.accounts);
+            let index = accounts.start_session(&me, Some(device), ip, now, None, false);
+            // A script names the session it'll click on.
+            if let Some(id) = request.get("id").and_then(Value::as_str) {
+                accounts.sessions[index].id = id.to_owned();
+            }
+            let id = accounts.sessions[index].id.clone();
+            return json_response(StatusCode::OK, json!({ "id": id }));
+        }
+        "public_settings" => {
+            let Some(fields) = request.as_object() else {
+                return invalid("an object of public settings is required");
+            };
+            lock(&inner.accounts).public_settings.extend(
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            );
+        }
         "drop_connections" => {
             inner.close_connections();
         }

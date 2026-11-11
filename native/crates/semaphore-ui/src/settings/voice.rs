@@ -5,8 +5,8 @@
 use super::key_capture::{Capture, ptt_key_from, ptt_key_label};
 use super::shell::{caption, section, segmented, switch_row, tab_page};
 use super::{
-    DeviceLists, DeviceOption, InputMode, MicQuality, VoiceSettingsEvent, VoiceVideoSettings,
-    VoiceVideoState,
+    DeviceLists, DeviceOption, InputMode, MicQuality, VoiceLimits, VoiceSettingsEvent,
+    VoiceVideoSettings, VoiceVideoState,
 };
 use crate::kit::{Button, ButtonSize, Radio, SelectField, Skeleton, Slider, Switch, Variant};
 use crate::kit::{select_state, spacing, text};
@@ -201,6 +201,7 @@ impl VoiceVideoSettings {
         ];
         let mut this = Self {
             state,
+            limits: VoiceLimits::default(),
             devices: DeviceLists::default(),
             mic_level: None,
             last_threshold: 0,
@@ -244,6 +245,12 @@ impl VoiceVideoSettings {
     ) {
         self.devices = devices;
         self.sync(window, cx);
+        cx.notify();
+    }
+
+    /// What this build can't do: said in place of it.
+    pub fn set_limits(&mut self, limits: VoiceLimits, cx: &mut Context<Self>) {
+        self.limits = limits;
         cx.notify();
     }
 
@@ -515,6 +522,14 @@ impl VoiceVideoSettings {
                 },
                 cx,
             ))
+            .children(self.limits.push_to_talk.clone().map(|note| {
+                div()
+                    .id("voice-ptt-limit")
+                    .test_support()
+                    .role(Role::Note)
+                    .aria_label(note.clone())
+                    .child(caption(note, cx))
+            }))
     }
 
     fn processing(&self, cx: &mut Context<Self>) -> Div {
@@ -761,6 +776,18 @@ impl VoiceVideoSettings {
                         })),
                 )
         });
+        if let Some(note) = self.limits.mic_test.clone() {
+            return section("Test Microphone", cx)
+                .child(
+                    div()
+                        .id("voice-mic-test-limit")
+                        .test_support()
+                        .role(Role::Note)
+                        .aria_label(note.clone())
+                        .child(caption(note, cx)),
+                )
+                .children(sensitivity);
+        }
         section("Test Microphone", cx)
             .child(div().flex().child(button))
             .children(sensitivity)
