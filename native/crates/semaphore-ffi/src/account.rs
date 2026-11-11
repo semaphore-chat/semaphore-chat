@@ -3,8 +3,8 @@
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
-    AccentColor, Appearance, AppearancePatch, AppearanceView, LoadState, SessionRow, SessionsView,
-    ThemeIntensity, ThemeMode,
+    AccentColor, Appearance, AppearancePatch, AppearanceView, InstancePermissionsView, LoadState,
+    SessionRow, SessionsView, ThemeIntensity, ThemeMode,
 };
 
 #[uniffi::remote(Record)]
@@ -24,6 +24,12 @@ pub struct SessionsView {
     pub state: LoadState,
     pub sessions: Vec<SessionRow>,
     pub revoking_others: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct InstancePermissionsView {
+    pub state: LoadState,
+    pub can_create_community: bool,
 }
 
 #[uniffi::remote(Enum)]
@@ -93,6 +99,10 @@ impl SemaphoreCore {
 
     pub async fn revoke_other_sessions(&self) -> Result<u32, CoreError> {
         self.core.revoke_other_sessions().await
+    }
+
+    pub fn instance_permissions(&self) -> InstancePermissionsView {
+        self.core.instance_permissions()
     }
 
     pub fn appearance(&self) -> AppearanceView {

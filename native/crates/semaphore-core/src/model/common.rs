@@ -96,6 +96,8 @@ pub enum ViewKey {
     },
     /// `Core::browser_sign_in`.
     BrowserSignIn,
+    /// `Core::instance_permissions`.
+    InstancePermissions,
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to

@@ -65,6 +65,10 @@ pub(crate) enum Effect {
     RefetchMessage(String),
     /// W2: tell the server the user went idle or came back, without waiting for the heartbeat.
     Idle(bool),
+    /// W3: wait for the browser on this sign-in attempt's listener, then redeem its code.
+    BrowserSignIn(u64),
+    /// W3: read this invite, before anyone signs in.
+    FetchInvite(String),
 }
 
 pub(crate) struct State {
@@ -94,6 +98,10 @@ pub(crate) struct State {
     pub reading: crate::commands::reading::ReadingState,
     /// W2's DMs, friends and notifications.
     pub w2: crate::commands::notify::W2State,
+    /// W3's profile edits, sessions and appearance: gone with the session.
+    pub w3: crate::commands::account::W3State,
+    /// W3's signed-out work (the server in use, invites, sign in with browser): it outlives sessions.
+    pub auth: crate::commands::browser_sign_in::AuthState,
     /// Numbers each session: bumped at sign-out, so work begun in one session can tell, when it
     /// finishes, that the session it belonged to is over.
     pub session_epoch: u64,
@@ -148,6 +156,8 @@ impl State {
             actions: Default::default(),
             reading: Default::default(),
             w2: Default::default(),
+            w3: Default::default(),
+            auth: Default::default(),
             session_epoch: 0,
             next_change: 0,
             session: SessionState::SignedOut,
@@ -535,6 +545,8 @@ impl Core {
             Effect::ReleaseSlot(message_id) => self.release_slot(message_id).await,
             Effect::RefetchMessage(message_id) => self.refetch_message(message_id).await,
             Effect::Idle(idle) => self.send_idle(idle).await,
+            Effect::BrowserSignIn(attempt) => self.run_browser_sign_in(attempt).await,
+            Effect::FetchInvite(code) => self.fetch_invite(code).await,
             Effect::EndCall => {
                 if let Some(media) = self.services().and_then(|services| services.media.clone()) {
                     media.disconnect().await;

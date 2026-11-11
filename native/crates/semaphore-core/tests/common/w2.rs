@@ -52,7 +52,7 @@ impl W2Fakes {
             .count()
     }
 
-    async fn run<T: serde::de::DeserializeOwned>(
+    pub async fn run<T: serde::de::DeserializeOwned>(
         &self,
         op: &'static str,
         args: &[&str],

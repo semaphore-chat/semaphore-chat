@@ -447,6 +447,7 @@ pub enum ViewKey {
     Appearance,
     InvitePreview { code: String },
     BrowserSignIn,
+    InstancePermissions,
 }
 
 #[uniffi::remote(Record)]

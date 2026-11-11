@@ -3,8 +3,8 @@
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
-    DraftFile, ErrorView, ImageChange, LoadState, Profile, ProfileEditView, ProfilePatch,
-    ProfileView, UploadView, UserView,
+    DraftFile, ErrorView, ImageChange, LoadState, Profile, ProfileEditView, ProfileImage,
+    ProfilePatch, ProfileUpload, ProfileView, UploadView, UserView,
 };
 
 #[uniffi::remote(Record)]
@@ -37,10 +37,22 @@ pub struct ProfilePatch {
     pub banner: Option<ImageChange>,
 }
 
+#[uniffi::remote(Enum)]
+pub enum ProfileImage {
+    Avatar,
+    Banner,
+}
+
+#[uniffi::remote(Record)]
+pub struct ProfileUpload {
+    pub image: ProfileImage,
+    pub upload: UploadView,
+}
+
 #[uniffi::remote(Record)]
 pub struct ProfileEditView {
     pub saving: bool,
-    pub upload: Option<UploadView>,
+    pub upload: Option<ProfileUpload>,
     pub error: Option<ErrorView>,
 }
 

@@ -8272,11 +8272,13 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "getrandom 0.4.3",
  "jiff",
  "log",
  "semaphore-wire",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "tokio",
  "uuid",

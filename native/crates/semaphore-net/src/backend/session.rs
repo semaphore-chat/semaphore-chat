@@ -50,14 +50,7 @@ impl SessionBackend for HttpBackend {
         &self,
         body: wire::LoginRequestDto,
     ) -> BackendResult<wire::LoginResponseDto> {
-        let (client, url, generation) = {
-            let state = self.inner.lock();
-            let client = state
-                .anon
-                .clone()
-                .ok_or_else(|| failure("no server URL is set"))?;
-            (client, state.server_url.clone(), state.generation)
-        };
+        let (client, url, generation) = self.anon_client()?;
         let device_id = self.inner.device_id;
         let response = match client
             .auth_controller_login(
@@ -71,45 +64,28 @@ impl SessionBackend for HttpBackend {
             Ok(response) => response.into_inner(),
             Err(error) => return Err(convert(error).await),
         };
-        let access = Token(response.access_token);
-        let refresh = response.refresh_token.map(Token);
-        let authed = url
-            .as_deref()
-            .and_then(|url| self.inner.build(url, Some(&access)));
-        let stored = {
-            let mut state = self.inner.lock();
-            // Signed out or moved to another server while this ran: it answers for nothing now.
-            if state.generation != generation {
-                return Err(session_changed());
-            }
-            // A refresh of the session before this one must not overwrite it.
-            state.next_generation();
-            state.authed = authed;
-            state.access = Some(access.clone());
-            let op = url.as_deref().map(|url| {
-                let key = secret_key(url);
-                match &refresh {
-                    Some(refresh) => StoreOp::Save {
-                        key,
-                        value: refresh.0.clone(),
-                    },
-                    // What's stored belongs to a session this client no longer holds.
-                    None => {
-                        log::warn!(
-                            "the server sent no refresh token; the session cannot be renewed"
-                        );
-                        StoreOp::Delete { key }
-                    }
-                }
-            });
-            state.refresh = refresh;
-            op.and_then(|op| self.inner.store(op))
+        self.establish(response, url, generation).await
+    }
+
+    async fn auth_controller_redeem_desktop_login(
+        &self,
+        body: wire::DesktopLoginTokenRequestDto,
+    ) -> BackendResult<wire::LoginResponseDto> {
+        let (client, url, generation) = self.anon_client()?;
+        let device_id = self.inner.device_id;
+        let response = match client
+            .auth_controller_redeem_desktop_login(
+                Some(wire::AuthControllerRedeemDesktopLoginXClientType::DesktopNative),
+                Some(&device_id),
+                super::device_name().as_ref(),
+                &body,
+            )
+            .await
+        {
+            Ok(response) => response.into_inner(),
+            Err(error) => return Err(convert(error).await),
         };
-        self.inner.stored(stored).await;
-        Ok(wire::LoginResponseDto {
-            access_token: access.0,
-            refresh_token: None,
-        })
+        self.establish(response, url, generation).await
     }
 
     async fn auth_controller_refresh(
@@ -158,5 +134,66 @@ impl SessionBackend for HttpBackend {
             Ok(response) => Ok(response.into_inner()),
             Err(error) => Err(convert(error).await),
         }
+    }
+}
+
+impl HttpBackend {
+    /// The client for calls made before there's a session, with what a sign-in checks it against.
+    pub(super) fn anon_client(&self) -> BackendResult<(Arc<Client>, Option<String>, u64)> {
+        let state = self.inner.lock();
+        let client = state
+            .anon
+            .clone()
+            .ok_or_else(|| failure("no server URL is set"))?;
+        Ok((client, state.server_url.clone(), state.generation))
+    }
+
+    /// A sign-in's tokens become the session: login and sign in with browser share this. Only the
+    /// access token goes back to core.
+    async fn establish(
+        &self,
+        response: wire::LoginResponseDto,
+        url: Option<String>,
+        generation: u64,
+    ) -> BackendResult<wire::LoginResponseDto> {
+        let access = Token(response.access_token);
+        let refresh = response.refresh_token.map(Token);
+        let authed = url
+            .as_deref()
+            .and_then(|url| self.inner.build(url, Some(&access)));
+        let stored = {
+            let mut state = self.inner.lock();
+            // Signed out or moved to another server while this ran: it answers for nothing now.
+            if state.generation != generation {
+                return Err(session_changed());
+            }
+            // A refresh of the session before this one must not overwrite it.
+            state.next_generation();
+            state.authed = authed;
+            state.access = Some(access.clone());
+            let op = url.as_deref().map(|url| {
+                let key = secret_key(url);
+                match &refresh {
+                    Some(refresh) => StoreOp::Save {
+                        key,
+                        value: refresh.0.clone(),
+                    },
+                    // What's stored belongs to a session this client no longer holds.
+                    None => {
+                        log::warn!(
+                            "the server sent no refresh token; the session cannot be renewed"
+                        );
+                        StoreOp::Delete { key }
+                    }
+                }
+            });
+            state.refresh = refresh;
+            op.and_then(|op| self.inner.store(op))
+        };
+        self.inner.stored(stored).await;
+        Ok(wire::LoginResponseDto {
+            access_token: access.0,
+            refresh_token: None,
+        })
     }
 }
