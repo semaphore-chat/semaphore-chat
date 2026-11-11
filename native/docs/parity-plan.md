@@ -400,3 +400,18 @@ Things the contract makes awkward for a non-web client, found while designing W1
 | Paging for message search | `search/{channel,group,community}` take `q` and `limit` only, newest first | Asks for one page; the UI says when results stop at the limit |
 | Effective per-channel capabilities for pin, unpin, delete-any and see-removed | `rolesControllerGetMyRolesForChannel` returns community roles without the channel's permission overwrites, so a channel that denies or grants these is shown wrong (the web client has the same gap) | Uses the community roles, as the web does; the server still refuses what it denies |
 
+### Asks from W2 for the backend lane
+
+Found while building W2-core (2026-11-11). None blocks W2; each has a workaround in core.
+
+| Ask | Why | Native's workaround meanwhile |
+|---|---|---|
+| Socket events for friendship changes (request sent, accepted, declined, cancelled, removed) | `friends` emits nothing at all, so a client learns of a request only by asking | Reads friends again after its own changes, on reconnect, and when shown while older than 30 s |
+| Socket events for DM group changes (created, member added, member left) | `dm-group.*` are internal EventEmitter events only; other members see a new group at its first message | A message for a group the list lacks reads the list again |
+| `notificationRead` (or a count event) for read-all, dismiss and the context reads `markAsRead` does | Only a single mark-read is announced, so other devices' badges stay stale | Reads the count again after its own changes and its own `readReceiptUpdated` |
+| Leave dismissed rows out of `GET /notifications` (or a filter) | The list returns them, and `total` counts them, so paging and "more" include rows nobody shows | Filters them out; "more" compares raw rows to `total` |
+| `channelName` on list rows, `parentMessageId` on `newNotification` | The list DTO lacks the name the event has; the event lacks the thread the list has | Takes names from cached channels; a thread reply's OS notification opens the channel |
+| A JSON `null` for "no override" from `GET /notifications/channels/{id}/override` | It answers 200 with an empty body, which the generated client can't decode | A hand-written request for that one call |
+| A way to clear a DND time in `UpdateNotificationSettingsDto` that the contract can express | Clearing needs an explicit `null`, which the generated optional field can't send | A hand-written body for settings saves |
+| An idle or away status other users can see | Presence is a boolean; `presenceOnline { idle }` only stops push | Sends idle; shows nobody as idle |
+
