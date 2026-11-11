@@ -10,7 +10,9 @@
 //!
 //! While core reads the thread (`ThreadInfo::state` loading) the parent and replies show
 //! skeletons; when it failed, an error with "Try again" (`Retry`). A ready thread with no replies
-//! shows the web's "No replies yet" in place of the replies list.
+//! shows the web's "No replies yet" in place of the replies list. The count comes from the server,
+//! so a first reply still on its way has a count of 0: the owner says how many rows the replies list
+//! holds (`set_reply_rows`), and any row there shows the list instead.
 
 #[cfg(feature = "stories")]
 mod stories;
@@ -48,6 +50,8 @@ pub struct ThreadPane {
     replies: AnyView,
     composer: AnyView,
     info: ThreadInfo,
+    /// The rows in the replies list, pending ones included.
+    reply_rows: usize,
     parent_height: Option<f32>,
     clock: PanelClock,
 }
@@ -64,6 +68,7 @@ impl ThreadPane {
             replies,
             composer,
             info: ThreadInfo::default(),
+            reply_rows: 0,
             parent_height: None,
             clock: PanelClock::default(),
         }
@@ -73,6 +78,15 @@ impl ThreadPane {
     pub fn set_info(&mut self, info: ThreadInfo, cx: &mut Context<Self>) {
         self.info = info;
         cx.notify();
+    }
+
+    /// How many rows the replies list holds, sent or pending. With none and a count of 0 the pane
+    /// says "No replies yet".
+    pub fn set_reply_rows(&mut self, rows: usize, cx: &mut Context<Self>) {
+        if self.reply_rows != rows {
+            self.reply_rows = rows;
+            cx.notify();
+        }
     }
 
     /// The parent's slot, in pixels, in place of `PARENT_SLOT` (and the phone's shorter one).
@@ -270,7 +284,7 @@ impl ThreadPane {
                     Skeleton::rect(("thread-reply-loading", index), relative(1.), 60.)
                 }))
                 .into_any_element(),
-            LoadState::Ready if self.info.reply_count == 0 => div()
+            LoadState::Ready if self.info.reply_count == 0 && self.reply_rows == 0 => div()
                 .id("thread-no-replies")
                 .test_support()
                 .size_full()

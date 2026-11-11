@@ -171,6 +171,11 @@ impl SearchPanel {
         cx.notify();
     }
 
+    /// The hits shown now, newest first.
+    pub fn hits(&self) -> &[SearchHit] {
+        self.model.hits()
+    }
+
     /// Puts the caret in the search field, as the web does when the panel opens.
     pub fn focus_field(&self, window: &mut Window, cx: &mut App) {
         self.field.update(cx, |field, cx| field.focus(window, cx));

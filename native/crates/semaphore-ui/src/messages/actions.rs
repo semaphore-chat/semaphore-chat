@@ -56,6 +56,15 @@ impl MessageAction {
         }
     }
 
+    /// The label on a row: a moderator's Delete on someone else's message removes it, and says so.
+    pub fn label_for(self, row: &MessageRow, permissions: ListPermissions) -> &'static str {
+        if self == Self::Delete && delete_is_removal(row, permissions) {
+            "Remove message"
+        } else {
+            self.label()
+        }
+    }
+
     /// The element id a rig clicks: `message-action-<id>`.
     pub fn id(self) -> &'static str {
         match self {
@@ -257,12 +266,9 @@ fn act(shared: &Rc<Shared>, seq: i64, action: MessageAction, window: &mut Window
     .ok();
 }
 
-fn tool_button(
-    shared: &Rc<Shared>,
-    seq: i64,
-    action: MessageAction,
-    pinned: bool,
-) -> impl IntoElement {
+fn tool_button(shared: &Rc<Shared>, row: &MessageRow, action: MessageAction) -> impl IntoElement {
+    let (seq, pinned) = (row.seq, row.pinned);
+    let label = action.label_for(row, shared.permissions.get());
     let palette = shared.palette;
     let color = match action {
         MessageAction::Delete => palette.error,
@@ -276,7 +282,7 @@ fn tool_button(
     )))
     .test_support()
     .role(Role::Button)
-    .aria_label(action.label())
+    .aria_label(label)
     .flex()
     .items_center()
     .justify_center()
@@ -317,7 +323,9 @@ pub(crate) fn render_toolbar(
         .rounded(px(4.))
         .bg(palette.paper)
         .shadow_md()
-        .occlude()
+        // Not `occlude`: the toolbar sits inside its row, and occluding the row would unhover it,
+        // hide the toolbar, hover the row again and so on, every frame the pointer is on it. The
+        // press stops here instead, so it starts no selection in the text beneath.
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     let tools = if staged {
         let confirm = shared.clone();
@@ -392,7 +400,7 @@ pub(crate) fn render_toolbar(
         tools.children(
             actions
                 .into_iter()
-                .map(|action| tool_button(shared, seq, action, row.pinned)),
+                .map(|action| tool_button(shared, row, action)),
         )
     };
     Some(tools.into_any_element())
@@ -400,11 +408,13 @@ pub(crate) fn render_toolbar(
 
 fn menu_item(
     shared: &Rc<Shared>,
-    seq: i64,
+    row: &MessageRow,
     action: MessageAction,
     touch: bool,
 ) -> impl IntoElement {
     let palette = shared.palette;
+    let seq = row.seq;
+    let label = action.label_for(row, shared.permissions.get());
     let color = if action.destructive() {
         palette.error
     } else {
@@ -414,7 +424,7 @@ fn menu_item(
     clickable(SharedString::from(format!("message-menu-{}", action.id())))
         .test_support()
         .role(Role::MenuItem)
-        .aria_label(action.label())
+        .aria_label(label)
         .flex()
         .items_center()
         .gap(px(12.))
@@ -435,7 +445,7 @@ fn menu_item(
             div()
                 .text_size(px(BODY_SIZE))
                 .text_color(color)
-                .child(action.label()),
+                .child(label),
         )
 }
 
@@ -454,7 +464,7 @@ fn menu_items(shared: &Rc<Shared>, row: &MessageRow, touch: bool) -> Vec<AnyElem
             );
         }
         last_group = Some(action.group());
-        items.push(menu_item(shared, row.seq, action, touch).into_any_element());
+        items.push(menu_item(shared, row, action, touch).into_any_element());
     }
     items
 }
@@ -636,6 +646,8 @@ mod tests {
         let actions = message_actions(&row(false), MODERATOR);
         assert_eq!(actions, vec![Reply, Thread, React, Pin, Copy, Delete]);
         assert!(delete_is_removal(&row(false), MODERATOR));
+        assert_eq!(Delete.label_for(&row(false), MODERATOR), "Remove message");
+        assert_eq!(Delete.label_for(&row(true), MODERATOR), "Delete message");
         let pinned = MessageRow {
             pinned: true,
             ..row(false)

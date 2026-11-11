@@ -93,6 +93,7 @@ fn composer(window: &mut Window, cx: &mut App) -> AnyView {
                 drafts,
                 placeholder: "Reply in thread...".into(),
                 max_file_bytes: None,
+                mode: crate::composer::ComposerMode::Thread,
             },
             window,
             cx,
@@ -108,12 +109,14 @@ fn pane(
     cx: &mut App,
 ) -> AnyView {
     let parent = list(vec![parent_row()], cx);
-    let replies = list(reply_rows, cx);
+    let replies = list(reply_rows.clone(), cx);
     let composer = composer(window, cx);
+    let count = reply_rows.len();
     let pane = cx.new(|cx| {
         let mut pane = ThreadPane::new(parent, replies, composer, cx);
         pane.set_clock(PanelClock::fixed(NOW_MS), cx);
         pane.set_info(info, cx);
+        pane.set_reply_rows(count, cx);
         pane
     });
     framed(pane.into(), cx)
@@ -152,6 +155,15 @@ pub fn stories() -> Vec<Story> {
         }),
         Story::new("thread-no-replies", |_, window, cx| {
             pane(ready(false, 0), Vec::new(), window, cx)
+        }),
+        // A first reply on its way: the server's count is still 0, the row shows anyway.
+        Story::new("thread-first-reply-pending", |_, window, cx| {
+            let mut reply =
+                fixture::message(2, fixture::me(), NOW_MS, Body::default().text("First!"));
+            reply.id = None;
+            reply.client_nonce = Some("n-first".into());
+            reply.send_state = semaphore_core::model::SendState::Pending;
+            pane(ready(false, 0), vec![reply], window, cx)
         }),
         Story::new("thread-loading", |_, window, cx| {
             pane(ThreadInfo::default(), Vec::new(), window, cx)

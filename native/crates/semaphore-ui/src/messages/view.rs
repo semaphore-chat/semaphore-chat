@@ -348,8 +348,18 @@ impl MessageList {
         });
         let old = self.shared.unread.replace(divider);
         if old != divider {
+            // The row the divider follows grows by it, and the one after it may lose its grouping.
             for seq in [old, divider].into_iter().flatten().map(|d| d.after_seq) {
-                self.remeasure_seq(seq);
+                let ix = self.shared.rows.borrow().index_of(seq);
+                if let Some(ix) = ix {
+                    self.shared.frozen_decor.borrow_mut().remove(&seq);
+                    let next = self.shared.rows.borrow().get(ix + 1).map(|row| row.seq);
+                    if let Some(next) = next {
+                        self.shared.frozen_decor.borrow_mut().remove(&next);
+                    }
+                    let end = (ix + 2).min(self.shared.rows.borrow().len());
+                    self.list.remeasure_items(ix..end);
+                }
             }
             cx.notify();
         }

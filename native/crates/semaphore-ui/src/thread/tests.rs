@@ -163,6 +163,16 @@ fn no_replies_shows_the_empty_state_and_the_composer(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_first_reply_on_its_way_shows_before_the_count_moves(cx: &mut TestAppContext) {
+    let rig = rig(cx, ready(false, 0), 400.);
+    assert!(rig.has(cx, "thread-no-replies"));
+    rig.with(cx, |_, cx| {
+        rig.pane.update(cx, |pane, cx| pane.set_reply_rows(1, cx))
+    });
+    assert!(!rig.has(cx, "thread-no-replies"));
+}
+
+#[gpui_kit::test]
 fn loading_shows_skeletons(cx: &mut TestAppContext) {
     let rig = rig(cx, ThreadInfo::default(), 400.);
     assert!(rig.has(cx, "thread-parent-loading"));

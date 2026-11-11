@@ -222,6 +222,48 @@ fn the_unread_divider_waits_for_its_row(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_row_after_the_divider_shows_its_name_again(cx: &mut TestAppContext) {
+    let (view, cx, _) = open(cx);
+    let sam = fixture::user("u-sam", "sam", None);
+    let next = fixture::message(4, sam, NOW_MS - 20_000, Body::default().text("again"));
+    view.update(cx, |list, cx| {
+        list.apply(
+            semaphore_core::model::ListOp::Insert {
+                index: 3,
+                rows: vec![next],
+            },
+            cx,
+        )
+    });
+    draw(cx);
+    let grouped = |view: &Entity<MessageList>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| {
+            let rows = view.shared.rows.borrow();
+            view.shared
+                .decor_at(&rows, rows.index_of(4).unwrap())
+                .grouped
+        })
+    };
+    assert!(grouped(&view, cx), "sam's second message continues his run");
+    view.update(cx, |list, cx| {
+        list.set_unread_marker(
+            Some(&UnreadMarker {
+                after_message_id: id(3),
+                after_seq: Some(3),
+                unread_count: 1,
+                mention_count: 0,
+            }),
+            cx,
+        )
+    });
+    draw(cx);
+    assert!(
+        !grouped(&view, cx),
+        "the divider between them starts a new run"
+    );
+}
+
+#[gpui_kit::test]
 fn hovering_a_reaction_asks_who_reacted_once(cx: &mut TestAppContext) {
     let (view, cx, events) = open(cx);
     // The shared state the chip's hover handler drives.

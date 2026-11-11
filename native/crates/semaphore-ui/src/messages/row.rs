@@ -160,7 +160,15 @@ impl Shared {
             .is_none_or(|prev| self.time.day(prev.sent_at_ms) != self.time.day(row.sent_at_ms));
         Decor {
             day: new_day.then(|| self.time.day_label(row.sent_at_ms).into()),
-            grouped: previous.is_some_and(|prev| self.should_group(prev, row)),
+            // The unread divider between two rows starts a new group: the row after it shows its
+            // name again.
+            grouped: previous.is_some_and(|prev| {
+                self.should_group(prev, row)
+                    && self
+                        .unread
+                        .get()
+                        .is_none_or(|divider| divider.after_seq != prev.seq)
+            }),
         }
     }
 
@@ -1080,6 +1088,7 @@ fn render_reactions(
                 )
             });
         let mut chip = clickable(("reaction", (row.seq as u64) << 8 | index as u64))
+            .test_support()
             .relative()
             .flex()
             .items_center()
@@ -1447,6 +1456,7 @@ pub(crate) fn render_row(
     let group = SharedString::new_static("message-row");
     let mut container = div()
         .id(("message", row.seq as u64))
+        .test_support()
         .group(group.clone())
         .relative()
         .flex()
