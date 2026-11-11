@@ -262,8 +262,8 @@ impl AppRoot {
         )
     }
 
-    /// The level menu, for the shell's header.
-    pub(super) fn level_menu(&self) -> Option<AnyView> {
+    /// The level menu, for the shell's header once its channel's level is known.
+    fn level_menu(&self) -> Option<AnyView> {
         self.inbox.level.clone().map(Into::into)
     }
 
@@ -404,7 +404,14 @@ impl AppRoot {
             return;
         };
         let view = core.channel_notify_level(channel_id);
+        // Until the level is known the shell's own @ button stands in, which looks the same as the
+        // menu's for the default level, rather than the menu's spinner.
+        let loaded = !matches!(view.state, LoadState::Loading);
         level.update(cx, |level, cx| level.set_view(view, cx));
+        let accessory = self.level_menu().filter(|_| loaded);
+        if let Some(shell) = self.shell.clone() {
+            shell.update(cx, |shell, cx| shell.set_header_accessory(accessory, cx));
+        }
     }
 
     fn refresh_level_default(&mut self, cx: &mut Context<Self>) {

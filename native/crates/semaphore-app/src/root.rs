@@ -862,8 +862,6 @@ impl AppRoot {
             .with_voice_bar(bar)
             .with_route_sidebar(route_sidebar)
         });
-        let level = self.level_menu();
-        shell.update(cx, |shell, cx| shell.set_header_accessory(level, cx));
         self._subscriptions
             .push(cx.subscribe_in(&shell, window, Self::on_shell_event));
         shell
