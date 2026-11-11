@@ -1,12 +1,22 @@
 import { IsOptional, IsBoolean, IsNumber, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class NotificationQueryDto {
+  /**
+   * Only return unread notifications. Query params arrive as strings, and
+   * `Boolean('false')` is true, so parse 'true'/'false' explicitly. Absent
+   * means "all notifications".
+   */
   @IsOptional()
   @IsBoolean()
-  @Type(() => Boolean)
-  unreadOnly?: boolean;
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    // Anything else is left for @IsBoolean to reject.
+    return value;
+  })
+  unreadOnly?: boolean = false;
 
   @IsOptional()
   @IsNumber()

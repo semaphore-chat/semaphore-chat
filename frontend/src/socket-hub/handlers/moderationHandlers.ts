@@ -7,7 +7,7 @@ export const handleUserBanned: SocketEventHandler<typeof ServerEvents.USER_BANNE
   _payload,
   queryClient: QueryClient,
 ) => {
-  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'communityControllerFindAllMine' }] });
 };
 
@@ -15,7 +15,7 @@ export const handleUserKicked: SocketEventHandler<typeof ServerEvents.USER_KICKE
   _payload,
   queryClient: QueryClient,
 ) => {
-  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'communityControllerFindAllMine' }] });
 };
 
@@ -23,7 +23,7 @@ export const handleUserTimedOut: SocketEventHandler<typeof ServerEvents.USER_TIM
   _payload,
   queryClient: QueryClient,
 ) => {
-  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   // The composer reads this to show / clear its timeout notice.
   queryClient.invalidateQueries({ queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }] });
   // A timeout takes posting, reacting and voice publishing away (and its
@@ -35,7 +35,7 @@ export const handleTimeoutRemoved: SocketEventHandler<typeof ServerEvents.TIMEOU
   _payload,
   queryClient: QueryClient,
 ) => {
-  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   // The composer reads this to show / clear its timeout notice.
   queryClient.invalidateQueries({ queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }] });
   // A timeout takes posting, reacting and voice publishing away (and its

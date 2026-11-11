@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
+- `GET /notifications` now reports the total number of matching notifications instead of the size of the page. (#658)
+- Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)
+- A block now also stops reactions in a 1:1 direct message; removing your own reaction still works. (#642)
+- Capturing a replay accepts a custom range starting at 0 and rejects an invalid duration even when a range is sent. (#669)
+- The member list in the web client now refreshes after a ban, kick or timeout, and after a role is assigned or removed. (#680)
+
 ## [0.9.0] - 2026-11-11
 
 One wire contract for REST and sockets, sends that are safe to retry, and clear reasons when a send is refused. It also closes a gap that let the instance owner read direct messages they weren't part of.

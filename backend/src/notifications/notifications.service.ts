@@ -779,6 +779,17 @@ export class NotificationsService {
   }
 
   /**
+   * Filter shared by a notifications page and its total count, so the two
+   * can never drift apart.
+   */
+  private notificationFilter(userId: string, unreadOnly?: boolean) {
+    return {
+      userId,
+      ...(unreadOnly && { read: false }),
+    };
+  }
+
+  /**
    * Get notifications for a user with pagination
    */
   async getUserNotifications(userId: string, query: NotificationQueryDto) {
@@ -789,10 +800,7 @@ export class NotificationsService {
     const cappedLimit = Math.min(limit, 100);
 
     const notifications = await this.databaseService.notification.findMany({
-      where: {
-        userId,
-        ...(unreadOnly && { read: false }),
-      },
+      where: this.notificationFilter(userId, unreadOnly),
       orderBy: { createdAt: 'desc' },
       take: cappedLimit,
       skip: offset,
@@ -848,6 +856,19 @@ export class NotificationsService {
         };
       }),
     );
+  }
+
+  /**
+   * Count every notification matching the same filter as a page, ignoring
+   * limit/offset. This is the `total` of the list response.
+   */
+  async countUserNotifications(
+    userId: string,
+    query: NotificationQueryDto,
+  ): Promise<number> {
+    return this.databaseService.notification.count({
+      where: this.notificationFilter(userId, query.unreadOnly),
+    });
   }
 
   /**

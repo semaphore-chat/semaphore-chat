@@ -1,4 +1,9 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { LivekitController } from './livekit.controller';
@@ -409,6 +414,15 @@ describe('LivekitController', () => {
   });
 
   describe('muteParticipant', () => {
+    it('answers 200, matching its @ApiOkResponse', () => {
+      expect(
+        Reflect.getMetadata(
+          HTTP_CODE_METADATA,
+          LivekitController.prototype.muteParticipant,
+        ),
+      ).toBe(HttpStatus.OK);
+    });
+
     it('should call service muteParticipant and updateServerMuteState, return success', async () => {
       service.muteParticipant.mockResolvedValue(undefined);
       voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);

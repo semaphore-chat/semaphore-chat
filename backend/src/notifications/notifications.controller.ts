@@ -53,10 +53,10 @@ export class NotificationsController {
     @Req() req: AuthenticatedRequest,
     @Query() query: NotificationQueryDto,
   ): Promise<NotificationListResponseDto> {
-    const notifications = await this.notificationsService.getUserNotifications(
-      req.user.id,
-      query,
-    );
+    const [notifications, total] = await Promise.all([
+      this.notificationsService.getUserNotifications(req.user.id, query),
+      this.notificationsService.countUserNotifications(req.user.id, query),
+    ]);
     const unreadCount = await this.notificationsService.getUnreadCount(
       req.user.id,
     );
@@ -67,7 +67,7 @@ export class NotificationsController {
         ...notification,
         communityId: channel?.communityId ?? null,
       })),
-      total: notifications.length,
+      total,
       unreadCount,
     };
   }

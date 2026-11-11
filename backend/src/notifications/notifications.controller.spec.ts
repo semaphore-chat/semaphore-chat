@@ -47,6 +47,7 @@ describe('NotificationsController', () => {
       notificationsService.getUserNotifications.mockResolvedValue(
         mockNotifications,
       );
+      notificationsService.countUserNotifications.mockResolvedValue(1);
       notificationsService.getUnreadCount.mockResolvedValue(5);
 
       const query = { unreadOnly: false, limit: 50, offset: 0 };
@@ -54,11 +55,37 @@ describe('NotificationsController', () => {
 
       expect(result.notifications).toHaveLength(1);
       expect(result.notifications[0].communityId).toBe('c-1');
+      expect(result.total).toBe(1);
       expect(result.unreadCount).toBe(5);
       expect(notificationsService.getUserNotifications).toHaveBeenCalledWith(
         userId,
         query,
       );
+      expect(notificationsService.countUserNotifications).toHaveBeenCalledWith(
+        userId,
+        query,
+      );
+    });
+
+    it('reports the total of every matching row, not the size of the page', async () => {
+      const page = Array.from({ length: 50 }, (_, i) => ({
+        id: `n-${i}`,
+        type: 'MENTION',
+        read: false,
+        channel: { communityId: 'c-1' },
+      })) as any;
+
+      notificationsService.getUserNotifications.mockResolvedValue(page);
+      notificationsService.countUserNotifications.mockResolvedValue(137);
+      notificationsService.getUnreadCount.mockResolvedValue(80);
+
+      const result = await controller.getNotifications(mockReq, {
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(result.notifications).toHaveLength(50);
+      expect(result.total).toBe(137);
     });
 
     it('should handle null channel gracefully', async () => {
@@ -69,6 +96,7 @@ describe('NotificationsController', () => {
       notificationsService.getUserNotifications.mockResolvedValue(
         mockNotifications,
       );
+      notificationsService.countUserNotifications.mockResolvedValue(1);
       notificationsService.getUnreadCount.mockResolvedValue(1);
 
       const result = await controller.getNotifications(mockReq, {});

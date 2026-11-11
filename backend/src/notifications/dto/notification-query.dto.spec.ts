@@ -45,4 +45,41 @@ describe('NotificationQueryDto', () => {
     const errors = await validate(dto);
     expect(errors.some((e) => e.property === 'offset')).toBe(false);
   });
+
+  describe('unreadOnly', () => {
+    it('parses "false" as false, not as true', async () => {
+      const dto = plainToInstance(NotificationQueryDto, {
+        unreadOnly: 'false',
+      });
+
+      expect(dto.unreadOnly).toBe(false);
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('parses "true" as true', async () => {
+      const dto = plainToInstance(NotificationQueryDto, { unreadOnly: 'true' });
+
+      expect(dto.unreadOnly).toBe(true);
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('defaults to false when absent', async () => {
+      const dto = plainToInstance(NotificationQueryDto, {});
+
+      expect(dto.unreadOnly).toBe(false);
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('rejects a value that is not true or false', async () => {
+      const dto = plainToInstance(NotificationQueryDto, {
+        unreadOnly: 'yes',
+      });
+
+      await expect(validate(dto)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ property: 'unreadOnly' }),
+        ]),
+      );
+    });
+  });
 });

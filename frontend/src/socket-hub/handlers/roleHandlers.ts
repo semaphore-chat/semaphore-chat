@@ -48,7 +48,7 @@ export const handleRoleAssigned: SocketEventHandler<typeof ServerEvents.ROLE_ASS
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetCommunityRoles' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForCommunity' }] });
-  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForChannel' }] });
   invalidateChannelPermissionQueries(queryClient);
   invalidateMembershipQueries(queryClient);
@@ -60,7 +60,7 @@ export const handleRoleUnassigned: SocketEventHandler<typeof ServerEvents.ROLE_U
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetCommunityRoles' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForCommunity' }] });
-  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForChannel' }] });
   invalidateChannelPermissionQueries(queryClient);
   invalidateMembershipQueries(queryClient);

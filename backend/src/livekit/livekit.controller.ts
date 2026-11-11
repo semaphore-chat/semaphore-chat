@@ -10,6 +10,8 @@ import {
   Res,
   Query,
   Param,
+  HttpCode,
+  HttpStatus,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -174,6 +176,7 @@ export class LivekitController {
   }
 
   @Post('channels/:channelId/mute-participant')
+  @HttpCode(HttpStatus.OK)
   @RequiredActions(RbacActions.MUTE_PARTICIPANT)
   @RbacResource({
     type: RbacResourceType.CHANNEL,

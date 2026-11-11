@@ -80,7 +80,7 @@ describe('roleHandlers', () => {
       const keys = queryKeysInvalidated();
       expect(keys).toContain('rolesControllerGetCommunityRoles');
       expect(keys).toContain('rolesControllerGetMyRolesForCommunity');
-      expect(keys).toContain('membershipControllerGetMembers');
+      expect(keys).toContain('membershipControllerFindAllForCommunity');
       expect(keys).toContain('membershipControllerFindAllForCommunity');
       expect(invalidateSpy).toHaveBeenCalledTimes(9);
     });
@@ -93,7 +93,7 @@ describe('roleHandlers', () => {
       const keys = queryKeysInvalidated();
       expect(keys).toContain('rolesControllerGetCommunityRoles');
       expect(keys).toContain('rolesControllerGetMyRolesForCommunity');
-      expect(keys).toContain('membershipControllerGetMembers');
+      expect(keys).toContain('membershipControllerFindAllForCommunity');
       expect(keys).toContain('membershipControllerFindAllForCommunity');
       expect(invalidateSpy).toHaveBeenCalledTimes(9);
     });
