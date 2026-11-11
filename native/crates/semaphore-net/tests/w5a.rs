@@ -91,6 +91,10 @@ impl Client {
 }
 
 async fn signed_in(server: &FakeServer) -> Client {
+    signed_in_as(server, "me").await
+}
+
+async fn signed_in_as(server: &FakeServer, username: &str) -> Client {
     let backend = HttpBackend::new(Arc::new(MemSecrets::default()));
     let mut config = SocketConfig::new("unused");
     config.reconnect_delay = Duration::from_millis(50);
@@ -108,7 +112,7 @@ async fn signed_in(server: &FakeServer) -> Client {
     realtime.attach(core.clone());
     let driver = core.clone();
     tokio::spawn(async move { driver.drive().await });
-    core.sign_in(server.base_url(), "me".into(), "pw".into())
+    core.sign_in(server.base_url(), username.into(), "pw".into())
         .await
         .unwrap();
     until("sign-in", || {
@@ -479,4 +483,88 @@ async fn deleting_a_community_removes_it_here_quietly_and_announces_it_on_the_ot
     })
     .await;
     assert!(mine.removals().is_empty(), "the deleter isn't told");
+}
+
+#[tokio::test]
+async fn a_member_without_the_actions_is_refused_and_nothing_changes() {
+    let server = server().await;
+    let couch = id("c-couch");
+    server.act_as(&couch, Some(&id("u-samira")), &["role-member-c-couch"]);
+    server.sign_in_as("samira-login", &id("u-samira"));
+    let client = signed_in_as(&server, "samira-login").await;
+    client.core.channels(couch.clone());
+    until("the channels", || client.names(&couch).len() == 6).await;
+    let refused = client
+        .core
+        .create_channel(
+            couch.clone(),
+            ChannelDraft {
+                name: "mine".into(),
+                kind: ChannelKind::Text,
+                is_private: false,
+                slowmode_seconds: 0,
+            },
+        )
+        .await;
+    assert!(refused.is_err());
+    let general = id("cc-general");
+    assert!(
+        client
+            .core
+            .move_channel(general.clone(), ChannelMove::Down)
+            .await
+            .is_err()
+    );
+    let op = client.core.community_settings(couch.clone()).op;
+    assert_eq!(op.actions.len(), 2, "each refusal on its own action");
+    assert!(
+        op.actions
+            .iter()
+            .all(|entry| entry.error.as_ref().unwrap().message == "Forbidden resource")
+    );
+    assert_eq!(client.names(&couch)[0], "general", "the move went back");
+    assert!(client.core.delete_community(couch.clone()).await.is_err());
+    assert!(client.core.communities().iter().any(|c| c.id == couch));
+    assert!(
+        client
+            .core
+            .create_webhook(general, "CI".into(), None)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn a_created_webhooks_url_is_absolute() {
+    let server = server().await;
+    let client = signed_in(&server).await;
+    let made = client
+        .core
+        .create_webhook(
+            id("cc-general"),
+            "CI".into(),
+            Some("https://img.example/a.png".into()),
+        )
+        .await
+        .unwrap();
+    let base = server.base_url();
+    assert!(
+        made.url.starts_with(&format!(
+            "{}/api/webhooks/{}/",
+            base.trim_end_matches('/'),
+            made.id
+        )),
+        "{} from {base}",
+        made.url
+    );
+    until("the list", || {
+        client.core.webhooks(id("cc-general")).state == LoadState::Ready
+    })
+    .await;
+    assert_eq!(
+        client.core.webhooks(id("cc-general")).webhooks[0]
+            .avatar_url
+            .as_deref(),
+        Some("https://img.example/a.png")
+    );
 }

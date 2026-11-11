@@ -36,11 +36,11 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
         )
         .route("/api/channels", post(create_channel))
         .route(
-            "/api/channels/{id}",
+            "/api/channels/{channelId}",
             axum::routing::patch(update_channel).delete(delete_channel),
         )
-        .route("/api/channels/{id}/move-up", post(move_up))
-        .route("/api/channels/{id}/move-down", post(move_down))
+        .route("/api/channels/{channelId}/move-up", post(move_up))
+        .route("/api/channels/{channelId}/move-down", post(move_down))
         .route("/api/channel-membership", post(add_private))
         .route(
             "/api/channel-membership/channel/{channelId}",
@@ -76,11 +76,11 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
             axum::routing::delete(delete_sound),
         )
         .route(
-            "/api/channels/{id}/webhooks",
+            "/api/channels/{channelId}/webhooks",
             get(list_webhooks).post(create_webhook),
         )
         .route(
-            "/api/channels/{id}/webhooks/{webhookId}",
+            "/api/channels/{channelId}/webhooks/{webhookId}",
             axum::routing::delete(delete_webhook),
         )
         .route("/api/invite", get(list_invites).post(create_invite))
@@ -93,10 +93,10 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
         ("PATCH", "/api/community/{id}") => "CommunityController_update",
         ("DELETE", "/api/community/{id}") => "CommunityController_remove",
         ("POST", "/api/channels") => "ChannelsController_create",
-        ("PATCH", "/api/channels/{id}") => "ChannelsController_update",
-        ("DELETE", "/api/channels/{id}") => "ChannelsController_remove",
-        ("POST", "/api/channels/{id}/move-up") => "ChannelsController_moveUp",
-        ("POST", "/api/channels/{id}/move-down") => "ChannelsController_moveDown",
+        ("PATCH", "/api/channels/{channelId}") => "ChannelsController_update",
+        ("DELETE", "/api/channels/{channelId}") => "ChannelsController_remove",
+        ("POST", "/api/channels/{channelId}/move-up") => "ChannelsController_moveUp",
+        ("POST", "/api/channels/{channelId}/move-down") => "ChannelsController_moveDown",
         ("POST", "/api/channel-membership") => "ChannelMembershipController_create",
         ("GET", "/api/channel-membership/channel/{channelId}") => {
             "ChannelMembershipController_findAllForChannel"
@@ -129,9 +129,9 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
         ("DELETE", "/api/soundboard/community/{communityId}/{soundId}") => {
             "SoundboardController_deleteSound"
         }
-        ("POST", "/api/channels/{id}/webhooks") => "WebhooksController_create",
-        ("GET", "/api/channels/{id}/webhooks") => "WebhooksController_findAllForChannel",
-        ("DELETE", "/api/channels/{id}/webhooks/{webhookId}") => "WebhooksController_remove",
+        ("POST", "/api/channels/{channelId}/webhooks") => "WebhooksController_create",
+        ("GET", "/api/channels/{channelId}/webhooks") => "WebhooksController_findAllForChannel",
+        ("DELETE", "/api/channels/{channelId}/webhooks/{webhookId}") => "WebhooksController_remove",
         ("GET", "/api/invite") => "InviteController_getInvites",
         ("POST", "/api/invite") => "InviteController_createInvite",
         ("DELETE", "/api/invite/{code}") => "InviteController_deleteInvite",
@@ -201,9 +201,15 @@ fn allows(inner: &Inner, user: &str, community: &str, action: &str) -> Result<()
     }
 }
 
-/// The guard on an instance resource: W5-B's `allows` with no community.
-fn allows_instance(inner: &Inner, user: &str, action: &str) -> Result<(), Response> {
-    allows(inner, user, "", action)
+/// The guard on an instance resource. The fake's instance roles (`actions::my_instance_roles`)
+/// give everyone but the instance owner `CREATE_COMMUNITY` only, so only the owner (whom
+/// `RbacGuard` lets past every check) holds the instance invite actions.
+fn allows_instance(inner: &Inner, user: &str, _action: &str) -> Result<(), Response> {
+    if crate::rbac::is_owner(inner, user) {
+        Ok(())
+    } else {
+        Err(denied(inner))
+    }
 }
 
 macro_rules! tri {
@@ -764,6 +770,9 @@ async fn add_member(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: B
     if admin::is_member(&inner, &community_id, &user_id) {
         return conflict(&inner, "User is already a member of this community");
     }
+    if crate::rbac::is_banned(&inner, &community_id, &user_id) {
+        return forbidden(&inner, "You are banned from this community");
+    }
     let row = {
         let mut admin = lock(&inner.admin);
         let row = MembershipResponseDto {
@@ -782,6 +791,8 @@ async fn add_member(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: B
             .push(row.clone());
         row
     };
+    // W5-B's model: a member now, with the default Member role.
+    crate::rbac::add_member(&inner, &community_id, &user_id);
     inner.emit_to_user(
         &user_id,
         "memberAddedToCommunity",
