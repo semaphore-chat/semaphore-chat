@@ -136,9 +136,38 @@ crate isn't linked at all. Bytes, MB = 10^6:
   the temporary hook gave non-zero results for H.264+AAC, VP9+Opus, AV1+Opus and M4A, and 0
   (refused) for the AVI.
 
-### Not done yet (later build-order steps)
+## Steps 2 to 4: the player behind core's traits
 
-The core trait and state machine, the decode thread with bounded queues and the audio clock,
-seeking, the HTTP range source and its 32 MiB cache, the UI. Also still open: FFmpeg logs to
-stderr at its default level (the probe warns "Protocol name not provided" for custom I/O); the
-player should route or quiet it without changing libwebrtc's H.264 logging.
+- **`semaphore-core::player`** (UI-free, checked for Android and iOS): `PlaybackSource`, the
+  `MediaPlayer` and `PlayerFactory` traits, the pure state machine (`Machine`: commands and
+  decoder signals in, effects out), `AudioClock`, `WallClock`, `frame_action` and `Exclusive`
+  (one player at a time). Not in `semaphore-ffi` yet: a platform player on mobile needs UniFFI
+  callback interfaces for these traits, whose shape the mobile work should choose.
+- **`semaphore-player::DesktopPlayers`**: a thread per player. Audio is resampled to 48 kHz
+  (windowed sinc, `resample.rs`), cut to mono or stereo, queued in an `rtrb` ring for
+  `AudioIo::open_output_channels` (new: a channel count on the output seam; the default mixes
+  down, `cpal_io` maps stereo channel for channel, calls stay on mono `open_output`). Video is
+  converted to NV12 by libyuv into a 3-frame queue and handed to a `VideoSink` (the UI adapts
+  GPUI's `VideoUploader` and a `VideoSurfaceId` to it) when the audio clock reaches it, dropped
+  when more than a frame late. A seek has a generation: the ring is flushed by the output
+  callback acknowledging it, frames before the target are dropped, and the landing frame shows
+  even when paused. The first frame shows as the poster on open. Dropping a `Player` cancels
+  its reads, stops its thread and removes its surface. The output device stays open while
+  paused.
+- **Corrupt data**: a packet a decoder rejects is skipped and counted (64 in a row is an error);
+  an empty packet is ignored (dav1d refuses them).
+- **FFmpeg logging is left alone**: `av_log_set_callback` and `av_log_set_level` are one
+  process-wide setting, shared with libwebrtc's H.264 decoder, so the player can't route its
+  own messages without changing libwebrtc's. FFmpeg's default prints warnings to stderr (for
+  example "Protocol name not provided" for custom I/O).
+- **`semaphore-player::range`**: `RangeSource` reads 1 MiB blocks with `Range` through
+  `HttpBackend::file_range` (bearer token, one refresh on a refused token, as every call), four
+  blocks ahead, 3 retries with backoff for network errors, 5xx and 429, none for the rest. The
+  `BlockCache` is memory only: 16 MiB per player, 32 MiB in all, least recently used out
+  first, freed when a player goes. `http_opener` puts it behind `DesktopPlayers`.
+- **The fake server** answers `Range` on `GET /api/file/{id}` as the backend does (206 with
+  `Content-Range`, 416 with `bytes */size`).
+
+Not in this round: the UI (`ui/src/player`), the app wiring, HLS (the replay preview's
+MPEG-TS), and the feature on by default. Buffering is reported only once a slow read returns,
+because the decode thread does the reading.
