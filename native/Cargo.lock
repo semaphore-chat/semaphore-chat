@@ -8285,6 +8285,8 @@ dependencies = [
  "log",
  "notify-rust",
  "semaphore-core",
+ "serde",
+ "serde_json",
  "windows-sys 0.61.2",
  "zbus 5.19.0",
 ]
