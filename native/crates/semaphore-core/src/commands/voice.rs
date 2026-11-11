@@ -1,14 +1,48 @@
 //! Voice calls: join, leave, mute, deafen, tokens, presence and the media engine's reports.
 
+use crate::backend::BackendError;
 use crate::cache::keys;
-use crate::client::{Core, Effect};
+use crate::client::{Core, Effect, State};
 use crate::model::{
-    LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest, UserView, VideoDemand,
-    ViewKey, VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
+    JoinFailure, JoinFailureClass, LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest,
+    UserView, VideoDemand, ViewKey, VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
+use semaphore_wire::enums::RbacAction;
 use semaphore_wire::types as wire;
+
+/// How a failed REST call during a join is filed (the backend's `VoiceJoinErrorClass`).
+fn failure_class(error: &BackendError) -> JoinFailureClass {
+    match error.status {
+        0 => JoinFailureClass::ServerUnreachable,
+        401 => JoinFailureClass::Session,
+        403 => JoinFailureClass::Permission,
+        404 => JoinFailureClass::NotFound,
+        500.. => JoinFailureClass::ServerError,
+        _ => JoinFailureClass::Unknown,
+    }
+}
+
+/// A LiveKit address's host, for the debug panel: never its path or query.
+fn url_host(url: &str) -> Option<String> {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?;
+    let host = if host.starts_with('[') {
+        host.split(']').next().map(|h| format!("{h}]"))?
+    } else {
+        host.split(':').next()?.to_owned()
+    };
+    (!host.is_empty()).then_some(host)
+}
+
+fn room_label(room: &VoiceRoom) -> String {
+    match room {
+        VoiceRoom::Channel { channel_id, .. } => format!("channel {channel_id}"),
+        VoiceRoom::Dm { dm_group_id } => format!("DM {dm_group_id}"),
+    }
+}
 
 fn voice_token_request(me: &UserView, channel_id: &str) -> wire::CreateTokenDto {
     wire::CreateTokenDto {
@@ -43,18 +77,44 @@ fn ended(core: &LocalShare, before: &LocalShare, now: &LocalShare) -> bool {
 
 impl Core {
     pub async fn join_voice(&self, channel_id: String) -> Result<(), CoreError> {
+        self.join_room(VoiceRoom::Channel {
+            channel_id,
+            community_id: None,
+        })
+        .await
+    }
+
+    /// Joins a channel's call or a DM's (W4), leaving any other call first. A channel's
+    /// `community_id` is filled from the cached channel lists.
+    pub(crate) async fn join_room(&self, room: VoiceRoom) -> Result<(), CoreError> {
         let services = self.services().ok_or_else(|| unavailable("voice"))?.clone();
         let media = services.media.clone().ok_or_else(|| unavailable("voice"))?;
         let me = self
             .read(|state| state.me.clone())
             .ok_or_else(|| unavailable("voice while signed out"))?;
-        let (muted, deafened, call) = self.write(|state, _| {
+        let started = self.now_ms();
+        let (muted, deafened, call, room) = self.write(|state, now| {
+            let room = match room {
+                VoiceRoom::Channel { channel_id, .. } => VoiceRoom::Channel {
+                    community_id: state.community_of_channel(&channel_id),
+                    channel_id,
+                },
+                dm => dm,
+            };
+            // Leaving another channel call that's up: the server hears of it. A DM call has no
+            // presence leave, and a join still running leaves its own when it finds it's stale.
+            if let Some(VoiceRoom::Channel { channel_id, .. }) = &state.voice.room
+                && channel_id != room.id()
+                && in_call(state.voice.status)
+            {
+                state.push_effect(Effect::LeavePresence(channel_id.clone()));
+            }
             state.voice.status = VoiceStatus::Connecting;
-            state.voice.channel_id = Some(channel_id.clone());
-            state.voice.room = Some(VoiceRoom::Channel {
-                channel_id: channel_id.clone(),
-                community_id: state.community_of_channel(&channel_id),
-            });
+            state.voice.channel_id = match &room {
+                VoiceRoom::Channel { channel_id, .. } => Some(channel_id.clone()),
+                VoiceRoom::Dm { .. } => None,
+            };
+            state.voice.room = Some(room.clone());
             state.voice.reconnect_attempt = None;
             state.voice.error = None;
             // A camera or share belongs to one call.
@@ -63,46 +123,99 @@ impl Core {
             state.call += 1;
             state.call_ended_early = None;
             state.view_changed(ViewKey::Voice);
-            state.ensure_query(keys::scoped(keys::VOICE_PRESENCE, &channel_id));
-            (state.voice.muted, state.voice.deafened, state.call)
+            state.ensure_query(State::room_presence_key(&room));
+            state.w4_log(now, format!("joining {}", room_label(&room)));
+            (state.voice.muted, state.voice.deafened, state.call, room)
         });
         // The engine remembers these across calls, and what this call starts with is what's shown.
         // Deafen first: undeafening restores a mute this then overrides.
         media.set_deafened(deafened);
         media.set_muted(muted);
+        let fail = |error: BackendError| (failure_class(&error), self.backend_failed(error));
         let joined = async {
             let info = services
                 .backend
                 .livekit_controller_get_connection_info()
                 .await
-                .map_err(|error| self.backend_failed(error))?;
-            let token = services
-                .backend
-                .livekit_controller_generate_token(voice_token_request(&me, &channel_id))
-                .await
-                .map_err(|error| self.backend_failed(error))?;
-            let url = token.url.or(info.url).ok_or_else(|| CoreError::Failed {
-                message: "the server gave no LiveKit address".into(),
+                .map_err(fail)?;
+            let request = voice_token_request(&me, room.id());
+            let token = match &room {
+                VoiceRoom::Channel { .. } => {
+                    services
+                        .backend
+                        .livekit_controller_generate_token(request)
+                        .await
+                }
+                VoiceRoom::Dm { .. } => {
+                    services
+                        .backend
+                        .livekit_controller_generate_dm_token(request)
+                        .await
+                }
+            }
+            .map_err(fail)?;
+            let url = token.url.or(info.url).ok_or_else(|| {
+                (
+                    JoinFailureClass::ServerError,
+                    CoreError::Failed {
+                        message: "the server gave no LiveKit address".into(),
+                    },
+                )
             })?;
-            media.connect(url, token.token, call).await?;
-            services
-                .backend
-                .voice_presence_controller_join_presence(channel_id.clone())
+            self.write(|state, _| state.w4.diagnostics.server_host = url_host(&url));
+            media
+                .connect(url, token.token, call)
                 .await
-                .map_err(|error| self.backend_failed(error))?;
-            Ok::<_, CoreError>(())
+                .map_err(|error| (JoinFailureClass::MediaUnreachable, error))?;
+            match &room {
+                VoiceRoom::Channel { channel_id, .. } => {
+                    services
+                        .backend
+                        .voice_presence_controller_join_presence(channel_id.clone())
+                        .await
+                        .map_err(fail)?;
+                }
+                // LiveKit's webhook lists us too, so a failure here only waits for it.
+                VoiceRoom::Dm { dm_group_id } => {
+                    if let Err(error) = services
+                        .backend
+                        .dm_voice_presence_controller_refresh_dm_presence(dm_group_id.clone())
+                        .await
+                    {
+                        log::warn!("announcing DM call presence failed: {error}");
+                    }
+                }
+            }
+            Ok::<_, (JoinFailureClass, CoreError)>(())
         }
         .await;
-        self.write(|state, _| {
+        let joined = joined.map_err(|(class, error)| {
+            self.write(|state, now| {
+                state.w4.diagnostics.last_failure = Some(JoinFailure {
+                    class,
+                    message: error.to_string(),
+                    duration_ms: now.saturating_sub(started),
+                    at_ms: now,
+                });
+                state.w4_log(now, format!("join failed ({class:?}): {error}"));
+            });
+            error
+        });
+        let leave_presence = |state: &mut crate::client::State| {
+            if let VoiceRoom::Channel { channel_id, .. } = &room {
+                state.push_effect(Effect::LeavePresence(channel_id.clone()));
+            }
+        };
+        self.write(|state, now| {
             // Another join, a leave or a sign-out came while this one ran: it answers for nothing.
-            if state.call != call || state.voice.channel_id.as_deref() != Some(&channel_id) {
+            if state.call != call || state.voice.room.as_ref() != Some(&room) {
                 // A leave or sign-out can run before the engine has a room to leave, and this join
                 // then finishes after it. No newer join owns the engine, so end what this one
                 // started: the room, and the presence entry if there's still a session to say so.
                 if state.call == call && joined.is_ok() {
                     state.push_effect(Effect::EndCall);
                     if state.me.is_some() {
-                        state.push_effect(Effect::LeavePresence(channel_id.clone()));
+                        leave_presence(state);
                     }
                 }
                 return joined.clone().and(Err(CoreError::Failed {
@@ -114,6 +227,7 @@ impl Core {
                 (Ok(()), None) => {
                     state.voice.status = VoiceStatus::Connected;
                     state.view_changed(ViewKey::Voice);
+                    state.w4_log(now, "connected");
                     Ok(())
                 }
                 // The engine connected and dropped again before this finished. The server has heard
@@ -124,7 +238,7 @@ impl Core {
                         ..VoiceView::default()
                     };
                     state.media = None;
-                    state.push_effect(Effect::LeavePresence(channel_id.clone()));
+                    leave_presence(state);
                     state.view_changed(ViewKey::Voice);
                     Err(CoreError::Failed {
                         message: error.unwrap_or_else(|| "the call ended as it started".into()),
@@ -162,7 +276,13 @@ impl Core {
         Ok(())
     }
 
+    /// Refused while a moderator has me server-muted (W4): only they can lift it.
     pub async fn set_muted(&self, muted: bool) -> Result<(), CoreError> {
+        if !muted && self.read(|state| state.me_server_muted()) {
+            return Err(CoreError::Failed {
+                message: "A moderator muted you in this channel".into(),
+            });
+        }
         self.write(|state, _| {
             state.voice.muted = muted;
             // Shown now, not when the engine's report comes back.
@@ -319,16 +439,26 @@ impl Core {
     /// may have expired by then.
     pub async fn voice_token(&self) -> Result<String, CoreError> {
         let services = self.services().ok_or_else(|| unavailable("voice"))?;
-        let (me, channel_id) =
-            self.read(|state| (state.me.clone(), state.voice.channel_id.clone()));
-        let (Some(me), Some(channel_id)) = (me, channel_id) else {
+        let (me, room) = self.read(|state| (state.me.clone(), state.voice.room.clone()));
+        let (Some(me), Some(room)) = (me, room) else {
             return Err(unavailable("a voice token outside a call"));
         };
-        let token = services
-            .backend
-            .livekit_controller_generate_token(voice_token_request(&me, &channel_id))
-            .await
-            .map_err(|error| self.backend_failed(error))?;
+        let request = voice_token_request(&me, room.id());
+        let token = match room {
+            VoiceRoom::Channel { .. } => {
+                services
+                    .backend
+                    .livekit_controller_generate_token(request)
+                    .await
+            }
+            VoiceRoom::Dm { .. } => {
+                services
+                    .backend
+                    .livekit_controller_generate_dm_token(request)
+                    .await
+            }
+        }
+        .map_err(|error| self.backend_failed(error))?;
         Ok(token.token)
     }
 
@@ -337,21 +467,29 @@ impl Core {
     /// a dead room must not keep claiming to be there. A failure is logged, for the next to retry, and
     /// a refresh after expiry re-registers, so nothing else is needed after a rejoin.
     pub async fn refresh_voice_presence(&self) {
-        let channel_id = self.read(|state| {
+        let room = self.read(|state| {
             state
                 .voice
-                .channel_id
+                .room
                 .clone()
                 .filter(|_| state.voice.status == VoiceStatus::Connected)
         });
-        let (Some(channel_id), Some(services)) = (channel_id, self.services()) else {
+        let (Some(room), Some(services)) = (room, self.services()) else {
             return;
         };
-        if let Err(error) = services
-            .backend
-            .voice_presence_controller_refresh_presence(channel_id)
-            .await
-        {
+        let refreshed = match room {
+            VoiceRoom::Channel { channel_id, .. } => services
+                .backend
+                .voice_presence_controller_refresh_presence(channel_id)
+                .await
+                .map(|_| ()),
+            VoiceRoom::Dm { dm_group_id } => services
+                .backend
+                .dm_voice_presence_controller_refresh_dm_presence(dm_group_id)
+                .await
+                .map(|_| ()),
+        };
+        if let Err(error) = refreshed {
             log::warn!("refreshing voice presence failed: {error}");
         }
     }
@@ -420,26 +558,80 @@ impl Core {
 
     /// W4: a moderator's server mute of someone in the channel call I'm in, or lifting it. Lifting
     /// gives their mic back without turning it on. Refused by the server for someone I don't
-    /// outrank; its message is the error.
-    pub async fn server_mute(&self, _identity: String, _mute: bool) -> Result<(), CoreError> {
-        Err(unavailable("server mute"))
+    /// outrank, which a client can't tell beforehand (#663); its message is the error. The change
+    /// shows when presence says so (`voiceChannelUserUpdated`).
+    pub async fn server_mute(&self, identity: String, mute: bool) -> Result<(), CoreError> {
+        let services = self.services().ok_or_else(|| unavailable("server mute"))?;
+        let channel_id = self
+            .read(|state| match &state.voice.room {
+                Some(VoiceRoom::Channel { channel_id, .. }) => Some(channel_id.clone()),
+                _ => None,
+            })
+            .ok_or_else(|| unavailable("server mute outside a channel call"))?;
+        services
+            .backend
+            .livekit_controller_mute_participant(
+                channel_id,
+                wire::MuteParticipantDto {
+                    mute,
+                    participant_identity: identity,
+                },
+            )
+            .await
+            .map_err(|error| self.backend_failed(error))?;
+        Ok(())
     }
 
     /// W4: removes a member from the community (the voice menu's "Kick", after a confirm), which
-    /// ends their call. `reason` is optional, as on the web.
+    /// ends their call. There's no removal from a call alone (#663). `reason` is optional, as on
+    /// the web.
     pub async fn kick_member(
         &self,
-        _community_id: String,
-        _user_id: String,
-        _reason: Option<String>,
+        community_id: String,
+        user_id: String,
+        reason: Option<String>,
     ) -> Result<(), CoreError> {
-        Err(unavailable("kicking a member"))
+        let services = self
+            .services()
+            .ok_or_else(|| unavailable("kicking a member"))?;
+        let reason = reason
+            .map(|reason| reason.trim().to_owned())
+            .filter(|reason| !reason.is_empty());
+        services
+            .backend
+            .moderation_controller_kick_user(community_id, user_id, wire::KickUserDto { reason })
+            .await
+            .map_err(|error| self.backend_failed(error))?;
+        Ok(())
     }
 
     /// W4: what I may do to others in this voice channel, from my roles for it (read when missing;
-    /// `ViewKey::ChannelModeration` says when they're in). All false until then.
-    pub fn voice_moderation_caps(&self, _channel_id: String) -> VoiceModerationCaps {
-        VoiceModerationCaps::default()
+    /// `ViewKey::ChannelModeration` says when they're in). All false until then. An instance owner
+    /// may do both.
+    pub fn voice_moderation_caps(&self, channel_id: String) -> VoiceModerationCaps {
+        self.write(|state, _| {
+            if state.is_instance_owner() {
+                return VoiceModerationCaps {
+                    can_server_mute: true,
+                    can_kick: true,
+                };
+            }
+            let key = keys::scoped(keys::CHANNEL_ROLES, &channel_id);
+            state.ensure_query(key.clone());
+            let Some(roles) = state.cache.channel_roles(&key) else {
+                return VoiceModerationCaps::default();
+            };
+            let has = |action: RbacAction| {
+                roles
+                    .roles
+                    .iter()
+                    .any(|role| role.actions.contains(&action))
+            };
+            VoiceModerationCaps {
+                can_server_mute: has(RbacAction::MuteParticipant),
+                can_kick: has(RbacAction::KickUser),
+            }
+        })
     }
 
     /// W4: how loud a participant plays here, 0 to 200 percent. Straight to the media engine,
@@ -470,7 +662,7 @@ impl Core {
     pub fn voice(&self) -> VoiceView {
         self.read(|state| {
             let mut voice = state.voice.clone();
-            let Some(channel_id) = &voice.channel_id else {
+            let Some(room) = &voice.room else {
                 return voice;
             };
             let empty = Vec::new();
@@ -478,11 +670,9 @@ impl Core {
                 .media
                 .as_ref()
                 .map_or(&empty, |media| &media.participants);
-            let key = keys::scoped(keys::VOICE_PRESENCE, channel_id);
             let users = state
-                .cache
-                .voice_presence(&key)
-                .map(|presence| presence.users.as_slice())
+                .room_presence(room)
+                .map(Vec::as_slice)
                 .unwrap_or_default();
             let mut participants: Vec<ParticipantView> = users
                 .iter()
@@ -520,7 +710,10 @@ impl Core {
                 voice.error = media.error.clone();
                 voice.local.may_camera = media.local.may_camera;
                 voice.local.may_share = media.local.may_share;
+                voice.local.may_speak = media.local.may_speak;
+                voice.local.screen_tracks = media.local.screen_tracks.clone();
             }
+            voice.server_muted = state.me_server_muted();
             voice
         })
     }

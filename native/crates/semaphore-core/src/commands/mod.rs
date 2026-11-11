@@ -88,6 +88,10 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::SESSIONS => Some(ViewKey::Sessions),
         keys::APPEARANCE => Some(ViewKey::Appearance),
         keys::INSTANCE_ROLES => Some(ViewKey::InstancePermissions),
+        keys::SOUNDBOARD => Some(ViewKey::Soundboard { community_id: id() }),
+        keys::CLIPS => Some(ViewKey::Clips),
+        keys::USER_CLIPS => Some(ViewKey::UserClips { user_id: id() }),
+        keys::REPLAY_SESSION => Some(ViewKey::ReplaySession),
         keys::USER => Some(ViewKey::Profile { user_id: id() }),
         _ => None,
     }
@@ -113,6 +117,10 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         ViewKey::Sessions => Some(keys::op(keys::SESSIONS)),
         ViewKey::Appearance => Some(keys::op(keys::APPEARANCE)),
         ViewKey::InstancePermissions => Some(keys::op(keys::INSTANCE_ROLES)),
+        ViewKey::Soundboard { community_id } => Some(keys::scoped(keys::SOUNDBOARD, community_id)),
+        ViewKey::Clips => Some(keys::op(keys::CLIPS)),
+        ViewKey::UserClips { user_id } => Some(keys::scoped(keys::USER_CLIPS, user_id)),
+        ViewKey::ReplaySession => Some(keys::op(keys::REPLAY_SESSION)),
         _ => None,
     }
 }
@@ -137,7 +145,8 @@ fn core_error_view(error: &CoreError) -> ErrorView {
 impl State {
     /// Everything a session leaves behind, forgotten. Sign-out and a lost session both end here.
     pub(crate) fn reset_signed_out(&mut self) {
-        let call_live = self.voice.channel_id.is_some();
+        let call_live = self.voice.channel_id.is_some() || self.voice.room.is_some();
+        self.w4_signed_out();
         self.cache.clear();
         self.fetching.clear();
         self.failed_queries.clear();
@@ -285,6 +294,14 @@ impl State {
             keys::SESSIONS => self.view_changed(ViewKey::Sessions),
             keys::APPEARANCE => self.view_changed(ViewKey::Appearance),
             keys::INSTANCE_ROLES => self.view_changed(ViewKey::InstancePermissions),
+            keys::DM_VOICE_PRESENCE => {
+                self.view_changed(ViewKey::Voice);
+                self.w4_ring_presence(&id);
+            }
+            keys::SOUNDBOARD => self.view_changed(ViewKey::Soundboard { community_id: id }),
+            keys::CLIPS => self.view_changed(ViewKey::Clips),
+            keys::USER_CLIPS => self.view_changed(ViewKey::UserClips { user_id: id }),
+            keys::REPLAY_SESSION => self.view_changed(ViewKey::ReplaySession),
             keys::THREAD_META => self.reading_meta_arrived(id),
             keys::UNREAD => {
                 self.reading_counts_arrived();

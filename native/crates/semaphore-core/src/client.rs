@@ -69,6 +69,16 @@ pub(crate) enum Effect {
     BrowserSignIn(u64),
     /// W3: read this invite, before anyone signs in.
     FetchInvite(String),
+    /// W4: hold off sleep, or stop holding it. `n` numbers each change, so a quick on-off-on isn't
+    /// taken for a repeat and dropped.
+    KeepAwake {
+        on: bool,
+        n: u64,
+    },
+    /// W4: start the replay buffer of the share in this call.
+    StartReplay(u64),
+    /// W4: stop the replay buffer.
+    StopReplay,
 }
 
 pub(crate) struct State {
@@ -309,6 +319,7 @@ impl State {
 
     /// Turns what this change did into events.
     fn collect_events(&mut self) {
+        self.w4_settle();
         if !self.invalidated.is_empty() {
             self.outbox.push(CoreEvent::QueriesInvalidated {
                 keys: std::mem::take(&mut self.invalidated),
@@ -553,6 +564,9 @@ impl Core {
             Effect::Idle(idle) => self.send_idle(idle).await,
             Effect::BrowserSignIn(attempt) => self.run_browser_sign_in(attempt).await,
             Effect::FetchInvite(code) => self.fetch_invite(code).await,
+            Effect::KeepAwake { on, .. } => self.set_awake(on),
+            Effect::StartReplay(call) => self.start_replay(call).await,
+            Effect::StopReplay => self.stop_replay().await,
             Effect::EndCall => {
                 if let Some(media) = self.services().and_then(|services| services.media.clone()) {
                     media.disconnect().await;
