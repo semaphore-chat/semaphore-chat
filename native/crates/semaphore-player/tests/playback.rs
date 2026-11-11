@@ -78,7 +78,7 @@ impl Rig {
         io.set_speaker(Box::new(move |frame| {
             heard.lock().unwrap().extend_from_slice(frame);
         }));
-        let opener: Opener = Arc::new(|source: &PlaybackSource| {
+        let opener: Opener = Arc::new(|source: &PlaybackSource, _: &semaphore_player::Cancel| {
             if source.file_id == "missing" {
                 return Err(PlayerError::Network);
             }

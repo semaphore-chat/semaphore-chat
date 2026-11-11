@@ -56,10 +56,25 @@ pub trait VideoSink: Send + Sync {
     fn remove(&self);
 }
 
-/// Opens the bytes of an attachment: the range reader in the app, bytes in tests. Runs on the
-/// player's thread, so it may block.
+/// Opens the bytes of an attachment: [`crate::range::http_opener`] in the app, bytes in tests.
+/// Runs on the player's thread, so it may block; the [`Cancel`] is set when the player goes away,
+/// and a source should give up its reads then.
 pub type Opener =
-    Arc<dyn Fn(&PlaybackSource) -> Result<Box<dyn Source>, PlayerError> + Send + Sync>;
+    Arc<dyn Fn(&PlaybackSource, &Cancel) -> Result<Box<dyn Source>, PlayerError> + Send + Sync>;
+
+/// Set when a player is dropped: its source stops waiting for the network.
+#[derive(Debug, Clone, Default)]
+pub struct Cancel(Arc<AtomicBool>);
+
+impl Cancel {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
 
 const AUDIO_TARGET: Duration = Duration::from_millis(300);
 const AUDIO_CAP: Duration = Duration::from_secs(1);
@@ -145,7 +160,9 @@ impl DesktopPlayers {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .clone();
+        let cancel = Cancel::default();
         let context = Context {
+            cancel: cancel.clone(),
             id,
             shared: self.shared.clone(),
             source,
@@ -164,6 +181,7 @@ impl DesktopPlayers {
             id,
             commands,
             controls,
+            cancel,
             shared: self.shared.clone(),
         }
     }
@@ -196,6 +214,7 @@ pub struct Player {
     id: u64,
     commands: mpsc::Sender<Command>,
     controls: Arc<Controls>,
+    cancel: Cancel,
     shared: Arc<Shared>,
 }
 
@@ -244,6 +263,7 @@ impl MediaPlayer for Player {
 
 impl Drop for Player {
     fn drop(&mut self) {
+        self.cancel.cancel();
         let _ = self.commands.send(Command::Stop);
         let mut registry = self.shared.registry();
         registry.players.remove(&self.id);
@@ -252,6 +272,7 @@ impl Drop for Player {
 }
 
 struct Context {
+    cancel: Cancel,
     id: u64,
     shared: Arc<Shared>,
     source: PlaybackSource,
@@ -275,7 +296,7 @@ fn player_error(error: Error) -> PlayerError {
 
 fn run(context: Context, commands: mpsc::Receiver<Command>) {
     let sink = context.sink.clone();
-    let opened = (context.shared.opener)(&context.source)
+    let opened = (context.shared.opener)(&context.source, &context.cancel)
         .and_then(|source| Media::open(source).map_err(player_error));
     match opened {
         Ok(media) => Engine::new(context, media).run(&commands),

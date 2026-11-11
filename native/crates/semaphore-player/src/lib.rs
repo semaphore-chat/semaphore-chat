@@ -24,7 +24,9 @@ mod engine;
 mod ffi;
 pub mod resample;
 
-pub use engine::{DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
+pub mod range;
+
+pub use engine::{Cancel, DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
 
 // Links libwebrtc.a, where every symbol the shim calls lives. None of webrtc-sys's Rust is used.
 use webrtc_sys as _;

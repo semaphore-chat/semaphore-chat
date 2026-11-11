@@ -8395,7 +8395,11 @@ dependencies = [
  "log",
  "rtrb",
  "semaphore-core",
+ "semaphore-fake-server",
  "semaphore-media-livekit",
+ "semaphore-net",
+ "semaphore-wire",
+ "tokio",
  "webrtc-sys",
  "webrtc-sys-build",
 ]
