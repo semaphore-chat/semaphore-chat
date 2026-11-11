@@ -336,6 +336,8 @@ fn message_row(
         pinned: flag(get(message, "pinned")),
         webhook: webhook_view(get(message, "webhook")),
         send_state: SendState::Sent,
+        pending_attachments: 0,
+        uploads: Vec::new(),
         revision: 0,
     })
 }

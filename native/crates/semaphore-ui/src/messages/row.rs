@@ -659,19 +659,213 @@ fn render_image(
                     );
                 })
                 .child(image_canvas(shared, image, px(0.)))
+                .test_support()
                 .into_any_element()
         }
         MediaState::Loading => frame.bg(palette.hover).into_any_element(),
-        MediaState::Failed => frame
+        // Unavailable, or refused as too big to decode: the file itself is still there to save.
+        MediaState::Failed => {
+            render_file_card(shared, seq, index, attachment, icons::FILE).into_any_element()
+        }
+    }
+}
+
+/// This client's uploads to the message, and what the server still waits for from others.
+fn render_uploads(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
+    let others = (row.pending_attachments as usize).saturating_sub(row.uploads.len());
+    if row.uploads.is_empty() && others == 0 {
+        return None;
+    }
+    let palette = shared.palette;
+    let mut column = div().mt(px(8.)).flex().flex_col().gap(px(6.));
+    for (index, upload) in row.uploads.iter().enumerate() {
+        let fraction = if upload.size_bytes == 0 {
+            1.
+        } else {
+            upload.sent_bytes as f32 / upload.size_bytes as f32
+        };
+        let mut line = div()
             .flex()
             .items_center()
-            .justify_center()
             .gap(px(8.))
+            .max_w(px(TEXT_MAX_WIDTH))
             .text_size(px(CAPTION_SIZE))
-            .text_color(palette.text_secondary)
-            .child("Failed to load attachment")
-            .into_any_element(),
+            .child(icon(icons::FILE, 18., palette.text_secondary))
+            .child(
+                div()
+                    .min_w_0()
+                    .flex_shrink(1.)
+                    .truncate()
+                    .text_color(palette.text)
+                    .child(upload.name.clone()),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_color(palette.text_secondary)
+                    .child(file_size(upload.size_bytes)),
+            );
+        match (&upload.failed, &row.client_nonce) {
+            (Some(error), Some(nonce)) => {
+                let (retry_shared, remove_shared) = (shared.clone(), shared.clone());
+                let (retry_nonce, remove_nonce) = (nonce.clone(), nonce.clone());
+                let index = index as u32;
+                line = line
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(palette.error)
+                            .child(error.message.clone()),
+                    )
+                    .child(
+                        action_button(
+                            ("upload-retry", (row.seq as u64) << 8 | u64::from(index)),
+                            "Retry",
+                            icons::REPLAY,
+                            palette.primary,
+                            palette.tint(palette.primary, 0.08),
+                        )
+                        .on_click(move |_, _, cx| {
+                            retry_shared.emit(
+                                MessageListEvent::RetryUpload {
+                                    client_nonce: retry_nonce.clone(),
+                                    index,
+                                },
+                                cx,
+                            );
+                        })
+                        .test_support(),
+                    )
+                    .child(
+                        action_button(
+                            ("upload-remove", (row.seq as u64) << 8 | u64::from(index)),
+                            "Remove",
+                            icons::DELETE,
+                            palette.error,
+                            palette.tint(palette.error, 0.08),
+                        )
+                        .on_click(move |_, _, cx| {
+                            remove_shared.emit(
+                                MessageListEvent::RemoveUpload {
+                                    client_nonce: remove_nonce.clone(),
+                                    index,
+                                },
+                                cx,
+                            );
+                        })
+                        .test_support(),
+                    );
+            }
+            _ => {
+                line = line.child(
+                    div()
+                        .w(px(120.))
+                        .h(px(4.))
+                        .flex_none()
+                        .rounded(px(2.))
+                        .bg(palette.hover)
+                        .child(
+                            div()
+                                .h_full()
+                                .rounded(px(2.))
+                                .bg(palette.primary)
+                                .w(px(120. * fraction.clamp(0., 1.))),
+                        ),
+                );
+            }
+        }
+        column = column.child(line);
     }
+    if others > 0 {
+        column = column.child(
+            div()
+                .text_size(px(CAPTION_SIZE))
+                .text_color(palette.text_secondary)
+                .child(if others == 1 {
+                    "1 file still uploading".to_owned()
+                } else {
+                    format!("{others} files still uploading")
+                }),
+        );
+    }
+    Some(column.into_any_element())
+}
+
+/// The web's `LinkPreview` card: site, title, description, and the image only where the source
+/// allows third-party images.
+fn render_link_previews(
+    shared: &Rc<Shared>,
+    row: &MessageRow,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    if row.link_previews.is_empty() || row.removed {
+        return None;
+    }
+    let palette = shared.palette;
+    let mut cards = div().mt(px(8.)).flex().flex_col().gap(px(8.));
+    for (index, preview) in row.link_previews.iter().enumerate() {
+        let event_shared = shared.clone();
+        let url = preview.url.clone();
+        let mut text = div().flex().flex_col().gap(px(2.)).min_w_0().flex_1();
+        if let Some(site) = &preview.site_name {
+            text = text.child(
+                div()
+                    .text_size(px(CAPTION_SIZE))
+                    .text_color(palette.text_secondary)
+                    .truncate()
+                    .child(site.clone()),
+            );
+        }
+        text = text.child(
+            div()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(palette.primary)
+                .truncate()
+                .child(preview.title.clone().unwrap_or_else(|| preview.url.clone())),
+        );
+        if let Some(description) = &preview.description {
+            text = text.child(
+                div()
+                    .text_size(px(CAPTION_SIZE))
+                    .text_color(palette.text_secondary)
+                    .line_clamp(2)
+                    .child(description.clone()),
+            );
+        }
+        let mut card = clickable(("preview", (row.seq as u64) << 8 | index as u64))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .p(px(12.))
+            .max_w(px(TEXT_MAX_WIDTH))
+            .min_w_0()
+            .rounded(px(8.))
+            .border_l_4()
+            .border_color(palette.primary)
+            .bg(palette.paper)
+            .on_click(move |_, _, cx| {
+                event_shared.emit(MessageListEvent::OpenLink { url: url.clone() }, cx);
+            })
+            .child(text);
+        if let Some(image_url) = &preview.image_url {
+            let media = shared.media.source.link_image(image_url);
+            if !matches!(media, MediaRef::Missing) {
+                let state = shared.media.resolve(media, CacheKind::Images, window, cx);
+                let frame = div().w_full().h(px(160.)).rounded(px(4.)).overflow_hidden();
+                card = card.child(match state {
+                    MediaState::Ready(image) => frame
+                        .child(image_canvas(shared, image, px(4.)))
+                        .into_any_element(),
+                    MediaState::Loading => frame.bg(palette.hover).into_any_element(),
+                    MediaState::Failed => div().into_any_element(),
+                });
+            }
+        }
+        cards = cards.child(card);
+    }
+    Some(cards.into_any_element())
 }
 
 fn render_video(attachment: &AttachmentView, palette: &Palette) -> impl IntoElement {
@@ -1079,6 +1273,8 @@ pub(crate) fn render_row(
     }
     body = body
         .children(render_attachments(shared, &row, window, cx))
+        .children(render_uploads(shared, &row))
+        .children(render_link_previews(shared, &row, window, cx))
         .children(render_reactions(shared, &row, window, cx))
         .children(render_thread_badge(shared, &row))
         .children(render_failed(shared, &row));

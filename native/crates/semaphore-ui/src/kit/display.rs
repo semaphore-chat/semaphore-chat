@@ -76,8 +76,23 @@ pub struct Avatar {
     background: Option<Hsla>,
     foreground: Option<Hsla>,
     image: Option<ImageSource>,
+    /// A file id to draw through the app's [`AvatarImages`], when it has one.
+    file: Option<SharedString>,
     font_size: Option<f32>,
 }
+
+/// A file id to a resource, once its bytes are at hand.
+pub type AvatarResolver = std::rc::Rc<dyn Fn(&str) -> Option<Resource>>;
+
+/// Where avatar files come from in the app: a resource for a file id once its bytes are at hand
+/// (`None` while they aren't, or never will be), and the bounded cache the decodes live in. Without
+/// it, as in stories, avatars are initials.
+pub struct AvatarImages {
+    pub resolve: AvatarResolver,
+    pub cache: Entity<crate::messages::LruImageCache>,
+}
+
+impl Global for AvatarImages {}
 
 impl Avatar {
     pub fn new(label: impl Into<SharedString>) -> Self {
@@ -87,8 +102,15 @@ impl Avatar {
             background: None,
             foreground: None,
             image: None,
+            file: None,
             font_size: None,
         }
+    }
+
+    /// The avatar's file, drawn over the initials once the app has it.
+    pub fn file(mut self, file_id: Option<&str>) -> Self {
+        self.file = file_id.map(|id| SharedString::from(id.to_owned()));
+        self
     }
 
     pub fn size(mut self, size: f32) -> Self {
@@ -133,6 +155,11 @@ impl RenderOnce for Avatar {
             .unwrap_or_else(|| hsla_of(sem.palette.common_white));
         // As the fixture's SVG avatars and the rail's `fontSize` do: 40% of the side.
         let font_size = self.font_size.unwrap_or((self.size * 0.4).round());
+        let file = self.file.as_ref().and_then(|file_id| {
+            let images = cx.try_global::<AvatarImages>()?;
+            Some(((images.resolve)(file_id)?, images.cache.clone()))
+        });
+        let label = self.label.clone();
         div()
             .size(px(self.size))
             .flex()
@@ -143,9 +170,26 @@ impl RenderOnce for Avatar {
             .overflow_hidden()
             .bg(background)
             .text_color(foreground)
-            .map(|avatar| match self.image {
-                Some(source) => avatar.child(img(source).size_full().object_fit(ObjectFit::Cover)),
-                None => avatar.child(
+            .map(|avatar| match (self.image, file) {
+                (Some(source), _) => {
+                    avatar.child(img(source).size_full().object_fit(ObjectFit::Cover))
+                }
+                // Initials until the image is decoded, and if it never is.
+                (None, Some((resource, cache))) => avatar.child(
+                    img(ImageSource::Resource(resource))
+                        .image_cache(&cache)
+                        .size_full()
+                        // The parent's clip is a rectangle: the image rounds itself.
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover)
+                        .with_fallback(move || {
+                            text(Variant::Body2, label.clone())
+                                .text_size(px(font_size))
+                                .font_weight(FontWeight(700.))
+                                .into_any_element()
+                        }),
+                ),
+                (None, None) => avatar.child(
                     text(Variant::Body2, self.label)
                         .text_size(px(font_size))
                         .line_height(px(font_size + 2.))

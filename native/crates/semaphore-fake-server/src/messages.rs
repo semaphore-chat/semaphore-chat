@@ -467,18 +467,40 @@ pub(crate) fn send(
 /// A channel message from someone other than the signed-in user, as if another client sent it. With
 /// `broadcast` false nobody hears of it, which is what a client misses while disconnected: only a
 /// resync finds it.
+/// What a `post_as` message carries besides its text.
+#[derive(Default)]
+pub(crate) struct PostExtras {
+    /// A custom emoji after the text: its id and name.
+    pub emoji: Option<(String, String)>,
+    /// A link preview, as the server's unfurler would have made it.
+    pub link_preview: Option<serde_json::Value>,
+}
+
 pub(crate) fn post_as(
     inner: &Inner,
     channel_id: &str,
     author_id: &str,
     text: &str,
     broadcast: bool,
+    extras: PostExtras,
 ) -> MessageDto {
-    let span = SendSpan {
+    let mut spans = vec![span_from(&SendSpan {
         kind: "PLAIN".into(),
         text: Some(text.to_owned()),
         ..SendSpan::default()
-    };
+    })];
+    if let Some((id, name)) = &extras.emoji {
+        spans.push(span_from(&SendSpan {
+            kind: "EMOJI".into(),
+            text: Some(format!(":{name}:")),
+            emoji_id: Some(id.clone()),
+            ..SendSpan::default()
+        }));
+    }
+    let link_previews = extras
+        .link_preview
+        .and_then(|preview| serde_json::from_value(preview).ok())
+        .map(|preview| vec![preview]);
     let message = MessageDto {
         attachments: Vec::new(),
         author_id: Some(author_id.to_owned()),
@@ -491,7 +513,7 @@ pub(crate) fn post_as(
         edited_at: None,
         id: inner.next_message_id(),
         last_reply_at: None,
-        link_previews: None,
+        link_previews,
         parent_message_id: None,
         pending_attachments: Some(0),
         pinned: false,
@@ -502,7 +524,7 @@ pub(crate) fn post_as(
         reply_to: None,
         reply_to_id: None,
         sent_at: inner.now(),
-        spans: vec![span_from(&span)],
+        spans,
         webhook: None,
     };
     {
@@ -524,6 +546,76 @@ pub(crate) fn post_as(
         );
     }
     message
+}
+
+/// Adds an uploaded file to a message, or with none just releases a pending slot, and broadcasts
+/// the message as `updateMessage`. `None` if the message or the file isn't there.
+pub(crate) fn add_attachment(
+    inner: &Inner,
+    message_id: &str,
+    file_id: Option<&str>,
+) -> Option<MessageDto> {
+    let mut data = lock(&inner.data);
+    let attachment = match file_id {
+        Some(file_id) => {
+            let file = data.files.get(file_id)?.clone();
+            Some(AttachmentDto {
+                file_type: if file.mime_type.starts_with("image/") {
+                    FileType::Image
+                } else {
+                    FileType::Document
+                },
+                filename: file.filename,
+                has_thumbnail: false,
+                id: file_id.to_owned(),
+                mime_type: file.mime_type,
+                size: file.bytes.len() as i64,
+            })
+        }
+        None => None,
+    };
+    let message = find_message_mut(&mut data, message_id)?;
+    if let Some(attachment) = attachment {
+        message.attachments.push(attachment);
+    }
+    message.pending_attachments = Some(message.pending_attachments.unwrap_or(0).saturating_sub(1));
+    let message = message.clone();
+    drop(data);
+    inner.broadcast("updateMessage", serde_json::json!({ "message": message }));
+    Some(message)
+}
+
+/// Custom emoji used by any message in a community's channels, as `CustomEmojiDto`s.
+pub(crate) fn emojis_in_use(inner: &Inner, community_id: &str) -> Vec<serde_json::Value> {
+    let channels: Vec<String> = inner
+        .scenario
+        .communities
+        .iter()
+        .filter(|community| community.id == community_id)
+        .flat_map(|community| community.channels.iter().map(|channel| channel.id.clone()))
+        .collect();
+    let data = lock(&inner.data);
+    let mut seen = std::collections::BTreeMap::new();
+    // One every community has, so a test can post it without a scenario that uses it.
+    seen.insert("emoji-party".to_owned(), "party".to_owned());
+    for channel in &channels {
+        for message in data.channel_messages.get(channel).into_iter().flatten() {
+            for span in &message.spans {
+                if let (Some(id), Some(text)) = (&span.emoji_id, &span.text) {
+                    let name = text.trim_matches(':').to_owned();
+                    seen.entry(id.clone()).or_insert(name);
+                }
+            }
+        }
+    }
+    seen.into_iter()
+        .map(|(id, name)| {
+            serde_json::json!({
+                "id": id, "name": name, "fileId": id, "communityId": community_id,
+                "createdAt": inner.scenario.epoch, "createdBy": null,
+            })
+        })
+        .collect()
 }
 
 fn find_message(data: &crate::Data, id: &str) -> Option<MessageDto> {

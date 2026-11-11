@@ -21,8 +21,8 @@ pub use controls::{
     Button, ButtonSize, ButtonVariant, Checkbox, IconButton, Radio, Slider, Switch,
 };
 pub use display::{
-    Alert, Avatar, Badge, Chip, Icon, LinearProgress, Severity, Skeleton, Snackbar, Spinner,
-    reduced_motion, set_reduced_motion,
+    Alert, Avatar, AvatarImages, Badge, Chip, Icon, LinearProgress, Severity, Skeleton, Snackbar,
+    Spinner, reduced_motion, set_reduced_motion,
 };
 pub use fields::{SelectField, TextField, select_state, text_state};
 pub use lists::{ListRow, Table, Tabs};

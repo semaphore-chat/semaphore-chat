@@ -32,7 +32,10 @@ mod stories;
 mod tests;
 
 pub use format::TimeFormat;
-pub use media::{LruImageCache, MediaRef, MediaSource, NoMedia, tune_allocator};
+pub use media::{
+    IMAGE_BUDGET_BYTES, LruImageCache, MediaRef, MediaSource, NoMedia, SMALL_BUDGET_BYTES,
+    tune_allocator,
+};
 pub use row::ReplyPreview;
 pub use selection::{Pos, Selection};
 pub use view::{

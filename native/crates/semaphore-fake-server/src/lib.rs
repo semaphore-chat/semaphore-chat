@@ -95,6 +95,16 @@ pub(crate) struct Data {
     pub voice: std::collections::BTreeMap<String, Vec<semaphore_wire::VoicePresenceUserDto>>,
     pub unread: std::collections::BTreeMap<String, (i64, i64)>,
     pub nonces: HashMap<(String, String), NonceEntry>,
+    /// What clients uploaded, by file id: served back from the file routes.
+    pub files: HashMap<String, StoredFile>,
+}
+
+/// An uploaded file, kept in memory for the server's life.
+#[derive(Clone, Debug)]
+pub(crate) struct StoredFile {
+    pub filename: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
 }
 
 pub(crate) struct Inner {
@@ -376,6 +386,7 @@ impl FakeServer {
             voice: scenario.voice.clone(),
             unread: scenario.unread.clone(),
             nonces: HashMap::new(),
+            files: HashMap::new(),
         };
         let listener = tokio::net::TcpListener::bind((ip, port))
             .await

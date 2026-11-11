@@ -27,6 +27,11 @@ pub trait MediaSource: 'static {
     fn attachment(&self, attachment: &AttachmentView) -> MediaRef;
     fn emoji(&self, emoji_id: &str) -> MediaRef;
     fn avatar(&self, file_id: &str) -> MediaRef;
+    /// A link preview's image: a third-party URL. Nothing unless the app allows it, because
+    /// loading one tells that site the viewer's address.
+    fn link_image(&self, _url: &str) -> MediaRef {
+        MediaRef::Missing
+    }
 }
 
 #[derive(Clone)]
@@ -35,7 +40,9 @@ pub enum MediaRef {
     Ready(Arc<RenderImage>),
     /// Loaded through the bounded cache, by whatever `AssetSource` or path this names.
     Resource(Resource),
-    /// This source has nothing for it.
+    /// On its way: drawn as a placeholder until the source has it.
+    Pending,
+    /// This source has nothing for it, or won't decode it.
     Missing,
 }
 
@@ -94,6 +101,7 @@ impl Media {
     ) -> MediaState {
         match media {
             MediaRef::Ready(image) => MediaState::Ready(image),
+            MediaRef::Pending => MediaState::Loading,
             MediaRef::Missing => MediaState::Failed,
             MediaRef::Resource(resource) => {
                 let cache = match kind {

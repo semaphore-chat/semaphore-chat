@@ -21,6 +21,7 @@ pub mod send;
 pub mod socketio;
 pub mod store;
 pub mod text;
+pub mod uploads;
 
 pub use cache::{CacheEntry, QueryCache, QueryKey};
 pub use client::{Core, Services};

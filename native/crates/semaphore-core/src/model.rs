@@ -243,6 +243,10 @@ pub struct MessageRow {
     pub pinned: bool,
     pub webhook: Option<WebhookView>,
     pub send_state: SendState,
+    /// Files the server still expects for this message (`pendingAttachments`), from anyone.
+    pub pending_attachments: u32,
+    /// This client's uploads to it, in the order they were picked.
+    pub uploads: Vec<UploadView>,
     /// Bumped whenever the row changes, so a view can keep its shaped text until then.
     pub revision: u64,
 }
@@ -302,7 +306,27 @@ pub struct MessageDraft {
     pub text: String,
     pub mentions: Vec<DraftMention>,
     pub reply_to_message_id: Option<String>,
-    pub attachment_file_ids: Vec<String>,
+    /// Sent after the message, as the web does: the message goes with `pendingAttachments` set to
+    /// how many, then each file uploads against it. Core holds the bytes only until each one has.
+    pub files: Vec<DraftFile>,
+}
+
+/// A file to send with a message.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DraftFile {
+    pub name: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
+}
+
+/// A file of this client's on its way to a message it sent.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UploadView {
+    pub name: String,
+    pub size_bytes: u64,
+    pub sent_bytes: u64,
+    /// Why it stopped, until it's retried or removed.
+    pub failed: Option<ErrorView>,
 }
 
 /// A custom emoji, so a UI can turn `SegKind::Emoji`'s id into a file.

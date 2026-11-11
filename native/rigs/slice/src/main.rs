@@ -17,6 +17,8 @@
 //! restart                             # quit as closing the window does, start again
 //! tick 100                            # move GPUI's headless clock: the stage redraws on a timer
 //! snap name                           # one frame, no waiting for stillness (live video)
+//! attach rigs/slice/fixtures/notes.txt  # a file into the composer, as a dialog or drop would
+//! link-images on                      # the next start loads link previews' images
 //! livekit remove vc-squad me          # LiveKit's server API removes someone (needs --livekit-http)
 //! wait core voice connected           # also frames, muted, deafened, participant ID, share-error
 //! expect stored-session yes           # a refresh token is in the (memory) keyring
@@ -37,7 +39,7 @@ use semaphore_core::platform::{Clock, CoreError, SecretStore};
 use semaphore_core::{ConnectionState, NetworkState};
 use semaphore_fake_server::livekit::LiveKit;
 use semaphore_media_livekit::audio::virtual_io::VirtualIo;
-use semaphore_ui::kit::{UiAssets, set_reduced_motion};
+use semaphore_ui::kit::set_reduced_motion;
 use semaphore_ui::messages::TimeFormat;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -110,6 +112,19 @@ enum Condition {
     VoiceShareError,
     /// The fake server has seen at least this many of an operation or socket event.
     Requests(String, usize),
+    RequestsExactly(String, usize),
+    /// The newest row containing the text has this many attachments.
+    Attachments(String, usize),
+    /// ... this many of this client's uploads still on it.
+    Uploads(String, usize),
+    /// ... and the server still waits for this many files.
+    PendingFiles(String, usize),
+    /// ... and one of its uploads failed.
+    UploadFailed(String),
+    /// The file store holds this file's bytes, ready to decode.
+    FileReady(String),
+    /// The image viewer is open.
+    Viewer(bool),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -134,9 +149,11 @@ enum Step {
     },
     ExpectClipboard(String),
     /// Clicks a row's control, `("retry", seq)` and the like, on the newest row containing the text.
+    /// With an index, the control is one of several on the row: `(name, seq << 8 | index)`.
     ClickRow {
         name: String,
         text: String,
+        index: Option<u64>,
     },
     /// What the OS watcher would report.
     Os(OsEvent),
@@ -148,6 +165,10 @@ enum Step {
     Tick(u64),
     /// One frame to a PNG, without waiting for the window to stop changing: live video never does.
     Snap(String),
+    /// Adds a file to the composer, as the file dialog, a drop or a paste would.
+    Attach(PathBuf),
+    /// Whether the next start loads link previews' images.
+    LinkImages(bool),
     /// Asks LiveKit's server API to remove someone from a room, as a moderator would.
     LiveKitRemove {
         room: String,
@@ -183,6 +204,16 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["voice", "participant", identity] => Condition::VoiceParticipant((*identity).into()),
         ["voice", "share-error"] => Condition::VoiceShareError,
         ["requests", name, ">=", count] => Condition::Requests((*name).into(), number(count)?),
+        ["requests", name, "==", count] => {
+            Condition::RequestsExactly((*name).into(), number(count)?)
+        }
+        ["attachments", text, count] => Condition::Attachments((*text).into(), number(count)?),
+        ["uploads", text, count] => Condition::Uploads((*text).into(), number(count)?),
+        ["pending-files", text, count] => Condition::PendingFiles((*text).into(), number(count)?),
+        ["upload-failed", text] => Condition::UploadFailed((*text).into()),
+        ["file-ready", file_id] => Condition::FileReady((*file_id).into()),
+        ["viewer", "open"] => Condition::Viewer(true),
+        ["viewer", "closed"] => Condition::Viewer(false),
         ["voice", status] => Condition::Voice((*status).into()),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
@@ -236,6 +267,9 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["restart"] => Step::Restart,
             ["tick", ms] => Step::Tick(ms.parse().map_err(|_| at(anyhow!("tick ms")))?),
             ["snap", name] => Step::Snap((*name).into()),
+            ["attach", path] => Step::Attach(PathBuf::from(path)),
+            ["link-images", "on"] => Step::LinkImages(true),
+            ["link-images", "off"] => Step::LinkImages(false),
             ["livekit", "remove", room, identity] => Step::LiveKitRemove {
                 room: (*room).into(),
                 identity: (*identity).into(),
@@ -245,6 +279,12 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["click-row", name, text] => Step::ClickRow {
                 name: (*name).into(),
                 text: (*text).into(),
+                index: None,
+            },
+            ["click-row", name, text, index] => Step::ClickRow {
+                name: (*name).into(),
+                text: (*text).into(),
+                index: Some(index.parse().map_err(|_| at(anyhow!("index")))?),
             },
             _ => Step::Shot(script::step(&words).map_err(|error| at(anyhow!(error)))?),
         };
@@ -356,6 +396,7 @@ struct Rig {
     /// LiveKit's server API, for steps that act on a room as a moderator would.
     livekit: Option<LiveKit>,
     heartbeat: Duration,
+    link_images: bool,
     data_dir: PathBuf,
     size: (f32, f32),
 }
@@ -368,7 +409,7 @@ impl Rig {
         livekit: Option<LiveKit>,
         heartbeat: Duration,
     ) -> Self {
-        let mut driver = Driver::new(Arc::new(UiAssets));
+        let mut driver = Driver::new(Arc::new(semaphore_app::files::AppAssets));
         driver.cx.update(|cx| {
             semaphore_app::init(cx);
             set_reduced_motion(true, cx);
@@ -383,6 +424,7 @@ impl Rig {
             secrets: Arc::default(),
             livekit,
             heartbeat,
+            link_images: false,
             data_dir,
             size: (1280., 800.),
         }
@@ -424,6 +466,7 @@ impl Rig {
             // No sound card in a container, and a rig mustn't use the machine's.
             audio: Some(Arc::new(VirtualIo::new())),
             heartbeat: self.heartbeat,
+            link_preview_images: self.link_images,
             clock: Arc::new(ScenarioClock {
                 start_ms: self.now_ms,
                 started: Instant::now(),
@@ -485,12 +528,29 @@ impl Rig {
         if let Condition::Requests(name, count) = condition {
             return Ok(self.requests(name)? >= *count);
         }
+        if let Condition::RequestsExactly(name, count) = condition {
+            return Ok(self.requests(name)? == *count);
+        }
+        if let Condition::FileReady(file_id) = condition {
+            let path = format!("{}file/{file_id}", semaphore_app::files::ASSET_PREFIX);
+            return Ok(
+                semaphore_app::files::store().have(&path) == semaphore_app::files::Have::Ready
+            );
+        }
+        if let Condition::Viewer(open) = condition {
+            let app = self.app()?.clone();
+            let showing = self.driver.cx.update(|cx| app.read(cx).viewer_open());
+            return Ok(showing == *open);
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
             return Ok(false);
         };
         let (rows, conversation, detached) = self.rows()?;
+        fn newest<'a>(rows: &'a [MessageRow], text: &str) -> Option<&'a MessageRow> {
+            rows.iter().rev().find(|row| row.display.contains(text))
+        }
         fn matching<'a>(
             rows: &'a [MessageRow],
             text: &'a str,
@@ -539,7 +599,21 @@ impl Rig {
             | Condition::VoiceDeafened(_)
             | Condition::VoiceParticipant(_)
             | Condition::VoiceShareError
-            | Condition::Requests(..) => unreachable!("answered above"),
+            | Condition::Requests(..)
+            | Condition::RequestsExactly(..)
+            | Condition::FileReady(_)
+            | Condition::Viewer(_) => unreachable!("answered above"),
+            Condition::Attachments(text, count) => {
+                newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
+            }
+            Condition::Uploads(text, count) => {
+                newest(&rows, text).is_some_and(|row| row.uploads.len() == *count)
+            }
+            Condition::PendingFiles(text, count) => {
+                newest(&rows, text).is_some_and(|row| row.pending_attachments as usize == *count)
+            }
+            Condition::UploadFailed(text) => newest(&rows, text)
+                .is_some_and(|row| row.uploads.iter().any(|upload| upload.failed.is_some())),
         })
     }
 
@@ -562,7 +636,16 @@ impl Rig {
                     .iter()
                     .rev()
                     .take(5)
-                    .map(|row| format!("{:?} {:?}", row.send_state, row.display))
+                    .map(|row| {
+                        format!(
+                            "{:?} {:?} (attachments {}, uploads {}, pending {})",
+                            row.send_state,
+                            row.display,
+                            row.attachments.len(),
+                            row.uploads.len(),
+                            row.pending_attachments
+                        )
+                    })
                     .collect();
                 bail!(
                     "still waiting after {within:?} for {condition:?} (on {conversation:?}, last rows {tail:?})"
@@ -626,6 +709,58 @@ impl Rig {
         }
     }
 
+    /// Before a screenshot: no file still on its way, so what's drawn doesn't depend on timing. A
+    /// frame can ask for files the last one didn't, so draw until a still frame asks for nothing.
+    fn quiet_files(&mut self, step: &script::Step) -> Result<()> {
+        if !matches!(step, script::Step::Shot { .. }) {
+            return Ok(());
+        }
+        for _ in 0..10 {
+            self.files_arrived()?;
+            self.driver.wait_idle()?;
+            if semaphore_app::files::store().fetching() == 0 {
+                return Ok(());
+            }
+        }
+        bail!("drawing kept asking for more files")
+    }
+
+    fn files_arrived(&mut self) -> Result<()> {
+        let deadline = Instant::now() + DEFAULT_WITHIN;
+        let store = semaphore_app::files::store();
+        loop {
+            self.driver.settle()?;
+            if store.fetching() == 0 {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                bail!("files were still loading after {DEFAULT_WITHIN:?}");
+            }
+            let activity = {
+                let app = self.app()?.clone();
+                self.driver.cx.update(|cx| app.read(cx).activity())
+            };
+            let seen = activity.current();
+            activity.wait_past(seen, LOOK_EVERY);
+        }
+    }
+
+    fn attach(&mut self, path: &Path) -> Result<()> {
+        let app = self.app()?.clone();
+        let file = semaphore_ui::composer::PendingAttachment::from_path(path);
+        self.driver.update(|window, cx| {
+            let composer = app
+                .read(cx)
+                .pane()
+                .and_then(|pane| pane.read(cx).composer().cloned());
+            if let Some(composer) = composer {
+                composer.update(cx, |composer, cx| {
+                    composer.add_attachments(vec![file], window, cx)
+                });
+            }
+        })
+    }
+
     fn snap(&mut self, out: &Path) -> Result<()> {
         self.driver.settle()?;
         let window = self
@@ -661,7 +796,7 @@ impl Rig {
         .map(|_| ())
     }
 
-    fn click_row(&mut self, name: &str, text: &str) -> Result<()> {
+    fn click_row(&mut self, name: &str, text: &str, index: Option<u64>) -> Result<()> {
         self.driver.settle()?;
         let (rows, _, _) = self.rows()?;
         let seq = rows
@@ -670,7 +805,13 @@ impl Rig {
             .find(|row| row.display.contains(text))
             .map(|row| row.seq)
             .ok_or_else(|| anyhow!("no row contains {text:?}"))?;
-        let id = ElementId::NamedInteger(name.to_owned().into(), seq as u64);
+        let id = ElementId::NamedInteger(
+            name.to_owned().into(),
+            match index {
+                Some(index) => (seq as u64) << 8 | index,
+                None => seq as u64,
+            },
+        );
         self.driver.update(|window, cx| window.click(id, cx))
     }
 
@@ -691,13 +832,16 @@ impl Rig {
             let started = Instant::now();
             let result = match step {
                 Step::App { width, height } => self.open(*width, *height),
-                Step::Shot(step) => self.driver.run_generic(step, out_dir).and_then(|known| {
-                    if known {
-                        Ok(())
-                    } else {
-                        bail!("{step:?} is a story step; rig-slice opens the app instead")
-                    }
-                }),
+                Step::Shot(step) => self
+                    .quiet_files(step)
+                    .and_then(|()| self.driver.run_generic(step, out_dir))
+                    .and_then(|known| {
+                        if known {
+                            Ok(())
+                        } else {
+                            bail!("{step:?} is a story step; rig-slice opens the app instead")
+                        }
+                    }),
                 Step::Wait { condition, within } => self.wait(condition, *within),
                 Step::Expect(condition) => {
                     self.driver.settle()?;
@@ -727,7 +871,7 @@ impl Rig {
                         ))
                     }
                 }
-                Step::ClickRow { name, text } => self.click_row(name, text),
+                Step::ClickRow { name, text, index } => self.click_row(name, text, *index),
                 Step::Os(event) => {
                     let app = self.app()?.clone();
                     self.driver.cx.update(|cx| app.read(cx).os_event(*event));
@@ -740,6 +884,11 @@ impl Rig {
                 }
                 Step::LiveKitRemove { room, identity } => self.livekit_remove(room, identity),
                 Step::Snap(name) => self.snap(&out_dir.join(format!("{name}.png"))),
+                Step::Attach(path) => self.attach(path),
+                Step::LinkImages(on) => {
+                    self.link_images = *on;
+                    Ok(())
+                }
                 Step::ExpectStoredSession(wanted) => {
                     if self.stored_session() == *wanted {
                         Ok(())

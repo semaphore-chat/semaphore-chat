@@ -37,13 +37,20 @@ pub struct MenuData<'a> {
     pub selected: usize,
     pub scroll: &'a ScrollHandle,
     pub on_pick: OnPick,
+    /// The app's avatar files, for members' pictures. Initials without.
+    pub avatars: Option<&'a crate::kit::AvatarImages>,
 }
 
 fn full_width(viewport: Size<Pixels>) -> bool {
     viewport.width < px(MENU_FULL_WIDTH_BELOW)
 }
 
-fn avatar(candidate: &MentionCandidate, selected: bool, palette: &Palette) -> AnyElement {
+fn avatar(
+    candidate: &MentionCandidate,
+    selected: bool,
+    palette: &Palette,
+    avatars: Option<&crate::kit::AvatarImages>,
+) -> AnyElement {
     let (tint, glyph) = match candidate.kind {
         MentionKind::User => {
             let initial: String = candidate
@@ -58,6 +65,10 @@ fn avatar(candidate: &MentionCandidate, selected: bool, palette: &Palette) -> An
             } else {
                 with_alpha(palette.divider, 0.1)
             };
+            let picture = avatars.and_then(|avatars| {
+                let file_id = candidate.avatar_file_id.as_deref()?;
+                Some(((avatars.resolve)(file_id)?, avatars.cache.clone()))
+            });
             return div()
                 .size(px(36.))
                 .flex_none()
@@ -77,7 +88,21 @@ fn avatar(candidate: &MentionCandidate, selected: bool, palette: &Palette) -> An
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(initial),
+                        .overflow_hidden()
+                        .map(|circle| match picture {
+                            // Initials until the picture is decoded, and if it never is.
+                            Some((resource, cache)) => circle.child(
+                                img(ImageSource::Resource(resource))
+                                    .image_cache(&cache)
+                                    .size_full()
+                                    .rounded_full()
+                                    .object_fit(ObjectFit::Cover)
+                                    .with_fallback(move || {
+                                        div().child(initial.clone()).into_any_element()
+                                    }),
+                            ),
+                            None => circle.child(initial),
+                        }),
                 )
                 .into_any_element();
         }
@@ -150,7 +175,7 @@ fn row(
         .cursor_pointer()
         .justify_start()
         .gap(px(14.))
-        .child(avatar(candidate, selected, palette))
+        .child(avatar(candidate, selected, palette, data.avatars))
         .child(
             div()
                 .flex()

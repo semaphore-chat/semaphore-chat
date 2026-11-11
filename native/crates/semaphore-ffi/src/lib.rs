@@ -12,11 +12,11 @@
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
     AttachmentKind, AttachmentView, ChannelKind, ChannelPermissions, ChannelRow, CommunityRow,
-    ConnectionQuality, Conversation, DisplayRole, DraftMention, EmojiView, ErrorView,
+    ConnectionQuality, Conversation, DisplayRole, DraftFile, DraftMention, EmojiView, ErrorView,
     LinkPreviewView, ListOp, MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft,
     MessageRow, ParticipantView, RailCounts, ReactionView, ReplyToView, SegKind, SendState,
-    SessionState, TextSeg, TextStyle, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus,
-    VoiceView, WebhookView,
+    SessionState, TextSeg, TextStyle, UploadView, UserView, VideoDemand, VideoTrackView, ViewKey,
+    VoiceStatus, VoiceView, WebhookView,
 };
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
@@ -210,7 +210,24 @@ pub struct MessageRow {
     pub pinned: bool,
     pub webhook: Option<WebhookView>,
     pub send_state: SendState,
+    pub pending_attachments: u32,
+    pub uploads: Vec<UploadView>,
     pub revision: u64,
+}
+
+#[uniffi::remote(Record)]
+pub struct UploadView {
+    pub name: String,
+    pub size_bytes: u64,
+    pub sent_bytes: u64,
+    pub failed: Option<ErrorView>,
+}
+
+#[uniffi::remote(Record)]
+pub struct DraftFile {
+    pub name: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
 }
 
 #[uniffi::remote(Enum)]
@@ -251,7 +268,7 @@ pub struct MessageDraft {
     pub text: String,
     pub mentions: Vec<DraftMention>,
     pub reply_to_message_id: Option<String>,
-    pub attachment_file_ids: Vec<String>,
+    pub files: Vec<DraftFile>,
 }
 
 #[uniffi::remote(Record)]
@@ -580,6 +597,18 @@ impl SemaphoreCore {
 
     pub async fn discard_failed_send(&self, client_nonce: String) -> Result<(), CoreError> {
         self.core.discard_failed_send(client_nonce).await
+    }
+
+    pub async fn retry_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
+        self.core.retry_upload(client_nonce, index).await
+    }
+
+    pub async fn remove_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
+        self.core.remove_upload(client_nonce, index).await
+    }
+
+    pub async fn file(&self, file_id: String, thumbnail: bool) -> Result<Vec<u8>, CoreError> {
+        self.core.file(file_id, thumbnail).await
     }
 
     pub async fn toggle_reaction(

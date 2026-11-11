@@ -886,6 +886,7 @@ pub fn project(
     row: &Row,
     me_id: &str,
     author: &mut dyn FnMut(&str) -> Option<UserView>,
+    uploads: &std::collections::HashMap<String, Vec<crate::model::UploadView>>,
 ) -> MessageRow {
     let message = &row.message;
     let dto = &message.dto;
@@ -992,6 +993,18 @@ pub fn project(
                 error: error.clone(),
             },
         },
+        pending_attachments: if removed {
+            0
+        } else {
+            dto.pending_attachments
+                .map_or(0, |count| count.max(0) as u32)
+        },
+        uploads: message
+            .client_id
+            .as_ref()
+            .and_then(|client_id| uploads.get(client_id))
+            .cloned()
+            .unwrap_or_default(),
         revision: row.revision,
     }
 }

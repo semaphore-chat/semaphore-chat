@@ -124,6 +124,16 @@ pub enum MessageListEvent {
     OpenReply {
         message_id: String,
     },
+    /// A failed upload's Retry: `Core::retry_upload`.
+    RetryUpload {
+        client_nonce: String,
+        index: u32,
+    },
+    /// A failed upload's Remove: `Core::remove_upload`.
+    RemoveUpload {
+        client_nonce: String,
+        index: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

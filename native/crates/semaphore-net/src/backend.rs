@@ -281,13 +281,22 @@ impl Inner {
     }
 
     fn build(&self, url: &str, access: Option<&Token>) -> Option<Arc<Client>> {
+        self.build_with(url, access, self.timeouts)
+    }
+
+    fn build_with(
+        &self,
+        url: &str,
+        access: Option<&Token>,
+        timeouts: Timeouts,
+    ) -> Option<Arc<Client>> {
         let mut headers = self.base_headers();
         if let Some(Token(access)) = access {
             let mut value = HeaderValue::from_str(&format!("Bearer {access}")).ok()?;
             value.set_sensitive(true);
             headers.insert(AUTHORIZATION, value);
         }
-        match http_client_with_timeouts(headers, self.timeouts) {
+        match http_client_with_timeouts(headers, timeouts) {
             Ok(http) => Some(Arc::new(Client::new_with_client(url, http))),
             Err(error) => {
                 log::error!("cannot build the HTTP client: {error}");
@@ -1072,6 +1081,62 @@ impl Backend for HttpBackend {
     async fn file_controller_get_file_thumbnail(&self, id: String) -> BackendResult<Vec<u8>> {
         let id = id.as_str();
         bytes(rpc!(self, c => c.file_controller_get_file_thumbnail(id))?).await
+    }
+
+    /// On a client of its own: the usual read deadline covers sending the whole request too, which a
+    /// large file on a slow link outlasts. Retried once after a refresh, as other calls are.
+    async fn file_upload_controller_upload_file(
+        &self,
+        file: semaphore_core::backend::FileUpload,
+        progress: semaphore_core::backend::UploadProgress,
+    ) -> BackendResult<wire::FileUploadResponseDto> {
+        let upload_timeouts = Timeouts {
+            read: std::time::Duration::from_secs(600),
+            ..self.inner.timeouts
+        };
+        let mut refreshed = false;
+        loop {
+            let (client, seen, can_refresh) = {
+                let state = self.inner.lock();
+                let url = state
+                    .server_url
+                    .clone()
+                    .ok_or_else(|| failure("no server URL is set"))?;
+                let client = self
+                    .inner
+                    .build_with(&url, state.access.as_ref(), upload_timeouts)
+                    .ok_or_else(|| failure("cannot build the HTTP client"))?;
+                (client, state.seen(), state.refresh.is_some())
+            };
+            let result = client
+                .upload_file_streamed(
+                    &file.filename,
+                    &file.mime_type,
+                    file.bytes.clone(),
+                    &file.resource_type,
+                    file.resource_id.as_deref(),
+                    progress.clone(),
+                )
+                .await;
+            let error = match result {
+                Ok(value) => return Ok(value.into_inner()),
+                Err(error) => convert(error).await,
+            };
+            if refreshed || !can_refresh || !is_unauthenticated(&error) {
+                return Err(error);
+            }
+            refreshed = true;
+            self.refresh_shared(seen, None).await?;
+        }
+    }
+
+    async fn messages_controller_add_attachment(
+        &self,
+        id: String,
+        body: wire::AddAttachmentDto,
+    ) -> BackendResult<wire::MessageDto> {
+        let (id, body) = (id.as_str(), &body);
+        rpc!(self, c => c.messages_controller_add_attachment(id, body))
     }
 
     /// Public, so it goes out without a token: it's how a server is tested before signing in.

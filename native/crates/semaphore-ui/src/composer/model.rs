@@ -59,7 +59,7 @@ pub enum AttachmentSource {
 }
 
 /// A file waiting to go with the message. The owner uploads it on `Send`, because
-/// `MessageDraft::attachment_file_ids` holds ids that only exist after the upload.
+/// The files themselves go into `MessageDraft::files`; core uploads them after the message.
 #[derive(Clone)]
 pub struct PendingAttachment {
     pub name: SharedString,

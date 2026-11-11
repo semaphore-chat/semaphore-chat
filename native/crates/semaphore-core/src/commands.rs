@@ -947,6 +947,8 @@ impl Core {
                 window.remove_optimistic(&client_id);
             }
             state.sends.remove(&client_nonce);
+            // Its files go with it, bytes and all: the message was never made.
+            state.uploads.remove(&client_nonce);
         });
         Ok(())
     }

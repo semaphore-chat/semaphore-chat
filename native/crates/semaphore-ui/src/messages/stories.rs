@@ -111,6 +111,62 @@ fn from_scenario(env: &StoryEnv, cx: &mut App) -> AnyView {
     }
 }
 
+/// Files on their way: one mid-upload, one refused with its reason, and one the server still waits
+/// for from another client.
+fn uploads(cx: &mut App) -> AnyView {
+    use semaphore_core::model::{ErrorView, UploadView};
+    let mut row = fixture::message(
+        1,
+        fixture::me(),
+        NOW_MS,
+        fixture::Body::default().text("the files"),
+    );
+    row.client_nonce = Some("nonce-1".into());
+    row.pending_attachments = 3;
+    row.uploads = vec![
+        UploadView {
+            name: "holiday-photos.zip".into(),
+            size_bytes: 8_400_000,
+            sent_bytes: 3_150_000,
+            failed: None,
+        },
+        UploadView {
+            name: "a-very-large-recording-of-the-whole-meeting.mp4".into(),
+            size_bytes: 52_000_000,
+            sent_bytes: 0,
+            failed: Some(ErrorView {
+                code: "PAYLOAD_TOO_LARGE".into(),
+                message: "File too large".into(),
+                retryable: false,
+                retry_after_ms: None,
+            }),
+        },
+    ];
+    StoryList::new(vec![row]).view(cx)
+}
+
+/// A link preview with its third-party image, which the app loads only when allowed. The fixture
+/// source has none, so this draws the card without it, as the default does.
+fn link_preview(cx: &mut App) -> AnyView {
+    use semaphore_core::model::LinkPreviewView;
+    let mut row = fixture::message(
+        1,
+        fixture::user("u-ava", "ava", Some("Ava Chen")),
+        NOW_MS,
+        fixture::Body::default().link("https://example.com/post", "https://example.com/post"),
+    );
+    row.link_previews = vec![LinkPreviewView {
+        url: "https://example.com/post".into(),
+        title: Some("A post with a long title that runs on past the width of the card".into()),
+        description: Some("The description wraps to two lines at most, and anything more is cut off with an ellipsis so the card stays short.".into()),
+        image_url: Some("https://example.com/cover.png".into()),
+        site_name: Some("Example".into()),
+        favicon_url: None,
+        author_name: None,
+    }];
+    StoryList::new(vec![row]).view(cx)
+}
+
 fn conversation(top_seq: Option<i64>, cx: &mut App) -> AnyView {
     let (views, replies) = fixture::scenario();
     let rows = busiest(&views).cloned().unwrap_or_default();
@@ -212,5 +268,7 @@ pub fn stories() -> Vec<Story> {
         }),
         Story::new("messages-selection", |_, _, cx| with_selection(cx)),
         Story::new("messages-missing-images", |_, _, cx| missing_images(cx)),
+        Story::new("messages-uploads", |_, _, cx| uploads(cx)),
+        Story::new("messages-link-preview", |_, _, cx| link_preview(cx)),
     ]
 }

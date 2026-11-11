@@ -200,6 +200,12 @@ pub struct FakeBackend {
     pub stored_session: Mutex<bool>,
     /// What a refresh fails with, while set.
     pub refresh_error: Mutex<Option<BackendError>>,
+    /// Each upload: name, size, resource id.
+    pub uploads: Mutex<Vec<(String, usize, Option<String>)>>,
+    /// The next upload fails with this.
+    pub upload_error: Mutex<Option<BackendError>>,
+    /// Each attach: message id, file id (none releases a slot).
+    pub attaches: Mutex<Vec<(String, Option<String>)>>,
 }
 
 impl FakeBackend {
@@ -320,6 +326,43 @@ impl Backend for FakeBackend {
 
     fn has_stored_session(&self) -> bool {
         *self.stored_session.lock().unwrap()
+    }
+
+    async fn file_upload_controller_upload_file(
+        &self,
+        file: semaphore_core::backend::FileUpload,
+        progress: semaphore_core::backend::UploadProgress,
+    ) -> BackendResult<wire::FileUploadResponseDto> {
+        let size = file.bytes.len();
+        self.uploads
+            .lock()
+            .unwrap()
+            .push((file.filename.clone(), size, file.resource_id.clone()));
+        if let Some(error) = self.upload_error.lock().unwrap().take() {
+            return Err(error);
+        }
+        progress(size as u64 / 2);
+        progress(size as u64);
+        let id = uuid::Uuid::new_v4().to_string();
+        decoded(json!({
+            "id": id, "checksum": "c", "deletedAt": null, "fileCommunityId": null,
+            "fileMessageId": file.resource_id, "fileType": "DOCUMENT", "fileUserId": null,
+            "filename": file.filename, "mimeType": file.mime_type, "resourceType": "MESSAGE_ATTACHMENT",
+            "size": size, "storagePath": "s", "storageType": "LOCAL", "thumbnailPath": null,
+            "uploadedAt": "2026-09-22T18:00:00.000Z", "uploadedById": null,
+        }))
+    }
+
+    async fn messages_controller_add_attachment(
+        &self,
+        id: String,
+        body: wire::AddAttachmentDto,
+    ) -> BackendResult<wire::MessageDto> {
+        self.attaches
+            .lock()
+            .unwrap()
+            .push((id.clone(), body.file_id.map(|id| id.to_string())));
+        Ok(message(&id, ME, "with files"))
     }
 
     async fn auth_controller_login(
