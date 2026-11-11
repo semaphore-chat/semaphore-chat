@@ -50,7 +50,7 @@ jobs:
             frontend:
               - 'frontend/**'
               - 'shared/**'
-      - 'backend/openapi.json'
+              - 'backend/openapi.json'
               - 'patches/**'
               - '.github/workflows/frontend-tests.yml'
 
