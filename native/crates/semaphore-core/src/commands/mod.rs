@@ -223,7 +223,7 @@ impl State {
             }
             keys::PRESENCE => self.members_changed(None),
             keys::NOTIFICATION_COUNT => self.view_changed(ViewKey::Rail),
-            keys::THREAD_META => self.reading_meta_changed(id),
+            keys::THREAD_META => self.reading_meta_arrived(id),
             keys::UNREAD => {
                 self.reading_counts_arrived();
                 self.view_changed(ViewKey::Communities);

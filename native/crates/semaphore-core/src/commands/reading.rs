@@ -110,7 +110,8 @@ impl State {
         });
     }
 
-    /// My own reply: the server subscribes the replier.
+    /// My own reply: the server subscribes the replier, and counted it. The count is read again,
+    /// so the parent's row and the thread's header agree even without a count event.
     pub(crate) fn reading_my_reply(&mut self, parent_message_id: &str) {
         let key = meta_key(parent_message_id);
         self.note_direct_update(&key);
@@ -120,9 +121,13 @@ impl State {
         self.view_changed(ViewKey::Thread {
             parent_message_id: parent_message_id.to_owned(),
         });
+        if self.invalidate(&key).is_empty() {
+            self.ensure_query(key);
+        }
     }
 
-    /// `threadReplyCountUpdated`: the header's count follows.
+    /// `threadReplyCountUpdated`: the header's count follows, and so does the parent's row
+    /// wherever it's loaded (any window, a channel's cached pins).
     pub(crate) fn reading_reply_count(
         &mut self,
         parent_message_id: &str,
@@ -138,11 +143,42 @@ impl State {
                 parent_message_id: parent_message_id.to_owned(),
             });
         }
+        self.parent_rows_follow(parent_message_id, reply_count, last_reply_at);
+    }
+
+    /// The parent's row, wherever it's loaded, takes the count the header shows.
+    fn parent_rows_follow(
+        &mut self,
+        parent_message_id: &str,
+        reply_count: i64,
+        last_reply_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) {
+        let differs = self.find_message(parent_message_id).is_some_and(|dto| {
+            dto.reply_count != reply_count || dto.last_reply_at != last_reply_at
+        });
+        if differs {
+            self.edit_everywhere(parent_message_id, |dto| {
+                dto.reply_count = reply_count;
+                dto.last_reply_at = last_reply_at;
+            });
+        }
     }
 
     /// A thread's metadata changed in the cache.
     pub(crate) fn reading_meta_changed(&mut self, parent_message_id: String) {
         self.view_changed(ViewKey::Thread { parent_message_id });
+    }
+
+    /// A thread's metadata arrived from the server: the parent's row takes its count too.
+    pub(crate) fn reading_meta_arrived(&mut self, parent_message_id: String) {
+        let meta = self
+            .cache
+            .thread_meta(&meta_key(&parent_message_id))
+            .map(|meta| (meta.reply_count, meta.last_reply_at));
+        if let Some((reply_count, last_reply_at)) = meta {
+            self.parent_rows_follow(&parent_message_id, reply_count, last_reply_at);
+        }
+        self.reading_meta_changed(parent_message_id);
     }
 }
 

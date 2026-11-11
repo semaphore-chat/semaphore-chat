@@ -401,6 +401,7 @@ pub(crate) fn send(
         webhook: None,
     };
 
+    let mut count_update = None;
     match &target {
         SendTarget::Channel(id) => {
             let messages = data.channel_messages.entry(id.clone()).or_default();
@@ -419,6 +420,14 @@ pub(crate) fn send(
             if let Some(parent) = find_message_mut(&mut data, parent_id) {
                 parent.reply_count += 1;
                 parent.last_reply_at = Some(now);
+                // The parent's badge, as the backend's `announceReply` sends it after the reply.
+                count_update = Some(serde_json::json!({
+                    "parentMessageId": parent_id,
+                    "replyCount": parent.reply_count,
+                    "lastReplyAt": parent.last_reply_at,
+                    "channelId": parent.channel_id,
+                    "directMessageGroupId": parent.direct_message_group_id,
+                }));
             }
         }
     }
@@ -461,6 +470,9 @@ pub(crate) fn send(
     };
     drop(data);
     inner.broadcast(payload.0, payload.1);
+    if let Some(count) = count_update {
+        inner.broadcast("threadReplyCountUpdated", count);
+    }
     Ok(message)
 }
 
