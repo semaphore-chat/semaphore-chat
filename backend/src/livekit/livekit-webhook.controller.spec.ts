@@ -508,7 +508,8 @@ describe('LivekitWebhookController', () => {
           'user-1',
           {
             canPublish: true,
-            canPublishSources: [2], // TrackSource.MICROPHONE
+            // TrackSource.MICROPHONE and UNKNOWN (the soundboard's source)
+            canPublishSources: [2, 0],
           },
         );
       });

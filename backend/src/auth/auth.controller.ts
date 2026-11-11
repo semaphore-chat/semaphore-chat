@@ -52,6 +52,7 @@ import {
 import { ApiClientHeaders } from './client-headers.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
+import { ErrorCode } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
 import { AuthenticatedRequest } from '@/types';
 import { setAccessTokenCookie, clearAccessTokenCookie } from './cookie-helper';
@@ -786,7 +787,12 @@ export class AuthController {
     const currentTokenId = await this.getCurrentTokenId(req);
 
     if (!currentTokenId) {
-      throw new UnauthorizedException('Could not determine current session');
+      // Not 401: the caller is signed in, it just didn't say which session is
+      // current. Clients must not treat this as a lost session (#655).
+      throw new BadRequestException('Could not determine current session', {
+        description: 'Bad Request',
+        errorCode: ErrorCode.CURRENT_SESSION_UNKNOWN,
+      });
     }
 
     const count = await this.authService.revokeAllOtherSessions(

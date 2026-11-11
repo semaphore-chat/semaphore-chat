@@ -87,6 +87,14 @@ export class LivekitService {
         },
       });
 
+      // The soundboard's source (UNKNOWN) can't be named in a JWT grant: the
+      // server SDK's converter throws for it. Leave it out here — the
+      // participant_joined webhook applies the full grant, UNKNOWN included,
+      // through the admin API, which does carry it (#659).
+      const tokenSources = publish.canPublishSources?.filter(
+        (source) => source !== TrackSource.UNKNOWN,
+      );
+
       // Grant permissions for the room
       token.addGrant({
         room: roomId,
@@ -94,9 +102,7 @@ export class LivekitService {
         // From the channel's voice capabilities (SPEAK/VIDEO/SCREEN_SHARE,
         // timeouts): see publishGrantFor
         canPublish: publish.canPublish,
-        ...(publish.canPublishSources
-          ? { canPublishSources: publish.canPublishSources }
-          : {}),
+        ...(tokenSources?.length ? { canPublishSources: tokenSources } : {}),
         canSubscribe: true,
         canPublishData: true,
         // Allow participants to update their own metadata (for isDeafened

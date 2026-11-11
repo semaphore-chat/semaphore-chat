@@ -35,6 +35,11 @@ describe('ReportJoinFailureDto', () => {
     expect(errors).toEqual([]);
   });
 
+  it('accepts a native client platform (#661)', async () => {
+    const { errors } = await check({ ...valid, platform: 'native' });
+    expect(errors).toEqual([]);
+  });
+
   it('truncates a long message instead of rejecting it', async () => {
     const { dto, errors } = await check({
       ...valid,

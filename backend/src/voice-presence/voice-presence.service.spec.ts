@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { ForbiddenException, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { VoicePresenceService } from './voice-presence.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
@@ -505,6 +506,7 @@ describe('VoicePresenceService', () => {
         mockDatabaseService.directMessageGroupMember.findFirst,
       ).toHaveBeenCalledWith({
         where: { groupId: dmGroupId, userId },
+        select: { id: true },
       });
       // Should have called handleWebhookDmParticipantJoined internally
       expect(mockDatabaseService.user.findUnique).toHaveBeenCalledWith({
@@ -522,7 +524,7 @@ describe('VoicePresenceService', () => {
       );
     });
 
-    it('should not re-register when key has expired and user is not a DM member', async () => {
+    it('refuses a non-member with 403 when the key has expired (#672)', async () => {
       const dmGroupId = 'dm-group-123';
       const userId = 'user-123';
 
@@ -533,22 +535,32 @@ describe('VoicePresenceService', () => {
         null,
       );
 
-      await service.refreshDmPresence(dmGroupId, userId);
+      await expect(
+        service.refreshDmPresence(dmGroupId, userId),
+      ).rejects.toBeInstanceOf(ForbiddenException);
 
       // Should not re-register
       expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
       expect(mockRedis.pipeline).not.toHaveBeenCalled();
     });
 
-    it('should not throw error on failure', async () => {
+    it('surfaces a Redis failure instead of reporting success (#672)', async () => {
       const dmGroupId = 'dm-group-123';
       const userId = 'user-123';
+      const errorLog = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
 
       mockRedis.expire.mockRejectedValue(new Error('Redis error'));
 
       await expect(
         service.refreshDmPresence(dmGroupId, userId),
-      ).resolves.not.toThrow();
+      ).rejects.toThrow('Redis error');
+      expect(errorLog).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to refresh DM presence'),
+        expect.any(Error),
+      );
+      errorLog.mockRestore();
     });
   });
 

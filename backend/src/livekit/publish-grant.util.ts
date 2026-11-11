@@ -5,8 +5,7 @@ export interface PublishGrant {
   canPublish: boolean;
   /**
    * When set, only these sources may be published. Undefined means every
-   * source, including the soundboard track (published as Source.Unknown,
-   * which LiveKit grants can't name).
+   * source, including the soundboard track (published as Source.Unknown).
    */
   canPublishSources?: TrackSource[];
 }
@@ -19,9 +18,15 @@ export const FULL_PUBLISH_GRANT: PublishGrant = { canPublish: true };
  * needs SPEAK, camera VIDEO, screen share (+ its audio) SCREEN_SHARE. A
  * timed-out member has none of the three, so subscribe-only.
  *
+ * The soundboard publishes a separate track with source Unknown, so a grant
+ * that lists sources must include UNKNOWN for it to be accepted — but only
+ * for someone who may speak: a server-muted or timed-out member must not get
+ * it (#659). A JWT grant can't spell UNKNOWN out (the server SDK throws when
+ * converting it), so generateToken drops it; the participant_joined webhook
+ * applies this grant through the admin API, which can carry it.
+ *
  * Note `canPublishSources: []` would mean "all sources" to LiveKit, so
- * nothing-allowed is expressed as `canPublish: false`. A partial grant must
- * list sources, which blocks the soundboard (Source.Unknown) too.
+ * nothing-allowed is expressed as `canPublish: false`.
  */
 export function publishGrantFor(
   caps: {
@@ -35,7 +40,7 @@ export function publishGrantFor(
   const speak = caps.speak && !serverMuted;
   if (speak && caps.video && caps.share) return FULL_PUBLISH_GRANT;
   const sources: TrackSource[] = [];
-  if (speak) sources.push(TrackSource.MICROPHONE);
+  if (speak) sources.push(TrackSource.MICROPHONE, TrackSource.UNKNOWN);
   if (caps.video) sources.push(TrackSource.CAMERA);
   if (caps.share) {
     sources.push(TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO);

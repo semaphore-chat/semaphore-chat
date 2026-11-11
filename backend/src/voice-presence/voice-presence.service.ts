@@ -310,6 +310,9 @@ export class VoicePresenceService {
   /**
    * Refresh a user's presence in a DM voice call (extend TTL).
    * If the key has expired, re-register the user so presence is restored.
+   *
+   * Errors reach the caller: a non-member is a 403, and a Redis/registration
+   * failure must not look like a successful keep-alive (#672).
    */
   async refreshDmPresence(dmGroupId: string, userId: string): Promise<void> {
     try {
@@ -319,30 +322,24 @@ export class VoicePresenceService {
         this.VOICE_PRESENCE_TTL,
       );
 
-      if (result === 0) {
-        // Key expired or missing — verify membership before re-registering
-        const member =
-          await this.databaseService.directMessageGroupMember.findFirst({
-            where: { groupId: dmGroupId, userId },
-          });
+      if (result !== 0) return;
 
-        if (!member) {
-          this.logger.warn(
-            `User ${userId} is not a member of DM ${dmGroupId}, skipping re-registration`,
-          );
-          return;
-        }
+      // Key expired or missing — verify membership before re-registering
+      await this.assertDmMember(dmGroupId, userId);
 
-        this.logger.log(
-          `DM presence expired for user ${userId} in DM ${dmGroupId}, re-registering`,
-        );
-        await this.handleWebhookDmParticipantJoined(dmGroupId, userId);
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to refresh DM presence for user ${userId} in DM ${dmGroupId}`,
-        error,
+      this.logger.log(
+        `DM presence expired for user ${userId} in DM ${dmGroupId}, re-registering`,
       );
+      await this.handleWebhookDmParticipantJoined(dmGroupId, userId);
+    } catch (error) {
+      // A non-member is an expected refusal, not a fault
+      if (!(error instanceof ForbiddenException)) {
+        this.logger.error(
+          `Failed to refresh DM presence for user ${userId} in DM ${dmGroupId}`,
+          error,
+        );
+      }
+      throw error;
     }
   }
 

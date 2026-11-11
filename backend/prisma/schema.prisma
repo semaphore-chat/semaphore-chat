@@ -785,7 +785,7 @@ model EgressSession {
   roomName    String // LiveKit room name (channel ID)
   channelId   String // Voice channel ID
   segmentPath String // Path to segments (for cleanup)
-  status      String // "active", "stopped", "failed"
+  status      String // "active", "stopped", "stopped_by_user", "failed"
   error       String? // Error message if egress failed
   startedAt   DateTime
   endedAt     DateTime?

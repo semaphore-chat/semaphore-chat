@@ -133,6 +133,65 @@ describe('WebhooksService', () => {
         ),
       );
     });
+
+    it('falls back to the request origin when PUBLIC_APP_URL is not set (#696)', async () => {
+      mockDatabaseService.channel.findUnique.mockResolvedValue(
+        ChannelFactory.buildText({ id: channelId }),
+      );
+      mockDatabaseService.webhook.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: webhookId,
+            channelId,
+            name: data.name,
+            avatarUrl: data.avatarUrl,
+            tokenHash: data.tokenHash,
+            createdBy: data.createdBy,
+            createdAt: new Date(),
+          }),
+      );
+
+      const result = await service.create(
+        channelId,
+        { name: 'CI Bot' },
+        undefined,
+        'https://chat.example.com',
+      );
+
+      expect(result.url).toMatch(
+        new RegExp(
+          `^https://chat\\.example\\.com/api/webhooks/${webhookId}/[0-9a-f]{64}$`,
+        ),
+      );
+    });
+
+    it('prefers PUBLIC_APP_URL over the request origin', async () => {
+      configService.get.mockReturnValue('https://public.example.com');
+      mockDatabaseService.channel.findUnique.mockResolvedValue(
+        ChannelFactory.buildText({ id: channelId }),
+      );
+      mockDatabaseService.webhook.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({
+            id: webhookId,
+            channelId,
+            name: data.name,
+            avatarUrl: data.avatarUrl,
+            tokenHash: data.tokenHash,
+            createdBy: data.createdBy,
+            createdAt: new Date(),
+          }),
+      );
+
+      const result = await service.create(
+        channelId,
+        { name: 'CI Bot' },
+        undefined,
+        'http://internal-proxy:3000',
+      );
+
+      expect(result.url).toContain('https://public.example.com/api/webhooks/');
+    });
   });
 
   describe('listForChannel', () => {

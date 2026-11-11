@@ -1067,6 +1067,26 @@ describe('ModerationService', () => {
       );
     });
 
+    it('returns the message a log entry is about (#703)', async () => {
+      mockDatabase.moderationLog.findMany.mockResolvedValue([
+        {
+          id: 'log-1',
+          action: ModerationAction.DELETE_MESSAGE,
+          moderatorId: 'mod-1',
+          targetUserId: null,
+          targetMessageId: 'message-1',
+        },
+      ] as never);
+      mockDatabase.moderationLog.count.mockResolvedValue(1);
+
+      const result = await service.getModerationLogs(communityId);
+
+      expect(result.logs[0]).toMatchObject({
+        action: ModerationAction.DELETE_MESSAGE,
+        targetMessageId: 'message-1',
+      });
+    });
+
     it('should support pagination', async () => {
       mockDatabase.moderationLog.findMany.mockResolvedValue([]);
       mockDatabase.moderationLog.count.mockResolvedValue(0);

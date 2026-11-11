@@ -20,9 +20,9 @@ describe('publishGrantFor', () => {
     [string, { speak: boolean; video: boolean; share: boolean }, TrackSource[]]
   >([
     [
-      'speak only',
+      'speak only (the soundboard source is granted too, #659)',
       { speak: true, video: false, share: false },
-      [TrackSource.MICROPHONE],
+      [TrackSource.MICROPHONE, TrackSource.UNKNOWN],
     ],
     [
       'video only',
@@ -39,6 +39,7 @@ describe('publishGrantFor', () => {
       { speak: true, video: false, share: true },
       [
         TrackSource.MICROPHONE,
+        TrackSource.UNKNOWN,
         TrackSource.SCREEN_SHARE,
         TrackSource.SCREEN_SHARE_AUDIO,
       ],
@@ -48,5 +49,24 @@ describe('publishGrantFor', () => {
       canPublish: true,
       canPublishSources: sources,
     });
+  });
+
+  it('a server-muted member does not get the soundboard source (#659)', () => {
+    expect(
+      publishGrantFor({ speak: true, video: true, share: true }, true),
+    ).toEqual({
+      canPublish: true,
+      canPublishSources: [
+        TrackSource.CAMERA,
+        TrackSource.SCREEN_SHARE,
+        TrackSource.SCREEN_SHARE_AUDIO,
+      ],
+    });
+  });
+
+  it('a server-muted member with nothing else may still only subscribe', () => {
+    expect(
+      publishGrantFor({ speak: true, video: false, share: false }, true),
+    ).toEqual({ canPublish: false });
   });
 });

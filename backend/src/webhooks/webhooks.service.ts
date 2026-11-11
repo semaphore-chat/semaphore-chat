@@ -37,6 +37,8 @@ export class WebhooksService {
     channelId: string,
     dto: CreateWebhookDto,
     createdBy?: string,
+    /** The absolute origin the request came in on, for the fallback URL. */
+    requestOrigin?: string,
   ): Promise<CreateWebhookResponseDto> {
     const channel = await this.databaseService.channel.findUnique({
       where: { id: channelId },
@@ -71,7 +73,7 @@ export class WebhooksService {
       avatarUrl: webhook.avatarUrl,
       channelId: webhook.channelId,
       createdAt: webhook.createdAt,
-      url: this.buildExecutionUrl(webhook.id, rawToken),
+      url: this.buildExecutionUrl(webhook.id, rawToken, requestOrigin),
     };
   }
 
@@ -159,13 +161,19 @@ export class WebhooksService {
   }
 
   /**
-   * Builds the execution URL returned once at creation time. Uses
-   * PUBLIC_APP_URL (absolute) when configured, otherwise falls back to the
-   * relative API path.
+   * Builds the execution URL returned once at creation time. Prefers
+   * PUBLIC_APP_URL, then the origin the request came in on, so the caller
+   * gets an absolute URL that works from an external service. Only a call
+   * with neither (no request context) falls back to the relative path.
    */
-  private buildExecutionUrl(id: string, rawToken: string): string {
+  private buildExecutionUrl(
+    id: string,
+    rawToken: string,
+    requestOrigin?: string,
+  ): string {
     const path = `/api/webhooks/${id}/${rawToken}`;
-    const baseUrl = this.configService.get<string>('PUBLIC_APP_URL');
+    const baseUrl =
+      this.configService.get<string>('PUBLIC_APP_URL') || requestOrigin;
     if (!baseUrl) {
       return path;
     }
