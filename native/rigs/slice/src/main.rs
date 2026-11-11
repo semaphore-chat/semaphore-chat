@@ -54,6 +54,10 @@
 //! `player NAME idle|loading|playing|paused|buffering|ended|failed`, `player-frames NAME` (its video
 //! reached the window) and `players-open N` (players holding an open file).
 //!
+//! W4's conditions: `replay off|starting|recording|failed`, `clips N` (the open profile page's
+//! library), `dialog capture|share|participant-menu|kick|debug open|closed`. `tick N` also moves
+//! the scenario clock core reads by N, so the app's timers for core's deadlines fire due.
+//!
 //! W3's conditions: `route PREFIX` (the shell's route, as `settings/voice`, `profile/ID`,
 //! `profile-edit`, `home`, `community/ID`, `channel/ID`, `dms`), `theme NAME` (the theme drawn,
 //! `light-teal-minimal`), `engine ptt on|off`, `engine preset standard|high|music`, `engine
@@ -137,11 +141,15 @@ impl SecretStore for MemorySecrets {
 struct ScenarioClock {
     start_ms: i64,
     started: Instant,
+    /// What `tick` has moved GPUI's clock by: core's timers (a ring's 30 s, the replay buffer's
+    /// audio wait) are due by this clock, and the app's timers for them by GPUI's.
+    ticked_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Clock for ScenarioClock {
     fn now_ms(&self) -> u64 {
-        (self.start_ms + self.started.elapsed().as_millis() as i64) as u64
+        let ticked = self.ticked_ms.load(std::sync::atomic::Ordering::Relaxed) as i64;
+        (self.start_ms + self.started.elapsed().as_millis() as i64 + ticked) as u64
     }
 }
 
@@ -271,6 +279,32 @@ enum Condition {
     PlayerFrames(String),
     /// This many players hold an open file.
     PlayersOpen(usize),
+    /// W4's (`w4_holds`).
+    W4(W4),
+}
+
+/// W4's conditions.
+#[derive(Debug, Clone, PartialEq)]
+enum W4 {
+    /// `replay off|starting|recording|failed`: `VoiceView::replay`.
+    Replay(String),
+    /// `clips N`: the clips the open profile page's library shows (mine on my page, the user's
+    /// public ones on theirs).
+    Clips(usize),
+    /// `dialog capture|share|participant-menu|debug|kick open|closed`.
+    Dialog(String, bool),
+}
+
+/// The element each `dialog NAME` is drawn as.
+fn dialog_element(name: &str) -> Result<&'static str> {
+    Ok(match name {
+        "capture" => "capture-body",
+        "share" => "share-clip",
+        "participant-menu" => "participant-menu",
+        "kick" => "kick-confirm",
+        "debug" => "voice-debug",
+        _ => bail!("unknown dialog {name}"),
+    })
 }
 
 /// What a row step does to the element it finds.
@@ -471,6 +505,15 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["player", name, phase] => Condition::Player((*name).into(), (*phase).into()),
         ["player-frames", name] => Condition::PlayerFrames((*name).into()),
         ["players-open", count] => Condition::PlayersOpen(number(count)?),
+        [
+            "replay",
+            state @ ("off" | "starting" | "recording" | "failed"),
+        ] => Condition::W4(W4::Replay((*state).into())),
+        ["clips", count] => Condition::W4(W4::Clips(number(count)?)),
+        ["dialog", name, state @ ("open" | "closed")] => {
+            dialog_element(name)?;
+            Condition::W4(W4::Dialog((*name).into(), *state == "open"))
+        }
         _ => bail!("not a condition: {}", words.join(" ")),
     })
 }
@@ -763,6 +806,8 @@ struct Rig {
     picks: Rc<RefCell<VecDeque<PathBuf>>>,
     /// Who opens semaphore:// links, instead of the OS.
     links: Arc<RigLinks>,
+    /// What `tick` has added to the scenario clock, kept across restarts.
+    ticked_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
 /// The link handler in the rig: not registered until asked, then registered. Touches nothing.
@@ -907,6 +952,7 @@ impl Rig {
             opened: Rc::default(),
             picks: Rc::default(),
             links: Arc::default(),
+            ticked_ms: Arc::default(),
         }
     }
 
@@ -1004,6 +1050,7 @@ impl Rig {
             clock: Arc::new(ScenarioClock {
                 start_ms: self.now_ms,
                 started: Instant::now(),
+                ticked_ms: self.ticked_ms.clone(),
             }),
             server_url: Some(self.server.clone()),
             time: TimeFormat::fixed(self.now_ms),
@@ -1075,6 +1122,54 @@ impl Rig {
             .into_iter()
             .rev()
             .find(|player| player.filename(cx) == name))
+    }
+
+    /// W4's conditions.
+    fn w4_holds(&mut self, condition: &W4) -> Result<bool> {
+        use semaphore_core::model::ReplayState;
+        if let W4::Dialog(name, open) = condition {
+            let id = ElementId::Name(dialog_element(name)?.into());
+            let found = self.driver.query(|window| window.try_find(id).is_some())?;
+            return Ok(found == *open);
+        }
+        let app = self.app()?.clone();
+        self.driver.cx.update(|cx| {
+            let root = app.read(cx);
+            let Some(core) = root.core() else {
+                return Ok(false);
+            };
+            Ok(match condition {
+                W4::Replay(state) => {
+                    let now = core.voice().replay;
+                    match state.as_str() {
+                        "off" => now == ReplayState::Off,
+                        "starting" => now == ReplayState::Starting,
+                        "recording" => matches!(now, ReplayState::Recording { .. }),
+                        "failed" => matches!(now, ReplayState::Failed { .. }),
+                        _ => bail!("unknown replay state {state}"),
+                    }
+                }
+                W4::Clips(count) => {
+                    let Some(shell) = root.shell() else {
+                        return Ok(false);
+                    };
+                    let semaphore_ui::nav::Route::Profile { user_id } =
+                        shell.read(cx).nav().current().clone()
+                    else {
+                        return Ok(false);
+                    };
+                    let mine =
+                        matches!(core.session(), SessionState::SignedIn { me } if me.id == user_id);
+                    let view = if mine {
+                        core.clips()
+                    } else {
+                        core.user_clips(user_id)
+                    };
+                    view.clips.len() == *count
+                }
+                W4::Dialog(..) => unreachable!("answered above"),
+            })
+        })
     }
 
     /// W3-player-wire's step: play or pause, as the player's main button does.
@@ -1224,6 +1319,9 @@ impl Rig {
         if let Some(answer) = self.w3_holds(condition)? {
             return Ok(answer);
         }
+        if let Condition::W4(w4) = condition {
+            return self.w4_holds(w4);
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -1321,7 +1419,8 @@ impl Rig {
             | Condition::DesktopSignIn(_)
             | Condition::Player(..)
             | Condition::PlayerFrames(_)
-            | Condition::PlayersOpen(_) => unreachable!("answered above"),
+            | Condition::PlayersOpen(_)
+            | Condition::W4(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -1885,6 +1984,9 @@ impl Rig {
                 }
                 Step::Restart => self.restart(),
                 Step::Tick(ms) => {
+                    // Core's clock moves with GPUI's, so a timer the app set for core fires due.
+                    self.ticked_ms
+                        .fetch_add(*ms, std::sync::atomic::Ordering::Relaxed);
                     self.driver.cx.advance_clock(Duration::from_millis(*ms));
                     self.driver.settle()
                 }
