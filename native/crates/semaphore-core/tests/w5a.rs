@@ -7,8 +7,8 @@ mod common;
 use common::w5a::*;
 use common::*;
 use semaphore_core::model::{
-    ChannelDraft, ChannelKind, ChannelMove, CommunityPatch, DraftFile, ImageChange, InviteDraft,
-    LoadState, RemovalCause, SoundDraft,
+    AdminAction, AdminActionKind, ChannelDraft, ChannelKind, ChannelMove, CommunityPatch,
+    DraftFile, ImageChange, InviteDraft, LoadState, RemovalCause, SoundDraft,
 };
 use semaphore_core::platform::{CoreError, CoreEvent};
 use serde_json::{Value, json};
@@ -1051,7 +1051,7 @@ async fn a_webhooks_url_is_returned_once_and_never_kept() {
     rig.backend.w4.answer("create_webhook", created);
     let made = rig
         .core
-        .create_webhook(TEXT_A.into(), "CI".into())
+        .create_webhook(TEXT_A.into(), "CI".into(), None)
         .await
         .unwrap();
     assert_eq!(made.url, "https://chat.example/api/webhooks/w1/secret");
@@ -1171,5 +1171,248 @@ async fn an_invite_deleted_after_a_new_session_is_not_put_back_or_taken_out_ther
     assert!(
         view.op.error.is_none(),
         "the old session's refusal isn't shown"
+    );
+}
+
+// --- Follow-ups: actions on a shared op, member join dates, webhook avatars and URLs ---
+
+fn action(kind: AdminActionKind, target: Option<&str>) -> AdminAction {
+    AdminAction {
+        kind,
+        target_id: target.map(str::to_owned),
+    }
+}
+
+#[tokio::test]
+async fn overlapping_actions_on_one_view_keep_their_own_state() {
+    let rig = with_channels().await;
+    let hold = rig.backend.w4.hold("delete_channel");
+    rig.backend
+        .w4
+        .fail_next("move_down", refusal(403, "FORBIDDEN"));
+    let delete = rig.core.delete_channel(TEXT_B.into());
+    let (deleted, ()) = tokio::join!(delete, async {
+        tokio::task::yield_now().await;
+        let moved = rig
+            .core
+            .move_channel(TEXT_A.into(), ChannelMove::Down)
+            .await;
+        assert!(moved.is_err());
+        let op = rig.core.community_settings(COMMUNITY.into()).op;
+        assert!(op.busy, "the delete still runs");
+        // The fields describe the move, started last; each row reads its own entry.
+        assert_eq!(
+            op.action,
+            Some(action(AdminActionKind::MoveChannel, Some(TEXT_A)))
+        );
+        assert_eq!(op.actions.len(), 2);
+        let delete = &op.actions[0];
+        assert_eq!(
+            delete.action,
+            action(AdminActionKind::DeleteChannel, Some(TEXT_B))
+        );
+        assert!(
+            delete.busy && delete.error.is_none(),
+            "not the move's error"
+        );
+        let moved = &op.actions[1];
+        assert!(!moved.busy);
+        assert_eq!(moved.error.as_ref().unwrap().message, "refused: FORBIDDEN");
+        hold.send(()).unwrap();
+    });
+    deleted.unwrap();
+    let op = rig.core.community_settings(COMMUNITY.into()).op;
+    assert!(!op.busy);
+    assert_eq!(
+        op.actions.len(),
+        1,
+        "a success leaves the list; the failure stays"
+    );
+    assert_eq!(op.actions[0].action.kind, AdminActionKind::MoveChannel);
+    // Another action doesn't clear it; the same one starting again does.
+    rig.backend
+        .w4
+        .answer("update_channel", channel_json(TEXT_B, "random", "TEXT", 1));
+    rig.core
+        .update_channel(TEXT_A.into(), draft("general", false, 5))
+        .await
+        .ok();
+    let op = rig.core.community_settings(COMMUNITY.into()).op;
+    assert!(op.actions.iter().any(|entry| entry.error.is_some()));
+    rig.backend.w4.answer(
+        "move_down",
+        json!([channel_json(TEXT_A, "general", "TEXT", 0)]),
+    );
+    rig.core
+        .move_channel(TEXT_A.into(), ChannelMove::Down)
+        .await
+        .unwrap();
+    let op = rig.core.community_settings(COMMUNITY.into()).op;
+    assert!(op.actions.is_empty(), "{:?}", op.actions);
+    assert!(op.error.is_none());
+}
+
+#[tokio::test]
+async fn the_same_action_twice_is_one_entry_and_a_refusal_names_its_action() {
+    let rig = Rig::new().signed_in().await;
+    let first = rig.backend.w4.hold("create_channel");
+    rig.backend
+        .w4
+        .answer("create_channel", channel_json(TEXT_A, "a", "TEXT", 0));
+    let create = rig
+        .core
+        .create_channel(COMMUNITY.into(), draft("a", false, 0));
+    let (made, ()) = tokio::join!(create, async {
+        tokio::task::yield_now().await;
+        let refused = rig
+            .core
+            .create_channel(COMMUNITY.into(), draft(&"x".repeat(101), false, 0))
+            .await;
+        assert!(refused.is_err());
+        let op = rig.core.community_settings(COMMUNITY.into()).op;
+        assert_eq!(op.actions.len(), 1);
+        let entry = &op.actions[0];
+        assert_eq!(entry.action, action(AdminActionKind::CreateChannel, None));
+        assert!(entry.busy && entry.error.is_some());
+        first.send(()).unwrap();
+    });
+    made.unwrap();
+    let op = rig.core.community_settings(COMMUNITY.into()).op;
+    assert_eq!(
+        op.actions.len(),
+        1,
+        "the refusal stays after the other create lands"
+    );
+    assert!(!op.busy);
+}
+
+#[tokio::test]
+async fn every_view_names_the_action_of_its_op() {
+    let rig = Rig::new().signed_in().await;
+    rig.backend
+        .w4
+        .fail_next("delete_invite", refusal(404, "NOT_FOUND"));
+    rig.core.delete_invite("gone".into()).await.ok();
+    assert_eq!(
+        rig.core.community_invites(COMMUNITY.into()).op.action,
+        Some(action(AdminActionKind::DeleteInvite, Some("gone")))
+    );
+    rig.backend
+        .w4
+        .fail_next("group_remove", refusal(404, "NOT_FOUND"));
+    rig.core
+        .remove_alias_group_member(GROUP.into(), BOB.into())
+        .await
+        .ok();
+    assert_eq!(
+        rig.core.alias_group(GROUP.into()).op.action,
+        Some(action(AdminActionKind::RemoveAliasGroupMember, Some(BOB)))
+    );
+    rig.backend
+        .w4
+        .fail_next("delete_sound", refusal(404, "NOT_FOUND"));
+    rig.core
+        .delete_sound(COMMUNITY.into(), "s9".into())
+        .await
+        .ok();
+    assert_eq!(
+        rig.core.community_settings(COMMUNITY.into()).op.action,
+        Some(action(AdminActionKind::DeleteSound, Some("s9")))
+    );
+}
+
+#[tokio::test]
+async fn members_carry_when_they_joined() {
+    let mut rig = Rig::new();
+    rig.backend.members.lock().unwrap().push(json!({
+        "id": "m1", "userId": BOB, "communityId": COMMUNITY,
+        "joinedAt": "2026-09-22T18:00:00.000Z", "user": user_json(BOB),
+    }));
+    rig = rig.signed_in().await;
+    rig.core.members(COMMUNITY.into());
+    rig.settle().await;
+    let members = rig.core.members(COMMUNITY.into()).unwrap().members;
+    assert_eq!(members[0].joined_at_ms, Some(1_790_100_000_000));
+}
+
+#[tokio::test]
+async fn a_webhook_sends_its_avatar_and_a_bare_path_comes_back_absolute() {
+    let rig = Rig::new().signed_in().await;
+    let mut created = webhook_json("w1", "CI", TEXT_A);
+    created["avatarUrl"] = json!("https://img.example/ci.png");
+    created["url"] = json!("/api/webhooks/w1/secret");
+    rig.backend.w4.answer("create_webhook", created);
+    let made = rig
+        .core
+        .create_webhook(
+            TEXT_A.into(),
+            "CI".into(),
+            Some(" https://img.example/ci.png ".into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(made.url, "http://server/api/webhooks/w1/secret");
+    let call = rig
+        .backend
+        .w4
+        .calls()
+        .into_iter()
+        .find(|c| c.starts_with("create_webhook"))
+        .unwrap();
+    let sent: Value = serde_json::from_str(call.splitn(3, ' ').nth(2).unwrap()).unwrap();
+    assert_eq!(
+        sent,
+        json!({ "name": "CI", "avatarUrl": "https://img.example/ci.png" })
+    );
+    // A blank avatar isn't sent.
+    rig.core
+        .create_webhook(TEXT_A.into(), "CI".into(), Some("  ".into()))
+        .await
+        .unwrap();
+    let call = rig
+        .backend
+        .w4
+        .calls()
+        .into_iter()
+        .filter(|c| c.starts_with("create_webhook"))
+        .nth(1)
+        .unwrap();
+    let sent: Value = serde_json::from_str(call.splitn(3, ' ').nth(2).unwrap()).unwrap();
+    assert_eq!(sent, json!({ "name": "CI" }));
+}
+
+#[tokio::test]
+async fn a_removal_is_announced_again_only_after_being_added_back() {
+    let mut rig = Rig::new().signed_in().await;
+    rig.core.communities();
+    rig.settle().await;
+    let kicked = || {
+        event(
+            "userKicked",
+            json!({ "communityId": "comm", "userId": ME, "moderatorId": "ada" }),
+        )
+    };
+    let count = |events: &[CoreEvent]| {
+        events
+            .iter()
+            .filter(|event| matches!(event, CoreEvent::CommunityRemoved { .. }))
+            .count()
+    };
+    rig.core.ingest(kicked());
+    rig.core.ingest(kicked());
+    assert_eq!(
+        count(&rig.settle().await),
+        1,
+        "kick and the room's echo: once"
+    );
+    rig.core.ingest(event(
+        "memberAddedToCommunity",
+        json!({ "communityId": "comm", "userId": ME }),
+    ));
+    rig.core.ingest(kicked());
+    assert_eq!(
+        count(&rig.settle().await),
+        1,
+        "added back, then kicked again"
     );
 }

@@ -162,7 +162,9 @@ pub(crate) fn channel_of(
     })
 }
 
-/// The community's members now: the scenario's (or a created community's) and those added here.
+/// The community's members now: the scenario's (or a created community's) and those added here,
+/// less those W5-B's model no longer counts (kicked, banned, left), each with the roles they hold
+/// there now (`rbac::roles_of`), so bans and role changes show.
 pub(crate) fn members(inner: &Inner, community_id: &str) -> Vec<MembershipResponseDto> {
     let mut members = inner
         .created_members(community_id)
@@ -170,6 +172,10 @@ pub(crate) fn members(inner: &Inner, community_id: &str) -> Vec<MembershipRespon
         .unwrap_or_default();
     if let Some(added) = lock(&inner.admin).members.get(community_id) {
         members.extend(added.iter().cloned());
+    }
+    members.retain(|member| crate::rbac::is_member(inner, community_id, &member.user_id));
+    for member in &mut members {
+        member.roles = crate::rbac::roles_of(inner, community_id, &member.user_id);
     }
     members
 }

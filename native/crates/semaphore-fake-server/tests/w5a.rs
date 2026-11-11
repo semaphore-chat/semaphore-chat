@@ -886,3 +886,286 @@ async fn every_w5a_operation_can_be_failed_by_its_operation_id() {
         assert_eq!(status, 503, "{operation} {method} {path}: {body}");
     }
 }
+
+// ----- permissions ----------------------------------------------------------------------------
+
+/// A bearer for a session as another scenario user (`sign_in_as`, then a login).
+async fn bearer_for(client: &reqwest::Client, base: &str, username: &str, user_id: &str) -> String {
+    let (status, _) = post(
+        client,
+        base,
+        "/__control/sign_in_as",
+        json!({ "username": username, "userId": user_id }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response = client
+        .post(format!("{base}/api/auth/login"))
+        .json(&json!({ "username": username, "password": "pw" }))
+        .send()
+        .await
+        .unwrap();
+    let body: Value = response.json().await.unwrap();
+    format!("Bearer {}", body["accessToken"].as_str().expect("a token"))
+}
+
+async fn send_as(
+    client: &reqwest::Client,
+    method: reqwest::Method,
+    base: &str,
+    path: &str,
+    bearer: &str,
+    body: Value,
+) -> (u16, Value) {
+    let response = client
+        .request(method, format!("{base}{path}"))
+        .header("Authorization", bearer)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let text = response.text().await.unwrap();
+    (
+        status,
+        serde_json::from_str(&text).unwrap_or(Value::String(text)),
+    )
+}
+
+#[tokio::test]
+async fn every_change_is_refused_by_the_guard_without_its_action() {
+    let (server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    let (general, voice) = (id("cc-general"), id("vc-squad"));
+    // As the owner: a group and a webhook to aim at.
+    let (_, group) = post(
+        &client,
+        &base,
+        &format!("/api/alias-groups/community/{couch}"),
+        json!({ "name": "raiders" }),
+    )
+    .await;
+    let group = group["id"].as_str().unwrap().to_owned();
+    // samira holds only the Member role (no instance role but the default's CREATE_COMMUNITY).
+    server.act_as(&couch, Some(&id("u-samira")), &["role-member-c-couch"]);
+    let samira = bearer_for(&client, &base, "samira-login", &id("u-samira")).await;
+    let some = uuid::Uuid::from_u128(7).to_string();
+    let marcus = id("u-marcus");
+    use reqwest::Method as M;
+    let cases: Vec<(M, String, Value)> = vec![
+        (
+            M::PATCH,
+            format!("/api/community/{couch}"),
+            json!({ "name": "Mine" }),
+        ),
+        (M::DELETE, format!("/api/community/{couch}"), json!({})),
+        (
+            M::POST,
+            "/api/channels".into(),
+            json!({ "name": "x", "communityId": couch, "type": "TEXT", "isPrivate": false }),
+        ),
+        (
+            M::PATCH,
+            format!("/api/channels/{general}"),
+            json!({ "name": "x" }),
+        ),
+        (M::DELETE, format!("/api/channels/{general}"), json!({})),
+        (
+            M::POST,
+            format!("/api/channels/{general}/move-down"),
+            json!({ "communityId": couch }),
+        ),
+        (
+            M::POST,
+            format!("/api/channels/{general}/move-up"),
+            json!({ "communityId": couch }),
+        ),
+        (
+            M::POST,
+            "/api/channel-membership".into(),
+            json!({ "channelId": general, "userId": marcus }),
+        ),
+        (
+            M::DELETE,
+            format!("/api/channel-membership/channel/{general}/user/{marcus}"),
+            json!({}),
+        ),
+        (
+            M::POST,
+            "/api/membership".into(),
+            json!({ "communityId": couch, "userId": id("u-mateo") }),
+        ),
+        (
+            M::POST,
+            format!("/api/alias-groups/community/{couch}"),
+            json!({ "name": "mine" }),
+        ),
+        (
+            M::PUT,
+            format!("/api/alias-groups/{group}"),
+            json!({ "name": "mine" }),
+        ),
+        (M::DELETE, format!("/api/alias-groups/{group}"), json!({})),
+        (
+            M::POST,
+            format!("/api/alias-groups/{group}/members"),
+            json!({ "userId": marcus }),
+        ),
+        (
+            M::PUT,
+            format!("/api/alias-groups/{group}/members"),
+            json!({ "memberIds": [marcus] }),
+        ),
+        (
+            M::DELETE,
+            format!("/api/alias-groups/{group}/members/{marcus}"),
+            json!({}),
+        ),
+        (
+            M::POST,
+            format!("/api/custom-emoji/community/{couch}"),
+            json!({ "name": "abc", "fileId": some }),
+        ),
+        (
+            M::DELETE,
+            format!("/api/custom-emoji/community/{couch}/{some}"),
+            json!({}),
+        ),
+        (
+            M::POST,
+            format!("/api/soundboard/community/{couch}"),
+            json!({ "name": "x", "fileId": some }),
+        ),
+        (
+            M::DELETE,
+            format!("/api/soundboard/community/{couch}/{some}"),
+            json!({}),
+        ),
+        (
+            M::POST,
+            format!("/api/channels/{general}/webhooks"),
+            json!({ "name": "CI" }),
+        ),
+        (
+            M::GET,
+            format!("/api/channels/{general}/webhooks"),
+            json!({}),
+        ),
+        (
+            M::DELETE,
+            format!("/api/channels/{voice}/webhooks/{some}"),
+            json!({}),
+        ),
+        (M::GET, "/api/invite".into(), json!({})),
+        (
+            M::POST,
+            "/api/invite".into(),
+            json!({ "communityIds": [couch] }),
+        ),
+        (M::DELETE, "/api/invite/abc".into(), json!({})),
+    ];
+    for (method, path, body) in cases {
+        let (status, answer) = send_as(&client, method.clone(), &base, &path, &samira, body).await;
+        assert_eq!(status, 403, "{method} {path}: {answer}");
+        assert_eq!(answer["message"], "Forbidden resource", "{method} {path}");
+    }
+    // What the Member role holds still answers.
+    for path in [
+        format!("/api/community/{couch}"),
+        format!("/api/alias-groups/community/{couch}"),
+        format!("/api/alias-groups/{group}"),
+    ] {
+        let (status, answer) = send_as(&client, M::GET, &base, &path, &samira, json!({})).await;
+        assert_eq!(status, 200, "{path}: {answer}");
+    }
+    // Nothing changed.
+    let (_, community) = get(&client, &base, &format!("/api/community/{couch}")).await;
+    assert_eq!(community["name"], "Couch Co-op");
+}
+
+#[tokio::test]
+async fn invites_need_the_community_action_too_and_only_the_creator_deletes() {
+    let (server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    // The owner may invite anywhere; a code they made isn't someone else's to delete, even with
+    // the community's roles (the backend's creator check, whatever "admins bypass" says).
+    let (status, invite) = post(
+        &client,
+        &base,
+        "/api/invite",
+        json!({ "communityIds": [couch] }),
+    )
+    .await;
+    assert_eq!(status, 201);
+    server.act_as(
+        &couch,
+        Some(&id("u-samira")),
+        &["role-community-admin-c-couch"],
+    );
+    let samira = bearer_for(&client, &base, "samira-login", &id("u-samira")).await;
+    let code = invite["code"].as_str().unwrap();
+    let (status, _) = send_as(
+        &client,
+        reqwest::Method::DELETE,
+        &base,
+        &format!("/api/invite/{code}"),
+        &samira,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 403, "no instance DELETE_INSTANCE_INVITE");
+}
+
+#[tokio::test]
+async fn a_kicked_member_leaves_the_list_and_a_role_change_shows_on_it() {
+    let (server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    server.act_as(
+        &couch,
+        Some(&id("u-samira")),
+        &["role-moderator-c-couch", "role-member-c-couch"],
+    );
+    let (_, page) = get(
+        &client,
+        &base,
+        &format!("/api/membership/community/{couch}?limit=500"),
+    )
+    .await;
+    let samira = page["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["userId"] == id("u-samira").as_str())
+        .unwrap()
+        .clone();
+    let names: Vec<&str> = samira["roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"Moderator"), "{names:?}");
+    // The owner meets the rank rule too (#679): it kicks as the community's admin.
+    server.act_as(&couch, None, &["role-community-admin-c-couch"]);
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/moderation/kick/{couch}/{}", id("u-grace")),
+        json!({ "reason": "test" }),
+    )
+    .await;
+    assert!(status < 300, "{status} {body}");
+    let (_, page) = get(
+        &client,
+        &base,
+        &format!("/api/membership/community/{couch}?limit=500"),
+    )
+    .await;
+    assert!(
+        !page["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["userId"] == id("u-grace").as_str())
+    );
+}

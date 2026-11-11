@@ -320,6 +320,7 @@ pub struct MemberView {
     pub status: Option<String>,
     pub online: bool,
     pub display_role: Option<DisplayRole>,
+    pub joined_at_ms: Option<i64>,
 }
 
 #[uniffi::remote(Record)]
