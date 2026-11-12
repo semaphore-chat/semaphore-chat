@@ -15,6 +15,8 @@ import type {
   DeleteMessagePayloadDto,
   DesktopSignInPayloadDto,
   DmVoiceCallStartedPayloadDto,
+  DmVoiceCallDeclinedPayloadDto,
+  DmVoiceCallEndedPayloadDto,
   DmVoiceUserJoinedPayloadDto,
   DmVoiceUserLeftPayloadDto,
   EgressSegmentsReadyPayloadDto,
@@ -135,6 +137,10 @@ export type DmVoiceCallStartedPayload = DmVoiceCallStartedPayloadDto;
 export type DmVoiceUserJoinedPayload = DmVoiceUserJoinedPayloadDto;
 
 export type DmVoiceUserLeftPayload = DmVoiceUserLeftPayloadDto;
+
+export type DmVoiceCallDeclinedPayload = DmVoiceCallDeclinedPayloadDto;
+
+export type DmVoiceCallEndedPayload = DmVoiceCallEndedPayloadDto;
 
 
 // =============================================================================
@@ -268,6 +274,8 @@ export type ServerEventPayloads = {
   [ServerEvents.DM_VOICE_CALL_STARTED]: DmVoiceCallStartedPayload;
   [ServerEvents.DM_VOICE_USER_JOINED]: DmVoiceUserJoinedPayload;
   [ServerEvents.DM_VOICE_USER_LEFT]: DmVoiceUserLeftPayload;
+  [ServerEvents.DM_VOICE_CALL_DECLINED]: DmVoiceCallDeclinedPayload;
+  [ServerEvents.DM_VOICE_CALL_ENDED]: DmVoiceCallEndedPayload;
 
   // Replay Buffer (Screen Recording)
   [ServerEvents.REPLAY_BUFFER_STOPPED]: ReplayBufferStoppedPayload;

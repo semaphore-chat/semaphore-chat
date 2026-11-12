@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderWithProviders } from '../test-utils';
 import { act, screen } from '@testing-library/react';
+import type { QueryClient } from '@tanstack/react-query';
 import { IncomingCallListener } from '../../components/DirectMessage/IncomingCallListener';
 import { ServerEvents } from '@semaphore-chat/shared';
-import { directMessagesControllerFindUserDmGroupsQueryKey } from '../../api-client/@tanstack/react-query.gen';
+import {
+  directMessagesControllerFindUserDmGroupsQueryKey,
+  dmVoicePresenceControllerGetDmPresenceQueryKey,
+} from '../../api-client/@tanstack/react-query.gen';
+import type { DmVoicePresenceResponseDto } from '../../api-client';
 import { createDmGroup, createDmGroupMember } from '../test-utils';
-import { VoiceSessionType } from '../../contexts/VoiceContext';
+import { VoiceEndReason, VoiceSessionType } from '../../contexts/VoiceContext';
 import type { DirectMessageGroup } from '../../types/direct-message.type';
 
 
@@ -52,10 +57,14 @@ const voice = vi.hoisted(() => ({
     contextType: null as string | null,
     currentDmGroupId: null as string | null,
   },
+  endVoiceSession: vi.fn(),
 }));
 
 vi.mock('../../hooks/useVoiceConnection', () => ({
-  useVoiceConnection: () => ({ state: voice.state, actions: {} }),
+  useVoiceConnection: () => ({
+    state: voice.state,
+    actions: { endVoiceSession: voice.endVoiceSession },
+  }),
 }));
 
 const sounds = vi.hoisted(() => ({ playSound: vi.fn(), stopSound: vi.fn() }));
@@ -90,6 +99,42 @@ function fireCall(overrides: Partial<typeof payload> = {}) {
   });
 }
 
+/** Fire a server event at the listener and let its async work settle. */
+async function fire(event: ServerEvents, value: unknown) {
+  const handler = events.handlers[event];
+  if (!handler) throw new Error(`listener did not subscribe to ${event}`);
+  await act(async () => {
+    await handler(value);
+  });
+}
+
+const ringing = {
+  dmGroupId: 'dm-1',
+  dmGroupName: 'Alice Smith',
+  callerName: 'Alice Smith',
+  callerAvatar: null,
+  startedAt: Date.now(),
+};
+
+const presenceOf = (...ids: string[]): DmVoicePresenceResponseDto => ({
+  dmGroupId: 'dm-1',
+  users: ids.map((id) => ({
+    id,
+    username: id,
+    displayName: id,
+    joinedAt: new Date().toISOString(),
+    isDeafened: false,
+    isServerMuted: false,
+  })),
+  count: ids.length,
+});
+
+function connectToDmCall(dmGroupId: string) {
+  voice.state.isConnected = true;
+  voice.state.contextType = VoiceSessionType.Dm;
+  voice.state.currentDmGroupId = dmGroupId;
+}
+
 describe('IncomingCallListener', () => {
   beforeEach(() => {
     events.handlers = {};
@@ -102,6 +147,7 @@ describe('IncomingCallListener', () => {
     voice.state.currentDmGroupId = null;
     sounds.playSound.mockReset();
     sounds.stopSound.mockReset();
+    voice.endVoiceSession.mockReset();
     vi.mocked(showNotification).mockReset();
   });
 
@@ -229,6 +275,140 @@ describe('IncomingCallListener', () => {
       vi.advanceTimersByTime(10_000);
     });
     expect(sounds.playSound).toHaveBeenCalledTimes(2);
+  });
+
+  describe('stopping the ring', () => {
+    it('stops when my own account declined on another device', async () => {
+      call.incomingCall = ringing;
+      renderWithProviders(<IncomingCallListener />);
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'me' });
+
+      expect(call.dismissCall).toHaveBeenCalledTimes(1);
+      expect(voice.endVoiceSession).not.toHaveBeenCalled();
+    });
+
+    it('keeps ringing when someone else declines', async () => {
+      call.incomingCall = ringing;
+      renderWithProviders(<IncomingCallListener />);
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user' });
+
+      expect(call.dismissCall).not.toHaveBeenCalled();
+    });
+
+    it('keeps ringing for a decline in another DM', async () => {
+      call.incomingCall = ringing;
+      renderWithProviders(<IncomingCallListener />);
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-2', userId: 'me' });
+
+      expect(call.dismissCall).not.toHaveBeenCalled();
+    });
+
+    it('stops when I answered on another device', async () => {
+      call.incomingCall = ringing;
+      renderWithProviders(<IncomingCallListener />);
+
+      await fire(ServerEvents.DM_VOICE_USER_JOINED, {
+        dmGroupId: 'dm-1',
+        user: { id: 'me', username: 'me_user' },
+      });
+
+      expect(call.dismissCall).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps ringing when someone else joins', async () => {
+      call.incomingCall = ringing;
+      renderWithProviders(<IncomingCallListener />);
+
+      await fire(ServerEvents.DM_VOICE_USER_JOINED, {
+        dmGroupId: 'dm-1',
+        user: { id: 'other-user', username: 'alice' },
+      });
+
+      expect(call.dismissCall).not.toHaveBeenCalled();
+    });
+
+    it('stops when the caller gives up', async () => {
+      call.incomingCall = ringing;
+      renderWithProviders(<IncomingCallListener />);
+
+      await fire(ServerEvents.DM_VOICE_CALL_ENDED, { dmGroupId: 'dm-1' });
+
+      expect(call.dismissCall).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps ringing for a call ended in another DM', async () => {
+      call.incomingCall = ringing;
+      renderWithProviders(<IncomingCallListener />);
+
+      await fire(ServerEvents.DM_VOICE_CALL_ENDED, { dmGroupId: 'dm-2' });
+
+      expect(call.dismissCall).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the caller when the other person declines a 1:1 call', () => {
+    function cacheDm(queryClient: QueryClient, isGroup: boolean) {
+      const group = createDmGroup({ id: 'dm-1', isGroup, members: [createDmGroupMember({ userId: 'me' })] });
+      queryClient.setQueryData<DirectMessageGroup[]>(directMessagesControllerFindUserDmGroupsQueryKey(), [group]);
+    }
+
+    it('leaves the call with a "Call declined" notice', async () => {
+      connectToDmCall('dm-1');
+      const { queryClient } = renderWithProviders(<IncomingCallListener />);
+      cacheDm(queryClient, false);
+      queryClient.setQueryData(
+        dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: 'dm-1' } }),
+        presenceOf('me'),
+      );
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user' });
+
+      expect(voice.endVoiceSession).toHaveBeenCalledWith(VoiceEndReason.CallDeclined);
+    });
+
+    it('stays in a group call', async () => {
+      connectToDmCall('dm-1');
+      const { queryClient } = renderWithProviders(<IncomingCallListener />);
+      cacheDm(queryClient, true);
+      queryClient.setQueryData(
+        dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: 'dm-1' } }),
+        presenceOf('me'),
+      );
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user' });
+
+      expect(voice.endVoiceSession).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when the call is not mine', async () => {
+      const { queryClient } = renderWithProviders(<IncomingCallListener />);
+      cacheDm(queryClient, false);
+      queryClient.setQueryData(
+        dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: 'dm-1' } }),
+        presenceOf('other-user'),
+      );
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user' });
+
+      expect(voice.endVoiceSession).not.toHaveBeenCalled();
+    });
+
+    it('does not end a 1:1 call someone else is still in', async () => {
+      connectToDmCall('dm-1');
+      const { queryClient } = renderWithProviders(<IncomingCallListener />);
+      cacheDm(queryClient, false);
+      queryClient.setQueryData(
+        dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: 'dm-1' } }),
+        presenceOf('me', 'third-person'),
+      );
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user' });
+
+      expect(voice.endVoiceSession).not.toHaveBeenCalled();
+    });
   });
 
   it('renders nothing', () => {

@@ -434,6 +434,15 @@ export type DmVoiceUserLeftPayloadDto = {
     user: VoicePresenceUserDto;
 };
 
+export type DmVoiceCallDeclinedPayloadDto = {
+    dmGroupId: string;
+    userId: string;
+};
+
+export type DmVoiceCallEndedPayloadDto = {
+    dmGroupId: string;
+};
+
 export type ReplayBufferStoppedPayloadDto = {
     sessionId: string;
     egressId: string;

@@ -43,6 +43,8 @@ export enum ServerEvents {
   DM_VOICE_CALL_STARTED = 'dmVoiceCallStarted',
   DM_VOICE_USER_JOINED = 'dmVoiceUserJoined',
   DM_VOICE_USER_LEFT = 'dmVoiceUserLeft',
+  DM_VOICE_CALL_DECLINED = 'dmVoiceCallDeclined',
+  DM_VOICE_CALL_ENDED = 'dmVoiceCallEnded',
 
   // Replay Buffer (Screen Recording)
   REPLAY_BUFFER_STOPPED = 'replayBufferStopped',

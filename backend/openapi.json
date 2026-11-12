@@ -4516,6 +4516,46 @@
         ]
       }
     },
+    "/api/dm-groups/{dmGroupId}/voice-presence/decline": {
+      "post": {
+        "operationId": "DmVoicePresenceController_declineDmVoiceCall",
+        "parameters": [
+          {
+            "name": "dmGroupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeclineDmVoiceCallResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "DmVoicePresence"
+        ]
+      }
+    },
     "/api/livekit/token": {
       "post": {
         "operationId": "LivekitController_generateToken",
@@ -12886,6 +12926,25 @@
           "dmGroupId"
         ]
       },
+      "DeclineDmVoiceCallResponseDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "dmGroupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "dmGroupId"
+        ]
+      },
       "CreateTokenDto": {
         "type": "object",
         "properties": {
@@ -17461,6 +17520,32 @@
           "dmGroupId",
           "userId",
           "user"
+        ]
+      },
+      "DmVoiceCallDeclinedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "dmGroupId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dmGroupId",
+          "userId"
+        ]
+      },
+      "DmVoiceCallEndedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "dmGroupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dmGroupId"
         ]
       },
       "ReplayBufferStoppedPayloadDto": {

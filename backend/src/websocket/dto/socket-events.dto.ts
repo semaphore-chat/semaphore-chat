@@ -169,6 +169,15 @@ export class DmVoiceUserLeftPayloadDto {
   user: VoicePresenceUserDto;
 }
 
+export class DmVoiceCallDeclinedPayloadDto {
+  dmGroupId: string;
+  userId: string;
+}
+
+export class DmVoiceCallEndedPayloadDto {
+  dmGroupId: string;
+}
+
 export class ReplayBufferStoppedPayloadDto {
   sessionId: string;
   egressId: string;
