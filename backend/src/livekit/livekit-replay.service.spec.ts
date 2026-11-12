@@ -40,6 +40,7 @@ describe('LivekitReplayService', () => {
 
   let eventEmitter: any;
   let permissionsService: any;
+  let storageQuotaService: any;
 
   const mockEgressClient = {
     startTrackCompositeEgress: jest.fn(),
@@ -86,6 +87,7 @@ describe('LivekitReplayService', () => {
     replaySegmentsService = unitRef.get(ReplaySegmentsService);
     eventEmitter = unitRef.get(EventEmitter2);
     permissionsService = unitRef.get(PermissionsService);
+    storageQuotaService = unitRef.get(StorageQuotaService);
     // Default: the user may post files in the target channel
     permissionsService.userHasChannelActions.mockResolvedValue(true);
     // Default: clips fit the user's storage quota
@@ -215,7 +217,7 @@ describe('LivekitReplayService', () => {
         expect.objectContaining({
           where: { id: 'old-session' },
           data: expect.objectContaining({
-            status: 'stopped',
+            status: 'stopped_by_user',
           }),
         }),
       );
@@ -286,7 +288,7 @@ describe('LivekitReplayService', () => {
         expect.objectContaining({
           where: { id: 'session-1' },
           data: expect.objectContaining({
-            status: 'stopped',
+            status: 'stopped_by_user',
           }),
         }),
       );
@@ -352,7 +354,7 @@ describe('LivekitReplayService', () => {
       expect(databaseService.egressSession.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'session-1' },
-          data: expect.objectContaining({ status: 'stopped' }),
+          data: expect.objectContaining({ status: 'stopped_by_user' }),
         }),
       );
     });
@@ -765,6 +767,7 @@ describe('LivekitReplayService', () => {
       const result = await service.getSessionInfo('user-123');
 
       expect(result.hasActiveSession).toBe(false);
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'user:user-123',
         ServerEvents.REPLAY_BUFFER_STOPPED,
@@ -774,6 +777,46 @@ describe('LivekitReplayService', () => {
           channelId: 'channel-1',
         }),
       );
+    });
+
+    it('sends nothing for the first session-info after a normal stop (#670)', async () => {
+      const activeSession = {
+        id: 'session-1',
+        userId: 'user-123',
+        channelId: 'channel-1',
+        egressId: 'egress-123',
+        status: 'active',
+        segmentPath: 'session-1',
+        startedAt: new Date(Date.now() - 10 * 60 * 1000),
+      };
+      databaseService.egressSession.findFirst.mockResolvedValueOnce(
+        activeSession,
+      );
+      mockEgressClient.stopEgress.mockResolvedValue(undefined);
+      storageService.deleteSegmentDirectory.mockResolvedValue(undefined);
+
+      await service.stopReplayBuffer('user-123');
+      const written = databaseService.egressSession.update.mock.calls[0][0] as {
+        data: { status: string };
+      };
+      expect(written.data.status).toBe('stopped_by_user');
+
+      // Now the frontend's first status poll: no active session, and the
+      // row the stop path wrote as its most recent one.
+      databaseService.egressSession.findFirst.mockReset();
+      databaseService.egressSession.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          ...activeSession,
+          status: written.data.status,
+          endedAt: new Date(),
+        });
+
+      const result = await service.getSessionInfo('user-123');
+
+      expect(result.hasActiveSession).toBe(false);
+      expect(mockEgressClient.listEgress).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
 
     it('should propagate a 503 instead of reporting inactive when LiveKit cannot be checked during the heal', async () => {
@@ -1004,6 +1047,58 @@ describe('LivekitReplayService', () => {
       expect(result.clipId).toBe('clip-1');
       // Verify FFmpeg was called (meaning it didn't throw)
       expect(ffmpegService.concatenateSegments).toHaveBeenCalled();
+    });
+
+    it('should reject a custom range that starts past the buffered recording', async () => {
+      // 5 segments available (50 seconds)
+      replaySegmentsService.listCompleteSegments.mockResolvedValue(
+        [0, 1, 2, 3, 4].map((sequence) => ({
+          filename: `2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+          sequence,
+          path: `/app/storage/replay-segments/session-1/2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+        })),
+      );
+
+      const customDto = {
+        startSeconds: 60, // Past the 50s buffer; would clamp to a negative trim
+        endSeconds: 130,
+        destination: 'library' as const,
+      };
+
+      await expect(service.captureReplay(userId, customDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.captureReplay(userId, customDto)).rejects.toThrow(
+        'That part of the replay is no longer available',
+      );
+      expect(ffmpegService.concatenateSegments).not.toHaveBeenCalled();
+      expect(databaseService.file.create).not.toHaveBeenCalled();
+    });
+
+    it('should trim from the requested start when the end passes the buffer', async () => {
+      // 5 segments available (50 seconds)
+      replaySegmentsService.listCompleteSegments.mockResolvedValue(
+        [0, 1, 2, 3, 4].map((sequence) => ({
+          filename: `2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+          sequence,
+          path: `/app/storage/replay-segments/session-1/2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+        })),
+      );
+
+      const customDto = {
+        startSeconds: 15,
+        endSeconds: 130, // Clamped to the 50s buffer end
+        destination: 'library' as const,
+      };
+
+      await service.captureReplay(userId, customDto);
+
+      // 15s - 130s becomes 5s into segment 1 through 50s: 35 seconds
+      expect(ffmpegService.concatenateSegments).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(String),
+        { startOffset: 5, duration: 35 },
+      );
     });
 
     it('should throw when no complete segments are available', async () => {
@@ -1279,6 +1374,34 @@ describe('LivekitReplayService', () => {
           'target-channel-1',
           [RbacActions.CREATE_MESSAGE, RbacActions.ATTACH_FILES],
         );
+      });
+
+      it('should leave no file, clip or quota charge when the destination refuses the capture', async () => {
+        const channelDto = {
+          durationMinutes: 1 as const,
+          destination: 'channel' as const,
+          targetChannelId: 'target-channel-1',
+        };
+
+        databaseService.channel.findUnique.mockResolvedValue({
+          id: 'target-channel-1',
+          communityId: 'community-1',
+        });
+        // May capture in the session's channel, not post in the target
+        permissionsService.userHasChannelActions.mockImplementation(
+          (_user: string, channelId: string) =>
+            Promise.resolve(channelId !== 'target-channel-1'),
+        );
+
+        await expect(service.captureReplay(userId, channelDto)).rejects.toThrow(
+          ForbiddenException,
+        );
+
+        // The destination is checked before encoding, so nothing was made
+        expect(ffmpegService.concatenateSegments).not.toHaveBeenCalled();
+        expect(databaseService.file.create).not.toHaveBeenCalled();
+        expect(databaseService.replayClip.create).not.toHaveBeenCalled();
+        expect(storageQuotaService.incrementUserStorage).not.toHaveBeenCalled();
       });
 
       it('should throw NotFoundException when posting to nonexistent channel', async () => {

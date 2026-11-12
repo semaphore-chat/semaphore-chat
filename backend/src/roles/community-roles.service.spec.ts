@@ -1172,6 +1172,106 @@ describe('CommunityRolesService', () => {
         data: { position: 100 },
       });
     });
+
+    type PositionUpdate = {
+      where: { id: string };
+      data: { position: number };
+    };
+
+    const isPositionUpdate = (value: unknown): value is PositionUpdate => {
+      if (typeof value !== 'object' || value === null) return false;
+      if (!('where' in value) || !('data' in value)) return false;
+      const { where, data } = value;
+      return (
+        typeof where === 'object' &&
+        where !== null &&
+        'id' in where &&
+        typeof where.id === 'string' &&
+        typeof data === 'object' &&
+        data !== null &&
+        'position' in data &&
+        typeof data.position === 'number'
+      );
+    };
+
+    const reorderMany = async (count: number) => {
+      const communityId = `community-${count}`;
+      const memberRole = RoleFactory.buildMember({ communityId });
+      const roles = Array.from({ length: count }, (_, i) =>
+        RoleFactory.build({
+          communityId,
+          name: `custom-${i}`,
+          position: 50,
+        }),
+      );
+
+      mockDatabase.role.update.mockResolvedValue({});
+      mockDatabase.role.findMany
+        .mockResolvedValueOnce([...roles, memberRole])
+        .mockResolvedValueOnce([...roles, memberRole]);
+
+      await service.reorderRoles(
+        communityId,
+        roles.map((role) => role.id),
+      );
+
+      const positions = roles.map((role) => {
+        const call = mockDatabase.role.update.mock.calls.find(
+          (args) => isPositionUpdate(args[0]) && args[0].where.id === role.id,
+        );
+        const update: unknown = call?.[0];
+        if (!isPositionUpdate(update)) {
+          throw new Error(`Missing position update for ${role.id}`);
+        }
+        return update.data.position;
+      });
+
+      return { communityId, positions, memberRole };
+    };
+
+    it.each([9, 10, 25])(
+      'keeps all %i reordered roles strictly above Member',
+      async (count) => {
+        const { positions, memberRole } = await reorderMany(count);
+
+        // Requested order is preserved and no role reaches Member at 100
+        positions.forEach((position, i) => {
+          expect(position).toBeLessThan(100);
+          if (i > 0) expect(position).toBeGreaterThan(positions[i - 1]);
+        });
+        expect(mockDatabase.role.update).toHaveBeenCalledWith({
+          where: { id: memberRole.id },
+          data: { position: 100 },
+        });
+      },
+    );
+
+    it('creates a role above Member after nine roles are reordered', async () => {
+      const { communityId, positions } = await reorderMany(9);
+      const maxPosition = Math.max(...positions);
+
+      mockDatabase.role.findFirst.mockResolvedValue(null);
+      mockDatabase.role.aggregate.mockResolvedValue({
+        _max: { position: maxPosition },
+      });
+      mockDatabase.role.create.mockResolvedValue(
+        RoleFactory.build({
+          communityId,
+          name: 'New Role',
+          position: maxPosition + 1,
+        }),
+      );
+
+      await service.createCommunityRole(communityId, {
+        name: 'New Role',
+        actions: [RbacActions.CREATE_MESSAGE],
+      });
+
+      expect(maxPosition + 1).toBeLessThan(100);
+      expect(mockDatabase.role.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ position: maxPosition + 1 }),
+      });
+    });
   });
 
   describe('createCommunityRole position auto-assignment', () => {

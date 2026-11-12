@@ -33,11 +33,8 @@ import PushPinIcon from "@mui/icons-material/PushPin";
 import { alpha, useTheme } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
 import { moderationControllerGetModerationLogsOptions } from "../../api-client/@tanstack/react-query.gen";
-import type { ModerationControllerGetModerationLogsData, ModerationLogDto } from "../../api-client/types.gen";
+import type { ModerationLogDto } from "../../api-client/types.gen";
 type ModerationAction = ModerationLogDto['action'];
-// The response DTO does not declare targetMessageId, but the backend model
-// includes it and the service may return it.
-type ModerationLog = ModerationLogDto & { targetMessageId?: string | null };
 import { format } from "date-fns";
 
 interface ModerationLogsPanelProps {
@@ -66,13 +63,11 @@ const ModerationLogsPanel: React.FC<ModerationLogsPanelProps> = ({ communityId }
 
   const { data, isLoading, error } = useQuery(moderationControllerGetModerationLogsOptions({
     path: { communityId },
-    // The generated spec marks `action` as required, but the backend controller
-    // treats it as an optional query param (no filter when omitted).
     query: {
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
       action: actionFilter || undefined,
-    } as ModerationControllerGetModerationLogsData['query'],
+    },
   }));
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
@@ -93,7 +88,7 @@ const ModerationLogsPanel: React.FC<ModerationLogsPanelProps> = ({ communityId }
     return { ...config, color };
   };
 
-  const formatLogEntry = (log: ModerationLog): string => {
+  const formatLogEntry = (log: ModerationLogDto): string => {
     const parts: string[] = [];
 
     if (log.targetUserId) {

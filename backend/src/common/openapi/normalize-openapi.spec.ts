@@ -77,6 +77,16 @@ describe('committed openapi.json', () => {
     });
   });
 
+  it('ModerationLogDto exposes the message an entry is about (#703)', () => {
+    expect(schemas.ModerationLogDto.properties?.targetMessageId).toMatchObject({
+      type: 'string',
+      nullable: true,
+    });
+    expect(schemas.ModerationLogDto.required ?? []).not.toContain(
+      'targetMessageId',
+    );
+  });
+
   const clientFields = [
     'attachments',
     'channelId',

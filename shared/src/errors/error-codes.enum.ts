@@ -34,6 +34,14 @@ export enum ErrorCode {
   /** A retry of a send whose message has since been deleted. */
   MESSAGE_DELETED = 'MESSAGE_DELETED',
 
+  // Sessions
+  /**
+   * The request didn't say which of the caller's sessions is current (no
+   * refresh cookie, and an access token without a live session). The caller
+   * is signed in, so this is a 400, not a 401.
+   */
+  CURRENT_SESSION_UNKNOWN = 'CURRENT_SESSION_UNKNOWN',
+
   // Files
   ATTACH_NOT_ALLOWED = 'ATTACH_NOT_ALLOWED',
   FILE_NOT_OWNED = 'FILE_NOT_OWNED',
