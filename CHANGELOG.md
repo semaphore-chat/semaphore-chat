@@ -19,15 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
 - Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
 
-### Fixed
-
-- The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
 ### Changed
 
 - The default Community Admin role (new communities, and "reset defaults") now includes banning members. Existing communities keep their current Community Admin role until someone resets the defaults, and since a reset now grants banning, only someone who already holds ban rights there (or the instance owner) can run it: a Community Admin of an existing community gets a 403 from "reset defaults". (#692)
 
 ### Fixed
 
+- The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
 - Banning, kicking and timing out a member now work for the instance owner moderating a community they hold no role in, as unbanning, lifting a timeout and removing a member already did; the owner still can't moderate themselves. (#679)
 - Community administrators can create, list and delete invites for the community they run without an instance role; an invite naming another community, or none, still needs instance invite authority. (#685)
 - A moderator who can set timeouts but not see the ban list can now see the timeout list. (#688)
