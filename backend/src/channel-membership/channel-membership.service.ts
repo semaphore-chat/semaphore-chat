@@ -105,6 +105,7 @@ export class ChannelMembershipService {
     this.eventEmitter.emit(RoomEvents.CHANNEL_MEMBERSHIP_CREATED, {
       userId,
       channelId,
+      communityId: channel.communityId,
     });
 
     this.logger.log(
@@ -293,6 +294,7 @@ export class ChannelMembershipService {
     this.eventEmitter.emit(RoomEvents.CHANNEL_MEMBERSHIP_REMOVED, {
       userId,
       channelId,
+      communityId: channel.communityId,
     });
 
     this.logger.log(`Removed user ${userId} from private channel ${channelId}`);

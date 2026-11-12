@@ -239,6 +239,21 @@ export type NewMessagePayloadDto = {
     message: MessageDto;
 };
 
+export type DmGroupCreatedPayloadDto = {
+    memberIds: Array<string>;
+    groupId: string;
+};
+
+export type DmGroupMemberAddedPayloadDto = {
+    userIds: Array<string>;
+    groupId: string;
+};
+
+export type DmGroupMemberLeftPayloadDto = {
+    groupId: string;
+    userId: string;
+};
+
 export type UpdateMessagePayloadDto = {
     message: MessageDto;
 };
@@ -387,6 +402,16 @@ export type NotificationReadPayloadDto = {
     notificationId: string;
 };
 
+export type NotificationsReadPayloadDto = {
+    scope: NotificationsReadScope;
+    channelId?: string;
+    directMessageGroupId?: string;
+};
+
+export type NotificationDismissedPayloadDto = {
+    notificationId: string;
+};
+
 export type UserPresencePayloadDto = {
     username?: string;
     displayName?: string | null;
@@ -442,6 +467,19 @@ export type DmVoiceUserLeftPayloadDto = {
     user: VoicePresenceUserDto;
 };
 
+export type DmVoiceCallDeclinedPayloadDto = {
+    dmGroupId: string;
+    userId: string;
+    /**
+     * True for a group DM, false for a 1:1 DM: a 1:1 decline ends the call.
+     */
+    isGroup: boolean;
+};
+
+export type DmVoiceCallEndedPayloadDto = {
+    dmGroupId: string;
+};
+
 export type ReplayBufferStoppedPayloadDto = {
     sessionId: string;
     egressId: string;
@@ -485,9 +523,41 @@ export type ChannelPermissionsUpdatedPayloadDto = {
     channelId: string;
 };
 
+export type PrivateChannelMembershipPayloadDto = {
+    communityId: string;
+    channelId: string;
+};
+
+export type CommunityEmojiPayloadDto = {
+    communityId: string;
+    emojiId: string;
+};
+
+export type CommunitySoundPayloadDto = {
+    communityId: string;
+    soundId: string;
+};
+
+export type CommunityAliasGroupPayloadDto = {
+    communityId: string;
+    groupId: string;
+};
+
+export type ChannelWebhookPayloadDto = {
+    communityId: string;
+    channelId: string;
+    webhookId: string;
+};
+
 export type UserBannedPayloadDto = {
     reason?: string;
     expiresAt?: string;
+    communityId: string;
+    userId: string;
+    moderatorId: string;
+};
+
+export type UserUnbannedPayloadDto = {
     communityId: string;
     userId: string;
     moderatorId: string;
@@ -511,6 +581,11 @@ export type UserTimedOutPayloadDto = {
 
 export type TimeoutRemovedPayloadDto = {
     reason?: string;
+    /**
+     * Set when the timeout ran out by itself, rather than being lifted by a
+     * moderator. Clients refetch the same state either way.
+     */
+    expired?: boolean;
     communityId: string;
     userId: string;
     moderatorId: string;
@@ -519,6 +594,18 @@ export type TimeoutRemovedPayloadDto = {
 export type MemberAddedToCommunityPayloadDto = {
     communityId: string;
     userId: string;
+};
+
+export type FriendshipPayloadDto = {
+    friendshipId: string;
+    /**
+     * The request's sender (one of the two friends once accepted).
+     */
+    userAId: string;
+    /**
+     * The request's receiver.
+     */
+    userBId: string;
 };
 
 export type CommunityUpdatedPayloadDto = {
@@ -563,6 +650,11 @@ export type RoleUnassignedPayloadDto = {
     roleId: string;
 };
 
+export type InstanceRolesUpdatedPayloadDto = {
+    userId: string;
+    roleId: string;
+};
+
 export type UserProfileUpdatedPayloadDto = {
     userId: string;
     displayName: string | null;
@@ -602,3 +694,11 @@ export const MessageRemoval = { SOFT: 'soft', HARD: 'hard' } as const;
  * A moderator removal that keeps the row, or a hard delete.
  */
 export type MessageRemoval = typeof MessageRemoval[keyof typeof MessageRemoval];
+
+export const NotificationsReadScope = {
+    ALL: 'all',
+    CHANNEL: 'channel',
+    DIRECT_MESSAGE: 'directMessage'
+} as const;
+
+export type NotificationsReadScope = typeof NotificationsReadScope[keyof typeof NotificationsReadScope];

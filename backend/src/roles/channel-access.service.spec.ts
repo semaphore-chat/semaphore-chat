@@ -1,10 +1,14 @@
 import { TestBed } from '@suites/unit';
+import type { Mocked } from '@suites/doubles.jest';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
   InstanceRole,
   OverwriteTarget,
   RbacActions as A,
 } from '@prisma/client';
 import { ChannelAccessService } from './channel-access.service';
+import { PermissionsService } from './permissions.service';
+import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { DatabaseService } from '@/database/database.service';
 import { createMockDatabase } from '@/test-utils';
 import { DEFAULT_MEMBER_ROLE } from './default-roles.config';
@@ -27,14 +31,16 @@ const channel = (
 describe('ChannelAccessService', () => {
   let service: ChannelAccessService;
   let db: ReturnType<typeof createMockDatabase>;
+  let permissions: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     db = createMockDatabase();
-    const { unit } = await TestBed.solitary(ChannelAccessService)
+    const { unit, unitRef } = await TestBed.solitary(ChannelAccessService)
       .mock(DatabaseService)
       .final(db)
       .compile();
     service = unit;
+    permissions = unitRef.get(PermissionsService);
 
     // A regular member with the default Member role, in no private channel
     db.user.findUnique.mockResolvedValue({ role: InstanceRole.USER });
@@ -274,6 +280,56 @@ describe('ChannelAccessService', () => {
         timedOutUntil: until,
       });
     });
+
+    it('applies a channel overwrite that denies a capability', async () => {
+      db.channel.findMany.mockResolvedValue([
+        channel('public', false, [
+          {
+            targetType: OverwriteTarget.EVERYONE,
+            roleId: null,
+            userId: null,
+            allow: [],
+            deny: [A.CREATE_MESSAGE],
+          },
+        ]),
+      ]);
+
+      const [caps] = await service.communityCapabilities(USER, COMMUNITY);
+
+      // The channel is still visible: only posting was overwritten
+      expect(caps).toMatchObject({
+        view: true,
+        post: false,
+        threadReply: false,
+        attach: true,
+        react: true,
+      });
+    });
+
+    it('applies a role overwrite that allows a capability back', async () => {
+      db.channel.findMany.mockResolvedValue([
+        channel('public', false, [
+          {
+            targetType: OverwriteTarget.EVERYONE,
+            roleId: null,
+            userId: null,
+            allow: [],
+            deny: [A.CREATE_MESSAGE],
+          },
+          {
+            targetType: OverwriteTarget.ROLE,
+            roleId: 'member-role',
+            userId: null,
+            allow: [A.CREATE_MESSAGE],
+            deny: [],
+          },
+        ]),
+      ]);
+
+      const [caps] = await service.communityCapabilities(USER, COMMUNITY);
+
+      expect(caps).toMatchObject({ view: true, post: true, threadReply: true });
+    });
   });
 
   describe('filterViewers', () => {
@@ -303,6 +359,138 @@ describe('ChannelAccessService', () => {
     it('no candidates: no queries', async () => {
       await expect(service.filterViewers('public', [])).resolves.toEqual([]);
       expect(db.channel.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assertMayModerateParticipant', () => {
+    const actor = { id: 'actor', role: InstanceRole.USER };
+
+    beforeEach(() => {
+      db.channel.findUnique.mockResolvedValue({
+        communityId: COMMUNITY,
+      });
+      permissions.outranks.mockResolvedValue(false);
+    });
+
+    it('404s a channel that does not exist', async () => {
+      db.channel.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.assertMayModerateParticipant(actor, 'gone', 'target'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('lets an instance owner act on anyone', async () => {
+      await expect(
+        service.assertMayModerateParticipant(
+          { id: 'owner', role: InstanceRole.OWNER },
+          'channel-1',
+          'target',
+        ),
+      ).resolves.toBeUndefined();
+      expect(db.user.findUnique).not.toHaveBeenCalled();
+      expect(permissions.outranks).not.toHaveBeenCalled();
+    });
+
+    it('never lets anyone act on the instance owner', async () => {
+      db.user.findUnique.mockResolvedValue({ role: InstanceRole.OWNER });
+      permissions.outranks.mockResolvedValue(true);
+
+      await expect(
+        service.assertMayModerateParticipant(actor, 'channel-1', 'owner'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(permissions.outranks).not.toHaveBeenCalled();
+    });
+
+    it('requires strictly outranking the target', async () => {
+      db.user.findUnique.mockResolvedValue({ role: InstanceRole.USER });
+
+      await expect(
+        service.assertMayModerateParticipant(actor, 'channel-1', 'peer'),
+      ).rejects.toThrow('You can only server mute someone you outrank');
+
+      permissions.outranks.mockResolvedValue(true);
+      await expect(
+        service.assertMayModerateParticipant(
+          actor,
+          'channel-1',
+          'lower',
+          'remove',
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('moderatableParticipantIds', () => {
+    const actor = { id: 'actor', role: InstanceRole.USER };
+
+    beforeEach(() => {
+      db.channel.findUnique.mockResolvedValue({
+        communityId: COMMUNITY,
+      });
+      permissions.verifyActionsForUserAndResource.mockResolvedValue(true);
+      permissions.outranksMany.mockResolvedValue(new Map());
+    });
+
+    it('never includes the caller, and needs the mute action here', async () => {
+      permissions.verifyActionsForUserAndResource.mockResolvedValue(false);
+
+      await expect(
+        service.moderatableParticipantIds(actor, 'channel-1', [
+          'actor',
+          'member',
+        ]),
+      ).resolves.toEqual(new Set());
+      expect(permissions.verifyActionsForUserAndResource).toHaveBeenCalledWith(
+        actor.id,
+        'channel-1',
+        RbacResourceType.CHANNEL,
+        [A.MUTE_PARTICIPANT],
+      );
+    });
+
+    it('includes only users the caller strictly outranks', async () => {
+      db.user.findMany.mockResolvedValue([
+        { id: 'lower', role: InstanceRole.USER },
+        { id: 'peer', role: InstanceRole.USER },
+        { id: 'owner', role: InstanceRole.OWNER },
+      ]);
+      permissions.outranksMany.mockResolvedValue(
+        new Map([
+          ['lower', true],
+          ['peer', false],
+        ]),
+      );
+
+      await expect(
+        service.moderatableParticipantIds(actor, 'channel-1', [
+          'actor',
+          'lower',
+          'peer',
+          'owner',
+        ]),
+      ).resolves.toEqual(new Set(['lower']));
+      // One batched call; the instance owner is never a target, so never ranked
+      expect(permissions.outranksMany).toHaveBeenCalledTimes(1);
+      expect(permissions.outranksMany).toHaveBeenCalledWith(
+        'actor',
+        ['lower', 'peer'],
+        COMMUNITY,
+      );
+    });
+
+    it('lets an instance owner moderate everyone else', async () => {
+      await expect(
+        service.moderatableParticipantIds(
+          { id: 'owner', role: InstanceRole.OWNER },
+          'channel-1',
+          ['owner', 'anyone'],
+        ),
+      ).resolves.toEqual(new Set(['anyone']));
+      expect(
+        permissions.verifyActionsForUserAndResource,
+      ).not.toHaveBeenCalled();
+      expect(db.user.findMany).not.toHaveBeenCalled();
     });
   });
 });

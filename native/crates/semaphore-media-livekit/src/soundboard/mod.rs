@@ -99,8 +99,10 @@ fn sniff(bytes: &[u8]) -> Result<Decode, DecodeError> {
     ))
 }
 
-/// The sound as 48 kHz mono, or a sentence for the user.
-pub(crate) fn decode(bytes: &[u8], extra: Option<&dyn SoundDecoder>) -> Result<Arc<[i16]>, String> {
+/// The sound as 48 kHz mono (`audio::SAMPLE_RATE`), or a sentence for the user: what the engine
+/// plays for the soundboard, and what an app previews. WAV, Ogg Opus and WebM Opus are built in;
+/// `extra` takes what isn't (MP3, AAC, Vorbis).
+pub fn decode(bytes: &[u8], extra: Option<&dyn SoundDecoder>) -> Result<Arc<[i16]>, String> {
     if bytes.len() > MAX_BYTES {
         return Err("This sound's file is too big to play".into());
     }

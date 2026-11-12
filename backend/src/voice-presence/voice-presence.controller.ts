@@ -24,6 +24,7 @@ import {
   DmVoicePresenceResponseDto,
   RefreshPresenceResponseDto,
   RefreshDmPresenceResponseDto,
+  DeclineDmVoiceCallResponseDto,
   UserVoiceChannelsResponseDto,
 } from './dto/voice-presence-response.dto';
 import { UpdateDeafenStateDto } from './dto/update-deafen-state.dto';
@@ -43,8 +44,12 @@ export class VoicePresenceController {
   @ApiOkResponse({ type: ChannelVoicePresenceResponseDto })
   async getChannelPresence(
     @Param('channelId') channelId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<ChannelVoicePresenceResponseDto> {
-    const users = await this.voicePresenceService.getChannelPresence(channelId);
+    const users = await this.voicePresenceService.getChannelPresenceForViewer(
+      channelId,
+      req.user,
+    );
     return {
       channelId,
       users,
@@ -185,6 +190,26 @@ export class DmVoicePresenceController {
     return {
       success: true,
       message: 'DM presence refreshed successfully',
+      dmGroupId,
+    };
+  }
+
+  @Post('decline')
+  @RequiredActions(RbacActions.READ_MESSAGE)
+  @RbacResource({
+    type: RbacResourceType.DM_GROUP,
+    idKey: 'dmGroupId',
+    source: ResourceIdSource.PARAM,
+  })
+  @ApiCreatedResponse({ type: DeclineDmVoiceCallResponseDto })
+  async declineDmVoiceCall(
+    @Param('dmGroupId') dmGroupId: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<DeclineDmVoiceCallResponseDto> {
+    await this.voicePresenceService.declineDmVoiceCall(dmGroupId, req.user.id);
+    return {
+      success: true,
+      message: 'Call declined',
       dmGroupId,
     };
   }

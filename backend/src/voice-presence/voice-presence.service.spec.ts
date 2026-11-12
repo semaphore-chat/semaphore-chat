@@ -1,11 +1,12 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
-import { ForbiddenException, Logger } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { VoicePresenceService } from './voice-presence.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { DatabaseService } from '@/database/database.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 
 import { ServerEvents } from '@semaphore-chat/shared';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
@@ -15,6 +16,7 @@ describe('VoicePresenceService', () => {
   let service: VoicePresenceService;
   let websocketService: Mocked<WebsocketService>;
   let eventEmitter: Mocked<EventEmitter2>;
+  let channelAccessService: Mocked<ChannelAccessService>;
   let mockDatabaseService: any;
 
   const mockPipeline = {
@@ -25,10 +27,13 @@ describe('VoicePresenceService', () => {
     exec: jest.fn().mockResolvedValue([]),
   };
 
-  // DM joins use MULTI: SET, SADD members, SADD user DMs, SCARD members
+  // DM joins use MULTI: SET, SADD members, SADD user DMs, SCARD members.
+  // DM leaves use MULTI: DEL user, SREM members, SREM user DMs, SCARD members.
   const mockMulti = {
     set: jest.fn().mockReturnThis(),
     sadd: jest.fn().mockReturnThis(),
+    srem: jest.fn().mockReturnThis(),
+    del: jest.fn().mockReturnThis(),
     scard: jest.fn().mockReturnThis(),
     exec: jest.fn().mockResolvedValue([
       [null, 'OK'],
@@ -42,8 +47,10 @@ describe('VoicePresenceService', () => {
     get: jest.fn(),
     set: jest.fn(),
     expire: jest.fn(),
+    del: jest.fn(),
     smembers: jest.fn(),
     mget: jest.fn(),
+    sadd: jest.fn(),
     srem: jest.fn(),
     pipeline: jest.fn(() => mockPipeline),
     multi: jest.fn(() => mockMulti),
@@ -73,10 +80,17 @@ describe('VoicePresenceService', () => {
     service = unit;
     websocketService = unitRef.get(WebsocketService);
     eventEmitter = unitRef.get(EventEmitter2);
+    channelAccessService = unitRef.get(ChannelAccessService);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  // Implementations outlive clearAllMocks; a RejectedValue left by an earlier
+  // test must not leak into the next one.
+  beforeEach(() => {
+    mockRedis.expire.mockReset();
   });
 
   it('should be defined', () => {
@@ -386,6 +400,74 @@ describe('VoicePresenceService', () => {
       expect(result[0].id).toBe('user-2'); // Earliest
       expect(result[1].id).toBe('user-3'); // Middle
       expect(result[2].id).toBe('user-1'); // Latest
+    });
+  });
+
+  describe('getChannelPresenceForViewer', () => {
+    it('marks the users this caller may moderate, never the caller', async () => {
+      const channelId = 'channel-123';
+      const viewer = { id: 'mod', role: 'USER' };
+      mockRedis.smembers.mockResolvedValue(['mod', 'member', 'admin']);
+      mockRedis.mget.mockResolvedValue([
+        JSON.stringify({
+          id: 'mod',
+          username: 'mod',
+          joinedAt: '2024-01-01T10:00:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+        JSON.stringify({
+          id: 'member',
+          username: 'member',
+          joinedAt: '2024-01-01T10:01:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+        JSON.stringify({
+          id: 'admin',
+          username: 'admin',
+          joinedAt: '2024-01-01T10:02:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+      ]);
+      channelAccessService.moderatableParticipantIds.mockResolvedValue(
+        new Set(['member']),
+      );
+
+      const result = await service.getChannelPresenceForViewer(
+        channelId,
+        viewer,
+      );
+
+      expect(
+        channelAccessService.moderatableParticipantIds,
+      ).toHaveBeenCalledWith(viewer, channelId, ['mod', 'member', 'admin']);
+      expect(result.map((user) => [user.id, user.canModerate])).toEqual([
+        ['mod', false],
+        ['member', true],
+        ['admin', false],
+      ]);
+    });
+
+    it('leaves the socket-shaped presence read without canModerate', async () => {
+      mockRedis.smembers.mockResolvedValue(['user-1']);
+      mockRedis.mget.mockResolvedValue([
+        JSON.stringify({
+          id: 'user-1',
+          username: 'user1',
+          joinedAt: '2024-01-01T10:00:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+      ]);
+
+      const [user] = await service.getChannelPresence('channel-123');
+
+      expect(user).not.toHaveProperty('canModerate');
+      expect(
+        channelAccessService.moderatableParticipantIds,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -802,7 +884,11 @@ describe('VoicePresenceService', () => {
 
       await service.leaveDmVoice(dmGroupId, userId);
 
-      expect(mockRedis.pipeline).toHaveBeenCalled();
+      expect(mockRedis.multi).toHaveBeenCalled();
+      expect(mockMulti.srem).toHaveBeenCalledWith(
+        `dm_voice_presence:dm:${dmGroupId}:members`,
+        userId,
+      );
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         `dm:${dmGroupId}`,
         ServerEvents.DM_VOICE_USER_LEFT,
@@ -811,6 +897,12 @@ describe('VoicePresenceService', () => {
           userId,
           user: userData,
         },
+      );
+      // Someone else is still in the call (default SCARD is 1)
+      expect(websocketService.sendToRoom).not.toHaveBeenCalledWith(
+        `dm:${dmGroupId}`,
+        ServerEvents.DM_VOICE_CALL_ENDED,
+        expect.anything(),
       );
     });
 
@@ -822,9 +914,236 @@ describe('VoicePresenceService', () => {
 
       await service.leaveDmVoice(dmGroupId, userId);
 
-      expect(mockRedis.pipeline).not.toHaveBeenCalled();
+      expect(mockRedis.multi).not.toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
+
+    it('announces the call ended when the last participant leaves', async () => {
+      const dmGroupId = 'dm-last';
+      const userId = 'user-123';
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify({
+          id: userId,
+          username: 'testuser',
+          joinedAt: new Date().toISOString(),
+          isDeafened: false,
+        }),
+      );
+      // DEL, SREM members, SREM user DMs, SCARD -> nothing left
+      mockMulti.exec.mockResolvedValueOnce([
+        [null, 1],
+        [null, 1],
+        [null, 1],
+        [null, 0],
+      ]);
+
+      await service.leaveDmVoice(dmGroupId, userId);
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        `dm:${dmGroupId}`,
+        ServerEvents.DM_VOICE_CALL_ENDED,
+        { dmGroupId },
+      );
+      // The call's declines die with it
+      expect(mockRedis.del).toHaveBeenCalledWith(
+        `dm_voice_presence:declines:${dmGroupId}`,
+      );
+    });
+
+    it('announces the call ended once, not on every later leave', async () => {
+      const dmGroupId = 'dm-once';
+      const userId = 'user-123';
+      mockRedis.get.mockResolvedValueOnce(
+        JSON.stringify({
+          id: userId,
+          username: 'testuser',
+          joinedAt: new Date().toISOString(),
+          isDeafened: false,
+        }),
+      );
+      mockMulti.exec.mockResolvedValueOnce([
+        [null, 1],
+        [null, 1],
+        [null, 1],
+        [null, 0],
+      ]);
+
+      await service.leaveDmVoice(dmGroupId, userId);
+      // A second participant_left for someone already gone changes nothing
+      mockRedis.get.mockResolvedValueOnce(null);
+      await service.leaveDmVoice(dmGroupId, 'someone-else');
+
+      const ended = websocketService.sendToRoom.mock.calls.filter(
+        ([, event]) => event === ServerEvents.DM_VOICE_CALL_ENDED,
+      );
+      expect(ended).toHaveLength(1);
+    });
+  });
+
+  describe('declineDmVoiceCall', () => {
+    const dmGroupId = 'dm-decline';
+    const caller = 'caller';
+    const guest = 'guest';
+    const otherGuest = 'other-guest';
+    const outsider = 'outsider';
+
+    const presence = (id: string) => ({
+      id,
+      username: id,
+      joinedAt: new Date().toISOString(),
+      isDeafened: false,
+      isServerMuted: false,
+    });
+
+    function inCall(...userIds: string[]) {
+      mockRedis.smembers.mockResolvedValue(userIds);
+      mockRedis.mget.mockResolvedValue(
+        userIds.map((id) => JSON.stringify(presence(id))),
+      );
+    }
+
+    function memberOfDm() {
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue({
+        id: 'membership-1',
+        groupId: dmGroupId,
+        userId: caller,
+      });
+    }
+
+    const declinedEvents = () =>
+      websocketService.sendToRoom.mock.calls.filter(
+        ([, event]) => event === ServerEvents.DM_VOICE_CALL_DECLINED,
+      );
+
+    it('refuses a non-member with 403 and announces nothing', async () => {
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue(
+        null,
+      );
+      inCall(caller);
+
+      await expect(
+        service.declineDmVoiceCall(dmGroupId, outsider),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(mockRedis.sadd).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('refuses when no call is active in the DM', async () => {
+      memberOfDm();
+      inCall();
+
+      await expect(
+        service.declineDmVoiceCall(dmGroupId, guest),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(mockRedis.sadd).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the decliner is already in the call', async () => {
+      memberOfDm();
+      inCall(caller, guest);
+
+      await expect(
+        service.declineDmVoiceCall(dmGroupId, guest),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(mockRedis.sadd).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('tells every member of the DM and remembers the decline for this call', async () => {
+      memberOfDm();
+      inCall(caller);
+      mockRedis.sadd.mockResolvedValue(1);
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        isGroup: false,
+      });
+
+      await service.declineDmVoiceCall(dmGroupId, guest);
+
+      expect(mockRedis.sadd).toHaveBeenCalledWith(
+        `dm_voice_presence:declines:${dmGroupId}`,
+        guest,
+      );
+      expect(mockRedis.expire).toHaveBeenCalledWith(
+        `dm_voice_presence:declines:${dmGroupId}`,
+        90,
+      );
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        `dm:${dmGroupId}`,
+        ServerEvents.DM_VOICE_CALL_DECLINED,
+        { dmGroupId, userId: guest, isGroup: false },
+      );
+    });
+
+    it.each([
+      ['a 1:1 DM', { isGroup: false }, false],
+      ['a group DM', { isGroup: true }, true],
+      ['a DM that cannot be read (treated as a group)', null, true],
+    ])(
+      'says whether the DM is a group in the payload: %s',
+      async (_label, row, expected) => {
+        memberOfDm();
+        inCall(caller);
+        mockRedis.sadd.mockResolvedValue(1);
+        mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue(
+          row,
+        );
+
+        await service.declineDmVoiceCall(dmGroupId, guest);
+
+        expect(
+          mockDatabaseService.directMessageGroup.findUnique,
+        ).toHaveBeenCalledWith({
+          where: { id: dmGroupId },
+          select: { isGroup: true },
+        });
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          `dm:${dmGroupId}`,
+          ServerEvents.DM_VOICE_CALL_DECLINED,
+          { dmGroupId, userId: guest, isGroup: expected },
+        );
+      },
+    );
+
+    it('is idempotent: a repeated decline announces nothing', async () => {
+      memberOfDm();
+      inCall(caller);
+      mockRedis.sadd.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+      await service.declineDmVoiceCall(dmGroupId, guest);
+      await service.declineDmVoiceCall(dmGroupId, guest);
+
+      expect(declinedEvents()).toHaveLength(1);
+    });
+
+    it.each([
+      ['a 1:1 DM', [guest]],
+      ['a group DM', [guest, otherGuest]],
+    ])(
+      'a decline in %s ends nothing on the server and removes nobody',
+      async (_label, decliners) => {
+        memberOfDm();
+        inCall(caller);
+        mockRedis.sadd.mockResolvedValue(1);
+
+        for (const decliner of decliners) {
+          await service.declineDmVoiceCall(dmGroupId, decliner);
+        }
+
+        expect(declinedEvents()).toHaveLength(decliners.length);
+        expect(websocketService.sendToRoom).not.toHaveBeenCalledWith(
+          `dm:${dmGroupId}`,
+          ServerEvents.DM_VOICE_CALL_ENDED,
+          expect.anything(),
+        );
+        // The caller stays in the call: no presence is touched
+        expect(mockRedis.multi).not.toHaveBeenCalled();
+        expect(mockRedis.srem).not.toHaveBeenCalled();
+      },
+    );
   });
 
   /**
@@ -992,6 +1311,8 @@ describe('VoicePresenceService', () => {
         const chain = {
           set: jest.fn(),
           sadd: jest.fn(),
+          srem: jest.fn(),
+          del: jest.fn(),
           scard: jest.fn(),
           exec: jest.fn(),
         };
@@ -1081,10 +1402,10 @@ describe('VoicePresenceService', () => {
 
       await service.handleWebhookParticipantLeft(dmGroupId, mockUser.id);
 
-      expect(mockPipeline.del).toHaveBeenCalledWith(
+      expect(mockMulti.del).toHaveBeenCalledWith(
         `dm_voice_presence:user:${dmGroupId}:${mockUser.id}`,
       );
-      expect(mockPipeline.srem).toHaveBeenCalledWith(
+      expect(mockMulti.srem).toHaveBeenCalledWith(
         `dm_voice_presence:dm:${dmGroupId}:members`,
         mockUser.id,
       );
@@ -1222,9 +1543,13 @@ describe('VoicePresenceService', () => {
       });
       mockRedis.get.mockResolvedValue(storedPresence('LK_new'));
 
+      mockMulti.del.mockClear();
+      mockMulti.srem.mockClear();
+
       await service.handleWebhookParticipantLeft(dmGroupId, userId, 'LK_old');
 
-      expect(mockPipeline.del).not.toHaveBeenCalled();
+      expect(mockMulti.del).not.toHaveBeenCalled();
+      expect(mockMulti.srem).not.toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
 
@@ -1254,9 +1579,13 @@ describe('VoicePresenceService', () => {
       mockRedis.get.mockResolvedValue(updatedRecord);
       mockPipeline.del.mockClear();
 
+      mockMulti.del.mockClear();
+      mockMulti.srem.mockClear();
+
       await service.handleWebhookParticipantLeft(dmGroupId, userId, 'LK_old');
 
-      expect(mockPipeline.del).not.toHaveBeenCalled();
+      expect(mockMulti.del).not.toHaveBeenCalled();
+      expect(mockMulti.srem).not.toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
   });
@@ -1345,9 +1674,37 @@ describe('VoicePresenceService', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('user-1');
-      expect(mockRedis.srem).toHaveBeenCalledWith(
+      expect(mockMulti.srem).toHaveBeenCalledWith(
         expect.stringContaining(`dm_voice_presence:dm:${dmGroupId}:members`),
         'user-2',
+      );
+    });
+
+    it('ends the call once when every presence has expired', async () => {
+      const dmGroupId = 'dm-all-expired';
+
+      mockRedis.smembers.mockResolvedValue(['user-1']);
+      mockRedis.mget.mockResolvedValue([null]);
+      // The cleanup SREM removed the last member, and nothing is left
+      mockMulti.exec.mockResolvedValueOnce([
+        [null, 1],
+        [null, 0],
+      ]);
+
+      const result = await service.getDmPresence(dmGroupId);
+
+      expect(result).toEqual([]);
+      const ended = websocketService.sendToRoom.mock.calls.filter(
+        ([, event]) => event === ServerEvents.DM_VOICE_CALL_ENDED,
+      );
+      expect(ended).toHaveLength(1);
+      expect(ended[0]).toEqual([
+        `dm:${dmGroupId}`,
+        expect.anything(),
+        { dmGroupId },
+      ]);
+      expect(mockRedis.del).toHaveBeenCalledWith(
+        `dm_voice_presence:declines:${dmGroupId}`,
       );
     });
   });

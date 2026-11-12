@@ -12,7 +12,7 @@ import { authzFixture, AuthzFixture, unique } from './helpers/authz-fixture';
  * member   Used as the redeemer in usage rows
  */
 describe('Instance invites (e2e)', () => {
-  const names = ['owner', 'inviter', 'admin', 'member'] as const;
+  const names = ['owner', 'inviter', 'admin', 'member', 'local'] as const;
   type Who = (typeof names)[number];
   let f: AuthzFixture<Who>;
 
@@ -71,6 +71,137 @@ describe('Instance invites (e2e)', () => {
       const other = await f.community();
       await create('admin', [other.id]).expect(201);
       await create('owner', [other.id]).expect(201);
+    });
+  });
+
+  describe('community invite management (#685)', () => {
+    /** A plain member made Community Admin: no instance role at all. */
+    async function communityAdmin() {
+      const c = await f.community();
+      await f.join(c.id, 'local');
+      await f.give(c.id, 'local', c.adminRole);
+      return c;
+    }
+
+    const list = (who: Who, query = '') =>
+      f.http().get(`/api/invite${query}`).set('Authorization', f.bearer(who));
+
+    const del = (who: Who, code: string) =>
+      f
+        .http()
+        .delete(`/api/invite/${code}`)
+        .set('Authorization', f.bearer(who));
+
+    it('creates an invite to the community it administers, with no instance permission', async () => {
+      const c = await communityAdmin();
+      const res = await create('local', [c.id]).expect(201);
+      expect(
+        await f.db.instanceInviteDefaultCommunity.count({
+          where: {
+            inviteId: (res.body as { id: string }).id,
+            communityId: c.id,
+          },
+        }),
+      ).toBe(1);
+    });
+
+    it('cannot create an invite naming a community it does not administer', async () => {
+      const c = await communityAdmin();
+      const other = await f.community();
+      await create('local', [c.id, other.id]).expect(403);
+    });
+
+    it('cannot create an invite naming no community', async () => {
+      await communityAdmin();
+      await create('local', []).expect(403);
+    });
+
+    it('cannot create an invite for a community it merely belongs to', async () => {
+      const c = await f.community();
+      await f.join(c.id, 'local');
+      await create('local', [c.id]).expect(403);
+    });
+
+    it('lists the invites that include its community', async () => {
+      const c = await communityAdmin();
+      // Created by an instance admin, so not the community admin's own
+      const res = await create('admin', [c.id]).expect(201);
+      const { code } = res.body as { code: string };
+
+      const mine = await list('local', `?communityId=${c.id}`).expect(200);
+      expect((mine.body as { code: string }[]).map((i) => i.code)).toContain(
+        code,
+      );
+    });
+
+    it("does not list an invite that also names a community the caller can't invite to (the code would join its redeemer there)", async () => {
+      const x = await communityAdmin();
+      const y = await f.community();
+      const crossing = await create('owner', [x.id, y.id]).expect(201);
+      const alone = await create('admin', [x.id]).expect(201);
+      const crossingCode = (crossing.body as { code: string }).code;
+      const aloneCode = (alone.body as { code: string }).code;
+
+      const res = await list('local', `?communityId=${x.id}`).expect(200);
+      const codes = (res.body as { code: string }[]).map((i) => i.code);
+      expect(codes).toContain(aloneCode);
+      expect(codes).not.toContain(crossingCode);
+      expect(JSON.stringify(res.body)).not.toContain(crossingCode);
+
+      // The owner can create it, so the owner sees it
+      const own = await list('owner', `?communityId=${x.id}`).expect(200);
+      expect((own.body as { code: string }[]).map((i) => i.code)).toContain(
+        crossingCode,
+      );
+    });
+
+    it('instance invite read alone does not unlock the filtered list for a community', async () => {
+      const c = await f.community();
+      await create('owner', [c.id]).expect(201);
+      // Invite Manager reads instance invites but holds no right in c
+      await list('inviter').expect(200);
+      await list('inviter', `?communityId=${c.id}`).expect(403);
+    });
+
+    it("refuses another community's invites", async () => {
+      await communityAdmin();
+      const other = await f.community();
+      await list('local', `?communityId=${other.id}`).expect(403);
+    });
+
+    it('the unscoped list stays instance-only', async () => {
+      await communityAdmin();
+      await list('inviter').expect(200);
+      await list('local').expect(403);
+    });
+
+    it('the creator deletes an invite it created without instance permission', async () => {
+      const c = await communityAdmin();
+      const res = await create('local', [c.id]).expect(201);
+      await del('local', (res.body as { code: string }).code).expect(204);
+    });
+
+    it('a community admin deletes an invite naming its community', async () => {
+      const c = await communityAdmin();
+      const res = await create('admin', [c.id]).expect(201);
+      await del('local', (res.body as { code: string }).code).expect(204);
+    });
+
+    it('refuses to delete an invite naming a community it does not manage', async () => {
+      const c = await communityAdmin();
+      const other = await f.community();
+      const res = await create('owner', [c.id, other.id]).expect(201);
+      const { code } = res.body as { code: string };
+
+      await del('local', code).expect(403);
+      expect(await f.db.instanceInvite.count({ where: { code } })).toBe(1);
+    });
+
+    it("an instance delete holder deletes anyone's invite", async () => {
+      const c = await communityAdmin();
+      // Invite Manager holds DELETE_INSTANCE_INVITE, no community rights
+      const res = await create('local', [c.id]).expect(201);
+      await del('inviter', (res.body as { code: string }).code).expect(204);
     });
   });
 

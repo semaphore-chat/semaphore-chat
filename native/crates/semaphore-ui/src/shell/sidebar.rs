@@ -1,7 +1,8 @@
 //! The channel sidebar: `CommunityPage`'s header, `ChannelList` and `ChannelRow`.
 
 use super::{Load, Shell, ShellEvent, community_avatar, error_state, user_avatar};
-use crate::kit::{Badge, Icon, IconButton, Skeleton, Variant, spacing, text, with_tip};
+use crate::community_settings::rules::opens_settings;
+use crate::kit::{Badge, Button, Icon, IconButton, Skeleton, Variant, spacing, text, with_tip};
 use crate::nav::Route;
 use crate::theme::{SemTheme, color::hsla_of};
 use crate::voice::{VoiceBadgeKind, voice_badges};
@@ -94,22 +95,52 @@ impl Shell {
                         ),
                     ),
             )
-            .child(
-                IconButton::new(
-                    "community-settings",
-                    IconName::Settings,
-                    "Community settings",
-                )
-                .small()
+            // W5: only for someone who may change something there (`rules::opens_settings`).
+            .when(
+                opens_settings(&self.source.community_caps(&community.id)),
+                |header| {
+                    header.child(
+                        IconButton::new(
+                            "community-settings",
+                            IconName::Settings,
+                            "Community settings",
+                        )
+                        .small()
+                        .color(sem.text_secondary)
+                        .on_click(move |_, _, cx| {
+                            let community_id = id.clone();
+                            view.update(cx, |_, cx| {
+                                cx.emit(ShellEvent::OpenCommunitySettings { community_id });
+                            })
+                            .ok();
+                        }),
+                    )
+                },
+            )
+    }
+
+    /// W5: the channel list's "+" (`channels-create`), with `CommunityCaps::create_channel`: the
+    /// owner opens the settings' Channels tab with its create dialog.
+    fn create_channel_button(
+        &self,
+        community_id: &str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let sem = cx.sem();
+        let (id, view) = (community_id.to_owned(), cx.entity().downgrade());
+        // Drawn into the header's line without making it taller.
+        div().ml_auto().my(px(-7.)).flex_shrink_0().child(
+            IconButton::new("channels-create", IconName::Add, "Create channel")
+                .tiny()
                 .color(sem.text_secondary)
                 .on_click(move |_, _, cx| {
                     let community_id = id.clone();
                     view.update(cx, |_, cx| {
-                        cx.emit(ShellEvent::OpenCommunitySettings { community_id });
+                        cx.emit(ShellEvent::CreateChannel { community_id });
                     })
                     .ok();
                 }),
-            )
+        )
     }
 
     /// The list itself, used by the sidebar and by the phone's channel screen.
@@ -157,14 +188,33 @@ impl Shell {
             }
             Load::Ready(channels) => channels,
         };
+        let can_create = self.source.community_caps(community_id).create_channel;
         if channels.is_empty() {
+            let view = cx.entity().downgrade();
+            let id = community_id.to_owned();
             return div()
                 .px(spacing(2.))
                 .py(spacing(3.))
                 .flex()
-                .justify_center()
+                .flex_col()
+                .items_center()
+                .gap(spacing(1.5))
                 .text_color(sem.text_secondary)
                 .child(text(Variant::Body2, "No channels yet"))
+                // As the web's empty list offers it to whoever may create channels.
+                .when(can_create, |empty| {
+                    empty.child(
+                        Button::new("channels-create", "Create channel")
+                            .outlined()
+                            .on_click(move |_, _, cx| {
+                                let community_id = id.clone();
+                                view.update(cx, |_, cx| {
+                                    cx.emit(ShellEvent::CreateChannel { community_id });
+                                })
+                                .ok();
+                            }),
+                    )
+                })
                 .into_any_element();
         }
 
@@ -192,11 +242,17 @@ impl Shell {
             .flex()
             .flex_col()
             .when(!text_channels.is_empty(), |list| {
+                let create = can_create.then(|| self.create_channel_button(community_id, cx));
                 let header = if touch {
-                    self.touch_category_header("Text Channels", false, cx)
-                        .into_any_element()
+                    with_create(
+                        self.touch_category_header("Text Channels", false, cx),
+                        create,
+                        false,
+                    )
                 } else {
-                    category_header(IconName::Tag, "Text Channels", false, cx).into_any_element()
+                    category_header(IconName::Tag, "Text Channels", false, cx)
+                        .children(create)
+                        .into_any_element()
                 };
                 list.child(header).children(
                     text_channels
@@ -216,11 +272,18 @@ impl Shell {
             .when(!voice_channels.is_empty(), |list| {
                 // A CSS margin collapses with the last row's above it. Flex margins don't.
                 let after_rows = !text_channels.is_empty();
+                // The "+" goes on the first category: here only when there's no text one.
+                let create = (can_create && !after_rows)
+                    .then(|| self.create_channel_button(community_id, cx));
                 let header = if touch {
-                    self.touch_category_header("Voice Channels", after_rows, cx)
-                        .into_any_element()
+                    with_create(
+                        self.touch_category_header("Voice Channels", after_rows, cx),
+                        create,
+                        after_rows,
+                    )
                 } else {
                     category_header(IconName::VolumeUp, "Voice Channels", after_rows, cx)
+                        .children(create)
                         .into_any_element()
                 };
                 list.child(header).children(
@@ -471,12 +534,36 @@ fn channel_accessible_name(channel: &ChannelRow, unread: bool, mentions: u32) ->
     name
 }
 
+/// A touch category header (a button of its own, the whole row) with the "+" beside it, level
+/// with the header's label (`touch_category_header`'s top padding, then its 20 px line).
+fn with_create(
+    header: impl IntoElement,
+    create: Option<impl IntoElement>,
+    after_rows: bool,
+) -> AnyElement {
+    match create {
+        None => header.into_any_element(),
+        Some(create) => div()
+            .flex()
+            .flex_shrink_0()
+            .items_start()
+            .child(div().flex_1().min_w_0().child(header))
+            .child(
+                div()
+                    .pt(px(if after_rows { 12. } else { 25. }))
+                    .pr(spacing(1.))
+                    .child(create),
+            )
+            .into_any_element(),
+    }
+}
+
 fn category_header(
     icon: IconName,
     label: &'static str,
     after_rows: bool,
     cx: &mut Context<Shell>,
-) -> impl IntoElement {
+) -> Div {
     let sem = cx.sem();
     let icon_color = if sem.is_dark {
         hsla_of(sem.palette.primary_light).opacity(0.7)

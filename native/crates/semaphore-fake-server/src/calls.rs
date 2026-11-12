@@ -249,7 +249,8 @@ pub(crate) fn set_server_muted(inner: &Inner, channel_id: &str, user_id: &str, m
             })
     };
     if let Some(user) = updated {
-        inner.broadcast(
+        inner.emit_to_users(
+            &crate::admin::audience_of(inner, channel_id),
             "voiceChannelUserUpdated",
             json!({ "channelId": channel_id, "userId": user_id, "user": user }),
         );
@@ -380,7 +381,8 @@ pub(crate) fn remove_from_community(inner: &Inner, community_id: &str, user_id: 
             })
         };
         if let Some(user) = left {
-            inner.broadcast(
+            inner.emit_to_users(
+                &crate::admin::audience_of(inner, &channel_id),
                 "voiceChannelUserLeft",
                 json!({ "channelId": channel_id, "userId": user_id, "user": user }),
             );
@@ -719,6 +721,7 @@ pub(crate) fn store_clip(
         crate::StoredFile {
             uploaded_by: user_id.to_owned(),
             resource_type: "REPLAY_CLIP".to_owned(),
+            community_id: None,
             filename: filename.clone(),
             mime_type: "video/mp4".to_owned(),
             bytes: CLIP_MP4.to_vec(),

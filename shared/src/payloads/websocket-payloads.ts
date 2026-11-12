@@ -9,26 +9,40 @@ import type {
   ChannelDeletedPayloadDto,
   ChannelPermissionsUpdatedPayloadDto,
   ChannelUpdatedPayloadDto,
+  ChannelWebhookPayloadDto,
   ChannelsReorderedPayloadDto,
+  CommunityAliasGroupPayloadDto,
+  CommunityEmojiPayloadDto,
+  CommunitySoundPayloadDto,
   CommunityDeletedPayloadDto,
   CommunityUpdatedPayloadDto,
   DeleteMessagePayloadDto,
   DesktopSignInPayloadDto,
+  DmGroupCreatedPayloadDto,
+  DmGroupMemberAddedPayloadDto,
+  DmGroupMemberLeftPayloadDto,
   DmVoiceCallStartedPayloadDto,
+  DmVoiceCallDeclinedPayloadDto,
+  DmVoiceCallEndedPayloadDto,
   DmVoiceUserJoinedPayloadDto,
   DmVoiceUserLeftPayloadDto,
   EgressSegmentsReadyPayloadDto,
+  FriendshipPayloadDto,
+  InstanceRolesUpdatedPayloadDto,
   MemberAddedToCommunityPayloadDto,
   MessagePinnedPayloadDto,
   MessageUnpinnedPayloadDto,
   NewMessagePayloadDto,
   NewThreadReplyPayloadDto,
+  NotificationDismissedPayloadDto,
+  NotificationsReadPayloadDto,
   ReactionAddedPayloadDto,
   ReactionRemovedPayloadDto,
   ReadReceiptUpdatedPayloadDto,
   ReauthenticateResultDto,
   ReplayBufferFailedPayloadDto,
   ReplayBufferStoppedPayloadDto,
+  PrivateChannelMembershipPayloadDto,
   RoleAssignedPayloadDto,
   RoleCreatedPayloadDto,
   RoleDeletedPayloadDto,
@@ -45,6 +59,7 @@ import type {
   UserProfileUpdatedPayloadDto,
   UserTimedOutPayloadDto,
   UserTypingPayloadDto,
+  UserUnbannedPayloadDto,
   VoiceChannelUserJoinedPayloadDto,
   VoiceChannelUserLeftPayloadDto,
   VoiceChannelUserUpdatedPayloadDto,
@@ -136,6 +151,10 @@ export type DmVoiceUserJoinedPayload = DmVoiceUserJoinedPayloadDto;
 
 export type DmVoiceUserLeftPayload = DmVoiceUserLeftPayloadDto;
 
+export type DmVoiceCallDeclinedPayload = DmVoiceCallDeclinedPayloadDto;
+
+export type DmVoiceCallEndedPayload = DmVoiceCallEndedPayloadDto;
+
 
 // =============================================================================
 // Replay Buffer (Screen Recording) Payloads
@@ -156,6 +175,8 @@ export type ChannelsReorderedPayload = ChannelsReorderedPayloadDto;
 // =============================================================================
 
 export type UserBannedPayload = UserBannedPayloadDto;
+
+export type UserUnbannedPayload = UserUnbannedPayloadDto;
 
 export type UserKickedPayload = UserKickedPayloadDto;
 
@@ -180,6 +201,31 @@ export type ThreadReplyCountUpdatedPayload = ThreadReplyCountUpdatedPayloadDto;
 export type MemberAddedToCommunityPayload = MemberAddedToCommunityPayloadDto;
 
 // =============================================================================
+// Friend Payloads
+// =============================================================================
+
+/** The friendship the change was made to, with the two users it connects. */
+export type FriendshipPayload = FriendshipPayloadDto;
+
+// =============================================================================
+// Direct Message Group Payloads
+// =============================================================================
+
+export type DmGroupCreatedPayload = DmGroupCreatedPayloadDto;
+
+export type DmGroupMemberAddedPayload = DmGroupMemberAddedPayloadDto;
+
+export type DmGroupMemberLeftPayload = DmGroupMemberLeftPayloadDto;
+
+// =============================================================================
+// Notification Read State Payloads
+// =============================================================================
+
+export type NotificationsReadPayload = NotificationsReadPayloadDto;
+
+export type NotificationDismissedPayload = NotificationDismissedPayloadDto;
+
+// =============================================================================
 // Channel Lifecycle Payloads
 // =============================================================================
 
@@ -190,6 +236,24 @@ export type ChannelUpdatedPayload = ChannelUpdatedPayloadDto;
 export type ChannelPermissionsUpdatedPayload = ChannelPermissionsUpdatedPayloadDto;
 
 export type ChannelDeletedPayload = ChannelDeletedPayloadDto;
+
+// =============================================================================
+// Private Channel Membership Payloads
+// =============================================================================
+
+export type PrivateChannelMembershipPayload = PrivateChannelMembershipPayloadDto;
+
+// =============================================================================
+// Community Asset Payloads
+// =============================================================================
+
+export type CommunityEmojiPayload = CommunityEmojiPayloadDto;
+
+export type CommunitySoundPayload = CommunitySoundPayloadDto;
+
+export type CommunityAliasGroupPayload = CommunityAliasGroupPayloadDto;
+
+export type ChannelWebhookPayload = ChannelWebhookPayloadDto;
 
 // =============================================================================
 // Community Lifecycle Payloads
@@ -212,6 +276,9 @@ export type RoleDeletedPayload = RoleDeletedPayloadDto;
 export type RoleAssignedPayload = RoleAssignedPayloadDto;
 
 export type RoleUnassignedPayload = RoleUnassignedPayloadDto;
+
+/** One instance role change affecting the receiving user. */
+export type InstanceRolesUpdatedPayload = InstanceRolesUpdatedPayloadDto;
 
 // =============================================================================
 // User Profile Payloads
@@ -250,9 +317,16 @@ export type ServerEventPayloads = {
   // Messaging: Direct Messages
   [ServerEvents.NEW_DM]: NewMessagePayload;
 
+  // Direct Message Groups
+  [ServerEvents.DM_GROUP_CREATED]: DmGroupCreatedPayload;
+  [ServerEvents.DM_GROUP_MEMBER_ADDED]: DmGroupMemberAddedPayload;
+  [ServerEvents.DM_GROUP_MEMBER_LEFT]: DmGroupMemberLeftPayload;
+
   // Mentions & Notifications
   [ServerEvents.NEW_NOTIFICATION]: NewNotificationPayload;
   [ServerEvents.NOTIFICATION_READ]: NotificationReadPayload;
+  [ServerEvents.NOTIFICATIONS_READ]: NotificationsReadPayload;
+  [ServerEvents.NOTIFICATION_DISMISSED]: NotificationDismissedPayload;
 
   // Presence & Typing
   [ServerEvents.USER_ONLINE]: UserOnlinePayload;
@@ -268,6 +342,8 @@ export type ServerEventPayloads = {
   [ServerEvents.DM_VOICE_CALL_STARTED]: DmVoiceCallStartedPayload;
   [ServerEvents.DM_VOICE_USER_JOINED]: DmVoiceUserJoinedPayload;
   [ServerEvents.DM_VOICE_USER_LEFT]: DmVoiceUserLeftPayload;
+  [ServerEvents.DM_VOICE_CALL_DECLINED]: DmVoiceCallDeclinedPayload;
+  [ServerEvents.DM_VOICE_CALL_ENDED]: DmVoiceCallEndedPayload;
 
   // Replay Buffer (Screen Recording)
   [ServerEvents.REPLAY_BUFFER_STOPPED]: ReplayBufferStoppedPayload;
@@ -278,6 +354,7 @@ export type ServerEventPayloads = {
 
   // Moderation Events
   [ServerEvents.USER_BANNED]: UserBannedPayload;
+  [ServerEvents.USER_UNBANNED]: UserUnbannedPayload;
   [ServerEvents.USER_KICKED]: UserKickedPayload;
   [ServerEvents.USER_TIMED_OUT]: UserTimedOutPayload;
   [ServerEvents.TIMEOUT_REMOVED]: TimeoutRemovedPayload;
@@ -289,11 +366,34 @@ export type ServerEventPayloads = {
   // Community Membership
   [ServerEvents.MEMBER_ADDED_TO_COMMUNITY]: MemberAddedToCommunityPayload;
 
+  // Friends
+  [ServerEvents.FRIEND_REQUEST_SENT]: FriendshipPayload;
+  [ServerEvents.FRIEND_REQUEST_ACCEPTED]: FriendshipPayload;
+  [ServerEvents.FRIEND_REQUEST_DECLINED]: FriendshipPayload;
+  [ServerEvents.FRIEND_REQUEST_CANCELLED]: FriendshipPayload;
+  [ServerEvents.FRIEND_REMOVED]: FriendshipPayload;
+
   // Channel Lifecycle
   [ServerEvents.CHANNEL_CREATED]: ChannelCreatedPayload;
   [ServerEvents.CHANNEL_UPDATED]: ChannelUpdatedPayload;
   [ServerEvents.CHANNEL_DELETED]: ChannelDeletedPayload;
   [ServerEvents.CHANNEL_PERMISSIONS_UPDATED]: ChannelPermissionsUpdatedPayload;
+
+  // Private Channel Membership
+  [ServerEvents.PRIVATE_CHANNEL_ADDED]: PrivateChannelMembershipPayload;
+  [ServerEvents.PRIVATE_CHANNEL_REMOVED]: PrivateChannelMembershipPayload;
+
+  // Community Assets
+  [ServerEvents.CUSTOM_EMOJI_CREATED]: CommunityEmojiPayload;
+  [ServerEvents.CUSTOM_EMOJI_DELETED]: CommunityEmojiPayload;
+  [ServerEvents.SOUNDBOARD_SOUND_CREATED]: CommunitySoundPayload;
+  [ServerEvents.SOUNDBOARD_SOUND_DELETED]: CommunitySoundPayload;
+  [ServerEvents.ALIAS_GROUP_CREATED]: CommunityAliasGroupPayload;
+  [ServerEvents.ALIAS_GROUP_UPDATED]: CommunityAliasGroupPayload;
+  [ServerEvents.ALIAS_GROUP_DELETED]: CommunityAliasGroupPayload;
+  [ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED]: CommunityAliasGroupPayload;
+  [ServerEvents.WEBHOOK_CREATED]: ChannelWebhookPayload;
+  [ServerEvents.WEBHOOK_DELETED]: ChannelWebhookPayload;
 
   // Community Lifecycle
   [ServerEvents.COMMUNITY_UPDATED]: CommunityUpdatedPayload;
@@ -305,6 +405,7 @@ export type ServerEventPayloads = {
   [ServerEvents.ROLE_DELETED]: RoleDeletedPayload;
   [ServerEvents.ROLE_ASSIGNED]: RoleAssignedPayload;
   [ServerEvents.ROLE_UNASSIGNED]: RoleUnassignedPayload;
+  [ServerEvents.INSTANCE_ROLES_UPDATED]: InstanceRolesUpdatedPayload;
 
   // User Profile
   [ServerEvents.USER_PROFILE_UPDATED]: UserProfileUpdatedPayload;

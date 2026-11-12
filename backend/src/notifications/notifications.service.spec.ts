@@ -1461,6 +1461,10 @@ describe('NotificationsService', () => {
       );
 
       expect(result).toBe(3);
+      expect(notificationsGateway.emitNotificationsRead).toHaveBeenCalledWith(
+        'user-1',
+        { scope: 'channel', channelId: 'channel-1' },
+      );
       expect(mockDatabase.notification.updateMany).toHaveBeenCalledWith({
         where: {
           userId: 'user-1',
@@ -1482,6 +1486,10 @@ describe('NotificationsService', () => {
       );
 
       expect(result).toBe(2);
+      expect(notificationsGateway.emitNotificationsRead).toHaveBeenCalledWith(
+        'user-1',
+        { scope: 'directMessage', directMessageGroupId: 'dm-group-1' },
+      );
       expect(mockDatabase.notification.updateMany).toHaveBeenCalledWith({
         where: {
           userId: 'user-1',
@@ -1502,6 +1510,15 @@ describe('NotificationsService', () => {
 
       expect(result).toBe(0);
       expect(mockDatabase.notification.updateMany).not.toHaveBeenCalled();
+      expect(notificationsGateway.emitNotificationsRead).not.toHaveBeenCalled();
+    });
+
+    it('announces nothing when no mention was unread', async () => {
+      mockDatabase.notification.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.markContextNotificationsAsRead('user-1', 'channel-1', null);
+
+      expect(notificationsGateway.emitNotificationsRead).not.toHaveBeenCalled();
     });
   });
 
@@ -1517,6 +1534,50 @@ describe('NotificationsService', () => {
         where: { userId, read: false },
         data: { read: true },
       });
+      expect(notificationsGateway.emitNotificationsRead).toHaveBeenCalledWith(
+        userId,
+        { scope: 'all' },
+      );
+    });
+
+    it('announces nothing when everything was already read', async () => {
+      mockDatabase.notification.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.markAllAsRead('user-1');
+
+      expect(notificationsGateway.emitNotificationsRead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('dismissNotification', () => {
+    it("announces the dismissal to the user's other devices", async () => {
+      const notification = NotificationFactory.build({
+        id: 'notif-1',
+        userId: 'user-1',
+      });
+      mockDatabase.notification.findFirst.mockResolvedValue(notification);
+      mockDatabase.notification.update.mockResolvedValue({
+        ...notification,
+        dismissed: true,
+      });
+
+      await service.dismissNotification('notif-1', 'user-1');
+
+      expect(
+        notificationsGateway.emitNotificationDismissed,
+      ).toHaveBeenCalledWith('user-1', 'notif-1');
+    });
+
+    it("announces nothing when the notification is not the user's", async () => {
+      mockDatabase.notification.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.dismissNotification('notif-1', 'user-1'),
+      ).rejects.toThrow('Notification not found');
+
+      expect(
+        notificationsGateway.emitNotificationDismissed,
+      ).not.toHaveBeenCalled();
     });
   });
 

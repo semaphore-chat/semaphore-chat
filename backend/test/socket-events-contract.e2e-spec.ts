@@ -13,6 +13,9 @@ import type { Server as IoServer } from 'socket.io';
 import { io, Socket } from 'socket.io-client';
 import * as request from 'supertest';
 import type { AuthenticatedSocket } from '@/common/utils/socket.utils';
+import { DatabaseService } from '@/database/database.service';
+import { CustomEmojiService } from '@/custom-emoji/custom-emoji.service';
+import { SoundboardService } from '@/soundboard/soundboard.service';
 import { PresenceGateway } from '@/presence/presence.gateway';
 import { RoomsService } from '@/rooms/rooms.service';
 import { SENSITIVE_USER_FIELDS } from '@/test-utils/helpers/user-dto.helper';
@@ -305,18 +308,47 @@ describe('Socket event contract (e2e)', () => {
     await seen(ServerEvents.VOICE_CHANNEL_USER_LEFT);
   });
 
-  it('voice in a DM: call started, joined, left', async () => {
+  it('voice in a DM: call started, declined, joined, left, ended', async () => {
     const voice = app.get(VoicePresenceService);
-
-    await voice['handleWebhookDmParticipantJoined'](dmId, account.member.id);
-    await seen(ServerEvents.DM_VOICE_CALL_STARTED);
+    const decline = () =>
+      http()
+        .post(`/api/dm-groups/${dmId}/voice-presence/decline`)
+        .set('Authorization', auth('member'));
 
     await voice['handleWebhookDmParticipantJoined'](dmId, account.target.id);
+    await seen(ServerEvents.DM_VOICE_CALL_STARTED);
+
+    // The decline is for the DM's members only
+    await http()
+      .post(`/api/dm-groups/${dmId}/voice-presence/decline`)
+      .set('Authorization', auth('owner'))
+      .expect(403);
+
+    // member declines on one device: every member of the DM hears it
+    await decline().expect(201);
+    expect(
+      await seen(
+        ServerEvents.DM_VOICE_CALL_DECLINED,
+        (p) => p.userId === account.member.id,
+      ),
+    ).toEqual({ dmGroupId: dmId, userId: account.member.id, isGroup: false });
+
+    // Declining again is harmless and announces nothing new
+    await decline().expect(201);
+
+    // The decliner then answers on another device; you cannot decline a
+    // call you are in
+    await voice['handleWebhookDmParticipantJoined'](dmId, account.member.id);
     await seen(ServerEvents.DM_VOICE_USER_JOINED);
+    await decline().expect(409);
 
     await voice.leaveDmVoice(dmId, account.target.id);
     await seen(ServerEvents.DM_VOICE_USER_LEFT);
     await voice.leaveDmVoice(dmId, account.member.id);
+    await seen(ServerEvents.DM_VOICE_CALL_ENDED);
+
+    // With no call left there is nothing to decline
+    await decline().expect(409);
   });
 
   it('channels: created, updated, permissions, reordered, deleted', async () => {
@@ -398,6 +430,184 @@ describe('Socket event contract (e2e)', () => {
     await seen(ServerEvents.ROLE_DELETED, (p) => p.roleId === roleId);
   });
 
+  it('instance roles: assigning one tells the user their own roles changed', async () => {
+    const created = await http()
+      .post('/api/roles/instance')
+      .set('Authorization', auth('owner'))
+      .send({ name: 'E2E Instance Role', actions: ['READ_USER'] })
+      .expect(201);
+    const roleId = (created.body as { id: string }).id;
+
+    await http()
+      .post(`/api/roles/instance/${roleId}/assign`)
+      .set('Authorization', auth('owner'))
+      .send({ userId: account.member.id })
+      .expect(204);
+    const assigned = await seen<{ userId: string; roleId: string }>(
+      ServerEvents.INSTANCE_ROLES_UPDATED,
+      (p) => p.roleId === roleId,
+    );
+    expect(assigned).toEqual({ userId: account.member.id, roleId });
+
+    await http()
+      .delete(`/api/roles/instance/${roleId}/users/${account.member.id}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await http()
+      .delete(`/api/roles/instance/${roleId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+  });
+
+  it('friends: a request, its acceptance, a decline, a cancellation and a removal', async () => {
+    const request = await http()
+      .post(`/api/friends/request/${account.member.id}`)
+      .set('Authorization', auth('owner'))
+      .expect(201);
+    const friendshipId = (request.body as { id: string }).id;
+    const sent = await seen<{
+      friendshipId: string;
+      userAId: string;
+      userBId: string;
+    }>(
+      ServerEvents.FRIEND_REQUEST_SENT,
+      (p) => p.friendshipId === friendshipId,
+    );
+    expect(sent).toEqual({
+      friendshipId,
+      userAId: account.owner.id,
+      userBId: account.member.id,
+    });
+
+    await http()
+      .post(`/api/friends/accept/${friendshipId}`)
+      .set('Authorization', auth('member'))
+      .expect(201);
+    await seen(
+      ServerEvents.FRIEND_REQUEST_ACCEPTED,
+      (p) => p.friendshipId === friendshipId,
+    );
+
+    const toDecline = await http()
+      .post(`/api/friends/request/${account.extra.id}`)
+      .set('Authorization', auth('target'))
+      .expect(201);
+    const declinedId = (toDecline.body as { id: string }).id;
+    await http()
+      .delete(`/api/friends/decline/${declinedId}`)
+      .set('Authorization', auth('extra'))
+      .expect(200);
+    await seen(
+      ServerEvents.FRIEND_REQUEST_DECLINED,
+      (p) => p.friendshipId === declinedId,
+    );
+
+    const toCancel = await http()
+      .post(`/api/friends/request/${account.owner.id}`)
+      .set('Authorization', auth('extra'))
+      .expect(201);
+    const cancelledId = (toCancel.body as { id: string }).id;
+    await http()
+      .delete(`/api/friends/cancel/${cancelledId}`)
+      .set('Authorization', auth('extra'))
+      .expect(200);
+    await seen(
+      ServerEvents.FRIEND_REQUEST_CANCELLED,
+      (p) => p.friendshipId === cancelledId,
+    );
+
+    await http()
+      .delete(`/api/friends/${friendshipId}`)
+      .set('Authorization', auth('member'))
+      .expect(200);
+    await seen(
+      ServerEvents.FRIEND_REMOVED,
+      (p) => p.friendshipId === friendshipId,
+    );
+  });
+
+  it('DM groups: created, a member added, that member leaving', async () => {
+    const created = await http()
+      .post('/api/direct-messages')
+      .set('Authorization', auth('owner'))
+      .send({ userIds: [account.member.id], isGroup: true, name: 'Squad' })
+      .expect(201);
+    const groupId = (created.body as { id: string }).id;
+    const createdEvent = await seen<{ groupId: string; memberIds: string[] }>(
+      ServerEvents.DM_GROUP_CREATED,
+      (p) => p.groupId === groupId,
+    );
+    expect([...createdEvent.memberIds].sort()).toEqual(
+      [account.owner.id, account.member.id].sort(),
+    );
+
+    await http()
+      .post(`/api/direct-messages/${groupId}/members`)
+      .set('Authorization', auth('owner'))
+      .send({ userIds: [account.target.id] })
+      .expect(201);
+    const added = await seen<{ groupId: string; userIds: string[] }>(
+      ServerEvents.DM_GROUP_MEMBER_ADDED,
+      (p) => p.groupId === groupId,
+    );
+    expect(added.userIds).toEqual([account.target.id]);
+
+    await http()
+      .delete(`/api/direct-messages/${groupId}/members/me`)
+      .set('Authorization', auth('target'))
+      .expect(204);
+    await seen(
+      ServerEvents.DM_GROUP_MEMBER_LEFT,
+      (p) => p.groupId === groupId && p.userId === account.target.id,
+    );
+  });
+
+  it('notification read state: a context read, a dismissal and read-all', async () => {
+    const mention = (text: string) =>
+      socket.member!.timeout(5000).emitWithAck(ClientEvents.SEND_MESSAGE, {
+        channelId,
+        spans: [{ type: 'USER_MENTION', userId: account.target.id, text }],
+        attachments: [],
+      });
+
+    const mentioned: unknown = await mention('@target in context');
+    const mentionedNotification = await seen<NewNotificationPayload>(
+      ServerEvents.NEW_NOTIFICATION,
+      (p) => p.messageId === mentioned,
+    );
+
+    // Reading the channel reads its mentions too.
+    socket.target!.emit(ClientEvents.MARK_AS_READ, {
+      channelId,
+      lastReadMessageId: mentioned,
+    });
+    const contextRead = await seen(
+      ServerEvents.NOTIFICATIONS_READ,
+      (p) => p.scope === 'channel',
+    );
+    expect(contextRead).toEqual({ scope: 'channel', channelId });
+
+    await http()
+      .post(
+        `/api/notifications/${mentionedNotification.notificationId}/dismiss`,
+      )
+      .set('Authorization', auth('target'))
+      .expect(200);
+    await seen(
+      ServerEvents.NOTIFICATION_DISMISSED,
+      (p) => p.notificationId === mentionedNotification.notificationId,
+    );
+
+    const unread: unknown = await mention('@target once more');
+    await seen(ServerEvents.NEW_NOTIFICATION, (p) => p.messageId === unread);
+
+    await http()
+      .post('/api/notifications/read-all')
+      .set('Authorization', auth('target'))
+      .expect(200);
+    await seen(ServerEvents.NOTIFICATIONS_READ, (p) => p.scope === 'all');
+  });
+
   it('a profile change: USER_PROFILE_UPDATED', async () => {
     await http()
       .patch('/api/users/profile')
@@ -447,6 +657,152 @@ describe('Socket event contract (e2e)', () => {
       .send({ reason: 'enough' })
       .expect(200);
     await seen(ServerEvents.USER_BANNED);
+
+    await http()
+      .delete(`/api/moderation/ban/${communityId}/${account.target.id}`)
+      .set('Authorization', auth('owner'))
+      .send({})
+      .expect(200);
+    await seen(
+      ServerEvents.USER_UNBANNED,
+      (p) => p.userId === account.target.id,
+    );
+  });
+
+  it('a private channel: its member is told it was added and removed', async () => {
+    const created = await http()
+      .post('/api/channels')
+      .set('Authorization', auth('owner'))
+      .send({ name: 'secret', communityId, type: 'TEXT', isPrivate: true })
+      .expect(201);
+    const id = (created.body as { id: string }).id;
+
+    await http()
+      .post('/api/channel-membership')
+      .set('Authorization', auth('owner'))
+      .send({ userId: account.member.id, channelId: id })
+      .expect(201);
+    const added = await seen(
+      ServerEvents.PRIVATE_CHANNEL_ADDED,
+      (p) => p.channelId === id,
+    );
+    expect(added).toEqual({ communityId, channelId: id });
+
+    await http()
+      .delete(`/api/channel-membership/channel/${id}/user/${account.member.id}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.PRIVATE_CHANNEL_REMOVED, (p) => p.channelId === id);
+  });
+
+  it('community assets: emoji, soundboard, alias groups and webhooks', async () => {
+    const database = app.get(DatabaseService);
+
+    // Emoji and soundboard reference an uploaded file; create the rows
+    // directly since the upload step is not what this contract checks.
+    const emojiFile = await database.file.create({
+      data: {
+        filename: 'blob.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        size: 10,
+        checksum: 'emoji-checksum',
+        resourceType: 'CUSTOM_EMOJI',
+        fileCommunityId: communityId,
+        storagePath: 'test/blob.png',
+        uploadedById: account.owner.id,
+      },
+    });
+    const emoji = await app
+      .get(CustomEmojiService)
+      .createEmoji(
+        communityId,
+        { name: 'party_blob', fileId: emojiFile.id },
+        account.owner.id,
+      );
+    await seen(
+      ServerEvents.CUSTOM_EMOJI_CREATED,
+      (p) => p.emojiId === emoji.id,
+    );
+    await app.get(CustomEmojiService).deleteEmoji(communityId, emoji.id);
+    await seen(
+      ServerEvents.CUSTOM_EMOJI_DELETED,
+      (p) => p.emojiId === emoji.id,
+    );
+
+    const soundFile = await database.file.create({
+      data: {
+        filename: 'airhorn.mp3',
+        mimeType: 'audio/mpeg',
+        fileType: 'AUDIO',
+        size: 10,
+        checksum: 'sound-checksum',
+        resourceType: 'SOUNDBOARD_SOUND',
+        fileCommunityId: communityId,
+        storagePath: 'test/airhorn.mp3',
+        uploadedById: account.owner.id,
+      },
+    });
+    const sound = await app
+      .get(SoundboardService)
+      .createSound(communityId, account.owner.id, {
+        name: 'airhorn',
+        fileId: soundFile.id,
+      });
+    await seen(
+      ServerEvents.SOUNDBOARD_SOUND_CREATED,
+      (p) => p.soundId === sound.id,
+    );
+    await app.get(SoundboardService).deleteSound(communityId, sound.id);
+    await seen(
+      ServerEvents.SOUNDBOARD_SOUND_DELETED,
+      (p) => p.soundId === sound.id,
+    );
+
+    const group = await http()
+      .post(`/api/alias-groups/community/${communityId}`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'team' })
+      .expect(201);
+    const groupId = (group.body as { id: string }).id;
+    await seen(ServerEvents.ALIAS_GROUP_CREATED, (p) => p.groupId === groupId);
+
+    await http()
+      .put(`/api/alias-groups/${groupId}`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'team-two' })
+      .expect(200);
+    await seen(ServerEvents.ALIAS_GROUP_UPDATED, (p) => p.groupId === groupId);
+
+    await http()
+      .put(`/api/alias-groups/${groupId}/members`)
+      .set('Authorization', auth('owner'))
+      .send({ memberIds: [account.member.id] })
+      .expect(204);
+    await seen(
+      ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+      (p) => p.groupId === groupId,
+    );
+
+    await http()
+      .delete(`/api/alias-groups/${groupId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.ALIAS_GROUP_DELETED, (p) => p.groupId === groupId);
+
+    const webhook = await http()
+      .post(`/api/channels/${channelId}/webhooks`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'CI Bot' })
+      .expect(201);
+    const webhookId = (webhook.body as { id: string }).id;
+    await seen(ServerEvents.WEBHOOK_CREATED, (p) => p.webhookId === webhookId);
+
+    await http()
+      .delete(`/api/channels/${channelId}/webhooks/${webhookId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.WEBHOOK_DELETED, (p) => p.webhookId === webhookId);
   });
 
   it('a community: updated, deleted', async () => {

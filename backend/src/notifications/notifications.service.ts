@@ -959,6 +959,22 @@ export class NotificationsService {
       data: { read: true },
     });
 
+    // Reading the channel/DM read its mentions too: the user's other devices
+    // refetch their badge (nothing was read when the count is zero).
+    if (result.count > 0) {
+      if (channelId) {
+        this.notificationsGateway.emitNotificationsRead(userId, {
+          scope: 'channel',
+          channelId,
+        });
+      } else if (directMessageGroupId) {
+        this.notificationsGateway.emitNotificationsRead(userId, {
+          scope: 'directMessage',
+          directMessageGroupId,
+        });
+      }
+    }
+
     return result.count;
   }
 
@@ -970,6 +986,10 @@ export class NotificationsService {
       where: { userId, read: false },
       data: { read: true },
     });
+
+    if (result.count > 0) {
+      this.notificationsGateway.emitNotificationsRead(userId, { scope: 'all' });
+    }
 
     return { count: result.count };
   }
@@ -989,10 +1009,15 @@ export class NotificationsService {
       throw new NotFoundException('Notification not found');
     }
 
-    return this.databaseService.notification.update({
+    const dismissed = await this.databaseService.notification.update({
       where: { id: notificationId },
       data: { dismissed: true },
     });
+
+    // The list loses a row (the badge doesn't change: dismissal isn't a read).
+    this.notificationsGateway.emitNotificationDismissed(userId, notificationId);
+
+    return dismissed;
   }
 
   /**

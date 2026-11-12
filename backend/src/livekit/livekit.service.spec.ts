@@ -459,7 +459,7 @@ describe('LivekitService', () => {
         ],
       });
 
-      await service.muteParticipant('room-1', 'user-1', true);
+      await service.muteParticipant('room-1', 'user-1');
 
       expect(mockRoomServiceClient.getParticipant).toHaveBeenCalledWith(
         'room-1',
@@ -474,17 +474,17 @@ describe('LivekitService', () => {
       );
     });
 
-    it('should unmute participant microphone tracks', async () => {
+    it('never calls mutePublishedTrack with false', async () => {
       mockRoomServiceClient.getParticipant.mockResolvedValue({
         tracks: [{ source: 2, sid: 'track-mic-1' }],
       });
 
-      await service.muteParticipant('room-1', 'user-1', false);
+      await service.muteParticipant('room-1', 'user-1');
 
-      expect(mockRoomServiceClient.mutePublishedTrack).toHaveBeenCalledWith(
-        'room-1',
-        'user-1',
-        'track-mic-1',
+      expect(mockRoomServiceClient.mutePublishedTrack).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
         false,
       );
     });
@@ -501,7 +501,7 @@ describe('LivekitService', () => {
         .compile();
 
       await expect(
-        serviceWithoutClient.muteParticipant('room-1', 'user-1', true),
+        serviceWithoutClient.muteParticipant('room-1', 'user-1'),
       ).rejects.toThrow('LiveKit credentials not configured');
     });
 
@@ -510,9 +510,9 @@ describe('LivekitService', () => {
         new Error('Participant not found'),
       );
 
-      await expect(
-        service.muteParticipant('room-1', 'user-1', true),
-      ).rejects.toThrow('Failed to mute participant');
+      await expect(service.muteParticipant('room-1', 'user-1')).rejects.toThrow(
+        'Failed to mute participant',
+      );
     });
 
     it('returns 404, not 500, when the participant is not in the room', async () => {
@@ -525,7 +525,7 @@ describe('LivekitService', () => {
       );
 
       const error: unknown = await service
-        .muteParticipant('room-1', 'user-1', true)
+        .muteParticipant('room-1', 'user-1')
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(LivekitException);
@@ -544,7 +544,7 @@ describe('LivekitService', () => {
         ],
       });
 
-      await service.muteParticipant('room-1', 'user-1', true);
+      await service.muteParticipant('room-1', 'user-1');
 
       expect(mockRoomServiceClient.mutePublishedTrack).not.toHaveBeenCalled();
     });
@@ -670,7 +670,7 @@ describe('LivekitService', () => {
       );
     });
 
-    it('swallows errors (participant not in the room)', async () => {
+    it('throws when LiveKit refuses the update', async () => {
       mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
         new Error('participant not found'),
       );
@@ -678,7 +678,32 @@ describe('LivekitService', () => {
         service.updatePublishPermissions('room-1', 'user-1', {
           canPublish: false,
         }),
-      ).resolves.toBeUndefined();
+      ).rejects.toThrow('Failed to update the participant publish permissions');
+    });
+
+    it('answers 404 when the participant or room is gone', async () => {
+      mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
+        Object.assign(new Error('not found'), { status: 404 }),
+      );
+      await expect(
+        service.updatePublishPermissions('room-1', 'user-1', {
+          canPublish: true,
+        }),
+      ).rejects.toMatchObject({
+        message: 'Participant is not in this voice channel',
+        status: 404,
+      });
+    });
+
+    it('answers 500 for a 5xx from LiveKit', async () => {
+      mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
+        Object.assign(new Error('unavailable'), { status: 503 }),
+      );
+      await expect(
+        service.updatePublishPermissions('room-1', 'user-1', {
+          canPublish: true,
+        }),
+      ).rejects.toMatchObject({ status: 500 });
     });
 
     it('gives up on a hung LiveKit call instead of hanging', async () => {
@@ -687,15 +712,17 @@ describe('LivekitService', () => {
         mockRoomServiceClient.updateParticipant.mockImplementation(
           () => new Promise<void>(() => {}),
         );
-        const warnSpy = jest.spyOn(service['logger'], 'warn');
+        const errorSpy = jest.spyOn(service['logger'], 'error');
 
         const promise = service.updatePublishPermissions('room-1', 'user-1', {
           canPublish: false,
         });
         jest.advanceTimersByTime(5000);
 
-        await expect(promise).resolves.toBeUndefined();
-        expect(warnSpy).toHaveBeenCalledWith(
+        await expect(promise).rejects.toThrow(
+          'Failed to update the participant publish permissions',
+        );
+        expect(errorSpy).toHaveBeenCalledWith(
           expect.stringContaining('timed out after 5000ms'),
         );
       } finally {
@@ -778,6 +805,68 @@ describe('LivekitService', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+  });
+
+  describe('disconnectParticipant', () => {
+    it('removes the participant from the room', async () => {
+      mockRoomServiceClient.removeParticipant.mockResolvedValue(undefined);
+
+      await service.disconnectParticipant('room-1', 'user-1');
+
+      expect(mockRoomServiceClient.removeParticipant).toHaveBeenCalledWith(
+        'room-1',
+        'user-1',
+      );
+    });
+
+    it('answers 404 when the participant is not in the call', async () => {
+      mockRoomServiceClient.removeParticipant.mockRejectedValue(
+        Object.assign(new Error('participant not found'), {
+          status: 404,
+          code: 'not_found',
+        }),
+      );
+
+      const error: unknown = await service
+        .disconnectParticipant('room-1', 'user-1')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(LivekitException);
+      expect((error as LivekitException).getStatus()).toBe(404);
+      expect((error as LivekitException).message).toBe(
+        'Participant is not in this voice channel',
+      );
+    });
+
+    it('answers 500 (and logs) on any other LiveKit failure', async () => {
+      mockRoomServiceClient.removeParticipant.mockRejectedValue(
+        new Error('down'),
+      );
+      const errorSpy = jest.spyOn(service['logger'], 'error');
+
+      const error: unknown = await service
+        .disconnectParticipant('room-1', 'user-1')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(LivekitException);
+      expect((error as LivekitException).getStatus()).toBe(500);
+      expect(errorSpy).toHaveBeenCalled();
+    });
+
+    it('answers 500 when LiveKit is not configured', async () => {
+      const { unit: serviceWithoutClient } = await TestBed.solitary(
+        LivekitService,
+      )
+        .mock(ConfigService)
+        .final(createMockConfigService(mockConfig))
+        .mock(ROOM_SERVICE_CLIENT)
+        .final(null as any)
+        .compile();
+
+      await expect(
+        serviceWithoutClient.disconnectParticipant('room-1', 'user-1'),
+      ).rejects.toThrow('LiveKit credentials not configured');
     });
   });
 });

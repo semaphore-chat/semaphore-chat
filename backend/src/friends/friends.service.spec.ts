@@ -1,10 +1,13 @@
 import { TestBed } from '@suites/unit';
+import type { Mocked } from '@suites/doubles.jest';
 import {
   ForbiddenException,
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FriendsService } from './friends.service';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 import { DatabaseService } from '@/database/database.service';
 import { createMockDatabase, UserFactory } from '@/test-utils';
 import { FriendshipStatus } from '@prisma/client';
@@ -12,16 +15,18 @@ import { FriendshipStatus } from '@prisma/client';
 describe('FriendsService', () => {
   let service: FriendsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let eventEmitter: Mocked<EventEmitter2>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
 
-    const { unit } = await TestBed.solitary(FriendsService)
+    const { unit, unitRef } = await TestBed.solitary(FriendsService)
       .mock(DatabaseService)
       .final(mockDatabase)
       .compile();
 
     service = unit;
+    eventEmitter = unitRef.get(EventEmitter2);
   });
 
   afterEach(() => {
@@ -492,6 +497,215 @@ describe('FriendsService', () => {
       const result = await service.areFriends('userA', 'userB');
 
       expect(result).toBe(false);
+    });
+  });
+
+  // =========================================================================
+  // Socket announcements
+  // =========================================================================
+
+  describe('socket announcements', () => {
+    const senderId = 'sender-123';
+    const receiverId = 'receiver-456';
+    const friendship = {
+      id: 'fr-1',
+      userAId: senderId,
+      userBId: receiverId,
+      status: FriendshipStatus.PENDING,
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+    };
+
+    /** The one announcement made, with its payload. */
+    function announcement() {
+      expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
+      return eventEmitter.emit.mock.calls[0] as [RoomEvents, unknown];
+    }
+
+    describe('sendFriendRequest', () => {
+      it('announces a new request, naming the sender as the actor', async () => {
+        mockDatabase.user.findUnique.mockResolvedValue({ id: receiverId });
+        mockDatabase.userBlock.findFirst.mockResolvedValue(null);
+        mockDatabase.friendship.findFirst.mockResolvedValue(null);
+        mockDatabase.friendship.create.mockResolvedValue(friendship);
+
+        await service.sendFriendRequest(senderId, receiverId);
+
+        expect(announcement()).toEqual([
+          RoomEvents.FRIEND_REQUEST_SENT,
+          {
+            friendshipId: 'fr-1',
+            userAId: senderId,
+            userBId: receiverId,
+            actorId: senderId,
+          },
+        ]);
+      });
+
+      it('announces nothing when the request is refused', async () => {
+        mockDatabase.user.findUnique.mockResolvedValue({ id: receiverId });
+        mockDatabase.userBlock.findFirst.mockResolvedValue({
+          id: 'block-1',
+          blockerId: receiverId,
+          blockedId: senderId,
+        });
+
+        await expect(
+          service.sendFriendRequest(senderId, receiverId),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      it('announces a mutual request as an acceptance', async () => {
+        const reverse = {
+          ...friendship,
+          userAId: receiverId,
+          userBId: senderId,
+        };
+        const accepted = { ...reverse, status: FriendshipStatus.ACCEPTED };
+
+        mockDatabase.user.findUnique.mockResolvedValue({ id: receiverId });
+        mockDatabase.userBlock.findFirst.mockResolvedValue(null);
+        mockDatabase.friendship.findFirst.mockResolvedValue(reverse);
+        mockDatabase.friendship.update.mockResolvedValue(accepted);
+
+        await service.sendFriendRequest(senderId, receiverId);
+
+        expect(announcement()).toEqual([
+          RoomEvents.FRIEND_REQUEST_ACCEPTED,
+          {
+            friendshipId: 'fr-1',
+            userAId: receiverId,
+            userBId: senderId,
+            actorId: senderId,
+          },
+        ]);
+      });
+    });
+
+    describe('acceptFriendRequest', () => {
+      it('announces the acceptance, naming the accepter as the actor', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue(friendship);
+        mockDatabase.friendship.update.mockResolvedValue({
+          ...friendship,
+          status: FriendshipStatus.ACCEPTED,
+        });
+
+        await service.acceptFriendRequest(receiverId, 'fr-1');
+
+        expect(announcement()).toEqual([
+          RoomEvents.FRIEND_REQUEST_ACCEPTED,
+          {
+            friendshipId: 'fr-1',
+            userAId: senderId,
+            userBId: receiverId,
+            actorId: receiverId,
+          },
+        ]);
+      });
+
+      it('announces nothing when the user may not accept it', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue(friendship);
+
+        await expect(
+          service.acceptFriendRequest(senderId, 'fr-1'),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('declineFriendRequest', () => {
+      it('announces the decline to the sender', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue(friendship);
+
+        await service.declineFriendRequest(receiverId, 'fr-1');
+
+        expect(announcement()).toEqual([
+          RoomEvents.FRIEND_REQUEST_DECLINED,
+          {
+            friendshipId: 'fr-1',
+            userAId: senderId,
+            userBId: receiverId,
+            actorId: receiverId,
+          },
+        ]);
+      });
+
+      it('announces nothing when the user may not decline it', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue(friendship);
+
+        await expect(
+          service.declineFriendRequest(senderId, 'fr-1'),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('cancelFriendRequest', () => {
+      it('announces the cancellation to the receiver', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue(friendship);
+
+        await service.cancelFriendRequest(senderId, 'fr-1');
+
+        expect(announcement()).toEqual([
+          RoomEvents.FRIEND_REQUEST_CANCELLED,
+          {
+            friendshipId: 'fr-1',
+            userAId: senderId,
+            userBId: receiverId,
+            actorId: senderId,
+          },
+        ]);
+      });
+
+      it('announces nothing when the request is no longer pending', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue({
+          ...friendship,
+          status: FriendshipStatus.ACCEPTED,
+        });
+
+        await expect(
+          service.cancelFriendRequest(senderId, 'fr-1'),
+        ).rejects.toThrow(ConflictException);
+
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('removeFriend', () => {
+      it('announces the removal, naming whoever removed as the actor', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue({
+          ...friendship,
+          status: FriendshipStatus.ACCEPTED,
+        });
+
+        await service.removeFriend(receiverId, 'fr-1');
+
+        expect(announcement()).toEqual([
+          RoomEvents.FRIEND_REMOVED,
+          {
+            friendshipId: 'fr-1',
+            userAId: senderId,
+            userBId: receiverId,
+            actorId: receiverId,
+          },
+        ]);
+      });
+
+      it('announces nothing when the user is not in the friendship', async () => {
+        mockDatabase.friendship.findUnique.mockResolvedValue({
+          ...friendship,
+          status: FriendshipStatus.ACCEPTED,
+        });
+
+        await expect(service.removeFriend('stranger', 'fr-1')).rejects.toThrow(
+          ForbiddenException,
+        );
+
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
     });
   });
 });

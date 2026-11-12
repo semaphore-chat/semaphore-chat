@@ -8,7 +8,10 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { ServerEvents } from '@semaphore-chat/shared';
+import {
+  ServerEvents,
+  type NotificationsReadPayload,
+} from '@semaphore-chat/shared';
 import { Notification } from '@prisma/client';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
@@ -116,6 +119,36 @@ export class NotificationsGateway
     });
 
     this.logger.debug(`Notification ${notification.id} sent to user ${userId}`);
+  }
+
+  /**
+   * Emit that notifications were marked read in bulk, to the user's own
+   * sessions: their other devices' badges must not wait for a reload. The
+   * payload is the scope only (no ids), so a client refetches the count.
+   */
+  emitNotificationsRead(userId: string, scope: NotificationsReadPayload): void {
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.NOTIFICATIONS_READ,
+      scope,
+    );
+
+    this.logger.debug(
+      `Notifications read in scope ${scope.scope} for user ${userId}`,
+    );
+  }
+
+  /** Emit that one notification was dismissed, so other devices drop its row. */
+  emitNotificationDismissed(userId: string, notificationId: string): void {
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.NOTIFICATION_DISMISSED,
+      { notificationId },
+    );
+
+    this.logger.debug(
+      `Notification ${notificationId} dismissed for user ${userId}`,
+    );
   }
 
   /**

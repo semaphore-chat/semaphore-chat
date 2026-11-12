@@ -1,6 +1,8 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InstanceRolesService } from './instance-roles.service';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 import { getInstanceAdminActions } from './default-roles.config';
 import { DatabaseService } from '@/database/database.service';
 import {
@@ -20,6 +22,7 @@ describe('InstanceRolesService', () => {
   let service: InstanceRolesService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
+  let eventEmitter: Mocked<EventEmitter2>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -31,6 +34,7 @@ describe('InstanceRolesService', () => {
 
     service = unit;
     permissionsCacheService = unitRef.get(PermissionsCacheService);
+    eventEmitter = unitRef.get(EventEmitter2);
   });
 
   afterEach(() => {
@@ -375,6 +379,7 @@ describe('InstanceRolesService', () => {
 
         mockDatabase.role.findUnique.mockResolvedValue(existingRole);
         mockDatabase.role.update.mockResolvedValue(updatedRole);
+        mockDatabase.userRoles.findMany.mockResolvedValue([]);
 
         const result = await service.updateInstanceRole(roleId, {
           actions: [RbacActions.READ_USER],
@@ -453,6 +458,7 @@ describe('InstanceRolesService', () => {
           ...existingInstanceRole,
           name: 'Shared Name',
         });
+        mockDatabase.userRoles.findMany.mockResolvedValue([]);
 
         // Even if a community role has the same name, it should not prevent the rename
         const result = await service.updateInstanceRole(roleId, {
@@ -926,6 +932,7 @@ describe('InstanceRolesService', () => {
         ...existingRole,
         actions: [RbacActions.READ_USER],
       });
+      mockDatabase.userRoles.findMany.mockResolvedValue([]);
 
       await service.updateInstanceRole(roleId, {
         actions: [RbacActions.READ_USER],
@@ -1103,6 +1110,118 @@ describe('InstanceRolesService', () => {
       );
 
       expect(permissionsCacheService.bumpNowOrDefer).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // Socket announcements
+  // =========================================================================
+
+  describe('announcing a change to the user', () => {
+    /** The announcement, as [event, payload]. */
+    function announcement(index = 0) {
+      return eventEmitter.emit.mock.calls[index] as [RoomEvents, unknown];
+    }
+
+    it('tells the user their instance roles changed when one is assigned', async () => {
+      const roleId = 'role-123';
+      mockDatabase.role.findUnique.mockResolvedValue({
+        ...RoleFactory.build({ id: roleId }),
+        communityId: null,
+      });
+      mockDatabase.userRoles.findFirst.mockResolvedValue(null);
+      mockDatabase.userRoles.create.mockResolvedValue({});
+
+      await service.assignUserToInstanceRole('user-1', roleId);
+
+      expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
+      expect(announcement()).toEqual([
+        RoomEvents.INSTANCE_ROLES_UPDATED,
+        { userId: 'user-1', roleId },
+      ]);
+    });
+
+    it('announces nothing when the assignment is refused', async () => {
+      mockDatabase.role.findUnique.mockResolvedValue({
+        ...RoleFactory.build({ id: 'role-123' }),
+        communityId: null,
+      });
+      mockDatabase.userRoles.findFirst.mockResolvedValue({
+        id: 'existing',
+      });
+
+      await expect(
+        service.assignUserToInstanceRole('user-1', 'role-123'),
+      ).rejects.toThrow(ConflictException);
+
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('tells the user their instance roles changed when one is removed', async () => {
+      mockDatabase.userRoles.findFirst.mockResolvedValue({ id: 'user-role-1' });
+      mockDatabase.userRoles.delete.mockResolvedValue({ id: 'user-role-1' });
+
+      await service.removeUserFromInstanceRole('user-1', 'role-123');
+
+      expect(announcement()).toEqual([
+        RoomEvents.INSTANCE_ROLES_UPDATED,
+        { userId: 'user-1', roleId: 'role-123' },
+      ]);
+    });
+
+    it('announces nothing when the removal is refused', async () => {
+      mockDatabase.userRoles.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.removeUserFromInstanceRole('user-1', 'role-123'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('tells every holder when their role is edited', async () => {
+      const roleId = 'role-123';
+      const existingRole = RoleFactory.build({
+        id: roleId,
+        name: 'Custom Instance Role',
+      });
+      mockDatabase.role.findUnique.mockResolvedValue(existingRole);
+      mockDatabase.role.update.mockResolvedValue({
+        ...existingRole,
+        actions: [RbacActions.READ_USER],
+      });
+      mockDatabase.userRoles.findMany.mockResolvedValue([
+        { userId: 'user-1' },
+        { userId: 'user-2' },
+      ]);
+
+      await service.updateInstanceRole(roleId, {
+        actions: [RbacActions.READ_USER],
+      });
+
+      expect(mockDatabase.userRoles.findMany).toHaveBeenCalledWith({
+        where: { roleId, isInstanceRole: true },
+        select: { userId: true },
+      });
+      expect(eventEmitter.emit.mock.calls).toEqual([
+        [RoomEvents.INSTANCE_ROLES_UPDATED, { userId: 'user-1', roleId }],
+        [RoomEvents.INSTANCE_ROLES_UPDATED, { userId: 'user-2', roleId }],
+      ]);
+    });
+
+    it('announces nothing when the edit is refused', async () => {
+      const existingRole = RoleFactory.build({
+        name: 'Instance Admin',
+        communityId: null,
+        isDefault: true,
+      });
+      mockDatabase.role.findUnique.mockResolvedValue(existingRole);
+
+      await expect(
+        service.updateInstanceRole(existingRole.id, { name: 'New Name' }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 });

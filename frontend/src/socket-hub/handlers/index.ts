@@ -5,10 +5,13 @@ import * as messageHandlers from './messageHandlers';
 import * as presenceHandlers from './presenceHandlers';
 import * as voiceHandlers from './voiceHandlers';
 import * as communityHandlers from './communityHandlers';
+import * as communityAssetHandlers from './communityAssetHandlers';
 import * as moderationHandlers from './moderationHandlers';
 import * as roleHandlers from './roleHandlers';
 import * as notificationHandlers from './notificationHandlers';
 import * as threadHandlers from './threadHandlers';
+import * as friendHandlers from './friendHandlers';
+import * as dmGroupHandlers from './dmGroupHandlers';
 
 /**
  * Central registry mapping every handled ServerEvent to its cache handler(s).
@@ -52,9 +55,23 @@ export const handlerRegistry: {
   // Community
   [ServerEvents.MEMBER_ADDED_TO_COMMUNITY]: [communityHandlers.handleMemberAddedToCommunity],
 
+  // Friends (every friendship event has the same payload: ids only)
+  [ServerEvents.FRIEND_REQUEST_SENT]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REQUEST_ACCEPTED]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REQUEST_DECLINED]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REQUEST_CANCELLED]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REMOVED]: [friendHandlers.handleFriendshipChanged],
+
+  // DM groups
+  [ServerEvents.DM_GROUP_CREATED]: [dmGroupHandlers.handleDmGroupCreated],
+  [ServerEvents.DM_GROUP_MEMBER_ADDED]: [dmGroupHandlers.handleDmGroupMemberAdded],
+  [ServerEvents.DM_GROUP_MEMBER_LEFT]: [dmGroupHandlers.handleDmGroupMemberLeft],
+
   // Notifications
   [ServerEvents.NEW_NOTIFICATION]: [notificationHandlers.handleNewNotification],
   [ServerEvents.NOTIFICATION_READ]: [notificationHandlers.handleNotificationRead],
+  [ServerEvents.NOTIFICATIONS_READ]: [notificationHandlers.handleNotificationsRead],
+  [ServerEvents.NOTIFICATION_DISMISSED]: [notificationHandlers.handleNotificationDismissed],
 
   // Threads (replies cache)
   [ServerEvents.NEW_THREAD_REPLY]: [threadHandlers.handleNewThreadReply],
@@ -66,9 +83,26 @@ export const handlerRegistry: {
 
   // Moderation
   [ServerEvents.USER_BANNED]: [moderationHandlers.handleUserBanned],
+  [ServerEvents.USER_UNBANNED]: [moderationHandlers.handleUserUnbanned],
   [ServerEvents.USER_KICKED]: [moderationHandlers.handleUserKicked],
   [ServerEvents.USER_TIMED_OUT]: [moderationHandlers.handleUserTimedOut],
   [ServerEvents.TIMEOUT_REMOVED]: [moderationHandlers.handleTimeoutRemoved],
+
+  // Private channel membership
+  [ServerEvents.PRIVATE_CHANNEL_ADDED]: [communityHandlers.handlePrivateChannelAdded],
+  [ServerEvents.PRIVATE_CHANNEL_REMOVED]: [communityHandlers.handlePrivateChannelRemoved],
+
+  // Community assets
+  [ServerEvents.CUSTOM_EMOJI_CREATED]: [communityAssetHandlers.handleCustomEmojiCreated],
+  [ServerEvents.CUSTOM_EMOJI_DELETED]: [communityAssetHandlers.handleCustomEmojiDeleted],
+  [ServerEvents.SOUNDBOARD_SOUND_CREATED]: [communityAssetHandlers.handleSoundboardSoundCreated],
+  [ServerEvents.SOUNDBOARD_SOUND_DELETED]: [communityAssetHandlers.handleSoundboardSoundDeleted],
+  [ServerEvents.ALIAS_GROUP_CREATED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.ALIAS_GROUP_UPDATED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.ALIAS_GROUP_DELETED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.WEBHOOK_CREATED]: [communityAssetHandlers.handleWebhookCreated],
+  [ServerEvents.WEBHOOK_DELETED]: [communityAssetHandlers.handleWebhookDeleted],
 
   // Channel lifecycle & reorder
   [ServerEvents.CHANNELS_REORDERED]: [communityHandlers.handleChannelsReordered],
@@ -87,6 +121,7 @@ export const handlerRegistry: {
   [ServerEvents.ROLE_DELETED]: [roleHandlers.handleRoleDeleted],
   [ServerEvents.ROLE_ASSIGNED]: [roleHandlers.handleRoleAssigned],
   [ServerEvents.ROLE_UNASSIGNED]: [roleHandlers.handleRoleUnassigned],
+  [ServerEvents.INSTANCE_ROLES_UPDATED]: [roleHandlers.handleInstanceRolesUpdated],
 
   // User profile
   [ServerEvents.USER_PROFILE_UPDATED]: [presenceHandlers.handleUserProfileUpdated],

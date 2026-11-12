@@ -90,7 +90,10 @@
 //! `notice S`, `no-notice`, `pinned-count N` (the header's badge), `composer-text S`,
 //! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
+mod w5;
+
 use anyhow::{Context as _, Result, anyhow, bail};
+use gpui_kit::test::TestQueryExt as _;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
 use rig_shot::driver::Driver;
@@ -339,6 +342,8 @@ enum Condition {
     PlayersOpen(usize),
     /// W4's (`w4_holds`).
     W4(W4),
+    /// W5's (`w5.rs`, `w5_holds`).
+    W5(w5::W5),
 }
 
 /// W4's conditions.
@@ -501,6 +506,11 @@ enum Step {
     /// The fake camera or screen refuses its next start with this reason.
     NotificationClick(String),
     Link(String),
+    /// W5: `navigate PATH`: the shell goes to that app path (`Route::parse`), as a click would.
+    Navigate(String),
+    /// W5: `click-label LABEL`: clicks the element whose accessible label is exactly this (for
+    /// rows whose ids carry a server-made id, like a new sound's preview button).
+    ClickLabel(String),
     ForgetSounds,
     ActivateWindow,
     VideoFailNext {
@@ -634,6 +644,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
             state @ ("off" | "starting" | "recording" | "failed"),
         ] => Condition::W4(W4::Replay((*state).into())),
         ["clips", count] => Condition::W4(W4::Clips(number(count)?)),
+        ["w5", rest @ ..] => Condition::W5(w5::parse(rest)?),
         ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
         ["ringing", dm] => Condition::W4(W4::RingingFor((*dm).into())),
         ["ring", state @ ("looping" | "stopped")] => {
@@ -768,6 +779,8 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["exec", command] => Step::Exec((*command).into()),
             ["notification", "click", tag] => Step::NotificationClick((*tag).into()),
             ["link", url] => Step::Link((*url).into()),
+            ["navigate", path] => Step::Navigate(message_ids(path)),
+            ["click-label", label] => Step::ClickLabel((*label).into()),
             ["forget", "sounds"] => Step::ForgetSounds,
             ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
             ["save-as", name] => Step::SaveAs((*name).into()),
@@ -1580,6 +1593,9 @@ impl Rig {
         if let Condition::W4(w4) = condition {
             return self.w4_holds(w4);
         }
+        if let Condition::W5(w5) = condition {
+            return self.w5_holds(w5);
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -1678,7 +1694,8 @@ impl Rig {
             | Condition::Player(..)
             | Condition::PlayerFrames(_)
             | Condition::PlayersOpen(_)
-            | Condition::W4(_) => unreachable!("answered above"),
+            | Condition::W4(_)
+            | Condition::W5(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -1890,6 +1907,9 @@ fn route_name(route: &semaphore_ui::nav::Route) -> String {
         Route::Settings { tab } => format!("settings/{}", tab.key()),
         Route::Profile { user_id } => format!("profile/{user_id}"),
         Route::ProfileEdit => "profile-edit".into(),
+        Route::CommunitySettings { community_id, tab } => {
+            format!("community-settings/{community_id}/{}", tab.key())
+        }
         Route::Community { community_id } => format!("community/{community_id}"),
         Route::Channel { channel_id, .. } => format!("channel/{channel_id}"),
         Route::DirectMessages => "dms".into(),
@@ -2341,6 +2361,28 @@ impl Rig {
                     let app = self.app()?.clone();
                     self.driver
                         .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
+                }
+                Step::Navigate(path) => {
+                    let route = semaphore_ui::nav::Route::parse(path);
+                    let app = self.app()?.clone();
+                    self.driver.update(|_, cx| {
+                        let shell = app.read(cx).shell().cloned();
+                        if let Some(shell) = shell {
+                            shell.update(cx, |shell, cx| shell.navigate(route, cx));
+                        }
+                    })
+                }
+                Step::ClickLabel(label) => {
+                    self.driver.settle()?;
+                    let id = self
+                        .driver
+                        .query(|window| {
+                            window
+                                .try_find_by_label(label)
+                                .and_then(|found| found.path().last().cloned())
+                        })?
+                        .ok_or_else(|| anyhow!("nothing is labelled {label:?}"))?;
+                    self.driver.update(|window, cx| window.click(id, cx))
                 }
                 Step::ActivateWindow => self
                     .driver

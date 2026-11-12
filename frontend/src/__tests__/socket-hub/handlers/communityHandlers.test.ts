@@ -4,6 +4,8 @@ import {
   handleChannelsReordered,
   handleChannelPermissionsUpdated,
   handleMemberAddedToCommunity,
+  handlePrivateChannelAdded,
+  handlePrivateChannelRemoved,
 } from '../../../socket-hub/handlers/communityHandlers';
 
 describe('communityHandlers', () => {
@@ -57,5 +59,50 @@ describe('communityHandlers', () => {
       queryKey: [{ _id: 'channelsControllerFindAllForCommunity' }],
     });
     expect(setData).not.toHaveBeenCalled();
+  });
+
+  describe.each([
+    ['handlePrivateChannelAdded', handlePrivateChannelAdded],
+    ['handlePrivateChannelRemoved', handlePrivateChannelRemoved],
+  ])('%s', (_name, handler) => {
+    it('refetches the channel list, mentionable channels and effective permissions', () => {
+      const queryClient = new QueryClient();
+      const spy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      handler({ communityId: 'c1', channelId: 'ch1' }, queryClient);
+
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: [
+          {
+            _id: 'channelsControllerFindAllForCommunity',
+            path: { communityId: 'c1' },
+          },
+        ],
+      });
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'channelsControllerGetMentionableChannels' }],
+      });
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: [
+          { _id: 'channelPermissionsControllerGetMyCommunityChannelPermissions' },
+        ],
+      });
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: [
+          { _id: 'channelPermissionsControllerGetMyChannelPermissions' },
+        ],
+      });
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: [
+          { _id: 'channelPermissionsControllerListChannelPermissions' },
+        ],
+      });
+      expect(spy).toHaveBeenCalledWith({
+        queryKey: [
+          { _id: 'channelPermissionsControllerGetOverwrites' },
+        ],
+      });
+      expect(spy).toHaveBeenCalledTimes(6);
+    });
   });
 });

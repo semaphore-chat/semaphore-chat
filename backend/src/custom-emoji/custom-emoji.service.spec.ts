@@ -1,4 +1,6 @@
 import { TestBed } from '@suites/unit';
+import type { Mocked } from '@suites/doubles.jest';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   BadRequestException,
   ConflictException,
@@ -8,9 +10,11 @@ import { ResourceType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { CustomEmojiService } from './custom-emoji.service';
 import { DatabaseService } from '@/database/database.service';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 
 describe('CustomEmojiService', () => {
   let service: CustomEmojiService;
+  let eventEmitter: Mocked<EventEmitter2>;
 
   const communityId = randomUUID();
   const otherCommunityId = randomUUID();
@@ -31,12 +35,13 @@ describe('CustomEmojiService', () => {
   };
 
   beforeEach(async () => {
-    const { unit } = await TestBed.solitary(CustomEmojiService)
+    const { unit, unitRef } = await TestBed.solitary(CustomEmojiService)
       .mock(DatabaseService)
       .final(mockDatabaseService)
       .compile();
 
     service = unit;
+    eventEmitter = unitRef.get(EventEmitter2);
     jest.clearAllMocks();
   });
 
@@ -94,6 +99,10 @@ describe('CustomEmojiService', () => {
       expect(mockDatabaseService.customEmoji.create).toHaveBeenCalledWith({
         data: { communityId, name: 'party_blob', fileId, createdBy: userId },
       });
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.CUSTOM_EMOJI_CREATED,
+        { communityId, emojiId },
+      );
     });
 
     it('rejects a duplicate name within the same community', async () => {
@@ -109,6 +118,7 @@ describe('CustomEmojiService', () => {
         ),
       ).rejects.toThrow(ConflictException);
       expect(mockDatabaseService.customEmoji.create).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
     it('rejects when the file does not exist', async () => {
@@ -171,6 +181,10 @@ describe('CustomEmojiService', () => {
       expect(mockDatabaseService.customEmoji.delete).toHaveBeenCalledWith({
         where: { id: emojiId },
       });
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.CUSTOM_EMOJI_DELETED,
+        { communityId, emojiId },
+      );
     });
 
     it('throws NotFound when the emoji is missing', async () => {
@@ -179,6 +193,7 @@ describe('CustomEmojiService', () => {
       await expect(service.deleteEmoji(communityId, emojiId)).rejects.toThrow(
         NotFoundException,
       );
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
     it('throws NotFound when the emoji belongs to another community', async () => {

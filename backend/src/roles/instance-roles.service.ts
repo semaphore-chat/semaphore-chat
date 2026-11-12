@@ -1,5 +1,7 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseService } from '@/database/database.service';
 import { isPrismaError } from '@/common/utils/prisma.utils';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 import {
   EpochBump,
   PermissionsCacheService,
@@ -34,7 +36,25 @@ export class InstanceRolesService implements OnModuleInit {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly permissionsCacheService: PermissionsCacheService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  /**
+   * Tell each affected user their own instance roles changed, so their open
+   * sessions re-read what they may do (create a community, open Admin)
+   * without a restart.
+   */
+  private announceInstanceRolesChanged(
+    userIds: string[],
+    roleId: string,
+  ): void {
+    for (const userId of new Set(userIds)) {
+      this.eventEmitter.emit(RoomEvents.INSTANCE_ROLES_UPDATED, {
+        userId,
+        roleId,
+      });
+    }
+  }
 
   /**
    * Called when the module is initialized.
@@ -371,6 +391,16 @@ export class InstanceRolesService implements OnModuleInit {
 
     await this.permissionsCacheService.bumpInstanceEpoch();
 
+    // Everyone holding the role may have gained or lost actions.
+    const holders = await this.databaseService.userRoles.findMany({
+      where: { roleId, isInstanceRole: true },
+      select: { userId: true },
+    });
+    this.announceInstanceRolesChanged(
+      holders.map((holder) => holder.userId),
+      roleId,
+    );
+
     this.logger.log(`Updated instance role ${roleId}`);
 
     return {
@@ -428,6 +458,9 @@ export class InstanceRolesService implements OnModuleInit {
 
     await this.permissionsCacheService.bumpInstanceEpoch();
 
+    // No INSTANCE_ROLES_UPDATED here: the guard above refuses to delete a
+    // role anyone holds, so nobody's own roles changed.
+
     this.logger.log(`Deleted instance role ${roleId}`);
   }
 
@@ -480,6 +513,8 @@ export class InstanceRolesService implements OnModuleInit {
       pendingBumps,
     );
 
+    this.announceInstanceRolesChanged([userId], roleId);
+
     this.logger.log(
       `Assigned user ${userId} to instance role ${roleId} (${role.name})`,
     );
@@ -509,6 +544,8 @@ export class InstanceRolesService implements OnModuleInit {
     });
 
     await this.permissionsCacheService.bumpUserEpoch(userId);
+
+    this.announceInstanceRolesChanged([userId], roleId);
 
     this.logger.log(`Removed user ${userId} from instance role ${roleId}`);
   }

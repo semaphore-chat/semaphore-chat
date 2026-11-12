@@ -25,9 +25,18 @@ export enum ServerEvents {
   // Messaging: Direct Messages
   NEW_DM = 'newDirectMessage',
 
+  // Direct Message Groups
+  /** A group this user belongs to was created: refetch the DM list. */
+  DM_GROUP_CREATED = 'dmGroupCreated',
+  DM_GROUP_MEMBER_ADDED = 'dmGroupMemberAdded',
+  DM_GROUP_MEMBER_LEFT = 'dmGroupMemberLeft',
+
   // Mentions & Notifications
   NEW_NOTIFICATION = 'newNotification',
   NOTIFICATION_READ = 'notificationRead',
+  /** Notifications were marked read in bulk: refetch the list and the badge. */
+  NOTIFICATIONS_READ = 'notificationsRead',
+  NOTIFICATION_DISMISSED = 'notificationDismissed',
 
   // Presence & Typing
   USER_ONLINE = 'userOnline',
@@ -43,6 +52,8 @@ export enum ServerEvents {
   DM_VOICE_CALL_STARTED = 'dmVoiceCallStarted',
   DM_VOICE_USER_JOINED = 'dmVoiceUserJoined',
   DM_VOICE_USER_LEFT = 'dmVoiceUserLeft',
+  DM_VOICE_CALL_DECLINED = 'dmVoiceCallDeclined',
+  DM_VOICE_CALL_ENDED = 'dmVoiceCallEnded',
 
   // Replay Buffer (Screen Recording)
   REPLAY_BUFFER_STOPPED = 'replayBufferStopped',
@@ -53,6 +64,8 @@ export enum ServerEvents {
 
   // Moderation Events
   USER_BANNED = 'userBanned',
+  /** A ban was lifted: refetch the ban list and the moderation log. */
+  USER_UNBANNED = 'userUnbanned',
   USER_KICKED = 'userKicked',
   USER_TIMED_OUT = 'userTimedOut',
   TIMEOUT_REMOVED = 'timeoutRemoved',
@@ -65,6 +78,18 @@ export enum ServerEvents {
 
   // Community Membership
   MEMBER_ADDED_TO_COMMUNITY = 'memberAddedToCommunity',
+
+  // Friends
+  /** Someone sent this user a friend request. */
+  FRIEND_REQUEST_SENT = 'friendRequestSent',
+  /** A friend request involving this user was accepted. */
+  FRIEND_REQUEST_ACCEPTED = 'friendRequestAccepted',
+  /** The recipient declined the request this user sent. */
+  FRIEND_REQUEST_DECLINED = 'friendRequestDeclined',
+  /** The sender withdrew the request this user received. */
+  FRIEND_REQUEST_CANCELLED = 'friendRequestCancelled',
+  /** The other person ended the friendship. */
+  FRIEND_REMOVED = 'friendRemoved',
 
   // Channel Lifecycle
   CHANNEL_CREATED = 'channelCreated',
@@ -83,6 +108,27 @@ export enum ServerEvents {
   ROLE_DELETED = 'roleDeleted',
   ROLE_ASSIGNED = 'roleAssigned',
   ROLE_UNASSIGNED = 'roleUnassigned',
+  /** The user's own instance roles changed: refetch them and re-gate Admin. */
+  INSTANCE_ROLES_UPDATED = 'instanceRolesUpdated',
+
+  // Private Channel Membership
+  /** The user was added to a private channel: refetch their channel list. */
+  PRIVATE_CHANNEL_ADDED = 'privateChannelAdded',
+  /** The user was removed from a private channel. */
+  PRIVATE_CHANNEL_REMOVED = 'privateChannelRemoved',
+
+  // Community Assets
+  CUSTOM_EMOJI_CREATED = 'customEmojiCreated',
+  CUSTOM_EMOJI_DELETED = 'customEmojiDeleted',
+  SOUNDBOARD_SOUND_CREATED = 'soundboardSoundCreated',
+  SOUNDBOARD_SOUND_DELETED = 'soundboardSoundDeleted',
+  ALIAS_GROUP_CREATED = 'aliasGroupCreated',
+  ALIAS_GROUP_UPDATED = 'aliasGroupUpdated',
+  ALIAS_GROUP_DELETED = 'aliasGroupDeleted',
+  /** An alias group's members were added, removed or replaced. */
+  ALIAS_GROUP_MEMBERS_UPDATED = 'aliasGroupMembersUpdated',
+  WEBHOOK_CREATED = 'webhookCreated',
+  WEBHOOK_DELETED = 'webhookDeleted',
 
   // User Profile
   USER_PROFILE_UPDATED = 'userProfileUpdated',

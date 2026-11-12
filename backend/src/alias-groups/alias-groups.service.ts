@@ -208,13 +208,13 @@ export class AliasGroupsService {
 
     const typedGroup = group as AliasGroupQueryResult;
 
-    // Emit domain event — the RoomSubscriptionHandler will join members
-    if (dto.memberIds && dto.memberIds.length > 0) {
-      this.eventEmitter.emit(RoomEvents.ALIAS_GROUP_CREATED, {
-        aliasGroupId: group.id,
-        memberIds: dto.memberIds,
-      });
-    }
+    // Emit domain event — the RoomSubscriptionHandler will join members and
+    // tell the community the list changed (a group with no members still does)
+    this.eventEmitter.emit(RoomEvents.ALIAS_GROUP_CREATED, {
+      aliasGroupId: group.id,
+      memberIds: dto.memberIds ?? [],
+      communityId,
+    });
 
     this.logger.log(
       `Created alias group "${dto.name}" in community ${communityId} with ${typedGroup.members.length} members`,
@@ -279,6 +279,11 @@ export class AliasGroupsService {
       `Updated alias group ${groupId}: renamed from "${group.name}" to "${dto.name}"`,
     );
 
+    this.eventEmitter.emit(RoomEvents.ALIAS_GROUP_UPDATED, {
+      aliasGroupId: groupId,
+      communityId: group.communityId,
+    });
+
     return this.transformGroupWithMembers(updated);
   }
 
@@ -311,12 +316,12 @@ export class AliasGroupsService {
     });
 
     // Emit domain event — the RoomSubscriptionHandler will remove sockets
-    if (memberIds.length > 0) {
-      this.eventEmitter.emit(RoomEvents.ALIAS_GROUP_DELETED, {
-        aliasGroupId: groupId,
-        memberIds,
-      });
-    }
+    // and tell the community, even when the group had no members
+    this.eventEmitter.emit(RoomEvents.ALIAS_GROUP_DELETED, {
+      aliasGroupId: groupId,
+      memberIds,
+      communityId: group.communityId,
+    });
 
     this.logger.log(
       `Deleted alias group "${group.name}" (${groupId}) from community ${group.communityId}`,
@@ -370,10 +375,12 @@ export class AliasGroupsService {
       },
     });
 
-    // Emit domain event — the RoomSubscriptionHandler will join sockets
+    // Emit domain event — the RoomSubscriptionHandler will join sockets and
+    // tell the community the group's members changed
     this.eventEmitter.emit(RoomEvents.ALIAS_GROUP_MEMBER_ADDED, {
       aliasGroupId: groupId,
       userId,
+      communityId: group.communityId,
     });
 
     this.logger.log(`Added user ${userId} to alias group ${groupId}`);
@@ -383,6 +390,15 @@ export class AliasGroupsService {
    * Remove a single member from an alias group
    */
   async removeMember(groupId: string, userId: string): Promise<void> {
+    const group = await this.databaseService.aliasGroup.findUnique({
+      where: { id: groupId },
+      select: { communityId: true },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Alias group not found');
+    }
+
     const member = await this.databaseService.aliasGroupMember.findUnique({
       where: {
         aliasGroupId_userId: {
@@ -401,9 +417,11 @@ export class AliasGroupsService {
     });
 
     // Emit domain event — the RoomSubscriptionHandler will remove sockets
+    // and tell the community the group's members changed
     this.eventEmitter.emit(RoomEvents.ALIAS_GROUP_MEMBER_REMOVED, {
       aliasGroupId: groupId,
       userId,
+      communityId: group.communityId,
     });
 
     this.logger.log(`Removed user ${userId} from alias group ${groupId}`);
@@ -477,6 +495,7 @@ export class AliasGroupsService {
         aliasGroupId: groupId,
         addedUserIds,
         removedUserIds,
+        communityId: group.communityId,
       });
     }
 

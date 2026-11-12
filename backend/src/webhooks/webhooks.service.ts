@@ -4,12 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { ChannelType } from '@prisma/client';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
 import { MessagesService } from '@/messages/messages.service';
 import { MessageDispatchService } from '@/messages/message-dispatch.service';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import {
   CreateWebhookResponseDto,
@@ -26,6 +28,7 @@ export class WebhooksService {
     private readonly messagesService: MessagesService,
     private readonly messageDispatchService: MessageDispatchService,
     private readonly configService: ConfigService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -67,6 +70,12 @@ export class WebhooksService {
       },
     });
 
+    this.eventEmitter.emit(RoomEvents.WEBHOOK_CREATED, {
+      communityId: channel.communityId,
+      channelId,
+      webhookId: webhook.id,
+    });
+
     return {
       id: webhook.id,
       name: webhook.name,
@@ -99,6 +108,7 @@ export class WebhooksService {
   async remove(channelId: string, webhookId: string): Promise<void> {
     const webhook = await this.databaseService.webhook.findUnique({
       where: { id: webhookId },
+      include: { channel: { select: { communityId: true } } },
     });
 
     if (!webhook || webhook.channelId !== channelId) {
@@ -106,6 +116,12 @@ export class WebhooksService {
     }
 
     await this.databaseService.webhook.delete({ where: { id: webhookId } });
+
+    this.eventEmitter.emit(RoomEvents.WEBHOOK_DELETED, {
+      communityId: webhook.channel.communityId,
+      channelId,
+      webhookId,
+    });
   }
 
   /**

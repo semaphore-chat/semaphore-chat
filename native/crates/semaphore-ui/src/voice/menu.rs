@@ -3,24 +3,21 @@
 //!
 //! "View Profile" for anyone. For someone else: "Mute for Me" and a volume up to 200%. A moderator
 //! in a channel call also gets "Server Mute" (or "Server Unmute") and "Kick", as
-//! `VoiceModerationCaps` allows; Kick asks first, with an optional reason (`KickConfirmDialog.tsx`).
-//! Timeout and ban are W5's.
+//! `VoiceModerationCaps` allows. Kick hands the member to the owner, who asks first with W5's
+//! moderation kick dialog (`moderation::ModerationDialog`, as `KickConfirmDialog.tsx`).
 //!
 //! The owner places it at the pointer (`set_position`), drops it on `Close`, and calls core for
 //! everything else. A refused server mute is the owner's to show (a toast): the menu has closed by
-//! then, as on the web. A refused kick keeps the confirm open with `set_kick_error`.
+//! then, as on the web.
 
 use super::model::display_name;
-use crate::kit::{
-    Alert, Button, Dialog, Icon, Severity, Slider, TextField, Variant, text, text_state,
-};
+use crate::kit::{Icon, Slider, Variant, text};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::component::input::InputState;
 use gpui_kit::component::slider::{SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{ParticipantView, VoiceModerationCaps};
+use semaphore_core::model::{ParticipantView, UserView, VoiceModerationCaps};
 use semaphore_design::Icon as IconName;
 
 pub const MAX_VOLUME: u32 = 200;
@@ -40,11 +37,9 @@ pub enum ParticipantMenuEvent {
         identity: String,
         mute: bool,
     },
-    /// Confirmed: `Core::kick_member(community_id, user_id, reason)`. The owner calls
-    /// `set_kick_busy(true)`, then drops the menu on success or `set_kick_error` on failure.
+    /// "Kick": the owner opens the moderation kick dialog for them (the menu closes with it).
     Kick {
-        user_id: String,
-        reason: Option<String>,
+        user: UserView,
     },
     /// Done with: a press outside, Escape, an action that closes it, or the confirm cancelled.
     Close,
@@ -86,13 +81,6 @@ pub struct ParticipantMenu {
     position: Point<Pixels>,
     slider: Entity<SliderState>,
     _slider_events: Subscription,
-    kick: Option<KickConfirm>,
-}
-
-struct KickConfirm {
-    reason: Entity<InputState>,
-    busy: bool,
-    error: Option<String>,
 }
 
 impl EventEmitter<ParticipantMenuEvent> for ParticipantMenu {}
@@ -110,7 +98,6 @@ impl ParticipantMenu {
             position,
             slider,
             _slider_events: events,
-            kick: None,
         }
     }
 
@@ -161,47 +148,6 @@ impl ParticipantMenu {
     pub fn set_position(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
         self.position = position;
         cx.notify();
-    }
-
-    /// The kick confirm, as "Kick" opens it.
-    pub fn open_kick_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.kick = Some(KickConfirm {
-            reason: text_state(window, cx, false),
-            busy: false,
-            error: None,
-        });
-        cx.notify();
-    }
-
-    pub fn kick_confirm_open(&self) -> bool {
-        self.kick.is_some()
-    }
-
-    pub fn set_kick_busy(&mut self, busy: bool, cx: &mut Context<Self>) {
-        if let Some(kick) = &mut self.kick {
-            kick.busy = busy;
-            if busy {
-                kick.error = None;
-            }
-            cx.notify();
-        }
-    }
-
-    pub fn set_kick_error(&mut self, error: Option<String>, cx: &mut Context<Self>) {
-        if let Some(kick) = &mut self.kick {
-            kick.error = error;
-            kick.busy = false;
-            cx.notify();
-        }
-    }
-
-    /// For stories: what the reason field holds.
-    pub fn set_kick_reason(&mut self, reason: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(kick) = &self.kick {
-            kick.reason.update(cx, |state, cx| {
-                state.set_value(reason.to_owned(), window, cx)
-            });
-        }
     }
 
     fn item(
@@ -348,123 +294,20 @@ impl ParticipantMenu {
                 (sem.error, sem.error),
                 "Kick",
                 cx,
-                |menu, window, cx| menu.open_kick_confirm(window, cx),
+                |menu, _, cx| {
+                    cx.emit(ParticipantMenuEvent::Kick {
+                        user: menu.model.participant.user.clone(),
+                    });
+                    cx.emit(ParticipantMenuEvent::Close);
+                },
             ));
         }
         list
     }
-
-    fn kick_dialog(&self, kick: &KickConfirm, cx: &mut Context<Self>) -> impl IntoElement {
-        let sem = cx.sem().clone();
-        let name = display_name(&self.model.participant).to_owned();
-        let user_id = self.model.participant.user.id.clone();
-        let reason = kick.reason.clone();
-        let busy = kick.busy;
-        let cancel = cx.listener(|menu, _, _, cx| {
-            menu.kick = None;
-            cx.emit(ParticipantMenuEvent::Close);
-        });
-        let confirm = cx.listener(move |menu, _, _, cx| {
-            let text = reason.read(cx).value().trim().to_owned();
-            menu.set_kick_busy(true, cx);
-            cx.emit(ParticipantMenuEvent::Kick {
-                user_id: user_id.clone(),
-                reason: (!text.is_empty()).then_some(text),
-            });
-        });
-        let entity = cx.entity().downgrade();
-        Dialog::new(format!("Kick {name}"))
-            .body(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(16.))
-                    .children(
-                        kick.error
-                            .clone()
-                            .map(|error| Alert::new(Severity::Error, error)),
-                    )
-                    .child(
-                        text(
-                            Variant::Body2,
-                            format!(
-                                "{name} will be removed from the community, which ends their \
-                                 call. They can rejoin if they have an invite link."
-                            ),
-                        )
-                        .text_color(sem.text_secondary),
-                    )
-                    .child(
-                        TextField::new("kick-reason", &kick.reason, "Reason (optional)")
-                            .disabled(busy),
-                    ),
-            )
-            .action(
-                Button::new("kick-cancel", "Cancel")
-                    .disabled(busy)
-                    .on_click(cancel),
-            )
-            .action(warning_button(busy, &sem, confirm))
-            .on_close(move |_, cx| {
-                if !busy {
-                    let _ = entity.update(cx, |menu, cx| {
-                        menu.kick = None;
-                        cx.emit(ParticipantMenuEvent::Close);
-                    });
-                }
-            })
-    }
-}
-
-/// The web's `variant="contained" color="warning"` "Kick User", which the kit's button doesn't
-/// paint: it only fills with the accent.
-fn warning_button(
-    busy: bool,
-    sem: &crate::theme::Sem,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    let fill = sem.warning;
-    let label = if busy { "Kicking\u{2026}" } else { "Kick User" };
-    div()
-        .id("kick-confirm")
-        .test_support()
-        .role(Role::Button)
-        .aria_label(label)
-        .h(px(36.))
-        .px(px(16.))
-        .rounded(px(4.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(8.))
-        .bg(if busy { sem.action_disabled_bg } else { fill })
-        .text_color(if busy {
-            sem.action_disabled
-        } else {
-            hsla(0., 0., 0., 0.87)
-        })
-        .when(busy, |button| {
-            button.child(
-                crate::kit::Spinner::new("kick-busy")
-                    .size(16.)
-                    .color(sem.action_disabled),
-            )
-        })
-        .when(!busy, |button| {
-            button
-                .cursor_pointer()
-                .hover(move |style| style.bg(fill.opacity(0.85)))
-                .on_click(on_click)
-        })
-        .child(text(Variant::Button, label).font_weight(FontWeight::MEDIUM))
 }
 
 impl Render for ParticipantMenu {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(kick) = &self.kick {
-            let dialog = self.kick_dialog(kick, cx);
-            return div().absolute().inset_0().child(dialog).into_any_element();
-        }
         deferred(
             anchored()
                 .position(self.position)

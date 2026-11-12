@@ -91,6 +91,46 @@ export function invalidateChannelPermissionQueries(queryClient: QueryClient) {
 }
 
 // =============================================================================
+// Private Channel Membership
+// =============================================================================
+
+/**
+ * A private channel was added to (or removed from) the user's list. The channel
+ * must appear or disappear now, without waiting for a reload.
+ */
+function invalidatePrivateChannelQueries(
+  communityId: string,
+  queryClient: QueryClient,
+) {
+  queryClient.invalidateQueries({
+    queryKey: [
+      {
+        _id: 'channelsControllerFindAllForCommunity',
+        path: { communityId },
+      },
+    ],
+  });
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'channelsControllerGetMentionableChannels' }],
+  });
+  // Membership can carry a preset and its own overwrites; effective
+  // permissions (and who may post in it) changed with the membership.
+  invalidateChannelPermissionQueries(queryClient);
+}
+
+export const handlePrivateChannelAdded: SocketEventHandler<
+  typeof ServerEvents.PRIVATE_CHANNEL_ADDED
+> = (payload, queryClient: QueryClient) => {
+  invalidatePrivateChannelQueries(payload.communityId, queryClient);
+};
+
+export const handlePrivateChannelRemoved: SocketEventHandler<
+  typeof ServerEvents.PRIVATE_CHANNEL_REMOVED
+> = (payload, queryClient: QueryClient) => {
+  invalidatePrivateChannelQueries(payload.communityId, queryClient);
+};
+
+// =============================================================================
 // Community Lifecycle
 // =============================================================================
 
