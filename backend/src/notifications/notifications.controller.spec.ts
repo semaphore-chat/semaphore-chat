@@ -41,7 +41,7 @@ describe('NotificationsController', () => {
           id: 'n-1',
           type: 'MENTION',
           read: false,
-          channel: { communityId: 'c-1' },
+          channel: { communityId: 'c-1', name: 'general' },
         },
       ] as any;
 
@@ -56,6 +56,8 @@ describe('NotificationsController', () => {
 
       expect(result.notifications).toHaveLength(1);
       expect(result.notifications[0].communityId).toBe('c-1');
+      // The list carries the channel name too, like the socket event (#649).
+      expect(result.notifications[0].channelName).toBe('general');
       expect(result.total).toBe(1);
       expect(result.unreadCount).toBe(5);
       expect(notificationsService.getUserNotifications).toHaveBeenCalledWith(
@@ -103,6 +105,7 @@ describe('NotificationsController', () => {
       const result = await controller.getNotifications(mockReq, {});
 
       expect(result.notifications[0].communityId).toBeNull();
+      expect(result.notifications[0].channelName).toBeNull();
     });
   });
 

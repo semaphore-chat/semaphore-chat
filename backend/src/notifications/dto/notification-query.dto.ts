@@ -16,6 +16,17 @@ export class NotificationQueryDto {
   })
   unreadOnly?: boolean = false;
 
+  /** Include dismissed notifications in the page and total. Defaults to true. */
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    // Anything else is left for @IsBoolean to reject.
+    return value;
+  })
+  includeDismissed?: boolean = true;
+
   @IsOptional()
   @IsNumber()
   @Min(1)

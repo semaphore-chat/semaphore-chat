@@ -1190,6 +1190,7 @@ describe('ModerationService', () => {
           messageId: message.id,
           channelId: message.channelId,
           directMessageGroupId: null,
+          removal: 'soft',
         },
       );
     });

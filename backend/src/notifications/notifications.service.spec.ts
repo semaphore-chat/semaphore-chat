@@ -1298,6 +1298,40 @@ describe('NotificationsService', () => {
       });
     });
 
+    it('leaves dismissed rows out of the page when includeDismissed is false', async () => {
+      mockDatabase.notification.findMany.mockResolvedValue([]);
+
+      await service.getUserNotifications('user-1', {
+        includeDismissed: false,
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(mockDatabase.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-1', dismissed: false },
+        }),
+      );
+    });
+
+    it('includes dismissed rows when includeDismissed is true or absent', async () => {
+      mockDatabase.notification.findMany.mockResolvedValue([]);
+
+      await service.getUserNotifications('user-1', {
+        includeDismissed: true,
+        limit: 50,
+        offset: 0,
+      });
+      expect(mockDatabase.notification.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { userId: 'user-1' } }),
+      );
+
+      await service.getUserNotifications('user-1', { limit: 50, offset: 0 });
+      expect(mockDatabase.notification.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { userId: 'user-1' } }),
+      );
+    });
+
     it('should cap an oversized limit at 100 even if it bypasses DTO validation', async () => {
       const userId = 'user-1';
       mockDatabase.notification.findMany.mockResolvedValue([]);
@@ -1326,6 +1360,33 @@ describe('NotificationsService', () => {
       expect(total).toBe(137);
       expect(mockDatabase.notification.count).toHaveBeenCalledWith({
         where: { userId: 'user-1', read: false },
+      });
+    });
+
+    it('leaves dismissed rows out of the total when includeDismissed is false', async () => {
+      mockDatabase.notification.count.mockResolvedValue(0);
+
+      await service.countUserNotifications('user-1', {
+        includeDismissed: false,
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(mockDatabase.notification.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1', dismissed: false },
+      });
+    });
+
+    it('counts dismissed rows by default', async () => {
+      mockDatabase.notification.count.mockResolvedValue(0);
+
+      await service.countUserNotifications('user-1', {
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(mockDatabase.notification.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
       });
     });
 

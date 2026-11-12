@@ -1,5 +1,5 @@
 import { NotificationType } from '@prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NotificationTypeValues } from '@/common/enums/swagger-enums';
 import { SpanDto } from '@/messages/dto/message-response.dto';
 
@@ -52,6 +52,9 @@ export class NotificationDto {
   channelId: string | null;
   directMessageGroupId: string | null;
   communityId?: string | null;
+  /** The channel's name, for clients showing it without the channel list. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  channelName?: string | null;
   authorId: string;
   parentMessageId: string | null;
   read: boolean;

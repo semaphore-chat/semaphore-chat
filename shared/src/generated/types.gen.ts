@@ -267,6 +267,10 @@ export type UpdateMessagePayloadDto = {
 };
 
 export type DeleteMessagePayloadDto = {
+    /**
+     * A moderator removal that keeps the row, or a hard delete.
+     */
+    removal?: MessageRemoval;
     messageId: string;
     channelId: string | null;
     directMessageGroupId: string | null;
@@ -385,6 +389,10 @@ export type ReadReceiptUpdatedPayloadDto = {
 
 export type NewNotificationPayloadDto = {
     type: NotificationType;
+    /**
+     * Set for a thread reply's notification.
+     */
+    parentMessageId?: string | null;
     author: NotificationAuthorDto | null;
     message: NotificationMessageDto | null;
     createdAt: string;
@@ -684,6 +692,16 @@ export type ReauthenticateResultDto = {
     error?: ReauthenticateError;
     ok: boolean;
 };
+
+/**
+ * A moderator removal that keeps the row, or a hard delete.
+ */
+export const MessageRemoval = { SOFT: 'soft', HARD: 'hard' } as const;
+
+/**
+ * A moderator removal that keeps the row, or a hard delete.
+ */
+export type MessageRemoval = typeof MessageRemoval[keyof typeof MessageRemoval];
 
 export const NotificationsReadScope = {
     ALL: 'all',

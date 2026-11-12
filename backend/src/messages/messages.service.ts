@@ -749,9 +749,16 @@ export class MessagesService {
 
   /**
    * Search messages in a specific channel using PostgreSQL full-text search
-   * via the GIN-indexed searchVector tsvector column.
+   * via the GIN-indexed searchVector tsvector column. Newest first; the
+   * `continuationToken` (a message id from the previous page) pages it with a
+   * keyset on (sentAt, id), so pages never overlap or skip rows.
    */
-  async searchChannelMessages(channelId: string, query: string, limit = 50) {
+  async searchChannelMessages(
+    channelId: string,
+    query: string,
+    limit = 50,
+    continuationToken?: string,
+  ) {
     if (!query || query.trim().length === 0) {
       return [];
     }
@@ -765,7 +772,12 @@ export class MessagesService {
       WHERE "channelId" = ${channelId}
         AND "deletedAt" IS NULL
         AND "searchVector" @@ plainto_tsquery('english', ${query})
-      ORDER BY "sentAt" DESC
+        ${
+          continuationToken
+            ? Prisma.sql`AND ("sentAt", "id") < (SELECT "sentAt", "id" FROM "Message" WHERE "id" = ${continuationToken})`
+            : Prisma.empty
+        }
+      ORDER BY "sentAt" DESC, "id" DESC
       LIMIT ${limit}
     `;
 
@@ -794,12 +806,14 @@ export class MessagesService {
 
   /**
    * Search messages in a specific direct message group using PostgreSQL full-text search
-   * via the GIN-indexed searchVector tsvector column.
+   * via the GIN-indexed searchVector tsvector column. Paged like the channel
+   * variant, newest first.
    */
   async searchDirectMessages(
     directMessageGroupId: string,
     query: string,
     limit = 50,
+    continuationToken?: string,
   ) {
     if (!query || query.trim().length === 0) {
       return [];
@@ -810,7 +824,12 @@ export class MessagesService {
       WHERE "directMessageGroupId" = ${directMessageGroupId}
         AND "deletedAt" IS NULL
         AND "searchVector" @@ plainto_tsquery('english', ${query})
-      ORDER BY "sentAt" DESC
+        ${
+          continuationToken
+            ? Prisma.sql`AND ("sentAt", "id") < (SELECT "sentAt", "id" FROM "Message" WHERE "id" = ${continuationToken})`
+            : Prisma.empty
+        }
+      ORDER BY "sentAt" DESC, "id" DESC
       LIMIT ${limit}
     `;
 
@@ -835,13 +854,15 @@ export class MessagesService {
 
   /**
    * Search messages across all accessible channels in a community using PostgreSQL full-text search
-   * via the GIN-indexed searchVector tsvector column.
+   * via the GIN-indexed searchVector tsvector column. Paged like the channel
+   * variant, newest first.
    */
   async searchCommunityMessages(
     communityId: string,
     userId: string,
     query: string,
     limit = 50,
+    continuationToken?: string,
   ) {
     if (!query || query.trim().length === 0) {
       return [];
@@ -871,7 +892,12 @@ export class MessagesService {
       WHERE "channelId" = ANY(${channelIds})
         AND "deletedAt" IS NULL
         AND "searchVector" @@ plainto_tsquery('english', ${query})
-      ORDER BY "sentAt" DESC
+        ${
+          continuationToken
+            ? Prisma.sql`AND ("sentAt", "id") < (SELECT "sentAt", "id" FROM "Message" WHERE "id" = ${continuationToken})`
+            : Prisma.empty
+        }
+      ORDER BY "sentAt" DESC, "id" DESC
       LIMIT ${limit}
     `;
 

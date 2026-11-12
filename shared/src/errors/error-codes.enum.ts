@@ -33,6 +33,8 @@ export enum ErrorCode {
   NONCE_CONFLICT = 'NONCE_CONFLICT',
   /** A retry of a send whose message has since been deleted. */
   MESSAGE_DELETED = 'MESSAGE_DELETED',
+  /** The 1:1 DM's other member blocked this user, or was blocked by them. */
+  DM_BLOCKED = 'DM_BLOCKED',
 
   // Sessions
   /**

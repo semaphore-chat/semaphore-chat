@@ -573,5 +573,16 @@ describe('Auth client-type contract (e2e)', () => {
       const res = await preflight('https://evil.example');
       expect(res.headers).not.toHaveProperty('access-control-allow-origin');
     });
+
+    it('lets page script read the message-search cursor header (#643)', async () => {
+      const res = await request(server())
+        .get('/api/health')
+        .set('Origin', WEB_ORIGIN)
+        .expect(200);
+
+      expect(res.headers['access-control-expose-headers']).toContain(
+        'X-Continuation-Token',
+      );
+    });
   });
 });

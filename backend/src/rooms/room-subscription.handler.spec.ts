@@ -548,6 +548,9 @@ describe('RoomSubscriptionHandler', () => {
       video: false,
       share: false,
       managePermissions: false,
+      pin: false,
+      deleteAny: false,
+      seeRemoved: false,
       timedOutUntil: new Date(Date.now() + 60_000),
       postingRoleNames: [],
     };

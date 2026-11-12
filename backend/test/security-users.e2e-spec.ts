@@ -1,5 +1,6 @@
 import * as request from 'supertest';
 import { createHash, randomUUID } from 'crypto';
+import { ErrorCode } from '@semaphore-chat/shared';
 import { promises as dnsPromises } from 'dns';
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
@@ -982,11 +983,16 @@ describe('Authorization of voice, DMs, users and push (e2e)', () => {
       await expect(directMessage(blocker.id, dmId)).rejects.toMatchObject({
         status: 403,
       });
-      await http()
+      const reply = await http()
         .post(`/api/threads/${parent.id}/replies`)
         .set('Authorization', bearer(blocked))
         .send({ spans: [{ type: 'PLAINTEXT', text: 'still here' }] })
         .expect(403);
+      // A specific code lets a client lock its composer (#641).
+      expect(reply.body).toMatchObject({
+        errorCode: ErrorCode.DM_BLOCKED,
+        message: 'You cannot message this user',
+      });
       await http()
         .post('/api/livekit/dm-token')
         .set('Authorization', bearer(blocked))

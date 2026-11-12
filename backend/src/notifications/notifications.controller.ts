@@ -68,6 +68,7 @@ export class NotificationsController {
       notifications: notifications.map(({ channel, ...notification }) => ({
         ...notification,
         communityId: channel?.communityId ?? null,
+        channelName: channel?.name ?? null,
       })),
       total,
       unreadCount,

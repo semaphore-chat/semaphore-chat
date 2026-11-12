@@ -3808,10 +3808,26 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "continuationToken",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
+            "headers": {
+              "X-Continuation-Token": {
+                "description": "Cursor for the next page; pass it back as continuationToken. Absent when the page is not full.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "",
             "content": {
               "application/json": {
@@ -3867,10 +3883,26 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "continuationToken",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
+            "headers": {
+              "X-Continuation-Token": {
+                "description": "Cursor for the next page; pass it back as continuationToken. Absent when the page is not full.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "",
             "content": {
               "application/json": {
@@ -3926,10 +3958,26 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "continuationToken",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
+            "headers": {
+              "X-Continuation-Token": {
+                "description": "Cursor for the next page; pass it back as continuationToken. Absent when the page is not full.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "",
             "content": {
               "application/json": {
@@ -7187,6 +7235,16 @@
             "description": "Only return unread notifications. Absent means all of them.",
             "schema": {
               "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "includeDismissed",
+            "required": false,
+            "in": "query",
+            "description": "Include dismissed notifications in the page and total. Defaults to true.",
+            "schema": {
+              "default": true,
               "type": "boolean"
             }
           }
@@ -14925,6 +14983,11 @@
               }
             ]
           },
+          "channelName": {
+            "type": "string",
+            "nullable": true,
+            "description": "The channel's name, for clients showing it without the channel list."
+          },
           "id": {
             "type": "string"
           },
@@ -15114,6 +15177,24 @@
               }
             ]
           },
+          "dndStartTime": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$",
+            "description": "Start of the DND window, HH:mm (24-hour). null or an empty string clears it."
+          },
+          "dndEndTime": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$",
+            "description": "End of the DND window, HH:mm (24-hour). null or an empty string clears it."
+          },
+          "dndTimezone": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[A-Za-z_]+(\\/[A-Za-z0-9_+-]+)*$",
+            "description": "IANA timezone for the DND window. null or an empty string clears it."
+          },
           "defaultChannelLevel": {
             "allOf": [
               {
@@ -15129,18 +15210,6 @@
           },
           "doNotDisturb": {
             "type": "boolean"
-          },
-          "dndStartTime": {
-            "type": "string",
-            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$"
-          },
-          "dndEndTime": {
-            "type": "string",
-            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$"
-          },
-          "dndTimezone": {
-            "type": "string",
-            "pattern": "^[A-Za-z_]+(\\/[A-Za-z0-9_+-]+)*$"
           },
           "dmNotifications": {
             "type": "boolean"
@@ -15534,6 +15603,18 @@
           "managePermissions": {
             "type": "boolean",
             "description": "Edit this channel's permission overwrites."
+          },
+          "pin": {
+            "type": "boolean",
+            "description": "Pin messages here."
+          },
+          "deleteAny": {
+            "type": "boolean",
+            "description": "Delete other members' messages here."
+          },
+          "seeRemoved": {
+            "type": "boolean",
+            "description": "Keep seeing the text of messages removed by a moderator here."
           }
         },
         "required": [
@@ -15549,7 +15630,10 @@
           "speak",
           "video",
           "share",
-          "managePermissions"
+          "managePermissions",
+          "pin",
+          "deleteAny",
+          "seeRemoved"
         ]
       },
       "CommunityChannelCapabilitiesDto": {
@@ -17298,9 +17382,25 @@
           "message"
         ]
       },
+      "MessageRemoval": {
+        "type": "string",
+        "enum": [
+          "soft",
+          "hard"
+        ],
+        "description": "A moderator removal that keeps the row, or a hard delete."
+      },
       "DeleteMessagePayloadDto": {
         "type": "object",
         "properties": {
+          "removal": {
+            "description": "A moderator removal that keeps the row, or a hard delete.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageRemoval"
+              }
+            ]
+          },
           "messageId": {
             "type": "string"
           },
@@ -17585,6 +17685,11 @@
                 "$ref": "#/components/schemas/NotificationType"
               }
             ]
+          },
+          "parentMessageId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Set for a thread reply's notification."
           },
           "author": {
             "nullable": true,
@@ -18582,6 +18687,7 @@
           "TIMED_OUT",
           "NONCE_CONFLICT",
           "MESSAGE_DELETED",
+          "DM_BLOCKED",
           "CURRENT_SESSION_UNKNOWN",
           "ATTACH_NOT_ALLOWED",
           "FILE_NOT_OWNED",
