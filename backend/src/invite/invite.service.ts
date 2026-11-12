@@ -131,12 +131,65 @@ export class InviteService {
     return invite;
   }
 
+  /**
+   * Lock the invite row until the transaction ends, so concurrent redemptions
+   * of one code run one after another: without it, two transactions both read
+   * `uses < maxUses` and both pass the limit check below.
+   */
+  private async lockInvite(
+    tx: Prisma.TransactionClient,
+    inviteCode: string,
+  ): Promise<void> {
+    await tx.$queryRaw`SELECT "id" FROM "InstanceInvite" WHERE "code" = ${inviteCode} FOR UPDATE`;
+  }
+
+  /**
+   * The invite (with its communities) when `userId` already spent a use on it,
+   * whatever its state now: spending the last use disables the invite, and
+   * that user must still be able to finish an earlier, partial acceptance.
+   */
+  async findInviteUsedBy(
+    inviteCode: string,
+    userId: string,
+  ): Promise<InstanceInviteWithRelations | null> {
+    return this.databaseService.instanceInvite.findFirst({
+      where: { code: inviteCode, usages: { some: { userId } } },
+      include: { defaultCommunities: true, usages: true },
+    });
+  }
+
+  /**
+   * Spend a use of the invite for an existing account, atomically.
+   * - `redeemed`: a use was consumed now.
+   * - `already_used`: this user spent a use on the invite earlier; nothing is
+   *   consumed (`redeemInviteWithTx` returns null for this case too).
+   * - `unusable`: unknown code, disabled, expired or out of uses.
+   */
+  async redeemForExistingUser(
+    tx: Prisma.TransactionClient,
+    inviteCode: string,
+    userId: string,
+  ): Promise<'redeemed' | 'already_used' | 'unusable'> {
+    await this.lockInvite(tx, inviteCode);
+    const invite = await tx.instanceInvite.findUnique({
+      where: { code: inviteCode },
+      select: { id: true },
+    });
+    if (!invite) return 'unusable';
+    const existingUsage = await tx.instanceInviteUsage.findUnique({
+      where: { inviteId_userId: { inviteId: invite.id, userId } },
+    });
+    if (existingUsage) return 'already_used';
+    const redeemed = await this.redeemInviteWithTx(tx, inviteCode, userId);
+    return redeemed ? 'redeemed' : 'unusable';
+  }
+
   async redeemInviteWithTx(
     tx: Prisma.TransactionClient,
     inviteCode: string,
     userId: string,
   ): Promise<InstanceInviteWithRelations | null> {
-    // Use a transaction for safety
+    await this.lockInvite(tx, inviteCode);
     const invite = await tx.instanceInvite.findUnique({
       where: { code: inviteCode },
       include: {

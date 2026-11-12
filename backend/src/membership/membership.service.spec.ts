@@ -374,7 +374,12 @@ describe('MembershipService', () => {
       ids.map((id) => ({ id, name: `name-${id}` }));
 
     beforeEach(() => {
-      inviteService.redeemInviteWithTx.mockResolvedValue(inviteFor());
+      mockDatabase.$transaction.mockImplementation((cb: any) => cb({}));
+      inviteService.validateInviteCode.mockReset();
+      inviteService.findInviteUsedBy.mockReset();
+      inviteService.findInviteUsedBy.mockResolvedValue(null);
+      inviteService.redeemForExistingUser.mockReset();
+      inviteService.redeemForExistingUser.mockResolvedValue('redeemed');
     });
 
     it('joins the communities the user is not in yet and counts one use', async () => {
@@ -400,7 +405,7 @@ describe('MembershipService', () => {
         userId: 'u1',
         communityId: 'c1',
       });
-      expect(inviteService.redeemInviteWithTx).toHaveBeenCalledTimes(1);
+      expect(inviteService.redeemForExistingUser).toHaveBeenCalledTimes(1);
     });
 
     it('does not spend a use when the user is already in every community', async () => {
@@ -418,7 +423,7 @@ describe('MembershipService', () => {
         { id: 'c1', name: 'name-c1', reason: 'already_member' },
       ]);
       expect(create).not.toHaveBeenCalled();
-      expect(inviteService.redeemInviteWithTx).not.toHaveBeenCalled();
+      expect(inviteService.redeemForExistingUser).not.toHaveBeenCalled();
     });
 
     it('skips a community that banned the user and still joins the others', async () => {
@@ -442,7 +447,76 @@ describe('MembershipService', () => {
         { id: 'c2', name: 'name-c2', reason: 'banned' },
       ]);
       // The community that banned them failed; the request still succeeded.
-      expect(inviteService.redeemInviteWithTx).toHaveBeenCalledTimes(1);
+      expect(inviteService.redeemForExistingUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses and joins nothing when the invite expired between validation and redemption', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1'));
+      mockDatabase.community.findMany.mockResolvedValue(communities('c1'));
+      mockDatabase.membership.findMany.mockResolvedValue([]);
+      inviteService.redeemForExistingUser.mockResolvedValue('unusable');
+      const create = jest.spyOn(service, 'create');
+
+      await expect(service.acceptInvite('INV', 'u1')).rejects.toThrow(
+        'No invite found for the provided code.',
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('finishes an earlier partial acceptance without a second use', async () => {
+      // The earlier use was the last one: the invite no longer validates.
+      inviteService.validateInviteCode.mockResolvedValue(null);
+      inviteService.findInviteUsedBy.mockResolvedValue(inviteFor('c1', 'c2'));
+      mockDatabase.community.findMany.mockResolvedValue(
+        communities('c1', 'c2'),
+      );
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { communityId: 'c1' },
+      ]);
+      inviteService.redeemForExistingUser.mockResolvedValue('already_used');
+      jest.spyOn(service, 'create').mockResolvedValue(joinedOk());
+
+      const result = await service.acceptInvite('INV', 'u1');
+
+      expect(result.joined).toEqual([{ id: 'c2', name: 'name-c2' }]);
+      expect(inviteService.findInviteUsedBy).toHaveBeenCalledWith('INV', 'u1');
+    });
+
+    it('lets exactly one of several concurrent users use a one-use invite', async () => {
+      // A stateful stand-in for the locked redemption: one use, first come.
+      let usesLeft = 1;
+      const spent = new Set<string>();
+      inviteService.redeemForExistingUser.mockImplementation(
+        async (_tx, _code, userId) => {
+          await Promise.resolve();
+          if (spent.has(userId)) return 'already_used';
+          if (usesLeft <= 0) return 'unusable';
+          usesLeft -= 1;
+          spent.add(userId);
+          return 'redeemed';
+        },
+      );
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1'));
+      mockDatabase.community.findMany.mockResolvedValue(communities('c1'));
+      mockDatabase.membership.findMany.mockResolvedValue([]);
+      const members = new Set<string>();
+      jest.spyOn(service, 'create').mockImplementation(({ userId }) => {
+        members.add(userId);
+        return Promise.resolve(joinedOk());
+      });
+
+      const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+      const results = await Promise.allSettled(
+        users.map((id) => service.acceptInvite('INV', id)),
+      );
+
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const refused = results.filter((r) => r.status === 'rejected');
+      expect(refused).toHaveLength(4);
+      for (const r of refused) {
+        expect(r.reason).toBeInstanceOf(NotFoundException);
+      }
+      expect(members.size).toBe(1);
     });
 
     it('answers 404 exactly like registration for an unusable code', async () => {

@@ -282,6 +282,66 @@ describe('Instance invites (e2e)', () => {
       ).toBe(0);
     });
 
+    it('refuses a second user once the use limit is spent and does not add them', async () => {
+      const c = await f.community();
+      const { code } = (
+        await f
+          .http()
+          .post('/api/invite')
+          .set('Authorization', f.bearer('owner'))
+          .send({ communityIds: [c.id], maxUses: 1 })
+          .expect(201)
+      ).body as { code: string };
+
+      await accept('member', code).expect(200);
+      const res = await accept('admin', code).expect(404);
+      expect(res.body).toMatchObject({
+        message: 'No invite found for the provided code.',
+      });
+
+      expect(
+        await f.db.membership.count({
+          where: { userId: f.id.admin, communityId: c.id },
+        }),
+      ).toBe(0);
+      expect(
+        await f.db.membership.count({
+          where: { communityId: c.id, userId: f.id.member },
+        }),
+      ).toBe(1);
+      expect(
+        (await f.db.instanceInvite.findUniqueOrThrow({ where: { code } })).uses,
+      ).toBe(1);
+    });
+
+    it('lets only one of two simultaneous users through a one-use invite', async () => {
+      const c = await f.community();
+      const { code } = (
+        await f
+          .http()
+          .post('/api/invite')
+          .set('Authorization', f.bearer('owner'))
+          .send({ communityIds: [c.id], maxUses: 1 })
+          .expect(201)
+      ).body as { code: string };
+
+      const statuses = (
+        await Promise.all([accept('member', code), accept('admin', code)])
+      )
+        .map((res) => res.status)
+        .sort();
+
+      expect(statuses).toEqual([200, 404]);
+      expect(
+        await f.db.membership.count({
+          where: {
+            communityId: c.id,
+            userId: { in: [f.id.member, f.id.admin] },
+          },
+        }),
+      ).toBe(1);
+    });
+
     it('refuses an unknown code exactly like registration', async () => {
       const res = await accept('member', 'no-such-code').expect(404);
       expect(res.body).toMatchObject({

@@ -346,6 +346,92 @@ describe('InviteService', () => {
     });
   });
 
+  describe('redeemForExistingUser', () => {
+    const buildTx = (opts: { invite?: any; usage?: any; maxUses?: number }) => {
+      const invite =
+        opts.invite === undefined
+          ? InstanceInviteFactory.build({
+              code: 'C',
+              disabled: false,
+              maxUses: opts.maxUses ?? 5,
+              uses: 0,
+            })
+          : opts.invite;
+      return {
+        invite,
+        tx: {
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          instanceInvite: {
+            findUnique: jest.fn().mockResolvedValue(invite),
+            update: jest.fn().mockResolvedValue(invite),
+          },
+          instanceInviteUsage: {
+            findUnique: jest.fn().mockResolvedValue(opts.usage ?? null),
+            create: jest.fn().mockResolvedValue({}),
+          },
+        },
+      };
+    };
+
+    it('locks the invite row and spends a use', async () => {
+      const { tx } = buildTx({});
+      await expect(
+        service.redeemForExistingUser(tx as any, 'C', 'u1'),
+      ).resolves.toBe('redeemed');
+      expect(tx.$queryRaw).toHaveBeenCalled();
+      expect(tx.instanceInviteUsage.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers already_used without a second use', async () => {
+      const { tx } = buildTx({ usage: { id: 'x' } });
+      await expect(
+        service.redeemForExistingUser(tx as any, 'C', 'u1'),
+      ).resolves.toBe('already_used');
+      expect(tx.instanceInviteUsage.create).not.toHaveBeenCalled();
+      expect(tx.instanceInvite.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['exhausted', { maxUses: 1, uses: 1 }],
+      ['disabled', { disabled: true }],
+      ['expired', { validUntil: new Date(Date.now() - 1000) }],
+    ])('answers unusable for an %s invite', async (_name, patch) => {
+      const invite = InstanceInviteFactory.build({
+        code: 'C',
+        disabled: false,
+        maxUses: 5,
+        uses: 0,
+        ...patch,
+      });
+      const { tx } = buildTx({ invite });
+      await expect(
+        service.redeemForExistingUser(tx as any, 'C', 'u1'),
+      ).resolves.toBe('unusable');
+      expect(tx.instanceInviteUsage.create).not.toHaveBeenCalled();
+    });
+
+    it('answers unusable for an unknown code', async () => {
+      const { tx } = buildTx({ invite: null });
+      await expect(
+        service.redeemForExistingUser(tx as any, 'nope', 'u1'),
+      ).resolves.toBe('unusable');
+    });
+  });
+
+  describe('findInviteUsedBy', () => {
+    it("looks the invite up through the user's usage row", async () => {
+      const find = jest
+        .spyOn(mockDatabase.instanceInvite, 'findFirst')
+        .mockResolvedValue(null as any);
+      await expect(service.findInviteUsedBy('C', 'u1')).resolves.toBeNull();
+      expect(find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { code: 'C', usages: { some: { userId: 'u1' } } },
+        }),
+      );
+    });
+  });
+
   describe('redeemInviteWithTx', () => {
     it('should redeem valid invite and increment uses', async () => {
       const userId = 'user-123';
@@ -358,6 +444,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
           update: jest.fn().mockResolvedValue({
@@ -421,6 +508,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
           update: jest.fn().mockResolvedValue({
@@ -454,6 +542,7 @@ describe('InviteService', () => {
 
     it('should return null when invite not found', async () => {
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(null),
         },
@@ -483,6 +572,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },
@@ -511,6 +601,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },
@@ -533,6 +624,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },
@@ -554,6 +646,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },

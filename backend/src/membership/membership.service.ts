@@ -202,7 +202,12 @@ export class MembershipService {
     code: string,
     userId: string,
   ): Promise<AcceptInviteResponseDto> {
-    const invite = await this.inviteService.validateInviteCode(code);
+    // A user who already spent a use on this invite (an earlier, partial
+    // acceptance) may finish even if that use was the last and the invite is
+    // now disabled.
+    const invite =
+      (await this.inviteService.validateInviteCode(code)) ??
+      (await this.inviteService.findInviteUsedBy(code, userId));
     if (!invite) {
       throw new NotFoundException('No invite found for the provided code.');
     }
@@ -222,11 +227,33 @@ export class MembershipService {
 
     const joined: InviteCommunityDto[] = [];
     const skipped: SkippedInviteCommunityDto[] = [];
+    const pending: InviteCommunityDto[] = [];
     for (const community of communities) {
       if (alreadyIn.has(community.id)) {
         skipped.push({ ...community, reason: 'already_member' });
-        continue;
+      } else {
+        pending.push(community);
       }
+    }
+    if (pending.length === 0) {
+      // Nothing to join: no use is consumed.
+      return { joined, skipped };
+    }
+
+    // Redeem first, atomically (the invite row is locked in the transaction),
+    // so the use limit and expiry hold however many users accept at once. A
+    // user who already spent a use gets 'already_used': no second use. If
+    // every join below then fails (e.g. banned everywhere) the use stays
+    // consumed: the invite was valid and the user took part in it.
+    const redemption = await this.databaseService.$transaction((tx) =>
+      this.inviteService.redeemForExistingUser(tx, invite.code, userId),
+    );
+    if (redemption === 'unusable') {
+      // Same answer as registration gives for an invite that can't be used.
+      throw new NotFoundException('No invite found for the provided code.');
+    }
+
+    for (const community of pending) {
       try {
         await this.create({ userId, communityId: community.id });
         joined.push(community);
@@ -242,19 +269,6 @@ export class MembershipService {
           continue;
         }
         throw error;
-      }
-    }
-
-    if (joined.length > 0) {
-      const redeemed = await this.databaseService.$transaction((tx) =>
-        this.inviteService.redeemInviteWithTx(tx, invite.code, userId),
-      );
-      if (!redeemed) {
-        // This user already spent a use on an earlier, partial acceptance;
-        // the communities were still joined, and no extra use is charged.
-        this.logger.warn(
-          `Invite ${invite.code} already had a use from user ${userId}`,
-        );
       }
     }
 
