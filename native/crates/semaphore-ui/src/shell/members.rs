@@ -244,6 +244,22 @@ fn member_row(member: &MemberRow, cx: &mut Context<Shell>) -> impl IntoElement +
                 })
             })
         })
+        // W5: the moderation menu, as the web's member list has it on a right-click.
+        .on_mouse_down(MouseButton::Right, {
+            let user_id = member.user.id.clone();
+            cx.listener(move |shell, event: &MouseDownEvent, _, cx| {
+                let Some(community_id) = shell.nav.current().community_id().map(str::to_owned)
+                else {
+                    return;
+                };
+                cx.stop_propagation();
+                cx.emit(super::ShellEvent::MemberMenu {
+                    community_id,
+                    user_id: user_id.clone(),
+                    position: event.position,
+                });
+            })
+        })
         .child(
             div().w(px(40.)).flex_shrink_0().child(
                 div()

@@ -985,6 +985,7 @@ impl AppRoot {
         let server_url: crate::conversation::ServerUrl = Rc::new(move || backend.server_url());
         let (core, exec) = (services.core.clone(), services.exec.clone());
         let (time, scrollbar) = (self.config.time, self.config.scrollbar);
+        let clock = self.config.clock.clone();
         let pane = cx.new(|cx| {
             ConversationPane::new(
                 core,
@@ -998,6 +999,7 @@ impl AppRoot {
                 window,
                 cx,
             )
+            .with_clock(clock)
         });
         self.pane_subscription = Some(cx.subscribe_in(&pane, window, Self::on_pane_event));
         pane

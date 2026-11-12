@@ -505,6 +505,8 @@ enum Step {
     /// The fake camera or screen refuses its next start with this reason.
     NotificationClick(String),
     Link(String),
+    /// W5: `navigate PATH`: the shell goes to that app path (`Route::parse`), as a click would.
+    Navigate(String),
     ForgetSounds,
     ActivateWindow,
     VideoFailNext {
@@ -773,6 +775,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["exec", command] => Step::Exec((*command).into()),
             ["notification", "click", tag] => Step::NotificationClick((*tag).into()),
             ["link", url] => Step::Link((*url).into()),
+            ["navigate", path] => Step::Navigate(message_ids(path)),
             ["forget", "sounds"] => Step::ForgetSounds,
             ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
             ["save-as", name] => Step::SaveAs((*name).into()),
@@ -2353,6 +2356,16 @@ impl Rig {
                     let app = self.app()?.clone();
                     self.driver
                         .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
+                }
+                Step::Navigate(path) => {
+                    let route = semaphore_ui::nav::Route::parse(path);
+                    let app = self.app()?.clone();
+                    self.driver.update(|_, cx| {
+                        let shell = app.read(cx).shell().cloned();
+                        if let Some(shell) = shell {
+                            shell.update(cx, |shell, cx| shell.navigate(route, cx));
+                        }
+                    })
                 }
                 Step::ActivateWindow => self
                     .driver

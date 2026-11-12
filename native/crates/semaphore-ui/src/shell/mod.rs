@@ -376,10 +376,32 @@ impl Shell {
             | CoreEvent::Notify { .. }
             | CoreEvent::WithdrawNotifications { .. }
             | CoreEvent::DesktopSignedIn { .. }
-            | CoreEvent::Sound { .. }
-            // W5-app routes these (the removal dialog, leaving a removed channel).
-            | CoreEvent::CommunityRemoved { .. }
-            | CoreEvent::ChannelRemoved { .. } => {}
+            | CoreEvent::Sound { .. } => {}
+            // W5: the community has gone for this user (the owner shows why): home, if it's on
+            // screen, and nothing of it to reopen.
+            CoreEvent::CommunityRemoved { community_id, .. } => {
+                self.last_channel.remove(community_id);
+                if self.nav.current().community_id() == Some(community_id.as_str()) {
+                    self.navigate(Route::Home, cx);
+                }
+            }
+            // W5: a channel went: leave it if it's open, for the community's next channel.
+            CoreEvent::ChannelRemoved {
+                community_id,
+                channel_id,
+            } => {
+                if self.last_channel.get(community_id) == Some(channel_id) {
+                    self.last_channel.remove(community_id);
+                }
+                if self.nav.current().channel_id() == Some(channel_id.as_str()) {
+                    self.navigate(
+                        Route::Community {
+                            community_id: community_id.clone(),
+                        },
+                        cx,
+                    );
+                }
+            }
         }
         cx.notify();
     }

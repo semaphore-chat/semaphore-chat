@@ -29,7 +29,11 @@
 
 use super::AppRoot;
 use gpui_kit::*;
-use semaphore_core::model::{ChannelKind, DraftFile, LoadState, SessionState, ViewKey};
+use semaphore_core::model::{
+    AdminAction, AdminActionKind, AdminActionState, AdminOp, AliasGroupView, AliasGroupsView,
+    ChannelKind, CommunitySettingsView, CustomEmojiView, DraftFile, InvitesView, LoadState,
+    PrivateMembersView, SessionState, ViewKey, WebhooksView,
+};
 use semaphore_core::platform::CoreError;
 use semaphore_core::{Core, CoreEvent};
 use semaphore_ui::community_settings::rules::first_open_tab;
@@ -256,6 +260,46 @@ impl<T: 'static> Ticket<T> {
     }
 }
 
+/// The view whose op reports a change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpView {
+    Settings,
+    Private(String),
+    Groups,
+    Group(String),
+    Emoji,
+    Webhooks(String),
+    Invites,
+}
+
+/// A change to settle on its tab once its command answers: core's key for it (`OpKey`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Settle {
+    view: OpView,
+    actions: Vec<AdminAction>,
+}
+
+impl Settle {
+    fn on(view: OpView, kind: AdminActionKind, target: Option<&String>) -> Option<Self> {
+        Some(Self {
+            view,
+            actions: vec![AdminAction {
+                kind,
+                target_id: target.cloned(),
+            }],
+        })
+    }
+
+    /// Another change on the same view, settled with it.
+    fn and(mut self, kind: AdminActionKind, target: Option<&String>) -> Self {
+        self.actions.push(AdminAction {
+            kind,
+            target_id: target.cloned(),
+        });
+        self
+    }
+}
+
 /// This session's community settings: the screen on show, if any, and what it listens to.
 #[derive(Default)]
 pub struct CommunityAdmin {
@@ -468,7 +512,7 @@ impl AppRoot {
         };
         // Dates in the app's zone and clock; links to the server signed in to.
         let time = self.config.time;
-        let clock = time.now_ms.map(PanelClock::fixed).unwrap_or_default();
+        let clock = PanelClock::fixed(self.config.clock.now_ms() as i64);
         let me = self.core().and_then(|core| match core.session() {
             SessionState::SignedIn { me } => Some(me.id),
             _ => None,
@@ -612,10 +656,12 @@ impl AppRoot {
             return;
         }
         let id = community_id.to_owned();
+        // Core's clock, as the pane's: the invites' expiry is measured from it.
+        let now_ms = self.config.clock.now_ms() as i64;
         let mut retab = false;
         for feed in feeds {
             retab |= feed == Feed::Permissions;
-            apply_feed(&core, &screen, &id, feed, window, cx);
+            apply_feed(&core, &screen, &id, feed, now_ms, window, cx);
         }
         if retab {
             self.community_sync_tab(window, cx);
@@ -646,17 +692,149 @@ impl AppRoot {
         }
     }
 
-    /// Runs a command whose outcome core reports on the view's op.
-    fn admin_fire<T, F>(&self, what: &'static str, work: F)
-    where
+    /// Runs a command whose outcome core reports on the view's op. When it answers `Ok`, the change
+    /// is settled on its tab too (`settle_op`): core's start and end of a quick change can reach the
+    /// app in one batch, leaving the op looking unchanged and the tab's dialog waiting.
+    fn admin_fire<T, F>(
+        &self,
+        what: &'static str,
+        settle: Option<Settle>,
+        window: &Window,
+        cx: &mut Context<Self>,
+        work: F,
+    ) where
+        T: Send + 'static,
         F: std::future::Future<Output = Result<T, CoreError>> + Send + 'static,
     {
-        if let Some(services) = &self.services {
-            services.exec.fire(async move {
-                if let Err(error) = work.await {
-                    log::info!("{what}: {error}");
+        let (Some(services), Some(ticket)) = (&self.services, self.community.ticket()) else {
+            return;
+        };
+        services.exec.run(
+            window,
+            cx,
+            work,
+            move |root, result, window, cx| match result {
+                Ok(_) => {
+                    if let Some(settle) = settle
+                        && root.community.holds(&ticket)
+                    {
+                        root.settle_op(settle, window, cx);
+                    }
                 }
-            });
+                // The op's own entry carries the error.
+                Err(error) => log::info!("{what}: {error}"),
+            },
+        );
+    }
+
+    /// Shows the tab `settle`'s change running, then core's op as it is: a tab waiting on that
+    /// change has then seen it start, and its end.
+    fn settle_op(&mut self, settle: Settle, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(core), Some(screen), Some(community_id)) = (
+            self.core(),
+            self.community.screen.clone(),
+            self.community.community_id(),
+        ) else {
+            return;
+        };
+        let Settle { view, actions } = settle;
+        let running = |op: &AdminOp| {
+            let mut op = op.clone();
+            op.actions
+                .extend(actions.iter().map(|action| AdminActionState {
+                    action: action.clone(),
+                    busy: true,
+                    upload: None,
+                    error: None,
+                }));
+            op
+        };
+        let tabs = screen.read(cx);
+        let (channels, private, groups, emoji, invites) = (
+            tabs.channels(),
+            tabs.private_channels(),
+            tabs.mention_groups(),
+            tabs.emoji(),
+            tabs.invites(),
+        );
+        match view {
+            OpView::Settings => {
+                let real = core.community_settings(community_id);
+                let shown = CommunitySettingsView {
+                    op: running(&real.op),
+                    ..real.clone()
+                };
+                screen.update(cx, |screen, cx| {
+                    screen.set_settings(shown, window, cx);
+                    screen.set_settings(real, window, cx);
+                });
+            }
+            OpView::Private(channel_id) => {
+                let real = core.private_members(channel_id);
+                let shown = PrivateMembersView {
+                    op: running(&real.op),
+                    ..real.clone()
+                };
+                private.update(cx, |tab, cx| {
+                    tab.set_view(shown, cx);
+                    tab.set_view(real, cx);
+                });
+            }
+            OpView::Groups => {
+                let real = core.alias_groups(community_id);
+                let shown = AliasGroupsView {
+                    op: running(&real.op),
+                    ..real.clone()
+                };
+                groups.update(cx, |tab, cx| {
+                    tab.set_groups(shown, cx);
+                    tab.set_groups(real, cx);
+                });
+            }
+            OpView::Group(group_id) => {
+                let real = core.alias_group(group_id);
+                let shown = AliasGroupView {
+                    op: running(&real.op),
+                    ..real.clone()
+                };
+                groups.update(cx, |tab, cx| {
+                    tab.set_group(shown, window, cx);
+                    tab.set_group(real, window, cx);
+                });
+            }
+            OpView::Emoji => {
+                let real = core.custom_emoji(community_id);
+                let shown = CustomEmojiView {
+                    op: running(&real.op),
+                    ..real.clone()
+                };
+                emoji.update(cx, |tab, cx| {
+                    tab.set_view(shown, window, cx);
+                    tab.set_view(real, window, cx);
+                });
+            }
+            OpView::Webhooks(channel_id) => {
+                let real = core.webhooks(channel_id);
+                let shown = WebhooksView {
+                    op: running(&real.op),
+                    ..real.clone()
+                };
+                channels.update(cx, |tab, cx| {
+                    tab.set_webhooks(shown, window, cx);
+                    tab.set_webhooks(real, window, cx);
+                });
+            }
+            OpView::Invites => {
+                let real = core.community_invites(community_id);
+                let shown = InvitesView {
+                    op: running(&real.op),
+                    ..real.clone()
+                };
+                invites.update(cx, |tab, cx| {
+                    tab.set_view(shown, cx);
+                    tab.set_view(real, cx);
+                });
+            }
         }
     }
 
@@ -686,12 +864,22 @@ impl AppRoot {
                     },
                 );
             }
-            OverviewEvent::Save { patch } => self.admin_fire("saving the community", async move {
-                core.update_community(community_id, *patch).await
-            }),
-            OverviewEvent::Delete => self.admin_fire("deleting the community", async move {
-                core.delete_community(community_id).await
-            }),
+            OverviewEvent::Save { patch } => self.admin_fire(
+                "saving the community",
+                Settle::on(
+                    OpView::Settings,
+                    AdminActionKind::UpdateCommunity,
+                    Some(&community_id),
+                ),
+                window,
+                cx,
+                async move { core.update_community(community_id, *patch).await },
+            ),
+            OverviewEvent::Delete => {
+                self.admin_fire("deleting the community", None, window, cx, async move {
+                    core.delete_community(community_id).await
+                })
+            }
             OverviewEvent::Retry => core.retry_failed(),
         }
     }
@@ -730,9 +918,13 @@ impl AppRoot {
                     },
                 );
             }
-            MembersEvent::Add { user_id } => self.admin_fire("adding a member", async move {
-                core.add_member(community_id, user_id).await
-            }),
+            MembersEvent::Add { user_id } => self.admin_fire(
+                "adding a member",
+                Settle::on(OpView::Settings, AdminActionKind::AddMember, Some(&user_id)),
+                window,
+                cx,
+                async move { core.add_member(community_id, user_id).await },
+            ),
             MembersEvent::ManageRoles { user_id } => {
                 self.open_role_assignment(community_id, user_id, window, cx)
             }
@@ -757,23 +949,49 @@ impl AppRoot {
             return;
         };
         match event.clone() {
-            ChannelsEvent::Create(draft) => self.admin_fire("creating a channel", async move {
-                core.create_channel(community_id, draft).await
-            }),
-            ChannelsEvent::Update { channel_id, draft } => self
-                .admin_fire("updating a channel", async move {
-                    core.update_channel(channel_id, draft).await
-                }),
-            ChannelsEvent::Delete { channel_id } => self
-                .admin_fire("deleting a channel", async move {
-                    core.delete_channel(channel_id).await
-                }),
+            ChannelsEvent::Create(draft) => self.admin_fire(
+                "creating a channel",
+                Settle::on(OpView::Settings, AdminActionKind::CreateChannel, None),
+                window,
+                cx,
+                async move { core.create_channel(community_id, draft).await },
+            ),
+            ChannelsEvent::Update { channel_id, draft } => self.admin_fire(
+                "updating a channel",
+                Settle::on(
+                    OpView::Settings,
+                    AdminActionKind::UpdateChannel,
+                    Some(&channel_id),
+                ),
+                window,
+                cx,
+                async move { core.update_channel(channel_id, draft).await },
+            ),
+            ChannelsEvent::Delete { channel_id } => self.admin_fire(
+                "deleting a channel",
+                Settle::on(
+                    OpView::Settings,
+                    AdminActionKind::DeleteChannel,
+                    Some(&channel_id),
+                ),
+                window,
+                cx,
+                async move { core.delete_channel(channel_id).await },
+            ),
             ChannelsEvent::Move {
                 channel_id,
                 direction,
-            } => self.admin_fire("moving a channel", async move {
-                core.move_channel(channel_id, direction).await
-            }),
+            } => self.admin_fire(
+                "moving a channel",
+                Settle::on(
+                    OpView::Settings,
+                    AdminActionKind::MoveChannel,
+                    Some(&channel_id),
+                ),
+                window,
+                cx,
+                async move { core.move_channel(channel_id, direction).await },
+            ),
             ChannelsEvent::OpenEdit { channel_id } => {
                 if let Some(open) = self.community.open.as_mut() {
                     open.edit_channel = Some(channel_id.clone());
@@ -804,7 +1022,7 @@ impl AppRoot {
                     window,
                     cx,
                     async move { core.create_webhook(channel_id, name, avatar_url).await },
-                    move |root, result, _, cx| {
+                    move |root, result, window, cx| {
                         let editing = root
                             .community
                             .open
@@ -819,6 +1037,14 @@ impl AppRoot {
                             Ok(created) => {
                                 tab.update(cx, |tab, cx| tab.set_created_webhook(created, cx))
                                     .ok();
+                                let settle = Settle::on(
+                                    OpView::Webhooks(for_channel),
+                                    AdminActionKind::CreateWebhook,
+                                    None,
+                                );
+                                if let Some(settle) = settle {
+                                    root.settle_op(settle, window, cx);
+                                }
                             }
                             Err(error) => log::info!("creating a webhook: {error}"),
                         }
@@ -828,9 +1054,17 @@ impl AppRoot {
             ChannelsEvent::DeleteWebhook {
                 channel_id,
                 webhook_id,
-            } => self.admin_fire("deleting a webhook", async move {
-                core.delete_webhook(channel_id, webhook_id).await
-            }),
+            } => self.admin_fire(
+                "deleting a webhook",
+                Settle::on(
+                    OpView::Webhooks(channel_id.clone()),
+                    AdminActionKind::DeleteWebhook,
+                    Some(&webhook_id),
+                ),
+                window,
+                cx,
+                async move { core.delete_webhook(channel_id, webhook_id).await },
+            ),
             ChannelsEvent::RetryWebhooks | ChannelsEvent::Retry => core.retry_failed(),
         }
     }
@@ -854,7 +1088,7 @@ impl AppRoot {
         &mut self,
         tab: &Entity<PrivateChannelsTab>,
         event: &PrivateChannelsEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(core) = self.core() else {
@@ -871,15 +1105,31 @@ impl AppRoot {
             PrivateChannelsEvent::Add {
                 channel_id,
                 user_id,
-            } => self.admin_fire("adding a private channel member", async move {
-                core.add_private_member(channel_id, user_id).await
-            }),
+            } => self.admin_fire(
+                "adding a private channel member",
+                Settle::on(
+                    OpView::Private(channel_id.clone()),
+                    AdminActionKind::AddPrivateMember,
+                    Some(&user_id),
+                ),
+                window,
+                cx,
+                async move { core.add_private_member(channel_id, user_id).await },
+            ),
             PrivateChannelsEvent::Remove {
                 channel_id,
                 user_id,
-            } => self.admin_fire("removing a private channel member", async move {
-                core.remove_private_member(channel_id, user_id).await
-            }),
+            } => self.admin_fire(
+                "removing a private channel member",
+                Settle::on(
+                    OpView::Private(channel_id.clone()),
+                    AdminActionKind::RemovePrivateMember,
+                    Some(&user_id),
+                ),
+                window,
+                cx,
+                async move { core.remove_private_member(channel_id, user_id).await },
+            ),
             PrivateChannelsEvent::Retry => core.retry_failed(),
         }
     }
@@ -902,28 +1152,53 @@ impl AppRoot {
                 let view = core.alias_group(group_id);
                 tab.update(cx, |tab, cx| tab.set_group(view, window, cx));
             }
-            MentionGroupsEvent::Create { name, member_ids } => {
-                self.admin_fire("creating a mention group", async move {
+            MentionGroupsEvent::Create { name, member_ids } => self.admin_fire(
+                "creating a mention group",
+                Settle::on(OpView::Groups, AdminActionKind::CreateAliasGroup, None),
+                window,
+                cx,
+                async move {
                     core.create_alias_group(community_id, name, member_ids)
                         .await
-                })
-            }
+                },
+            ),
             // A rename first, then the members, which every save sends (the tab closes its
             // editor once they're saved).
             MentionGroupsEvent::Save {
                 group_id,
                 name,
                 member_ids,
-            } => self.admin_fire("saving a mention group", async move {
-                if let Some(name) = name {
-                    core.rename_alias_group(group_id.clone(), name).await?;
-                }
-                core.set_alias_group_members(group_id, member_ids).await
-            }),
-            MentionGroupsEvent::Delete { group_id } => self
-                .admin_fire("deleting a mention group", async move {
-                    core.delete_alias_group(group_id).await
+            } => self.admin_fire(
+                "saving a mention group",
+                Settle::on(
+                    OpView::Group(group_id.clone()),
+                    AdminActionKind::SetAliasGroupMembers,
+                    Some(&group_id),
+                )
+                .map(|settle| match &name {
+                    Some(_) => settle.and(AdminActionKind::RenameAliasGroup, Some(&group_id)),
+                    None => settle,
                 }),
+                window,
+                cx,
+                async move {
+                    if let Some(name) = name {
+                        core.rename_alias_group(group_id.clone(), name).await?;
+                    }
+                    core.set_alias_group_members(group_id, member_ids).await
+                },
+            ),
+            MentionGroupsEvent::Delete { group_id } => self.admin_fire(
+                "deleting a mention group",
+                Settle::on(
+                    OpView::Groups,
+                    AdminActionKind::DeleteAliasGroup,
+                    Some(&group_id),
+                ),
+                window,
+                cx,
+                async move { core.delete_alias_group(group_id).await },
+            ),
             MentionGroupsEvent::Retry => core.retry_failed(),
         }
     }
@@ -949,12 +1224,24 @@ impl AppRoot {
                     .ok();
                 });
             }
-            EmojiEvent::Add { name, file } => self.admin_fire("adding an emoji", async move {
-                core.add_custom_emoji(community_id, name, file).await
-            }),
-            EmojiEvent::Delete { emoji_id } => self.admin_fire("deleting an emoji", async move {
-                core.delete_custom_emoji(community_id, emoji_id).await
-            }),
+            EmojiEvent::Add { name, file } => self.admin_fire(
+                "adding an emoji",
+                Settle::on(OpView::Emoji, AdminActionKind::AddCustomEmoji, None),
+                window,
+                cx,
+                async move { core.add_custom_emoji(community_id, name, file).await },
+            ),
+            EmojiEvent::Delete { emoji_id } => self.admin_fire(
+                "deleting an emoji",
+                Settle::on(
+                    OpView::Emoji,
+                    AdminActionKind::DeleteCustomEmoji,
+                    Some(&emoji_id),
+                ),
+                window,
+                cx,
+                async move { core.delete_custom_emoji(community_id, emoji_id).await },
+            ),
             EmojiEvent::Retry => core.retry_failed(),
         }
     }
@@ -981,13 +1268,24 @@ impl AppRoot {
                     .ok();
                 });
             }
-            SoundboardEvent::Add(draft) => self.admin_fire("adding a sound", async move {
-                core.add_sound(community_id, draft).await
-            }),
-            SoundboardEvent::Delete { sound_id } => self
-                .admin_fire("deleting a sound", async move {
-                    core.delete_sound(community_id, sound_id).await
-                }),
+            SoundboardEvent::Add(draft) => self.admin_fire(
+                "adding a sound",
+                Settle::on(OpView::Settings, AdminActionKind::AddSound, None),
+                window,
+                cx,
+                async move { core.add_sound(community_id, draft).await },
+            ),
+            SoundboardEvent::Delete { sound_id } => self.admin_fire(
+                "deleting a sound",
+                Settle::on(
+                    OpView::Settings,
+                    AdminActionKind::DeleteSound,
+                    Some(&sound_id),
+                ),
+                window,
+                cx,
+                async move { core.delete_sound(community_id, sound_id).await },
+            ),
             SoundboardEvent::Preview { file_id } => self.preview_sound(file_id, window, cx),
             SoundboardEvent::Retry => core.retry_failed(),
         }
@@ -997,19 +1295,27 @@ impl AppRoot {
         &mut self,
         _: &Entity<InvitesTab>,
         event: &InvitesEvent,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) {
         let (Some(core), Some(community_id)) = (self.core(), self.community.community_id()) else {
             return;
         };
         match event.clone() {
-            InvitesEvent::Create(draft) => self.admin_fire("creating an invite", async move {
-                core.create_invite(community_id, draft).await
-            }),
-            InvitesEvent::Delete { code } => self.admin_fire("deleting an invite", async move {
-                core.delete_invite(code).await
-            }),
+            InvitesEvent::Create(draft) => self.admin_fire(
+                "creating an invite",
+                Settle::on(OpView::Invites, AdminActionKind::CreateInvite, None),
+                window,
+                cx,
+                async move { core.create_invite(community_id, draft).await },
+            ),
+            InvitesEvent::Delete { code } => self.admin_fire(
+                "deleting an invite",
+                Settle::on(OpView::Invites, AdminActionKind::DeleteInvite, Some(&code)),
+                window,
+                cx,
+                async move { core.delete_invite(code).await },
+            ),
             InvitesEvent::Retry => core.retry_failed(),
         }
     }
@@ -1107,6 +1413,7 @@ fn apply_feed(
     screen: &Entity<CommunitySettingsScreen>,
     community_id: &str,
     feed: Feed,
+    now_ms: i64,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -1184,7 +1491,10 @@ fn apply_feed(
         Feed::Invites => {
             let tab = screen.read(cx).invites();
             let view = core.community_invites(id);
-            tab.update(cx, |tab, cx| tab.set_view(view, cx));
+            tab.update(cx, |tab, cx| {
+                tab.set_clock(PanelClock::fixed(now_ms), cx);
+                tab.set_view(view, cx);
+            });
         }
     }
 }

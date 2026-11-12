@@ -175,13 +175,66 @@ async fn kick_user(
         Err(response) => return response,
     };
     let actor = inner.user_of(super::bearer_token(&headers));
-    if let Err(refusal) = crate::rbac::guard(&inner, &actor, &community_id, &["KICK_USER"]) {
-        return crate::rbac::respond(&inner, refusal);
+    kick_by(&inner, &actor, &community_id, &user_id, body.reason)
+}
+
+fn kick_by(
+    inner: &Inner,
+    actor: &str,
+    community_id: &str,
+    user_id: &str,
+    reason: Option<String>,
+) -> Response {
+    if let Err(refusal) = crate::rbac::guard(inner, actor, community_id, &["KICK_USER"]) {
+        return crate::rbac::respond(inner, refusal);
     }
-    match crate::calls::kick(&inner, &actor, &community_id, &user_id, body.reason) {
+    match crate::calls::kick(inner, actor, community_id, user_id, reason) {
         Ok(()) => success("User kicked successfully"),
         Err((status, code, message)) => inner.error(status, code, message, false),
     }
+}
+
+/// The `moderate_as` control (`POST /__control/moderate_as`): a moderator's ban, kick or timeout
+/// as their own request would make it, with the same checks, log entry and socket events, so a
+/// test's signed-in user can be on the receiving end.
+///
+/// `{ moderatorId, action: "ban" | "kick" | "timeout", communityId, userId, reason?,
+/// durationSeconds? (timeout), expiresAt? (ban) }`
+pub(crate) fn control(inner: &Inner, name: &str, request: &Value) -> Option<Response> {
+    if name != "moderate_as" {
+        return None;
+    }
+    let field = |key: &str| request.get(key).and_then(Value::as_str);
+    let (Some(actor), Some(action), Some(community_id), Some(user_id)) = (
+        field("moderatorId"),
+        field("action"),
+        field("communityId"),
+        field("userId"),
+    ) else {
+        return Some(inner.error(
+            400,
+            "VALIDATION_FAILED",
+            "moderatorId, action, communityId and userId are required",
+            false,
+        ));
+    };
+    Some(match action {
+        "ban" => ban_by(inner, actor.to_owned(), community_id, user_id, request),
+        "timeout" => timeout_by(inner, actor.to_owned(), community_id, user_id, request),
+        "kick" => kick_by(
+            inner,
+            actor,
+            community_id,
+            user_id,
+            field("reason").map(str::to_owned),
+        ),
+        _ => inner.error(
+            400,
+            "VALIDATION_FAILED",
+            "action is ban, kick or timeout",
+            false,
+        ),
+    })
 }
 
 // ----- W5: bans, timeouts and the moderation log ------------------------------------------------
@@ -339,10 +392,21 @@ async fn ban(
         Ok(body) => body,
         Err(response) => return response,
     };
-    let result = rbac::guard(&inner, &actor, &community_id, &["BAN_USER"]).and_then(|()| {
-        may_moderate(&inner, &actor, &community_id, &user_id, "ban")?;
-        let reason = text(&body, "reason");
-        let expires_at = match text(&body, "expiresAt") {
+    ban_by(&inner, actor, &community_id, &user_id, &body)
+}
+
+fn ban_by(
+    inner: &Inner,
+    actor: String,
+    community_id: &str,
+    user_id: &str,
+    body: &Value,
+) -> Response {
+    let (community_id, user_id) = (community_id.to_owned(), user_id.to_owned());
+    let result = rbac::guard(inner, &actor, &community_id, &["BAN_USER"]).and_then(|()| {
+        may_moderate(inner, &actor, &community_id, &user_id, "ban")?;
+        let reason = text(body, "reason");
+        let expires_at = match text(body, "expiresAt") {
             Some(at) => Some(
                 chrono::DateTime::parse_from_rfc3339(&at)
                     .map_err(|_| {
@@ -357,14 +421,14 @@ async fn ban(
             None => None,
         };
         let now = inner.now();
-        let already = rbac::community(&inner, &community_id, |state, _| {
+        let already = rbac::community(inner, &community_id, |state, _| {
             state.active_ban(&user_id, now).is_some()
         })
         .unwrap_or(false);
         if already {
             return Err(rbac::refuse(409, "CONFLICT", "User is already banned"));
         }
-        rbac::community(&inner, &community_id, |state, _| {
+        rbac::community(inner, &community_id, |state, _| {
             state.bans.insert(
                 user_id.clone(),
                 rbac::Ban {
@@ -376,7 +440,7 @@ async fn ban(
             );
         });
         rbac::log(
-            &inner,
+            inner,
             &community_id,
             &actor,
             "BAN_USER",
@@ -390,11 +454,11 @@ async fn ban(
         }
         // Theirs first, from their own room, then the removal, then the community's.
         inner.emit_to_user(&user_id, "userBanned", payload.clone());
-        crate::calls::remove_from_community(&inner, &community_id, &user_id);
+        crate::calls::remove_from_community(inner, &community_id, &user_id);
         inner.emit_to_others(&user_id, "userBanned", payload);
         Ok(success("User banned successfully"))
     });
-    w5_reply(&inner, result)
+    w5_reply(inner, result)
 }
 
 async fn unban(
@@ -494,6 +558,17 @@ async fn timeout(
         Ok(body) => body,
         Err(response) => return response,
     };
+    timeout_by(&inner, actor, &community_id, &user_id, &body)
+}
+
+fn timeout_by(
+    inner: &Inner,
+    actor: String,
+    community_id: &str,
+    user_id: &str,
+    body: &Value,
+) -> Response {
+    let (community_id, user_id) = (community_id.to_owned(), user_id.to_owned());
     let Some(seconds) = body.get("durationSeconds").and_then(Value::as_i64) else {
         return inner.error(
             400,
@@ -514,12 +589,12 @@ async fn timeout(
             false,
         );
     }
-    let result = rbac::guard(&inner, &actor, &community_id, &["TIMEOUT_USER"]).and_then(|()| {
-        may_moderate(&inner, &actor, &community_id, &user_id, "timeout")?;
-        let reason = text(&body, "reason");
+    let result = rbac::guard(inner, &actor, &community_id, &["TIMEOUT_USER"]).and_then(|()| {
+        may_moderate(inner, &actor, &community_id, &user_id, "timeout")?;
+        let reason = text(body, "reason");
         let now = inner.now();
         let expires_at = now + chrono::Duration::seconds(seconds);
-        rbac::community(&inner, &community_id, |state, _| {
+        rbac::community(inner, &community_id, |state, _| {
             state.timeouts.insert(
                 user_id.clone(),
                 rbac::Timeout {
@@ -531,7 +606,7 @@ async fn timeout(
             );
         });
         rbac::log(
-            &inner,
+            inner,
             &community_id,
             &actor,
             "TIMEOUT_USER",
@@ -542,11 +617,11 @@ async fn timeout(
         let mut payload = rbac::moderation_payload(&community_id, &user_id, &actor, &reason);
         payload["durationSeconds"] = json!(seconds);
         payload["expiresAt"] = json!(expires_at);
-        let room = rbac::members(&inner, &community_id);
+        let room = rbac::members(inner, &community_id);
         inner.emit_to_users(&room, "userTimedOut", payload);
         Ok(success("User timed out successfully"))
     });
-    w5_reply(&inner, result)
+    w5_reply(inner, result)
 }
 
 async fn remove_timeout(
