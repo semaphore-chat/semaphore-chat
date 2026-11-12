@@ -511,8 +511,6 @@ enum Step {
     /// W5: `click-label LABEL`: clicks the element whose accessible label is exactly this (for
     /// rows whose ids carry a server-made id, like a new sound's preview button).
     ClickLabel(String),
-    /// W5: `scroll ID DY`: the wheel over that element, DY pixels (negative: down the page).
-    Scroll(String, f32),
     ForgetSounds,
     ActivateWindow,
     VideoFailNext {
@@ -783,10 +781,6 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["link", url] => Step::Link((*url).into()),
             ["navigate", path] => Step::Navigate(message_ids(path)),
             ["click-label", label] => Step::ClickLabel((*label).into()),
-            ["scroll", id, dy] => Step::Scroll(
-                (*id).into(),
-                dy.parse().map_err(|_| at(anyhow!("scroll pixels")))?,
-            ),
             ["forget", "sounds"] => Step::ForgetSounds,
             ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
             ["save-as", name] => Step::SaveAs((*name).into()),
@@ -2389,14 +2383,6 @@ impl Rig {
                         })?
                         .ok_or_else(|| anyhow!("nothing is labelled {label:?}"))?;
                     self.driver.update(|window, cx| window.click(id, cx))
-                }
-                Step::Scroll(id, dy) => {
-                    self.driver.settle()?;
-                    let id = ElementId::Name(id.clone().into());
-                    let delta = ScrollDelta::Pixels(point(px(0.), px(*dy)));
-                    self.driver
-                        .update(|window, cx| window.scroll(id, delta, cx))
-                        .and_then(|()| self.driver.settle())
                 }
                 Step::ActivateWindow => self
                     .driver
