@@ -4,8 +4,8 @@
 use crate::dms::face::user_face;
 use crate::dms::names::user_name;
 use crate::kit::{
-    Alert, Button, Dialog, IconButton, LinearProgress, Severity, Skeleton, Variant, spacing, text,
-    with_tip,
+    Alert, Button, ButtonTone, Dialog, IconButton, LinearProgress, Severity, Skeleton, Variant,
+    spacing, text, with_tip,
 };
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
@@ -345,7 +345,7 @@ impl Confirm {
         self,
         on_confirm: impl Fn(&mut Window, &mut App) + 'static,
         on_cancel: impl Fn(&mut Window, &mut App) + 'static,
-        cx: &App,
+        _cx: &App,
     ) -> Dialog {
         let on_cancel = std::rc::Rc::new(on_cancel);
         let close = on_cancel.clone();
@@ -361,8 +361,8 @@ impl Confirm {
                     SharedString::from(format!("{}-confirm", self.id)),
                     self.confirm,
                 )
-                .outlined()
-                .color(cx.sem().error)
+                .contained()
+                .tone(ButtonTone::Danger)
                 .loading(self.busy)
                 .on_click(move |_, window, cx| on_confirm(window, cx)),
             )

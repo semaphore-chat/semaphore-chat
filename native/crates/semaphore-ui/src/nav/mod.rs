@@ -84,6 +84,12 @@ pub enum Route {
     },
     /// This user's profile, being edited.
     ProfileEdit,
+    /// W5: a community's settings, on a tab. The tab isn't in the path (the web keeps it in local
+    /// state too), so `/community/:communityId/edit` opens the first tab.
+    CommunitySettings {
+        community_id: String,
+        tab: crate::community_settings::CommunityTab,
+    },
     /// A web path this slice has no screen for yet.
     Unbuilt {
         pattern: &'static str,
@@ -144,6 +150,10 @@ impl Route {
                 "/community/:communityId" => Route::Community {
                     community_id: param(0),
                 },
+                "/community/:communityId/edit" => Route::CommunitySettings {
+                    community_id: param(0),
+                    tab: crate::community_settings::CommunityTab::default(),
+                },
                 "/community/:communityId/channel/:channelId" => Route::Channel {
                     community_id: param(0),
                     channel_id: param(1),
@@ -174,6 +184,9 @@ impl Route {
             Route::Settings { .. } => "/settings".into(),
             Route::Profile { user_id } => format!("/profile/{user_id}"),
             Route::ProfileEdit => "/profile/edit".into(),
+            Route::CommunitySettings { community_id, .. } => {
+                format!("/community/{community_id}/edit")
+            }
             Route::Unbuilt { path, .. } | Route::NotFound { path } => path.clone(),
         }
     }
@@ -190,9 +203,9 @@ impl Route {
     /// The community this route is inside, for the rail's selection.
     pub fn community_id(&self) -> Option<&str> {
         match self {
-            Route::Community { community_id } | Route::Channel { community_id, .. } => {
-                Some(community_id)
-            }
+            Route::Community { community_id }
+            | Route::Channel { community_id, .. }
+            | Route::CommunitySettings { community_id, .. } => Some(community_id),
             _ => None,
         }
     }
@@ -514,6 +527,46 @@ mod tests {
         assert!(matches!(
             Route::parse("/nope/at/all"),
             Route::NotFound { .. }
+        ));
+    }
+
+    #[test]
+    fn community_settings_route_round_trips_without_its_tab() {
+        use crate::community_settings::CommunityTab;
+        let cases = [
+            ("/community/c1/edit", CommunityTab::Overview),
+            ("/community/c1/edit/", CommunityTab::Overview),
+            ("/community/c1/edit?tab=roles", CommunityTab::Overview),
+        ];
+        for (path, tab) in cases {
+            assert_eq!(
+                Route::parse(path),
+                Route::CommunitySettings {
+                    community_id: "c1".into(),
+                    tab
+                },
+                "{path}"
+            );
+        }
+        for tab in CommunityTab::ALL {
+            let route = Route::CommunitySettings {
+                community_id: "c1".into(),
+                tab,
+            };
+            assert_eq!(route.path(), "/community/c1/edit");
+            assert_eq!(route.community_id(), Some("c1"));
+            assert_eq!(route.channel_id(), None);
+            assert_eq!(route.conversation(), None);
+            assert!(route.requires_auth());
+        }
+        // `edit` is a segment of its own: a channel called `edit` is still a channel.
+        assert!(matches!(
+            Route::parse("/community/c1/channel/edit"),
+            Route::Channel { .. }
+        ));
+        assert!(matches!(
+            Route::parse("/community/edit"),
+            Route::Community { .. }
         ));
     }
 

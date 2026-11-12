@@ -94,6 +94,18 @@ pub enum ShellEvent {
     OpenCommunitySettings {
         community_id: String,
     },
+    /// W5: the channel list's "+" (shown with `CommunityCaps::create_channel`): the owner opens
+    /// the settings' Channels tab with its create dialog (`ChannelsTab::open_create`).
+    CreateChannel {
+        community_id: String,
+    },
+    /// W5: a member row was secondary-clicked or long-pressed in the members panel: the owner
+    /// opens `moderation::ModerationMenu` for them at `position` (window coordinates).
+    MemberMenu {
+        community_id: String,
+        user_id: String,
+        position: Point<Pixels>,
+    },
     CreateCommunity,
     /// A member's row: their profile.
     OpenProfile {

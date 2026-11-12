@@ -253,9 +253,9 @@ impl ChannelsTab {
         cx.notify();
     }
 
-    /// Opens the create dialog, for stories and tests.
-    #[cfg(any(test, feature = "stories"))]
-    pub(crate) fn open_create(
+    /// Opens the create dialog with these fields: the sidebar's "+" (W5-app, `""`, text, not
+    /// private), stories and tests.
+    pub fn open_create(
         &mut self,
         name: &str,
         kind: ChannelKind,

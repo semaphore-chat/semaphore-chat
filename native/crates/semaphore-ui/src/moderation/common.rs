@@ -1,10 +1,10 @@
-//! What the moderation views are drawn with: cards, rows, chips, the reason field and its
-//! counter, and the filled danger and warning buttons the kit's button can't paint.
+//! What the moderation views are drawn with: cards, rows, chips, and the reason field and its
+//! counter.
 
 use super::format::{Tone, reason_counter, reason_error};
 use crate::dms::face::user_face;
 use crate::dms::names::user_name;
-use crate::kit::{Chip, Skeleton, Spinner, Variant, floating_label, notched, spacing, text};
+use crate::kit::{Chip, Skeleton, Variant, floating_label, notched, spacing, text};
 use crate::panel::common::design_icon;
 use crate::theme::{Sem, SemTheme};
 use gpui_kit::base::TestSupportExt as _;
@@ -200,58 +200,6 @@ pub(super) fn locked_note(
                 .min_w_0()
                 .text_color(sem.text_secondary),
         )
-}
-
-/// A filled button in a colour of its own: the web's `variant="contained" color="error"` (or
-/// warning), which the kit's button doesn't paint. Off while `busy` (with a spinner) or `!enabled`.
-pub(super) fn filled_button(
-    id: impl Into<SharedString>,
-    label: impl Into<SharedString>,
-    fill: Hsla,
-    busy: bool,
-    enabled: bool,
-    sem: &Sem,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> AnyElement {
-    let id = id.into();
-    let label = label.into();
-    let active = enabled && !busy;
-    // Text that reads on the fill: dark on light fills (warning, success), white otherwise.
-    let ink = if fill.l > 0.6 {
-        hsla(0., 0., 0., 0.87)
-    } else {
-        hsla(0., 0., 1., 1.)
-    };
-    div()
-        .id(ElementId::Name(id.clone()))
-        .test_support()
-        .role(Role::Button)
-        .aria_label(label.clone())
-        .h(px(36.))
-        .px(px(16.))
-        .rounded(px(4.))
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .gap(px(8.))
-        .bg(if active { fill } else { sem.action_disabled_bg })
-        .text_color(if active { ink } else { sem.action_disabled })
-        .when(busy, |button| {
-            button.child(
-                Spinner::new(SharedString::from(format!("{id}-busy")))
-                    .size(16.)
-                    .color(sem.action_disabled),
-            )
-        })
-        .when(active, |button| {
-            button
-                .cursor_pointer()
-                .hover(move |style| style.bg(fill.opacity(0.85)))
-                .on_click(on_click)
-        })
-        .child(text(Variant::Button, label).font_weight(FontWeight::MEDIUM))
-        .into_any_element()
 }
 
 /// The reason field: an outlined text area with "Reason (optional)" and a counter that turns red

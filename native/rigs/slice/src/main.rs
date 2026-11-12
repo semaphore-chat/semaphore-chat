@@ -90,6 +90,8 @@
 //! `notice S`, `no-notice`, `pinned-count N` (the header's badge), `composer-text S`,
 //! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
+mod w5;
+
 use anyhow::{Context as _, Result, anyhow, bail};
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
@@ -339,6 +341,8 @@ enum Condition {
     PlayersOpen(usize),
     /// W4's (`w4_holds`).
     W4(W4),
+    /// W5's (`w5.rs`, `w5_holds`).
+    W5(w5::W5),
 }
 
 /// W4's conditions.
@@ -634,6 +638,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
             state @ ("off" | "starting" | "recording" | "failed"),
         ] => Condition::W4(W4::Replay((*state).into())),
         ["clips", count] => Condition::W4(W4::Clips(number(count)?)),
+        ["w5", rest @ ..] => Condition::W5(w5::parse(rest)?),
         ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
         ["ringing", dm] => Condition::W4(W4::RingingFor((*dm).into())),
         ["ring", state @ ("looping" | "stopped")] => {
@@ -1580,6 +1585,9 @@ impl Rig {
         if let Condition::W4(w4) = condition {
             return self.w4_holds(w4);
         }
+        if let Condition::W5(w5) = condition {
+            return self.w5_holds(w5);
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -1678,7 +1686,8 @@ impl Rig {
             | Condition::Player(..)
             | Condition::PlayerFrames(_)
             | Condition::PlayersOpen(_)
-            | Condition::W4(_) => unreachable!("answered above"),
+            | Condition::W4(_)
+            | Condition::W5(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -1890,6 +1899,9 @@ fn route_name(route: &semaphore_ui::nav::Route) -> String {
         Route::Settings { tab } => format!("settings/{}", tab.key()),
         Route::Profile { user_id } => format!("profile/{user_id}"),
         Route::ProfileEdit => "profile-edit".into(),
+        Route::CommunitySettings { community_id, tab } => {
+            format!("community-settings/{community_id}/{}", tab.key())
+        }
         Route::Community { community_id } => format!("community/{community_id}"),
         Route::Channel { channel_id, .. } => format!("channel/{channel_id}"),
         Route::DirectMessages => "dms".into(),

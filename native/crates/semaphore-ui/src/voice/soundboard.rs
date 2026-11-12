@@ -41,7 +41,7 @@ fn sound_tile(
     let hover_bg = sem.outlined_hover_bg;
     let id = sound.id.clone();
     let label = if starting {
-        format!("{} (starting)", sound.name)
+        format!("{} (playing)", sound.name)
     } else {
         format!("Play {}", sound.name)
     };
@@ -92,7 +92,7 @@ fn sound_tile(
             text(
                 Variant::Caption,
                 if starting {
-                    "Starting\u{2026}".to_owned()
+                    "Playing".to_owned()
                 } else {
                     sound.name.clone()
                 },
