@@ -6,7 +6,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ResourceType } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseService } from '@/database/database.service';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 import { CreateCustomEmojiDto } from './dto/create-custom-emoji.dto';
 import { CustomEmojiDto } from './dto/custom-emoji-response.dto';
 
@@ -21,7 +23,10 @@ import { CustomEmojiDto } from './dto/custom-emoji-response.dto';
 export class CustomEmojiService {
   private readonly logger = new Logger(CustomEmojiService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   private toDto(emoji: {
     id: string;
@@ -98,6 +103,11 @@ export class CustomEmojiService {
       `Created custom emoji ":${dto.name}:" (${emoji.id}) in community ${communityId}`,
     );
 
+    this.eventEmitter.emit(RoomEvents.CUSTOM_EMOJI_CREATED, {
+      communityId,
+      emojiId: emoji.id,
+    });
+
     return this.toDto(emoji);
   }
 
@@ -119,5 +129,10 @@ export class CustomEmojiService {
     this.logger.log(
       `Deleted custom emoji ":${emoji.name}:" (${emojiId}) from community ${communityId}`,
     );
+
+    this.eventEmitter.emit(RoomEvents.CUSTOM_EMOJI_DELETED, {
+      communityId,
+      emojiId,
+    });
   }
 }

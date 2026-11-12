@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ConflictException,
   NotFoundException,
@@ -10,11 +11,13 @@ import { SoundboardService } from './soundboard.service';
 import { DatabaseService } from '@/database/database.service';
 import { FileUploadService } from '@/file-upload/file-upload.service';
 import { createMockDatabase } from '@/test-utils';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 
 describe('SoundboardService', () => {
   let service: SoundboardService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
   let fileUploadService: Mocked<FileUploadService>;
+  let eventEmitter: Mocked<EventEmitter2>;
 
   const communityId = 'community-1';
   const userId = 'user-1';
@@ -49,6 +52,7 @@ describe('SoundboardService', () => {
 
     service = unit;
     fileUploadService = unitRef.get(FileUploadService);
+    eventEmitter = unitRef.get(EventEmitter2);
   });
 
   afterEach(() => {
@@ -100,6 +104,10 @@ describe('SoundboardService', () => {
           createdBy: userId,
         },
       });
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.SOUNDBOARD_SOUND_CREATED,
+        { communityId, soundId: 'sound-1' },
+      );
     });
 
     it('throws ConflictException when the name already exists', async () => {
@@ -206,6 +214,10 @@ describe('SoundboardService', () => {
       );
       // Never hard-deletes the file row
       expect(mockDatabase.file.delete).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.SOUNDBOARD_SOUND_DELETED,
+        { communityId, soundId: 'sound-1' },
+      );
     });
 
     it('falls back to a direct soft-delete when the uploader was deleted (uploadedById null)', async () => {

@@ -191,6 +191,7 @@ describe('AliasGroupsService', () => {
         {
           aliasGroupId: group.id,
           memberIds: [user1.id, user2.id],
+          communityId: community.id,
         },
       );
     });
@@ -239,6 +240,10 @@ describe('AliasGroupsService', () => {
       });
 
       expect(result.name).toBe('new-name');
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.ALIAS_GROUP_UPDATED,
+        { aliasGroupId: group.id, communityId: group.communityId },
+      );
     });
 
     it('should throw NotFoundException when group not found', async () => {
@@ -291,6 +296,7 @@ describe('AliasGroupsService', () => {
         {
           aliasGroupId: group.id,
           memberIds: ['user-1', 'user-2'],
+          communityId: group.communityId,
         },
       );
     });
@@ -331,7 +337,11 @@ describe('AliasGroupsService', () => {
       });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         RoomEvents.ALIAS_GROUP_MEMBER_ADDED,
-        { aliasGroupId: group.id, userId: user.id },
+        {
+          aliasGroupId: group.id,
+          userId: user.id,
+          communityId: group.communityId,
+        },
       );
     });
 
@@ -387,6 +397,7 @@ describe('AliasGroupsService', () => {
         userId: user.id,
       });
 
+      mockDatabase.aliasGroup.findUnique.mockResolvedValue(group);
       mockDatabase.aliasGroupMember.findUnique.mockResolvedValue(member);
       mockDatabase.aliasGroupMember.delete.mockResolvedValue(member);
 
@@ -397,11 +408,18 @@ describe('AliasGroupsService', () => {
       });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         RoomEvents.ALIAS_GROUP_MEMBER_REMOVED,
-        { aliasGroupId: group.id, userId: user.id },
+        {
+          aliasGroupId: group.id,
+          userId: user.id,
+          communityId: group.communityId,
+        },
       );
     });
 
     it('should throw NotFoundException when member not found', async () => {
+      mockDatabase.aliasGroup.findUnique.mockResolvedValue(
+        AliasGroupFactory.build({ id: 'group-id' }),
+      );
       mockDatabase.aliasGroupMember.findUnique.mockResolvedValue(null);
 
       await expect(service.removeMember('group-id', 'user-id')).rejects.toThrow(
@@ -439,6 +457,7 @@ describe('AliasGroupsService', () => {
           aliasGroupId: group.id,
           addedUserIds: [user1.id, user2.id],
           removedUserIds: [],
+          communityId: group.communityId,
         },
       );
     });

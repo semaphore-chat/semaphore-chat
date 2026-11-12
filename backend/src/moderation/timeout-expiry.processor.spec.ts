@@ -13,10 +13,13 @@ describe('TimeoutExpiryProcessor', () => {
   let mockDatabase: ReturnType<typeof createMockDatabase>;
   let eventEmitter: Mocked<EventEmitter2>;
 
+  const moderatorId = 'moderator-1';
+
   const data: TimeoutExpiryJobData = {
     userId: 'user-1',
     communityId: 'community-1',
     expiresAt: '2026-10-05T12:00:00.000Z',
+    moderatorId,
   };
   const job = { id: 'job-1', data } as unknown as Job<TimeoutExpiryJobData>;
 
@@ -34,9 +37,10 @@ describe('TimeoutExpiryProcessor', () => {
     jest.clearAllMocks();
   });
 
-  it('restores voice when the timeout has expired', async () => {
+  it('restores voice and tells clients the timeout is gone when it expired', async () => {
     mockDatabase.communityTimeout.findUnique.mockResolvedValue({
       expiresAt: new Date(Date.now() - 1_000),
+      moderatorId,
     });
 
     await processor.process(job);
@@ -45,25 +49,20 @@ describe('TimeoutExpiryProcessor', () => {
       where: {
         communityId_userId: { communityId: 'community-1', userId: 'user-1' },
       },
-      select: { expiresAt: true },
+      select: { expiresAt: true, moderatorId: true },
     });
     expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
       RoomEvents.MODERATION_TIMEOUT_CHANGED,
       { userId: 'user-1', communityId: 'community-1' },
     );
+    // The same event an early lift sends, marked expired.
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      RoomEvents.MODERATION_TIMEOUT_EXPIRED,
+      { userId: 'user-1', communityId: 'community-1', moderatorId },
+    );
   });
 
-  it('is a no-op when the timeout was extended (still active)', async () => {
-    mockDatabase.communityTimeout.findUnique.mockResolvedValue({
-      expiresAt: new Date(Date.now() + 60_000),
-    });
-
-    await processor.process(job);
-
-    expect(eventEmitter.emitAsync).not.toHaveBeenCalled();
-  });
-
-  it('recomputes from current state when the row is gone (expired and cleaned up, or lifted)', async () => {
+  it("uses the job's moderator when the expired row was already cleaned up", async () => {
     mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
 
     await processor.process(job);
@@ -74,5 +73,39 @@ describe('TimeoutExpiryProcessor', () => {
       RoomEvents.MODERATION_TIMEOUT_CHANGED,
       { userId: 'user-1', communityId: 'community-1' },
     );
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      RoomEvents.MODERATION_TIMEOUT_EXPIRED,
+      { userId: 'user-1', communityId: 'community-1', moderatorId },
+    );
+  });
+
+  it('sends no expired event for a job queued before the moderator was carried', async () => {
+    const legacyJob = {
+      id: 'job-0',
+      data: { ...data, moderatorId: undefined },
+    } as unknown as Job<TimeoutExpiryJobData>;
+    mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
+
+    await processor.process(legacyJob);
+
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      RoomEvents.MODERATION_TIMEOUT_CHANGED,
+      { userId: 'user-1', communityId: 'community-1' },
+    );
+    expect(eventEmitter.emitAsync).not.toHaveBeenCalledWith(
+      RoomEvents.MODERATION_TIMEOUT_EXPIRED,
+      expect.anything(),
+    );
+  });
+
+  it('is a no-op when the timeout was extended (still active)', async () => {
+    mockDatabase.communityTimeout.findUnique.mockResolvedValue({
+      expiresAt: new Date(Date.now() + 60_000),
+      moderatorId,
+    });
+
+    await processor.process(job);
+
+    expect(eventEmitter.emitAsync).not.toHaveBeenCalled();
   });
 });

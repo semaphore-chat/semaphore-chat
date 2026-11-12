@@ -35,4 +35,10 @@ export interface TimeoutExpiryJobData {
   userId: string;
   communityId: string;
   expiresAt: string;
+  /**
+   * The moderator who applied the timeout, carried for the TIMEOUT_REMOVED
+   * event the job sends when the timeout ends by itself. Optional only for
+   * jobs queued before it was added; the processor falls back to the row.
+   */
+  moderatorId?: string;
 }

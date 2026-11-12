@@ -18,6 +18,8 @@ export enum RoomEvents {
   MODERATION_USER_KICKED = 'moderation.user-kicked',
   /** A timeout was applied or removed: resync voice publish permissions. */
   MODERATION_TIMEOUT_CHANGED = 'moderation.timeout-changed',
+  /** A timeout ran out by itself: tell clients it's gone. */
+  MODERATION_TIMEOUT_EXPIRED = 'moderation.timeout-expired',
   CHANNEL_CREATED = 'channel.created',
   CHANNEL_DELETED = 'channel.deleted',
   /** Who can see a channel may have changed (privacy toggle, overwrites). */
@@ -28,10 +30,17 @@ export enum RoomEvents {
   DM_GROUP_MEMBER_ADDED = 'dm-group.member-added',
   DM_GROUP_MEMBER_LEFT = 'dm-group.member-left',
   ALIAS_GROUP_CREATED = 'alias-group.created',
+  ALIAS_GROUP_UPDATED = 'alias-group.updated',
   ALIAS_GROUP_MEMBER_ADDED = 'alias-group.member-added',
   ALIAS_GROUP_MEMBER_REMOVED = 'alias-group.member-removed',
   ALIAS_GROUP_DELETED = 'alias-group.deleted',
   ALIAS_GROUP_MEMBERS_UPDATED = 'alias-group.members-updated',
+  CUSTOM_EMOJI_CREATED = 'custom-emoji.created',
+  CUSTOM_EMOJI_DELETED = 'custom-emoji.deleted',
+  SOUNDBOARD_SOUND_CREATED = 'soundboard-sound.created',
+  SOUNDBOARD_SOUND_DELETED = 'soundboard-sound.deleted',
+  WEBHOOK_CREATED = 'webhook.created',
+  WEBHOOK_DELETED = 'webhook.deleted',
   COMMUNITY_UPDATED = 'community.updated',
   COMMUNITY_DELETED = 'community.deleted',
   ROLE_CREATED = 'role.created',
@@ -107,6 +116,13 @@ export interface ModerationTimeoutChangedEvent {
   communityId: string;
 }
 
+export interface ModerationTimeoutExpiredEvent {
+  userId: string;
+  communityId: string;
+  /** The moderator who set the timeout, for the client payload. */
+  moderatorId: string;
+}
+
 export interface ChannelVisibilityChangedEvent {
   channelId: string;
   communityId: string;
@@ -119,11 +135,13 @@ export interface ChannelDeletedEvent {
 export interface ChannelMembershipCreatedEvent {
   userId: string;
   channelId: string;
+  communityId: string;
 }
 
 export interface ChannelMembershipRemovedEvent {
   userId: string;
   channelId: string;
+  communityId: string;
 }
 
 export interface DmGroupCreatedEvent {
@@ -144,27 +162,53 @@ export interface DmGroupMemberLeftEvent {
 export interface AliasGroupCreatedEvent {
   aliasGroupId: string;
   memberIds: string[];
+  communityId: string;
+}
+
+export interface AliasGroupUpdatedEvent {
+  aliasGroupId: string;
+  communityId: string;
 }
 
 export interface AliasGroupMemberAddedEvent {
   aliasGroupId: string;
   userId: string;
+  communityId: string;
 }
 
 export interface AliasGroupMemberRemovedEvent {
   aliasGroupId: string;
   userId: string;
+  communityId: string;
 }
 
 export interface AliasGroupDeletedEvent {
   aliasGroupId: string;
   memberIds: string[];
+  communityId: string;
 }
 
 export interface AliasGroupMembersUpdatedEvent {
   aliasGroupId: string;
   addedUserIds: string[];
   removedUserIds: string[];
+  communityId: string;
+}
+
+export interface CustomEmojiChangedEvent {
+  communityId: string;
+  emojiId: string;
+}
+
+export interface SoundboardSoundChangedEvent {
+  communityId: string;
+  soundId: string;
+}
+
+export interface WebhookChangedEvent {
+  communityId: string;
+  channelId: string;
+  webhookId: string;
 }
 
 export interface CommunityUpdatedEvent {

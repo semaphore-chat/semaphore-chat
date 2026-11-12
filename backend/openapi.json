@@ -17606,6 +17606,85 @@
           "channelId"
         ]
       },
+      "PrivateChannelMembershipPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "channelId"
+        ]
+      },
+      "CommunityEmojiPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "emojiId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "emojiId"
+        ]
+      },
+      "CommunitySoundPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "soundId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "soundId"
+        ]
+      },
+      "CommunityAliasGroupPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "groupId"
+        ]
+      },
+      "ChannelWebhookPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "webhookId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "channelId",
+          "webhookId"
+        ]
+      },
       "UserBannedPayloadDto": {
         "type": "object",
         "properties": {
@@ -17616,6 +17695,25 @@
             "type": "string",
             "format": "date-time"
           },
+          "communityId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "moderatorId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "userId",
+          "moderatorId"
+        ]
+      },
+      "UserUnbannedPayloadDto": {
+        "type": "object",
+        "properties": {
           "communityId": {
             "type": "string"
           },
@@ -17690,6 +17788,10 @@
         "properties": {
           "reason": {
             "type": "string"
+          },
+          "expired": {
+            "type": "boolean",
+            "description": "Set when the timeout ran out by itself, rather than being lifted by a\nmoderator. Clients refetch the same state either way."
           },
           "communityId": {
             "type": "string"
