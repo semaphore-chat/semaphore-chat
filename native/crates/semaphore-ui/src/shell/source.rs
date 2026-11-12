@@ -3,7 +3,8 @@
 
 use semaphore_core::Core;
 use semaphore_core::model::{
-    ChannelRow, CommunityCaps, CommunityRow, ErrorView, LoadState, SessionState, UserView, ViewKey, VoiceView,
+    ChannelRow, CommunityCaps, CommunityRow, ErrorView, LoadState, SessionState, UserView, ViewKey,
+    VoiceView,
 };
 use std::sync::Arc;
 

@@ -553,7 +553,6 @@ impl RolesPanel {
                 move |_, cx| {
                     cancel.update(cx, |panel, cx| panel.cancel_confirm(cx)).ok();
                 },
-                cx,
             ),
         )
     }
