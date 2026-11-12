@@ -1,6 +1,6 @@
 import { Exclude, Transform } from 'class-transformer';
 import { RegistrationMode, InstanceSettings } from '@prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 import { RegistrationModeValues } from '@/common/enums/swagger-enums';
 
 /**
@@ -26,6 +26,7 @@ export class InstanceSettingsResponseDto implements InstanceSettings {
   // VAPID public key is exposed so clients can subscribe to push notifications
   vapidPublicKey: string | null;
 
+  @ApiHideProperty()
   @Exclude()
   vapidPrivateKey: string | null;
 

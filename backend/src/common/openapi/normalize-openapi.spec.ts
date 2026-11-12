@@ -87,6 +87,15 @@ describe('committed openapi.json', () => {
     );
   });
 
+  it('InstanceSettingsResponseDto never lists the VAPID private key (#714)', () => {
+    expect(schemas.InstanceSettingsResponseDto.properties).not.toHaveProperty(
+      'vapidPrivateKey',
+    );
+    expect(schemas.InstanceSettingsResponseDto.required ?? []).not.toContain(
+      'vapidPrivateKey',
+    );
+  });
+
   const clientFields = [
     'attachments',
     'channelId',

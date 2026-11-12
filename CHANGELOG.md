@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
 
+### Added
+
+- The web client now refreshes the ban list and the moderation log when a ban is lifted. (#683)
+- Clients now learn when a timeout ends on its own, so posting and voice controls come back without a reload. (#684)
+- A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
+- Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
 ### Changed
 
 - The default Community Admin role (new communities, and "reset defaults") now includes banning members. Existing communities keep their current Community Admin role until someone resets the defaults, and since a reset now grants banning, only someone who already holds ban rights there (or the instance owner) can run it: a Community Admin of an existing community gets a 403 from "reset defaults". (#692)
@@ -44,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The soundboard track is accepted when a member's publishing is restricted but they may speak; a server-muted or timed-out member still can't publish it. (#659)
 - Native clients can report a failed voice join with the platform value `native`. (#661)
 - The moderation log action filter rejects unknown values with a 400 and lists the allowed values in the API contract. (#687)
+- Force-deleting a community from the admin page now tells its members it is gone, instead of leaving it in their list until they reload. (#707)
+- First-run setup now saves the instance name and description you enter, so they appear in instance settings. (#708)
+- Two first-run setups submitted at the same time now create a single owner, and the second is refused. (#709)
+- The setup wizard uses the same username and password rules as registration, so it no longer accepts a password the server rejects. (#710)
+- Deleting an instance role now requires the same authority as creating or editing it. (#711)
+- Instance settings now enforce the same storage quota and maximum file size limits as the storage settings. (#712)
+- GIF search and featured reject a limit outside 1 to 50 with a 400 instead of passing it to the provider. (#713)
+- The API contract no longer lists the VAPID private key as part of the instance settings response. (#714)
 
 ## [0.9.0] - 2026-11-11
 

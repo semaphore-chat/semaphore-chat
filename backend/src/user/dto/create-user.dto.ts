@@ -6,23 +6,33 @@ import {
   MaxLength,
   Matches,
 } from 'class-validator';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MAX_LENGTH_MESSAGE,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_MIN_LENGTH_MESSAGE,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MAX_LENGTH_MESSAGE,
+  USERNAME_MIN_LENGTH,
+  USERNAME_MIN_LENGTH_MESSAGE,
+  USERNAME_PATTERN_MESSAGE,
+} from '@/common/constants/credential-rules.constant';
 
 export class CreateUserDto {
   @IsString()
   code: string;
 
   @IsString()
-  @MinLength(2, { message: 'Username must be at least 2 characters' })
-  @MaxLength(32, { message: 'Username must be at most 32 characters' })
+  @MinLength(USERNAME_MIN_LENGTH, { message: USERNAME_MIN_LENGTH_MESSAGE })
+  @MaxLength(USERNAME_MAX_LENGTH, { message: USERNAME_MAX_LENGTH_MESSAGE })
   @Matches(/^[a-zA-Z0-9_-]+$/, {
-    message:
-      'Username can only contain letters, numbers, underscores, and hyphens',
+    message: USERNAME_PATTERN_MESSAGE,
   })
   username: string;
 
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  @MaxLength(128, { message: 'Password must be at most 128 characters' })
+  @MinLength(PASSWORD_MIN_LENGTH, { message: PASSWORD_MIN_LENGTH_MESSAGE })
+  @MaxLength(PASSWORD_MAX_LENGTH, { message: PASSWORD_MAX_LENGTH_MESSAGE })
   password: string;
 
   @IsOptional()

@@ -222,6 +222,12 @@ export class UserBannedPayloadDto {
   expiresAt?: string;
 }
 
+export class UserUnbannedPayloadDto {
+  communityId: string;
+  userId: string;
+  moderatorId: string;
+}
+
 export class UserKickedPayloadDto {
   communityId: string;
   userId: string;
@@ -248,6 +254,12 @@ export class TimeoutRemovedPayloadDto {
   moderatorId: string;
   @ApiPropertyOptional()
   reason?: string;
+  /**
+   * Set when the timeout ran out by itself, rather than being lifted by a
+   * moderator. Clients refetch the same state either way.
+   */
+  @ApiPropertyOptional()
+  expired?: boolean;
 }
 
 export class MemberAddedToCommunityPayloadDto {
@@ -295,6 +307,37 @@ export class RoleUnassignedPayloadDto {
   communityId: string;
   userId: string;
   roleId: string;
+}
+
+/** PRIVATE_CHANNEL_ADDED and PRIVATE_CHANNEL_REMOVED. */
+export class PrivateChannelMembershipPayloadDto {
+  communityId: string;
+  channelId: string;
+}
+
+/** CUSTOM_EMOJI_CREATED and CUSTOM_EMOJI_DELETED. */
+export class CommunityEmojiPayloadDto {
+  communityId: string;
+  emojiId: string;
+}
+
+/** SOUNDBOARD_SOUND_CREATED and SOUNDBOARD_SOUND_DELETED. */
+export class CommunitySoundPayloadDto {
+  communityId: string;
+  soundId: string;
+}
+
+/** ALIAS_GROUP_CREATED, _UPDATED, _DELETED and _MEMBERS_UPDATED. */
+export class CommunityAliasGroupPayloadDto {
+  communityId: string;
+  groupId: string;
+}
+
+/** WEBHOOK_CREATED and WEBHOOK_DELETED. Never carries the token or URL. */
+export class ChannelWebhookPayloadDto {
+  communityId: string;
+  channelId: string;
+  webhookId: string;
 }
 
 export class UserProfileUpdatedPayloadDto {

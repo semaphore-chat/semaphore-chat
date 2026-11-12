@@ -377,8 +377,9 @@ export class RolesController {
   @RbacResource({ type: RbacResourceType.INSTANCE })
   async deleteInstanceRole(
     @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.instanceRolesService.deleteInstanceRole(roleId);
+    return this.instanceRolesService.deleteInstanceRole(roleId, req.user);
   }
 
   /**

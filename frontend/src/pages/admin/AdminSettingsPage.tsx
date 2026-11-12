@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { logger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/format";
 import {
   Box,
   Typography,
@@ -85,7 +86,9 @@ const AdminSettingsPage: React.FC = () => {
       });
       setSuccessMessage("Settings saved successfully");
     } catch (err) {
-      setErrorMessage("Failed to save settings");
+      // The server validates both storage values; show its message (e.g. a
+      // quota below 1 GB) instead of a generic failure.
+      setErrorMessage(getErrorMessage(err, "Failed to save settings"));
       logger.error("Failed to save settings:", err);
     }
   };
@@ -192,9 +195,9 @@ const AdminSettingsPage: React.FC = () => {
                 input: {
                   endAdornment: <InputAdornment position="end">GB</InputAdornment>,
                 },
-                htmlInput: { min: 0, step: 1 }
+                htmlInput: { min: 1, step: 1 }
               }}
-              helperText="Default storage quota for new users"
+              helperText="Default storage quota for new users (at least 1 GB)"
             />
 
             <TextField
@@ -207,9 +210,9 @@ const AdminSettingsPage: React.FC = () => {
                 input: {
                   endAdornment: <InputAdornment position="end">MB</InputAdornment>,
                 },
-                htmlInput: { min: 0, step: 1 }
+                htmlInput: { min: 1, max: 1024, step: 1 }
               }}
-              helperText="Maximum allowed file size for uploads"
+              helperText="Maximum allowed file size for uploads (1 MB to 1 GB)"
             />
 
             <Box sx={{ display: "flex", justifyContent: "flex-end", pt: 2 }}>

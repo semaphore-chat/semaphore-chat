@@ -63,6 +63,30 @@ describe('useSocketHub', () => {
     expect(handler).toHaveBeenCalledWith(payload);
   });
 
+  it('runs the registered cache handler for a community asset event', async () => {
+    const eventBus = createEventBus();
+    const wrapper = createTestWrapper({ queryClient, socket: mockSocket });
+
+    renderHook(() => useSocketHub(eventBus), { wrapper });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+    await act(async () => {
+      await mockSocket.simulateEvent(ServerEvents.CUSTOM_EMOJI_CREATED, {
+        communityId: 'c1',
+        emojiId: 'e1',
+      });
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: [
+        {
+          _id: 'customEmojiControllerListCommunityEmojis',
+          path: { communityId: 'c1' },
+        },
+      ],
+    });
+  });
+
   it('registers exactly one listener per ServerEvent (completeness check)', () => {
     const eventBus = createEventBus();
     const wrapper = createTestWrapper({ queryClient, socket: mockSocket });

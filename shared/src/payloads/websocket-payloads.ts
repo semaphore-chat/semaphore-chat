@@ -9,7 +9,11 @@ import type {
   ChannelDeletedPayloadDto,
   ChannelPermissionsUpdatedPayloadDto,
   ChannelUpdatedPayloadDto,
+  ChannelWebhookPayloadDto,
   ChannelsReorderedPayloadDto,
+  CommunityAliasGroupPayloadDto,
+  CommunityEmojiPayloadDto,
+  CommunitySoundPayloadDto,
   CommunityDeletedPayloadDto,
   CommunityUpdatedPayloadDto,
   DeleteMessagePayloadDto,
@@ -29,6 +33,7 @@ import type {
   ReauthenticateResultDto,
   ReplayBufferFailedPayloadDto,
   ReplayBufferStoppedPayloadDto,
+  PrivateChannelMembershipPayloadDto,
   RoleAssignedPayloadDto,
   RoleCreatedPayloadDto,
   RoleDeletedPayloadDto,
@@ -45,6 +50,7 @@ import type {
   UserProfileUpdatedPayloadDto,
   UserTimedOutPayloadDto,
   UserTypingPayloadDto,
+  UserUnbannedPayloadDto,
   VoiceChannelUserJoinedPayloadDto,
   VoiceChannelUserLeftPayloadDto,
   VoiceChannelUserUpdatedPayloadDto,
@@ -157,6 +163,8 @@ export type ChannelsReorderedPayload = ChannelsReorderedPayloadDto;
 
 export type UserBannedPayload = UserBannedPayloadDto;
 
+export type UserUnbannedPayload = UserUnbannedPayloadDto;
+
 export type UserKickedPayload = UserKickedPayloadDto;
 
 export type UserTimedOutPayload = UserTimedOutPayloadDto;
@@ -190,6 +198,24 @@ export type ChannelUpdatedPayload = ChannelUpdatedPayloadDto;
 export type ChannelPermissionsUpdatedPayload = ChannelPermissionsUpdatedPayloadDto;
 
 export type ChannelDeletedPayload = ChannelDeletedPayloadDto;
+
+// =============================================================================
+// Private Channel Membership Payloads
+// =============================================================================
+
+export type PrivateChannelMembershipPayload = PrivateChannelMembershipPayloadDto;
+
+// =============================================================================
+// Community Asset Payloads
+// =============================================================================
+
+export type CommunityEmojiPayload = CommunityEmojiPayloadDto;
+
+export type CommunitySoundPayload = CommunitySoundPayloadDto;
+
+export type CommunityAliasGroupPayload = CommunityAliasGroupPayloadDto;
+
+export type ChannelWebhookPayload = ChannelWebhookPayloadDto;
 
 // =============================================================================
 // Community Lifecycle Payloads
@@ -278,6 +304,7 @@ export type ServerEventPayloads = {
 
   // Moderation Events
   [ServerEvents.USER_BANNED]: UserBannedPayload;
+  [ServerEvents.USER_UNBANNED]: UserUnbannedPayload;
   [ServerEvents.USER_KICKED]: UserKickedPayload;
   [ServerEvents.USER_TIMED_OUT]: UserTimedOutPayload;
   [ServerEvents.TIMEOUT_REMOVED]: TimeoutRemovedPayload;
@@ -294,6 +321,22 @@ export type ServerEventPayloads = {
   [ServerEvents.CHANNEL_UPDATED]: ChannelUpdatedPayload;
   [ServerEvents.CHANNEL_DELETED]: ChannelDeletedPayload;
   [ServerEvents.CHANNEL_PERMISSIONS_UPDATED]: ChannelPermissionsUpdatedPayload;
+
+  // Private Channel Membership
+  [ServerEvents.PRIVATE_CHANNEL_ADDED]: PrivateChannelMembershipPayload;
+  [ServerEvents.PRIVATE_CHANNEL_REMOVED]: PrivateChannelMembershipPayload;
+
+  // Community Assets
+  [ServerEvents.CUSTOM_EMOJI_CREATED]: CommunityEmojiPayload;
+  [ServerEvents.CUSTOM_EMOJI_DELETED]: CommunityEmojiPayload;
+  [ServerEvents.SOUNDBOARD_SOUND_CREATED]: CommunitySoundPayload;
+  [ServerEvents.SOUNDBOARD_SOUND_DELETED]: CommunitySoundPayload;
+  [ServerEvents.ALIAS_GROUP_CREATED]: CommunityAliasGroupPayload;
+  [ServerEvents.ALIAS_GROUP_UPDATED]: CommunityAliasGroupPayload;
+  [ServerEvents.ALIAS_GROUP_DELETED]: CommunityAliasGroupPayload;
+  [ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED]: CommunityAliasGroupPayload;
+  [ServerEvents.WEBHOOK_CREATED]: ChannelWebhookPayload;
+  [ServerEvents.WEBHOOK_DELETED]: ChannelWebhookPayload;
 
   // Community Lifecycle
   [ServerEvents.COMMUNITY_UPDATED]: CommunityUpdatedPayload;

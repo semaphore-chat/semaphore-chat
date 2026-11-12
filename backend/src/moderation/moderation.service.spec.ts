@@ -547,6 +547,31 @@ describe('ModerationService', () => {
       );
     });
 
+    it('tells the community a ban was lifted, with who lifted it', async () => {
+      mockDatabase.communityBan.findUnique.mockResolvedValue({
+        id: 'ban-1',
+        active: true,
+      });
+
+      await service.unbanUser(communityId, userId, moderatorId, 'appealed');
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        RoomName.community(communityId),
+        ServerEvents.USER_UNBANNED,
+        { communityId, userId, moderatorId },
+      );
+    });
+
+    it('emits nothing when the operation fails', async () => {
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.unbanUser(communityId, userId, moderatorId),
+      ).rejects.toThrow(NotFoundException);
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
     describe('rank', () => {
       const banBy = (bannedBy: string | null) =>
         mockDatabase.communityBan.findUnique.mockResolvedValue({
@@ -569,6 +594,7 @@ describe('ModerationService', () => {
           service.unbanUser(communityId, userId, moderatorId),
         ).rejects.toThrow(ForbiddenException);
         expect(mockDatabase.communityBan.update).not.toHaveBeenCalled();
+        expect(websocketService.sendToRoom).not.toHaveBeenCalled();
       });
 
       it('refuses lifting your own ban', async () => {
@@ -837,7 +863,12 @@ describe('ModerationService', () => {
         const expiresAt = new Date(NOW + 600_000);
         expect(timeoutExpiryQueue.add).toHaveBeenCalledWith(
           'expire',
-          { userId, communityId, expiresAt: expiresAt.toISOString() },
+          {
+            userId,
+            communityId,
+            expiresAt: expiresAt.toISOString(),
+            moderatorId,
+          },
           {
             jobId: `timeout-expiry-${communityId}-${userId}-${expiresAt.getTime()}`,
             delay: 600_000,

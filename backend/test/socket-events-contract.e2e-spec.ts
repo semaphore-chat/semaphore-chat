@@ -13,6 +13,9 @@ import type { Server as IoServer } from 'socket.io';
 import { io, Socket } from 'socket.io-client';
 import * as request from 'supertest';
 import type { AuthenticatedSocket } from '@/common/utils/socket.utils';
+import { DatabaseService } from '@/database/database.service';
+import { CustomEmojiService } from '@/custom-emoji/custom-emoji.service';
+import { SoundboardService } from '@/soundboard/soundboard.service';
 import { PresenceGateway } from '@/presence/presence.gateway';
 import { RoomsService } from '@/rooms/rooms.service';
 import { SENSITIVE_USER_FIELDS } from '@/test-utils/helpers/user-dto.helper';
@@ -447,6 +450,152 @@ describe('Socket event contract (e2e)', () => {
       .send({ reason: 'enough' })
       .expect(200);
     await seen(ServerEvents.USER_BANNED);
+
+    await http()
+      .delete(`/api/moderation/ban/${communityId}/${account.target.id}`)
+      .set('Authorization', auth('owner'))
+      .send({})
+      .expect(200);
+    await seen(
+      ServerEvents.USER_UNBANNED,
+      (p) => p.userId === account.target.id,
+    );
+  });
+
+  it('a private channel: its member is told it was added and removed', async () => {
+    const created = await http()
+      .post('/api/channels')
+      .set('Authorization', auth('owner'))
+      .send({ name: 'secret', communityId, type: 'TEXT', isPrivate: true })
+      .expect(201);
+    const id = (created.body as { id: string }).id;
+
+    await http()
+      .post('/api/channel-membership')
+      .set('Authorization', auth('owner'))
+      .send({ userId: account.member.id, channelId: id })
+      .expect(201);
+    const added = await seen(
+      ServerEvents.PRIVATE_CHANNEL_ADDED,
+      (p) => p.channelId === id,
+    );
+    expect(added).toEqual({ communityId, channelId: id });
+
+    await http()
+      .delete(`/api/channel-membership/channel/${id}/user/${account.member.id}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.PRIVATE_CHANNEL_REMOVED, (p) => p.channelId === id);
+  });
+
+  it('community assets: emoji, soundboard, alias groups and webhooks', async () => {
+    const database = app.get(DatabaseService);
+
+    // Emoji and soundboard reference an uploaded file; create the rows
+    // directly since the upload step is not what this contract checks.
+    const emojiFile = await database.file.create({
+      data: {
+        filename: 'blob.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        size: 10,
+        checksum: 'emoji-checksum',
+        resourceType: 'CUSTOM_EMOJI',
+        fileCommunityId: communityId,
+        storagePath: 'test/blob.png',
+        uploadedById: account.owner.id,
+      },
+    });
+    const emoji = await app
+      .get(CustomEmojiService)
+      .createEmoji(
+        communityId,
+        { name: 'party_blob', fileId: emojiFile.id },
+        account.owner.id,
+      );
+    await seen(
+      ServerEvents.CUSTOM_EMOJI_CREATED,
+      (p) => p.emojiId === emoji.id,
+    );
+    await app.get(CustomEmojiService).deleteEmoji(communityId, emoji.id);
+    await seen(
+      ServerEvents.CUSTOM_EMOJI_DELETED,
+      (p) => p.emojiId === emoji.id,
+    );
+
+    const soundFile = await database.file.create({
+      data: {
+        filename: 'airhorn.mp3',
+        mimeType: 'audio/mpeg',
+        fileType: 'AUDIO',
+        size: 10,
+        checksum: 'sound-checksum',
+        resourceType: 'SOUNDBOARD_SOUND',
+        fileCommunityId: communityId,
+        storagePath: 'test/airhorn.mp3',
+        uploadedById: account.owner.id,
+      },
+    });
+    const sound = await app
+      .get(SoundboardService)
+      .createSound(communityId, account.owner.id, {
+        name: 'airhorn',
+        fileId: soundFile.id,
+      });
+    await seen(
+      ServerEvents.SOUNDBOARD_SOUND_CREATED,
+      (p) => p.soundId === sound.id,
+    );
+    await app.get(SoundboardService).deleteSound(communityId, sound.id);
+    await seen(
+      ServerEvents.SOUNDBOARD_SOUND_DELETED,
+      (p) => p.soundId === sound.id,
+    );
+
+    const group = await http()
+      .post(`/api/alias-groups/community/${communityId}`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'team' })
+      .expect(201);
+    const groupId = (group.body as { id: string }).id;
+    await seen(ServerEvents.ALIAS_GROUP_CREATED, (p) => p.groupId === groupId);
+
+    await http()
+      .put(`/api/alias-groups/${groupId}`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'team-two' })
+      .expect(200);
+    await seen(ServerEvents.ALIAS_GROUP_UPDATED, (p) => p.groupId === groupId);
+
+    await http()
+      .put(`/api/alias-groups/${groupId}/members`)
+      .set('Authorization', auth('owner'))
+      .send({ memberIds: [account.member.id] })
+      .expect(204);
+    await seen(
+      ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+      (p) => p.groupId === groupId,
+    );
+
+    await http()
+      .delete(`/api/alias-groups/${groupId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.ALIAS_GROUP_DELETED, (p) => p.groupId === groupId);
+
+    const webhook = await http()
+      .post(`/api/channels/${channelId}/webhooks`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'CI Bot' })
+      .expect(201);
+    const webhookId = (webhook.body as { id: string }).id;
+    await seen(ServerEvents.WEBHOOK_CREATED, (p) => p.webhookId === webhookId);
+
+    await http()
+      .delete(`/api/channels/${channelId}/webhooks/${webhookId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.WEBHOOK_DELETED, (p) => p.webhookId === webhookId);
   });
 
   it('a community: updated, deleted', async () => {

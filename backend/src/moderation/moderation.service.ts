@@ -303,6 +303,14 @@ export class ModerationService {
     this.logger.log(
       `User ${userId} unbanned from community ${communityId} by ${moderatorId}`,
     );
+
+    // The ban list and moderation log changed for everyone who can see them
+    // (the same community-wide audience as USER_BANNED).
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.USER_UNBANNED,
+      { communityId, userId, moderatorId },
+    );
   }
 
   async isUserBanned(communityId: string, userId: string): Promise<boolean> {
@@ -577,7 +585,12 @@ export class ModerationService {
     if (previous && previous.expiresAt.getTime() !== expiresAt.getTime()) {
       await this.cancelTimeoutExpiry(communityId, userId, previous.expiresAt);
     }
-    await this.scheduleTimeoutExpiry(communityId, userId, expiresAt);
+    await this.scheduleTimeoutExpiry(
+      communityId,
+      userId,
+      expiresAt,
+      moderatorId,
+    );
   }
 
   /**
@@ -590,11 +603,17 @@ export class ModerationService {
     communityId: string,
     userId: string,
     expiresAt: Date,
+    moderatorId: string,
   ): Promise<void> {
     try {
       await this.timeoutExpiryQueue.add(
         'expire',
-        { userId, communityId, expiresAt: expiresAt.toISOString() },
+        {
+          userId,
+          communityId,
+          expiresAt: expiresAt.toISOString(),
+          moderatorId,
+        },
         {
           jobId: timeoutExpiryJobId(communityId, userId, expiresAt),
           delay: Math.max(0, expiresAt.getTime() - Date.now()),

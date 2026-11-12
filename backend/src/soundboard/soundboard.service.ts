@@ -6,8 +6,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ResourceType } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseService } from '@/database/database.service';
 import { FileUploadService } from '@/file-upload/file-upload.service';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 import { isPrismaError } from '@/common/utils/prisma.utils';
 import { CreateSoundboardSoundDto } from './dto/create-soundboard-sound.dto';
 import { SoundboardSoundDto } from './dto/soundboard-sound-response.dto';
@@ -19,6 +21,7 @@ export class SoundboardService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly fileUploadService: FileUploadService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   private toDto(sound: {
@@ -122,6 +125,10 @@ export class SoundboardService {
       this.logger.log(
         `Created soundboard sound "${dto.name}" in community ${communityId}`,
       );
+      this.eventEmitter.emit(RoomEvents.SOUNDBOARD_SOUND_CREATED, {
+        communityId,
+        soundId: sound.id,
+      });
       return this.toDto(sound);
     } catch (error) {
       // The name pre-check above is not atomic with the create; a concurrent
@@ -162,6 +169,11 @@ export class SoundboardService {
     // the file cleanup below fails.
     await this.databaseService.soundboardSound.delete({
       where: { id: soundId },
+    });
+
+    this.eventEmitter.emit(RoomEvents.SOUNDBOARD_SOUND_DELETED, {
+      communityId,
+      soundId,
     });
 
     if (file && !file.deletedAt) {
