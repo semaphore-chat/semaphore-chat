@@ -16,6 +16,8 @@ const FILE_METADATA_SELECT = {
   mimeType: true,
   fileType: true,
   size: true,
+  width: true,
+  height: true,
   thumbnailPath: true,
 } as const;
 
@@ -94,6 +96,8 @@ export function toAttachmentDto(file: FileRow): AttachmentDto {
     fileType: file.fileType,
     size: file.size,
     hasThumbnail: !!file.thumbnailPath,
+    width: file.width ?? null,
+    height: file.height ?? null,
   };
 }
 

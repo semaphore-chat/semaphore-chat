@@ -39,6 +39,16 @@ export class AttachmentDto {
   @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
   hasThumbnail: boolean;
+  /**
+   * Display width in pixels, for images and videos; null when unknown.
+   */
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  width?: number | null;
+  /**
+   * Display height in pixels, for images and videos; null when unknown.
+   */
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  height?: number | null;
 }
 
 export class WebhookInfoDto {

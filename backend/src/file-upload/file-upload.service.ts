@@ -22,6 +22,7 @@ import { createHash } from 'crypto';
 import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { ThumbnailService } from '@/file/thumbnail.service';
+import { MediaDimensionsService } from '@/file/media-dimensions.service';
 import { ResourceTypeFileValidator } from './validators';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { FileUploadResponseDto } from './dto/file-upload-response.dto';
@@ -43,6 +44,7 @@ export class FileUploadService {
     private readonly storageService: StorageService,
     private readonly storageQuotaService: StorageQuotaService,
     private readonly thumbnailService: ThumbnailService,
+    private readonly mediaDimensionsService: MediaDimensionsService,
     private readonly permissionsService: PermissionsService,
   ) {}
 
@@ -179,6 +181,15 @@ export class FileUploadService {
 
       // Create database record
       try {
+        // Read display dimensions while the local file is still there, so
+        // clients can reserve an attachment's box before it loads.
+        // Best-effort: a failed probe leaves both columns null and never
+        // fails the upload.
+        const dimensions = await this.mediaDimensionsService.read(
+          file.path,
+          file.mimetype,
+        );
+
         const { resourceId, ...dtoRest } = createFileUploadDto;
         const fileRecord = await this.databaseService.file.create({
           data: {
@@ -191,6 +202,8 @@ export class FileUploadService {
             mimeType: file.mimetype,
             fileType,
             size: file.size,
+            width: dimensions?.width ?? null,
+            height: dimensions?.height ?? null,
             checksum,
             uploadedById: user.id,
             storageType,

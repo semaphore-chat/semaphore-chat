@@ -139,6 +139,14 @@ export type FileType = typeof FileType[keyof typeof FileType];
 export type AttachmentDto = {
     fileType: FileType;
     size: number;
+    /**
+     * Display width in pixels, for images and videos; null when unknown.
+     */
+    width?: number | null;
+    /**
+     * Display height in pixels, for images and videos; null when unknown.
+     */
+    height?: number | null;
     id: string;
     filename: string;
     mimeType: string;

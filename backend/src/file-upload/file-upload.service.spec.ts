@@ -6,6 +6,7 @@ import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { ThumbnailService } from '@/file/thumbnail.service';
+import { MediaDimensionsService } from '@/file/media-dimensions.service';
 import {
   ForbiddenException,
   UnprocessableEntityException,
@@ -25,6 +26,7 @@ describe('FileUploadService', () => {
   let storageService: Mocked<StorageService>;
   let storageQuotaService: Mocked<StorageQuotaService>;
   let thumbnailService: Mocked<ThumbnailService>;
+  let mediaDimensionsService: Mocked<MediaDimensionsService>;
   let permissionsService: Mocked<PermissionsService>;
   let mockS3Provider: jest.Mocked<IStorageProvider>;
 
@@ -56,6 +58,7 @@ describe('FileUploadService', () => {
     storageService = unitRef.get(StorageService);
     storageQuotaService = unitRef.get(StorageQuotaService);
     thumbnailService = unitRef.get(ThumbnailService);
+    mediaDimensionsService = unitRef.get(MediaDimensionsService);
     permissionsService = unitRef.get(PermissionsService);
 
     // Reset mocks
@@ -84,6 +87,9 @@ describe('FileUploadService', () => {
       getFileUrl: jest.fn(),
     };
     storageService.getProvider.mockReturnValue(mockS3Provider);
+
+    // Dimensions are best-effort; nothing known by default.
+    mediaDimensionsService.read.mockResolvedValue(null);
 
     // Default quota check passes
     storageQuotaService.canUploadFile.mockResolvedValue({
@@ -278,6 +284,55 @@ describe('FileUploadService', () => {
         await service.uploadFile(mockFile, createDto, mockUser);
 
         expect(thumbnailService.generateVideoThumbnail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('attachment dimensions', () => {
+      const createDto = {
+        resourceType: ResourceType.MESSAGE_ATTACHMENT,
+        resourceId: 'msg-123',
+      };
+
+      beforeEach(() => {
+        databaseService.file.create.mockResolvedValue({
+          id: 'file-image-1',
+          fileType: FileType.IMAGE,
+        } as any);
+
+        const {
+          ResourceTypeFileValidator,
+        } = require('./validators/resource-type-file.validator');
+        ResourceTypeFileValidator.mockImplementation(() => ({
+          isValid: jest.fn().mockResolvedValue(true),
+        }));
+      });
+
+      it('stores the dimensions the probe reports for an image', async () => {
+        mediaDimensionsService.read.mockResolvedValue({
+          width: 800,
+          height: 600,
+        });
+
+        await service.uploadFile(mockFile, createDto, mockUser);
+
+        expect(mediaDimensionsService.read).toHaveBeenCalledWith(
+          '/tmp/test-123.png',
+          'image/png',
+        );
+        expect(databaseService.file.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ width: 800, height: 600 }),
+        });
+      });
+
+      it('still uploads, with null dimensions, when the probe has none', async () => {
+        mediaDimensionsService.read.mockResolvedValue(null);
+
+        const result = await service.uploadFile(mockFile, createDto, mockUser);
+
+        expect(databaseService.file.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ width: null, height: null }),
+        });
+        expect(result.id).toBe('file-image-1');
       });
     });
 

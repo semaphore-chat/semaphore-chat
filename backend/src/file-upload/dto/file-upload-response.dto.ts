@@ -1,5 +1,5 @@
 import { FileType, StorageType, ResourceType } from '@prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
 import {
   FileTypeValues,
@@ -15,6 +15,16 @@ export class FileUploadResponseDto {
   fileType: FileType;
   @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
+  /**
+   * Display width in pixels, for images and videos; null when unknown.
+   */
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  width?: number | null;
+  /**
+   * Display height in pixels, for images and videos; null when unknown.
+   */
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  height?: number | null;
   checksum: string;
   uploadedById: string | null;
   uploadedAt: Date;

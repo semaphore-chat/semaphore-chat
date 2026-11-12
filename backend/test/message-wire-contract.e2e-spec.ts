@@ -391,6 +391,19 @@ describe('Message wire contract (e2e)', () => {
         (p) => p.message.id === message.id && p.message.attachments.length > 0,
       );
       expect(event.message.attachments[0].filename).toBe('a.png');
+
+      // The uploaded PNG is 1x1, and the backend image bundles ffprobe: the
+      // upload and every message carrying it report its display size, so
+      // clients can reserve the attachment's box before it loads.
+      const uploaded = upload.body as {
+        width?: number | null;
+        height?: number | null;
+      };
+      expect([uploaded.width, uploaded.height]).toEqual([1, 1]);
+      expect([
+        event.message.attachments[0].width,
+        event.message.attachments[0].height,
+      ]).toEqual([1, 1]);
     });
 
     it('reactions over REST and the socket', async () => {

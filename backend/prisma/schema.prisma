@@ -736,6 +736,8 @@ model File {
   mimeType     String // MIME type (image/jpeg, etc.)
   fileType     FileType // Enum for different file types
   size         Int // File size in bytes
+  width        Int? // Display width in pixels, for images and videos (null when unknown)
+  height       Int? // Display height in pixels, for images and videos (null when unknown)
   checksum     String // SHA-256 hash for integrity
   uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedById String?
