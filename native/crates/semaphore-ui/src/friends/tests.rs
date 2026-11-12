@@ -62,11 +62,49 @@ fn error(message: &str) -> ErrorView {
 #[test]
 fn request_dates_read_like_the_web() {
     let now = 100 * DAY;
-    assert_eq!(request_date(now, now - 1000), "Today");
-    assert_eq!(request_date(now, now - DAY - 1000), "Yesterday");
-    assert_eq!(request_date(now, now - 3 * DAY), "3 days ago");
+    let utc = crate::messages::TimeFormat::fixed(now);
+    assert_eq!(request_date(&utc, now, now - 1000), "Today");
+    assert_eq!(request_date(&utc, now, now - DAY - 1000), "Yesterday");
+    assert_eq!(request_date(&utc, now, now - 3 * DAY), "3 days ago");
     // 1970-01-11 for 10 days after the epoch.
-    assert_eq!(request_date(now, 10 * DAY), "1/11/1970");
+    assert_eq!(request_date(&utc, now, 10 * DAY), "1/11/1970");
+}
+
+#[test]
+fn old_request_dates_are_written_in_the_users_zone() {
+    use crate::messages::TimeFormat;
+    use chrono::FixedOffset;
+
+    // Zone minutes east of UTC, the instant, the local date, and the UTC date.
+    let cases = [
+        (9 * 60, 1_793_804_340_000, "11/4/2026", "11/4/2026"),
+        (9 * 60, 1_793_804_460_000, "11/5/2026", "11/4/2026"),
+        (-8 * 60, 1_793_865_540_000, "11/4/2026", "11/5/2026"),
+        (-8 * 60, 1_793_865_660_000, "11/5/2026", "11/5/2026"),
+        // 2026-12-31 15:30 UTC: New Year's Day in +09:00.
+        (9 * 60, 1_798_731_000_000, "1/1/2027", "12/31/2026"),
+        // 2026-11-05 18:31 UTC: 00:01 the 6th in +05:30.
+        (5 * 60 + 30, 1_793_903_460_000, "11/6/2026", "11/5/2026"),
+        // 2026-11-05 18:16 UTC: 00:01 the 6th in +05:45.
+        (5 * 60 + 45, 1_793_902_560_000, "11/6/2026", "11/5/2026"),
+    ];
+    for (minutes, ms, local, utc_date) in cases {
+        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let time = TimeFormat {
+            zone: Some(zone),
+            now_ms: Some(ms + 8 * DAY),
+        };
+        assert_eq!(
+            request_date(&time, ms + 8 * DAY, ms),
+            local,
+            "{minutes} minutes east"
+        );
+        assert_eq!(
+            TimeFormat::fixed(ms).format_at(ms, "%-m/%-d/%Y"),
+            utc_date,
+            "{minutes} minutes east: the UTC date"
+        );
+    }
 }
 
 #[test]

@@ -11,6 +11,7 @@ use super::rules::{
     invite_status, invite_url, needs, parse_max_uses, running, uses_label,
 };
 use crate::kit::{Button, ButtonSize, Dialog, TextField, Variant, spacing, text, text_state};
+use crate::messages::TimeFormat;
 use crate::panel::PanelClock;
 use crate::panel::common::{design_icon, error_block};
 use crate::theme::SemTheme;
@@ -36,6 +37,7 @@ pub struct InvitesTab {
     view: InvitesView,
     caps: CommunityCaps,
     clock: PanelClock,
+    time: TimeFormat,
     link_base: String,
     pending: Vec<Pending>,
     creating: bool,
@@ -57,6 +59,7 @@ impl InvitesTab {
             view: InvitesView::default(),
             caps: CommunityCaps::default(),
             clock: PanelClock::default(),
+            time: TimeFormat::default(),
             link_base: String::new(),
             pending: Vec::new(),
             creating: false,
@@ -103,6 +106,12 @@ impl InvitesTab {
     /// it.
     pub fn set_clock(&mut self, clock: PanelClock, cx: &mut Context<Self>) {
         self.clock = clock;
+        cx.notify();
+    }
+
+    /// The zone "Expires …" and "Created …" are written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
         cx.notify();
     }
 
@@ -178,9 +187,12 @@ impl InvitesTab {
         );
         let mut details = vec![uses_label(invite)];
         if let Some(until) = invite.valid_until_ms {
-            details.push(format!("Expires: {}", date_label(until)));
+            details.push(format!("Expires: {}", date_label(&self.time, until)));
         }
-        details.push(format!("Created: {}", date_label(invite.created_at_ms)));
+        details.push(format!(
+            "Created: {}",
+            date_label(&self.time, invite.created_at_ms)
+        ));
         row(
             SharedString::from(format!("invite-{code}")),
             format!("Invite {code}"),
@@ -279,7 +291,7 @@ impl InvitesTab {
                     }
                 }));
         let expires = match self.expiry.valid_until(self.clock.now_ms()) {
-            Some(until) => format!("Expires {}", date_label(until)),
+            Some(until) => format!("Expires {}", date_label(&self.time, until)),
             None => "Never expires".to_owned(),
         };
         let cancel = cx.weak_entity();

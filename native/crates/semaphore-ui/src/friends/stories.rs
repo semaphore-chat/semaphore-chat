@@ -19,6 +19,7 @@ fn panel_story(view: FriendsView, tab: FriendsTab, requests: RequestsTab, cx: &m
     let panel = cx.new(|cx| {
         let mut panel = FriendsPanel::new(cx);
         panel.set_clock(PanelClock::fixed(NOW_MS), cx);
+        panel.set_time(crate::messages::TimeFormat::fixed(NOW_MS), cx);
         panel.set_view(view, cx);
         panel.set_tab(tab, cx);
         panel.set_requests_tab(requests, cx);

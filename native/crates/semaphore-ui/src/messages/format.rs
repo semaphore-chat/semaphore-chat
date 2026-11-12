@@ -33,6 +33,13 @@ impl TimeFormat {
         self.zoned(ms).format("%-I:%M %p").to_string()
     }
 
+    /// `ms` in this zone, written with `format`, or `""` when it isn't a time.
+    pub fn format_at(&self, ms: i64, format: &str) -> String {
+        DateTime::<Utc>::from_timestamp_millis(ms)
+            .map(|_| self.zoned(ms).format(format).to_string())
+            .unwrap_or_default()
+    }
+
     /// The calendar day, for comparing two rows.
     pub fn day(&self, ms: i64) -> NaiveDate {
         self.zoned(ms).date_naive()
@@ -101,6 +108,31 @@ mod tests {
         let format = TimeFormat::fixed(NOW);
         assert_ne!(format.day(NOW), format.day(NOW + DAY));
         assert_eq!(format.day(NOW), format.day(NOW + 60_000));
+    }
+
+    #[test]
+    fn written_times_follow_the_chosen_zone() {
+        // 2026-11-04 15:01 UTC, already the 5th in +09:00.
+        let after_midnight = 1_793_804_460_000;
+        let east = TimeFormat {
+            zone: FixedOffset::east_opt(9 * 3600),
+            now_ms: Some(NOW),
+        };
+        assert_eq!(east.format_at(after_midnight, "%b %-d, %Y"), "Nov 5, 2026");
+        assert_eq!(
+            TimeFormat::fixed(NOW).format_at(after_midnight, "%b %-d, %Y"),
+            "Nov 4, 2026"
+        );
+        // 2026-11-05 18:16 UTC, already the 6th in +05:45.
+        let nepal = TimeFormat {
+            zone: FixedOffset::east_opt(5 * 3600 + 45 * 60),
+            now_ms: Some(NOW),
+        };
+        assert_eq!(
+            nepal.format_at(1_793_902_560_000, "%-m/%-d/%Y"),
+            "11/6/2026"
+        );
+        assert_eq!(east.format_at(i64::MAX, "%Y"), "");
     }
 
     #[test]

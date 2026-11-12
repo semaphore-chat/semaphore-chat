@@ -15,6 +15,7 @@ use crate::kit::{
     Alert, Button, ButtonSize, Dialog, IconButton, Severity, Switch, TextField, Variant, spacing,
     text, text_state,
 };
+use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, error_block};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -102,6 +103,7 @@ pub struct ChannelsTab {
     created: Option<CreatedWebhook>,
     copied: bool,
     permissions_slot: Option<AnyView>,
+    time: TimeFormat,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -147,12 +149,19 @@ impl ChannelsTab {
             created: None,
             copied: false,
             permissions_slot: None,
+            time: TimeFormat::default(),
             _subscriptions,
         }
     }
 
     pub fn set_caps(&mut self, caps: CommunityCaps, cx: &mut Context<Self>) {
         self.caps = caps;
+        cx.notify();
+    }
+
+    /// The zone a webhook's "Created …" is written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
         cx.notify();
     }
 
@@ -817,7 +826,10 @@ impl ChannelsTab {
                                 .child(
                                     text(
                                         Variant::Caption,
-                                        format!("Created {}", date_label(hook.created_at_ms)),
+                                        format!(
+                                            "Created {}",
+                                            date_label(&self.time, hook.created_at_ms)
+                                        ),
                                     )
                                     .text_color(sem.text_secondary),
                                 )

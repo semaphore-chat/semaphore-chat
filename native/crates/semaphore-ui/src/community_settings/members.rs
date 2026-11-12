@@ -12,6 +12,7 @@ use crate::dms::picker::{DEBOUNCE, Found, PickerModel};
 use crate::kit::{
     Alert, Button, ButtonSize, Chip, Severity, Spinner, TextField, Variant, spacing, text,
 };
+use crate::messages::TimeFormat;
 use crate::theme::SemTheme;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
@@ -51,6 +52,7 @@ pub struct MembersTab {
     field: Entity<InputState>,
     search: PickerModel,
     debounce: Option<Task<()>>,
+    time: TimeFormat,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -77,12 +79,19 @@ impl MembersTab {
             field,
             search: PickerModel::new(false),
             debounce: None,
+            time: TimeFormat::default(),
             _subscriptions,
         }
     }
 
     pub fn set_caps(&mut self, caps: CommunityCaps, cx: &mut Context<Self>) {
         self.caps = caps;
+        cx.notify();
+    }
+
+    /// The zone "Joined …" is written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
         cx.notify();
     }
 
@@ -213,10 +222,13 @@ impl MembersTab {
             .unwrap_or_else(|| "Member".to_owned());
         let role_chip = Chip::new(role).colors(transparent_black(), sem.primary, sem.primary);
         let joined = wide.then(|| self.joined_at(member)).flatten().map(|ms| {
-            text(Variant::Body2, format!("Joined {}", date_label(ms)))
-                .flex_shrink_0()
-                .whitespace_nowrap()
-                .text_color(sem.text_secondary)
+            text(
+                Variant::Body2,
+                format!("Joined {}", date_label(&self.time, ms)),
+            )
+            .flex_shrink_0()
+            .whitespace_nowrap()
+            .text_color(sem.text_secondary)
         });
         let roles_locked = (!self.caps.assign_roles).then(|| needs("Edit members"));
         let moderate_locked = if mine {

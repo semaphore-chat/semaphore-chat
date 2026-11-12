@@ -1,6 +1,7 @@
 //! What the tabs check before they send, and the labels they draw, with no GPUI in them. Lengths
 //! are counted as the web and the server's `class-validator` count them: UTF-16 code units.
 
+use crate::messages::TimeFormat;
 use semaphore_core::model::{
     AdminAction, AdminActionKind, AdminActionState, AdminOp, ChannelPreset, CommunityCaps,
     DraftFile, ErrorView, InviteRow,
@@ -330,11 +331,9 @@ pub fn invite_url(base: &str, code: &str) -> String {
     format!("{}/#/join/{code}", base.trim().trim_end_matches('/'))
 }
 
-/// "Nov 1, 2026", in UTC.
-pub fn date_label(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|date| date.format("%b %-d, %Y").to_string())
-        .unwrap_or_default()
+/// "Nov 1, 2026", in `time`'s zone (the user's, unless a story fixes one).
+pub fn date_label(time: &TimeFormat, ms: i64) -> String {
+    time.format_at(ms, "%b %-d, %Y")
 }
 
 // ---- Deleting the community. ----

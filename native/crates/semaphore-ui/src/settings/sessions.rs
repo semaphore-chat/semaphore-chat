@@ -5,6 +5,7 @@
 use super::shell::{caption, tab_page};
 use super::{SessionsEvent, SessionsSettings};
 use crate::kit::{Alert, Button, Chip, Dialog, Skeleton, Spinner, Variant, spacing, text};
+use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, error_block, icon_button, relative_time};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -23,15 +24,13 @@ pub fn session_device_name(row: &SessionRow) -> String {
         .to_owned()
 }
 
-fn date(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|date| date.format("%b %-d, %Y").to_string())
-        .unwrap_or_default()
+fn date(time: &TimeFormat, ms: i64) -> String {
+    time.format_at(ms, "%b %-d, %Y")
 }
 
 /// The lines under a row's name, from `now_ms`: "Last active: 5 minutes ago", then the IP when
-/// there is one, then "Signed in Nov 1, 2026 · Expires Dec 1, 2026".
-pub fn session_details(row: &SessionRow, now_ms: i64) -> Vec<String> {
+/// there is one, then "Signed in Nov 1, 2026 · Expires Dec 1, 2026" in `time`'s zone.
+pub fn session_details(row: &SessionRow, time: &TimeFormat, now_ms: i64) -> Vec<String> {
     let mut lines = vec![format!(
         "Last active: {}",
         relative_time(now_ms, row.last_used_at_ms)
@@ -41,8 +40,8 @@ pub fn session_details(row: &SessionRow, now_ms: i64) -> Vec<String> {
     }
     lines.push(format!(
         "Signed in {} · Expires {}",
-        date(row.created_at_ms),
-        date(row.expires_at_ms)
+        date(time, row.created_at_ms),
+        date(time, row.expires_at_ms)
     ));
     lines
 }
@@ -77,7 +76,7 @@ impl SessionsSettings {
     fn row(&self, row: &SessionRow, now_ms: i64, cx: &mut Context<Self>) -> AnyElement {
         let sem = cx.sem().clone();
         let name = session_device_name(row);
-        let details = session_details(row, now_ms);
+        let details = session_details(row, &self.time, now_ms);
         let trailing: Option<AnyElement> = if row.is_current {
             None
         } else if row.busy {

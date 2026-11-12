@@ -5,6 +5,7 @@
 
 use super::{card, event_link, page};
 use crate::kit::{Alert, Button, Icon, Severity, Spinner, Variant, spacing, text};
+use crate::messages::TimeFormat;
 use crate::panel::common::error_block;
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -28,15 +29,14 @@ pub enum InviteEvent {
 pub struct InviteScreen {
     view: InvitePreviewView,
     signed_in: bool,
+    time: TimeFormat,
 }
 
 impl EventEmitter<InviteEvent> for InviteScreen {}
 
-/// `formatDate`: "Nov 11, 2026".
-pub(crate) fn invite_date(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|date| date.format("%b %-d, %Y").to_string())
-        .unwrap_or_default()
+/// `formatDate`: "Nov 11, 2026", in `time`'s zone (the user's, unless a story fixes one).
+pub(crate) fn invite_date(time: &TimeFormat, ms: i64) -> String {
+    time.format_at(ms, "%b %-d, %Y")
 }
 
 impl InviteScreen {
@@ -44,6 +44,7 @@ impl InviteScreen {
         Self {
             view: InvitePreviewView::default(),
             signed_in: false,
+            time: TimeFormat::default(),
         }
     }
 
@@ -56,6 +57,12 @@ impl InviteScreen {
     /// The link was opened while signed in: only the message shows.
     pub fn set_signed_in(&mut self, signed_in: bool, cx: &mut Context<Self>) {
         self.signed_in = signed_in;
+        cx.notify();
+    }
+
+    /// The zone "Expires …" is written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
         cx.notify();
     }
 
@@ -80,7 +87,7 @@ impl InviteScreen {
             .on_click(cx.listener(|_, _, _, cx| cx.emit(InviteEvent::SignIn)))
     }
 
-    fn details(invite: &InvitePreview, cx: &App) -> impl IntoElement + use<> {
+    fn details(&self, invite: &InvitePreview, cx: &App) -> impl IntoElement + use<> {
         let sem = cx.sem();
         let line = |label: &'static str, value: String| {
             div()
@@ -127,7 +134,7 @@ impl InviteScreen {
             .children(
                 invite
                     .valid_until_ms
-                    .map(|until| line("Expires", invite_date(until))),
+                    .map(|until| line("Expires", invite_date(&self.time, until))),
             )
     }
 }
@@ -169,7 +176,7 @@ impl Render for InviteScreen {
                             .text_center()
                             .mb(spacing(3.)),
                         )
-                        .child(Self::details(invite, cx))
+                        .child(self.details(invite, cx))
                         .child(
                             div().w_full().mb(spacing(2.)).child(
                                 Button::new("invite-accept", "Join")
@@ -276,6 +283,7 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
     fn screen(view: InvitePreviewView, signed_in: bool, cx: &mut App) -> AnyView {
         cx.new(|cx| {
             let mut screen = InviteScreen::new(cx);
+            screen.set_time(TimeFormat::fixed(crate::messages::fixture::NOW_MS), cx);
             screen.set_view(view, cx);
             screen.set_signed_in(signed_in, cx);
             screen

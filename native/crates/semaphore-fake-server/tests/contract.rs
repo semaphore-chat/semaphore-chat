@@ -194,13 +194,6 @@ async fn every_implemented_route_matches_openapi() {
             schema: schemas.component("LoginResponseDto"),
         },
         Case {
-            method: reqwest::Method::POST,
-            path: "/api/auth/logout".to_owned(),
-            body: Some(json!({})),
-            status: 201,
-            schema: schemas.component("LogoutResponseDto"),
-        },
-        Case {
             method: reqwest::Method::GET,
             path: "/api/users/profile".to_owned(),
             body: None,
@@ -597,6 +590,35 @@ async fn every_implemented_route_matches_openapi() {
     );
 
     assert_routes_are_implemented(&schemas, &client, &base).await;
+
+    // Signing out last, because it ends the session: 201 with the contract's reply, then the token
+    // that asked is refused, as the backend's blacklisting makes it.
+    let (status, body) = request(
+        &client,
+        reqwest::Method::POST,
+        &base,
+        "/api/auth/logout",
+        Some(json!({})),
+        true,
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("LogoutResponseDto"),
+        &body,
+        "logout",
+    );
+    let (status, body) = request(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        "/api/users/profile",
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, 401, "the signed-out token still works: {body}");
 }
 
 async fn file_bytes(client: &reqwest::Client, base: &str, path: &str) -> Vec<u8> {
