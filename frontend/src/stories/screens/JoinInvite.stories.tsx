@@ -7,6 +7,8 @@ import { makeHandlers } from '../fixtures/handlers';
 import { bigCommunityScenario } from '../fixtures/scenarios';
 import type { LadleStoryComponent } from '../fixtures/screenStory';
 import { clearTokens } from '../../utils/tokenService';
+import { useDriver, clickButtonByText } from '../fixtures/edge/chat';
+import { ErrorCode } from '@semaphore-chat/shared';
 
 const invite = {
   code: 'join-me',
@@ -54,3 +56,83 @@ export const JoinInviteSignedOut: LadleStoryComponent = () => {
   return <JoinInviteScreen />;
 };
 JoinInviteSignedOut.msw = inviteHandlers;
+
+/** A lookup the server refuses with the given error code (404). */
+const refusedHandlers = (errorCode: ErrorCode, message: string) => [
+  http.post('/api/auth/refresh', () =>
+    HttpResponse.json({ message: 'Unauthorized' }, { status: 401 }),
+  ),
+  http.get('/api/invite/public/:code', () =>
+    HttpResponse.json({ statusCode: 404, errorCode, message }, { status: 404 }),
+  ),
+  ...makeHandlers(bigCommunityScenario),
+];
+
+/** Unknown code: the generic "invalid" message. */
+export const JoinInviteNotFound: LadleStoryComponent = () => {
+  clearTokens();
+  return <JoinInviteScreen />;
+};
+JoinInviteNotFound.msw = refusedHandlers(
+  ErrorCode.INVITE_NOT_FOUND,
+  'No invite found for the provided code.',
+);
+
+/** The invite's expiry has passed. */
+export const JoinInviteExpired: LadleStoryComponent = () => {
+  clearTokens();
+  return <JoinInviteScreen />;
+};
+JoinInviteExpired.msw = refusedHandlers(
+  ErrorCode.INVITE_EXPIRED,
+  'This invite has expired.',
+);
+
+/** Every use of the invite is spent. */
+export const JoinInviteExhausted: LadleStoryComponent = () => {
+  clearTokens();
+  return <JoinInviteScreen />;
+};
+JoinInviteExhausted.msw = refusedHandlers(
+  ErrorCode.INVITE_EXHAUSTED,
+  'This invite has reached its maximum number of uses.',
+);
+
+/** An admin turned the invite off. */
+export const JoinInviteDisabled: LadleStoryComponent = () => {
+  clearTokens();
+  return <JoinInviteScreen />;
+};
+JoinInviteDisabled.msw = refusedHandlers(
+  ErrorCode.INVITE_DISABLED,
+  'This invite has been disabled.',
+);
+
+/** Signed in, and the invite was spent while the page was open: the accept answers 404. */
+const ClickJoin = () => {
+  useDriver([() => clickButtonByText(/join with your account/i)]);
+  return null;
+};
+
+export const JoinInviteSignedInRefused: LadleStoryComponent = () => {
+  configureMockAuth();
+  return (
+    <>
+      <JoinInviteScreen />
+      <ClickJoin />
+    </>
+  );
+};
+JoinInviteSignedInRefused.msw = [
+  http.post('/api/invite/:code/accept', () =>
+    HttpResponse.json(
+      {
+        statusCode: 404,
+        errorCode: ErrorCode.INVITE_EXHAUSTED,
+        message: 'This invite has reached its maximum number of uses.',
+      },
+      { status: 404 },
+    ),
+  ),
+  ...inviteHandlers.filter((h) => !String(h.info.path).includes('/accept')),
+];
