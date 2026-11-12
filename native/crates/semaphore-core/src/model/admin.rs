@@ -25,6 +25,39 @@ pub struct AdminOp {
     pub action: Option<AdminAction>,
     /// W5: every change running or failed on this view, oldest started first.
     pub actions: Vec<AdminActionState>,
+    /// W5: the changes that ended on this view, oldest first, the last [`FINISHED_KEPT`] of them.
+    /// An entry in `actions` goes when its change succeeds, and a start and an end can reach a UI
+    /// in one batch of events; this record can't be missed that way. A UI notes
+    /// [`AdminOp::last_finished_seq`] when it sends, then waits for its action with a later
+    /// `seq` ([`AdminOp::finished_since`]).
+    pub finished: Vec<AdminActionOutcome>,
+}
+
+/// How many ended changes each view keeps in `AdminOp::finished`.
+pub const FINISHED_KEPT: usize = 16;
+
+/// A change that ended: succeeded, or failed (also refused before it was sent) with why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminActionOutcome {
+    pub action: AdminAction,
+    /// When it ended, in core's order of changes: always greater than any earlier one's.
+    pub seq: u64,
+    pub error: Option<ErrorView>,
+}
+
+impl AdminOp {
+    /// The newest ended change's `seq`, or 0: what a UI notes as it sends a change.
+    pub fn last_finished_seq(&self) -> u64 {
+        self.finished.iter().map(|done| done.seq).max().unwrap_or(0)
+    }
+
+    /// `action`'s newest end after `seq`, if it has ended since.
+    pub fn finished_since(&self, action: &AdminAction, seq: u64) -> Option<&AdminActionOutcome> {
+        self.finished
+            .iter()
+            .filter(|done| done.action == *action && done.seq > seq)
+            .max_by_key(|done| done.seq)
+    }
 }
 
 /// One kind of W5-A change, the command it comes from.

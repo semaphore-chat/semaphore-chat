@@ -1204,8 +1204,9 @@ fn failure(what: &str, error: &CoreError) -> String {
     }
 }
 
-/// A picked image's bytes, for `ProfileEditForm::set_picked` (which checks type and size).
-fn read_image(path: &std::path::Path) -> Result<DraftFile, String> {
+/// A picked image's bytes, for `ProfileEditForm::set_picked` and the community settings' pictures
+/// (which check type and size).
+pub(super) fn read_image(path: &std::path::Path) -> Result<DraftFile, String> {
     let bytes = std::fs::read(path).map_err(|error| format!("Couldn't read that file: {error}"))?;
     let name = path
         .file_name()

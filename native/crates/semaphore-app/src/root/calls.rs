@@ -379,7 +379,7 @@ impl AppRoot {
 
     fn on_participant_menu(
         &mut self,
-        menu: &Entity<ParticipantMenu>,
+        _: &Entity<ParticipantMenu>,
         event: &ParticipantMenuEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -414,37 +414,16 @@ impl AppRoot {
                     });
                 }
             }
-            ParticipantMenuEvent::Kick { user_id, reason } => {
+            ParticipantMenuEvent::Kick { user } => {
+                // W5: the moderation kick dialog asks first; the menu closes with it.
+                self.calls.menu = None;
                 let Some(Some(community_id)) = core.voice().room.map(|room| match room {
                     VoiceRoom::Channel { community_id, .. } => community_id,
                     VoiceRoom::Dm { .. } => None,
                 }) else {
                     return;
                 };
-                menu.update(cx, |menu, cx| menu.set_kick_busy(true, cx));
-                let (user_id, reason) = (user_id.clone(), reason.clone());
-                let kicked = self.fire_and_report(Box::pin(async move {
-                    core.kick_member(community_id, user_id, reason).await
-                }));
-                let menu = menu.downgrade();
-                cx.spawn(async move |this, cx| {
-                    let result = kicked.await;
-                    this.update(cx, |this, cx| match result {
-                        Ok(()) => {
-                            this.calls.menu = None;
-                            cx.notify();
-                        }
-                        Err(error) => {
-                            menu.update(cx, |menu, cx| {
-                                menu.set_kick_busy(false, cx);
-                                menu.set_kick_error(Some(error), cx);
-                            })
-                            .ok();
-                        }
-                    })
-                    .ok();
-                })
-                .detach();
+                self.open_kick(community_id, user.clone(), window, cx);
             }
             ParticipantMenuEvent::Close => {
                 self.calls.menu = None;

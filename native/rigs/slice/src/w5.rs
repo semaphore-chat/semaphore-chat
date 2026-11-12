@@ -2,34 +2,44 @@
 //!
 //! ```text
 //! wait core w5 channel "w5-ops" at 2        # the shown community's channel list, 0-based
+//! wait core w5 channel "w5-ops" listed      # listed|gone, wherever it is
 //! wait core w5 role "Member" has CREATE_INVITE
 //! wait core w5 member $ID(u-priya) role "Moderator"
 //! wait core w5 enabled invites-create       # an element's disabled state, by its id
 //! wait core w5 disabled invites-create
-//! wait core w5 reason invites-create "You need"   # the locked note beside it contains this
+//! wait core w5 reason invites-create "You need"   # the element's label contains this
+//! wait core w5 label moderate-ban "Ban"     # the element's label is exactly this
 //! wait core w5 composer locked              # locked|open: the timeout lock on the composer
 //! wait core w5 invites 1                    # invites|emoji|sounds N: rows in that view
 //! wait core w5 webhook-url shown            # shown|gone: the created webhook's one-time URL
 //! wait core w5 removed-notice banned        # banned|kicked|deleted|none
+//! wait core w5 previews 1                   # sound previews played (the soundboard tab's button)
 //! ```
 //!
 //! W5-app skeleton: the words parse; agent B makes `Rig::w5_holds` answer them.
 
 use anyhow::{Result, anyhow, bail};
+use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::*;
 
 /// W5's conditions.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum W5 {
     /// `channel <name> at <n>`: the channel called `name` is at `n` in the shown community's list.
     Channel { name: String, position: usize },
+    /// `channel <name> listed|gone`: whether the shown community lists it.
+    ChannelListed { name: String, listed: bool },
     /// `role <name> has <ACTION>`: the community's role holds that wire action.
     RoleHas { role: String, action: String },
     /// `member <user-id> role <name>`: the member holds that role.
     MemberRole { user_id: String, role: String },
     /// `enabled|disabled <id>`: the element is there and on or off.
     Enabled { id: String, enabled: bool },
-    /// `reason <id> <text>`: the element's locked note contains `text`.
+    /// `reason <id> <text>`: the element's label (a locked note's reason, a menu item's
+    /// "…, unavailable: why") contains `text`.
     Reason { id: String, text: String },
+    /// `label <id> <text>`: the element's label is exactly `text` (an action that is on).
+    Label { id: String, text: String },
     /// `composer locked|open`.
     ComposerLocked(bool),
     /// `invites|emoji|sounds N`.
@@ -38,6 +48,8 @@ pub(crate) enum W5 {
     WebhookUrl(bool),
     /// `removed-notice banned|kicked|deleted|none`.
     RemovedNotice(Option<String>),
+    /// `previews N`: sound previews asked for (`AppRoot::sound_preview`).
+    Previews(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +70,10 @@ pub(crate) fn parse(words: &[&str]) -> Result<W5> {
             name: (*name).into(),
             position: number(position)?,
         },
+        ["channel", name, state @ ("listed" | "gone")] => W5::ChannelListed {
+            name: (*name).into(),
+            listed: *state == "listed",
+        },
         ["role", role, "has", action] => W5::RoleHas {
             role: (*role).into(),
             action: (*action).into(),
@@ -74,6 +90,10 @@ pub(crate) fn parse(words: &[&str]) -> Result<W5> {
             id: (*id).into(),
             text: (*text).into(),
         },
+        ["label", id, text] => W5::Label {
+            id: (*id).into(),
+            text: (*text).into(),
+        },
         ["composer", state @ ("locked" | "open")] => W5::ComposerLocked(*state == "locked"),
         [what @ ("invites" | "emoji" | "sounds"), count] => W5::Count(
             match *what {
@@ -85,6 +105,7 @@ pub(crate) fn parse(words: &[&str]) -> Result<W5> {
         ),
         ["webhook-url", state @ ("shown" | "gone")] => W5::WebhookUrl(*state == "shown"),
         ["removed-notice", "none"] => W5::RemovedNotice(None),
+        ["previews", count] => W5::Previews(number(count)?),
         ["removed-notice", cause @ ("banned" | "kicked" | "deleted")] => {
             W5::RemovedNotice(Some((*cause).into()))
         }
@@ -93,29 +114,124 @@ pub(crate) fn parse(words: &[&str]) -> Result<W5> {
 }
 
 impl super::Rig {
-    /// W5's conditions. Skeleton: none is answered yet.
+    /// W5's conditions.
     pub(crate) fn w5_holds(&mut self, condition: &W5) -> Result<bool> {
         match condition {
-            W5::Channel { name, position } => bail!("w5 channel {name} at {position}: not built"),
-            W5::RoleHas { role, action } => bail!("w5 role {role} has {action}: not built"),
-            W5::MemberRole { user_id, role } => bail!("w5 member {user_id} role {role}: not built"),
-            W5::Enabled { id, enabled } => bail!("w5 enabled {id} {enabled}: not built"),
-            W5::Reason { id, text } => bail!("w5 reason {id} {text}: not built"),
-            W5::ComposerLocked(locked) => bail!("w5 composer locked={locked}: not built"),
-            W5::Count(what, count) => bail!("w5 {what:?} {count}: not built"),
-            W5::WebhookUrl(shown) => bail!("w5 webhook-url shown={shown}: not built"),
-            W5::RemovedNotice(cause) => bail!("w5 removed-notice {cause:?}: not built"),
+            W5::Enabled { id, enabled } => {
+                let id = ElementId::Name(id.clone().into());
+                let found = self.driver.query(|window| {
+                    window
+                        .try_find(id)
+                        .map(|element| !element.disabled().unwrap_or(false))
+                })?;
+                return Ok(found == Some(*enabled));
+            }
+            W5::Reason { id, text } | W5::Label { id, text } => {
+                let exact = matches!(condition, W5::Label { .. });
+                let id = ElementId::Name(id.clone().into());
+                let label = self.driver.query(|window| {
+                    window
+                        .try_find(id)
+                        .and_then(|element| element.label().map(|label| label.to_string()))
+                })?;
+                return Ok(label.is_some_and(|label| {
+                    if exact {
+                        label == *text
+                    } else {
+                        label.contains(text.as_str())
+                    }
+                }));
+            }
+            W5::WebhookUrl(shown) => {
+                // The created webhook's dialog, which shows its URL this once.
+                let id = ElementId::Name("webhook-created-done".into());
+                let found = self.driver.query(|window| window.try_find(id).is_some())?;
+                return Ok(found == *shown);
+            }
+            _ => {}
         }
+        let app = self.app()?.clone();
+        Ok(self.driver.cx.update(|cx| {
+            let root = app.read(cx);
+            let Some(core) = root.core() else {
+                return false;
+            };
+            let community = root.shell().and_then(|shell| {
+                shell
+                    .read(cx)
+                    .nav()
+                    .current()
+                    .community_id()
+                    .map(str::to_owned)
+            });
+            match condition {
+                W5::Channel { name, position } => {
+                    let Some(community) = community else {
+                        return false;
+                    };
+                    let channels = core.channels(community);
+                    let Some(kind) = channels.iter().find(|c| c.name == *name).map(|c| c.kind)
+                    else {
+                        return false;
+                    };
+                    let mut same: Vec<_> = channels.iter().filter(|c| c.kind == kind).collect();
+                    same.sort_by_key(|c| c.position);
+                    same.iter().position(|c| c.name == *name) == Some(*position)
+                }
+                W5::ChannelListed { name, listed } => community.is_some_and(|community| {
+                    core.channels(community).iter().any(|c| c.name == *name) == *listed
+                }),
+                W5::RoleHas { role, action } => community.is_some_and(|community| {
+                    core.roles(community)
+                        .roles
+                        .iter()
+                        .any(|row| row.name == *role && row.actions.iter().any(|a| a == action))
+                }),
+                W5::MemberRole { user_id, role } => community.is_some_and(|community| {
+                    let roles = core.roles(community.clone()).roles;
+                    let held = core.member_roles(community, user_id.clone()).held;
+                    roles
+                        .iter()
+                        .any(|row| row.name == *role && held.contains(&row.id))
+                }),
+                W5::ComposerLocked(locked) => root
+                    .pane()
+                    .is_some_and(|pane| pane.read(cx).timed_out(cx) == *locked),
+                W5::Count(what, count) => community.is_some_and(|community| {
+                    let shown = match what {
+                        Counted::Invites => core.community_invites(community).invites.len(),
+                        Counted::Emoji => core.custom_emoji(community).emojis.len(),
+                        Counted::Sounds => core.soundboard(community).sounds.len(),
+                    };
+                    shown == *count
+                }),
+                W5::Previews(count) => root.sound_preview().1 == *count,
+                W5::RemovedNotice(cause) => {
+                    root.removed_notice(cx).map(|(_, shown)| shown.to_owned()) == *cause
+                }
+                W5::Enabled { .. } | W5::Reason { .. } | W5::Label { .. } | W5::WebhookUrl(_) => {
+                    unreachable!("answered above")
+                }
+            }
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::prelude::v1::test;
 
     #[test]
     fn every_form_parses_and_nothing_else_does() {
-        let good: [(&[&str], W5); 13] = [
+        let good: [(&[&str], W5); 14] = [
+            (
+                &["label", "moderate-ban", "Ban"],
+                W5::Label {
+                    id: "moderate-ban".into(),
+                    text: "Ban".into(),
+                },
+            ),
             (
                 &["channel", "w5-ops", "at", "2"],
                 W5::Channel {
@@ -175,6 +291,14 @@ mod tests {
         assert_eq!(
             parse(&["removed-notice", "none"]).unwrap(),
             W5::RemovedNotice(None)
+        );
+        assert_eq!(parse(&["previews", "2"]).unwrap(), W5::Previews(2));
+        assert_eq!(
+            parse(&["channel", "x", "gone"]).unwrap(),
+            W5::ChannelListed {
+                name: "x".into(),
+                listed: false
+            }
         );
         let bad: [&[&str]; 9] = [
             &[],

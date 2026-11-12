@@ -10,6 +10,7 @@ mod faces;
 pub mod fixtures;
 mod members;
 mod phone;
+mod press;
 mod rail;
 mod sidebar;
 mod source;
@@ -151,6 +152,10 @@ pub struct Shell {
     pub(crate) route_sidebar: Option<RouteSidebarSlot>,
     /// The channel header's notification level control. Set by the owner.
     pub(crate) header_accessory: Option<AnyView>,
+    /// W5: the phone layout was drawn last: a member row opens its menu on a long press.
+    pub(crate) touch: Cell<bool>,
+    /// W5: a press on a member row, and its timer.
+    pub(crate) member_press: Option<(press::Press, Task<()>)>,
 }
 
 impl EventEmitter<ShellEvent> for Shell {}
@@ -185,6 +190,8 @@ impl Shell {
             side_panel: None,
             route_sidebar: None,
             header_accessory: None,
+            touch: Cell::new(false),
+            member_press: None,
         };
         shell.settle_route();
         shell
@@ -376,10 +383,32 @@ impl Shell {
             | CoreEvent::Notify { .. }
             | CoreEvent::WithdrawNotifications { .. }
             | CoreEvent::DesktopSignedIn { .. }
-            | CoreEvent::Sound { .. }
-            // W5-app routes these (the removal dialog, leaving a removed channel).
-            | CoreEvent::CommunityRemoved { .. }
-            | CoreEvent::ChannelRemoved { .. } => {}
+            | CoreEvent::Sound { .. } => {}
+            // W5: the community has gone for this user (the owner shows why): home, if it's on
+            // screen, and nothing of it to reopen.
+            CoreEvent::CommunityRemoved { community_id, .. } => {
+                self.last_channel.remove(community_id);
+                if self.nav.current().community_id() == Some(community_id.as_str()) {
+                    self.navigate(Route::Home, cx);
+                }
+            }
+            // W5: a channel went: leave it if it's open, for the community's next channel.
+            CoreEvent::ChannelRemoved {
+                community_id,
+                channel_id,
+            } => {
+                if self.last_channel.get(community_id) == Some(channel_id) {
+                    self.last_channel.remove(community_id);
+                }
+                if self.nav.current().channel_id() == Some(channel_id.as_str()) {
+                    self.navigate(
+                        Route::Community {
+                            community_id: community_id.clone(),
+                        },
+                        cx,
+                    );
+                }
+            }
         }
         cx.notify();
     }
@@ -648,6 +677,7 @@ impl Render for Shell {
             window.focus(&self.focus, cx);
         }
         let width = f32::from(window.viewport_size().width);
+        self.touch.set(width < PHONE);
         if width < PHONE {
             return self
                 .render_phone(window, cx)

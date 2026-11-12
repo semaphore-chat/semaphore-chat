@@ -167,11 +167,12 @@ impl RenderOnce for MenuItem {
             None => self.label.to_string(),
         };
         let handler = self.on_select.clone();
-        div()
-            .id(ElementId::Name(self.id.clone()))
-            .test_support()
+        // A base button with the menu item role: it reports a disabled item as disabled.
+        base::Button::new(ElementId::Name(self.id.clone()))
             .role(Role::MenuItem)
-            .aria_label(accessible)
+            .disabled(self.disabled)
+            .accessibility_label(accessible)
+            .w_full()
             .min_h(px(self.min_height))
             .px(px(16.))
             .py(px(6.))
@@ -315,12 +316,17 @@ impl RenderOnce for Dialog {
                             .text_color(secondary)
                             .children(self.body),
                     )
+                    // The actions keep to the body's side padding, so a filled button never
+                    // runs past the column the fields end at, and wrap on a narrow window.
                     .child(
                         div()
                             .flex()
+                            .flex_wrap()
                             .justify_end()
+                            .items_center()
                             .gap(px(8.))
-                            .p(px(8.))
+                            .px(px(24.))
+                            .pb(px(20.))
                             .children(self.actions),
                     ),
             );

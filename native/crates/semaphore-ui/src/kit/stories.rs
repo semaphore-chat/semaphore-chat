@@ -473,8 +473,60 @@ impl Render for Gallery {
     }
 }
 
+/// Japanese, Chinese and Korean in every type size, a CJK name beside a Latin one, and a long
+/// line that wraps: the rig image's Noto CJK font, so these shots show glyphs, not boxes.
+struct Cjk;
+
+impl Render for Cjk {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sem = cx.sem().clone();
+        let line = |variant: Variant, label: &'static str, sample: &'static str| {
+            div()
+                .flex()
+                .gap(px(16.))
+                .items_baseline()
+                .child(
+                    div()
+                        .w(px(120.))
+                        .flex_shrink_0()
+                        .child(text(Variant::Caption, label).text_color(sem.text_secondary)),
+                )
+                .child(div().flex_1().min_w_0().child(text(variant, sample)))
+        };
+        div()
+            .id("kit-cjk")
+            .size_full()
+            .bg(sem.background_default)
+            .text_color(sem.text_primary)
+            .font_family(FONT_FAMILY)
+            .p(px(24.))
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .child(line(Variant::H5, "H5 · Japanese", "日本語のチャンネル"))
+            .child(line(Variant::H6, "H6 · Chinese", "简体中文 · 繁體中文"))
+            .child(line(Variant::Body1, "Body1 · Korean", "한국어 메시지를 보냈습니다"))
+            .child(line(Variant::Body2, "Body2 · mixed", "Ban 山田太郎 (yamada_t) for 1 week"))
+            .child(line(
+                Variant::Caption,
+                "Caption",
+                "あなたは「カウチ協同組合」から削除されました",
+            ))
+            .child(
+                div().max_w(px(420.)).child(text(
+                    Variant::Body1,
+                    "長いメッセージは折り返されます。モデレーターが理由を入力すると、ここに表示されます。\
+                     这是一条很长的消息，用来检查自动换行。",
+                )),
+            )
+    }
+}
+
 pub fn stories() -> Vec<Story> {
-    vec![Story::new("kit-gallery", |_, window, cx| {
-        cx.new(|cx| Gallery::new(window, cx)).into()
-    })]
+    vec![
+        Story::new("kit-gallery", |_, window, cx| {
+            cx.new(|cx| Gallery::new(window, cx)).into()
+        }),
+        Story::new("kit-cjk", |_, _, cx| cx.new(|_| Cjk).into()),
+    ]
 }

@@ -1416,3 +1416,223 @@ async fn a_removal_is_announced_again_only_after_being_added_back() {
         "added back, then kicked again"
     );
 }
+
+// ---- Ended changes (`AdminOp::finished`) ----
+
+fn settings_op(rig: &Rig) -> semaphore_core::model::AdminOp {
+    rig.core.community_settings(COMMUNITY.into()).op
+}
+
+fn rename(name: &str) -> CommunityPatch {
+    CommunityPatch {
+        name: Some(name.into()),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn a_change_that_starts_and_ends_unseen_is_still_recorded() {
+    let mut rig = Rig::new().signed_in().await;
+    rig.backend.w4.answer("community", community_json("Old"));
+    rig.backend
+        .w4
+        .answer("update_community", community_json("New"));
+    rig.core.community_settings(COMMUNITY.into());
+    rig.settle().await;
+    let update = AdminAction {
+        kind: AdminActionKind::UpdateCommunity,
+        target_id: Some(COMMUNITY.into()),
+    };
+    let before = settings_op(&rig);
+    assert!(before.finished.is_empty());
+    // Nothing reads the view between the start and the end, as when both reach a UI at once.
+    rig.core
+        .update_community(COMMUNITY.into(), rename("New"))
+        .await
+        .unwrap();
+    let after = settings_op(&rig);
+    assert!(after.actions.is_empty(), "a success leaves no entry");
+    assert_eq!(
+        after,
+        semaphore_core::model::AdminOp {
+            finished: after.finished.clone(),
+            ..Default::default()
+        }
+    );
+    let done = after
+        .finished_since(&update, before.last_finished_seq())
+        .expect("its end is recorded");
+    assert!(done.error.is_none());
+    assert!(after.last_finished_seq() > before.last_finished_seq());
+}
+
+#[tokio::test]
+async fn overlapping_changes_each_record_their_own_end_in_order() {
+    let mut rig = with_channels().await;
+    rig.backend.w4.answer("community", community_json("Old"));
+    rig.backend
+        .w4
+        .answer("update_community", community_json("New"));
+    rig.core.community_settings(COMMUNITY.into());
+    rig.settle().await;
+    let start = settings_op(&rig).last_finished_seq();
+    let update = AdminAction {
+        kind: AdminActionKind::UpdateCommunity,
+        target_id: Some(COMMUNITY.into()),
+    };
+    let create = AdminAction {
+        kind: AdminActionKind::CreateChannel,
+        target_id: None,
+    };
+    rig.backend.w4.answer(
+        "create_channel",
+        channel_json("00000000-0000-4000-8000-00000000aa09", "ops", "TEXT", 2),
+    );
+    let hold = rig.backend.w4.hold("update_community");
+    let updating = rig.core.update_community(COMMUNITY.into(), rename("New"));
+    let (updated, ()) = tokio::join!(updating, async {
+        tokio::task::yield_now().await;
+        rig.core
+            .create_channel(COMMUNITY.into(), draft("ops", false, 0))
+            .await
+            .unwrap();
+        let op = settings_op(&rig);
+        assert!(
+            op.finished_since(&create, start).is_some(),
+            "the create ended"
+        );
+        assert!(
+            op.finished_since(&update, start).is_none(),
+            "the update runs on"
+        );
+        assert!(op.busy);
+        hold.send(()).unwrap();
+    });
+    updated.unwrap();
+    let op = settings_op(&rig);
+    let created = op.finished_since(&create, start).unwrap().seq;
+    let renamed = op.finished_since(&update, start).unwrap().seq;
+    assert!(renamed > created, "ended later, recorded later");
+}
+
+#[tokio::test]
+async fn a_failure_then_a_retry_each_record_their_end() {
+    let mut rig = Rig::new().signed_in().await;
+    rig.backend.w4.answer("community", community_json("Old"));
+    rig.backend
+        .w4
+        .answer("update_community", community_json("New"));
+    rig.core.community_settings(COMMUNITY.into());
+    rig.settle().await;
+    let update = AdminAction {
+        kind: AdminActionKind::UpdateCommunity,
+        target_id: Some(COMMUNITY.into()),
+    };
+    rig.backend
+        .w4
+        .fail_next("update_community", refusal(403, "FORBIDDEN"));
+    let sent = settings_op(&rig).last_finished_seq();
+    assert!(
+        rig.core
+            .update_community(COMMUNITY.into(), rename("New"))
+            .await
+            .is_err()
+    );
+    let failed = settings_op(&rig);
+    let failure = failed
+        .finished_since(&update, sent)
+        .expect("the failure ends it");
+    assert_eq!(
+        failure.error.as_ref().unwrap().message,
+        "refused: FORBIDDEN"
+    );
+    // Sent again: the old failure isn't the retry's end; its own success is.
+    let retry_sent = failed.last_finished_seq();
+    assert!(failed.finished_since(&update, retry_sent).is_none());
+    rig.core
+        .update_community(COMMUNITY.into(), rename("New"))
+        .await
+        .unwrap();
+    let op = settings_op(&rig);
+    let retried = op
+        .finished_since(&update, retry_sent)
+        .expect("the retry ended");
+    assert!(retried.error.is_none());
+    assert_eq!(op.finished.len(), 2, "both ends are kept");
+}
+
+#[tokio::test]
+async fn ended_changes_are_bounded_per_view_and_refusals_count() {
+    let rig = Rig::new().signed_in().await;
+    for _ in 0..(semaphore_core::model::FINISHED_KEPT + 4) {
+        // Refused before it's sent: an end with its reason.
+        assert!(
+            rig.core
+                .update_community(COMMUNITY.into(), rename("  "))
+                .await
+                .is_err()
+        );
+    }
+    let op = settings_op(&rig);
+    assert_eq!(op.finished.len(), semaphore_core::model::FINISHED_KEPT);
+    assert!(op.finished.iter().all(|done| done.error.is_some()));
+    let seqs: Vec<u64> = op.finished.iter().map(|done| done.seq).collect();
+    assert!(
+        seqs.windows(2).all(|pair| pair[0] < pair[1]),
+        "oldest first"
+    );
+    // Another view's ends are its own.
+    assert!(
+        rig.core
+            .custom_emoji(COMMUNITY.into())
+            .op
+            .finished
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn a_removed_community_leaves_no_voice_presence_behind() {
+    let presence = |id: &str| {
+        json!({
+            "id": id, "username": id, "displayName": id, "avatarUrl": null,
+            "joinedAt": "2026-09-22T18:00:00.000Z", "isDeafened": false, "isServerMuted": false,
+        })
+    };
+    let rig = Rig::new();
+    rig.backend.channels.lock().unwrap().push(json!({
+        "id": VOICE_A, "name": "lounge", "communityId": "comm", "type": "VOICE",
+        "position": 0, "slowmodeSeconds": 0, "preset": "NORMAL", "isPrivate": false,
+        "createdAt": "2026-09-22T18:00:00.000Z",
+    }));
+    *rig.backend.voice_users.lock().unwrap() = vec![presence("alice")];
+    let mut rig = rig.signed_in().await;
+    rig.core.communities();
+    rig.core.channels("comm".into());
+    rig.settle().await;
+    rig.core.channels("comm".into());
+    rig.settle().await;
+    let lounge = |rig: &Rig| {
+        rig.core
+            .channels("comm".into())
+            .into_iter()
+            .find(|channel| channel.id == VOICE_A)
+            .map(|channel| channel.voice_users.len())
+    };
+    assert_eq!(lounge(&rig), Some(1), "alice is in the lounge");
+    // Removed. Nobody is in the lounge any more by the time the channels are read again (the
+    // fake still lists them): what's shown is read afresh, not what was in voice before.
+    rig.core
+        .ingest(event("communityDeleted", json!({ "communityId": "comm" })));
+    rig.settle().await;
+    rig.backend.voice_users.lock().unwrap().clear();
+    rig.core.channels("comm".into());
+    rig.settle().await;
+    rig.core.channels("comm".into());
+    rig.settle().await;
+    assert_eq!(
+        lounge(&rig),
+        Some(0),
+        "no presence of the removed community is kept"
+    );
+}

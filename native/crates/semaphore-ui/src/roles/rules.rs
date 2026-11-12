@@ -457,48 +457,7 @@ pub fn any_running(op: &AdminOp, kinds: &[AdminActionKind]) -> bool {
         .any(|state| kinds.contains(&state.action.kind) && state.busy)
 }
 
-/// Where a sent change stands, from its own entry in the op.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
-    Waiting,
-    Succeeded,
-    Failed,
-}
-
-/// A sent change, followed through its own entry in `AdminOp::actions` until it ends. Core adds
-/// the entry as the change starts and drops it when it succeeds, so an entry gone after it was
-/// seen (or after the op moved on) is a success.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pending {
-    pub action: AdminAction,
-    before: AdminOp,
-    seen: bool,
-}
-
-impl Pending {
-    pub fn new(action: AdminAction, before: &AdminOp) -> Self {
-        Self {
-            action,
-            before: before.clone(),
-            seen: false,
-        }
-    }
-
-    pub fn observe(&mut self, op: &AdminOp) -> Outcome {
-        match state_of(op, &self.action) {
-            Some(state) if state.busy => {
-                self.seen = true;
-                Outcome::Waiting
-            }
-            Some(state) if state.error.is_some() && (self.seen || *op != self.before) => {
-                Outcome::Failed
-            }
-            Some(_) => Outcome::Waiting,
-            None if self.seen || *op != self.before => Outcome::Succeeded,
-            None => Outcome::Waiting,
-        }
-    }
-}
+pub use crate::community_settings::rules::{Outcome, Pending};
 
 // ---- The assignment dialog. ----
 
