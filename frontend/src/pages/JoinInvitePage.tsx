@@ -13,14 +13,38 @@ import {
 } from "@mui/material";
 import { styled } from "@mui/system";
 import { useParams, useNavigate } from "react-router-dom";
-import { setAccessToken, storeElectronRefreshToken } from "../utils/tokenService";
+import {
+  getAccessToken,
+  refreshSession,
+  setAccessToken,
+  storeElectronRefreshToken,
+} from "../utils/tokenService";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   inviteControllerGetPublicInviteOptions,
+  inviteControllerAcceptInviteMutation,
   userControllerRegisterMutation,
   authControllerLoginMutation,
 } from "../api-client/@tanstack/react-query.gen";
-import type { PublicInviteDto } from "../api-client/types.gen";
+import { ErrorCode } from "@semaphore-chat/shared";
+
+/** Why the server refused an invite code, for the join screen. */
+function inviteFailureMessage(error: unknown): string {
+  const code =
+    typeof error === "object" && error !== null && "errorCode" in error
+      ? error.errorCode
+      : undefined;
+  switch (code) {
+    case ErrorCode.INVITE_EXPIRED:
+      return "This invite has expired.";
+    case ErrorCode.INVITE_EXHAUSTED:
+      return "This invite has reached its maximum number of uses.";
+    case ErrorCode.INVITE_DISABLED:
+      return "This invite has been disabled.";
+    default:
+      return "This invite link is invalid or has expired.";
+  }
+}
 
 const FormContainer = styled(Box)({
   display: "flex",
@@ -61,6 +85,26 @@ const JoinInvitePage: React.FC = () => {
 
   const { mutateAsync: register, isPending: registering, error: registerError } = useMutation(userControllerRegisterMutation());
   const { mutateAsync: login, isPending: loggingIn } = useMutation(authControllerLoginMutation());
+  const {
+    mutateAsync: acceptInvite,
+    isPending: accepting,
+    error: acceptError,
+  } = useMutation(inviteControllerAcceptInviteMutation());
+
+  // A session may exist from an earlier page (token in memory) or from the
+  // refresh cookie after opening the link directly: ask once, quietly.
+  const [signedIn, setSignedIn] = useState(() => !!getAccessToken());
+
+  useEffect(() => {
+    if (signedIn) return;
+    let cancelled = false;
+    refreshSession().then((result) => {
+      if (!cancelled && result.status === "refreshed") setSignedIn(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
 
   useEffect(() => {
     if (!inviteCode) {
@@ -86,14 +130,15 @@ const JoinInvitePage: React.FC = () => {
     }
   };
 
-  const isInviteExpired = (invite: PublicInviteDto) => {
-    if (!invite?.validUntil) return false;
-    return new Date() > new Date(invite.validUntil);
-  };
-
-  const isInviteMaxedOut = (invite: PublicInviteDto) => {
-    if (!invite?.maxUses) return false;
-    return invite.uses >= invite.maxUses;
+  const handleJoinWithAccount = async () => {
+    if (!inviteCode) return;
+    try {
+      const result = await acceptInvite({ path: { code: inviteCode } });
+      const firstJoined = result.joined[0];
+      navigate(firstJoined ? `/community/${firstJoined.id}` : "/");
+    } catch (err) {
+      logger.error("Joining with the account failed:", err);
+    }
   };
 
   const formatDate = (date: Date | string) => {
@@ -117,7 +162,7 @@ const JoinInvitePage: React.FC = () => {
     );
   }
 
-  // An unusable or unknown code answers an empty 200, which the client gives us as {}.
+  // The lookup answers 404 with a reason for a code that can't be used.
   if (inviteError || !invite?.code) {
     return (
       <FormContainer>
@@ -126,35 +171,7 @@ const JoinInvitePage: React.FC = () => {
             Invalid Invite
           </Typography>
           <Alert severity="error" sx={{ width: "100%", mb: 2 }}>
-            This invite link is invalid or has expired.
-          </Alert>
-          <Button
-            variant="contained"
-            onClick={() => navigate("/")}
-            fullWidth
-          >
-            Go to Home
-          </Button>
-        </FormBox>
-      </FormContainer>
-    );
-  }
-
-  const expired = isInviteExpired(invite);
-  const maxedOut = isInviteMaxedOut(invite);
-  const disabled = invite.disabled || expired || maxedOut;
-
-  if (disabled) {
-    return (
-      <FormContainer>
-        <FormBox>
-          <Typography variant="h5" component="h1" sx={{ mb: 2 }}>
-            Invite Unavailable
-          </Typography>
-          <Alert severity="error" sx={{ width: "100%", mb: 2 }}>
-            {expired && "This invite has expired."}
-            {maxedOut && "This invite has reached its maximum number of uses."}
-            {invite.disabled && "This invite has been disabled."}
+            {inviteFailureMessage(inviteError)}
           </Alert>
           <Button
             variant="contained"
@@ -228,80 +245,107 @@ const JoinInvitePage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Registration Form */}
-        <Box
-          component="form"
-          onSubmit={handleSubmit}
-          sx={{ width: "100%" }}
-        >
-          {registerError && (
-            <Alert
-              severity="error"
-              sx={{ width: "100%", mb: 2 }}
-            >
-              Registration failed. Please try again.
-            </Alert>
-          )}
-          
-          <TextField
-            label="Username"
-            variant="outlined"
-            fullWidth
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            sx={{ mb: 2 }}
-            required
-          />
-          
-          <TextField
-            label="Email"
-            type="email"
-            variant="outlined"
-            fullWidth
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            sx={{ mb: 2 }}
-            required
-          />
-          
-          <TextField
-            label="Password"
-            type="password"
-            variant="outlined"
-            fullWidth
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            sx={{ mb: 3 }}
-            required
-          />
-          
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            fullWidth
-            disabled={registering || loggingIn}
-            sx={{ mb: 2 }}
-          >
-            {registering || loggingIn ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              "Join Community"
+        {signedIn ? (
+          /* Signed in: join with the existing account instead of registering */
+          <Box sx={{ width: "100%" }}>
+            {acceptError && (
+              <Alert severity="error" sx={{ width: "100%", mb: 2 }}>
+                {inviteFailureMessage(acceptError)}
+              </Alert>
             )}
-          </Button>
-        </Box>
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              onClick={handleJoinWithAccount}
+              disabled={accepting}
+              sx={{ mb: 2 }}
+            >
+              {accepting ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : (
+                "Join with your account"
+              )}
+            </Button>
+          </Box>
+        ) : (
+          <>
+            {/* Registration Form */}
+            <Box
+              component="form"
+              onSubmit={handleSubmit}
+              sx={{ width: "100%" }}
+            >
+              {registerError && (
+                <Alert
+                  severity="error"
+                  sx={{ width: "100%", mb: 2 }}
+                >
+                  Registration failed. Please try again.
+                </Alert>
+              )}
+              
+              <TextField
+                label="Username"
+                variant="outlined"
+                fullWidth
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                sx={{ mb: 2 }}
+                required
+              />
+              
+              <TextField
+                label="Email"
+                type="email"
+                variant="outlined"
+                fullWidth
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                sx={{ mb: 2 }}
+                required
+              />
+              
+              <TextField
+                label="Password"
+                type="password"
+                variant="outlined"
+                fullWidth
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                sx={{ mb: 3 }}
+                required
+              />
+              
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                fullWidth
+                disabled={registering || loggingIn}
+                sx={{ mb: 2 }}
+              >
+                {registering || loggingIn ? (
+                  <CircularProgress size={24} color="inherit" />
+                ) : (
+                  "Join Community"
+                )}
+              </Button>
+            </Box>
 
-        <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-          Already have an account?{" "}
-          <Button
-            variant="text"
-            size="small"
-            onClick={() => navigate("/login")}
-            sx={{ textTransform: "none", p: 0, minWidth: "auto" }}
-          >
-            Login here
-          </Button>
-        </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+              Already have an account?{" "}
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => navigate("/login")}
+                sx={{ textTransform: "none", p: 0, minWidth: "auto" }}
+              >
+                Login here
+              </Button>
+            </Typography>
+          </>
+        )}
       </FormBox>
     </FormContainer>
   );

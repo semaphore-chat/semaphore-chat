@@ -22,6 +22,12 @@ import { RoomEvents } from '@/rooms/room-subscription.events';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { WebsocketService } from '@/websocket/websocket.service';
+import { InviteService } from '@/invite/invite.service';
+import {
+  AcceptInviteResponseDto,
+  InviteCommunityDto,
+  SkippedInviteCommunityDto,
+} from '@/invite/dto/accept-invite-response.dto';
 import { RoomName } from '@/common/utils/room-name.util';
 import { clampLimit } from '@/common/utils/clamp-limit.util';
 
@@ -39,6 +45,7 @@ export class MembershipService {
     private readonly permissionsCacheService: PermissionsCacheService,
     private readonly permissionsService: PermissionsService,
     private readonly websocketService: WebsocketService,
+    private readonly inviteService: InviteService,
   ) {}
 
   async create(
@@ -179,6 +186,90 @@ export class MembershipService {
 
       throw error;
     }
+  }
+
+  /**
+   * Adds an already-registered user to an invite's communities.
+   *
+   * The code is validated like registration (one service function, so the same
+   * refusals); each community goes through `create()` above, so default roles,
+   * general-channel membership, events and bans behave as for any other
+   * membership. A banned user is skipped for that community only. The use is
+   * counted only when at least one community was actually joined, so someone
+   * who is already in every community doesn't spend it.
+   */
+  async acceptInvite(
+    code: string,
+    userId: string,
+  ): Promise<AcceptInviteResponseDto> {
+    const invite = await this.inviteService.validateInviteCode(code);
+    if (!invite) {
+      throw new NotFoundException('No invite found for the provided code.');
+    }
+
+    const communityIds = invite.defaultCommunities.map(
+      (entry) => entry.communityId,
+    );
+    const communities = await this.databaseService.community.findMany({
+      where: { id: { in: communityIds } },
+      select: { id: true, name: true },
+    });
+    const memberships = await this.databaseService.membership.findMany({
+      where: { userId, communityId: { in: communityIds } },
+      select: { communityId: true },
+    });
+    const alreadyIn = new Set(memberships.map((row) => row.communityId));
+
+    const joined: InviteCommunityDto[] = [];
+    const skipped: SkippedInviteCommunityDto[] = [];
+    const pending: InviteCommunityDto[] = [];
+    for (const community of communities) {
+      if (alreadyIn.has(community.id)) {
+        skipped.push({ ...community, reason: 'already_member' });
+      } else {
+        pending.push(community);
+      }
+    }
+    if (pending.length === 0) {
+      // Nothing to join: no use is consumed.
+      return { joined, skipped };
+    }
+
+    // Redeem first, atomically (the invite row is locked in the transaction),
+    // so the use limit and expiry hold however many users accept at once. A
+    // user who already spent a use on a still-usable invite gets
+    // 'already_used': no second use. A past use is no pass once the invite is
+    // disabled, expired or used up (otherwise a kicked member could rejoin). If
+    // every join below then fails (e.g. banned everywhere) the use stays
+    // consumed: the invite was valid and the user took part in it.
+    const redemption = await this.databaseService.$transaction((tx) =>
+      this.inviteService.redeemForExistingUser(tx, invite.code, userId),
+    );
+    if (redemption === 'unusable') {
+      // Same answer as registration gives for an invite that can't be used.
+      throw new NotFoundException('No invite found for the provided code.');
+    }
+
+    for (const community of pending) {
+      try {
+        await this.create({ userId, communityId: community.id });
+        joined.push(community);
+      } catch (error) {
+        if (error instanceof ForbiddenException) {
+          // Banned, or banned again by a concurrent request: the community is
+          // skipped; the rest of the invite still applies.
+          skipped.push({ ...community, reason: 'banned' });
+          continue;
+        }
+        if (error instanceof ConflictException) {
+          skipped.push({ ...community, reason: 'already_member' });
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return { joined, skipped };
   }
 
   async findAllForCommunity(

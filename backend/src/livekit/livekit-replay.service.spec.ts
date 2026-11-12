@@ -1695,6 +1695,22 @@ describe('LivekitReplayService', () => {
       expect(ffmpegService.concatenateSegments).toHaveBeenCalled();
     });
 
+    it('should delete the temp file and rethrow when FFmpeg fails', async () => {
+      databaseService.egressSession.findFirst.mockResolvedValue(activeSession);
+      storageService.deleteFile.mockResolvedValue(undefined);
+      ffmpegService.concatenateSegments.mockRejectedValue(
+        new Error('ffmpeg exited 1'),
+      );
+
+      await expect(service.streamReplay(userId, 1)).rejects.toThrow(
+        'ffmpeg exited 1',
+      );
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(
+        expect.stringContaining('replay-stream-user-123'),
+      );
+    });
+
     it('should heal the session and stream when LiveKit says the egress is still running', async () => {
       databaseService.egressSession.findFirst
         .mockResolvedValueOnce(null) // active-session lookup misses

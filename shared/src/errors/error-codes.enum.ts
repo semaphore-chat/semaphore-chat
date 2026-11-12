@@ -47,6 +47,14 @@ export enum ErrorCode {
   FILE_NOT_OWNED = 'FILE_NOT_OWNED',
   UPLOAD_TARGET_NOT_ALLOWED = 'UPLOAD_TARGET_NOT_ALLOWED',
   STORAGE_QUOTA_EXCEEDED = 'STORAGE_QUOTA_EXCEEDED',
+
+  // Instance invites
+  /** No invite exists for the code. */
+  INVITE_NOT_FOUND = 'INVITE_NOT_FOUND',
+  INVITE_EXPIRED = 'INVITE_EXPIRED',
+  /** The invite reached its maximum number of uses. */
+  INVITE_EXHAUSTED = 'INVITE_EXHAUSTED',
+  INVITE_DISABLED = 'INVITE_DISABLED',
 }
 
 /**

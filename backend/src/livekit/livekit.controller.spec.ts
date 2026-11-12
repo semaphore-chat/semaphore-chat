@@ -15,6 +15,30 @@ import { JwtService } from '@nestjs/jwt';
 import { TrackSource } from 'livekit-server-sdk';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { FULL_PUBLISH_GRANT } from './publish-grant.util';
+import { LivekitReplayService } from './livekit-replay.service';
+import { StorageService } from '@/storage/storage.service';
+import { StreamReplayDto } from './dto/capture-replay.dto';
+import { ThrottlerException } from '@nestjs/throttler';
+import { EventEmitter } from 'events';
+import type { Response } from 'express';
+import type { AuthenticatedRequest } from '@/types';
+
+/** A response whose `sendFile` finishes only when the test says so. */
+interface FakeDownloadResponse extends EventEmitter {
+  setHeader: jest.Mock;
+  sendFile: jest.Mock;
+}
+
+function makeDownloadResponse(
+  transfer: (done: (err?: Error) => void) => void = (done) => done(),
+): FakeDownloadResponse {
+  const res = new EventEmitter() as FakeDownloadResponse;
+  res.setHeader = jest.fn();
+  res.sendFile = jest.fn((_path: string, done: (err?: Error) => void) =>
+    transfer(done),
+  );
+  return res;
+}
 import { LivekitException } from './exceptions/livekit.exception';
 
 describe('LivekitController', () => {
@@ -23,6 +47,8 @@ describe('LivekitController', () => {
   let voicePresenceService: Mocked<VoicePresenceService>;
   let jwtService: Mocked<JwtService>;
   let channelAccessService: Mocked<ChannelAccessService>;
+  let replayService: Mocked<LivekitReplayService>;
+  let storageService: Mocked<StorageService>;
 
   const allCaps = {
     channelId: 'room-1',
@@ -57,6 +83,8 @@ describe('LivekitController', () => {
     voicePresenceService = unitRef.get(VoicePresenceService);
     jwtService = unitRef.get(JwtService);
     channelAccessService = unitRef.get(ChannelAccessService);
+    replayService = unitRef.get(LivekitReplayService);
+    storageService = unitRef.get(StorageService);
     channelAccessService.channelCapabilities.mockResolvedValue(allCaps);
   });
 
@@ -635,6 +663,100 @@ describe('LivekitController', () => {
       ).rejects.toThrow('Mute failed');
 
       expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('streamReplay', () => {
+    const replayPath = '/tmp/replay-stream-user.mp4';
+    const query: StreamReplayDto = { durationMinutes: 1 };
+    const reqFor = (userId: string) =>
+      ({ user: { id: userId } }) as unknown as AuthenticatedRequest;
+    // Lets the handler reach `sendFile` (two already-resolved awaits).
+    const flush = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+
+    beforeEach(() => {
+      replayService.streamReplay.mockResolvedValue(replayPath);
+      storageService.getFileStats.mockResolvedValue({
+        size: 42,
+        mtime: new Date(),
+        ctime: new Date(),
+      });
+      storageService.deleteFile.mockResolvedValue(undefined);
+    });
+
+    it('answers 429 to a second download while one is in flight', async () => {
+      let finish!: (err?: Error) => void;
+      const first = controller.streamReplay(
+        query,
+        reqFor('replay-user-1'),
+        makeDownloadResponse((done) => {
+          finish = done;
+        }) as unknown as Response,
+      );
+      await flush();
+
+      await expect(
+        controller.streamReplay(
+          query,
+          reqFor('replay-user-1'),
+          makeDownloadResponse() as unknown as Response,
+        ),
+      ).rejects.toBeInstanceOf(ThrottlerException);
+
+      finish();
+      await first;
+
+      // The slot is free again once the first download is over.
+      await expect(
+        controller.streamReplay(
+          query,
+          reqFor('replay-user-1'),
+          makeDownloadResponse() as unknown as Response,
+        ),
+      ).resolves.toBeUndefined();
+      expect(storageService.deleteFile).toHaveBeenCalled();
+    });
+
+    it('deletes the temp file after a completed download', async () => {
+      await controller.streamReplay(
+        query,
+        reqFor('replay-user-2'),
+        makeDownloadResponse() as unknown as Response,
+      );
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(replayPath);
+    });
+
+    it('deletes the temp file when the client aborts', async () => {
+      const res = makeDownloadResponse(() => {
+        // Never finishes on its own: the client leaves first.
+      });
+      const running = controller.streamReplay(
+        query,
+        reqFor('replay-user-3'),
+        res as unknown as Response,
+      );
+      await flush();
+
+      res.emit('close');
+      await running;
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(replayPath);
+    });
+
+    it('deletes the temp file when sending it fails', async () => {
+      await controller.streamReplay(
+        query,
+        reqFor('replay-user-4'),
+        makeDownloadResponse((done) =>
+          done(new Error('gone')),
+        ) as unknown as Response,
+      );
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(replayPath);
     });
   });
 

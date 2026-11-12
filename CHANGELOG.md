@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
 - Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
+- An invite link now works for someone who already has an account: a signed-in visitor to the join page adds their account to the invite's communities instead of registering again, and the API reports which communities were joined or skipped. (#589)
 
 ### Changed
 
@@ -69,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Instance settings now enforce the same storage quota and maximum file size limits as the storage settings. (#712)
 - GIF search and featured reject a limit outside 1 to 50 with a 400 instead of passing it to the provider. (#713)
 - The API contract no longer lists the VAPID private key as part of the instance settings response. (#714)
+- `GET /notifications/channels/:id/override` now answers JSON `null` when there is no override, instead of an empty 200 body that generated clients could not decode. (#650)
+- The public invite lookup now answers 404 with a reason (unknown, expired, used up or disabled) instead of an empty 200 body, and the join page says why a link cannot be used. (#653)
+- A replay clip download is limited to one at a time per user (a second request answers 429), and its temporary file is always removed, including when the client disconnects or FFmpeg fails. (#674)
 
 ## [0.9.0] - 2026-11-11
 
