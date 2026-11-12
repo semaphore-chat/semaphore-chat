@@ -543,6 +543,7 @@ async fn control(
         other => {
             if let Some(response) = crate::admin::control(&inner, other, &request)
                 .or_else(|| crate::rbac::control(&inner, other, &request))
+                .or_else(|| moderation::control(&inner, other, &request))
             {
                 return response;
             }

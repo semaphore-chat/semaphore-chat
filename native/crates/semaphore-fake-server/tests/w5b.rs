@@ -569,3 +569,73 @@ async fn overrides_work_on_a_channel_made_at_runtime() {
     .await;
     assert_eq!(status, 404);
 }
+
+#[tokio::test]
+async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
+    let (server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    let (status, bouncer) = post(
+        &client,
+        &base,
+        &format!("/api/roles/community/{couch}"),
+        json!({ "name": "Bouncer", "position": 15, "actions": ["BAN_USER", "TIMEOUT_USER", "KICK_USER", "VIEW_BAN_LIST", "READ_MEMBER"] }),
+    )
+    .await;
+    assert_eq!(status, 201);
+    let bouncer = bouncer["id"].as_str().unwrap().to_owned();
+    server.act_as(&couch, Some(&id("u-marcus")), &[&bouncer]);
+    let mut kwame = connect_as(&base, &id("u-kwame")).await;
+    let control = |body: Value| {
+        let (client, base) = (client.clone(), base.clone());
+        async move { post(&client, &base, "/__control/moderate_as", body).await }
+    };
+
+    // A timeout, as marcus: the room hears it, the list has it, with marcus as the moderator.
+    let (status, body) = control(json!({
+        "moderatorId": id("u-marcus"), "action": "timeout", "communityId": couch,
+        "userId": id("u-kwame"), "durationSeconds": 600, "reason": "cool off",
+    }))
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let heard = settle(&server, &mut [&mut kwame]).await;
+    assert!(names(&heard[0]).contains(&"userTimedOut"), "{heard:?}");
+    let (_, list) = get(&client, &base, &format!("/api/moderation/timeouts/{couch}")).await;
+    assert_eq!(list[0]["user"]["id"], id("u-kwame"));
+    assert_eq!(list[0]["moderator"]["id"], id("u-marcus"));
+
+    // The checks are the moderator's: no ban on someone ranked above them, nothing without the
+    // action.
+    let (status, body) = control(json!({
+        "moderatorId": id("u-marcus"), "action": "ban", "communityId": couch,
+        "userId": id("u-samira"),
+    }))
+    .await;
+    assert_eq!(status, 403, "{body}");
+    let (status, _) = control(json!({
+        "moderatorId": id("u-kwame"), "action": "kick", "communityId": couch,
+        "userId": id("u-marcus"),
+    }))
+    .await;
+    assert_eq!(status, 403);
+
+    // A ban: they hear it first, then they're gone.
+    let (status, body) = control(json!({
+        "moderatorId": id("u-marcus"), "action": "ban", "communityId": couch,
+        "userId": id("u-kwame"), "reason": "spam",
+    }))
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let heard = settle(&server, &mut [&mut kwame]).await;
+    assert_eq!(names(&heard[0])[0], "userBanned");
+    assert_eq!(heard[0][0].1["reason"], "spam");
+
+    // Bad requests.
+    for body in [
+        json!({ "action": "ban", "communityId": couch, "userId": id("u-kwame") }),
+        json!({ "moderatorId": id("u-marcus"), "action": "mute", "communityId": couch, "userId": id("u-kwame") }),
+        json!({ "moderatorId": id("u-marcus"), "action": "timeout", "communityId": couch, "userId": id("u-kwame"), "durationSeconds": 5 }),
+    ] {
+        let (status, _) = control(body).await;
+        assert_eq!(status, 400);
+    }
+}

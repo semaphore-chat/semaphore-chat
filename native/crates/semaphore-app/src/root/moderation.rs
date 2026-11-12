@@ -67,8 +67,8 @@ pub(crate) struct Removal {
 
 struct Notice {
     view: Entity<RemovedNotice>,
-    /// The community the notice on screen is about, until it's acknowledged.
-    showing: Option<String>,
+    /// The removal on screen, until it's acknowledged.
+    showing: Option<Removal>,
     _events: Subscription,
 }
 
@@ -250,8 +250,9 @@ impl AppRoot {
         let notice = self.moderation.notice.as_ref()?;
         notice
             .showing
-            .clone()
+            .as_ref()
             .filter(|_| notice.view.read(cx).is_shown())
+            .map(|removal| removal.community_id.clone())
     }
 
     /// The next queued removal, if none is on screen.
@@ -284,7 +285,7 @@ impl AppRoot {
             }
         };
         if let Some(shown) = &mut self.moderation.notice {
-            shown.showing = Some(next.community_id.clone());
+            shown.showing = Some(next.clone());
         }
         notice.update(cx, |notice, cx| {
             notice.set_time(time, cx);
@@ -651,9 +652,19 @@ impl AppRoot {
             .is_some_and(|dialog| dialog.view.read(cx).is_open())
     }
 
-    /// The removal notice on screen: its community.
-    pub fn removed_notice(&self, cx: &App) -> Option<String> {
-        self.showing_removal(cx)
+    /// The removal notice on screen, for the rig: its community and `banned`, `kicked` or
+    /// `deleted`.
+    pub fn removed_notice(&self, cx: &App) -> Option<(String, &'static str)> {
+        let notice = self.moderation.notice.as_ref()?;
+        let removal = notice.showing.as_ref()?;
+        notice.view.read(cx).is_shown().then(|| {
+            let cause = match removal.cause {
+                RemovalCause::Banned { .. } => "banned",
+                RemovalCause::Kicked { .. } => "kicked",
+                RemovalCause::Deleted => "deleted",
+            };
+            (removal.community_id.clone(), cause)
+        })
     }
 }
 

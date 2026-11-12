@@ -106,6 +106,8 @@ pub struct ConversationPane {
     core: Arc<Core>,
     exec: Exec,
     time: TimeFormat,
+    /// Core's clock, which a timeout's end is told in (`with_clock`); the system's without one.
+    clock: Option<Arc<dyn semaphore_core::platform::Clock>>,
     scrollbar: bool,
     window: AnyWindowHandle,
     conversation: Option<Conversation>,
@@ -176,6 +178,7 @@ impl ConversationPane {
             core,
             exec,
             time,
+            clock: None,
             scrollbar,
             window: window.window_handle(),
             conversation: None,
@@ -291,7 +294,7 @@ impl ConversationPane {
             .and_then(|row| row.permissions.as_ref());
         let (post, react, thread_reply) = permissions.map_or((true, true, true), |p| {
             (
-                p.post && p.timed_out_until_ms.is_none_or(|until| until <= now_ms()),
+                p.post && p.timed_out_until_ms.is_none_or(|until| until <= self.now_ms()),
                 p.react,
                 p.thread_reply,
             )
@@ -512,6 +515,23 @@ impl ConversationPane {
     }
 
     /// `useComposerAvailability`: what this user may do here, failing open while permissions load.
+    /// W5: whether the composer is locked by a timeout, for the rig.
+    pub fn timed_out(&self, cx: &App) -> bool {
+        matches!(self.availability(cx), Availability::TimedOut { .. })
+    }
+
+    /// W5: tells the timeout lock by core's clock, as the server's times are (a rig holds it).
+    pub fn with_clock(mut self, clock: Arc<dyn semaphore_core::platform::Clock>) -> Self {
+        self.clock = Some(clock);
+        self
+    }
+
+    fn now_ms(&self) -> i64 {
+        self.clock
+            .as_ref()
+            .map_or_else(now_ms, |clock| clock.now_ms() as i64)
+    }
+
     fn availability(&self, cx: &App) -> Availability {
         let channel_name = self.channel.as_ref().map(|row| row.name.clone());
         let Some(permissions) = self
@@ -528,7 +548,7 @@ impl ConversationPane {
         availability_for(
             permissions,
             channel_name,
-            now_ms(),
+            self.now_ms(),
             cx.background_executor().now(),
         )
     }
