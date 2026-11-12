@@ -4,7 +4,8 @@
 use crate::cache::{QueryKey, keys};
 use crate::client::{Core, State};
 use crate::model::{
-    Conversation, ErrorView, LoadState, SearchHit, SearchScope, ThreadInfo, UnreadMarker, ViewKey,
+    Conversation, ErrorView, LoadState, SearchHit, SearchResultsView, SearchScope, ThreadInfo,
+    UnreadMarker, ViewKey,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -14,6 +15,8 @@ use std::collections::{HashMap, HashSet};
 
 /// The error code a missing thread or message comes back with.
 pub const NOT_FOUND: &str = "NOT_FOUND";
+/// How many hits one search page asks for: the server's own default.
+pub const SEARCH_PAGE: u32 = 50;
 
 /// What these commands keep between calls. Forgotten at sign-out.
 #[derive(Debug, Default)]
@@ -26,6 +29,8 @@ pub(crate) struct ReadingState {
     optimistic: HashMap<String, (bool, u64)>,
     /// The server signed in to, which message links must point at.
     pub server_url: Option<String>,
+    /// Searches whose next page is on its way, by key.
+    pub search_loading: HashSet<QueryKey>,
 }
 
 #[derive(Debug, Clone)]
@@ -288,79 +293,201 @@ impl Core {
             return Ok(Vec::new());
         }
         let services = self.services().ok_or_else(|| unavailable("search"))?;
+        let (found, _) = self
+            .search_page(services, &scope, &query, limit, None)
+            .await?;
+        Ok(self.write(|state, _| project_hits(state, found, &scope)))
+    }
+
+    /// The first page of a search, cached: `SearchResultsView` says when each page lands, and
+    /// [`Self::load_more_search`] reads the next. Newest first, at most [`SEARCH_PAGE`] a page.
+    pub fn search_results(&self, scope: SearchScope, query: String) -> SearchResultsView {
+        let query = query.trim().to_owned();
+        self.write(|state, _| {
+            if query.is_empty() {
+                return SearchResultsView {
+                    state: LoadState::Ready,
+                    scope,
+                    query,
+                    hits: Vec::new(),
+                    more: false,
+                    loading_more: false,
+                };
+            }
+            let key = search_key(&scope, &query);
+            state.ensure_query(key.clone());
+            let (hits, more) = match state.cache.search(&key) {
+                Some(pages) => (pages.hits.clone(), pages.next.is_some()),
+                None => (Vec::new(), false),
+            };
+            SearchResultsView {
+                state: state.load_of(&key),
+                scope,
+                query,
+                hits,
+                more,
+                loading_more: state.reading.search_loading.contains(&key),
+            }
+        })
+    }
+
+    /// The next page of `search_results`, when it says `more`. The answer lands in the page's own
+    /// cache entry, so a search the user has moved on from can't mix its hits into another's; an
+    /// answer for a session that ended writes nothing.
+    pub async fn load_more_search(
+        &self,
+        scope: SearchScope,
+        query: String,
+    ) -> Result<(), CoreError> {
+        let query = query.trim().to_owned();
+        if query.is_empty() {
+            return Ok(());
+        }
+        let key = search_key(&scope, &query);
+        let view = ViewKey::Search {
+            scope: scope.clone(),
+            query: query.clone(),
+        };
+        let (services, epoch) = self.begin("search")?;
+        let start = self.write(|state, _| {
+            if state.reading.search_loading.contains(&key) {
+                return None;
+            }
+            let cursor = match state.cache.search(&key) {
+                Some(pages) => pages.next.clone()?,
+                // Nothing cached, nothing more: nothing to read.
+                None => return None,
+            };
+            state.reading.search_loading.insert(key.clone());
+            state.view_changed(view.clone());
+            Some(cursor)
+        });
+        let Some(cursor) = start else {
+            return Ok(());
+        };
+        let page = self
+            .search_page(&services, &scope, &query, Some(SEARCH_PAGE), Some(cursor))
+            .await;
+        let landed = self.write(|state, _| {
+            // An answer for a session that ended writes nothing and fails.
+            if state.session_epoch != epoch {
+                return false;
+            }
+            state.reading.search_loading.remove(&key);
+            state.view_changed(view.clone());
+            let Ok((found, next)) = &page else {
+                return true;
+            };
+            let hits = project_hits(state, found.clone(), &scope);
+            if let Some(pages) = state.cache.search_mut(&key) {
+                // A hit that moved onto this page keeps its place once.
+                for hit in hits {
+                    if !pages.hits.iter().any(|known| known.row.id == hit.row.id) {
+                        pages.hits.push(hit);
+                    }
+                }
+                pages.next = next.clone();
+            }
+            true
+        });
+        if !landed {
+            return Err(CoreError::Failed {
+                message: "signed out".into(),
+            });
+        }
+        page.map(|_| ())
+    }
+
+    /// One page from the server: its rows (with a community hit's channel name) and the cursor
+    /// for the page after it, when the page was full.
+    async fn search_page(
+        &self,
+        services: &crate::client::Services,
+        scope: &SearchScope,
+        query: &str,
+        limit: Option<u32>,
+        cursor: Option<String>,
+    ) -> Result<(Vec<(wire::MessageDto, Option<String>)>, Option<String>), CoreError> {
         let backend = &services.backend;
         let limit = limit.map(i64::from);
-        let found: Vec<(wire::MessageDto, Option<String>)> = match &scope {
-            SearchScope::Channel { id } => backend
-                .messages_controller_search_channel_messages(id.clone(), query, limit)
-                .await
-                .map_err(|error| self.backend_failed(error))?
-                .into_iter()
-                .map(|message| (message, None))
-                .collect(),
-            SearchScope::DirectMessage { id } => backend
-                .messages_controller_search_direct_messages(id.clone(), query, limit)
-                .await
-                .map_err(|error| self.backend_failed(error))?
-                .into_iter()
-                .map(|message| (message, None))
-                .collect(),
-            SearchScope::Community { id } => backend
-                .messages_controller_search_community_messages(id.clone(), query, limit)
-                .await
-                .map_err(|error| self.backend_failed(error))?
-                .into_iter()
-                .map(community_hit)
-                .collect::<Result<_, _>>()?,
-        };
-        Ok(self.write(|state, _| {
-            let mut missing = Vec::new();
-            let hits = found
-                .into_iter()
-                .filter_map(|(dto, channel_name)| {
-                    let conversation = hit_conversation(&dto, &scope)?;
-                    let parent_message_id = dto.parent_message_id.clone();
-                    let row = Row {
-                        seq: 0,
-                        revision: 0,
-                        message: StoredMessage::from_server(dto),
-                    };
-                    let me_id = state.me_id().to_owned();
-                    let row = project(
-                        &row,
-                        &me_id,
-                        &mut |id| {
-                            let user =
-                                (id == me_id)
-                                    .then(|| state.me.clone())
-                                    .flatten()
-                                    .or_else(|| {
-                                        state
-                                            .cache
-                                            .user(&keys::scoped(keys::USER, id))
-                                            .map(crate::client::user_view)
-                                    });
-                            if user.is_none() {
-                                missing.push(id.to_owned());
-                            }
-                            user
-                        },
-                        &HashMap::new(),
-                    );
-                    Some(SearchHit {
-                        row,
-                        conversation,
-                        parent_message_id,
-                        channel_name,
-                    })
-                })
-                .collect();
-            // Authors arrive for the rows a UI shows; a search shows them by id until then.
-            for id in missing {
-                state.ensure_query(keys::scoped(keys::USER, &id));
+        let failed = |error| self.backend_failed(error);
+        Ok(match scope {
+            SearchScope::Channel { id } => {
+                let page = backend
+                    .messages_controller_search_channel_messages(
+                        id.clone(),
+                        query.to_owned(),
+                        limit,
+                        cursor,
+                    )
+                    .await
+                    .map_err(failed)?;
+                (
+                    page.items
+                        .into_iter()
+                        .map(|message| (message, None))
+                        .collect(),
+                    page.next,
+                )
             }
-            hits
-        }))
+            SearchScope::DirectMessage { id } => {
+                let page = backend
+                    .messages_controller_search_direct_messages(
+                        id.clone(),
+                        query.to_owned(),
+                        limit,
+                        cursor,
+                    )
+                    .await
+                    .map_err(failed)?;
+                (
+                    page.items
+                        .into_iter()
+                        .map(|message| (message, None))
+                        .collect(),
+                    page.next,
+                )
+            }
+            SearchScope::Community { id } => {
+                let page = backend
+                    .messages_controller_search_community_messages(
+                        id.clone(),
+                        query.to_owned(),
+                        limit,
+                        cursor,
+                    )
+                    .await
+                    .map_err(failed)?;
+                (
+                    page.items
+                        .into_iter()
+                        .map(community_hit)
+                        .collect::<Result<_, _>>()?,
+                    page.next,
+                )
+            }
+        })
+    }
+
+    /// The first page of a cached search, as `fetch_value` asks for it.
+    pub(crate) async fn fetch_search(
+        &self,
+        key: &QueryKey,
+    ) -> Result<crate::cache::SearchPages, CoreError> {
+        let Some(scope) = search_scope_of(key) else {
+            return Err(CoreError::Failed {
+                message: format!("not a search: {key:?}"),
+            });
+        };
+        let query = key.segments.get(2).cloned().unwrap_or_default();
+        let services = self.services().ok_or_else(|| unavailable("search"))?;
+        let (found, next) = self
+            .search_page(services, &scope, &query, Some(SEARCH_PAGE), None)
+            .await?;
+        Ok(crate::cache::SearchPages {
+            hits: self.write(|state, _| project_hits(state, found, &scope)),
+            next,
+        })
     }
 
     /// Where the unread divider goes in a channel or DM: after the message last read when it
@@ -452,6 +579,94 @@ fn hit_conversation(dto: &wire::MessageDto, scope: &SearchScope) -> Option<Conve
             SearchScope::Community { .. } => None,
         },
     }
+}
+
+/// The view a search query feeds, and the reverse: `commands::view_for` and `key_for` ask here.
+pub(crate) fn view_for(key: &QueryKey) -> Option<ViewKey> {
+    Some(ViewKey::Search {
+        scope: search_scope_of(key)?,
+        query: key.segments.get(2).cloned().unwrap_or_default(),
+    })
+}
+
+pub(crate) fn key_for(view: &ViewKey) -> Option<QueryKey> {
+    let ViewKey::Search { scope, query } = view else {
+        return None;
+    };
+    Some(search_key(scope, query))
+}
+
+/// The cache key of one search: its scope's operation, the id searched, and the query.
+fn search_key(scope: &SearchScope, query: &str) -> QueryKey {
+    match scope {
+        SearchScope::Channel { id } => QueryKey::new(&[keys::SEARCH_CHANNEL, id, query]),
+        SearchScope::DirectMessage { id } => QueryKey::new(&[keys::SEARCH_DM, id, query]),
+        SearchScope::Community { id } => QueryKey::new(&[keys::SEARCH_COMMUNITY, id, query]),
+    }
+}
+
+/// The scope a search key names, or `None` for another query.
+fn search_scope_of(key: &QueryKey) -> Option<SearchScope> {
+    let id = key.segments.get(1)?.clone();
+    Some(match key.op() {
+        keys::SEARCH_CHANNEL => SearchScope::Channel { id },
+        keys::SEARCH_DM => SearchScope::DirectMessage { id },
+        keys::SEARCH_COMMUNITY => SearchScope::Community { id },
+        _ => return None,
+    })
+}
+
+/// A page's rows as hits, asking for the authors that aren't loaded yet.
+fn project_hits(
+    state: &mut State,
+    found: Vec<(wire::MessageDto, Option<String>)>,
+    scope: &SearchScope,
+) -> Vec<SearchHit> {
+    let mut missing = Vec::new();
+    let hits = found
+        .into_iter()
+        .filter_map(|(dto, channel_name)| {
+            let conversation = hit_conversation(&dto, scope)?;
+            let parent_message_id = dto.parent_message_id.clone();
+            let row = Row {
+                seq: 0,
+                revision: 0,
+                message: StoredMessage::from_server(dto),
+            };
+            let me_id = state.me_id().to_owned();
+            let row = project(
+                &row,
+                &me_id,
+                &mut |id| {
+                    let user = (id == me_id)
+                        .then(|| state.me.clone())
+                        .flatten()
+                        .or_else(|| {
+                            state
+                                .cache
+                                .user(&keys::scoped(keys::USER, id))
+                                .map(crate::client::user_view)
+                        });
+                    if user.is_none() {
+                        missing.push(id.to_owned());
+                    }
+                    user
+                },
+                &HashMap::new(),
+            );
+            Some(SearchHit {
+                row,
+                conversation,
+                parent_message_id,
+                channel_name,
+            })
+        })
+        .collect();
+    // Authors arrive for the rows a UI shows; a search shows them by id until then.
+    for id in missing {
+        state.ensure_query(keys::scoped(keys::USER, &id));
+    }
+    hits
 }
 
 /// A community result is a message plus its channel's name.

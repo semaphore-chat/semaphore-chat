@@ -60,10 +60,11 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
     })
 }
 
-/// `NotificationQueryDto`: `limit` 1 to 100 (default 50), `offset` 0 or more, and `unreadOnly`,
-/// which the backend reads with `@Type(() => Boolean)`: any non-empty text is true, `"false"`
-/// included.
-fn query_params(query: &HashMap<String, String>) -> Result<(usize, usize, bool), Response> {
+/// `NotificationQueryDto`: `limit` 1 to 100 (default 50), `offset` 0 or more, `unreadOnly`, which
+/// the backend reads with `@Type(() => Boolean)`: any non-empty text is true, `"false"` included;
+/// and `includeDismissed`, which only takes `true` or `false` (anything else is a 400) and
+/// defaults to true.
+fn query_params(query: &HashMap<String, String>) -> Result<(usize, usize, bool, bool), Response> {
     let number = |name: &str, min: i64, max: i64, default: i64| -> Result<usize, Response> {
         match query.get(name) {
             None => Ok(default as usize),
@@ -78,7 +79,12 @@ fn query_params(query: &HashMap<String, String>) -> Result<(usize, usize, bool),
     let limit = number("limit", 1, 100, 50)?;
     let offset = number("offset", 0, i64::MAX, 0)?;
     let unread_only = query.get("unreadOnly").is_some_and(|raw| !raw.is_empty());
-    Ok((limit, offset, unread_only))
+    let include_dismissed = match query.get("includeDismissed").map(String::as_str) {
+        None | Some("true") => true,
+        Some("false") => false,
+        Some(_) => return Err(invalid("includeDismissed must be true or false")),
+    };
+    Ok((limit, offset, unread_only, include_dismissed))
 }
 
 /// Newest first; `total` is the size of the page (the backend's `notifications.length`), and
@@ -87,7 +93,7 @@ async fn list(
     State(inner): State<Arc<Inner>>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
-    let (limit, offset, unread_only) = match query_params(&query) {
+    let (limit, offset, unread_only, include_dismissed) = match query_params(&query) {
         Ok(params) => params,
         Err(response) => return response,
     };
@@ -98,7 +104,8 @@ async fn list(
         .notifications
         .iter()
         .rev()
-        .filter(|row| &row.user_id == me && (!unread_only || !row.read))
+        .filter(|row| &row.user_id == me && (include_dismissed || !row.dismissed))
+        .filter(|row| !unread_only || !row.read)
         .collect();
     rows.sort_by_key(|row| std::cmp::Reverse(row.created_at));
     let page: Vec<Value> = rows

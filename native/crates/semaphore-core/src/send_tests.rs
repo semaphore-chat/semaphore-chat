@@ -76,6 +76,15 @@ fn a_refusal_carries_the_servers_verdict() {
         })]),
         refusal("FORBIDDEN", "You can't send messages here", false, None)
     );
+    // A blocked 1:1 DM reads as the web's words for it (`describeSendFailure`), with its code
+    // kept for anything that branches on it.
+    assert_eq!(
+        read_ack(&[json!({
+            "ok": false,
+            "error": { "errorCode": "DM_BLOCKED", "message": "You cannot message this user", "retryable": false }
+        })]),
+        refusal("DM_BLOCKED", "You can't send messages here", false, None)
+    );
     for code in ["VALIDATION_FAILED", "INTERNAL", "UNKNOWN"] {
         assert_eq!(
             read_ack(&[json!({

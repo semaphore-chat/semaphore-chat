@@ -68,8 +68,9 @@ pub struct AttachmentView {
     pub size_bytes: u64,
     pub kind: AttachmentKind,
     pub has_thumbnail: bool,
-    /// Pixels. `None` until the server sends them (unit U12). With no size, a late load moves
-    /// the rows below it (T2 measured 360 px), so reserve a fixed box and don't resize it.
+    /// Pixels, sent by the server from the uploaded file's own metadata. `None` when it has
+    /// none (a document, or a file uploaded before it measured them). With no size, a late load
+    /// moves the rows below it (T2 measured 360 px), so reserve a fixed box and don't resize it.
     pub width: Option<u32>,
     pub height: Option<u32>,
 }

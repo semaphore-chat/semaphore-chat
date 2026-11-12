@@ -241,11 +241,16 @@ pub mod enums {
             TimedOut = "TIMED_OUT",
             NonceConflict = "NONCE_CONFLICT",
             MessageDeleted = "MESSAGE_DELETED",
+            DmBlocked = "DM_BLOCKED",
             CurrentSessionUnknown = "CURRENT_SESSION_UNKNOWN",
             AttachNotAllowed = "ATTACH_NOT_ALLOWED",
             FileNotOwned = "FILE_NOT_OWNED",
             UploadTargetNotAllowed = "UPLOAD_TARGET_NOT_ALLOWED",
             StorageQuotaExceeded = "STORAGE_QUOTA_EXCEEDED",
+            InviteNotFound = "INVITE_NOT_FOUND",
+            InviteExpired = "INVITE_EXPIRED",
+            InviteExhausted = "INVITE_EXHAUSTED",
+            InviteDisabled = "INVITE_DISABLED",
         }
     }
 
@@ -296,6 +301,14 @@ pub mod enums {
     }
 
     tolerant_string_enum! {
+        /// `InviteSkipReason`
+        InviteSkipReason {
+            AlreadyMember = "already_member",
+            Banned = "banned",
+        }
+    }
+
+    tolerant_string_enum! {
         /// `LiveKitEgressStatus`
         LiveKitEgressStatus {
             EgressStarting = "EGRESS_STARTING",
@@ -325,6 +338,14 @@ pub mod enums {
         MessagePageDirection {
             Older = "older",
             Newer = "newer",
+        }
+    }
+
+    tolerant_string_enum! {
+        /// `MessageRemoval`: A moderator removal that keeps the row, or a hard delete.
+        MessageRemoval {
+            Soft = "soft",
+            Hard = "hard",
         }
     }
 
@@ -368,6 +389,15 @@ pub mod enums {
             DirectMessage = "DIRECT_MESSAGE",
             ChannelMessage = "CHANNEL_MESSAGE",
             ThreadReply = "THREAD_REPLY",
+        }
+    }
+
+    tolerant_string_enum! {
+        /// `NotificationsReadScope`
+        NotificationsReadScope {
+            All = "all",
+            Channel = "channel",
+            DirectMessage = "directMessage",
         }
     }
 
@@ -585,6 +615,12 @@ pub mod enums {
 /// Types used as operation parameters and responses.
 #[allow(clippy::all)]
 pub mod types {
+    ///`AcceptInviteResponseDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct AcceptInviteResponseDto {
+        pub joined: ::std::vec::Vec<InviteCommunityDto>,
+        pub skipped: ::std::vec::Vec<SkippedInviteCommunityDto>,
+    }
     ///`AddAttachmentDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
     pub struct AddAttachmentDto {
@@ -784,10 +820,16 @@ pub mod types {
         pub filename: ::std::string::String,
         #[serde(rename = "hasThumbnail")]
         pub has_thumbnail: bool,
+        ///Display height in pixels, for images and videos; null when unknown.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub height: ::std::option::Option<i64>,
         pub id: ::std::string::String,
         #[serde(rename = "mimeType")]
         pub mime_type: ::std::string::String,
         pub size: i64,
+        ///Display width in pixels, for images and videos; null when unknown.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub width: ::std::option::Option<i64>,
     }
     ///`AuthControllerLoginXClientType`
     #[derive(
@@ -1343,9 +1385,14 @@ pub mod types {
         pub channel_id: ::std::string::String,
         ///Connect to voice and listen (kept during a timeout).
         pub connect: bool,
+        ///Delete other members' messages here.
+        #[serde(rename = "deleteAny")]
+        pub delete_any: bool,
         ///Edit this channel's permission overwrites.
         #[serde(rename = "managePermissions")]
         pub manage_permissions: bool,
+        ///Pin messages here.
+        pub pin: bool,
         ///Send messages.
         pub post: bool,
         /**Roles whose holders can post here, by rank (names only), for the
@@ -1354,6 +1401,9 @@ pub mod types {
         pub posting_role_names: ::std::vec::Vec<::std::string::String>,
         ///Add reactions.
         pub react: bool,
+        ///Keep seeing the text of messages removed by a moderator here.
+        #[serde(rename = "seeRemoved")]
+        pub see_removed: bool,
         ///Share the screen.
         pub share: bool,
         ///Publish the microphone.
@@ -1483,7 +1533,42 @@ pub mod types {
         #[serde(rename = "channelId")]
         pub channel_id: ::std::string::String,
         pub count: i64,
-        pub users: ::std::vec::Vec<VoicePresenceUserDto>,
+        pub users: ::std::vec::Vec<ChannelVoicePresenceUserDto>,
+    }
+    ///`ChannelVoicePresenceUserDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct ChannelVoicePresenceUserDto {
+        #[serde(
+            rename = "avatarUrl",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub avatar_url: ::std::option::Option<::std::string::String>,
+        /**Whether the caller may server mute this user or remove them from the
+        call. The server always sends it in this response (false for the caller's
+        own entry). Optional in the type because clients also add users to this
+        list from socket events, which don't carry it.*/
+        #[serde(
+            rename = "canModerate",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub can_moderate: ::std::option::Option<bool>,
+        #[serde(
+            rename = "displayName",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub display_name: ::std::option::Option<::std::string::String>,
+        pub id: ::std::string::String,
+        #[serde(rename = "isDeafened")]
+        pub is_deafened: bool,
+        #[serde(rename = "isServerMuted")]
+        pub is_server_muted: bool,
+        ///ISO-8601 timestamp, as sent on the socket.
+        #[serde(rename = "joinedAt")]
+        pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub username: ::std::string::String,
     }
     ///`ChannelWebhookPayloadDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2741,6 +2826,9 @@ pub mod types {
         pub direct_message_group_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "messageId")]
         pub message_id: ::std::string::String,
+        ///A moderator removal that keeps the row, or a hard delete.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub removal: ::std::option::Option<semaphore_wire::enums::MessageRemoval>,
     }
     ///`DesktopLoginTokenRequestDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2873,6 +2961,14 @@ pub mod types {
         #[serde(rename = "signedInAt")]
         pub signed_in_at: ::chrono::DateTime<::chrono::offset::Utc>,
     }
+    ///`DmGroupCreatedPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct DmGroupCreatedPayloadDto {
+        #[serde(rename = "groupId")]
+        pub group_id: ::std::string::String,
+        #[serde(rename = "memberIds")]
+        pub member_ids: ::std::vec::Vec<::std::string::String>,
+    }
     ///`DmGroupLastMessageDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct DmGroupLastMessageDto {
@@ -2887,6 +2983,14 @@ pub mod types {
         pub sent_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub spans: ::std::vec::Vec<SpanDto>,
     }
+    ///`DmGroupMemberAddedPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct DmGroupMemberAddedPayloadDto {
+        #[serde(rename = "groupId")]
+        pub group_id: ::std::string::String,
+        #[serde(rename = "userIds")]
+        pub user_ids: ::std::vec::Vec<::std::string::String>,
+    }
     ///`DmGroupMemberDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct DmGroupMemberDto {
@@ -2894,6 +2998,14 @@ pub mod types {
         #[serde(rename = "joinedAt")]
         pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub user: DmGroupMemberUserDto,
+        #[serde(rename = "userId")]
+        pub user_id: ::std::string::String,
+    }
+    ///`DmGroupMemberLeftPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct DmGroupMemberLeftPayloadDto {
+        #[serde(rename = "groupId")]
+        pub group_id: ::std::string::String,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
     }
@@ -3126,10 +3238,16 @@ pub mod types {
         pub filename: ::std::string::String,
         #[serde(rename = "hasThumbnail")]
         pub has_thumbnail: bool,
+        ///Display height in pixels, for images and videos; null when unknown.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub height: ::std::option::Option<i64>,
         pub id: ::std::string::String,
         #[serde(rename = "mimeType")]
         pub mime_type: ::std::string::String,
         pub size: i64,
+        ///Display width in pixels, for images and videos; null when unknown.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub width: ::std::option::Option<i64>,
     }
     ///`FileUploadResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3162,6 +3280,9 @@ pub mod types {
         )]
         pub file_user_id: ::std::option::Option<::std::string::String>,
         pub filename: ::std::string::String,
+        ///Display height in pixels, for images and videos; null when unknown.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub height: ::std::option::Option<i64>,
         pub id: ::std::string::String,
         #[serde(rename = "mimeType")]
         pub mime_type: ::std::string::String,
@@ -3186,6 +3307,9 @@ pub mod types {
             default
         )]
         pub uploaded_by_id: ::std::option::Option<::std::string::String>,
+        ///Display width in pixels, for images and videos; null when unknown.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub width: ::std::option::Option<i64>,
     }
     ///`ForgotPasswordRequestDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3243,6 +3367,18 @@ pub mod types {
         pub status: semaphore_wire::enums::FriendshipStatus,
         #[serde(rename = "userAId")]
         pub user_a_id: ::std::string::String,
+        #[serde(rename = "userBId")]
+        pub user_b_id: ::std::string::String,
+    }
+    ///`FriendshipPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct FriendshipPayloadDto {
+        #[serde(rename = "friendshipId")]
+        pub friendship_id: ::std::string::String,
+        ///The request's sender (one of the two friends once accepted).
+        #[serde(rename = "userAId")]
+        pub user_a_id: ::std::string::String,
+        ///The request's receiver.
         #[serde(rename = "userBId")]
         pub user_b_id: ::std::string::String,
     }
@@ -3583,6 +3719,14 @@ pub mod types {
             value.parse()
         }
     }
+    ///`InstanceRolesUpdatedPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct InstanceRolesUpdatedPayloadDto {
+        #[serde(rename = "roleId")]
+        pub role_id: ::std::string::String,
+        #[serde(rename = "userId")]
+        pub user_id: ::std::string::String,
+    }
     ///`InstanceSettingsResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct InstanceSettingsResponseDto {
@@ -3653,6 +3797,12 @@ pub mod types {
         pub users_approaching_quota: i64,
         #[serde(rename = "usersOverQuota")]
         pub users_over_quota: i64,
+    }
+    ///`InviteCommunityDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct InviteCommunityDto {
+        pub id: ::std::string::String,
+        pub name: ::std::string::String,
     }
     ///`InviteCreatorDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -4296,6 +4446,13 @@ pub mod types {
         pub message_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "notificationId")]
         pub notification_id: ::std::string::String,
+        ///Set for a thread reply's notification.
+        #[serde(
+            rename = "parentMessageId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub parent_message_id: ::std::option::Option<::std::string::String>,
         pub read: bool,
         #[serde(rename = "type")]
         pub type_: semaphore_wire::enums::NotificationType,
@@ -4325,6 +4482,12 @@ pub mod types {
         pub id: ::std::string::String,
         pub username: ::std::string::String,
     }
+    ///`NotificationDismissedPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct NotificationDismissedPayloadDto {
+        #[serde(rename = "notificationId")]
+        pub notification_id: ::std::string::String,
+    }
     ///`NotificationDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct NotificationDto {
@@ -4338,6 +4501,13 @@ pub mod types {
             default
         )]
         pub channel_id: ::std::option::Option<::std::string::String>,
+        ///The channel's name, for clients showing it without the channel list.
+        #[serde(
+            rename = "channelName",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub channel_name: ::std::option::Option<::std::string::String>,
         #[serde(
             rename = "communityId",
             skip_serializing_if = "::std::option::Option::is_none",
@@ -4405,6 +4575,23 @@ pub mod types {
     pub struct NotificationReadPayloadDto {
         #[serde(rename = "notificationId")]
         pub notification_id: ::std::string::String,
+    }
+    ///`NotificationsReadPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct NotificationsReadPayloadDto {
+        #[serde(
+            rename = "channelId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub channel_id: ::std::option::Option<::std::string::String>,
+        #[serde(
+            rename = "directMessageGroupId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub direct_message_group_id: ::std::option::Option<::std::string::String>,
+        pub scope: semaphore_wire::enums::NotificationsReadScope,
     }
     ///`OnboardingStatusDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -4912,6 +5099,12 @@ pub mod types {
             default
         )]
         pub refresh_token: ::std::option::Option<::std::string::String>,
+    }
+    ///`RemoveParticipantDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct RemoveParticipantDto {
+        #[serde(rename = "participantIdentity")]
+        pub participant_identity: ::std::string::String,
     }
     ///`RemoveReactionDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -6012,6 +6205,13 @@ pub mod types {
         ///Signed URL that authorizes the download
         pub url: ::std::string::String,
     }
+    ///`SkippedInviteCommunityDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct SkippedInviteCommunityDto {
+        pub id: ::std::string::String,
+        pub name: ::std::string::String,
+        pub reason: semaphore_wire::enums::InviteSkipReason,
+    }
     ///`SoundboardSoundDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct SoundboardSoundDto {
@@ -6822,18 +7022,21 @@ pub mod types {
             default
         )]
         pub dm_notifications: ::std::option::Option<bool>,
+        ///End of the DND window, HH:mm (24-hour). null or an empty string clears it.
         #[serde(
             rename = "dndEndTime",
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
         pub dnd_end_time: ::std::option::Option<UpdateNotificationSettingsDtoDndEndTime>,
+        ///Start of the DND window, HH:mm (24-hour). null or an empty string clears it.
         #[serde(
             rename = "dndStartTime",
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
         pub dnd_start_time: ::std::option::Option<UpdateNotificationSettingsDtoDndStartTime>,
+        ///IANA timezone for the DND window. null or an empty string clears it.
         #[serde(
             rename = "dndTimezone",
             skip_serializing_if = "::std::option::Option::is_none",
@@ -6859,7 +7062,7 @@ pub mod types {
         )]
         pub sound_type: ::std::option::Option<semaphore_wire::enums::NotificationSoundType>,
     }
-    ///`UpdateNotificationSettingsDtoDndEndTime`
+    ///End of the DND window, HH:mm (24-hour). null or an empty string clears it.
     #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct UpdateNotificationSettingsDtoDndEndTime(::std::string::String);
@@ -6913,7 +7116,7 @@ pub mod types {
                 })
         }
     }
-    ///`UpdateNotificationSettingsDtoDndStartTime`
+    ///Start of the DND window, HH:mm (24-hour). null or an empty string clears it.
     #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct UpdateNotificationSettingsDtoDndStartTime(::std::string::String);
@@ -6967,7 +7170,7 @@ pub mod types {
                 })
         }
     }
-    ///`UpdateNotificationSettingsDtoDndTimezone`
+    ///IANA timezone for the DND window. null or an empty string clears it.
     #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct UpdateNotificationSettingsDtoDndTimezone(::std::string::String);

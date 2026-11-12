@@ -62,6 +62,11 @@ pub enum ViewKey {
     UnreadMarker {
         conversation: Conversation,
     },
+    /// `Core::search_results`: the first page, and each one `Core::load_more_search` adds.
+    Search {
+        scope: crate::model::SearchScope,
+        query: String,
+    },
     /// `Core::channel_moderation`.
     ChannelModeration {
         channel_id: String,

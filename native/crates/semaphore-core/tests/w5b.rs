@@ -690,6 +690,7 @@ fn capabilities(timed_out_until: Option<&str>) -> Value {
         "channelId": CHANNEL, "view": true, "post": timed_out_until.is_none(), "attach": true,
         "react": true, "threadReply": true, "connect": true, "speak": true, "video": true,
         "share": true, "managePermissions": false, "postingRoleNames": [],
+        "pin": true, "deleteAny": true, "seeRemoved": true,
         "timedOutUntil": timed_out_until,
     }] })
 }

@@ -25,7 +25,7 @@ use crate::resync::unavailable;
 use crate::send::{is_optimistic_id, span_json};
 use crate::store::{Row, StoredMessage, project, span_input};
 use crate::text::{draft_to_spans, spans_to_text};
-use semaphore_wire::enums::{InstanceRole, RbacAction};
+use semaphore_wire::enums::{InstanceRole, MessageRemoval, RbacAction};
 use semaphore_wire::types::{self as wire, MessageDto};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -212,8 +212,13 @@ impl State {
             .is_some_and(|profile| profile.role == InstanceRole::Owner)
     }
 
-    /// What this user may do to others' messages in a channel, once their roles there are known.
-    /// An instance owner may do everything, as `RbacGuard` lets them.
+    /// What this user may do to others' messages in a channel. An instance owner may do
+    /// everything, as `RbacGuard` lets them.
+    ///
+    /// Pin and remove come from the channel's effective capabilities when the community's list
+    /// is loaded: those know the channel's own overwrites, which the roles alone don't. On an
+    /// older server, with no such flags, from the roles. Unpin has no capability of its own, so it
+    /// stays the roles' `UNPIN_MESSAGE` either way.
     pub(crate) fn moderation_of(&self, channel_id: &str) -> Option<ChannelModeration> {
         if self.is_instance_owner() {
             return Some(ChannelModeration {
@@ -224,18 +229,61 @@ impl State {
         }
         let roles = self
             .cache
-            .channel_roles(&keys::scoped(keys::CHANNEL_ROLES, channel_id))?;
+            .channel_roles(&keys::scoped(keys::CHANNEL_ROLES, channel_id));
         let has = |action: &RbacAction| {
-            roles
-                .roles
-                .iter()
-                .any(|role| role.actions.iter().any(|held| held == action))
+            roles.is_some_and(|roles| {
+                roles
+                    .roles
+                    .iter()
+                    .any(|role| role.actions.iter().any(|held| held == action))
+            })
         };
-        Some(ChannelModeration {
-            pin: has(&RbacAction::PinMessage),
-            unpin: has(&RbacAction::UnpinMessage),
-            remove_any: has(&RbacAction::DeleteAnyMessage),
-        })
+        let unpin = has(&RbacAction::UnpinMessage);
+        match self.channel_capability(channel_id) {
+            Some(capability) => Some(ChannelModeration {
+                pin: capability.pin,
+                unpin,
+                remove_any: capability.delete_any,
+            }),
+            None if roles.is_some() => Some(ChannelModeration {
+                pin: has(&RbacAction::PinMessage),
+                unpin,
+                remove_any: has(&RbacAction::DeleteAnyMessage),
+            }),
+            None => None,
+        }
+    }
+
+    /// This user's effective capabilities in a channel: the community's list, once it's loaded,
+    /// and only when it names the channel.
+    fn channel_capability(&self, channel_id: &str) -> Option<&wire::ChannelCapabilitiesDto> {
+        let community_id = self.community_of_channel(channel_id)?;
+        self.cache
+            .capabilities(&keys::scoped(keys::CAPABILITIES, &community_id))?
+            .channels
+            .iter()
+            .find(|capability| capability.channel_id == channel_id)
+    }
+
+    /// Whether this user keeps seeing the text of a message a moderator removed in this channel.
+    /// The channel's capability when the server sends one; on an older server the roles'
+    /// `DELETE_ANY_MESSAGE`, which is the action the server's `canSeeRemovedMessages` asks for.
+    pub(crate) fn may_see_removed(&self, channel_id: &str) -> bool {
+        if self.is_instance_owner() {
+            return true;
+        }
+        if let Some(capability) = self.channel_capability(channel_id) {
+            return capability.see_removed;
+        }
+        self.cache
+            .channel_roles(&keys::scoped(keys::CHANNEL_ROLES, channel_id))
+            .is_some_and(|roles| {
+                roles.roles.iter().any(|role| {
+                    role.actions
+                        .iter()
+                        .any(|held| held == &RbacAction::DeleteAnyMessage)
+                })
+            })
     }
 
     /// A removed message as this reader may see it, the server's rule (`blankRemovedMessage`)
@@ -248,8 +296,7 @@ impl State {
         let may_see = dto
             .channel_id
             .as_deref()
-            .and_then(|channel_id| self.moderation_of(channel_id))
-            .is_some_and(|moderation| moderation.remove_any);
+            .is_some_and(|channel_id| self.may_see_removed(channel_id));
         if may_see {
             return;
         }
@@ -299,9 +346,10 @@ impl State {
             .windows
             .values()
             .any(|window| window.find(id).is_some());
-        let allowed = self.moderation_of(channel_id).is_some_and(|m| m.remove_any);
-        if !allowed {
-            // For the next one: the roles weren't asked for yet, or say no.
+        let allowed = self.may_see_removed(channel_id);
+        if !allowed && self.channel_capability(channel_id).is_none() {
+            // For the next one: the roles weren't asked for yet, or say no. A channel whose
+            // capability list has already answered asks nothing.
             self.ensure_query(keys::scoped(keys::CHANNEL_ROLES, channel_id));
         }
         if !loaded || !allowed {
@@ -549,6 +597,8 @@ impl Core {
                     channel_id: dto.channel_id.clone(),
                     direct_message_group_id: dto.direct_message_group_id.clone(),
                     message_id: message_id.clone(),
+                    // The author's own delete leaves no row behind, on the server or here.
+                    removal: Some(MessageRemoval::Hard),
                 };
                 state.drop_from_pins(dto.channel_id.as_deref(), &message_id);
                 state.remove_message(&payload);
@@ -607,6 +657,7 @@ impl Core {
                             channel_id: dto.channel_id,
                             direct_message_group_id: dto.direct_message_group_id,
                             message_id,
+                            removal: Some(MessageRemoval::Hard),
                         });
                     }
                 }

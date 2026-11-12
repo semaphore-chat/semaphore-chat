@@ -918,6 +918,11 @@ fn attachment_kind(mime_type: &str) -> AttachmentKind {
     }
 }
 
+/// A dimension the server measured, as the view's pixels: an unknown or impossible one is none.
+fn pixels(value: i64) -> Option<u32> {
+    u32::try_from(value).ok().filter(|pixels| *pixels > 0)
+}
+
 /// The prefix the web gives a community emoji's reaction: `custom:{emojiId}`.
 pub const CUSTOM_REACTION_PREFIX: &str = "custom:";
 
@@ -1031,8 +1036,9 @@ pub fn project(
                 size_bytes: file.size.max(0) as u64,
                 kind: attachment_kind(&file.mime_type),
                 has_thumbnail: file.has_thumbnail,
-                width: None,
-                height: None,
+                // The server measures images and videos at upload (U12); older files have none.
+                width: file.width.and_then(pixels),
+                height: file.height.and_then(pixels),
             })
             .collect(),
         reactions: dto

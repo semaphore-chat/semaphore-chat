@@ -1350,7 +1350,17 @@
       },
       "get": {
         "operationId": "InviteController_getInvites",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "communityId",
+            "required": false,
+            "in": "query",
+            "description": "Only the invites that include this community",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -1534,6 +1544,7 @@
     },
     "/api/roles/my/channel/{channelId}": {
       "get": {
+        "description": "Returns the caller's community roles for the channel's community. These do NOT include the channel's permission overwrites: a channel that denies or grants an action is not reflected here. For per-channel decisions (post, attach, react, voice, manage permissions) use GET /api/channels/{id}/permissions/me, which returns the effective channel capabilities.",
         "operationId": "RolesController_getMyRolesForChannel",
         "parameters": [
           {
@@ -1567,6 +1578,7 @@
             }
           }
         },
+        "summary": "The caller's community roles, as they apply to a channel",
         "tags": [
           "Roles"
         ]
@@ -3796,10 +3808,26 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "continuationToken",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
+            "headers": {
+              "X-Continuation-Token": {
+                "description": "Cursor for the next page; pass it back as continuationToken. Absent when the page is not full.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "",
             "content": {
               "application/json": {
@@ -3855,10 +3883,26 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "continuationToken",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
+            "headers": {
+              "X-Continuation-Token": {
+                "description": "Cursor for the next page; pass it back as continuationToken. Absent when the page is not full.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "",
             "content": {
               "application/json": {
@@ -3914,10 +3958,26 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "continuationToken",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
+            "headers": {
+              "X-Continuation-Token": {
+                "description": "Cursor for the next page; pass it back as continuationToken. Absent when the page is not full.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "",
             "content": {
               "application/json": {
@@ -4688,6 +4748,57 @@
         ]
       }
     },
+    "/api/livekit/channels/{channelId}/remove-participant": {
+      "post": {
+        "operationId": "LivekitController_removeParticipant",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveParticipantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Remove someone from this voice call only: they leave the LiveKit room but\nstay a community member, and may rejoin. The participant_left webhook\nannounces the leave and clears their presence.",
+        "tags": [
+          "Livekit"
+        ]
+      }
+    },
     "/api/livekit/connection-info": {
       "get": {
         "operationId": "LivekitController_getConnectionInfo",
@@ -4861,7 +4972,7 @@
             }
           }
         },
-        "summary": "Stream a replay clip directly (download-only, no persistence)\nCreates a temporary file, streams it, and deletes it after streaming completes",
+        "summary": "Stream a replay clip directly (download-only, no persistence)\nCreates a temporary file, streams it, and deletes it after streaming completes.\nOne download per user at a time: each holds a whole clip of temp disk.",
         "tags": [
           "Livekit"
         ]
@@ -6097,6 +6208,47 @@
         ]
       }
     },
+    "/api/invite/{code}/accept": {
+      "post": {
+        "operationId": "inviteControllerAcceptInvite",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptInviteResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "",
+        "tags": [
+          "AcceptInvite"
+        ]
+      }
+    },
     "/api/moderation/ban/{communityId}/{userId}": {
       "post": {
         "operationId": "ModerationController_banUser",
@@ -7085,6 +7237,16 @@
               "default": false,
               "type": "boolean"
             }
+          },
+          {
+            "name": "includeDismissed",
+            "required": false,
+            "in": "query",
+            "description": "Include dismissed notifications in the page and total. Defaults to true.",
+            "schema": {
+              "default": true,
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -7382,11 +7544,16 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "The override, or null when the user has none",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChannelNotificationOverrideDto"
+                  "nullable": true,
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ChannelNotificationOverrideDto"
+                    }
+                  ]
                 }
               }
             }
@@ -7402,7 +7569,7 @@
             }
           }
         },
-        "summary": "Get channel notification override\nGET /notifications/channels/:channelId/override",
+        "summary": "Get channel notification override\nGET /notifications/channels/:channelId/override\n\nAnswers JSON null when the user has no override: an empty 200 body cannot\nbe decoded by generated API clients.",
         "tags": [
           "Notifications"
         ]
@@ -12289,6 +12456,16 @@
             "type": "integer",
             "format": "int64"
           },
+          "width": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display width in pixels, for images and videos; null when unknown."
+          },
+          "height": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display height in pixels, for images and videos; null when unknown."
+          },
           "id": {
             "type": "string"
           },
@@ -12790,13 +12967,17 @@
           }
         }
       },
-      "VoicePresenceUserDto": {
+      "ChannelVoicePresenceUserDto": {
         "type": "object",
         "properties": {
           "joinedAt": {
             "type": "string",
             "description": "ISO-8601 timestamp, as sent on the socket.",
             "format": "date-time"
+          },
+          "canModerate": {
+            "type": "boolean",
+            "description": "Whether the caller may server mute this user or remove them from the\ncall. The server always sends it in this response (false for the caller's\nown entry). Optional in the type because clients also add users to this\nlist from socket events, which don't carry it."
           },
           "id": {
             "type": "string"
@@ -12828,23 +13009,23 @@
       "ChannelVoicePresenceResponseDto": {
         "type": "object",
         "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelVoicePresenceUserDto"
+            }
+          },
           "count": {
             "type": "integer"
           },
           "channelId": {
             "type": "string"
-          },
-          "users": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VoicePresenceUserDto"
-            }
           }
         },
         "required": [
+          "users",
           "count",
-          "channelId",
-          "users"
+          "channelId"
         ]
       },
       "RefreshPresenceResponseDto": {
@@ -12893,6 +13074,41 @@
         "required": [
           "userId",
           "voiceChannels"
+        ]
+      },
+      "VoicePresenceUserDto": {
+        "type": "object",
+        "properties": {
+          "joinedAt": {
+            "type": "string",
+            "description": "ISO-8601 timestamp, as sent on the socket.",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "isDeafened": {
+            "type": "boolean"
+          },
+          "isServerMuted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "joinedAt",
+          "id",
+          "username",
+          "isDeafened",
+          "isServerMuted"
         ]
       },
       "DmVoicePresenceResponseDto": {
@@ -13019,6 +13235,17 @@
         "required": [
           "participantIdentity",
           "mute"
+        ]
+      },
+      "RemoveParticipantDto": {
+        "type": "object",
+        "properties": {
+          "participantIdentity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "participantIdentity"
         ]
       },
       "ConnectionInfoResponseDto": {
@@ -13780,6 +14007,16 @@
             "type": "integer",
             "format": "int64"
           },
+          "width": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display width in pixels, for images and videos; null when unknown."
+          },
+          "height": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display height in pixels, for images and videos; null when unknown."
+          },
           "id": {
             "type": "string"
           },
@@ -13895,6 +14132,72 @@
         },
         "required": [
           "members"
+        ]
+      },
+      "InviteCommunityDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "InviteSkipReason": {
+        "type": "string",
+        "enum": [
+          "already_member",
+          "banned"
+        ]
+      },
+      "SkippedInviteCommunityDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InviteSkipReason"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "id",
+          "name"
+        ]
+      },
+      "AcceptInviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "joined": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteCommunityDto"
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkippedInviteCommunityDto"
+            }
+          }
+        },
+        "required": [
+          "joined",
+          "skipped"
         ]
       },
       "ModerationBanUserDto": {
@@ -14680,6 +14983,11 @@
               }
             ]
           },
+          "channelName": {
+            "type": "string",
+            "nullable": true,
+            "description": "The channel's name, for clients showing it without the channel list."
+          },
           "id": {
             "type": "string"
           },
@@ -14869,6 +15177,24 @@
               }
             ]
           },
+          "dndStartTime": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$",
+            "description": "Start of the DND window, HH:mm (24-hour). null or an empty string clears it."
+          },
+          "dndEndTime": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$",
+            "description": "End of the DND window, HH:mm (24-hour). null or an empty string clears it."
+          },
+          "dndTimezone": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[A-Za-z_]+(\\/[A-Za-z0-9_+-]+)*$",
+            "description": "IANA timezone for the DND window. null or an empty string clears it."
+          },
           "defaultChannelLevel": {
             "allOf": [
               {
@@ -14885,22 +15211,25 @@
           "doNotDisturb": {
             "type": "boolean"
           },
-          "dndStartTime": {
-            "type": "string",
-            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$"
-          },
-          "dndEndTime": {
-            "type": "string",
-            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$"
-          },
-          "dndTimezone": {
-            "type": "string",
-            "pattern": "^[A-Za-z_]+(\\/[A-Za-z0-9_+-]+)*$"
-          },
           "dmNotifications": {
             "type": "boolean"
           }
         }
+      },
+      "UpdateChannelOverrideDto": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationLevel"
+              }
+            ]
+          }
+        },
+        "required": [
+          "level"
+        ]
       },
       "ChannelNotificationOverrideDto": {
         "type": "object",
@@ -14933,21 +15262,6 @@
           "level",
           "createdAt",
           "updatedAt"
-        ]
-      },
-      "UpdateChannelOverrideDto": {
-        "type": "object",
-        "properties": {
-          "level": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/NotificationLevel"
-              }
-            ]
-          }
-        },
-        "required": [
-          "level"
         ]
       },
       "SendTestNotificationDto": {
@@ -15289,6 +15603,18 @@
           "managePermissions": {
             "type": "boolean",
             "description": "Edit this channel's permission overwrites."
+          },
+          "pin": {
+            "type": "boolean",
+            "description": "Pin messages here."
+          },
+          "deleteAny": {
+            "type": "boolean",
+            "description": "Delete other members' messages here."
+          },
+          "seeRemoved": {
+            "type": "boolean",
+            "description": "Keep seeing the text of messages removed by a moderator here."
           }
         },
         "required": [
@@ -15304,7 +15630,10 @@
           "speak",
           "video",
           "share",
-          "managePermissions"
+          "managePermissions",
+          "pin",
+          "deleteAny",
+          "seeRemoved"
         ]
       },
       "CommunityChannelCapabilitiesDto": {
@@ -15929,6 +16258,16 @@
           "size": {
             "type": "integer",
             "format": "int64"
+          },
+          "width": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display width in pixels, for images and videos; null when unknown."
+          },
+          "height": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display height in pixels, for images and videos; null when unknown."
           },
           "resourceType": {
             "allOf": [
@@ -16981,6 +17320,57 @@
           "message"
         ]
       },
+      "DmGroupCreatedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "memberIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memberIds",
+          "groupId"
+        ]
+      },
+      "DmGroupMemberAddedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userIds",
+          "groupId"
+        ]
+      },
+      "DmGroupMemberLeftPayloadDto": {
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "userId"
+        ]
+      },
       "UpdateMessagePayloadDto": {
         "type": "object",
         "properties": {
@@ -16992,9 +17382,25 @@
           "message"
         ]
       },
+      "MessageRemoval": {
+        "type": "string",
+        "enum": [
+          "soft",
+          "hard"
+        ],
+        "description": "A moderator removal that keeps the row, or a hard delete."
+      },
       "DeleteMessagePayloadDto": {
         "type": "object",
         "properties": {
+          "removal": {
+            "description": "A moderator removal that keeps the row, or a hard delete.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageRemoval"
+              }
+            ]
+          },
           "messageId": {
             "type": "string"
           },
@@ -17280,6 +17686,11 @@
               }
             ]
           },
+          "parentMessageId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Set for a thread reply's notification."
+          },
           "author": {
             "nullable": true,
             "type": "object",
@@ -17348,6 +17759,46 @@
         ]
       },
       "NotificationReadPayloadDto": {
+        "type": "object",
+        "properties": {
+          "notificationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notificationId"
+        ]
+      },
+      "NotificationsReadScope": {
+        "type": "string",
+        "enum": [
+          "all",
+          "channel",
+          "directMessage"
+        ]
+      },
+      "NotificationsReadPayloadDto": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationsReadScope"
+              }
+            ]
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "directMessageGroupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "NotificationDismissedPayloadDto": {
         "type": "object",
         "properties": {
           "notificationId": {
@@ -17914,6 +18365,27 @@
           "userId"
         ]
       },
+      "FriendshipPayloadDto": {
+        "type": "object",
+        "properties": {
+          "friendshipId": {
+            "type": "string"
+          },
+          "userAId": {
+            "type": "string",
+            "description": "The request's sender (one of the two friends once accepted)."
+          },
+          "userBId": {
+            "type": "string",
+            "description": "The request's receiver."
+          }
+        },
+        "required": [
+          "friendshipId",
+          "userAId",
+          "userBId"
+        ]
+      },
       "CommunityUpdatedPayloadDto": {
         "type": "object",
         "properties": {
@@ -18046,6 +18518,21 @@
         },
         "required": [
           "communityId",
+          "userId",
+          "roleId"
+        ]
+      },
+      "InstanceRolesUpdatedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          }
+        },
+        "required": [
           "userId",
           "roleId"
         ]
@@ -18200,11 +18687,16 @@
           "TIMED_OUT",
           "NONCE_CONFLICT",
           "MESSAGE_DELETED",
+          "DM_BLOCKED",
           "CURRENT_SESSION_UNKNOWN",
           "ATTACH_NOT_ALLOWED",
           "FILE_NOT_OWNED",
           "UPLOAD_TARGET_NOT_ALLOWED",
-          "STORAGE_QUOTA_EXCEEDED"
+          "STORAGE_QUOTA_EXCEEDED",
+          "INVITE_NOT_FOUND",
+          "INVITE_EXPIRED",
+          "INVITE_EXHAUSTED",
+          "INVITE_DISABLED"
         ]
       },
       "SendAckErrorDto": {

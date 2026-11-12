@@ -206,3 +206,66 @@ async fn around_in_a_dm_finds_the_anchor() {
             .any(|m| m["id"] == "msg-203")
     );
 }
+
+/// Search pages a message at a time the backend's way: the page continues after the id the
+/// `continuationToken` names, and a full page answers with its last id in
+/// `X-Continuation-Token` (absent when the page isn't full, so the last page ends the walk).
+#[tokio::test]
+async fn search_pages_with_a_header_cursor() {
+    let server = start("big-community").await;
+    let base = server.base_url();
+    let client = http();
+    let channel = "channel-105";
+
+    let mut seen: Vec<String> = Vec::new();
+    let mut token: Option<String> = None;
+    let mut pages = 0;
+    loop {
+        pages += 1;
+        assert!(pages < 10, "search paging did not terminate");
+        let path = match &token {
+            Some(token) => format!(
+                "/api/messages/search/channel/{channel}?q=plan&limit=2&continuationToken={token}"
+            ),
+            None => format!("/api/messages/search/channel/{channel}?q=plan&limit=2"),
+        };
+        let response = client
+            .get(format!("{base}{path}"))
+            .header("Authorization", TOKEN)
+            .send()
+            .await
+            .expect("the fake answers");
+        assert_eq!(response.status().as_u16(), 200, "{path}");
+        let next = response
+            .headers()
+            .get("x-continuation-token")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let body: Value = response.json().await.expect("a page");
+        let ids: Vec<String> = body
+            .as_array()
+            .expect("a page of messages")
+            .iter()
+            .map(|message| message["id"].as_str().expect("an id").to_owned())
+            .collect();
+        if ids.len() == 2 {
+            assert!(
+                next.is_some(),
+                "a full page carries the next cursor: {path}"
+            );
+        } else {
+            assert!(next.is_none(), "a short page ends the walk: {path}");
+        }
+        seen.extend(ids);
+        token = next;
+        if token.is_none() {
+            break;
+        }
+    }
+
+    // Four messages match "plan" here: two full pages, then an empty one that ends the walk.
+    assert_eq!(pages, 3);
+    assert_eq!(seen.len(), 4, "{seen:?}");
+    let unique: std::collections::BTreeSet<_> = seen.iter().collect();
+    assert_eq!(unique.len(), seen.len(), "no message twice: {seen:?}");
+}

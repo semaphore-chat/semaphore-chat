@@ -57,6 +57,11 @@ pub mod keys {
     pub const PINS: &str = "moderationControllerGetPinnedMessages";
     pub const THREAD_META: &str = "threadsControllerGetMetadata";
     pub const CHANNEL_ROLES: &str = "rolesControllerGetMyRolesForChannel";
+    /// Message search, one key per scope, id and query (`commands::reading`): the three routes
+    /// are separate operations and are cached apart.
+    pub const SEARCH_CHANNEL: &str = "messagesControllerSearchChannelMessages";
+    pub const SEARCH_DM: &str = "messagesControllerSearchDirectMessages";
+    pub const SEARCH_COMMUNITY: &str = "messagesControllerSearchCommunityMessages";
     // W2.
     pub const DMS: &str = "directMessagesControllerFindUserDmGroups";
     /// Friends and pending requests, read together: `friendsControllerGetFriends` and
@@ -107,6 +112,8 @@ pub enum CacheValue {
     ThreadMeta(wire::ThreadMetadataDto),
     /// This user's roles in a channel, keyed by channel: their actions decide pin and remove.
     ChannelRoles(wire::UserRolesResponseDto),
+    /// A search's loaded pages, newest first, and the cursor for the next.
+    Search(SearchPages),
     /// W2: this user's DMs and groups, newest activity first.
     DmGroups(Vec<wire::DmGroupResponseDto>),
     Friends(FriendsData),
@@ -155,6 +162,14 @@ pub struct NotificationPages {
     pub has_more: bool,
 }
 
+/// A search's loaded pages, newest first, and the cursor for the page after them. The key names
+/// the scope, the id searched and the query, so a search is its own entry.
+#[derive(Debug, Clone)]
+pub struct SearchPages {
+    pub hits: Vec<crate::model::SearchHit>,
+    pub next: Option<String>,
+}
+
 /// As many pages of a community's members as core reads.
 #[derive(Debug, Clone)]
 pub struct MemberPages {
@@ -201,6 +216,7 @@ macro_rules! typed_read {
 
 impl QueryCache {
     typed_read!(pins, pins_mut, Pins, Vec<wire::PinnedMessageDto>);
+    typed_read!(search, search_mut, Search, SearchPages);
     typed_read!(
         thread_meta,
         thread_meta_mut,

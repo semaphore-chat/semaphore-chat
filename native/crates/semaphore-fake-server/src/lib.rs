@@ -583,9 +583,11 @@ impl FakeServer {
                 file_type: semaphore_wire::enums::FileType::Document,
                 filename: format!("{file_id}.txt"),
                 has_thumbnail: false,
+                height: None,
                 id: (*file_id).to_owned(),
                 mime_type: "text/plain".into(),
                 size: 1,
+                width: None,
             })
             .collect();
         true

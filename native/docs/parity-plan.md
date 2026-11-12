@@ -453,7 +453,7 @@ Model changes after the freeze are additive only, with the coordinator. A's fake
 | Unit | Delivers | Touches | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | W7-gifs | GIF search/featured picker, animated GIF/WebP embeds (frame limit) | core lane (gifs endpoints), new `ui/src/gifs`, `ui/src/messages/media.rs` | W1-ui-emoji, Mike's third-party image decision | M | stories; fake server gifs endpoints; frame-limit tests |
-| W7-thumbnails | Server-sized thumbnails (U12) so image boxes size correctly | `backend/` (U12, API-contract stack), core, `ui/src/messages` | U12 landing | S | core test on dimensions; story shot with mixed aspect ratios |
+| W7-thumbnails | Server-sized thumbnails (U12) so image boxes size correctly | `backend/` (U12, API-contract stack), core, `ui/src/messages` | U12 landed in the `fd19adce` repin | S | core test on dimensions (done: `AttachmentView` takes them from the DTO); story shot with mixed aspect ratios |
 | W7-preview-images | Link-preview images per Mike's decision (direct fetch with the existing limits, or a server proxy) | `semaphore-app/src/files.rs`, possibly `backend/` | Mike's decision | S | `slice-e2e.sh` link-preview step flips from "unrequested" to drawn |
 
 ### W6/W7 freeze
@@ -497,13 +497,23 @@ At most three UI lanes at once: shell, users, content; then roles-storage, gifs,
 Left for W6-app: `AdminUserRolesView::available` (it joins W6-B's user roles with W6-E's roles list,
 built in parallel).
 
-**Contract has it, core doesn't use it yet** (after W8, which wired the events and the decline
-endpoint of the 2026-11-12 repin): `ErrorCode::CURRENT_SESSION_UNKNOWN` (the web has no special
-handling for it either: the sessions commands already treat a refusal as "not signed out");
-`VoiceClientPlatform::native` (join failures stay local until the backend accepts a native
-platform); and `timeoutRemoved.expired`, which changes no decision (a timeout that ran out and one
-a moderator lifted unlock the composer and read the same lists again), so nothing branches on it.
-Another repin follows when the open backend PRs land.
+**Contract has it, core doesn't use it yet** (after the repin to `fd19adce`, 2026-11-12, which
+wired the channel capability flags, `deleteMessage`'s `removal`, `DM_BLOCKED`, search paging, the
+notifications list's `includeDismissed` and its rows' `channelName`/`parentMessageId`, the
+nullable DND window, and attachment `width`/`height`): `ErrorCode::CURRENT_SESSION_UNKNOWN` (the
+web has no special handling for it either: the sessions commands already treat a refusal as "not
+signed out"); `VoiceClientPlatform::native` (join failures stay local until the backend accepts a
+native platform); `timeoutRemoved.expired`, which changes no decision (a timeout that ran out and
+one a moderator lifted unlock the composer and read the same lists again), so nothing branches on
+it; `ChannelVoicePresenceUserDto.canModerate`, which the presence list keeps for a later "remove
+from this call" menu that core doesn't offer; the new events `dmGroupCreated`,
+`dmGroupMemberAdded`/`dmGroupMemberLeft`, the five `friend*` ones, `instanceRolesUpdated`,
+`notificationDismissed` and `notificationsRead` (each ignored in `core/src/events.rs`, where the
+comment says which list is read again instead); `POST /api/invite/{code}/accept` (with
+`AcceptInviteResponseDto` and its skip reasons) and the invite list's `communityId` filter;
+`POST /api/livekit/channels/{channelId}/remove-participant` (W4's Kick stays the community kick);
+the `INVITE_*` error codes; and the file DTOs' `width`/`height`, which the message's attachments
+already carry. Another repin follows when the open backend PRs land.
 
 **W6/W7 defaults** (chosen with the owner, 2026-11-11/12):
 

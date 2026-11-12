@@ -148,7 +148,7 @@ fn every_contract_server_event_has_a_variant() {
     let contract: Value =
         serde_json::from_str(SOCKET_EVENTS).expect("socket-events.json is valid JSON");
     let server = contract["server"].as_object().expect("a server object");
-    assert_eq!(server.len(), 61, "the contract pins 61 server events");
+    assert_eq!(server.len(), 72, "the contract pins 72 server events");
 
     for name in server.keys() {
         let decoded = ServerEvent::decode(name, Value::Null);

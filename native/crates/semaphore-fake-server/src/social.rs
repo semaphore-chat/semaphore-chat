@@ -286,6 +286,7 @@ pub(crate) fn notification_payload(inner: &Inner, notification: &NotificationDto
         message: notification.message.clone(),
         message_id: notification.message_id.clone(),
         notification_id: notification.id.clone(),
+        parent_message_id: notification.parent_message_id.clone(),
         read: notification.read,
         type_: notification.type_.clone(),
     })
@@ -304,6 +305,11 @@ fn create_notification(
         author: Some(author_of(author)),
         author_id: author.id.clone(),
         channel_id: message.channel_id.clone(),
+        channel_name: message
+            .channel_id
+            .as_deref()
+            .and_then(|channel| inner.scenario.channel(channel))
+            .map(|channel| channel.name.clone()),
         community_id: message
             .channel_id
             .as_deref()

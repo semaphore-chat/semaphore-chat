@@ -250,9 +250,11 @@ fn attachment_from(id: &str) -> AttachmentDto {
         file_type: FileType::Document,
         filename: id.to_owned(),
         has_thumbnail: false,
+        height: None,
         id: id.to_owned(),
         mime_type: "application/octet-stream".to_owned(),
         size: 0,
+        width: None,
     }
 }
 
@@ -649,9 +651,11 @@ pub(crate) fn add_attachment(
                 file_type: file_type_for(&file.mime_type),
                 filename: file.filename,
                 has_thumbnail: false,
+                height: None,
                 id: file_id.to_owned(),
                 mime_type: file.mime_type,
                 size: file.bytes.len() as i64,
+                width: None,
             })
         }
         None => None,

@@ -100,6 +100,9 @@ impl Core {
                     .await
                     .map_err(|error| self.backend_failed(error))?,
             ),
+            keys::SEARCH_CHANNEL | keys::SEARCH_DM | keys::SEARCH_COMMUNITY => {
+                CacheValue::Search(self.fetch_search(key).await?)
+            }
             keys::CAPABILITIES => CacheValue::Capabilities(
                 backend
                     .channel_permissions_controller_get_my_community_channel_permissions(id)
