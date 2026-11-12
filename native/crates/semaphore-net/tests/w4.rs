@@ -140,6 +140,11 @@ impl Client {
 }
 
 async fn signed_in(server: &FakeServer) -> Client {
+    signed_in_as(server, "me").await
+}
+
+/// Signed in as `username`, which `FakeServer::sign_in_as` maps to a scenario user.
+async fn signed_in_as(server: &FakeServer, username: &str) -> Client {
     let backend = HttpBackend::new(Arc::new(MemSecrets::default()));
     let mut config = SocketConfig::new("unused");
     config.reconnect_delay = Duration::from_millis(50);
@@ -158,7 +163,7 @@ async fn signed_in(server: &FakeServer) -> Client {
     realtime.attach(core.clone());
     let driver = core.clone();
     tokio::spawn(async move { driver.drive().await });
-    core.sign_in(server.base_url(), "me".into(), "pw".into())
+    core.sign_in(server.base_url(), username.into(), "pw".into())
         .await
         .unwrap();
     until("sign-in", || {
@@ -333,6 +338,50 @@ async fn a_call_i_start_does_not_ring_me() {
     assert_eq!(client.core.incoming_call(), None);
     assert!(!client.events.cues().contains(&SoundCue::IncomingRingStart));
     assert!(client.events.cues().contains(&SoundCue::UserJoined));
+}
+
+#[tokio::test]
+async fn a_decline_over_the_real_transports_ends_the_callers_one_to_one_call() {
+    let server = server().await;
+    server.sign_in_as("pri", &id("u-priya"));
+    let caller = signed_in(&server).await;
+    let callee = signed_in_as(&server, "pri").await;
+    let dm = id("dm-priya");
+    caller.core.join_dm_call(dm.clone()).await.unwrap();
+    until("the ring", || callee.core.incoming_call().is_some()).await;
+    assert_eq!(caller.core.voice().status, VoiceStatus::Connected);
+
+    callee.core.decline_incoming_call();
+    assert_eq!(
+        callee.core.incoming_call(),
+        None,
+        "the ring stops here at once"
+    );
+    until("the caller's call to end", || {
+        caller.core.voice().status == VoiceStatus::Disconnected
+    })
+    .await;
+    assert_eq!(caller.core.voice().room, None);
+    assert!(
+        caller
+            .media
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call == "disconnect"),
+        "{:?}",
+        caller.media.calls.lock().unwrap()
+    );
+    assert_eq!(
+        statuses(&server, "DmVoicePresenceController_declineDmVoiceCall"),
+        [201]
+    );
+    // The callee's device heard its own decline on the socket too: still nothing ringing.
+    until("the callee's ring to stay down", || {
+        callee.core.incoming_call().is_none()
+    })
+    .await;
 }
 
 // --- Server mute and kick ---

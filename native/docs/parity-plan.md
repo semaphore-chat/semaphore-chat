@@ -338,8 +338,10 @@ engine report of `screen_audio: Failed` starts the video alone at once.
 
 **W4 defaults** (chosen for the owner, who may overrule; 2026-11-11):
 
-- Declining an incoming call is local only: the caller isn't told (as on the web; telling them needs
-  a backend event, below).
+- Declining an incoming call tells the server (it has carried `dmVoiceCallDeclined` and the
+  `POST /dm-groups/{id}/voice-presence/decline` route since the 2026-11-12 repin), best-effort: the
+  ring stops here at once, and a 1:1 caller's call ends when it hears the decline. A group DM keeps
+  going.
 - The replay buffer starts by itself when a screen share is published in a channel call, and stops
   with the share or the call, as on the web. Never in a DM call.
 - The voice participant menu offers "Kick" (removal from the community) behind a simple confirm in
@@ -495,13 +497,13 @@ At most three UI lanes at once: shell, users, content; then roles-storage, gifs,
 Left for W6-app: `AdminUserRolesView::available` (it joins W6-B's user roles with W6-E's roles list,
 built in parallel).
 
-**Contract has it, core doesn't use it yet** (the 2026-11-12 repin; core ignores them as it did
-while they were unknown): `userUnbanned`, `privateChannelAdded`/`privateChannelRemoved`,
-`customEmojiCreated`/`Deleted`, `soundboardSoundCreated`/`Deleted`, `aliasGroupCreated`/`Updated`/
-`Deleted`/`MembersUpdated`, `webhookCreated`/`Deleted`, `dmVoiceCallDeclined`, `dmVoiceCallEnded`,
-`timeoutRemoved.expired`, `POST /dm-groups/{id}/voice-presence/decline`, `ErrorCode::CURRENT_SESSION_UNKNOWN`,
-`VoiceClientPlatform::native`, `ModerationLogDto.targetMessageId`. The moderation log filter is now
-the generated `ModerationAction` enum. Another repin follows when the open backend PRs land.
+**Contract has it, core doesn't use it yet** (after W8, which wired the events and the decline
+endpoint of the 2026-11-12 repin): `ErrorCode::CURRENT_SESSION_UNKNOWN` (the web has no special
+handling for it either: the sessions commands already treat a refusal as "not signed out");
+`VoiceClientPlatform::native` (join failures stay local until the backend accepts a native
+platform); and `timeoutRemoved.expired`, which changes no decision (a timeout that ran out and one
+a moderator lifted unlock the composer and read the same lists again), so nothing branches on it.
+Another repin follows when the open backend PRs land.
 
 **W6/W7 defaults** (chosen with the owner, 2026-11-11/12):
 
@@ -620,7 +622,7 @@ Found while designing W4 (2026-11-11). None blocks W4; each has a workaround or 
 | Put `TrackSource.UNKNOWN` (the soundboard's source) in `publishGrantFor`'s `canPublishSources` | Whenever the grant lists sources (no VIDEO or SCREEN_SHARE permission, server-muted, timed out), the `soundboard` track is refused. The web has the same failure | Shows the engine's refusal as the play's error |
 | A permission (and a rate limit) for playing soundboard sounds | `READ_SOUNDBOARD_SOUND` gates the list only; anyone who may publish can play, as often as they like | none (server gap) |
 | A native value in `ReportJoinFailureDto.platform` | `VOICE_CLIENT_PLATFORMS` is `web` and `electron` only | Join failures stay local, in the debug panel |
-| Decline, missed-call or cancel events for DM calls, and a REST leave for DM voice presence | Only `dmVoiceCallStarted`/`UserJoined`/`UserLeft` exist, and DM presence leaves only by LiveKit's webhook or the 90 s TTL | Decline is local; ringing stops when the call's presence empties |
+| Decline, missed-call or cancel events for DM calls, and a REST leave for DM voice presence | `dmVoiceCallDeclined`/`dmVoiceCallEnded` and `POST /voice-presence/decline` exist since the 2026-11-12 repin; there are still no missed-call or cancel events, and DM presence leaves only by LiveKit's webhook or the 90 s TTL | Decline goes through the REST route (best-effort); a 1:1 caller's call ends on `dmVoiceCallDeclined`; ringing also stops when the call's presence empties |
 | Make the "first user" check in `handleWebhookDmParticipantJoined` atomic | `smembers` then a pipeline: two members joining at once can both emit `dmVoiceCallStarted` | A ring for a DM whose call we're in or joining is ignored |
 | A "remove from call" endpoint, and whether I outrank someone | The web's voice "remove" is a community kick; server mute needs outranking, which a client can't see | Kick behind a confirm; the menu offers mute by role and shows the server's 403 |
 

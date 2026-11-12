@@ -89,6 +89,14 @@ impl VoiceBackend for HttpBackend {
         rpc!(self, c => c.dm_voice_presence_controller_refresh_dm_presence(dm_group_id))
     }
 
+    async fn dm_voice_presence_controller_decline_dm_voice_call(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<wire::DeclineDmVoiceCallResponseDto> {
+        let dm_group_id = dm_group_id.as_str();
+        rpc!(self, c => c.dm_voice_presence_controller_decline_dm_voice_call(dm_group_id))
+    }
+
     async fn livekit_controller_mute_participant(
         &self,
         channel_id: String,

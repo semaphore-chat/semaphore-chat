@@ -6,11 +6,13 @@
 //! leaves a channel call first, and the reverse.
 //!
 //! Ringing (`dmVoiceCallStarted` from someone else, for a DM whose call we're not in or joining)
-//! keeps the newest ring only, and stops on accept, decline (local only), `expires_at_ms`, our
-//! joining that call on any device, the call's presence emptying, or sign-out. Chosen for the owner
-//! (2026-11-11), who may overrule: decline tells nobody (the server has no way to, #638); group
-//! DMs ring every member. Two members starting at once can both be announced as the starter
-//! (#662): a ring for the DM whose call we're in or joining is ignored.
+//! keeps the newest ring only, and stops on accept, decline, `expires_at_ms`, our joining that
+//! call on any device, the call's presence emptying (`dmVoiceCallEnded`), a decline by this
+//! account on another device (`dmVoiceCallDeclined` naming us), or sign-out. Declining also tells
+//! the server, best-effort (`POST /dm-groups/{id}/voice-presence/decline`); a failure is only
+//! logged. In a 1:1, the other person's decline ends the caller's call there, and a group DM rings
+//! every member. Two members starting at once can both be announced as the starter (#662): a ring
+//! for the DM whose call we're in or joining is ignored.
 //!
 //! [`State::w4_settle`] runs after every change, before events go out: it stops a ring our call
 //! answers, and derives the keep-awake changes, the sound cues and the replay buffer from what
@@ -362,6 +364,38 @@ impl State {
         }
     }
 
+    /// `dmVoiceCallDeclined`. This account declining on any device stops this device's ring. In a
+    /// 1:1, the other person declining ends the caller's call, as a phone call ends when the other
+    /// side says no (`declineEndsMyCall`); a group call keeps going, as one person declining is
+    /// only about them. The server says whether it is a group, so a cache that hasn't loaded
+    /// can't be wrong here.
+    pub(crate) fn w4_declined(&mut self, event: &wire::DmVoiceCallDeclinedPayloadDto) {
+        if event.user_id == self.me_id() {
+            if self.ringing_for(&event.dm_group_id) {
+                self.w4_stop_ring();
+            }
+            return;
+        }
+        if event.is_group {
+            return;
+        }
+        if let Some(VoiceRoom::Dm { dm_group_id }) = &self.voice.room
+            && *dm_group_id == event.dm_group_id
+        {
+            // The caller waited in this room for an answer that won't come.
+            self.w5a_end_call();
+        }
+    }
+
+    /// `dmVoiceCallEnded`: the call's presence emptied, so every device still ringing for it
+    /// stops. A call this device is in doesn't end here: its own presence would have kept the
+    /// call from reading empty.
+    pub(crate) fn w4_ended(&mut self, dm_group_id: &str) {
+        if self.ringing_for(dm_group_id) {
+            self.w4_stop_ring();
+        }
+    }
+
     /// The session is ending: take its ring down.
     pub(crate) fn w4_signed_out(&mut self) {
         self.w4_stop_ring();
@@ -609,9 +643,41 @@ impl Core {
         self.join_dm_call(call.dm_group_id).await
     }
 
-    /// Stops the ring. The caller isn't told.
+    /// Stops the ring and tells the server, best-effort: the caller's 1:1 call ends there
+    /// (`dmVoiceCallDeclined` goes to the DM's room) and this account's other devices stop
+    /// ringing. The failure is only logged: the ring has already stopped here. With no ring there
+    /// is nothing to tell anyone.
     pub fn decline_incoming_call(&self) {
-        self.write(|state, _| state.w4_stop_ring());
+        self.write(|state, _| {
+            let Some(call) = state.w4.incoming.clone() else {
+                return;
+            };
+            state.w4_stop_ring();
+            if state.me.is_some() {
+                state.push_effect(Effect::DeclineDmCall {
+                    dm_group_id: call.dm_group_id,
+                    epoch: state.session_epoch,
+                });
+            }
+        });
+    }
+
+    /// [`Core::decline_incoming_call`]'s request, in the background. A session that ended meanwhile
+    /// has nobody to tell.
+    pub(crate) async fn decline_dm_call(&self, dm_group_id: String, epoch: u64) {
+        let Some(services) = self.services().cloned() else {
+            return;
+        };
+        if self.read(|state| state.session_epoch) != epoch {
+            return;
+        }
+        if let Err(error) = services
+            .backend
+            .dm_voice_presence_controller_decline_dm_voice_call(dm_group_id)
+            .await
+        {
+            log::warn!("declining the DM call failed: {error}");
+        }
     }
 
     /// The host calls this at the ring's `expires_at_ms`: a ring past it stops. Does nothing

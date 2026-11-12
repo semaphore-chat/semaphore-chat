@@ -190,6 +190,135 @@ async fn a_dm_token_is_for_the_groups_room_and_names_the_caller() {
     assert!(token["token"].is_string());
 }
 
+/// A login as `username` (mapped to a scenario user by `FakeServer::sign_in_as`), and its access
+/// token, for the calls a test makes as someone else.
+async fn sign_in_as(client: &reqwest::Client, base: &str, username: &str) -> String {
+    let (status, body) = request(
+        client,
+        reqwest::Method::POST,
+        base,
+        "/api/auth/login",
+        Some(json!({ "username": username, "password": "Password123!" })),
+        false,
+    )
+    .await;
+    assert_eq!(status, 200, "login as {username}: {body}");
+    body["accessToken"].as_str().unwrap_or_default().to_owned()
+}
+
+async fn decline_as(client: &reqwest::Client, base: &str, token: &str, dm: &str) -> (u16, Value) {
+    let response = client
+        .post(format!("{base}/api/dm-groups/{dm}/voice-presence/decline"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("the fake answers");
+    let status = response.status().as_u16();
+    let text = response.text().await.expect("a body");
+    (
+        status,
+        serde_json::from_str(&text).unwrap_or(Value::String(text)),
+    )
+}
+
+#[tokio::test]
+async fn declining_a_one_to_one_call_tells_the_group() {
+    let (server, client, base) = showcase().await;
+    let dm = id("dm-priya");
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut priya = connect_as(&base, &id("u-priya")).await;
+    assert!(server.dm_call_join(&dm, &id("u-priya")));
+    // Priya's join reached everyone; only the decline is news now.
+    settle(&server, &mut [&mut me, &mut priya]).await;
+
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{dm}/voice-presence/decline"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(
+        body,
+        json!({ "success": true, "message": "Call declined", "dmGroupId": dm })
+    );
+    let heard = settle(&server, &mut [&mut me, &mut priya]).await;
+    for events in &heard {
+        assert_eq!(names(events), ["dmVoiceCallDeclined"]);
+        assert_eq!(
+            events[0].1,
+            json!({ "dmGroupId": dm, "userId": id("me"), "isGroup": false }),
+            "the server knows a 1:1 from a group"
+        );
+    }
+}
+
+#[tokio::test]
+async fn declining_a_group_call_tells_every_member_and_a_retry_is_not_news() {
+    let (server, client, base) = showcase().await;
+    let dm = id("dm-launch");
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut samira = connect_as(&base, &id("u-samira")).await;
+    // Not in the group's room.
+    let mut grace = connect_as(&base, &id("u-grace")).await;
+    assert!(server.dm_call_join(&dm, &id("u-samira")));
+    settle(&server, &mut [&mut me, &mut samira, &mut grace]).await;
+
+    let path = format!("/api/dm-groups/{dm}/voice-presence/decline");
+    let (status, _) = post(&client, &base, &path, json!({})).await;
+    assert_eq!(status, 201);
+    // The same person again (another window, a retry): accepted, told nobody.
+    let (status, _) = post(&client, &base, &path, json!({})).await;
+    assert_eq!(status, 201);
+
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut grace]).await;
+    assert_eq!(names(&heard[0]), ["dmVoiceCallDeclined"]);
+    assert_eq!(names(&heard[1]), ["dmVoiceCallDeclined"]);
+    assert!(heard[2].is_empty(), "{:?}", heard[2]);
+    assert_eq!(
+        heard[1][0].1,
+        json!({ "dmGroupId": dm, "userId": id("me"), "isGroup": true })
+    );
+}
+
+#[tokio::test]
+async fn a_decline_is_for_members_with_a_call_they_are_not_in() {
+    let (server, client, base) = showcase().await;
+    // Nobody in the call: 409, as `declineDmVoiceCall` answers.
+    let dm = id("dm-marcus");
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{dm}/voice-presence/decline"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["message"], "There is no active call in this DM group");
+
+    // In it: 409 too.
+    assert!(server.dm_call_join(&dm, &id("me")));
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{dm}/voice-presence/decline"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["message"], "You are already in this call");
+
+    // Not a member (`assertDmMember` first, whatever the call is doing): 403.
+    server.sign_in_as("grace", &id("u-grace"));
+    let token = sign_in_as(&client, &base, "grace").await;
+    let dm = id("dm-priya");
+    let (status, body) = decline_as(&client, &base, &token, &dm).await;
+    assert_eq!(status, 403, "{body}");
+    assert_eq!(body["message"], "You are not a member of this DM group");
+}
+
 // ----- Server mute and kick --------------------------------------------------------------------
 
 #[tokio::test]
