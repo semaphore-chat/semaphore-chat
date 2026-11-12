@@ -19,6 +19,7 @@ mod tests;
 pub use add::{AddOutcome, friendly_error, relationship_tags};
 
 use crate::dms::picker::UserPicker;
+use crate::messages::TimeFormat;
 use crate::panel::PanelClock;
 use gpui_kit::*;
 use semaphore_core::model::FriendsView;
@@ -76,6 +77,7 @@ pub struct FriendsPanel {
     /// The friend whose "more" menu is open.
     menu: Option<String>,
     clock: PanelClock,
+    time: TimeFormat,
 }
 
 impl EventEmitter<FriendsEvent> for FriendsPanel {}
@@ -89,6 +91,7 @@ impl FriendsPanel {
             show_title: true,
             menu: None,
             clock: PanelClock::default(),
+            time: TimeFormat::default(),
         }
     }
 
@@ -127,6 +130,12 @@ impl FriendsPanel {
     /// What "Today" and "3 days ago" are measured from. The real clock unless a story fixes it.
     pub fn set_clock(&mut self, clock: PanelClock, cx: &mut Context<Self>) {
         self.clock = clock;
+        cx.notify();
+    }
+
+    /// The zone a request's date past a week is written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
         cx.notify();
     }
 

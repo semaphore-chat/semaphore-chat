@@ -10,6 +10,7 @@ use super::{
 };
 use crate::dms::picker::Found;
 use crate::dms::stories::failed;
+use crate::messages::TimeFormat;
 use crate::messages::fixture::NOW_MS;
 use crate::panel::PanelClock;
 use crate::profile::stories::picture;
@@ -529,13 +530,16 @@ fn shell(
         }
         let ids = people();
         screen.members().update(cx, |tab, cx| {
+            tab.set_time(TimeFormat::fixed(NOW_MS), cx);
             tab.set_members(Some(members()), cx);
             tab.set_me(Some(ids[0].id.clone()), cx);
         });
         screen.channels().update(cx, |tab, cx| {
+            tab.set_time(TimeFormat::fixed(NOW_MS), cx);
             tab.set_channels(LoadState::Ready, channels(), cx)
         });
         screen.private_channels().update(cx, |tab, cx| {
+            tab.set_time(TimeFormat::fixed(NOW_MS), cx);
             tab.set_channels(LoadState::Ready, channels(), cx);
             tab.set_members(Some(members()), cx);
             tab.set_view(
@@ -561,6 +565,7 @@ fn shell(
         });
         screen.invites().update(cx, |tab, cx| {
             tab.set_clock(PanelClock::fixed(NOW_MS), cx);
+            tab.set_time(TimeFormat::fixed(NOW_MS), cx);
             tab.set_link_base("https://chat.example.com", cx);
             tab.set_view(
                 invites(LoadState::Ready, invite_rows(), AdminOp::default()),
@@ -599,6 +604,7 @@ fn members_tab(
 ) -> AnyView {
     cx.new(|cx| {
         let mut tab = MembersTab::new(window, cx);
+        tab.set_time(TimeFormat::fixed(NOW_MS), cx);
         tab.set_caps(caps, cx);
         tab.set_members(list, cx);
         tab.set_me(Some("u-me".into()), cx);
@@ -620,6 +626,7 @@ fn channels_tab(
 ) -> AnyView {
     cx.new(|cx| {
         let mut tab = ChannelsTab::new(window, cx);
+        tab.set_time(TimeFormat::fixed(NOW_MS), cx);
         tab.set_caps(caps, cx);
         tab.set_channels(state, rows, cx);
         tweak(&mut tab, window, cx);
@@ -640,6 +647,7 @@ fn private_tab(
 ) -> AnyView {
     cx.new(|cx| {
         let mut tab = PrivateChannelsTab::new(window, cx);
+        tab.set_time(TimeFormat::fixed(NOW_MS), cx);
         tab.set_caps(caps, cx);
         tab.set_channels(state, rows, cx);
         tab.set_members(community, cx);
@@ -714,6 +722,7 @@ fn invites_tab(
         let mut tab = InvitesTab::new(window, cx);
         tab.set_caps(caps, cx);
         tab.set_clock(PanelClock::fixed(NOW_MS), cx);
+        tab.set_time(TimeFormat::fixed(NOW_MS), cx);
         tab.set_link_base("https://chat.example.com", cx);
         tweak(&mut tab, window, cx);
         tab.set_view(view, cx);

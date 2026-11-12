@@ -10,6 +10,7 @@ use super::rules::{Pending, act, date_label, failure_of, needs, running};
 use crate::kit::{
     Alert, Button, ButtonSize, Severity, TextField, Variant, spacing, text, text_state,
 };
+use crate::messages::TimeFormat;
 use crate::panel::common::error_block;
 use crate::theme::SemTheme;
 use gpui_kit::component::input::InputState;
@@ -44,6 +45,7 @@ pub struct PrivateChannelsTab {
     pending: Vec<Pending>,
     filter: Entity<InputState>,
     removing: Option<UserView>,
+    time: TimeFormat,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -63,12 +65,19 @@ impl PrivateChannelsTab {
             pending: Vec::new(),
             filter,
             removing: None,
+            time: TimeFormat::default(),
             _subscriptions,
         }
     }
 
     pub fn set_caps(&mut self, caps: CommunityCaps, cx: &mut Context<Self>) {
         self.caps = caps;
+        cx.notify();
+    }
+
+    /// The zone "Added …" is written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
         cx.notify();
     }
 
@@ -208,7 +217,10 @@ impl PrivateChannelsTab {
                             row.child(
                                 text(
                                     Variant::Caption,
-                                    format!("Added {}", date_label(member.joined_at_ms)),
+                                    format!(
+                                        "Added {}",
+                                        date_label(&self.time, member.joined_at_ms)
+                                    ),
                                 )
                                 .flex_shrink_0()
                                 .text_color(sem.text_secondary),

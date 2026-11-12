@@ -856,6 +856,64 @@ async fn revoking_a_session_ends_its_tokens_and_tells_only_its_sockets() {
 }
 
 #[tokio::test]
+async fn logout_ends_the_session_its_refresh_token_names() {
+    let api = api().await;
+    let (desk, desk_refresh) = api.login("mike", "Password123!", Some("Desk")).await;
+    let (laptop, _) = api.login("mike", "Password123!", Some("Laptop")).await;
+    assert_eq!(api.get("/api/users/profile", &desk).await.0, 200);
+
+    let (status, body) = api
+        .call(
+            reqwest::Method::POST,
+            "/api/auth/logout",
+            Some(&desk),
+            &[],
+            Some(json!({ "refreshToken": desk_refresh })),
+        )
+        .await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["message"], "Logged out");
+
+    // The access token is blacklisted: a session route refuses it, as the backend does.
+    let (status, body) = api.get("/api/users/profile", &desk).await;
+    assert_eq!(status, 401, "{body}");
+    assert_eq!(body["errorCode"], "UNAUTHENTICATED");
+    // The refresh token's family is gone.
+    let (status, body) = api
+        .public_post("/api/auth/refresh", json!({ "refreshToken": desk_refresh }))
+        .await;
+    assert_eq!(status, 401, "{body}");
+    // Another session of the same user keeps working, and the list no longer has this one.
+    assert_eq!(api.get("/api/users/profile", &laptop).await.0, 200);
+    let (status, list) = api.get("/api/auth/sessions", &laptop).await;
+    assert_eq!(status, 200, "{list}");
+    assert_eq!(list.as_array().unwrap().len(), 1, "{list}");
+    assert_eq!(list[0]["deviceName"], "Laptop");
+}
+
+#[tokio::test]
+async fn logout_with_only_the_bearer_ends_its_session_too() {
+    let api = api().await;
+    let (access, refresh) = api.login("mike", "Password123!", Some("Desk")).await;
+
+    let (status, body) = api
+        .call(
+            reqwest::Method::POST,
+            "/api/auth/logout",
+            Some(&access),
+            &[],
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(api.get("/api/users/profile", &access).await.0, 401);
+    let (status, _) = api
+        .public_post("/api/auth/refresh", json!({ "refreshToken": refresh }))
+        .await;
+    assert_eq!(status, 401);
+}
+
+#[tokio::test]
 async fn revoking_the_others_keeps_the_caller() {
     let api = api().await;
     let (mine, mine_refresh) = api.login("mike", "Password123!", Some("Desk")).await;

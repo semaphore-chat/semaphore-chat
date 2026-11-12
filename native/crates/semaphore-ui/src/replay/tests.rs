@@ -94,6 +94,74 @@ fn clocks_are_minutes_then_hours() {
     assert_eq!(clock(3725), "1:02:05");
 }
 
+#[test]
+fn capture_times_are_written_in_the_users_zone() {
+    use crate::messages::TimeFormat;
+    use chrono::FixedOffset;
+
+    // Zone minutes east of UTC, the instant, the local time, and the UTC time.
+    let cases = [
+        (
+            9 * 60,
+            1_793_804_340_000,
+            "Nov 4, 2026 11:59 PM",
+            "Nov 4, 2026 2:59 PM",
+        ),
+        (
+            9 * 60,
+            1_793_804_460_000,
+            "Nov 5, 2026 12:01 AM",
+            "Nov 4, 2026 3:01 PM",
+        ),
+        (
+            -8 * 60,
+            1_793_865_540_000,
+            "Nov 4, 2026 11:59 PM",
+            "Nov 5, 2026 7:59 AM",
+        ),
+        (
+            -8 * 60,
+            1_793_865_660_000,
+            "Nov 5, 2026 12:01 AM",
+            "Nov 5, 2026 8:01 AM",
+        ),
+        // 2026-12-31 15:30 UTC: New Year's Day in +09:00.
+        (
+            9 * 60,
+            1_798_731_000_000,
+            "Jan 1, 2027 12:30 AM",
+            "Dec 31, 2026 3:30 PM",
+        ),
+        // 2026-11-05 18:31 UTC: 00:01 the 6th in +05:30.
+        (
+            5 * 60 + 30,
+            1_793_903_460_000,
+            "Nov 6, 2026 12:01 AM",
+            "Nov 5, 2026 6:31 PM",
+        ),
+        // 2026-11-05 18:16 UTC: 00:01 the 6th in +05:45.
+        (
+            5 * 60 + 45,
+            1_793_902_560_000,
+            "Nov 6, 2026 12:01 AM",
+            "Nov 5, 2026 6:16 PM",
+        ),
+    ];
+    for (minutes, ms, local, utc) in cases {
+        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let time = TimeFormat {
+            zone: Some(zone),
+            now_ms: Some(ms),
+        };
+        assert_eq!(captured_at(&time, ms), local, "{minutes} minutes east");
+        assert_eq!(
+            TimeFormat::fixed(ms).format_at(ms, "%b %-d, %Y %-I:%M %p"),
+            utc,
+            "{minutes} minutes east: the UTC time"
+        );
+    }
+}
+
 // ---- The trim. ----
 
 #[test]

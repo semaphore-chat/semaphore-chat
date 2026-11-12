@@ -398,6 +398,43 @@ fn an_invite_is_expired_used_up_disabled_or_active() {
 }
 
 #[test]
+fn dates_are_written_in_the_users_zone() {
+    use crate::messages::TimeFormat;
+    use chrono::FixedOffset;
+
+    // Zone minutes east of UTC, the instant, the local date, and the UTC date.
+    let cases = [
+        // 2026-11-04 14:59 UTC: 23:59 the same day in +09:00.
+        (9 * 60, 1_793_804_340_000, "Nov 4, 2026", "Nov 4, 2026"),
+        // 2026-11-04 15:01 UTC: already the 5th in +09:00.
+        (9 * 60, 1_793_804_460_000, "Nov 5, 2026", "Nov 4, 2026"),
+        // 2026-11-05 07:59 UTC: still the 4th in -08:00.
+        (-8 * 60, 1_793_865_540_000, "Nov 4, 2026", "Nov 5, 2026"),
+        // 2026-11-05 08:01 UTC: the 5th in -08:00.
+        (-8 * 60, 1_793_865_660_000, "Nov 5, 2026", "Nov 5, 2026"),
+        // 2026-12-31 15:30 UTC: New Year's Day in +09:00.
+        (9 * 60, 1_798_731_000_000, "Jan 1, 2027", "Dec 31, 2026"),
+        // 2026-11-05 18:31 UTC: 00:01 the 6th in +05:30.
+        (5 * 60 + 30, 1_793_903_460_000, "Nov 6, 2026", "Nov 5, 2026"),
+        // 2026-11-05 18:16 UTC: 00:01 the 6th in +05:45.
+        (5 * 60 + 45, 1_793_902_560_000, "Nov 6, 2026", "Nov 5, 2026"),
+    ];
+    for (minutes, ms, local, utc) in cases {
+        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let time = TimeFormat {
+            zone: Some(zone),
+            now_ms: Some(ms),
+        };
+        assert_eq!(date_label(&time, ms), local, "{minutes} minutes east");
+        assert_eq!(
+            TimeFormat::fixed(ms).format_at(ms, "%b %-d, %Y"),
+            utc,
+            "{minutes} minutes east: the UTC date"
+        );
+    }
+}
+
+#[test]
 fn invite_links_use_the_web_hash_route() {
     for (base, want) in [
         (

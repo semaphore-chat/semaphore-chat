@@ -32,6 +32,7 @@ pub use sessions::{session_details, session_device_name};
 pub use voice::{mic_quality_label, share_size_label};
 
 use crate::kit::Severity;
+use crate::messages::TimeFormat;
 use crate::notifications::NotificationSettingsSection;
 use crate::panel::PanelClock;
 use gpui_kit::component::select::SelectState;
@@ -343,6 +344,7 @@ pub enum SessionsEvent {
 pub struct SessionsSettings {
     view: SessionsView,
     clock: PanelClock,
+    time: TimeFormat,
     notice: Option<(Severity, String)>,
     confirming: bool,
 }
@@ -354,6 +356,7 @@ impl SessionsSettings {
         Self {
             view: SessionsView::default(),
             clock: PanelClock::default(),
+            time: TimeFormat::default(),
             notice: None,
             confirming: false,
         }
@@ -368,6 +371,12 @@ impl SessionsSettings {
     /// What "5 minutes ago" is measured from. The real clock unless a story fixes it.
     pub fn set_clock(&mut self, clock: PanelClock, cx: &mut Context<Self>) {
         self.clock = clock;
+        cx.notify();
+    }
+
+    /// The zone "Signed in …" and "Expires …" are written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
         cx.notify();
     }
 

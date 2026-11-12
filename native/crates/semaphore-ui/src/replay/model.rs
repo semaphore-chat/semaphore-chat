@@ -1,6 +1,7 @@
 //! What the replay views decide, with no GPUI in it: the presets, the buffer's status line, the
 //! trim range and its ruler, and how a clip card reads.
 
+use crate::messages::TimeFormat;
 use semaphore_core::model::{
     AttachmentKind, AttachmentView, Clip, LoadState, ReplayMinutes, ReplaySessionView, ReplayState,
     ReplayTrim,
@@ -252,15 +253,10 @@ pub fn clip_attachment(clip: &Clip) -> AttachmentView {
     }
 }
 
-/// "Nov 8, 2026 3:04 PM", the web's `MMM d, yyyy h:mm a`, in local time.
-pub fn captured_at(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|at| {
-            at.with_timezone(&chrono::Local)
-                .format("%b %-d, %Y %-I:%M %p")
-                .to_string()
-        })
-        .unwrap_or_default()
+/// "Nov 8, 2026 3:04 PM", the web's `MMM d, yyyy h:mm a`, in `time`'s zone (the user's, unless a
+/// story fixes one).
+pub fn captured_at(time: &TimeFormat, ms: i64) -> String {
+    time.format_at(ms, "%b %-d, %Y %-I:%M %p")
 }
 
 /// "3 public clips", under another user's library title.

@@ -177,6 +177,7 @@ fn sessions_story(view: SessionsView, notice: Option<(Severity, String)>, cx: &m
     cx.new(|cx| {
         let mut settings = SessionsSettings::new(cx);
         settings.set_clock(PanelClock::fixed(NOW_MS), cx);
+        settings.set_time(crate::messages::TimeFormat::fixed(NOW_MS), cx);
         settings.set_view(view, cx);
         settings.set_notice(notice, cx);
         settings
@@ -233,6 +234,7 @@ fn shell_story(tab: Option<SettingsTab>, window: &mut Window, cx: &mut App) -> A
         });
         screen.sessions().update(cx, |settings, cx| {
             settings.set_clock(PanelClock::fixed(NOW_MS), cx);
+            settings.set_time(crate::messages::TimeFormat::fixed(NOW_MS), cx);
             settings.set_view(sample_sessions(), cx);
         });
         screen.desktop().update(cx, |settings, cx| {

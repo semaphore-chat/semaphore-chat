@@ -7,6 +7,7 @@ use super::model::{self, clip_attachment};
 use crate::kit::{
     Alert, Button, Dialog, IconButton, Severity, Skeleton, Spinner, Switch, Variant, text, with_tip,
 };
+use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, empty_block, error_block, is_phone};
 use crate::player::{AttachmentPlayer, PlayerViewEvent, Players, file_size};
 use crate::theme::SemTheme as _;
@@ -29,6 +30,7 @@ pub struct ClipLibrary {
     /// The clip the delete confirm is open for, and whether its delete has been asked.
     confirm: Option<(String, bool)>,
     width: std::rc::Rc<std::cell::Cell<f32>>,
+    time: TimeFormat,
 }
 
 impl EventEmitter<ClipEvent> for ClipLibrary {}
@@ -45,7 +47,14 @@ impl ClipLibrary {
             made: HashMap::new(),
             confirm: None,
             width: std::rc::Rc::new(std::cell::Cell::new(0.)),
+            time: TimeFormat::default(),
         }
+    }
+
+    /// The zone a card's "Captured …" is written in: the app's, unless a story fixes it.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
+        cx.notify();
     }
 
     pub fn set_view(&mut self, view: ClipsView, cx: &mut Context<Self>) {
@@ -310,8 +319,11 @@ impl ClipLibrary {
                             .child(text(Variant::Caption, file_size(clip.size_bytes))),
                     )
                     .child(
-                        text(Variant::Caption, model::captured_at(clip.captured_at_ms))
-                            .text_color(sem.text_secondary),
+                        text(
+                            Variant::Caption,
+                            model::captured_at(&self.time, clip.captured_at_ms),
+                        )
+                        .text_color(sem.text_secondary),
                     )
                     .children(public),
             )
