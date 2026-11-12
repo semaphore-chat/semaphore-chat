@@ -1438,6 +1438,11 @@ async fn create_invite(
         valid_until: invite.valid_until,
         disabled: false,
         created_by: username,
+        community_ids: invite
+            .default_communities
+            .iter()
+            .map(|community| community.community_id.clone())
+            .collect(),
     });
     created(invite)
 }

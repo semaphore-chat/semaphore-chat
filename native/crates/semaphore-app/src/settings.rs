@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 /// The settings file's name inside the data directory.
 pub const SETTINGS_FILE: &str = "settings.json";
 /// The schema version this build reads and writes.
-pub const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 3;
 /// A user's volume, in percent, is clamped to this.
 pub const MAX_USER_VOLUME: u8 = 200;
 
@@ -197,9 +197,10 @@ pub struct Settings {
     pub close_to_tray: bool,
     pub window: Option<WindowState>,
     pub last_channel: Option<String>,
-    /// Load link previews' images from the sites they're on. Off by default: each one tells that
-    /// site the viewer's address.
-    pub link_preview_images: bool,
+    /// "Load images from other sites (link previews, GIFs)": one switch for every third-party
+    /// image, off by default, because each one tells that site the viewer's address. v2's
+    /// `link_preview_images`, widened to GIFs.
+    pub third_party_media: bool,
     /// The last appearance this app showed (`ThemeChoice::name`), so a start draws in it before
     /// the server's appearance arrives, and the signed-out screens keep it.
     pub theme: Option<String>,
@@ -220,7 +221,7 @@ impl Default for Settings {
             close_to_tray: true,
             window: None,
             last_channel: None,
-            link_preview_images: false,
+            third_party_media: false,
             theme: None,
             float_placements: BTreeMap::new(),
             dm_stage_ratio: None,
@@ -439,6 +440,7 @@ fn migrate(from_version: u32, mut value: Value) -> Value {
         value = match version {
             0 => migrate_v0_to_v1(value),
             1 => migrate_v1_to_v2(value),
+            2 => migrate_v2_to_v3(value),
             _ => value,
         };
         version += 1;
@@ -487,6 +489,22 @@ fn migrate_v1_to_v2(mut value: Value) -> Value {
     value
 }
 
+/// v2 had `link_preview_images`; v3 makes it the one third-party media switch (link previews and
+/// GIFs), keeping the old choice.
+fn migrate_v2_to_v3(mut value: Value) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        let was_on = matches!(
+            object.remove("link_preview_images"),
+            Some(Value::Bool(true))
+        );
+        object
+            .entry("third_party_media")
+            .or_insert(Value::Bool(was_on));
+        object.insert("version".to_owned(), Value::from(3));
+    }
+    value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,7 +540,7 @@ mod tests {
         let store = SettingsStore::load(&dir.0);
         assert_eq!(store.get(), &Settings::default());
         assert!(!store.is_read_only());
-        assert!(!store.get().link_preview_images);
+        assert!(!store.get().third_party_media);
         assert!(!dir.file().exists(), "loading writes nothing");
     }
 
@@ -569,7 +587,7 @@ mod tests {
                 };
                 s.close_to_tray = true;
                 s.last_channel = Some("cc-general".into());
-                s.link_preview_images = true;
+                s.third_party_media = true;
                 s.window = Some(WindowState {
                     x: -5,
                     y: 10,
@@ -706,7 +724,7 @@ mod tests {
         assert_eq!(migrated["version"], 1);
         assert_eq!(migrated["voice"]["push_to_talk"], true);
         let settings: Settings = serde_json::from_value(migrate(1, migrated)).unwrap();
-        assert_eq!(settings.version, 2);
+        assert_eq!(settings.version, CURRENT_VERSION);
         assert_eq!(settings.voice.input_device.as_deref(), Some("old-mic"));
         assert_eq!(settings.voice.input_mode, InputMode::PushToTalk);
         assert_eq!(settings.voice.push_to_talk_key.as_deref(), Some("F13"));
@@ -758,10 +776,39 @@ mod tests {
             .unwrap();
         let saved: Value =
             serde_json::from_str(&std::fs::read_to_string(dir.file()).unwrap()).unwrap();
-        assert_eq!(saved["version"], 2);
+        assert_eq!(saved["version"], CURRENT_VERSION);
         assert_eq!(saved["voice"]["input_mode"]["mode"], "push_to_talk");
         assert_eq!(saved["voice"]["mic_quality"], "standard");
         assert!(saved["voice"].get("push_to_talk").is_none());
+    }
+
+    #[test]
+    fn migrates_a_v2_file_to_the_one_third_party_media_switch() {
+        for (old, expected) in [
+            (
+                serde_json::json!({"version": 2, "link_preview_images": true}),
+                true,
+            ),
+            (
+                serde_json::json!({"version": 2, "link_preview_images": false}),
+                false,
+            ),
+            (serde_json::json!({"version": 2}), false),
+        ] {
+            let migrated = migrate(2, old);
+            assert_eq!(migrated["version"], CURRENT_VERSION);
+            assert_eq!(migrated["third_party_media"], expected);
+            assert!(
+                migrated.get("link_preview_images").is_none(),
+                "the old switch is gone"
+            );
+        }
+        let settings: Settings = serde_json::from_value(migrate(
+            2,
+            serde_json::json!({"version": 2, "link_preview_images": true}),
+        ))
+        .unwrap();
+        assert!(settings.third_party_media);
     }
 
     #[test]

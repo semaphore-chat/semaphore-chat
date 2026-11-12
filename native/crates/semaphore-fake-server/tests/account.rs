@@ -156,12 +156,11 @@ fn is_uuid(text: &str) -> bool {
 // ----- onboarding ------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn register_needs_a_usable_invite_whatever_the_mode_and_checks_it_before_names() {
+async fn register_on_an_invite_only_instance_needs_a_usable_invite_and_checks_it_before_names() {
     let api = api().await;
     let body = |code: &str, username: &str| json!({ "code": code, "username": username, "password": "Password123!" });
 
-    // The public settings say INVITE_ONLY, but the backend asks for the invite in every mode, and
-    // there is none yet: 404, not an open door.
+    // The instance is INVITE_ONLY and there is no invite yet: 404, not an open door.
     let (status, error) = api
         .public_post("/api/users", body("nope", "New-User"))
         .await;
@@ -263,7 +262,7 @@ async fn an_expired_used_up_or_disabled_invite_does_not_register_or_show() {
         let mut seed = InviteSeed::new(code);
         change(&mut seed);
         api.server.seed_invite(seed);
-        // The public lookup answers 200 with nothing, as the backend does for a `null`.
+        // The public lookup says why, in its own `INVITE_*` code.
         let (status, body) = api
             .call(
                 reqwest::Method::GET,
@@ -273,10 +272,15 @@ async fn an_expired_used_up_or_disabled_invite_does_not_register_or_show() {
                 None,
             )
             .await;
+        assert_eq!(status, 404, "{code}: {body}");
         assert_eq!(
-            (status, &body),
-            (200, &Value::String(String::new())),
-            "{code}"
+            body["errorCode"],
+            match code {
+                "EXPIRED" => "INVITE_EXPIRED",
+                "USEDUP" => "INVITE_EXHAUSTED",
+                _ => "INVITE_DISABLED",
+            },
+            "{code}: {body}"
         );
         let (status, error) = api
             .public_post(
@@ -336,7 +340,7 @@ async fn a_good_public_invite_shows_what_the_join_screen_needs() {
             "createdBy": { "username": "inviter" },
         })
     );
-    // An unknown code is the same empty 200.
+    // An unknown code is a 404 with its own reason.
     let (status, body) = api
         .call(
             reqwest::Method::GET,
@@ -346,7 +350,9 @@ async fn a_good_public_invite_shows_what_the_join_screen_needs() {
             None,
         )
         .await;
-    assert_eq!((status, body), (200, Value::String(String::new())));
+    assert_eq!(status, 404);
+    assert_eq!(body["errorCode"], "INVITE_NOT_FOUND");
+    assert_eq!(body["message"], "This invite link is invalid.");
 }
 
 #[tokio::test]

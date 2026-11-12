@@ -996,6 +996,10 @@ pub fn project(
             url: preview.url.clone(),
             title: preview.title.clone(),
             description: preview.description.clone(),
+            image_host: preview
+                .image_url
+                .as_deref()
+                .and_then(crate::text::gif::url_host),
             image_url: preview.image_url.clone(),
             site_name: preview.site_name.clone(),
             favicon_url: preview.favicon_url.clone(),

@@ -49,6 +49,22 @@ impl OnboardingBackend for HttpBackend {
         }
     }
 
+    async fn onboarding_controller_get_status(&self) -> BackendResult<wire::OnboardingStatusDto> {
+        let (client, _, _) = self.anon_client()?;
+        match client.onboarding_controller_get_status().await {
+            Ok(response) => Ok(response.into_inner()),
+            Err(error) => Err(convert(error).await),
+        }
+    }
+
+    async fn invite_controller_accept_invite(
+        &self,
+        code: String,
+    ) -> BackendResult<wire::AcceptInviteResponseDto> {
+        let code = &code;
+        rpc!(self, c => c.invite_controller_accept_invite(code))
+    }
+
     async fn community_controller_create(
         &self,
         body: wire::CreateCommunityDto,

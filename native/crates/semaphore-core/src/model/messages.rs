@@ -111,6 +111,9 @@ pub struct LinkPreviewView {
     pub title: Option<String>,
     pub description: Option<String>,
     pub image_url: Option<String>,
+    /// The host the picture would load from, lower-case ("giphy.com"), so a blocked one can say
+    /// where it is from: "Image from example.com: Load".
+    pub image_host: Option<String>,
     pub site_name: Option<String>,
     pub favicon_url: Option<String>,
     pub author_name: Option<String>,

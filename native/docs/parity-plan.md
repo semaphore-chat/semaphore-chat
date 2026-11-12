@@ -17,16 +17,16 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 
 | Feature | Web client | Native |
 |---|---|---|
-| Server URL entry and probe (connection wizard) | `components/Electron/ConnectionWizard.tsx` | done (`Core::probe_server`, `ui/src/auth`) |
+| Server URL entry and probe (connection wizard) | `components/Electron/ConnectionWizard.tsx` | done (`Core::probe_server`, `ui/src/auth`); the probe now reads `needs_setup` from `GET /onboarding/status` (W9) |
 | Password sign-in | `pages/LoginPage.tsx` | done |
 | Session restore at start, expired/unreachable handling | `utils/tokenService.ts`, `components/SessionUnavailable.tsx` | done (`restore_session`, Try again / session expired) |
 | Sign out | `components/Desktop/RailUserMenu.tsx`, `hooks/useLogout.ts` | done (account menu) |
 | Sign in with browser (PKCE, loopback) | `electron/browser-login.ts`, `components/Electron/BrowserLoginPanel.tsx`, `pages/DesktopLoginPage.tsx`, `utils/pkce.ts`, `docs-site/docs/installation/desktop-browser-sign-in.md` | not started (needs the client-type backend, see section 4) |
-| Registration (with invite code) | `pages/RegisterPage.tsx` | not started (button opens the web app) |
+| Registration (with invite code) | `pages/RegisterPage.tsx` | core done, UI pending: `Core::register` honours the instance's mode (closed = no register, invite-only = code required, open = code optional); `Core::register_requirements` is what the screen shows |
 | Forgot / reset password | `pages/ForgotPasswordPage.tsx`, `pages/ResetPasswordPage.tsx` | not started (button opens the web app) |
 | First-run instance setup wizard | `pages/OnboardingPage.tsx`, `components/Onboarding/` | not started |
-| Join by invite link | `pages/JoinInvitePage.tsx` | partial: `/join/:inviteCode` parses to `Route::Invite` (`ui/src/nav`); no invite preview or join command |
-| Home: summary, zero-community gate, next step, invite card | `pages/HomePage.tsx`, `components/Home/`, `hooks/useHomeSummary.ts` | partial: a "Pick a community" placeholder |
+| Join by invite link | `pages/JoinInvitePage.tsx` | core done, UI pending: `Core::invite_preview` (`InvitePreviewView`, with the server's `INVITE_*` reason) and `Core::accept_invite` → `InviteJoin` (joined and skipped communities with reasons) |
+| Home: summary, zero-community gate, next step, invite card | `pages/HomePage.tsx`, `components/Home/`, `hooks/useHomeSummary.ts` | partial: the sections and the gate are assembled in `ui/src/home` from existing reads (as the web's `useHomeSummary` does; no core Home view by design); the card's invite creation is W5-core, joining is W9-core (`Core::accept_invite`) |
 
 ### Communities and channels
 
@@ -55,41 +55,41 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Mentions: @user, @here/@everyone, alias groups, #channel autocomplete and rendering | `components/Message/MentionDropdown.tsx`, `hooks/useMentionAutocomplete.ts`, `utils/mentionParser.ts` | done |
 | Replies: quote display and jump to the original | `components/Message/QuotePreview.tsx`, `hooks/useJumpToMessage.ts` | done |
 | Replies: start a reply from a message | `components/Message/ReplyComposerBanner.tsx`, `messageActions.ts` | partial: composer has `set_reply`; no list action triggers it |
-| Threads: pane, replies, thread composer, reply badge, subscribe | `components/Thread/`, `hooks/useThreadReplies.ts`, `hooks/useThreadSubscription.ts` | partial: core opens `Conversation::Thread` and ingests `newThreadReply`/count events; `OpenThread` only logs; no pane, no subscription |
+| Threads: pane, replies, thread composer, reply badge, subscribe | `components/Thread/`, `hooks/useThreadReplies.ts`, `hooks/useThreadSubscription.ts` | core done, UI pending: `thread_info`, `set_thread_subscribed`, the thread window and the reply badge's counts (`newThreadReply`, `threadReplyCountUpdated`); `ui/src/thread` exists (W1 lane) |
 | Reactions: toggle an existing one | `components/Message/MessageReactions.tsx` | done (`toggle_reaction`) |
-| Reactions: add any emoji, who-reacted tooltip | `components/Message/ReactionTooltip.tsx`, `EmojiPicker.tsx` | not started |
-| Emoji picker (unicode and custom) | `components/Message/EmojiPicker.tsx`, `emojiData.ts`, `utils/emojiGridNavigation.ts` | not started (composer has an open/close hook only) |
-| GIF picker and GIF embeds | `components/Message/GifPicker.tsx`, `GifEmbed.tsx`, `backend/src/gifs` | not started |
-| Edit message | `components/Message/MessageEditForm.tsx` | partial: others' edits apply live; no edit command (`EditLastMessage` logs) |
-| Delete message | `messageActions.ts` | partial: deletions apply live; no delete command |
-| Message actions: hover toolbar, context menu, copy content | `components/Message/MessageToolbar.tsx`, `MessageContextMenu.tsx`, `MessageActionsSheet.tsx` | partial: copy via selection and Ctrl+C; no toolbar or menu |
-| Pins: pin/unpin, pinned panel | `components/Moderation/PinnedMessagesPanel.tsx` | partial: core ingests pin events; no command, no panel |
-| Message search (panel, results, jump) | `components/Message/MessageSearch*.tsx`, `hooks/useMessageSearch.ts`, route `channel/:channelId/search` | not started |
+| Reactions: add any emoji, who-reacted tooltip | `components/Message/ReactionTooltip.tsx`, `EmojiPicker.tsx` | core done, UI pending: `add_reaction`/`remove_reaction` for any emoji, `reaction_users` (15 names + `more`) |
+| Emoji picker (unicode and custom) | `components/Message/EmojiPicker.tsx`, `emojiData.ts`, `utils/emojiGridNavigation.ts` | core done, UI pending: `EmojiView`, the community emoji query, emoji mention candidates and `MessageDraft` insertion; the unicode data and grid are the `ui/src/emoji` lane (it exists) |
+| GIF picker and GIF embeds | `components/Message/GifPicker.tsx`, `GifEmbed.tsx`, `backend/src/gifs` | core done, UI pending: `Core::gifs`/`Core::load_more_gifs`, `GifResultsView::{enabled, needs_permission}` (blocked while third-party images are off), `MessageRow::gif` (`GifEmbed.host`) |
+| Edit message | `components/Message/MessageEditForm.tsx` | core done, UI pending: `edit_message` (`edit_draft`, optimistic in-place, attachments kept or removed) |
+| Delete message | `messageActions.ts` | core done, UI pending: `delete_message` (the author's hard delete; a moderator's soft removal, kept for readers who may see it) |
+| Message actions: hover toolbar, context menu, copy content | `components/Message/MessageToolbar.tsx`, `MessageContextMenu.tsx`, `MessageActionsSheet.tsx` | core done, UI pending: every action behind the menu has a command (reply via `MessageDraft`, thread, react, edit, delete, pin, copy through the selection model); the toolbar and menu are the `ui/src/messages` lane |
+| Pins: pin/unpin, pinned panel | `components/Moderation/PinnedMessagesPanel.tsx` | core done, UI pending: `pin_message`, `unpin_message`, `pinned_messages` (a pinned thread reply carries its parent) |
+| Message search (panel, results, jump) | `components/Message/MessageSearch*.tsx`, `hooks/useMessageSearch.ts`, route `channel/:channelId/search` | core done, UI pending: `search_results`/`load_more_search` per scope, and `open_message_link` for the jump |
 | Attachments: send from dialog, paste, drop; progress; retry/remove | `hooks/useMessageFileUpload.ts`, `components/Message/PendingAttachments.tsx`, `DropZoneOverlay.tsx` | done |
 | Attachments: images inline, file cards, image viewer, Save as | `components/Message/MessageAttachments.tsx`, `ImageLightbox.tsx`, `DownloadLink.tsx` | done (fixed-size boxes until server thumbnails, U12) |
-| Attachments: video and audio playback | `components/Message/VideoPreview.tsx`, `AudioPlayer.tsx`, `hooks/useVideoUrl.ts` | not started (`AttachmentKind::Video/Audio` exist; no player) |
-| Link previews | `components/Message/LinkPreviewCard.tsx`, `MessageLinkPreviews.tsx` | partial: title and description; images off pending Mike's decision |
+| Attachments: video and audio playback | `components/Message/VideoPreview.tsx`, `AudioPlayer.tsx`, `hooks/useVideoUrl.ts` | core done, UI pending: `semaphore-player` (docs/player.md) and core's authenticated fetch; the message integration is a UI lane |
+| Link previews | `components/Message/LinkPreviewCard.tsx`, `MessageLinkPreviews.tsx` | core done, UI pending: title, description, site name, author and favicon; `LinkPreviewView::image_host` names where a blocked picture would load from; pictures load only while `Core::third_party_media()` is on |
 | Custom emoji in messages | `components/Message/MessageSpan.tsx` | done |
 | Webhook messages | `components/Message/MessageComponent.tsx` | done (`WebhookView`) |
 | Typing indicators (send and show) | `hooks/useTypingEmitter.ts`, `components/Message/TypingIndicator.tsx` | done |
-| Mark read; unread divider; DM "seen by" | `hooks/useReadReceipts.ts`, `components/Message/UnreadMessageDivider.tsx`, `SeenByTooltip.tsx`, `hooks/useDmPeerReads.ts` | partial: `mark_read` done; no unread divider or seen-by found |
+| Mark read; unread divider; DM "seen by" | `hooks/useReadReceipts.ts`, `components/Message/UnreadMessageDivider.tsx`, `SeenByTooltip.tsx`, `hooks/useDmPeerReads.ts` | core done, UI pending: `mark_read`, `UnreadMarker`, `DmPeerReadsView` (watermarks, kept live by `readReceiptUpdated`) and `SeenByView` (a DM's watermark compared with the sent time; a channel's `GET /read-receipts/message/{id}/readers`) |
 | Screen-reader announcements of new messages | `hooks/useMessageListAnnouncer.ts` | done (T5) |
 
 ### DMs, groups and friends
 
 | Feature | Web client | Native |
 |---|---|---|
-| DM and group list | `components/DirectMessages/DirectMessageList.tsx`, `DmListItem.tsx` | not started (core has no `direct-messages` read; route is a placeholder) |
+| DM and group list | `components/DirectMessages/DirectMessageList.tsx`, `DmListItem.tsx` | core done, UI pending: `Core::dm_list` (`DmRow` with members, unread, presence) |
 | DM conversation | `components/DirectMessages/DirectMessageContainer.tsx`, `DMChatHeader.tsx` | partial: core loads and sends `Conversation::DirectMessage`; no UI route |
-| Create DM / group | `components/DirectMessages/CreateDmDialog.tsx` | not started |
-| DM unread counts | `hooks/useDmGroup.ts` | partial: in `RailCounts`; nothing lists them |
-| Friends: list, requests, add | `components/Friends/`, `pages/FriendsPage.tsx` | not started |
+| Create DM / group | `components/DirectMessages/CreateDmDialog.tsx` | core done, UI pending: `Core::create_dm_group`, `add_dm_members`, `leave_dm_group` |
+| DM unread counts | `hooks/useDmGroup.ts` | core done: `DmRow.unread`/`mention`, `RailCounts`, `Core::badge_count`; UI pending |
+| Friends: list, requests, add | `components/Friends/`, `pages/FriendsPage.tsx` | core done, UI pending: `Core::friends`, `send_friend_request`, `accept_friend_request`, `remove_friend`, `search_users` |
 
 ### Voice, video, screen share, replay
 
 | Feature | Web client | Native |
 |---|---|---|
-| Join/leave a voice channel, presence heartbeat, pre-join screen | `hooks/useVoiceConnection.ts`, `useVoicePresenceHeartbeat.ts`, `components/Voice/VoiceChannelPreJoin.tsx` | done |
+| Join/leave a voice channel, presence heartbeat, pre-join screen | `hooks/useVoiceConnection.ts`, `useVoicePresenceHeartbeat.ts`, `components/Voice/VoiceChannelPreJoin.tsx` | join/leave/presence done; the pre-join screen's core half is done, UI pending: `VoicePreJoinView` (who's here, `VoiceJoinMode` none/listen-only/full, timeout, the channel a join would move you from) and `Core::join_voice_with` (join muted/deafened) |
 | Mute, deafen | `features/voice/voiceActions.ts`, `hooks/useDeafenEffect.ts` | done |
 | Speaking indicators | `hooks/useSpeakingDetection.ts` | done |
 | Remote video tiles, stage layout | `components/Voice/VideoTiles.tsx`, `StageSplit.tsx`, `VoiceParticipantGrid.tsx` | done (receive only) |
@@ -99,36 +99,36 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Connection quality indicator | `components/Voice/ConnectionQualityIndicator.tsx` | done |
 | Input/output device selection | `components/Voice/DeviceSettingsDialog.tsx`, `hooks/useDeviceSettings.ts` | done (two-list dialog) |
 | Device test, mic level meter | `hooks/useDeviceTest.ts` | not started |
-| Voice processing (echo, noise, AGC, voice isolation, mic quality), VAD threshold | `hooks/useVoiceSettings.ts`, `components/Settings/AudioVideoSettingsPanel.tsx` | partial: engine has `set_processing`, `set_mic_preset`; no settings UI or persistence |
+| Voice processing (echo, noise, AGC, voice isolation, mic quality), VAD threshold | `hooks/useVoiceSettings.ts`, `components/Settings/AudioVideoSettingsPanel.tsx` | partial: echo/noise/AGC, mic preset, VAD and push-to-talk are persisted in the app's settings store and applied by the engine; voice isolation has no counterpart in libwebrtc's APM (ask, section 4); no core view, UI pending |
 | Push-to-talk | `hooks/usePushToTalk.ts` (in-window key only) | partial: engine `set_ptt_*` and UI `PttState`; no key binding |
-| Per-user volume, screen-share volume | `components/Voice/VoiceUserContextMenu.tsx`, `ScreenShareVolumeControl.tsx`, `features/voice/volumeStorage.ts` | partial: engine `set_participant_volume`; no UI |
+| Per-user volume, screen-share volume | `components/Voice/VoiceUserContextMenu.tsx`, `ScreenShareVolumeControl.tsx`, `features/voice/volumeStorage.ts` | participant volume: core `set_participant_volume`, persisted in the app's store and applied on every join. Screen-share volume needs a per-track gain in the engine (the mixer's gain is per identity): media ask. UI pending |
 | Server mute state; moderator mute/remove from voice | `hooks/useServerMuteEffect.ts`, `useServerMutedVoiceUsers.ts`, `VoiceUserContextMenu.tsx` | partial: being removed is handled; server-mute state unknown; no moderator actions |
-| DM voice calls, incoming call banner | `components/DirectMessage/` | not started (core ingests `dmVoice*` events only) |
-| Soundboard playback | `components/Voice/SoundboardButton.tsx`, `features/voice/soundboardPlayer.ts` | not started |
-| Join/leave and notification sounds | `hooks/useVoicePresenceSounds.ts`, `hooks/useSound.ts` | not started |
+| DM voice calls, incoming call banner | `components/DirectMessage/` | core done, UI pending: `Core::incoming_call`, `join_dm_voice`, `decline_call`; `ui/src/voice/incoming.rs` exists |
+| Soundboard playback | `components/Voice/SoundboardButton.tsx`, `features/voice/soundboardPlayer.ts` | core done, UI pending: `Core::soundboard`, `play_sound` (`MediaEngine::play_soundboard`) |
+| Join/leave and notification sounds | `hooks/useVoicePresenceSounds.ts`, `hooks/useSound.ts` | core done (`CoreEvent::Sound { cue }`), the app plays them (W4-app); UI pending for the mute switches |
 | System audio share (audio only) | Electron `setDisplayMediaRequestHandler` audio | done (T11, `semaphore-sysaudio`); screen picture is the placeholder unit |
 | Camera publish | `hooks/useLocalMediaState.ts`, `hooks/useVoicePublishPermissions.ts` | not started (placeholder unit) |
 | Screen share publish, quality settings, source picker | `hooks/useScreenShare.ts`, `features/voice/screenSharePublish.ts`, `components/Voice/ScreenSourcePicker.tsx`, `utils/screenShare*.ts` | not started (placeholder unit) |
-| Replay buffer, capture, trim, clip library, share clip | `hooks/useReplayBuffer.ts`, `components/Voice/CaptureReplayModal.tsx`, `TrimTimeline.tsx`, `components/Profile/ClipLibrary.tsx`, `ShareClipDialog.tsx`, `docs-site/docs/architecture/replay-buffer.md` | not started |
-| Voice debug panel, join-failure diagnostics upload | `components/Voice/VoiceDebugPanel.tsx`, `features/voice/voiceDiagnostics.ts`, `backend/src/voice-diagnostics` | not started |
-| Keep awake during a call | `hooks/useWakeLock.ts`, `electron/main.ts` power-save blocker | not started |
+| Replay buffer, capture, trim, clip library, share clip | `hooks/useReplayBuffer.ts`, `components/Voice/CaptureReplayModal.tsx`, `TrimTimeline.tsx`, `components/Profile/ClipLibrary.tsx`, `ShareClipDialog.tsx`, `docs-site/docs/architecture/replay-buffer.md` | core done, UI pending: `Core::start_replay`/`stop`, `clips`, `user_clips`, `capture_replay`, `trim_replay`, `share_clip`; `ui/src/replay` exists |
+| Voice debug panel, join-failure diagnostics upload | `components/Voice/VoiceDebugPanel.tsx`, `features/voice/voiceDiagnostics.ts`, `backend/src/voice-diagnostics` | core done, UI pending: `Core::voice_diagnostics` (classified join failures, engine diagnostics); the upload waits on a native platform value (backend ask W4) |
+| Keep awake during a call | `hooks/useWakeLock.ts`, `electron/main.ts` power-save blocker | done (W4: logind inhibitor / `SetThreadExecutionState`, toggled by core) |
 
 ### Presence
 
 | Feature | Web client | Native |
 |---|---|---|
 | Online/offline in the member list, live | `components/Message/UserStatusIndicator.tsx` | done |
-| Idle/away from activity | `hooks/useActivityDetector.ts` | unknown (nothing found) |
-| Status dot on avatars outside the member list | `components/Common/UserAvatar.tsx` | unknown |
+| Idle/away from activity | `hooks/useActivityDetector.ts` | done: `Core::set_idle` and the app's `Activity` detector report it; other users see nobody as idle (backend ask #656) |
+| Status dot on avatars outside the member list | `components/Common/UserAvatar.tsx` | core done (presence in `MemberView`/`RailCounts`), UI pending |
 
 ### Notifications
 
 | Feature | Web client | Native |
 |---|---|---|
-| Notification centre and page (list, mark read, unread count) | `components/Notifications/`, `pages/NotificationsPage.tsx`, `hooks/useNotifications.ts` | not started (core reads the unread count only) |
+| Notification centre and page (list, mark read, unread count) | `components/Notifications/`, `pages/NotificationsPage.tsx`, `hooks/useNotifications.ts` | core done, UI pending: `NotificationList`, `mark_notification_read`, `mark_all_notifications_read`, `dismiss_notification`, `load_more_notifications`, `Core::badge_count` |
 | OS notifications for mentions/DMs, click to open | `hooks/useNotificationSideEffects.ts`, `utils/notifications.ts`, `electron/main.ts` `notification:*` | partial: core's `Notify`/`WithdrawNotifications` and the notifier (freedesktop on Linux with replace by tag and click with activation token, GPUI toasts on Windows) exist; wiring is W2-app |
-| Notification settings: sound, quiet hours (DND), per-channel | `components/Settings/NotificationSettings.tsx`, `utils/dnd.ts` | not started |
-| Auto-mark notifications read on view | `hooks/useAutoMarkNotificationsRead.ts` | not started |
+| Notification settings: sound, quiet hours (DND), per-channel | `components/Settings/NotificationSettings.tsx`, `utils/dnd.ts` | core done, UI pending: `NotificationSettingsView`, `Core::update_notification_settings`, `Core::channel_notify_level`/`set_channel_notify_level` |
+| Auto-mark notifications read on view | `hooks/useAutoMarkNotificationsRead.ts` | core done: opening a channel or DM (`State::w2_auto_read`) reads its unread notifications, and one arriving while it's open is read at once; other conversations are left alone, and a failed mark is retried on the next visit |
 | Unread badge (taskbar / tray) | `hooks/useAppBadge.ts` | partial: core `Tray::set_unread` trait; no implementation |
 | Web Push (service worker, VAPID) | `hooks/usePushNotifications.ts`, `sw-custom.ts`, `utils/swPush.ts` | n/a on desktop (see section 4) |
 
@@ -136,13 +136,13 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 
 | Feature | Web client | Native |
 |---|---|---|
-| Profile view and modal | `pages/ProfilePage.tsx`, `components/Profile/UserProfileModal.tsx` | not started |
-| Edit profile: display name, avatar, banner | `pages/ProfileEditPage.tsx`, `components/Profile/UserAvatarUpload.tsx`, `UserBannerUpload.tsx` | not started |
-| Settings: Notifications tab | `pages/SettingsPage.tsx` | not started |
+| Profile view and modal | `pages/ProfilePage.tsx`, `components/Profile/UserProfileModal.tsx` | core done, UI pending: `Core::profile`, `Core::profile_edit` |
+| Edit profile: display name, avatar, banner | `pages/ProfileEditPage.tsx`, `components/Profile/UserAvatarUpload.tsx`, `UserBannerUpload.tsx` | core done, UI pending: `update_profile` with avatar/banner uploads (progress, retry, removal) |
+| Settings: Notifications tab | `pages/SettingsPage.tsx` | core done, UI pending (the notification settings view above) |
 | Settings: Voice and video tab | `components/Settings/AudioVideoSettingsPanel.tsx`, `VoiceSettings.tsx` | partial: device dialog only |
-| Settings: Appearance (theme, synced) | `hooks/useThemeSync.ts`, `backend/src/appearance-settings` | unknown: theme tokens and modes exist in `ui/src/theme`; user choice and server sync not found |
-| Settings: Sessions (list, revoke, revoke others) | `components/Settings/SessionsSettings.tsx` | not started |
-| Settings: Desktop app (close to tray, backend URL) | `pages/SettingsPage.tsx` | not started |
+| Settings: Appearance (theme, synced) | `hooks/useThemeSync.ts`, `backend/src/appearance-settings` | core done, UI pending: `Core::appearance`, `set_appearance` (the server's synced theme) |
+| Settings: Sessions (list, revoke, revoke others) | `components/Settings/SessionsSettings.tsx` | core done, UI pending: `Core::sessions`, `revoke_session`, `revoke_other_sessions` |
+| Settings: Desktop app (close to tray, backend URL, the merged media switch) | `pages/SettingsPage.tsx` | done in the app (`SettingsStore` v3, `ui/src/settings/desktop.rs`); the switch is still labelled "Link preview images" (U9-media) |
 | Keyboard shortcuts (Alt+arrows, Esc marks read, Mod+/ sheet) | `hooks/useGlobalShortcuts.ts`, `components/Shortcuts/`, `docs-site/docs/keyboard-shortcuts.md` | unknown: Tab/arrow navigation exists (T5); these shortcuts not found |
 
 ### Community settings, roles, moderation, invites
@@ -151,33 +151,33 @@ All live under `pages/EditCommunityPage.tsx` tabs and `components/Community/`, `
 
 | Feature | Web client | Native |
 |---|---|---|
-| Community settings: name, description, avatar, banner, delete | `components/Community/CommunitySettingsForm.tsx`, `CommunityAvatarUpload.tsx`, `CommunityBannerUpload.tsx` | not started |
-| Members tab | `components/Community/MemberManagement.tsx` | not started |
-| Channels tab: create, edit, delete, reorder | `components/Community/ChannelManagement.tsx`, `CreateChannelDialog.tsx`, `EditChannelDialog.tsx` | not started |
-| Private channel membership | `components/Community/PrivateChannelMembership.tsx`, `components/Community/components/` | not started |
-| Roles: editor, assignment | `components/Community/RoleManagement.tsx`, `RoleEditor.tsx`, `RoleAssignmentDialog.tsx`, `features/roles/` | not started |
-| Channel permission overrides | `components/Community/ChannelPermissionsTab.tsx` | not started |
-| Mention groups (aliases) | `components/Community/AliasGroupManagement.tsx`, `AliasGroupEditor.tsx` | not started |
-| Custom emoji management | `components/Community/CustomEmojiManagement.tsx` | not started |
-| Soundboard management | `components/Community/SoundboardManagement.tsx` | not started |
-| Webhooks management | `components/Community/WebhookManagement.tsx` | not started |
-| Invites management | `components/Community/InviteManagement.tsx` | not started |
-| Moderation: ban, kick, timeout dialogs; user moderation menu | `components/Moderation/BanDialog.tsx`, `KickConfirmDialog.tsx`, `TimeoutDialog.tsx`, `UserModerationMenu.tsx` | not started |
-| Moderation: ban list, timeout list, moderation log | `components/Moderation/BanListPanel.tsx`, `TimeoutListPanel.tsx`, `ModerationLogsPanel.tsx` | not started |
-| Permission-gated UI (show actions by role) | `features/roles/RoleBasedComponents.tsx`, `useUserPermissions.ts` | partial: per-channel permissions only (`ChannelPermissions`); no community/instance permission set |
+| Community settings: name, description, avatar, banner, delete | `components/Community/CommunitySettingsForm.tsx`, `CommunityAvatarUpload.tsx`, `CommunityBannerUpload.tsx` | core done (W5), UI pending |
+| Members tab | `components/Community/MemberManagement.tsx` | core done (W5), UI pending |
+| Channels tab: create, edit, delete, reorder | `components/Community/ChannelManagement.tsx`, `CreateChannelDialog.tsx`, `EditChannelDialog.tsx` | core done (W5), UI pending |
+| Private channel membership | `components/Community/PrivateChannelMembership.tsx`, `components/Community/components/` | core done (W5), UI pending |
+| Roles: editor, assignment | `components/Community/RoleManagement.tsx`, `RoleEditor.tsx`, `RoleAssignmentDialog.tsx`, `features/roles/` | core done (W5), UI pending |
+| Channel permission overrides | `components/Community/ChannelPermissionsTab.tsx` | core done (W5), UI pending |
+| Mention groups (aliases) | `components/Community/AliasGroupManagement.tsx`, `AliasGroupEditor.tsx` | core done (W5), UI pending |
+| Custom emoji management | `components/Community/CustomEmojiManagement.tsx` | core done (W5), UI pending |
+| Soundboard management | `components/Community/SoundboardManagement.tsx` | core done (W5), UI pending |
+| Webhooks management | `components/Community/WebhookManagement.tsx` | core done (W5), UI pending |
+| Invites management | `components/Community/InviteManagement.tsx` | core done (W5), UI pending |
+| Moderation: ban, kick, timeout dialogs; user moderation menu | `components/Moderation/BanDialog.tsx`, `KickConfirmDialog.tsx`, `TimeoutDialog.tsx`, `UserModerationMenu.tsx` | core done (W5), UI pending |
+| Moderation: ban list, timeout list, moderation log | `components/Moderation/BanListPanel.tsx`, `TimeoutListPanel.tsx`, `ModerationLogsPanel.tsx` | core done (W5), UI pending |
+| Permission-gated UI (show actions by role) | `features/roles/RoleBasedComponents.tsx`, `useUserPermissions.ts` | core done (per-channel capabilities, the community permission set and `InstanceAdminCaps`; an action the rank rule forbids shows disabled with its reason), UI pending |
 
 ### Instance admin (`pages/admin/`, `components/admin/`)
 
 | Feature | Web client | Native |
 |---|---|---|
-| Admin dashboard and attention items | `pages/admin/AdminDashboard.tsx`, `adminAttention.ts` | not started |
-| Users (incl. admin password reset) | `pages/admin/AdminUsersPage.tsx`, `components/admin/ResetPasswordDialog.tsx` | not started |
-| Communities | `pages/admin/AdminCommunitiesPage.tsx` | not started |
-| Instance invites | `pages/AdminInvitePage.tsx` | not started |
-| Instance roles | `pages/admin/AdminRolesPage.tsx` | not started |
-| Storage and quotas | `pages/admin/AdminStoragePage.tsx` | not started |
-| Instance settings (name, registration mode, quotas, max file size) | `pages/admin/AdminSettingsPage.tsx` | not started |
-| Debug: event injection, notification and PWA debug | `pages/admin/AdminDebugPage.tsx`, `components/admin/debug/`, `pages/debug/` | not started (PWA debug n/a) |
+| Admin dashboard and attention items | `pages/admin/AdminDashboard.tsx`, `adminAttention.ts` | core done (W6), UI pending |
+| Users (incl. admin password reset) | `pages/admin/AdminUsersPage.tsx`, `components/admin/ResetPasswordDialog.tsx` | core done (W6), UI pending |
+| Communities | `pages/admin/AdminCommunitiesPage.tsx` | core done (W6), UI pending |
+| Instance invites | `pages/AdminInvitePage.tsx` | core done (W6), UI pending |
+| Instance roles | `pages/admin/AdminRolesPage.tsx` | core done (W6), UI pending |
+| Storage and quotas | `pages/admin/AdminStoragePage.tsx` | core done (W6), UI pending |
+| Instance settings (name, registration mode, quotas, max file size) | `pages/admin/AdminSettingsPage.tsx` | core done (W6), UI pending |
+| Debug: event injection, notification and PWA debug | `pages/admin/AdminDebugPage.tsx`, `components/admin/debug/`, `pages/debug/` | core done (W6), UI pending (event injection stays unbuilt: owner's decision; PWA debug n/a) |
 
 ### Electron-only
 
@@ -219,7 +219,44 @@ PWA install prompt and settings (`components/PWA/`, `hooks/useInstallPrompt.ts`,
 | Electron-only | 3 | 3 | 6 | 1 |
 | **Total** | **38** | **23** | **60** | **5** |
 
-(n/a rows are left out.)
+(n/a rows are left out.) These counts are the column before a verification sweep by **W9**
+(2026-11-12): the status column was partly out of date, and W9 marked every row whose core half it
+verified — the W9 features below, and the core halves of messaging, DMs and friends, notifications,
+profile/settings, community settings/roles/moderation and instance admin that had already landed.
+Read the column, not this table, as the source of truth.
+
+### W9: the UI-free gaps (done 2026-11-12)
+
+One core lane, `w9-core`, over `semaphore-core`, `semaphore-net` and `semaphore-fake-server`, with
+tests at all three levels (`core/tests/{w3.rs (the probe), w9_invite.rs, w9_receipts.rs, w9_media.rs,
+w9_notifications.rs, w9_voice.rs}`, `net/tests/w9.rs`, `fake-server/tests/w9.rs` and the
+account/route tests it extends). The owner's
+decisions it implements are in "W6/W7 defaults" (third-party media, first run on the web) and
+"W1/W4/W5 defaults"; nothing here needs a new backend route (the asks in "Backend asks W9" are
+contract or engine gaps, with workarounds).
+
+| Feature | Core (done) | HTTP / socket | Fake server |
+|---|---|---|---|
+| `needs_setup` on the connection probe | `Core::probe_server` reads `GET /onboarding/status`; a server that can't say keeps the probe's other answers | `HttpBackend::onboarding_controller_get_status` | `GET /api/onboarding/status`, control `onboarding` |
+| Registration modes | `Core::register_requirements`; `Core::register` refuses locally on `CLOSED`, without a code on `INVITE_ONLY`, and sends none on `OPEN` | `CreateUserDto.code` stays a string (empty when open): the contract still requires it | `POST /api/users` honours `public_settings.registrationMode` or the instance settings; `CLOSED` is 403 "Registration is closed on this server" |
+| Joining an invite as an existing account | `Core::accept_invite` → `InviteJoin` (joined; skipped with `InviteSkipReason`); the community list is read again after a join | `HttpBackend::invite_controller_accept_invite` | `POST /api/invite/{code}/accept` (one use, only when a community was joined); `seed_invite` takes `communityIds` |
+| Invite preview's reason | `InvitePreviewView.reason` from a 404 with an `INVITE_*` code; it reads as `Ready` (an answer), not `Failed` | `invite_controller_get_public_invite` unchanged | `GET /api/invite/public/{code}` now 404s with `INVITE_NOT_FOUND`/`INVITE_EXPIRED`/`INVITE_EXHAUSTED`/`INVITE_DISABLED`, as the pinned backend does |
+| Seen by (DMs and channels) | `Core::dm_peer_reads` (`DmPeerReadsView`), `Core::seen_by` (`SeenByView`, 15 names + `more`); `readReceiptUpdated` naming a peer moves their watermark directly | `HttpBackend::read_receipts_controller_get_{dm_peer_reads,message_readers}` | `GET /api/read-receipts/dm-peer-reads/{id}` (403 for a non-member), `GET /api/read-receipts/message/{id}/readers`, control `read_receipt` (also emits the DM event) |
+| Third-party media setting | `Core::third_party_media`/`set_third_party_media`; `GifResultsView.needs_permission`; `LinkPreviewView.image_host`; `GifEmbed.host` (W7) | — (local setting, the host stores it) | — |
+| Notification auto-mark on view | `State::w2_auto_read` on opening a channel or DM, when the centre's list arrives, and for a notification that arrives in the open conversation; one mark per notification, a failed one retried on the next visit | uses `notificationsControllerMarkAsRead` | — |
+| Voice pre-join and join options | `Core::voice_prejoin` (`VoicePreJoinView`, `VoiceJoinMode`), `Core::join_voice_with` (`VoiceJoinOptions`); the engine is told before `connect` | uses the existing presence and capability reads | — |
+
+### UI lanes still to build (core is done; each reads a view, no logic)
+
+| Lane | Screen | Reads | Listens to |
+|---|---|---|---|
+| U9-connect | The connect screen's "set this up in a browser" notice | `Core::probe_server` → `ServerInfo::needs_setup` (and `url` to open) | — (the probe's answer) |
+| U9-register | The register form's mode | `Core::register_requirements` (`can_register`, `invite_required`) | — (the probe's answer) |
+| U9-invites | The join screen: preview with its reason; signed in, "Join with your account" and the result | `Core::invite_preview` (`InvitePreviewView.reason`), `Core::accept_invite` (`InviteJoin`: joined, skipped with `InviteSkipReason`) | `InvitePreview { code }` |
+| U9-seen-by | "Seen by" on a message | `Core::seen_by` → `SeenByView` (`readers`, `count`, `more`); `Core::dm_peer_reads` for a roster | `SeenBy { conversation, message_id }`, `DmPeerReads { dm_group_id }` |
+| U9-media | The one switch "Load images from other sites (link previews, GIFs)" (the desktop tab still says "Link preview images"), the GIF picker's "Allow" notice, the "GIF from <host>: Load" and "Image from <host>: Load" cards | `Core::third_party_media`, `Core::set_third_party_media(true)` (the host also saves it and opens `PreviewFetcher`), `GifResultsView.needs_permission`, `GifEmbed.host`, `LinkPreviewView.image_host` | `Gifs { query }` |
+| U9-voice-prejoin | A voice channel's pre-join: who's here, Join voice / Join muted, "you can listen", "you don't have permission", "You're in X; joining moves you here" | `Core::voice_prejoin` → `VoicePreJoinView` (`users`, `mode`, `timed_out_until_ms`, `connected_elsewhere`), `Core::join_voice_with` | `Voice` |
+| U9-notifications-page | The notifications page (the centre panel has its own lane) | `Core::notifications`, `mark_notification_read`, `mark_all_notifications_read`, `dismiss_notification`, `load_more_notifications` | `Notifications`, `Badge` |
 
 ## 2. Build units
 
@@ -509,11 +546,11 @@ it; `ChannelVoicePresenceUserDto.canModerate`, which the presence list keeps for
 from this call" menu that core doesn't offer; the new events `dmGroupCreated`,
 `dmGroupMemberAdded`/`dmGroupMemberLeft`, the five `friend*` ones, `instanceRolesUpdated`,
 `notificationDismissed` and `notificationsRead` (each ignored in `core/src/events.rs`, where the
-comment says which list is read again instead); `POST /api/invite/{code}/accept` (with
-`AcceptInviteResponseDto` and its skip reasons) and the invite list's `communityId` filter;
+comment says which list is read again instead); the invite list's `communityId` filter;
 `POST /api/livekit/channels/{channelId}/remove-participant` (W4's Kick stays the community kick);
-the `INVITE_*` error codes; and the file DTOs' `width`/`height`, which the message's attachments
-already carry. Another repin follows when the open backend PRs land.
+and the file DTOs' `width`/`height`, which the message's attachments already carry. W9 now uses
+`POST /api/invite/{code}/accept` (`Core::accept_invite`) and the `INVITE_*` error codes (an invite
+preview's `reason`). Another repin follows when the open backend PRs land.
 
 **W6/W7 defaults** (chosen with the owner, 2026-11-11/12):
 
@@ -671,3 +708,14 @@ Found while designing W6 and W7 (2026-11-11).
 | No image dimensions or image thumbnails (thumbnails are video-only; `AttachmentDto` has no width or height) | `backend/src/file/thumbnail.service.ts`, `AttachmentDto` | Yes (layout) | #715, open: blocks W7-thumbnails |
 | A server proxy for GIF and link-preview media | | | #716, closed as not planned (owner decision above) |
 
+
+### Backend asks W9
+
+Found while building the W9 core lane (2026-11-12). None blocks it; each has a workaround.
+
+| Ask | Where | Why | Native's workaround meanwhile |
+|---|---|---|---|
+| Say `code` optional in `CreateUserDto` | `contract/openapi.json`, `backend/src/user/dto/create-user.dto.ts` (`@IsOptional() code?`) | The backend honours `OPEN` with no code, but the contract still requires the field, so a generated client must invent one | Sends `""`, which the backend reads as absent |
+| Tell a "seen by" list that a channel receipt moved | `backend/src/read-receipts/read-receipts.service.ts` (`markAsRead`) | Channels send no `readReceiptUpdated` (privacy), so a channel message's readers are only read when shown and stay as read until a reconnect | Read once per message; `keys::MESSAGE_READERS` is invalidated on a new connection |
+| A per-track gain for screen-share audio | `semaphore-media-livekit/src/audio/mixer.rs` (`set_volume` is per identity) | The web keeps a separate screen-share volume per user; the native mixer gives a member one gain for the mic and the share | Participant volume applies to both (one slider, not two); the web's separate share slider waits on the mixer |
+| A voice-isolation counterpart | `semaphore-media-livekit/src/audio/apm.rs` | The web's "voice isolation" is a browser audio feature; libwebrtc's APM has echo cancellation, noise suppression and AGC only | The persisted toggles are echo cancellation, noise suppression and AGC; voice isolation is not offered |

@@ -66,6 +66,11 @@ pub(crate) struct W2State {
     last_context_read: Option<(Conversation, String)>,
     /// Friendships with a change on its way, and which change.
     pub busy_friendships: HashMap<String, u64>,
+    /// Notification ids the auto-mark has tried this session. A failed one is dropped, so the
+    /// next visit tries again.
+    auto_read_attempted: HashSet<String>,
+    /// Auto-marks on their way, so a redraw asks for nothing twice.
+    auto_read_in_flight: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -352,6 +357,47 @@ impl State {
         }
     }
 
+    /// The web's `useAutoMarkNotificationsRead`: a conversation that's open has its unread
+    /// notifications read. Reads the centre's list first when it isn't loaded (once a session),
+    /// then marks each unread row of this conversation, leaving other conversations alone. A
+    /// notification that arrives while the conversation is open comes through here too.
+    pub(crate) fn w2_auto_read(&mut self, conversation: &Conversation) {
+        let context_id = match conversation {
+            Conversation::Channel { id } | Conversation::DirectMessage { id } => id,
+            Conversation::Thread { .. } => return,
+        };
+        let key = keys::op(keys::NOTIFICATIONS);
+        let Some(pages) = self.cache.notifications(&key) else {
+            // One read tells which notifications belong to this conversation; what arrives marks
+            // from `query_changed`.
+            self.ensure_query(key);
+            return;
+        };
+        let ids: Vec<String> = pages
+            .rows
+            .iter()
+            .filter(|row| {
+                !row.read
+                    && !row.dismissed
+                    && (row.channel_id.as_deref() == Some(context_id)
+                        || row.direct_message_group_id.as_deref() == Some(context_id))
+            })
+            .map(|row| row.id.clone())
+            .filter(|id| {
+                !self.w2.auto_read_attempted.contains(id)
+                    && !self.w2.auto_read_in_flight.contains(id)
+            })
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        for id in &ids {
+            self.w2.auto_read_attempted.insert(id.clone());
+            self.w2.auto_read_in_flight.insert(id.clone());
+        }
+        self.push_effect(Effect::AutoReadNotifications(ids));
+    }
+
     /// Signed in: what notifications need before anything reads them.
     pub(crate) fn w2_signed_in(&mut self) {
         self.ensure_query(keys::op(keys::NOTIFY_SETTINGS));
@@ -394,6 +440,13 @@ impl State {
         }
         self.badge_changed();
         self.raise_if_due(event, now);
+        // Open on screen: marked read, as the web's effect does when its data changes.
+        if let Some(conversation) =
+            conversation_of(&event.channel_id, &event.direct_message_group_id)
+            && self.main_conversation.as_ref() == Some(&conversation)
+        {
+            self.w2_auto_read(&conversation);
+        }
     }
 
     fn raise_if_due(&mut self, event: &wire::NewNotificationPayloadDto, now: u64) {
@@ -768,6 +821,25 @@ impl Core {
             state.notifications_changed();
         });
         result.map(|_| ())
+    }
+
+    /// Reads the notifications the auto-mark picked, one call each as the server takes them. A
+    /// failure is forgotten so a later visit tries again; a sign-out stops the rest.
+    pub(crate) async fn run_auto_read_notifications(&self, ids: Vec<String>) {
+        let epoch = self.read(|state| state.session_epoch);
+        for id in ids {
+            if self.read(|state| state.session_epoch != epoch) {
+                break;
+            }
+            let result = self.mark_notification_read(id.clone()).await;
+            let failed = result.is_err();
+            self.write(|state, _| {
+                state.w2.auto_read_in_flight.remove(&id);
+                if failed {
+                    state.w2.auto_read_attempted.remove(&id);
+                }
+            });
+        }
     }
 
     /// Shown read at once; back if the server refuses, unless the server said meanwhile that it is

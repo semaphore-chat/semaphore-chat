@@ -98,6 +98,28 @@ impl OnboardingBackend for FakeBackend {
     ) -> BackendResult<Option<wire::PublicInviteDto>> {
         self.w3.run("invite", &[&code]).await
     }
+    /// A set-up instance unless a test scripts otherwise: signing in needs no script.
+    async fn onboarding_controller_get_status(&self) -> BackendResult<wire::OnboardingStatusDto> {
+        if !self
+            .w3
+            .answers
+            .lock()
+            .unwrap()
+            .contains_key("onboarding_status")
+        {
+            self.w3.answer(
+                "onboarding_status",
+                json!({ "needsSetup": false, "hasUsers": true }),
+            );
+        }
+        self.w3.run("onboarding_status", &[]).await
+    }
+    async fn invite_controller_accept_invite(
+        &self,
+        code: String,
+    ) -> BackendResult<wire::AcceptInviteResponseDto> {
+        self.w3.run("accept_invite", &[&code]).await
+    }
     async fn community_controller_create(
         &self,
         body: wire::CreateCommunityDto,

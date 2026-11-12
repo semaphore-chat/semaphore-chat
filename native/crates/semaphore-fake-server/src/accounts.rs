@@ -40,6 +40,8 @@ pub struct InviteSeed {
     pub disabled: bool,
     /// The username shown as who created it.
     pub created_by: Option<String>,
+    /// The communities an existing account joins with `POST /api/invite/{code}/accept`.
+    pub community_ids: Vec<String>,
 }
 
 impl InviteSeed {
@@ -52,6 +54,7 @@ impl InviteSeed {
             valid_until: None,
             disabled: false,
             created_by: Some("inviter".to_owned()),
+            community_ids: Vec::new(),
         }
     }
 }
@@ -99,6 +102,7 @@ pub(crate) struct Session {
     pub revoked: bool,
 }
 
+#[derive(Clone)]
 pub(crate) struct Invite {
     pub code: String,
     pub uses: i64,
@@ -106,6 +110,8 @@ pub(crate) struct Invite {
     pub valid_until: Option<DateTime<Utc>>,
     pub disabled: bool,
     pub created_by: Option<String>,
+    /// The communities an existing account joins when it accepts this invite.
+    pub community_ids: Vec<String>,
 }
 
 impl Invite {
@@ -152,6 +158,8 @@ pub(crate) struct Accounts {
     /// Fields `GET /instance/public-settings` answers differently, from the `public_settings`
     /// control.
     pub public_settings: serde_json::Map<String, serde_json::Value>,
+    /// `GET /onboarding/status`: a fresh instance with no users, from the `onboarding` control.
+    pub needs_setup: bool,
     legacy_claimed: bool,
     next: u64,
 }
@@ -169,6 +177,7 @@ impl Accounts {
             profile_order: ProfileOrder::default(),
             held: Vec::new(),
             public_settings: serde_json::Map::new(),
+            needs_setup: false,
             legacy_claimed: false,
             next: 0,
         }

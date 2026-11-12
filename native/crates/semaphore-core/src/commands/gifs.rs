@@ -194,6 +194,17 @@ impl Core {
                     ..GifResultsView::default()
                 };
             }
+            if state.gif_needs_permission() {
+                // Third-party images are off: the picker offers the choice instead of a grid, and
+                // reads nothing (the previews would load from the GIF service).
+                return GifResultsView {
+                    state: LoadState::Ready,
+                    query,
+                    enabled: true,
+                    needs_permission: true,
+                    ..GifResultsView::default()
+                };
+            }
             let key = key_of(&query);
             // GIF lists don't age: a cached page is what the view shows.
             state.ensure_query(key.clone());
@@ -210,6 +221,7 @@ impl Core {
                 more,
                 loading_more: state.w7.loading_more.contains(&key),
                 enabled: true,
+                needs_permission: false,
             }
         })
     }

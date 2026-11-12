@@ -67,6 +67,15 @@ pub enum ViewKey {
         scope: crate::model::SearchScope,
         query: String,
     },
+    /// `Core::dm_peer_reads`: the watermarks of a DM's other members.
+    DmPeerReads {
+        dm_group_id: String,
+    },
+    /// `Core::seen_by`: who has read a message.
+    SeenBy {
+        conversation: Conversation,
+        message_id: String,
+    },
     /// `Core::channel_moderation`.
     ChannelModeration {
         channel_id: String,

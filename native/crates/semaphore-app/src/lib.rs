@@ -55,7 +55,7 @@ pub struct AppConfig {
     /// How often voice presence is refreshed: `voice::HEARTBEAT`, or less in the rig.
     pub heartbeat: std::time::Duration,
     /// The local settings, loaded once at start (`SettingsStore::load(&data_dir)`). Only
-    /// `link_preview_images` is read so far: it decides whether link previews load their images
+    /// `third_party_media` is read so far: it decides whether link previews and GIFs load their images
     /// from the sites they're on.
     pub settings: settings::SettingsStore,
     /// OS notifications for what core raises: the desktop's (`DesktopServices::notifier`) in the

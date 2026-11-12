@@ -1229,9 +1229,9 @@ impl Rig {
             // On disk in the run's data directory, so a restart reads what the settings saved.
             settings: {
                 let mut store = SettingsStore::load(&self.data_dir);
-                if store.get().link_preview_images != self.link_images {
+                if store.get().third_party_media != self.link_images {
                     let on = self.link_images;
-                    store.update(|settings| settings.link_preview_images = on)?;
+                    store.update(|settings| settings.third_party_media = on)?;
                 }
                 store
             },

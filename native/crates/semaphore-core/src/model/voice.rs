@@ -1,6 +1,50 @@
 //! Voice calls: participants, video tracks and tiles.
 
-use super::{ReplayState, UserView};
+use super::{LoadState, ReplayState, UserView};
+
+/// Which join controls a voice channel offers, from the web's `voiceJoinMode`: none without
+/// CONNECT, one listen-only join without SPEAK (a text-only role, or a running timeout), and both
+/// otherwise.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum VoiceJoinMode {
+    /// "You don't have permission to join this voice channel."
+    #[default]
+    None,
+    /// "Join to listen": the mic is off and can't be turned on here.
+    ListenOnly,
+    /// "Join voice" and "Join muted".
+    Full,
+}
+
+/// How a join starts. The screen chooses; core puts it on the engine before connecting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct VoiceJoinOptions {
+    pub muted: bool,
+    pub deafened: bool,
+}
+
+/// `Core::voice_prejoin`: a voice channel this user isn't in, as the screen before joining shows
+/// it (the web's `VoiceChannelPreJoin` and `VoiceChannelJoinButton`). `ViewKey::Voice` says when to
+/// read again (presence arrives); the channel list and its permissions load the same way.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VoicePreJoinView {
+    /// The presence read behind `users`: `Loading` until who's here is known.
+    pub state: LoadState,
+    pub channel_id: String,
+    pub community_id: String,
+    pub channel_name: String,
+    /// Who is in the call now, in the server's order.
+    pub users: Vec<UserView>,
+    /// What the join button offers; `None` hides it.
+    pub mode: VoiceJoinMode,
+    /// The end of this user's community timeout while one runs, for "you can listen until ...".
+    pub timed_out_until_ms: Option<i64>,
+    /// The channel this user is in right now, when it's another one: "Joining moves you here."
+    pub connected_elsewhere: Option<String>,
+    /// What joining starts with if the screen doesn't say otherwise.
+    pub muted: bool,
+    pub deafened: bool,
+}
 
 /// The room a call is in. LiveKit's room id is the channel's id or the DM group's id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

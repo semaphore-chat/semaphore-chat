@@ -119,6 +119,9 @@ async fn featured_search_and_paging_over_http() {
     let server = server().await;
     enable_gifs(&server).await;
     let me = signed_in(&server, "me").await;
+    // Third-party images are off until the host turns them on (the app's setting): the picker
+    // reads nothing meanwhile.
+    me.core.set_third_party_media(true);
 
     // Featured: the fixture GIFs, twenty at a time, on the fake's own address.
     me.core.gifs(String::new());

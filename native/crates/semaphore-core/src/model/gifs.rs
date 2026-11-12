@@ -33,6 +33,10 @@ pub struct GifResultsView {
     pub loading_more: bool,
     /// The server offers GIF search (`ServerInfo::gif_search`). False: hide the GIF button.
     pub enabled: bool,
+    /// The "Load images from other sites" setting is off (`Core::third_party_media`): the picker
+    /// offers the choice instead of results, and `Core::gifs` read nothing. Enabling it is
+    /// `Core::set_third_party_media(true)`, which the host stores. False when `enabled` is false.
+    pub needs_permission: bool,
 }
 
 /// A message whose whole text is one GIF URL (`text::gif::lone_gif_url`): drawn as the image,

@@ -214,6 +214,7 @@ fn link_preview(cx: &mut App) -> AnyView {
         title: Some("A post with a long title that runs on past the width of the card".into()),
         description: Some("The description wraps to two lines at most, and anything more is cut off with an ellipsis so the card stays short.".into()),
         image_url: Some("https://example.com/cover.png".into()),
+        image_host: Some("example.com".into()),
         site_name: Some("Example".into()),
         favicon_url: None,
         author_name: None,

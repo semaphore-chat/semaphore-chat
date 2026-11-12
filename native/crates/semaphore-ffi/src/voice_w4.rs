@@ -7,8 +7,8 @@ use semaphore_core::model::{
     CaptureRequest, CapturedClip, Clip, ClipDestination, ClipsView, ErrorView, IncomingCallView,
     JoinFailure, JoinFailureClass, LoadState, MediaDiagnostics, PreviewSegment, ReplayMinutes,
     ReplaySessionView, ReplayState, ReplayTrim, ShareTracks, SoundCue, SoundboardSound,
-    SoundboardView, UserView, VoiceDiagnosticEvent, VoiceDiagnosticsView, VoiceModerationCaps,
-    VoiceRoom, VoiceStatus,
+    SoundboardView, UserView, VoiceDiagnosticEvent, VoiceDiagnosticsView, VoiceJoinMode,
+    VoiceJoinOptions, VoiceModerationCaps, VoicePreJoinView, VoiceRoom, VoiceStatus,
 };
 
 /// A mobile host's way to keep the device awake during a call (iOS `isIdleTimerDisabled` or an
@@ -59,6 +59,33 @@ mod tests {
         let refusing = ForeignKeepAwake(Arc::new(Host(Mutex::new(Vec::new()), false)));
         assert!(refusing.set(true).is_err());
     }
+}
+
+#[uniffi::remote(Enum)]
+pub enum VoiceJoinMode {
+    None,
+    ListenOnly,
+    Full,
+}
+
+#[uniffi::remote(Record)]
+pub struct VoiceJoinOptions {
+    pub muted: bool,
+    pub deafened: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct VoicePreJoinView {
+    pub state: LoadState,
+    pub channel_id: String,
+    pub community_id: String,
+    pub channel_name: String,
+    pub users: Vec<UserView>,
+    pub mode: VoiceJoinMode,
+    pub timed_out_until_ms: Option<i64>,
+    pub connected_elsewhere: Option<String>,
+    pub muted: bool,
+    pub deafened: bool,
 }
 
 #[uniffi::remote(Enum)]

@@ -39,8 +39,8 @@ pub struct ServerInfo {
     /// W7: the server offers GIF search (`gifSearchEnabled`).
     pub gif_search: bool,
     /// W6: the server has no users yet and must be set up in a browser first (`GET
-    /// /onboarding/status`'s `needsSetup`). The native app doesn't set an instance up: the
-    /// connect screen says so and offers to open `url` in the browser. False until W6-app reads it.
+    /// /onboarding/status`'s `needsSetup`, read by `Core::probe_server`). The native app doesn't
+    /// set an instance up: the connect screen says so and offers to open `url` in the browser.
     pub needs_setup: bool,
 }
 

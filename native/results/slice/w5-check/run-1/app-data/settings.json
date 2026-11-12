@@ -1,0 +1,30 @@
+{
+  "version": 3,
+  "voice": {
+    "input_device": null,
+    "output_device": null,
+    "noise_suppression": true,
+    "echo_cancellation": true,
+    "auto_gain": true,
+    "input_mode": {
+      "mode": "voice_activity",
+      "threshold": 0
+    },
+    "push_to_talk_key": null,
+    "mic_quality": "high",
+    "camera_device": null,
+    "screen_share": {
+      "resolution": "1080p",
+      "fps": 30,
+      "audio": true
+    }
+  },
+  "user_volumes": {},
+  "close_to_tray": true,
+  "window": null,
+  "last_channel": null,
+  "third_party_media": false,
+  "theme": "dark-teal-minimal",
+  "float_placements": {},
+  "dm_stage_ratio": null
+}

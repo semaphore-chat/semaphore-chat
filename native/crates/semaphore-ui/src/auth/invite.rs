@@ -263,6 +263,7 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
                 max_uses: Some(10),
                 valid_until_ms: Some(1_798_675_200_000),
             }),
+            reason: None,
         }
     }
 
@@ -277,6 +278,7 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
                 },
             },
             invite: None,
+            reason: None,
         }
     }
 
@@ -308,6 +310,7 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
                 InvitePreviewView {
                     state: LoadState::Ready,
                     invite: None,
+                    reason: None,
                 },
                 false,
                 cx,
