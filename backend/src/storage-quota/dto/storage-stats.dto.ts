@@ -1,5 +1,10 @@
 import { IsNumber, IsOptional, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  MAX_FILE_SIZE_BYTES,
+  MIN_FILE_SIZE_BYTES,
+  MIN_STORAGE_QUOTA_BYTES,
+} from '@/common/constants/storage-limits.constant';
 
 /**
  * User storage stats response
@@ -141,14 +146,14 @@ export class UpdateUserQuotaDto {
 export class UpdateStorageSettingsDto {
   @IsOptional()
   @IsNumber()
-  @Min(1073741824) // Minimum 1GB
+  @Min(MIN_STORAGE_QUOTA_BYTES)
   @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   defaultStorageQuotaBytes?: number;
 
   @IsOptional()
   @IsNumber()
-  @Min(1048576) // Minimum 1MB
-  @Max(1073741824) // Maximum 1GB per file
+  @Min(MIN_FILE_SIZE_BYTES)
+  @Max(MAX_FILE_SIZE_BYTES)
   @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   maxFileSizeBytes?: number;
 }

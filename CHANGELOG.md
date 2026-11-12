@@ -11,8 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
 
+### Added
+
+- The web client now refreshes the ban list and the moderation log when a ban is lifted. (#683)
+- Clients now learn when a timeout ends on its own, so posting and voice controls come back without a reload. (#684)
+- A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
+- Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
+- Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
+
+### Changed
+
+- The default Community Admin role (new communities, and "reset defaults") now includes banning members. Existing communities keep their current Community Admin role until someone resets the defaults, and since a reset now grants banning, only someone who already holds ban rights there (or the instance owner) can run it: a Community Admin of an existing community gets a 403 from "reset defaults". (#692)
+
 ### Fixed
 
+- The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
+- Banning, kicking and timing out a member now work for the instance owner moderating a community they hold no role in, as unbanning, lifting a timeout and removing a member already did; the owner still can't moderate themselves. (#679)
+- Community administrators can create, list and delete invites for the community they run without an instance role; an invite naming another community, or none, still needs instance invite authority. (#685)
+- A moderator who can set timeouts but not see the ban list can now see the timeout list. (#688)
+- Saving a role now checks only the permissions the edit adds, so a role that holds a permission you lack can still be renamed or have permissions removed. (#690)
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
 - `GET /notifications` now reports the total number of matching notifications instead of the size of the page. (#658)
 - Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)
@@ -36,6 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The soundboard track is accepted when a member's publishing is restricted but they may speak; a server-muted or timed-out member still can't publish it. (#659)
 - Native clients can report a failed voice join with the platform value `native`. (#661)
 - The moderation log action filter rejects unknown values with a 400 and lists the allowed values in the API contract. (#687)
+- Force-deleting a community from the admin page now tells its members it is gone, instead of leaving it in their list until they reload. (#707)
+- First-run setup now saves the instance name and description you enter, so they appear in instance settings. (#708)
+- Two first-run setups submitted at the same time now create a single owner, and the second is refused. (#709)
+- The setup wizard uses the same username and password rules as registration, so it no longer accepts a password the server rejects. (#710)
+- Deleting an instance role now requires the same authority as creating or editing it. (#711)
+- Instance settings now enforce the same storage quota and maximum file size limits as the storage settings. (#712)
+- GIF search and featured reject a limit outside 1 to 50 with a 400 instead of passing it to the provider. (#713)
+- The API contract no longer lists the VAPID private key as part of the instance settings response. (#714)
 
 ## [0.9.0] - 2026-11-11
 

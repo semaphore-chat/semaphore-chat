@@ -99,6 +99,29 @@ describe('ModerationService', () => {
     roles,
   });
 
+  /** The transaction kick and ban run their membership removal in. */
+  const mockRemovalTransaction = () => {
+    const mockTx = {
+      threadSubscriber: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      communityBan: { upsert: jest.fn().mockResolvedValue({}) },
+      channelMembership: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      aliasGroupMember: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      membership: { delete: jest.fn().mockResolvedValue({}) },
+      moderationLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    mockDatabase.$transaction.mockImplementation(
+      (callback: (tx: typeof mockTx) => unknown) => callback(mockTx),
+    );
+    return mockTx;
+  };
+
   // =========================================
   // POSITION-BASED HIERARCHY TESTS
   // =========================================
@@ -232,6 +255,122 @@ describe('ModerationService', () => {
 
       await expect(
         service.banUser(communityId, userId, moderatorId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('instance owner bypass (#679)', () => {
+    beforeEach(() => {
+      // The owner holds no community role at all: rank alone would refuse all three
+      communityRolesService.getUserRolesForCommunity.mockResolvedValue(
+        createMockUserRoles([]),
+      );
+      membershipService.isMember.mockResolvedValue(true);
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+      mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
+      mockDatabase.communityTimeout.upsert.mockResolvedValue({});
+      mockDatabase.moderationLog.create.mockResolvedValue({});
+    });
+
+    it('bans someone without holding a community role', async () => {
+      const mockTx = mockRemovalTransaction();
+
+      await service.banUser(
+        communityId,
+        userId,
+        moderatorId,
+        'owns the instance',
+        undefined,
+        InstanceRole.OWNER,
+      );
+
+      expect(mockTx.communityBan.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ userId, moderatorId }),
+        }),
+      );
+    });
+
+    it('kicks someone without holding a community role', async () => {
+      const mockTx = mockRemovalTransaction();
+
+      await service.kickUser(
+        communityId,
+        userId,
+        moderatorId,
+        'owns the instance',
+        InstanceRole.OWNER,
+      );
+
+      expect(mockTx.membership.delete).toHaveBeenCalledWith({
+        where: { userId_communityId: { userId, communityId } },
+      });
+    });
+
+    it('times someone out without holding a community role', async () => {
+      await service.timeoutUser(
+        communityId,
+        userId,
+        moderatorId,
+        600,
+        'owns the instance',
+        InstanceRole.OWNER,
+      );
+
+      expect(mockDatabase.communityTimeout.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ userId, moderatorId }),
+        }),
+      );
+    });
+
+    it('still refuses to ban themselves', async () => {
+      await expect(
+        service.banUser(
+          communityId,
+          moderatorId,
+          moderatorId,
+          'self',
+          undefined,
+          InstanceRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('still refuses to kick themselves', async () => {
+      await expect(
+        service.kickUser(
+          communityId,
+          moderatorId,
+          moderatorId,
+          'self',
+          InstanceRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('still refuses to time themselves out', async () => {
+      await expect(
+        service.timeoutUser(
+          communityId,
+          moderatorId,
+          moderatorId,
+          600,
+          'self',
+          InstanceRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('does not bypass for a non-owner without a community role', async () => {
+      await expect(
+        service.kickUser(
+          communityId,
+          userId,
+          moderatorId,
+          'not the owner',
+          InstanceRole.USER,
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -408,6 +547,31 @@ describe('ModerationService', () => {
       );
     });
 
+    it('tells the community a ban was lifted, with who lifted it', async () => {
+      mockDatabase.communityBan.findUnique.mockResolvedValue({
+        id: 'ban-1',
+        active: true,
+      });
+
+      await service.unbanUser(communityId, userId, moderatorId, 'appealed');
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        RoomName.community(communityId),
+        ServerEvents.USER_UNBANNED,
+        { communityId, userId, moderatorId },
+      );
+    });
+
+    it('emits nothing when the operation fails', async () => {
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.unbanUser(communityId, userId, moderatorId),
+      ).rejects.toThrow(NotFoundException);
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
     describe('rank', () => {
       const banBy = (bannedBy: string | null) =>
         mockDatabase.communityBan.findUnique.mockResolvedValue({
@@ -430,6 +594,7 @@ describe('ModerationService', () => {
           service.unbanUser(communityId, userId, moderatorId),
         ).rejects.toThrow(ForbiddenException);
         expect(mockDatabase.communityBan.update).not.toHaveBeenCalled();
+        expect(websocketService.sendToRoom).not.toHaveBeenCalled();
       });
 
       it('refuses lifting your own ban', async () => {
@@ -698,7 +863,12 @@ describe('ModerationService', () => {
         const expiresAt = new Date(NOW + 600_000);
         expect(timeoutExpiryQueue.add).toHaveBeenCalledWith(
           'expire',
-          { userId, communityId, expiresAt: expiresAt.toISOString() },
+          {
+            userId,
+            communityId,
+            expiresAt: expiresAt.toISOString(),
+            moderatorId,
+          },
           {
             jobId: `timeout-expiry-${communityId}-${userId}-${expiresAt.getTime()}`,
             delay: 600_000,

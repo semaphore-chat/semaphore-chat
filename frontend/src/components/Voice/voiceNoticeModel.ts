@@ -28,6 +28,7 @@ const END_SEVERITY: Record<VoiceEndReason, VoiceNoticeModel["severity"]> = {
   [VoiceEndReason.AccessLost]: "warning",
   [VoiceEndReason.ChannelNotFound]: "warning",
   [VoiceEndReason.SessionExpired]: "warning",
+  [VoiceEndReason.CallDeclined]: "info",
 };
 
 export function describeVoiceNotice(

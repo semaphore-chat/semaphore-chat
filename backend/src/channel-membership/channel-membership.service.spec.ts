@@ -90,7 +90,11 @@ describe('ChannelMembershipService', () => {
       });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         RoomEvents.CHANNEL_MEMBERSHIP_CREATED,
-        { userId: user.id, channelId: channel.id },
+        {
+          userId: user.id,
+          channelId: channel.id,
+          communityId: channel.communityId,
+        },
       );
     });
 
@@ -597,7 +601,11 @@ describe('ChannelMembershipService', () => {
       });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         RoomEvents.CHANNEL_MEMBERSHIP_REMOVED,
-        { userId: user.id, channelId: channel.id },
+        {
+          userId: user.id,
+          channelId: channel.id,
+          communityId: channel.communityId,
+        },
       );
     });
 

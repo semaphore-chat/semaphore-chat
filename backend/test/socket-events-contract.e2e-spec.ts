@@ -13,6 +13,9 @@ import type { Server as IoServer } from 'socket.io';
 import { io, Socket } from 'socket.io-client';
 import * as request from 'supertest';
 import type { AuthenticatedSocket } from '@/common/utils/socket.utils';
+import { DatabaseService } from '@/database/database.service';
+import { CustomEmojiService } from '@/custom-emoji/custom-emoji.service';
+import { SoundboardService } from '@/soundboard/soundboard.service';
 import { PresenceGateway } from '@/presence/presence.gateway';
 import { RoomsService } from '@/rooms/rooms.service';
 import { SENSITIVE_USER_FIELDS } from '@/test-utils/helpers/user-dto.helper';
@@ -305,18 +308,47 @@ describe('Socket event contract (e2e)', () => {
     await seen(ServerEvents.VOICE_CHANNEL_USER_LEFT);
   });
 
-  it('voice in a DM: call started, joined, left', async () => {
+  it('voice in a DM: call started, declined, joined, left, ended', async () => {
     const voice = app.get(VoicePresenceService);
-
-    await voice['handleWebhookDmParticipantJoined'](dmId, account.member.id);
-    await seen(ServerEvents.DM_VOICE_CALL_STARTED);
+    const decline = () =>
+      http()
+        .post(`/api/dm-groups/${dmId}/voice-presence/decline`)
+        .set('Authorization', auth('member'));
 
     await voice['handleWebhookDmParticipantJoined'](dmId, account.target.id);
+    await seen(ServerEvents.DM_VOICE_CALL_STARTED);
+
+    // The decline is for the DM's members only
+    await http()
+      .post(`/api/dm-groups/${dmId}/voice-presence/decline`)
+      .set('Authorization', auth('owner'))
+      .expect(403);
+
+    // member declines on one device: every member of the DM hears it
+    await decline().expect(201);
+    expect(
+      await seen(
+        ServerEvents.DM_VOICE_CALL_DECLINED,
+        (p) => p.userId === account.member.id,
+      ),
+    ).toEqual({ dmGroupId: dmId, userId: account.member.id, isGroup: false });
+
+    // Declining again is harmless and announces nothing new
+    await decline().expect(201);
+
+    // The decliner then answers on another device; you cannot decline a
+    // call you are in
+    await voice['handleWebhookDmParticipantJoined'](dmId, account.member.id);
     await seen(ServerEvents.DM_VOICE_USER_JOINED);
+    await decline().expect(409);
 
     await voice.leaveDmVoice(dmId, account.target.id);
     await seen(ServerEvents.DM_VOICE_USER_LEFT);
     await voice.leaveDmVoice(dmId, account.member.id);
+    await seen(ServerEvents.DM_VOICE_CALL_ENDED);
+
+    // With no call left there is nothing to decline
+    await decline().expect(409);
   });
 
   it('channels: created, updated, permissions, reordered, deleted', async () => {
@@ -447,6 +479,152 @@ describe('Socket event contract (e2e)', () => {
       .send({ reason: 'enough' })
       .expect(200);
     await seen(ServerEvents.USER_BANNED);
+
+    await http()
+      .delete(`/api/moderation/ban/${communityId}/${account.target.id}`)
+      .set('Authorization', auth('owner'))
+      .send({})
+      .expect(200);
+    await seen(
+      ServerEvents.USER_UNBANNED,
+      (p) => p.userId === account.target.id,
+    );
+  });
+
+  it('a private channel: its member is told it was added and removed', async () => {
+    const created = await http()
+      .post('/api/channels')
+      .set('Authorization', auth('owner'))
+      .send({ name: 'secret', communityId, type: 'TEXT', isPrivate: true })
+      .expect(201);
+    const id = (created.body as { id: string }).id;
+
+    await http()
+      .post('/api/channel-membership')
+      .set('Authorization', auth('owner'))
+      .send({ userId: account.member.id, channelId: id })
+      .expect(201);
+    const added = await seen(
+      ServerEvents.PRIVATE_CHANNEL_ADDED,
+      (p) => p.channelId === id,
+    );
+    expect(added).toEqual({ communityId, channelId: id });
+
+    await http()
+      .delete(`/api/channel-membership/channel/${id}/user/${account.member.id}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.PRIVATE_CHANNEL_REMOVED, (p) => p.channelId === id);
+  });
+
+  it('community assets: emoji, soundboard, alias groups and webhooks', async () => {
+    const database = app.get(DatabaseService);
+
+    // Emoji and soundboard reference an uploaded file; create the rows
+    // directly since the upload step is not what this contract checks.
+    const emojiFile = await database.file.create({
+      data: {
+        filename: 'blob.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        size: 10,
+        checksum: 'emoji-checksum',
+        resourceType: 'CUSTOM_EMOJI',
+        fileCommunityId: communityId,
+        storagePath: 'test/blob.png',
+        uploadedById: account.owner.id,
+      },
+    });
+    const emoji = await app
+      .get(CustomEmojiService)
+      .createEmoji(
+        communityId,
+        { name: 'party_blob', fileId: emojiFile.id },
+        account.owner.id,
+      );
+    await seen(
+      ServerEvents.CUSTOM_EMOJI_CREATED,
+      (p) => p.emojiId === emoji.id,
+    );
+    await app.get(CustomEmojiService).deleteEmoji(communityId, emoji.id);
+    await seen(
+      ServerEvents.CUSTOM_EMOJI_DELETED,
+      (p) => p.emojiId === emoji.id,
+    );
+
+    const soundFile = await database.file.create({
+      data: {
+        filename: 'airhorn.mp3',
+        mimeType: 'audio/mpeg',
+        fileType: 'AUDIO',
+        size: 10,
+        checksum: 'sound-checksum',
+        resourceType: 'SOUNDBOARD_SOUND',
+        fileCommunityId: communityId,
+        storagePath: 'test/airhorn.mp3',
+        uploadedById: account.owner.id,
+      },
+    });
+    const sound = await app
+      .get(SoundboardService)
+      .createSound(communityId, account.owner.id, {
+        name: 'airhorn',
+        fileId: soundFile.id,
+      });
+    await seen(
+      ServerEvents.SOUNDBOARD_SOUND_CREATED,
+      (p) => p.soundId === sound.id,
+    );
+    await app.get(SoundboardService).deleteSound(communityId, sound.id);
+    await seen(
+      ServerEvents.SOUNDBOARD_SOUND_DELETED,
+      (p) => p.soundId === sound.id,
+    );
+
+    const group = await http()
+      .post(`/api/alias-groups/community/${communityId}`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'team' })
+      .expect(201);
+    const groupId = (group.body as { id: string }).id;
+    await seen(ServerEvents.ALIAS_GROUP_CREATED, (p) => p.groupId === groupId);
+
+    await http()
+      .put(`/api/alias-groups/${groupId}`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'team-two' })
+      .expect(200);
+    await seen(ServerEvents.ALIAS_GROUP_UPDATED, (p) => p.groupId === groupId);
+
+    await http()
+      .put(`/api/alias-groups/${groupId}/members`)
+      .set('Authorization', auth('owner'))
+      .send({ memberIds: [account.member.id] })
+      .expect(204);
+    await seen(
+      ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+      (p) => p.groupId === groupId,
+    );
+
+    await http()
+      .delete(`/api/alias-groups/${groupId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.ALIAS_GROUP_DELETED, (p) => p.groupId === groupId);
+
+    const webhook = await http()
+      .post(`/api/channels/${channelId}/webhooks`)
+      .set('Authorization', auth('owner'))
+      .send({ name: 'CI Bot' })
+      .expect(201);
+    const webhookId = (webhook.body as { id: string }).id;
+    await seen(ServerEvents.WEBHOOK_CREATED, (p) => p.webhookId === webhookId);
+
+    await http()
+      .delete(`/api/channels/${channelId}/webhooks/${webhookId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await seen(ServerEvents.WEBHOOK_DELETED, (p) => p.webhookId === webhookId);
   });
 
   it('a community: updated, deleted', async () => {

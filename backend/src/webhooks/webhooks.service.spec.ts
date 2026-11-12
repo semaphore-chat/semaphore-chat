@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { WebhooksService } from './webhooks.service';
@@ -9,12 +10,14 @@ import { MessageDispatchService } from '@/messages/message-dispatch.service';
 import { ConfigService } from '@nestjs/config';
 import { ChannelFactory } from '@/test-utils';
 import { ServerEvents } from '@semaphore-chat/shared';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 
 describe('WebhooksService', () => {
   let service: WebhooksService;
   let messagesService: Mocked<MessagesService>;
   let messageDispatchService: Mocked<MessageDispatchService>;
   let configService: Mocked<ConfigService>;
+  let eventEmitter: Mocked<EventEmitter2>;
 
   const mockDatabaseService = {
     channel: {
@@ -38,6 +41,7 @@ describe('WebhooksService', () => {
     messagesService = unitRef.get(MessagesService);
     messageDispatchService = unitRef.get(MessageDispatchService);
     configService = unitRef.get(ConfigService);
+    eventEmitter = unitRef.get(EventEmitter2);
 
     jest.clearAllMocks();
     configService.get.mockReturnValue(undefined);
@@ -46,12 +50,12 @@ describe('WebhooksService', () => {
 
   const channelId = 'channel-1';
   const webhookId = 'webhook-1';
+  const communityId = 'community-1';
 
   describe('create', () => {
     it('stores only the SHA-256 hash of the token, never the raw token', async () => {
-      mockDatabaseService.channel.findUnique.mockResolvedValue(
-        ChannelFactory.buildText({ id: channelId }),
-      );
+      const channel = ChannelFactory.buildText({ id: channelId });
+      mockDatabaseService.channel.findUnique.mockResolvedValue(channel);
       mockDatabaseService.webhook.create.mockImplementation(
         ({ data }: { data: Record<string, unknown> }) =>
           Promise.resolve({
@@ -86,6 +90,15 @@ describe('WebhooksService', () => {
       expect(createHash('sha256').update(rawToken).digest('hex')).toBe(
         storedHash,
       );
+      // The community learns of the new webhook; only ids leave the server.
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.WEBHOOK_CREATED,
+        {
+          communityId: channel.communityId,
+          channelId,
+          webhookId,
+        },
+      );
     });
 
     it('rejects creation for a non-TEXT channel', async () => {
@@ -97,6 +110,7 @@ describe('WebhooksService', () => {
         service.create(channelId, { name: 'CI Bot' }),
       ).rejects.toThrow(BadRequestException);
       expect(mockDatabaseService.webhook.create).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when the channel does not exist', async () => {
@@ -239,6 +253,7 @@ describe('WebhooksService', () => {
       mockDatabaseService.webhook.findUnique.mockResolvedValue({
         id: webhookId,
         channelId,
+        channel: { communityId },
       });
 
       await service.remove(channelId, webhookId);
@@ -246,6 +261,10 @@ describe('WebhooksService', () => {
       expect(mockDatabaseService.webhook.delete).toHaveBeenCalledWith({
         where: { id: webhookId },
       });
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.WEBHOOK_DELETED,
+        { communityId, channelId, webhookId },
+      );
     });
 
     it('throws NotFoundException when the webhook belongs to a different channel', async () => {
@@ -266,6 +285,7 @@ describe('WebhooksService', () => {
       await expect(service.remove(channelId, webhookId)).rejects.toThrow(
         NotFoundException,
       );
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 

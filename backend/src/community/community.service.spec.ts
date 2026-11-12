@@ -5,7 +5,9 @@ import { DatabaseService } from '@/database/database.service';
 import { ChannelsService } from '@/channels/channels.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   createMockDatabase,
   UserFactory,
@@ -18,6 +20,7 @@ describe('CommunityService', () => {
   let channelsService: Mocked<ChannelsService>;
   let communityRolesService: Mocked<CommunityRolesService>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
+  let eventEmitter: Mocked<EventEmitter2>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -35,6 +38,7 @@ describe('CommunityService', () => {
     channelsService = unitRef.get(ChannelsService);
     communityRolesService = unitRef.get(CommunityRolesService);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
+    eventEmitter = unitRef.get(EventEmitter2);
   });
 
   afterEach(() => {
@@ -598,6 +602,39 @@ describe('CommunityService', () => {
         'Community not found',
       );
       expect(permissionsCacheService.bumpCommunityEpoch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('forceRemove', () => {
+    it('tells members the community is gone before deleting it', async () => {
+      const community = CommunityFactory.build();
+
+      mockDatabase.community.findUnique.mockResolvedValue(community);
+      mockDatabase.channel.findMany.mockResolvedValue([]);
+
+      await service.forceRemove(community.id);
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        RoomEvents.COMMUNITY_DELETED,
+        { communityId: community.id },
+      );
+      // The room subscription is what carries the event to the members, so
+      // it has to be emitted while the community still exists.
+      expect(eventEmitter.emit.mock.invocationCallOrder[0]).toBeLessThan(
+        mockDatabase.community.delete.mock.invocationCallOrder[0],
+      );
+      expect(mockDatabase.community.delete).toHaveBeenCalledWith({
+        where: { id: community.id },
+      });
+    });
+
+    it('should throw NotFoundException when community not found', async () => {
+      mockDatabase.community.findUnique.mockResolvedValue(null);
+
+      await expect(service.forceRemove('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 });

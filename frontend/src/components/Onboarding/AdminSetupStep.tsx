@@ -48,16 +48,20 @@ const AdminSetupStep: React.FC<AdminSetupStepProps> = ({
 
     if (!data.adminUsername.trim()) {
       newErrors.adminUsername = 'Username is required';
-    } else if (data.adminUsername.length < 3) {
-      newErrors.adminUsername = 'Username must be at least 3 characters';
+    } else if (data.adminUsername.length < 2) {
+      newErrors.adminUsername = 'Username must be at least 2 characters';
+    } else if (data.adminUsername.length > 32) {
+      newErrors.adminUsername = 'Username must be at most 32 characters';
     } else if (!/^[a-zA-Z0-9_-]+$/.test(data.adminUsername)) {
       newErrors.adminUsername = 'Username can only contain letters, numbers, underscores, and hyphens';
     }
 
     if (!data.adminPassword.trim()) {
       newErrors.adminPassword = 'Password is required';
-    } else if (data.adminPassword.length < 6) {
-      newErrors.adminPassword = 'Password must be at least 6 characters';
+    } else if (data.adminPassword.length < 8) {
+      newErrors.adminPassword = 'Password must be at least 8 characters';
+    } else if (data.adminPassword.length > 128) {
+      newErrors.adminPassword = 'Password must be at most 128 characters';
     }
 
     if (data.adminEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.adminEmail)) {

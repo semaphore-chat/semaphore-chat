@@ -434,6 +434,19 @@ export type DmVoiceUserLeftPayloadDto = {
     user: VoicePresenceUserDto;
 };
 
+export type DmVoiceCallDeclinedPayloadDto = {
+    dmGroupId: string;
+    userId: string;
+    /**
+     * True for a group DM, false for a 1:1 DM: a 1:1 decline ends the call.
+     */
+    isGroup: boolean;
+};
+
+export type DmVoiceCallEndedPayloadDto = {
+    dmGroupId: string;
+};
+
 export type ReplayBufferStoppedPayloadDto = {
     sessionId: string;
     egressId: string;
@@ -477,9 +490,41 @@ export type ChannelPermissionsUpdatedPayloadDto = {
     channelId: string;
 };
 
+export type PrivateChannelMembershipPayloadDto = {
+    communityId: string;
+    channelId: string;
+};
+
+export type CommunityEmojiPayloadDto = {
+    communityId: string;
+    emojiId: string;
+};
+
+export type CommunitySoundPayloadDto = {
+    communityId: string;
+    soundId: string;
+};
+
+export type CommunityAliasGroupPayloadDto = {
+    communityId: string;
+    groupId: string;
+};
+
+export type ChannelWebhookPayloadDto = {
+    communityId: string;
+    channelId: string;
+    webhookId: string;
+};
+
 export type UserBannedPayloadDto = {
     reason?: string;
     expiresAt?: string;
+    communityId: string;
+    userId: string;
+    moderatorId: string;
+};
+
+export type UserUnbannedPayloadDto = {
     communityId: string;
     userId: string;
     moderatorId: string;
@@ -503,6 +548,11 @@ export type UserTimedOutPayloadDto = {
 
 export type TimeoutRemovedPayloadDto = {
     reason?: string;
+    /**
+     * Set when the timeout ran out by itself, rather than being lifted by a
+     * moderator. Clients refetch the same state either way.
+     */
+    expired?: boolean;
     communityId: string;
     userId: string;
     moderatorId: string;
