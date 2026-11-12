@@ -391,6 +391,9 @@ export class CommunityService {
       throw new NotFoundException('Community not found');
     }
 
+    // Notify members before deletion so they still have the room subscription
+    this.eventEmitter.emit(RoomEvents.COMMUNITY_DELETED, { communityId: id });
+
     await this.cascadeDeleteCommunity(id);
   }
 

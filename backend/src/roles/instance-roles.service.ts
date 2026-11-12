@@ -386,7 +386,10 @@ export class InstanceRolesService implements OnModuleInit {
   /**
    * Delete a custom instance role (cannot delete the default)
    */
-  async deleteInstanceRole(roleId: string): Promise<void> {
+  async deleteInstanceRole(
+    roleId: string,
+    actor?: { id: string; role: string },
+  ): Promise<void> {
     const role = await this.databaseService.role.findUnique({
       where: { id: roleId },
       include: {
@@ -415,6 +418,9 @@ export class InstanceRolesService implements OnModuleInit {
         `Cannot delete role with ${role.UserRoles.length} assigned user(s). Remove all role assignments first.`,
       );
     }
+
+    // Deleting a role takes the standing to hold what it has, like update
+    if (actor) await this.assertMayHandle(actor, role.actions);
 
     await this.databaseService.role.delete({
       where: { id: roleId },

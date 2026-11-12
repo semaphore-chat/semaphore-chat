@@ -7,7 +7,7 @@ import {
   PermissionsCacheService,
   type EpochBump,
 } from './permissions-cache.service';
-import { RbacActions } from '@prisma/client';
+import { RbacActions, InstanceRole } from '@prisma/client';
 import { createMockDatabase, UserFactory, RoleFactory } from '@/test-utils';
 import {
   BadRequestException,
@@ -489,6 +489,52 @@ describe('InstanceRolesService', () => {
         expect(mockDatabase.role.delete).toHaveBeenCalledWith({
           where: { id: roleId },
         });
+      });
+
+      it('lets the instance owner delete a role they did not create', async () => {
+        const role = RoleFactory.build({
+          name: 'Custom Instance Role',
+          actions: [RbacActions.UPDATE_INSTANCE_SETTINGS],
+          communityId: null,
+        });
+        mockDatabase.role.findUnique.mockResolvedValue({
+          ...role,
+          UserRoles: [],
+        });
+        mockDatabase.role.delete.mockResolvedValue(role);
+
+        await service.deleteInstanceRole(role.id, {
+          id: 'owner',
+          role: InstanceRole.OWNER,
+        });
+
+        expect(mockDatabase.role.delete).toHaveBeenCalledWith({
+          where: { id: role.id },
+        });
+      });
+
+      it('refuses an admin who does not hold an action the role grants', async () => {
+        const role = RoleFactory.build({
+          name: 'Custom Instance Role',
+          actions: [RbacActions.DELETE_USER],
+          communityId: null,
+        });
+        mockDatabase.role.findUnique.mockResolvedValue({
+          ...role,
+          UserRoles: [],
+        });
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          { role: { actions: [RbacActions.READ_USER] } },
+        ]);
+
+        await expect(
+          service.deleteInstanceRole(role.id, {
+            id: 'lesser-admin',
+            role: InstanceRole.USER,
+          }),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockDatabase.role.delete).not.toHaveBeenCalled();
       });
 
       it('should throw NotFoundException when role not found', async () => {

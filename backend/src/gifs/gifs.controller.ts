@@ -1,17 +1,9 @@
-import {
-  Controller,
-  DefaultValuePipe,
-  Get,
-  ParseIntPipe,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { GifsService } from './gifs.service';
 import { GifSearchResponseDto } from './dto/gif-response.dto';
-
-const MAX_LIMIT = 50;
+import { GifQueryDto } from './dto/gif-query.dto';
 
 @Controller('gifs')
 @UseGuards(JwtAuthGuard)
@@ -23,14 +15,12 @@ export class GifsController {
    */
   @Get('search')
   @ApiOkResponse({ type: GifSearchResponseDto })
-  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
-  @ApiQuery({ name: 'pos', required: false })
+  @ApiQuery({ name: 'q', required: true })
   async search(
     @Query('q') q: string,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-    @Query('pos') pos?: string,
+    @Query() query: GifQueryDto,
   ): Promise<GifSearchResponseDto> {
-    return this.gifsService.search(q, Math.min(limit, MAX_LIMIT), pos);
+    return this.gifsService.search(q, query.limit, query.pos);
   }
 
   /**
@@ -39,12 +29,7 @@ export class GifsController {
    */
   @Get('featured')
   @ApiOkResponse({ type: GifSearchResponseDto })
-  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
-  @ApiQuery({ name: 'pos', required: false })
-  async featured(
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-    @Query('pos') pos?: string,
-  ): Promise<GifSearchResponseDto> {
-    return this.gifsService.featured(Math.min(limit, MAX_LIMIT), pos);
+  async featured(@Query() query: GifQueryDto): Promise<GifSearchResponseDto> {
+    return this.gifsService.featured(query.limit, query.pos);
   }
 }
