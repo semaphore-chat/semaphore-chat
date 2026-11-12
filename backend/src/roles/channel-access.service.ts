@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InstanceRole, RbacActions } from '@prisma/client';
 import { DatabaseService } from '@/database/database.service';
+import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { RoomName } from '@/common/utils/room-name.util';
 import {
   ALL_CAPABILITIES,
@@ -57,6 +62,115 @@ export class ChannelAccessService {
     private readonly databaseService: DatabaseService,
     private readonly permissionsService: PermissionsService,
   ) {}
+
+  /**
+   * The moderation rank rule every voice-moderation endpoint enforces
+   * (server mute, remove from the call): the actor strictly outranks the
+   * target in the channel's community, and the instance owner is above the
+   * rule on either side (an owner may act on anyone, but is never a target
+   * for someone else).
+   *
+   * Endpoints behind RbacGuard have already checked the action; this only
+   * answers the rank question, and a channel that doesn't exist is a 404.
+   */
+  async assertMayModerateParticipant(
+    actor: { id: string; role: string },
+    channelId: string,
+    targetId: string,
+    verb = 'server mute',
+  ): Promise<void> {
+    const channel = await this.databaseService.channel.findUnique({
+      where: { id: channelId },
+      select: { communityId: true },
+    });
+    if (!channel) throw new NotFoundException('Channel not found');
+    if (actor.role === InstanceRole.OWNER) return;
+    if (
+      !(await this.rankAllowsModeration(
+        actor.id,
+        channel.communityId,
+        targetId,
+      ))
+    ) {
+      throw new ForbiddenException(`You can only ${verb} someone you outrank`);
+    }
+  }
+
+  /**
+   * The subset of `targetIds` whose actor may moderate in this channel: holds
+   * MUTE_PARTICIPANT here (channel overwrites and privacy included, as
+   * RbacGuard resolves it) and passes the rank rule above. Used by the voice
+   * presence GET's per-user `canModerate`, so it never includes the actor.
+   */
+  async moderatableParticipantIds(
+    actor: { id: string; role: string },
+    channelId: string,
+    targetIds: string[],
+  ): Promise<Set<string>> {
+    const moderatable = new Set<string>();
+    const candidates = targetIds.filter((id) => id !== actor.id);
+    if (candidates.length === 0) return moderatable;
+
+    const channel = await this.databaseService.channel.findUnique({
+      where: { id: channelId },
+      select: { communityId: true },
+    });
+    if (!channel) return moderatable;
+
+    const isOwner = actor.role === InstanceRole.OWNER;
+    if (
+      !isOwner &&
+      !(await this.permissionsService.verifyActionsForUserAndResource(
+        actor.id,
+        channelId,
+        RbacResourceType.CHANNEL,
+        [RbacActions.MUTE_PARTICIPANT],
+      ))
+    ) {
+      return moderatable;
+    }
+
+    // An owner is above the rank rule in both directions, including towards
+    // another owner; everyone else never moderates an instance owner.
+    if (isOwner) {
+      for (const id of candidates) moderatable.add(id);
+      return moderatable;
+    }
+
+    const targets = await this.databaseService.user.findMany({
+      where: { id: { in: candidates } },
+      select: { id: true, role: true },
+    });
+    const instanceOwners = new Set(
+      targets
+        .filter((target) => target.role === InstanceRole.OWNER)
+        .map((target) => target.id),
+    );
+    const ranking = candidates.filter((id) => !instanceOwners.has(id));
+    const outranks = await Promise.all(
+      ranking.map((id) =>
+        this.permissionsService.outranks(actor.id, id, channel.communityId),
+      ),
+    );
+    ranking.forEach((id, index) => {
+      if (outranks[index]) moderatable.add(id);
+    });
+    return moderatable;
+  }
+
+  /** Whether the actor strictly outranks the target, never the instance owner. */
+  private async rankAllowsModeration(
+    actorId: string,
+    communityId: string,
+    targetId: string,
+  ): Promise<boolean> {
+    const target = await this.databaseService.user.findUnique({
+      where: { id: targetId },
+      select: { role: true },
+    });
+    if (target?.role === InstanceRole.OWNER) return false;
+    return this.permissionsService.outranks(actorId, targetId, communityId);
+  }
 
   /** Ids of the channels the user can see in the given communities. */
   async visibleChannelIds(

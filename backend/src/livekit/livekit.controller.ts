@@ -29,6 +29,7 @@ import { ClipLibraryService } from './clip-library.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { CreateTokenDto } from './dto/create-token.dto';
 import { MuteParticipantDto } from './dto/mute-participant.dto';
+import { RemoveParticipantDto } from './dto/remove-participant.dto';
 import { StartReplayBufferDto } from './dto/start-replay-buffer.dto';
 import {
   CaptureReplayDto,
@@ -189,7 +190,7 @@ export class LivekitController {
     @Body() dto: MuteParticipantDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<{ success: boolean }> {
-    await this.livekitAccessService.assertMayServerMute(
+    await this.channelAccessService.assertMayModerateParticipant(
       req.user,
       channelId,
       dto.participantIdentity,
@@ -202,18 +203,14 @@ export class LivekitController {
       await this.livekitService.muteParticipant(
         channelId,
         dto.participantIdentity,
-        true,
       );
     }
 
     // Muting the track alone doesn't hold: the client can unmute it, or
-    // publish a new one. The mute is remembered and takes the microphone out
-    // of what they may publish, now and on every later join.
-    await this.voicePresenceService.setServerMuted(
-      channelId,
-      dto.participantIdentity,
-      dto.mute,
-    );
+    // publish a new one. The mute also takes the microphone out of what they
+    // may publish, now and on every later join — and lifting it gives the
+    // microphone back. Only once LiveKit accepted the new grant do we record
+    // and announce the change.
     const caps = await this.channelAccessService.channelCapabilities(
       dto.participantIdentity,
       channelId,
@@ -223,10 +220,47 @@ export class LivekitController {
       dto.participantIdentity,
       caps ? publishGrantFor(caps, dto.mute) : { canPublish: false },
     );
+    await this.voicePresenceService.setServerMuted(
+      channelId,
+      dto.participantIdentity,
+      dto.mute,
+    );
     await this.voicePresenceService.updateServerMuteState(
       channelId,
       dto.participantIdentity,
       dto.mute,
+    );
+    return { success: true };
+  }
+
+  /**
+   * Remove someone from this voice call only: they leave the LiveKit room but
+   * stay a community member, and may rejoin. The participant_left webhook
+   * announces the leave and clears their presence.
+   */
+  @Post('channels/:channelId/remove-participant')
+  @HttpCode(HttpStatus.OK)
+  @RequiredActions(RbacActions.MUTE_PARTICIPANT)
+  @RbacResource({
+    type: RbacResourceType.CHANNEL,
+    idKey: 'channelId',
+    source: ResourceIdSource.PARAM,
+  })
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async removeParticipant(
+    @Param('channelId') channelId: string,
+    @Body() dto: RemoveParticipantDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ success: boolean }> {
+    await this.channelAccessService.assertMayModerateParticipant(
+      req.user,
+      channelId,
+      dto.participantIdentity,
+      'remove',
+    );
+    await this.livekitService.disconnectParticipant(
+      channelId,
+      dto.participantIdentity,
     );
     return { success: true };
   }

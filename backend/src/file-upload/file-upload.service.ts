@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   UnprocessableEntityException,
   PayloadTooLargeException,
@@ -23,6 +24,8 @@ import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { ThumbnailService } from '@/file/thumbnail.service';
 import { ResourceTypeFileValidator } from './validators';
+import { SOUNDBOARD_SOUND_MAX_DURATION_SECONDS } from './validators/strategies/soundboard-sound-validation.strategy';
+import { FfmpegProvider } from '@/livekit/providers/ffmpeg.provider';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { FileUploadResponseDto } from './dto/file-upload-response.dto';
 
@@ -44,6 +47,7 @@ export class FileUploadService {
     private readonly storageQuotaService: StorageQuotaService,
     private readonly thumbnailService: ThumbnailService,
     private readonly permissionsService: PermissionsService,
+    private readonly ffmpegProvider: FfmpegProvider,
   ) {}
 
   /**
@@ -151,6 +155,13 @@ export class FileUploadService {
         );
       }
 
+      // A small file can still hold minutes of decoded audio: cap the length
+      // of a soundboard sound too, reading it with the same ffprobe the replay
+      // pipeline uses.
+      if (createFileUploadDto.resourceType === ResourceType.SOUNDBOARD_SOUND) {
+        await this.assertSoundboardDuration(file);
+      }
+
       // Generate checksum (streamed — never buffers the whole file)
       const checksum = await this.generateChecksum(file.path);
 
@@ -236,7 +247,8 @@ export class FileUploadService {
       // Ensure file is cleaned up on any error
       if (
         error instanceof UnprocessableEntityException ||
-        error instanceof PayloadTooLargeException
+        error instanceof PayloadTooLargeException ||
+        error instanceof BadRequestException
       ) {
         throw error; // Already cleaned up and has proper message
       }
@@ -244,6 +256,42 @@ export class FileUploadService {
       // For unexpected errors (not already handled), clean up and re-throw
       this.logger.error(`Error processing file upload: ${error}`);
       throw error;
+    }
+  }
+
+  /**
+   * Reject a soundboard sound that is longer than the shared limit, or whose
+   * length ffprobe can't read (not a decodable audio file). The local upload
+   * is removed before throwing, as for any other rejected upload.
+   */
+  private async assertSoundboardDuration(
+    file: Express.Multer.File,
+  ): Promise<void> {
+    let duration: number;
+    try {
+      const metadata = await this.ffmpegProvider.ffprobe(file.path);
+      duration = Number(metadata?.format?.duration);
+    } catch (error) {
+      this.logger.warn(
+        `Could not probe the length of ${file.originalname}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      duration = Number.NaN;
+    }
+
+    if (!Number.isFinite(duration) || duration <= 0) {
+      await this.cleanupFile(file.path);
+      throw new BadRequestException(
+        'Could not read the length of this sound. Upload a valid audio file.',
+      );
+    }
+
+    if (duration > SOUNDBOARD_SOUND_MAX_DURATION_SECONDS) {
+      await this.cleanupFile(file.path);
+      throw new BadRequestException(
+        `Soundboard sounds must be ${SOUNDBOARD_SOUND_MAX_DURATION_SECONDS} seconds or shorter`,
+      );
     }
   }
 

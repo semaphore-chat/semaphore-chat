@@ -12,9 +12,24 @@ export class VoicePresenceUserDto {
   isServerMuted: boolean;
 }
 
+/**
+ * A user in the channel presence GET: the socket shape plus what the caller
+ * may do about them. Socket events keep the plain {@link VoicePresenceUserDto}
+ * because they are shared by every recipient.
+ */
+export class ChannelVoicePresenceUserDto extends VoicePresenceUserDto {
+  /**
+   * Whether the caller may server mute this user or remove them from the
+   * call. Never set for the caller's own entry.
+   */
+  @ApiProperty({ required: false })
+  canModerate?: boolean;
+}
+
 export class ChannelVoicePresenceResponseDto {
   channelId: string;
-  users: VoicePresenceUserDto[];
+  @ApiProperty({ type: [ChannelVoicePresenceUserDto] })
+  users: ChannelVoicePresenceUserDto[];
   @ApiProperty({ type: 'integer' })
   count: number;
 }

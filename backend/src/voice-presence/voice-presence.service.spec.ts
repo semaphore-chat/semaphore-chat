@@ -6,6 +6,7 @@ import { VoicePresenceService } from './voice-presence.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { DatabaseService } from '@/database/database.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 
 import { ServerEvents } from '@semaphore-chat/shared';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
@@ -15,6 +16,7 @@ describe('VoicePresenceService', () => {
   let service: VoicePresenceService;
   let websocketService: Mocked<WebsocketService>;
   let eventEmitter: Mocked<EventEmitter2>;
+  let channelAccessService: Mocked<ChannelAccessService>;
   let mockDatabaseService: any;
 
   const mockPipeline = {
@@ -73,6 +75,7 @@ describe('VoicePresenceService', () => {
     service = unit;
     websocketService = unitRef.get(WebsocketService);
     eventEmitter = unitRef.get(EventEmitter2);
+    channelAccessService = unitRef.get(ChannelAccessService);
   });
 
   afterEach(() => {
@@ -386,6 +389,74 @@ describe('VoicePresenceService', () => {
       expect(result[0].id).toBe('user-2'); // Earliest
       expect(result[1].id).toBe('user-3'); // Middle
       expect(result[2].id).toBe('user-1'); // Latest
+    });
+  });
+
+  describe('getChannelPresenceForViewer', () => {
+    it('marks the users this caller may moderate, never the caller', async () => {
+      const channelId = 'channel-123';
+      const viewer = { id: 'mod', role: 'USER' };
+      mockRedis.smembers.mockResolvedValue(['mod', 'member', 'admin']);
+      mockRedis.mget.mockResolvedValue([
+        JSON.stringify({
+          id: 'mod',
+          username: 'mod',
+          joinedAt: '2024-01-01T10:00:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+        JSON.stringify({
+          id: 'member',
+          username: 'member',
+          joinedAt: '2024-01-01T10:01:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+        JSON.stringify({
+          id: 'admin',
+          username: 'admin',
+          joinedAt: '2024-01-01T10:02:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+      ]);
+      channelAccessService.moderatableParticipantIds.mockResolvedValue(
+        new Set(['member']),
+      );
+
+      const result = await service.getChannelPresenceForViewer(
+        channelId,
+        viewer,
+      );
+
+      expect(
+        channelAccessService.moderatableParticipantIds,
+      ).toHaveBeenCalledWith(viewer, channelId, ['mod', 'member', 'admin']);
+      expect(result.map((user) => [user.id, user.canModerate])).toEqual([
+        ['mod', false],
+        ['member', true],
+        ['admin', false],
+      ]);
+    });
+
+    it('leaves the socket-shaped presence read without canModerate', async () => {
+      mockRedis.smembers.mockResolvedValue(['user-1']);
+      mockRedis.mget.mockResolvedValue([
+        JSON.stringify({
+          id: 'user-1',
+          username: 'user1',
+          joinedAt: '2024-01-01T10:00:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+        }),
+      ]);
+
+      const [user] = await service.getChannelPresence('channel-123');
+
+      expect(user).not.toHaveProperty('canModerate');
+      expect(
+        channelAccessService.moderatableParticipantIds,
+      ).not.toHaveBeenCalled();
     });
   });
 

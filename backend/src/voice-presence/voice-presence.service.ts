@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import {
   VOICE_USER_LEFT,
   VoiceUserLeftEvent,
@@ -85,6 +86,7 @@ export class VoicePresenceService {
     private readonly websocketService: WebsocketService,
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   /** Remember (or lift) a moderator's server mute of a user in a channel. */
@@ -277,6 +279,29 @@ export class VoicePresenceService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Channel presence from one caller's point of view: the same users as
+   * getChannelPresence, plus `canModerate` — whether the caller may server
+   * mute or remove each of them here. REST GET only: socket payloads are
+   * shared by every recipient, so they never carry one caller's permissions.
+   */
+  async getChannelPresenceForViewer(
+    channelId: string,
+    viewer: { id: string; role: string },
+  ): Promise<(VoicePresenceUserDto & { canModerate: boolean })[]> {
+    const users = await this.getChannelPresence(channelId);
+    const moderatable =
+      await this.channelAccessService.moderatableParticipantIds(
+        viewer,
+        channelId,
+        users.map((user) => user.id),
+      );
+    return users.map((user) => ({
+      ...user,
+      canModerate: moderatable.has(user.id),
+    }));
   }
 
   /**

@@ -1,16 +1,8 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
-import { InstanceRole } from '@prisma/client';
+import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
-import { PermissionsService } from '@/roles/permissions.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { revokedSessionKey } from '@/auth/token-blacklist.service';
 import {
@@ -57,47 +49,7 @@ export class LivekitAccessService {
     private readonly databaseService: DatabaseService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly channelAccessService: ChannelAccessService,
-    private readonly permissionsService: PermissionsService,
   ) {}
-
-  /**
-   * A server mute takes a microphone away, over any capability they hold, so
-   * it follows moderation's rank rule both ways: the actor strictly outranks
-   * the target (so never themselves). An instance owner is above that rule,
-   * on either side of it, whatever roles they hold in this community.
-   *
-   * Only channels have this: the guard stops everyone else at a DM id, and a DM
-   * call publishes on a grant this doesn't govern, so an owner gets a 404.
-   */
-  async assertMayServerMute(
-    actor: { id: string; role: string },
-    channelId: string,
-    targetId: string,
-  ): Promise<void> {
-    const channel = await this.databaseService.channel.findUnique({
-      where: { id: channelId },
-      select: { communityId: true },
-    });
-    if (!channel) throw new NotFoundException('Channel not found');
-    if (actor.role === InstanceRole.OWNER) return;
-
-    const target = await this.databaseService.user.findUnique({
-      where: { id: targetId },
-      select: { role: true },
-    });
-    if (
-      target?.role === InstanceRole.OWNER ||
-      !(await this.permissionsService.outranks(
-        actor.id,
-        targetId,
-        channel.communityId,
-      ))
-    ) {
-      throw new ForbiddenException(
-        'You can only server mute someone you outrank',
-      );
-    }
-  }
 
   /** Throws unless the user is in the DM group: owners get no bypass here. */
   async assertDmMember(userId: string, groupId: string): Promise<void> {

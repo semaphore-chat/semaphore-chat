@@ -17,9 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Clients now learn when a timeout ends on its own, so posting and voice controls come back without a reload. (#684)
 - A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
+- A moderator can now remove someone from a voice call without kicking them from the community, and the voice presence response tells clients which participants the caller may moderate. (#663)
+
+### Changed
+
+- Soundboard sounds now have a 30-second length limit at upload, so a small low-bitrate file can no longer play for minutes. (#677)
 
 ### Fixed
 
+- Lifting a server mute no longer fails against a stock LiveKit server: it gives the participant their microphone permission back and lets them unmute themselves. (#676)
+- The API now explains that the per-channel role lookup returns community roles without the channel's permission overwrites, and points clients at the channel capabilities endpoint for per-channel decisions. (#644)
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
 - `GET /notifications` now reports the total number of matching notifications instead of the size of the page. (#658)
 - Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)
