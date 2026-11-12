@@ -79,6 +79,12 @@ pub(crate) enum Effect {
     StartReplay(u64),
     /// W4: stop the replay buffer.
     StopReplay,
+    /// W4: tell the server this user declined the ringing DM call. Best-effort: the ring has
+    /// already stopped, and only `epoch`'s session sends it.
+    DeclineDmCall {
+        dm_group_id: String,
+        epoch: u64,
+    },
 }
 
 pub(crate) struct State {
@@ -584,6 +590,9 @@ impl Core {
                 if let Some(media) = self.services().and_then(|services| services.media.clone()) {
                     media.disconnect().await;
                 }
+            }
+            Effect::DeclineDmCall { dm_group_id, epoch } => {
+                self.decline_dm_call(dm_group_id, epoch).await
             }
         }
     }

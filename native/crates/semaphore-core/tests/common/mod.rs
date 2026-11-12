@@ -236,6 +236,8 @@ pub struct FakeBackend {
     /// What each voice presence call was, in order: `join`, `refresh`, `leave`, `deafen`.
     pub voice_calls: Mutex<Vec<String>>,
     pub emojis: Mutex<Vec<Value>>,
+    /// How many emoji-list reads were served.
+    pub emoji_requests: AtomicU64,
     /// What the communities read fails with, while set.
     pub communities_error: Mutex<Option<BackendError>>,
     pub community_requests: AtomicU64,
@@ -545,6 +547,7 @@ impl CommunitiesBackend for FakeBackend {
         &self,
         _: String,
     ) -> BackendResult<Vec<wire::CustomEmojiDto>> {
+        self.emoji_requests.fetch_add(1, Ordering::SeqCst);
         decoded(Value::Array(self.emojis.lock().unwrap().clone()))
     }
 }
@@ -802,6 +805,17 @@ impl VoiceBackend for FakeBackend {
             json!({ "dmGroupId": dm_group_id, "message": "ok", "success": true }),
         );
         self.w4.run("dm_refresh", &[&dm_group_id]).await
+    }
+
+    async fn dm_voice_presence_controller_decline_dm_voice_call(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<wire::DeclineDmVoiceCallResponseDto> {
+        self.w4.answers.lock().unwrap().insert(
+            "dm_decline",
+            json!({ "dmGroupId": dm_group_id, "message": "Call declined", "success": true }),
+        );
+        self.w4.run("dm_decline", &[&dm_group_id]).await
     }
 
     async fn livekit_controller_mute_participant(

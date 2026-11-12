@@ -189,9 +189,44 @@ pub fn rule(name: &str) -> Option<EventRule> {
             "rolesControllerGetCommunityRoles",
         ]),
         "roleDeleted" | "roleUpdated" => ROLE_CHANGE_RULE,
+        // A mention group changed: the lists and the one group read again (the web invalidates
+        // both of its queries whole).
+        "aliasGroupCreated"
+        | "aliasGroupDeleted"
+        | "aliasGroupMembersUpdated"
+        | "aliasGroupUpdated" => invalidates(&[
+            "aliasGroupsControllerGetCommunityAliasGroups",
+            "aliasGroupsControllerGetAliasGroup",
+        ]),
+        // The community's assets: the picker's list and the settings tab's share this query.
+        "customEmojiCreated" | "customEmojiDeleted" => {
+            invalidates(&["customEmojiControllerListCommunityEmojis:communityId"])
+        }
+        "soundboardSoundCreated" | "soundboardSoundDeleted" => {
+            invalidates(&["soundboardControllerListCommunitySounds:communityId"])
+        }
+        // A private channel joined or left this user's list: the channel appears or goes, and the
+        // mentionable channels and effective permissions change with it.
+        "privateChannelAdded" | "privateChannelRemoved" => invalidates(&[
+            "channelsControllerFindAllForCommunity:communityId",
+            "channelsControllerGetMentionableChannels",
+            CHANNEL_PERMISSIONS[0],
+            CHANNEL_PERMISSIONS[1],
+            CHANNEL_PERMISSIONS[2],
+            CHANNEL_PERMISSIONS[3],
+        ]),
         "threadReplyCountUpdated" | "updateMessage" => sets(&CONTEXT_MESSAGES),
         "timeoutRemoved" | "userTimedOut" => TIMEOUT_RULE,
+        // A ban was lifted: the ban list and the log have a new entry; the membership list does
+        // not change, as the user has to rejoin.
+        "userUnbanned" => invalidates(&[
+            "moderationControllerGetBanList",
+            "moderationControllerGetModerationLogs",
+        ]),
         "userBanned" | "userKicked" => MODERATION_REMOVED_RULE,
+        "webhookCreated" | "webhookDeleted" => {
+            invalidates(&["webhooksControllerFindAllForChannel:channelId"])
+        }
         "userOffline" | "userOnline" => PRESENCE_RULE,
         "userProfileUpdated" => {
             invalidates(&["userControllerGetProfile", "userControllerGetUserById:id"])
@@ -781,23 +816,24 @@ impl State {
             | ServerEvent::RoleUpdated(_)
             | ServerEvent::TimeoutRemoved(_)
             | ServerEvent::UserTimedOut(_) => self.invalidate_for(name),
-            // In the contract since the repin of 2026-11-12; a later lane wires them. Until then
-            // they're ignored, as they were while unknown.
+            // W5-A's hub changed the caches for these (a private channel joined or left, the
+            // community's assets), and W5-B's for the unban.
             ServerEvent::AliasGroupCreated(_)
             | ServerEvent::AliasGroupDeleted(_)
             | ServerEvent::AliasGroupMembersUpdated(_)
             | ServerEvent::AliasGroupUpdated(_)
             | ServerEvent::CustomEmojiCreated(_)
             | ServerEvent::CustomEmojiDeleted(_)
-            | ServerEvent::DmVoiceCallDeclined(_)
-            | ServerEvent::DmVoiceCallEnded(_)
             | ServerEvent::PrivateChannelAdded(_)
             | ServerEvent::PrivateChannelRemoved(_)
             | ServerEvent::SoundboardSoundCreated(_)
             | ServerEvent::SoundboardSoundDeleted(_)
             | ServerEvent::UserUnbanned(_)
             | ServerEvent::WebhookCreated(_)
-            | ServerEvent::WebhookDeleted(_) => log::debug!("not handled yet: {name}"),
+            | ServerEvent::WebhookDeleted(_) => {}
+            // W4: a DM call the other person declined, or one that ended.
+            ServerEvent::DmVoiceCallDeclined(event) => self.w4_declined(&event),
+            ServerEvent::DmVoiceCallEnded(event) => self.w4_ended(&event.dm_group_id),
             ServerEvent::Unknown { name, .. } => log::debug!("ignoring unknown event {name}"),
             ServerEvent::Malformed {
                 name,

@@ -215,14 +215,18 @@ async fn a_ring_gives_up_after_thirty_seconds() {
 }
 
 #[tokio::test]
-async fn declining_stops_the_ring_and_tells_nobody() {
+async fn declining_stops_the_ring_and_tells_the_server_once() {
     let mut rig = ringing(DM, "bob").await;
     let before = rig.backend.w4.calls();
     rig.core.decline_incoming_call();
     let events = rig.settle().await;
     assert_eq!(rig.core.incoming_call(), None);
     assert_eq!(cues(&events), vec![SoundCue::IncomingRingStop]);
-    assert_eq!(rig.backend.w4.calls(), before);
+    // The server hears it, so a 1:1 caller's call ends there and this account's other devices
+    // stop ringing (`dmVoiceCallDeclined`).
+    let mut after = rig.backend.w4.calls();
+    assert_eq!(after.pop().as_deref(), Some("dm_decline dm-1"));
+    assert_eq!(after, before);
     assert!(rig.core.voice().room.is_none());
 }
 
