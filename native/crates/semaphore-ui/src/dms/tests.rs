@@ -120,6 +120,19 @@ fn times_read_like_format_last_message_time() {
 }
 
 #[test]
+fn a_fixed_display_clock_decides_each_dm_age() {
+    let clock = PanelClock::fixed(1_793_895_120_000);
+    let now = clock.now_ms();
+    // A minute, an hour and a day: one millisecond either side of the label.
+    assert_eq!(last_message_time(now, now - 59_999), "Just now");
+    assert_eq!(last_message_time(now, now - 60_000), "1m ago");
+    assert_eq!(last_message_time(now, now - 3_599_999), "59m ago");
+    assert_eq!(last_message_time(now, now - 3_600_000), "1h ago");
+    assert_eq!(last_message_time(now, now - 86_399_999), "23h ago");
+    assert_eq!(last_message_time(now, now - 86_400_000), "1d ago");
+}
+
+#[test]
 fn one_unread_is_a_dot_more_is_a_count_and_the_open_one_has_none() {
     assert_eq!(unread_mark(0, 0, false), None);
     assert_eq!(unread_mark(1, 0, false), Some(UnreadMark::Dot));

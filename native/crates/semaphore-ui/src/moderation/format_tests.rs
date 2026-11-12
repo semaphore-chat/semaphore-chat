@@ -1,4 +1,5 @@
 use super::*;
+use crate::panel::PanelClock;
 use semaphore_core::model::{LoadState, RemovalCause};
 use std::prelude::rust_2024::test;
 
@@ -32,7 +33,7 @@ fn utc() -> TimeFormat {
 fn new_york() -> TimeFormat {
     TimeFormat {
         zone: FixedOffset::west_opt(5 * 3600),
-        now_ms: Some(NOW),
+        now: PanelClock::fixed(NOW),
     }
 }
 
@@ -343,7 +344,7 @@ fn time_formatters_never_panic_or_go_blank() {
                 until_label(
                     &TimeFormat {
                         zone: None,
-                        now_ms: Some(now),
+                        now: PanelClock::fixed(now),
                     },
                     then,
                 ),
@@ -354,7 +355,7 @@ fn time_formatters_never_panic_or_go_blank() {
         for seconds in [0, 1, 60, u32::MAX] {
             let time = TimeFormat {
                 zone: FixedOffset::east_opt(0),
-                now_ms: Some(now),
+                now: PanelClock::fixed(now),
             };
             assert!(!ends_label(&time, seconds).is_empty());
         }

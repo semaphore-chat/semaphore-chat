@@ -5,6 +5,7 @@
 use super::rules::*;
 use super::*;
 use crate::dms::rig::{Rig, rig};
+use crate::panel::PanelClock;
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
 use semaphore_core::model::{
@@ -1070,7 +1071,7 @@ fn role_dates_are_written_in_the_panels_zone(cx: &mut TestAppContext) {
     for (minutes, want) in cases {
         let time = TimeFormat {
             zone: Some(FixedOffset::east_opt(minutes * 60).expect("a zone")),
-            now_ms: Some(ms),
+            now: PanelClock::fixed(ms),
         };
         let shown = rig.with(cx, move |view, _, cx| {
             view.update(cx, |panel, cx| {

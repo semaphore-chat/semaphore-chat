@@ -29,6 +29,7 @@ pub use create::create_request;
 pub use picker::{SEARCH_LIMIT, UserPicker, UserPickerEvent};
 
 use crate::friends::{FriendsEvent, FriendsPanel};
+use crate::messages::TimeFormat;
 use crate::panel::PanelClock;
 use gpui_kit::component::input::InputState;
 use gpui_kit::*;
@@ -241,6 +242,19 @@ pub struct DmSidebar {
     friends: Entity<FriendsPanel>,
     tab: DmTab,
     _subscriptions: Vec<Subscription>,
+}
+
+impl DmSidebar {
+    /// The display clock its list and friends panel measure ages against (`TimeFormat`'s zone
+    /// writes a request's date): the app's, unless a story fixes them.
+    pub fn set_time(&mut self, time: TimeFormat, cx: &mut Context<Self>) {
+        self.list
+            .update(cx, |list, cx| list.set_clock(time.now, cx));
+        self.friends.update(cx, |friends, cx| {
+            friends.set_clock(time.now, cx);
+            friends.set_time(time, cx);
+        });
+    }
 }
 
 impl EventEmitter<DmSidebarEvent> for DmSidebar {}

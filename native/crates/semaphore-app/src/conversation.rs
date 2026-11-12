@@ -169,7 +169,7 @@ impl ConversationPane {
         cx: &mut Context<Self>,
     ) -> Self {
         on_core_event(cx.entity().downgrade(), Self::on_core, cx);
-        let panel_clock = time.now_ms.map(PanelClock::fixed).unwrap_or_default();
+        let panel_clock = time.now;
         Self {
             mentions: Rc::new(CoreMentions {
                 core: core.clone(),

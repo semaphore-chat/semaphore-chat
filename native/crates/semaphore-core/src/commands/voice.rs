@@ -792,15 +792,15 @@ impl Core {
                     }
                 })
                 .collect();
+            let present: std::collections::HashSet<&str> = state
+                .room_presence(room)
+                .into_iter()
+                .flatten()
+                .map(|user| user.id)
+                .collect();
             participants.extend(
                 seen.iter()
-                    .filter(|media| {
-                        !state
-                            .room_presence(room)
-                            .into_iter()
-                            .flatten()
-                            .any(|user| user.id == media.identity.as_str())
-                    })
+                    .filter(|media| !present.contains(media.identity.as_str()))
                     .cloned(),
             );
             for participant in &mut participants {

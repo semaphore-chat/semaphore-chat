@@ -37,7 +37,8 @@ pub struct AppConfig {
     pub clock: Arc<dyn Clock>,
     /// Fills in the sign-in screen's server field.
     pub server_url: Option<String>,
-    /// How rows show times. The rig fixes the clock so screenshots compare.
+    /// How rows show times, and the one clock every relative age is measured from ("5m ago",
+    /// "Today", a notification's age). Real time unless the rig pins it, so screenshots compare.
     pub time: TimeFormat,
     /// The list's scrollbar fades on a real clock, so the rig turns it off.
     pub scrollbar: bool,

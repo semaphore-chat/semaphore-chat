@@ -752,7 +752,8 @@ impl FakeServer {
     }
 
     /// A member leaves the DM group's call (LiveKit's `participant_left`): `dmVoiceUserLeft` to
-    /// the group's members. `false` if they weren't in it.
+    /// the group's members, and `dmVoiceCallEnded` when they were the last one in the call
+    /// (`announceDmCallEndIfEmpty`). `false` if they weren't in it.
     pub fn dm_call_leave(&self, dm_group_id: &str, user_id: &str) -> bool {
         match calls::dm_members_for(&self.inner, dm_group_id, user_id) {
             Ok(members) => calls::dm_leave(&self.inner, dm_group_id, user_id, &members),

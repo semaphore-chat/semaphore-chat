@@ -96,6 +96,17 @@ fn row(events: &Recorder, conversation: &Conversation, id: &str) -> Option<Messa
         .find(|row| row.id.as_deref() == Some(id))
 }
 
+/// How many times the fake answered an operation.
+fn times_answered(server: &FakeServer, wanted: &str) -> usize {
+    server
+        .requests()
+        .into_iter()
+        .filter(|record| {
+            matches!(record, Record::Http { operation: Some(operation), .. } if *operation == wanted)
+        })
+        .count()
+}
+
 /// Each operation the fake answered, with its statuses.
 fn answered(server: &FakeServer) -> HashMap<&'static str, HashSet<u16>> {
     let mut seen: HashMap<&'static str, HashSet<u16>> = HashMap::new();
@@ -246,12 +257,13 @@ async fn edit_react_pin_remove_and_delete_over_the_wire() {
 
     // The author's own delete says `removal: "hard"`: gone at once, and nothing to read back
     // (an older server, which says no kind, is read again and finds it missing).
+    let reads_before = times_answered(&server, "MessagesController_findOne");
     core.delete_message(MINE.into(), None).await.unwrap();
     assert!(row(&events, &channel, MINE).is_none());
-    assert!(
-        !answered(&server)
-            .get("MessagesController_findOne")
-            .is_some_and(|statuses| statuses.contains(&404)),
+    core.run_until_idle().await;
+    assert_eq!(
+        times_answered(&server, "MessagesController_findOne"),
+        reads_before,
         "no read follows a hard delete"
     );
 
