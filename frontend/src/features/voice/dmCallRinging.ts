@@ -12,6 +12,8 @@ export interface RingingDmCall {
 export interface DmCallDeclined {
   dmGroupId: string;
   userId: string;
+  /** Sent by current servers; absent from older ones. */
+  isGroup?: boolean;
 }
 
 export interface DmCallEnded {
@@ -65,8 +67,10 @@ export function callEndStopsMyRinging(
 export interface DeclineAgainstMyCall {
   declinedBy: string;
   myUserId: string | null;
-  /** A group DM keeps going: one person declining is only about them. */
-  isGroupDm: boolean;
+  /** The server's word on whether the DM is a group (absent on old servers). */
+  isGroupFromServer?: boolean;
+  /** The DM-groups cache's word, only used when the server did not say. */
+  isGroupFromCache?: boolean;
   /** This device is connected to that DM's call. */
   inThisCall: boolean;
   /** How many people other than me are in that call right now. */
@@ -76,11 +80,15 @@ export interface DeclineAgainstMyCall {
 /**
  * In a 1:1 call the other person declining ends the call for the caller, like
  * a phone call. In a group DM nothing ends, however many people decline.
- * Declining on another of my own devices never ends it here.
+ * Declining on another of my own devices never ends it here. A group DM keeps
+ * going: one person declining is only about them. Whether the DM is a group
+ * comes from the server, then the cache; a DM nobody can vouch for is treated
+ * as a group, since not ending a call is safer than ending one wrongly.
  */
 export function declineEndsMyCall(state: DeclineAgainstMyCall): boolean {
+  const isGroupDm = state.isGroupFromServer ?? state.isGroupFromCache ?? true;
   return (
-    !state.isGroupDm &&
+    !isGroupDm &&
     !!state.myUserId &&
     state.inThisCall &&
     state.declinedBy !== state.myUserId &&

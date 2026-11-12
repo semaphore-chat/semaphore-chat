@@ -47,14 +47,19 @@ describe('declineEndsMyCall', () => {
   const base: DeclineAgainstMyCall = {
     declinedBy: 'other',
     myUserId: 'me',
-    isGroupDm: false,
+    isGroupFromServer: false,
     inThisCall: true,
     otherMembersInCall: 0,
   };
 
   it.each<[string, Partial<DeclineAgainstMyCall>, boolean]>([
     ['the other person declines my 1:1 call and I am alone in it', {}, true],
-    ['a group call keeps going', { isGroupDm: true }, false],
+    ['a group call keeps going', { isGroupFromServer: true }, false],
+    ['the server says 1:1 and the cache says group: the server wins', { isGroupFromServer: false, isGroupFromCache: true }, true],
+    ['the server says group and the cache says 1:1: the server wins', { isGroupFromServer: true, isGroupFromCache: false }, false],
+    ['no server field, cache says 1:1', { isGroupFromServer: undefined, isGroupFromCache: false }, true],
+    ['no server field, cache says group', { isGroupFromServer: undefined, isGroupFromCache: true }, false],
+    ['no server field and a cache miss: not ended', { isGroupFromServer: undefined, isGroupFromCache: undefined }, false],
     ['I am not in that call', { inThisCall: false }, false],
     ['someone else is still in the call', { otherMembersInCall: 1 }, false],
     ['I declined on another device', { declinedBy: 'me' }, false],

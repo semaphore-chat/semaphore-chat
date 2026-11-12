@@ -17538,11 +17538,16 @@
           },
           "userId": {
             "type": "string"
+          },
+          "isGroup": {
+            "type": "boolean",
+            "description": "True for a group DM, false for a 1:1 DM: a 1:1 decline ends the call."
           }
         },
         "required": [
           "dmGroupId",
-          "userId"
+          "userId",
+          "isGroup"
         ]
       },
       "DmVoiceCallEndedPayloadDto": {

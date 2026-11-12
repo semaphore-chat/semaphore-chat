@@ -153,9 +153,9 @@ export const IncomingCallListener: React.FC = () => {
       const ended = declineEndsMyCall({
         declinedBy: payload.userId,
         myUserId: user.id,
-        // A DM we know nothing about is treated as a group: not ending a call
-        // is safer than ending one the decline was never about.
-        isGroupDm: group ? group.isGroup : true,
+        // The server says; the cache is only for servers that do not yet
+        isGroupFromServer: payload.isGroup,
+        isGroupFromCache: group?.isGroup,
         inThisCall:
           voiceState.isConnected &&
           voiceState.contextType === VoiceSessionType.Dm &&

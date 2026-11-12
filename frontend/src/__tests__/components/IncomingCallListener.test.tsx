@@ -369,6 +369,46 @@ describe('IncomingCallListener', () => {
       expect(voice.endVoiceSession).toHaveBeenCalledWith(VoiceEndReason.CallDeclined);
     });
 
+    it('leaves a 1:1 call on the server\'s word when the DM-groups cache is empty', async () => {
+      connectToDmCall('dm-1');
+      const { queryClient } = renderWithProviders(<IncomingCallListener />);
+      queryClient.setQueryData(
+        dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: 'dm-1' } }),
+        presenceOf('me'),
+      );
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user', isGroup: false });
+
+      expect(voice.endVoiceSession).toHaveBeenCalledWith(VoiceEndReason.CallDeclined);
+    });
+
+    it('stays in a group call on the server\'s word even when the cache says 1:1', async () => {
+      connectToDmCall('dm-1');
+      const { queryClient } = renderWithProviders(<IncomingCallListener />);
+      cacheDm(queryClient, false);
+      queryClient.setQueryData(
+        dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: 'dm-1' } }),
+        presenceOf('me'),
+      );
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user', isGroup: true });
+
+      expect(voice.endVoiceSession).not.toHaveBeenCalled();
+    });
+
+    it('stays in the call when neither the server nor the cache says it is 1:1', async () => {
+      connectToDmCall('dm-1');
+      const { queryClient } = renderWithProviders(<IncomingCallListener />);
+      queryClient.setQueryData(
+        dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: 'dm-1' } }),
+        presenceOf('me'),
+      );
+
+      await fire(ServerEvents.DM_VOICE_CALL_DECLINED, { dmGroupId: 'dm-1', userId: 'other-user' });
+
+      expect(voice.endVoiceSession).not.toHaveBeenCalled();
+    });
+
     it('stays in a group call', async () => {
       connectToDmCall('dm-1');
       const { queryClient } = renderWithProviders(<IncomingCallListener />);

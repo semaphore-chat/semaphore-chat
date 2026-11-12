@@ -331,7 +331,7 @@ describe('Socket event contract (e2e)', () => {
         ServerEvents.DM_VOICE_CALL_DECLINED,
         (p) => p.userId === account.member.id,
       ),
-    ).toEqual({ dmGroupId: dmId, userId: account.member.id });
+    ).toEqual({ dmGroupId: dmId, userId: account.member.id, isGroup: false });
 
     // Declining again is harmless and announces nothing new
     await decline().expect(201);

@@ -986,6 +986,9 @@ describe('VoicePresenceService', () => {
       memberOfDm();
       inCall(caller);
       mockRedis.sadd.mockResolvedValue(1);
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        isGroup: false,
+      });
 
       await service.declineDmVoiceCall(dmGroupId, guest);
 
@@ -1000,9 +1003,39 @@ describe('VoicePresenceService', () => {
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         `dm:${dmGroupId}`,
         ServerEvents.DM_VOICE_CALL_DECLINED,
-        { dmGroupId, userId: guest },
+        { dmGroupId, userId: guest, isGroup: false },
       );
     });
+
+    it.each([
+      ['a 1:1 DM', { isGroup: false }, false],
+      ['a group DM', { isGroup: true }, true],
+      ['a DM that cannot be read (treated as a group)', null, true],
+    ])(
+      'says whether the DM is a group in the payload: %s',
+      async (_label, row, expected) => {
+        memberOfDm();
+        inCall(caller);
+        mockRedis.sadd.mockResolvedValue(1);
+        mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue(
+          row,
+        );
+
+        await service.declineDmVoiceCall(dmGroupId, guest);
+
+        expect(
+          mockDatabaseService.directMessageGroup.findUnique,
+        ).toHaveBeenCalledWith({
+          where: { id: dmGroupId },
+          select: { isGroup: true },
+        });
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          `dm:${dmGroupId}`,
+          ServerEvents.DM_VOICE_CALL_DECLINED,
+          { dmGroupId, userId: guest, isGroup: expected },
+        );
+      },
+    );
 
     it('is idempotent: a repeated decline announces nothing', async () => {
       memberOfDm();

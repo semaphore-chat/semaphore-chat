@@ -979,10 +979,18 @@ export class VoicePresenceService {
     // The same person declining again (another tab, a retry) is not news
     if (added === 0) return;
 
+    // The server knows whether this is a 1:1 DM, so clients need not guess
+    // from a cache that may be empty. A DM we cannot read counts as a group:
+    // a client that is told "group" never ends the call.
+    const group = await this.databaseService.directMessageGroup.findUnique({
+      where: { id: dmGroupId },
+      select: { isGroup: true },
+    });
+
     this.websocketService.sendToRoom(
       RoomName.dmGroup(dmGroupId),
       ServerEvents.DM_VOICE_CALL_DECLINED,
-      { dmGroupId, userId },
+      { dmGroupId, userId, isGroup: group?.isGroup ?? true },
     );
 
     this.logger.log(
