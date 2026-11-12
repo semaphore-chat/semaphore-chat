@@ -30,6 +30,8 @@ export enum VoiceEndReason {
   ChannelNotFound = 'channel_not_found',
   /** A rejoin got 401 after the session refresh: the session is gone (signed out, revoked). */
   SessionExpired = 'session_expired',
+  /** The other person declined our 1:1 DM call, so it never happened. */
+  CallDeclined = 'call_declined',
 }
 
 /** What a voice join was for, so a notice can offer Retry. */

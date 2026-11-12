@@ -308,18 +308,47 @@ describe('Socket event contract (e2e)', () => {
     await seen(ServerEvents.VOICE_CHANNEL_USER_LEFT);
   });
 
-  it('voice in a DM: call started, joined, left', async () => {
+  it('voice in a DM: call started, declined, joined, left, ended', async () => {
     const voice = app.get(VoicePresenceService);
-
-    await voice['handleWebhookDmParticipantJoined'](dmId, account.member.id);
-    await seen(ServerEvents.DM_VOICE_CALL_STARTED);
+    const decline = () =>
+      http()
+        .post(`/api/dm-groups/${dmId}/voice-presence/decline`)
+        .set('Authorization', auth('member'));
 
     await voice['handleWebhookDmParticipantJoined'](dmId, account.target.id);
+    await seen(ServerEvents.DM_VOICE_CALL_STARTED);
+
+    // The decline is for the DM's members only
+    await http()
+      .post(`/api/dm-groups/${dmId}/voice-presence/decline`)
+      .set('Authorization', auth('owner'))
+      .expect(403);
+
+    // member declines on one device: every member of the DM hears it
+    await decline().expect(201);
+    expect(
+      await seen(
+        ServerEvents.DM_VOICE_CALL_DECLINED,
+        (p) => p.userId === account.member.id,
+      ),
+    ).toEqual({ dmGroupId: dmId, userId: account.member.id, isGroup: false });
+
+    // Declining again is harmless and announces nothing new
+    await decline().expect(201);
+
+    // The decliner then answers on another device; you cannot decline a
+    // call you are in
+    await voice['handleWebhookDmParticipantJoined'](dmId, account.member.id);
     await seen(ServerEvents.DM_VOICE_USER_JOINED);
+    await decline().expect(409);
 
     await voice.leaveDmVoice(dmId, account.target.id);
     await seen(ServerEvents.DM_VOICE_USER_LEFT);
     await voice.leaveDmVoice(dmId, account.member.id);
+    await seen(ServerEvents.DM_VOICE_CALL_ENDED);
+
+    // With no call left there is nothing to decline
+    await decline().expect(409);
   });
 
   it('channels: created, updated, permissions, reordered, deleted', async () => {
