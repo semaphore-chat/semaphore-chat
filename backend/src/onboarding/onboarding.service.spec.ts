@@ -14,9 +14,11 @@ import {
   InstanceInviteFactory,
   createMockDatabase,
   createMockRedis,
+  type MockDatabaseService,
 } from '@/test-utils';
 import { SetupInstanceDto } from './dto/setup-instance.dto';
 import { InstanceRole } from '@prisma/client';
+import { InstanceService } from '@/instance/instance.service';
 import type { Mocked } from '@suites/doubles.jest';
 
 // Mock bcrypt and crypto
@@ -212,6 +214,10 @@ describe('OnboardingService', () => {
 
     const mockInvite = InstanceInviteFactory.build();
 
+    // The transaction client the service uses, so tests can inspect and
+    // adjust what happens inside the setup transaction.
+    let setupTx: MockDatabaseService;
+
     beforeEach(() => {
       mockRedis.get.mockResolvedValue('valid-token');
       mockDatabase.user.count.mockResolvedValue(0);
@@ -219,50 +225,60 @@ describe('OnboardingService', () => {
       mockBcrypt.hash.mockResolvedValue('hashed-password' as never);
 
       // Setup transaction mock
-      mockDatabase.$transaction.mockImplementation((callback: any) => {
-        const mockTx = createMockDatabase();
+      mockDatabase.$transaction.mockImplementation(
+        (callback: (tx: MockDatabaseService) => unknown) => {
+          const mockTx = createMockDatabase();
+          setupTx = mockTx;
 
-        // Mock admin user creation
-        mockTx.user.create.mockResolvedValue(mockAdmin);
+          // The service repeats the "needs setup" check under the setup lock.
+          mockTx.user.count.mockResolvedValue(0);
+          mockTx.instanceInvite.count.mockResolvedValue(0);
 
-        // Mock community creation
-        mockTx.community.create.mockResolvedValue(mockCommunity);
+          // Mock instance settings lookup
+          mockTx.instanceSettings.findFirst.mockResolvedValue(null);
 
-        // Mock membership creation
-        mockTx.membership.create.mockResolvedValue({
-          userId: mockAdmin.id,
-          communityId: mockCommunity.id,
-        });
+          // Mock admin user creation
+          mockTx.user.create.mockResolvedValue(mockAdmin);
 
-        // Mock channel creation
-        mockTx.channel.create
-          .mockResolvedValueOnce(mockChannels[0])
-          .mockResolvedValueOnce(mockChannels[1])
-          .mockResolvedValueOnce(mockChannels[2]);
+          // Mock community creation
+          mockTx.community.create.mockResolvedValue(mockCommunity);
 
-        // Mock channel membership creation
-        mockTx.channelMembership.createMany.mockResolvedValue({ count: 3 });
+          // Mock membership creation
+          mockTx.membership.create.mockResolvedValue({
+            userId: mockAdmin.id,
+            communityId: mockCommunity.id,
+          });
 
-        // Mock message creation
-        mockTx.message.create.mockResolvedValue({
-          id: 'msg-1',
-          channelId: mockChannels[0].id,
-          authorId: mockAdmin.id,
-        });
+          // Mock channel creation
+          mockTx.channel.create
+            .mockResolvedValueOnce(mockChannels[0])
+            .mockResolvedValueOnce(mockChannels[1])
+            .mockResolvedValueOnce(mockChannels[2]);
 
-        // Mock invite creation
-        mockTx.instanceInvite.create.mockResolvedValue(mockInvite);
+          // Mock channel membership creation
+          mockTx.channelMembership.createMany.mockResolvedValue({ count: 3 });
 
-        // Mock roles service
-        jest
-          .spyOn(communityRolesService, 'createDefaultCommunityRoles')
-          .mockResolvedValue('admin-role-id');
-        jest
-          .spyOn(communityRolesService, 'assignUserToCommunityRole')
-          .mockResolvedValue(undefined);
+          // Mock message creation
+          mockTx.message.create.mockResolvedValue({
+            id: 'msg-1',
+            channelId: mockChannels[0].id,
+            authorId: mockAdmin.id,
+          });
 
-        return callback(mockTx);
-      });
+          // Mock invite creation
+          mockTx.instanceInvite.create.mockResolvedValue(mockInvite);
+
+          // Mock roles service
+          jest
+            .spyOn(communityRolesService, 'createDefaultCommunityRoles')
+            .mockResolvedValue('admin-role-id');
+          jest
+            .spyOn(communityRolesService, 'assignUserToCommunityRole')
+            .mockResolvedValue(undefined);
+
+          return callback(mockTx);
+        },
+      );
 
       mockRedis.del.mockResolvedValue(undefined);
       mockRedis.set.mockResolvedValue(undefined);
@@ -351,13 +367,110 @@ describe('OnboardingService', () => {
       expect(mockRedis.del).toHaveBeenCalledWith('onboarding:setup-token');
     });
 
-    it('should store instance name in Redis', async () => {
+    it('saves the instance name and description into instance settings', async () => {
       await service.completeSetup(validSetupDto, 'valid-token');
 
-      expect(mockRedis.set).toHaveBeenCalledWith(
+      expect(setupTx.instanceSettings.create).toHaveBeenCalledWith({
+        data: { name: 'My Instance', description: 'Test instance' },
+      });
+      // The name used to go to a Redis key nothing read.
+      expect(mockRedis.set).not.toHaveBeenCalledWith(
         'instance:name',
-        'My Instance',
+        expect.anything(),
       );
+    });
+
+    it('public instance settings return the name given at setup', async () => {
+      const settingsTx = createMockDatabase();
+      let stored: {
+        id: string;
+        name?: string;
+        description?: string | null;
+      } | null = null;
+
+      settingsTx.user.count.mockResolvedValue(0);
+      settingsTx.instanceInvite.count.mockResolvedValue(0);
+      settingsTx.user.create.mockResolvedValue(mockAdmin);
+      settingsTx.instanceInvite.create.mockResolvedValue(mockInvite);
+      settingsTx.instanceSettings.findFirst.mockImplementation(() =>
+        Promise.resolve(stored as never),
+      );
+      settingsTx.instanceSettings.create.mockImplementation(
+        (args: { data: { name: string; description: string | null } }) => {
+          stored = { id: 'settings-1', ...args.data };
+          return Promise.resolve(stored as never);
+        },
+      );
+      mockDatabase.$transaction.mockImplementation(
+        (callback: (tx: MockDatabaseService) => unknown) =>
+          callback(settingsTx),
+      );
+      // InstanceService.getSettings() is what GET /instance/settings/public
+      // reads the name from.
+      mockDatabase.instanceSettings.findFirst.mockImplementation(() =>
+        Promise.resolve(stored as never),
+      );
+
+      await service.completeSetup(
+        { ...validSetupDto, createDefaultCommunity: false },
+        'valid-token',
+      );
+
+      const publicSettings = await new InstanceService(
+        mockDatabase as unknown as DatabaseService,
+      ).getSettings();
+
+      expect(publicSettings.name).toBe('My Instance');
+      expect(publicSettings.description).toBe('Test instance');
+    });
+
+    it('creates exactly one owner when two setups run concurrently', async () => {
+      const raceTx = createMockDatabase();
+      let ownersCreated = 0;
+      let inTransaction: Promise<unknown> = Promise.resolve();
+
+      raceTx.user.count.mockImplementation(() =>
+        Promise.resolve(ownersCreated),
+      );
+      raceTx.instanceInvite.count.mockResolvedValue(0);
+      raceTx.user.create.mockImplementation(() => {
+        ownersCreated += 1;
+        return Promise.resolve(mockAdmin);
+      });
+
+      // The advisory lock is what serializes the two transactions in
+      // Postgres; simulate that ordering here.
+      mockDatabase.$transaction.mockImplementation(
+        (callback: (tx: MockDatabaseService) => unknown) => {
+          const run = inTransaction.then(() => callback(raceTx));
+          inTransaction = run.catch(() => undefined);
+          return run;
+        },
+      );
+
+      const results = await Promise.allSettled([
+        service.completeSetup(
+          { ...validSetupDto, createDefaultCommunity: false },
+          'valid-token',
+        ),
+        service.completeSetup(
+          { ...validSetupDto, createDefaultCommunity: false },
+          'valid-token',
+        ),
+      ]);
+
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const rejected = results.find(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
+      expect(rejected).toBeDefined();
+      expect(rejected!.reason).toBeInstanceOf(ConflictException);
+      expect(rejected!.reason.message).toBe(
+        'Instance setup is no longer needed',
+      );
+      expect(ownersCreated).toBe(1);
+      // The lock is taken inside the transaction, before the repeat check.
+      expect(raceTx.$queryRaw).toHaveBeenCalledTimes(2);
     });
 
     it('should throw ConflictException when setup token is invalid', async () => {
@@ -405,6 +518,8 @@ describe('OnboardingService', () => {
 
       mockDatabase.$transaction.mockImplementation(async (callback: any) => {
         const mockTx = createMockDatabase();
+        mockTx.user.count.mockResolvedValue(0);
+        mockTx.instanceInvite.count.mockResolvedValue(0);
         mockTx.user.create.mockResolvedValue(mockAdmin);
         mockTx.instanceInvite.create.mockResolvedValue(mockInvite);
         const result = await callback(mockTx);
@@ -460,6 +575,8 @@ describe('OnboardingService', () => {
 
       mockDatabase.$transaction.mockImplementation((callback: any) => {
         const mockTx = createMockDatabase();
+        mockTx.user.count.mockResolvedValue(0);
+        mockTx.instanceInvite.count.mockResolvedValue(0);
         mockTx.user.create.mockResolvedValue(mockAdmin);
         mockTx.instanceInvite.create.mockResolvedValue(mockInvite);
         return callback(mockTx);

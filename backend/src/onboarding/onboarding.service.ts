@@ -8,10 +8,16 @@ import {
   EpochBump,
   PermissionsCacheService,
 } from '@/roles/permissions-cache.service';
-import { InstanceRole, User } from '@prisma/client';
+import { InstanceRole, Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { SetupInstanceDto } from './dto/setup-instance.dto';
+
+/**
+ * Transaction-scoped Postgres advisory lock key for first-run setup.
+ * Arbitrary but stable: two concurrent setups must serialize on this key.
+ */
+const SETUP_ADVISORY_LOCK_KEY = 73_150_001;
 
 @Injectable()
 export class OnboardingService {
@@ -32,7 +38,17 @@ export class OnboardingService {
    * Returns true if there are no users AND no active instance invites
    */
   async needsSetup(): Promise<boolean> {
-    const userCount = await this.databaseService.user.count();
+    return this.isSetupNeeded(this.databaseService);
+  }
+
+  /**
+   * `needsSetup` against a transaction client, so the same check can be
+   * repeated under the setup lock.
+   */
+  private async isSetupNeeded(
+    db: Prisma.TransactionClient | DatabaseService,
+  ): Promise<boolean> {
+    const userCount = await db.user.count();
 
     if (userCount > 0) {
       return false;
@@ -40,7 +56,7 @@ export class OnboardingService {
 
     // Also check if there are any active instance invites
     // If someone manually created invites, we shouldn't override that
-    const activeInvites = await this.databaseService.instanceInvite.count({
+    const activeInvites = await db.instanceInvite.count({
       where: {
         disabled: false,
       },
@@ -131,7 +147,31 @@ export class OnboardingService {
     const pendingBumps: EpochBump[] = [];
 
     const result = await this.databaseService.$transaction(async (tx) => {
-      // 1. Create admin user
+      // The token and needsSetup checks above happen before the transaction;
+      // two concurrent submits can both pass them. Serialize on a
+      // transaction-scoped advisory lock and repeat the check with the lock
+      // held, so only one submit can create the owner.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${SETUP_ADVISORY_LOCK_KEY}::bigint)`;
+      if (!(await this.isSetupNeeded(tx))) {
+        throw new ConflictException('Instance setup is no longer needed');
+      }
+
+      // 1. Save the instance name and description from the wizard
+      const existingSettings = await tx.instanceSettings.findFirst();
+      const instanceSettings = {
+        name: dto.instanceName,
+        description: dto.instanceDescription ?? null,
+      };
+      if (existingSettings) {
+        await tx.instanceSettings.update({
+          where: { id: existingSettings.id },
+          data: instanceSettings,
+        });
+      } else {
+        await tx.instanceSettings.create({ data: instanceSettings });
+      }
+
+      // 2. Create admin user
       const hashedPassword = await bcrypt.hash(dto.adminPassword, 10);
       const adminUser = await tx.user.create({
         data: {
@@ -146,7 +186,7 @@ export class OnboardingService {
 
       this.logger.log(`Created admin user: ${adminUser.username}`);
 
-      // 2. Create default community if requested
+      // 3. Create default community if requested
       let defaultCommunity: { id: string; name: string } | null = null;
       if (dto.createDefaultCommunity !== false) {
         const communityName = dto.defaultCommunityName || 'General';
@@ -244,7 +284,7 @@ export class OnboardingService {
         );
       }
 
-      // 3. Create default instance admin role and assign to OWNER
+      // 4. Create default instance admin role and assign to OWNER
       const instanceAdminRoleId =
         await this.instanceRolesService.createDefaultInstanceRole(
           tx,
@@ -260,14 +300,14 @@ export class OnboardingService {
         `Created default instance admin role and assigned to OWNER user`,
       );
 
-      // 4. Create default Community Creator role (available for assignment to users)
+      // 5. Create default Community Creator role (available for assignment to users)
       await this.instanceRolesService.createDefaultCommunityCreatorRole(
         tx,
         pendingBumps,
       );
       this.logger.log(`Created default Community Creator role`);
 
-      // 5. Create a permanent instance invite for future users
+      // 6. Create a permanent instance invite for future users
       await tx.instanceInvite.create({
         data: {
           code: `welcome-${randomUUID().slice(0, 8)}`,
@@ -297,10 +337,6 @@ export class OnboardingService {
     // Clear the setup token from Redis after successful transaction
     await this.redis.del(this.SETUP_TOKEN_KEY);
     this.logger.log('Instance setup completed successfully, token cleared');
-
-    // Store instance name in Redis (permanent, no TTL)
-    await this.redis.set('instance:name', dto.instanceName);
-    this.logger.log(`Stored instance name in Redis: ${dto.instanceName}`);
 
     return result;
   }
