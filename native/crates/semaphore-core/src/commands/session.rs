@@ -240,6 +240,9 @@ impl Core {
                 _ => RegistrationMode::InviteOnly,
             },
             browser_sign_in: settings.desktop_browser_login,
+            gif_search: settings.gif_search_enabled,
+            // W6-app reads `GET /onboarding/status` here.
+            needs_setup: false,
         };
         self.write(|state, _| state.server_probed(&info));
         Ok(info)

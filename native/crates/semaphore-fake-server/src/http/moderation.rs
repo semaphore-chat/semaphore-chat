@@ -141,8 +141,9 @@ async fn remove_as_mod(
 
 /// W3: what decides "Create community". The fake's user holds the instance's default role, which
 /// may create communities.
-async fn my_instance_roles(State(inner): State<Arc<Inner>>) -> Response {
-    json_response(StatusCode::OK, actions::my_instance_roles(&inner))
+async fn my_instance_roles(State(inner): State<Arc<Inner>>, headers: HeaderMap) -> Response {
+    let me = inner.user_of(super::bearer_token(&headers));
+    json_response(StatusCode::OK, actions::my_instance_roles(&inner, &me))
 }
 
 async fn my_channel_roles(

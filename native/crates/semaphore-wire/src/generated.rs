@@ -241,6 +241,7 @@ pub mod enums {
             TimedOut = "TIMED_OUT",
             NonceConflict = "NONCE_CONFLICT",
             MessageDeleted = "MESSAGE_DELETED",
+            CurrentSessionUnknown = "CURRENT_SESSION_UNKNOWN",
             AttachNotAllowed = "ATTACH_NOT_ALLOWED",
             FileNotOwned = "FILE_NOT_OWNED",
             UploadTargetNotAllowed = "UPLOAD_TARGET_NOT_ALLOWED",
@@ -564,6 +565,7 @@ pub mod enums {
         VoiceClientPlatform {
             Web = "web",
             Electron = "electron",
+            Native = "native",
         }
     }
 
@@ -1483,6 +1485,16 @@ pub mod types {
         pub count: i64,
         pub users: ::std::vec::Vec<VoicePresenceUserDto>,
     }
+    ///`ChannelWebhookPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct ChannelWebhookPayloadDto {
+        #[serde(rename = "channelId")]
+        pub channel_id: ::std::string::String,
+        #[serde(rename = "communityId")]
+        pub community_id: ::std::string::String,
+        #[serde(rename = "webhookId")]
+        pub webhook_id: ::std::string::String,
+    }
     ///`ChannelsReorderedPayloadDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct ChannelsReorderedPayloadDto {
@@ -1525,6 +1537,14 @@ pub mod types {
         pub is_public: bool,
         #[serde(rename = "sizeBytes")]
         pub size_bytes: i64,
+    }
+    ///`CommunityAliasGroupPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct CommunityAliasGroupPayloadDto {
+        #[serde(rename = "communityId")]
+        pub community_id: ::std::string::String,
+        #[serde(rename = "groupId")]
+        pub group_id: ::std::string::String,
     }
     ///`CommunityBanDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -1569,6 +1589,14 @@ pub mod types {
     pub struct CommunityDeletedPayloadDto {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
+    }
+    ///`CommunityEmojiPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct CommunityEmojiPayloadDto {
+        #[serde(rename = "communityId")]
+        pub community_id: ::std::string::String,
+        #[serde(rename = "emojiId")]
+        pub emoji_id: ::std::string::String,
     }
     ///`CommunityInfoDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -1717,6 +1745,14 @@ pub mod types {
         pub spans: ::std::vec::Vec<SpanDto>,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub webhook: ::std::option::Option<WebhookInfoDto>,
+    }
+    ///`CommunitySoundPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct CommunitySoundPayloadDto {
+        #[serde(rename = "communityId")]
+        pub community_id: ::std::string::String,
+        #[serde(rename = "soundId")]
+        pub sound_id: ::std::string::String,
     }
     ///`CommunityStatsDetailDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2239,6 +2275,9 @@ pub mod types {
             if value.chars().count() > 50usize {
                 return Err("longer than 50 characters".into());
             }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
             Ok(Self(value.to_string()))
         }
     }
@@ -2671,6 +2710,14 @@ pub mod types {
         pub push_enabled: bool,
         pub subscriptions: ::std::vec::Vec<DebugPushSubscriptionDto>,
     }
+    ///`DeclineDmVoiceCallResponseDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct DeclineDmVoiceCallResponseDto {
+        #[serde(rename = "dmGroupId")]
+        pub dm_group_id: ::std::string::String,
+        pub message: ::std::string::String,
+        pub success: bool,
+    }
     ///`DeleteMessageAsModDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
     pub struct DeleteMessageAsModDto {
@@ -2893,6 +2940,23 @@ pub mod types {
         pub last_read_at: ::chrono::DateTime<::chrono::offset::Utc>,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
+    }
+    ///`DmVoiceCallDeclinedPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct DmVoiceCallDeclinedPayloadDto {
+        #[serde(rename = "dmGroupId")]
+        pub dm_group_id: ::std::string::String,
+        ///True for a group DM, false for a 1:1 DM: a 1:1 decline ends the call.
+        #[serde(rename = "isGroup")]
+        pub is_group: bool,
+        #[serde(rename = "userId")]
+        pub user_id: ::std::string::String,
+    }
+    ///`DmVoiceCallEndedPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct DmVoiceCallEndedPayloadDto {
+        #[serde(rename = "dmGroupId")]
+        pub dm_group_id: ::std::string::String,
     }
     ///`DmVoiceCallStartedPayloadDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3537,12 +3601,6 @@ pub mod types {
         #[serde(rename = "updatedAt")]
         pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
         #[serde(
-            rename = "vapidPrivateKey",
-            deserialize_with = "::std::option::Option::deserialize",
-            default
-        )]
-        pub vapid_private_key: ::std::option::Option<::std::string::String>,
-        #[serde(
             rename = "vapidPublicKey",
             deserialize_with = "::std::option::Option::deserialize",
             default
@@ -4116,6 +4174,13 @@ pub mod types {
         pub moderator_id: ::std::option::Option<::std::string::String>,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub reason: ::std::option::Option<::std::string::String>,
+        ///The message a message action (delete, pin) was taken on.
+        #[serde(
+            rename = "targetMessageId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub target_message_id: ::std::option::Option<::std::string::String>,
         #[serde(
             rename = "targetUser",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4529,6 +4594,14 @@ pub mod types {
     pub struct PresenceOnlineDto {
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub idle: ::std::option::Option<bool>,
+    }
+    ///`PrivateChannelMembershipPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct PrivateChannelMembershipPayloadDto {
+        #[serde(rename = "channelId")]
+        pub channel_id: ::std::string::String,
+        #[serde(rename = "communityId")]
+        pub community_id: ::std::string::String,
     }
     ///`PublicInviteCreatorDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -5640,6 +5713,9 @@ pub mod types {
     impl ::std::str::FromStr for SetupInstanceDtoAdminPassword {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
             if value.chars().count() < 8usize {
                 return Err("shorter than 8 characters".into());
             }
@@ -5693,8 +5769,13 @@ pub mod types {
             if value.chars().count() > 32usize {
                 return Err("longer than 32 characters".into());
             }
-            if value.chars().count() < 3usize {
-                return Err("shorter than 3 characters".into());
+            if value.chars().count() < 2usize {
+                return Err("shorter than 2 characters".into());
+            }
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-zA-Z0-9_-]+$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z0-9_-]+$\"".into());
             }
             Ok(Self(value.to_string()))
         }
@@ -6167,6 +6248,10 @@ pub mod types {
     pub struct TimeoutRemovedPayloadDto {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
+        /**Set when the timeout ran out by itself, rather than being lifted by a
+        moderator. Clients refetch the same state either way.*/
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub expired: ::std::option::Option<bool>,
         #[serde(rename = "moderatorId")]
         pub moderator_id: ::std::string::String,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
@@ -6578,8 +6663,7 @@ pub mod types {
     ///`UpdateInstanceSettingsDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
     pub struct UpdateInstanceSettingsDto {
-        /**Default storage quota for new users in bytes
-        Minimum: 0 (no storage allowed)
+        /**Default storage quota for new users in bytes.
         Example: 53687091200 = 50GB*/
         #[serde(
             rename = "defaultStorageQuotaBytes",
@@ -6589,8 +6673,7 @@ pub mod types {
         pub default_storage_quota_bytes: ::std::option::Option<i64>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub description: ::std::option::Option<UpdateInstanceSettingsDtoDescription>,
-        /**Maximum file size allowed for uploads in bytes
-        Minimum: 0 (no uploads allowed)
+        /**Maximum file size allowed for uploads in bytes.
         Example: 524288000 = 500MB*/
         #[serde(
             rename = "maxFileSizeBytes",
@@ -7141,6 +7224,9 @@ pub mod types {
             if value.chars().count() > 50usize {
                 return Err("longer than 50 characters".into());
             }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
             Ok(Self(value.to_string()))
         }
     }
@@ -7457,6 +7543,16 @@ pub mod types {
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
     }
+    ///`UserUnbannedPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct UserUnbannedPayloadDto {
+        #[serde(rename = "communityId")]
+        pub community_id: ::std::string::String,
+        #[serde(rename = "moderatorId")]
+        pub moderator_id: ::std::string::String,
+        #[serde(rename = "userId")]
+        pub user_id: ::std::string::String,
+    }
     ///`UserVoiceChannelsResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct UserVoiceChannelsResponseDto {
@@ -7521,6 +7617,7 @@ pub mod types {
         pub is_deafened: bool,
         #[serde(rename = "isServerMuted")]
         pub is_server_muted: bool,
+        ///ISO-8601 timestamp, as sent on the socket.
         #[serde(rename = "joinedAt")]
         pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub username: ::std::string::String,

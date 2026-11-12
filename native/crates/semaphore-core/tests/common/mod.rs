@@ -9,6 +9,12 @@ pub mod w3;
 pub mod w4;
 pub mod w5a;
 pub mod w5b;
+pub mod w6_content;
+pub mod w6_instance;
+pub mod w6_roles;
+pub mod w6_storage;
+pub mod w6_users;
+pub mod w7_gifs;
 #[allow(unused_imports)]
 pub use actions::refusal;
 

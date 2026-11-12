@@ -4516,6 +4516,46 @@
         ]
       }
     },
+    "/api/dm-groups/{dmGroupId}/voice-presence/decline": {
+      "post": {
+        "operationId": "DmVoicePresenceController_declineDmVoiceCall",
+        "parameters": [
+          {
+            "name": "dmGroupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeclineDmVoiceCallResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "DmVoicePresence"
+        ]
+      }
+    },
     "/api/livekit/token": {
       "post": {
         "operationId": "LivekitController_generateToken",
@@ -6701,7 +6741,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "$ref": "#/components/schemas/ModerationAction"
             }
           }
         ],
@@ -7040,7 +7080,9 @@
             "name": "unreadOnly",
             "required": false,
             "in": "query",
+            "description": "Only return unread notifications. Absent means all of them.",
             "schema": {
+              "default": false,
               "type": "boolean"
             }
           }
@@ -10274,7 +10316,11 @@
             "name": "limit",
             "required": false,
             "in": "query",
+            "description": "Number of GIFs to return, 1 to 50.",
             "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
               "type": "integer"
             }
           },
@@ -10282,6 +10328,7 @@
             "name": "pos",
             "required": false,
             "in": "query",
+            "description": "Provider cursor from the previous page.",
             "schema": {
               "type": "string"
             }
@@ -10323,7 +10370,11 @@
             "name": "limit",
             "required": false,
             "in": "query",
+            "description": "Number of GIFs to return, 1 to 50.",
             "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
               "type": "integer"
             }
           },
@@ -10331,6 +10382,7 @@
             "name": "pos",
             "required": false,
             "in": "query",
+            "description": "Provider cursor from the previous page.",
             "schema": {
               "type": "string"
             }
@@ -11515,6 +11567,11 @@
       "CreateRoleDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1
+          },
           "actions": {
             "type": "array",
             "minItems": 1,
@@ -11527,20 +11584,21 @@
             "minimum": 1,
             "maximum": 100000,
             "description": "Position for ordering (lower = higher priority)"
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 50
           }
         },
         "required": [
-          "actions",
-          "name"
+          "name",
+          "actions"
         ]
       },
       "UpdateRoleDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1
+          },
           "actions": {
             "type": "array",
             "minItems": 1,
@@ -11553,10 +11611,6 @@
             "minimum": 1,
             "maximum": 100000,
             "description": "Position for ordering (lower = higher priority)"
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 50
           }
         }
       },
@@ -12739,6 +12793,11 @@
       "VoicePresenceUserDto": {
         "type": "object",
         "properties": {
+          "joinedAt": {
+            "type": "string",
+            "description": "ISO-8601 timestamp, as sent on the socket.",
+            "format": "date-time"
+          },
           "id": {
             "type": "string"
           },
@@ -12751,10 +12810,6 @@
           "avatarUrl": {
             "type": "string"
           },
-          "joinedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
           "isDeafened": {
             "type": "boolean"
           },
@@ -12763,9 +12818,9 @@
           }
         },
         "required": [
+          "joinedAt",
           "id",
           "username",
-          "joinedAt",
           "isDeafened",
           "isServerMuted"
         ]
@@ -12863,6 +12918,25 @@
         ]
       },
       "RefreshDmPresenceResponseDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "dmGroupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "dmGroupId"
+        ]
+      },
+      "DeclineDmVoiceCallResponseDto": {
         "type": "object",
         "properties": {
           "success": {
@@ -14304,6 +14378,11 @@
       "ModerationLogDto": {
         "type": "object",
         "properties": {
+          "targetMessageId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The message a message action (delete, pin) was taken on."
+          },
           "action": {
             "allOf": [
               {
@@ -15493,7 +15572,8 @@
         "type": "string",
         "enum": [
           "web",
-          "electron"
+          "electron",
+          "native"
         ]
       },
       "ReportJoinFailureDto": {
@@ -15579,12 +15659,14 @@
         "properties": {
           "adminUsername": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 32
+            "minLength": 2,
+            "maxLength": 32,
+            "pattern": "^[a-zA-Z0-9_-]+$"
           },
           "adminPassword": {
             "type": "string",
-            "minLength": 8
+            "minLength": 8,
+            "maxLength": 128
           },
           "adminEmail": {
             "type": "string",
@@ -16012,10 +16094,6 @@
             "type": "string",
             "nullable": true
           },
-          "vapidPrivateKey": {
-            "type": "string",
-            "nullable": true
-          },
           "vapidSubject": {
             "type": "string",
             "nullable": true
@@ -16031,7 +16109,6 @@
           "createdAt",
           "updatedAt",
           "vapidPublicKey",
-          "vapidPrivateKey",
           "vapidSubject"
         ]
       },
@@ -16047,14 +16124,15 @@
           },
           "defaultStorageQuotaBytes": {
             "type": "integer",
-            "description": "Default storage quota for new users in bytes\nMinimum: 0 (no storage allowed)\nExample: 53687091200 = 50GB",
-            "minimum": 0,
+            "description": "Default storage quota for new users in bytes.\nExample: 53687091200 = 50GB",
+            "minimum": 1073741824,
             "format": "int64"
           },
           "maxFileSizeBytes": {
             "type": "integer",
-            "description": "Maximum file size allowed for uploads in bytes\nMinimum: 0 (no uploads allowed)\nExample: 524288000 = 500MB",
-            "minimum": 0,
+            "description": "Maximum file size allowed for uploads in bytes.\nExample: 524288000 = 500MB",
+            "minimum": 1048576,
+            "maximum": 1073741824,
             "format": "int64"
           },
           "name": {
@@ -17452,6 +17530,37 @@
           "user"
         ]
       },
+      "DmVoiceCallDeclinedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "dmGroupId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "isGroup": {
+            "type": "boolean",
+            "description": "True for a group DM, false for a 1:1 DM: a 1:1 decline ends the call."
+          }
+        },
+        "required": [
+          "dmGroupId",
+          "userId",
+          "isGroup"
+        ]
+      },
+      "DmVoiceCallEndedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "dmGroupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dmGroupId"
+        ]
+      },
       "ReplayBufferStoppedPayloadDto": {
         "type": "object",
         "properties": {
@@ -17587,6 +17696,85 @@
           "channelId"
         ]
       },
+      "PrivateChannelMembershipPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "channelId"
+        ]
+      },
+      "CommunityEmojiPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "emojiId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "emojiId"
+        ]
+      },
+      "CommunitySoundPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "soundId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "soundId"
+        ]
+      },
+      "CommunityAliasGroupPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "groupId"
+        ]
+      },
+      "ChannelWebhookPayloadDto": {
+        "type": "object",
+        "properties": {
+          "communityId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "webhookId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "channelId",
+          "webhookId"
+        ]
+      },
       "UserBannedPayloadDto": {
         "type": "object",
         "properties": {
@@ -17597,6 +17785,25 @@
             "type": "string",
             "format": "date-time"
           },
+          "communityId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "moderatorId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "communityId",
+          "userId",
+          "moderatorId"
+        ]
+      },
+      "UserUnbannedPayloadDto": {
+        "type": "object",
+        "properties": {
           "communityId": {
             "type": "string"
           },
@@ -17671,6 +17878,10 @@
         "properties": {
           "reason": {
             "type": "string"
+          },
+          "expired": {
+            "type": "boolean",
+            "description": "Set when the timeout ran out by itself, rather than being lifted by a\nmoderator. Clients refetch the same state either way."
           },
           "communityId": {
             "type": "string"
@@ -17989,6 +18200,7 @@
           "TIMED_OUT",
           "NONCE_CONFLICT",
           "MESSAGE_DELETED",
+          "CURRENT_SESSION_UNKNOWN",
           "ATTACH_NOT_ALLOWED",
           "FILE_NOT_OWNED",
           "UPLOAD_TARGET_NOT_ALLOWED",

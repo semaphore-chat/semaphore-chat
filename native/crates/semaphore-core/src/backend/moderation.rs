@@ -106,11 +106,11 @@ pub trait ModerationBackend: Send + Sync {
     ) -> BackendResult<wire::TimeoutStatusResponseDto> {
         Err(unsupported("reading a timeout"))
     }
-    /// Newest first. `action` is a `ModerationAction` wire name.
+    /// Newest first, of one `action` when given.
     async fn moderation_controller_get_moderation_logs(
         &self,
         _community_id: String,
-        _action: Option<String>,
+        _action: Option<semaphore_wire::enums::ModerationAction>,
         _limit: Option<i64>,
         _offset: Option<i64>,
     ) -> BackendResult<wire::ModerationLogsResponseDto> {

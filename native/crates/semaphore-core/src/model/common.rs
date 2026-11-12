@@ -179,6 +179,46 @@ pub enum ViewKey {
     ModerationLog {
         community_id: String,
     },
+    /// W6-A: `Core::admin_dashboard`.
+    AdminDashboard,
+    /// W6-A: `Core::instance_settings`.
+    InstanceSettings,
+    /// W6-B: `Core::admin_users`.
+    AdminUsers {
+        query: super::AdminUserQuery,
+    },
+    /// W6-B: `Core::admin_user`.
+    AdminUser {
+        user_id: String,
+    },
+    /// W6-B: `Core::admin_user_roles`.
+    AdminUserRoles {
+        user_id: String,
+    },
+    /// W6-C: `Core::admin_storage`.
+    AdminStorage {
+        min_percent: u32,
+    },
+    /// W6-D: `Core::admin_communities`.
+    AdminCommunities {
+        search: String,
+    },
+    /// W6-D: `Core::admin_community`.
+    AdminCommunity {
+        community_id: String,
+    },
+    /// W6-D: `Core::admin_invites`.
+    AdminInvites,
+    /// W6-E: `Core::instance_roles`.
+    InstanceRoles,
+    /// W6-E: `Core::instance_role_users`.
+    InstanceRoleUsers {
+        role_id: String,
+    },
+    /// W7-A: `Core::gifs` (an empty query is the featured list).
+    Gifs {
+        query: String,
+    },
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to

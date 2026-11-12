@@ -4,6 +4,7 @@
 //! (`vectors.rs`). Pure: no UI, no OS.
 
 mod compose;
+pub mod gif;
 mod js;
 mod link;
 mod mention;

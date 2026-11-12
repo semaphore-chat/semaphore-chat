@@ -158,6 +158,9 @@ pub struct MessageRow {
     /// As the server sent it: blank on a removed message, except for moderators.
     pub reply_to: Option<ReplyToView>,
     pub link_previews: Vec<LinkPreviewView>,
+    /// W7: the whole text is one GIF URL: draw the GIF (or its "Load" card), not the link and
+    /// its preview card. Filled by W7-A (`text::gif::lone_gif_url`); `None` until then.
+    pub gif: Option<super::GifEmbed>,
     pub pinned: bool,
     pub pinned_by: Option<UserView>,
     pub pinned_at_ms: Option<i64>,

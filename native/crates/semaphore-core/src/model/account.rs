@@ -40,6 +40,8 @@ pub struct InstancePermissionsView {
     pub can_create_invite: bool,
     /// W5: `DELETE_INSTANCE_INVITE`.
     pub can_delete_invite: bool,
+    /// W6: what the admin area may show and do.
+    pub admin: super::InstanceAdminCaps,
 }
 
 /// Dark or light, as the server stores it.

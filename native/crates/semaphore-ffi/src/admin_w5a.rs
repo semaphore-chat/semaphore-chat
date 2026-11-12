@@ -66,6 +66,22 @@ pub enum AdminActionKind {
     Kick,
     Timeout,
     RemoveTimeout,
+    UpdateInstanceSettings,
+    SetOwner,
+    BanUser,
+    UnbanUser,
+    SetUserPassword,
+    DeleteUser,
+    AssignInstanceRole,
+    UnassignInstanceRole,
+    SetUserQuota,
+    RecalculateStorage,
+    ForceDeleteCommunity,
+    CreateInstanceInvite,
+    DeleteInstanceInvite,
+    CreateInstanceRole,
+    UpdateInstanceRole,
+    DeleteInstanceRole,
 }
 
 #[uniffi::remote(Record)]
