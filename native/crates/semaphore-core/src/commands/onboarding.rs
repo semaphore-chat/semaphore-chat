@@ -7,17 +7,27 @@ use crate::backend::BackendError;
 use crate::cache::{CacheValue, keys};
 use crate::client::{Core, Effect, State};
 use crate::model::{
-    CreatedCommunity, InvitePreview, InvitePreviewView, LoadState, NewCommunity, RegisterForm,
-    SessionState, ViewKey,
+    CreatedCommunity, InviteJoin, InvitePreview, InvitePreviewView, InviteSkipReason,
+    JoinedCommunity, LoadState, NewCommunity, RegisterForm, RegisterRequirements, RegistrationMode,
+    SessionState, SkippedInviteCommunity, ViewKey,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
+use semaphore_wire::enums::ErrorCode;
 use semaphore_wire::types as wire;
 
-/// What `register` says to someone already signed in: an invite makes a new account, and the
-/// server has no way to apply one to an existing account.
-pub const ALREADY_SIGNED_IN: &str = "You already have an account and are signed in. This invite \
-     creates a new account, so it can't be applied to yours from here.";
+/// What `register` says to someone already signed in: registering makes a new account, and a
+/// signed-in user joins an invite with [`Core::accept_invite`] instead.
+pub const ALREADY_SIGNED_IN: &str = "You're already signed in. Join the invite with your account \
+     instead of registering a new one.";
+
+/// The server's refusal of a registration on an instance whose mode is `CLOSED`
+/// (`UserService.createUser`): the same words, said here before the request.
+pub const REGISTRATION_CLOSED: &str = "Registration is closed on this server";
+
+/// The server's refusal of a registration or a join without a usable code (`createUser`,
+/// `acceptInvite`).
+pub const NO_INVITE: &str = "No invite found for the provided code.";
 
 /// A value the contract would refuse, said without echoing it (it may be a password).
 fn invalid(field: &str) -> CoreError {
@@ -31,6 +41,19 @@ fn refused(error: BackendError) -> CoreError {
     CoreError::Failed {
         message: error.message,
     }
+}
+
+/// A code the server won't honour: a 404 with one of its `INVITE_*` codes (or, from a build
+/// without them, a plain 404). That answers the invite's question, so it isn't a failed read.
+fn unusable_invite(error: &BackendError) -> bool {
+    error.status == 404
+        || matches!(
+            error.code,
+            ErrorCode::InviteNotFound
+                | ErrorCode::InviteExpired
+                | ErrorCode::InviteExhausted
+                | ErrorCode::InviteDisabled
+        )
 }
 
 impl State {
@@ -66,14 +89,36 @@ fn preview(invite: wire::PublicInviteDto) -> InvitePreview {
 }
 
 impl Core {
+    /// What the probed server's registration mode allows: no account at all (`Closed`), an account
+    /// only with an invite code (`InviteOnly`), or one without a code (`Open`). Unknown until a
+    /// probe, which reads as `InviteOnly`, the stricter of the two that still register.
+    pub fn register_requirements(&self) -> RegisterRequirements {
+        let mode = self
+            .read(|state| {
+                state
+                    .auth
+                    .server_info
+                    .as_ref()
+                    .map(|info| info.registration)
+            })
+            .unwrap_or(RegistrationMode::InviteOnly);
+        RegisterRequirements {
+            mode,
+            can_register: mode != RegistrationMode::Closed,
+            invite_required: mode == RegistrationMode::InviteOnly,
+        }
+    }
+
     /// Creates the account, then signs in with it, as the web does: the session shows how. Joining
     /// by invite is this with the invite's code. A refusal (taken name, bad code) is the server's
-    /// message in `CoreError::Failed`. Refused while signed in, with [`ALREADY_SIGNED_IN`].
+    /// message in `CoreError::Failed`. Refused while signed in, with [`ALREADY_SIGNED_IN`]; refused
+    /// on a closed instance, and without a code on an invite-only one, in the server's words.
     pub async fn register(&self, form: RegisterForm) -> Result<(), CoreError> {
         let services = self
             .services()
             .ok_or_else(|| unavailable("registering"))?
             .clone();
+        let requirements = self.register_requirements();
         let server_url = self.read(|state| {
             if matches!(state.session, SessionState::SignedIn { .. }) {
                 return Err(CoreError::Failed {
@@ -88,9 +133,25 @@ impl Core {
                     message: "no server is set".into(),
                 })
         })?;
+        let invite = form.invite_code.trim().to_owned();
+        // As the server would answer, before asking it: a closed instance takes nobody, and an
+        // invite-only one needs a usable code. An open one takes an empty code.
+        match (requirements.mode, invite.is_empty()) {
+            (RegistrationMode::Closed, _) => {
+                return Err(CoreError::Failed {
+                    message: REGISTRATION_CLOSED.into(),
+                });
+            }
+            (RegistrationMode::InviteOnly, true) => {
+                return Err(CoreError::Failed {
+                    message: NO_INVITE.into(),
+                });
+            }
+            _ => {}
+        }
         let username = form.username.trim().to_owned();
         let body = wire::CreateUserDto {
-            code: form.invite_code.trim().to_owned(),
+            code: invite,
             email: form
                 .email
                 .map(|email| email.trim().to_owned())
@@ -161,17 +222,80 @@ impl Core {
                 Ok(invite) => InvitePreviewView {
                     state: LoadState::Ready,
                     invite: invite.map(preview),
+                    reason: None,
+                },
+                // The server refuses a code it won't honour with its own reason: an answer, not a
+                // failed read. An older build answered an empty 200, which is `Ok(None)` above.
+                Err(error) if unusable_invite(&error) => InvitePreviewView {
+                    state: LoadState::Ready,
+                    invite: None,
+                    reason: Some(error.message),
                 },
                 Err(error) => InvitePreviewView {
                     state: LoadState::Failed {
                         error: error.view(),
                     },
                     invite: None,
+                    reason: None,
                 },
             };
             state.auth.invites.insert(code.clone(), view);
             state.view_changed(ViewKey::InvitePreview { code });
         });
+    }
+
+    /// Joins an invite's communities as the signed-in user, as the join screen's "Join with your
+    /// account" does. Answers what was joined and what was skipped, with why; an invite for the
+    /// instance alone joins nothing. A code the server won't honour fails with its message. Refused
+    /// while signed out, and for an empty code, with [`NO_INVITE`].
+    pub async fn accept_invite(&self, code: String) -> Result<InviteJoin, CoreError> {
+        let (services, epoch) = self.begin("joining invites")?;
+        let code = code.trim().to_owned();
+        if code.is_empty() {
+            return Err(CoreError::Failed {
+                message: NO_INVITE.into(),
+            });
+        }
+        let accepted = services
+            .backend
+            .invite_controller_accept_invite(code)
+            .await
+            .map_err(|error| self.backend_failed(error))?;
+        self.same_session(epoch)?;
+        let join = InviteJoin {
+            joined: accepted
+                .joined
+                .into_iter()
+                .map(|community| JoinedCommunity {
+                    id: community.id,
+                    name: community.name,
+                })
+                .collect(),
+            skipped: accepted
+                .skipped
+                .into_iter()
+                .map(|community| SkippedInviteCommunity {
+                    id: community.id,
+                    name: community.name,
+                    reason: match community.reason {
+                        semaphore_wire::enums::InviteSkipReason::AlreadyMember => {
+                            InviteSkipReason::AlreadyMember
+                        }
+                        semaphore_wire::enums::InviteSkipReason::Banned => InviteSkipReason::Banned,
+                        semaphore_wire::enums::InviteSkipReason::Unknown(_) => {
+                            InviteSkipReason::Other
+                        }
+                    },
+                })
+                .collect(),
+        };
+        // The communities joined are new to this account's list: what it read before is stale.
+        if !join.joined.is_empty() {
+            self.write(|state, _| {
+                state.invalidate(&keys::op(keys::COMMUNITIES));
+            });
+        }
+        Ok(join)
     }
 
     /// Creates a community this user owns. It joins `communities` at once.

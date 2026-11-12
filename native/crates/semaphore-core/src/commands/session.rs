@@ -226,6 +226,16 @@ impl Core {
             .instance_controller_get_public_settings()
             .await
             .map_err(failed)?;
+        // An instance with no users yet must be set up in a browser: the native app doesn't run
+        // the wizard. A server that can't say (an older build without the route, or a failed read)
+        // is set up as far as this client can tell, and the settings above still stand.
+        let needs_setup = match services.backend.onboarding_controller_get_status().await {
+            Ok(status) => status.needs_setup,
+            Err(error) => {
+                log::info!("the server's setup status: {error}");
+                false
+            }
+        };
         let info = ServerInfo {
             url,
             name: Some(settings.name).filter(|name| !name.trim().is_empty()),
@@ -241,8 +251,7 @@ impl Core {
             },
             browser_sign_in: settings.desktop_browser_login,
             gif_search: settings.gif_search_enabled,
-            // W6-app reads `GET /onboarding/status` here.
-            needs_setup: false,
+            needs_setup,
         };
         self.write(|state, _| state.server_probed(&info));
         Ok(info)

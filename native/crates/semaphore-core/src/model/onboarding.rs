@@ -3,9 +3,9 @@
 
 use super::{ErrorView, LoadState};
 
-/// Who may register, as the server advertises it (`ServerInfo::registration`). Registering always
-/// takes an invite code on today's backend, whatever the mode: hide Register when `Closed`, and ask
-/// for a code otherwise.
+/// Who may register, as the server advertises it (`ServerInfo::registration`). `Closed` takes no
+/// registrations at all, `InviteOnly` needs a usable invite code, and `Open` takes an account
+/// without one (a code, when given, still joins its communities).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum RegistrationMode {
     Open,
@@ -14,12 +14,24 @@ pub enum RegistrationMode {
     Closed,
 }
 
+/// Whether the register screen offers an account, and whether its invite-code field is required.
+/// `Core::register_requirements`, read from the probed server's mode: hide Register when
+/// `can_register` is false, and mark the code required when it is.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RegisterRequirements {
+    pub mode: RegistrationMode,
+    pub can_register: bool,
+    /// The instance is invite-only: a code is needed (and `Core::register` refuses without one).
+    pub invite_required: bool,
+}
+
 /// `Core::register`. `Debug` doesn't show the password.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct RegisterForm {
     pub username: String,
     pub password: String,
     pub email: Option<String>,
+    /// Empty on an open instance, where the account joins no community.
     pub invite_code: String,
 }
 
@@ -47,13 +59,57 @@ pub struct InvitePreview {
 }
 
 /// `Core::invite_preview`. `ViewKey::InvitePreview { code }` says when to read again. `Ready` with
-/// no `invite`: the code can't be used. The server answers the same for a code that's unknown,
-/// expired, used up or disabled, so nobody can tell which. `Failed` is a read that didn't get an
-/// answer at all.
+/// no `invite`: the code can't be used, and `reason` is the server's own words ("This invite has
+/// expired.") when it said why. `Failed` is a read that didn't get an answer at all.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InvitePreviewView {
     pub state: LoadState,
     pub invite: Option<InvitePreview>,
+    /// Why the code can't be used: the server's `INVITE_EXPIRED` / `INVITE_EXHAUSTED` /
+    /// `INVITE_DISABLED` / `INVITE_NOT_FOUND` message, or `None` when it didn't say (an older
+    /// server answers every unusable code the same, with nothing).
+    pub reason: Option<String>,
+}
+
+/// A community an invite joined, from `Core::accept_invite`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JoinedCommunity {
+    pub id: String,
+    pub name: String,
+}
+
+/// Why an invite skipped a community.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum InviteSkipReason {
+    /// Already a member: the invite spent no use on it.
+    #[default]
+    AlreadyMember,
+    Banned,
+    /// A reason this build doesn't know.
+    Other,
+}
+
+/// A community an invite didn't join, and why.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SkippedInviteCommunity {
+    pub id: String,
+    pub name: String,
+    pub reason: InviteSkipReason,
+}
+
+/// What `Core::accept_invite` did: an invite's communities, joined or skipped with why. Both can be
+/// empty (an invite that names no community), and `joined` is what the join screen opens first.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InviteJoin {
+    pub joined: Vec<JoinedCommunity>,
+    pub skipped: Vec<SkippedInviteCommunity>,
+}
+
+impl InviteJoin {
+    /// Nothing was joined and nothing was skipped: an invite for the instance alone.
+    pub fn is_empty(&self) -> bool {
+        self.joined.is_empty() && self.skipped.is_empty()
+    }
 }
 
 /// Why a browser sign-in stopped.

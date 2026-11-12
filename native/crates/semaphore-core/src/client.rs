@@ -65,6 +65,8 @@ pub(crate) enum Effect {
     RefetchMessage(String),
     /// W2: tell the server the user went idle or came back, without waiting for the heartbeat.
     Idle(bool),
+    /// W2: read these notifications, as the web's auto-mark does when their conversation is open.
+    AutoReadNotifications(Vec<String>),
     /// W3: wait for the browser on this sign-in attempt's listener, then redeem its code.
     BrowserSignIn(u64),
     /// W3: read this invite, before anyone signs in.
@@ -126,6 +128,8 @@ pub(crate) struct State {
     pub w6: crate::commands::instance_admin::W6State,
     /// W7-A's state (`commands/gifs.rs`): gone with the session.
     pub w7: crate::commands::gifs::GifsState,
+    /// This install's choices the views depend on (`commands/local.rs`): they outlive sessions.
+    pub local: crate::commands::local::LocalState,
     /// W4's platform seams (the sleep inhibitor): they outlive sessions.
     pub w4_platform: crate::commands::calls::W4Platform,
     /// W3's signed-out work (the server in use, invites, sign in with browser): it outlives sessions.
@@ -190,6 +194,7 @@ impl State {
             w5b: Default::default(),
             w6: Default::default(),
             w7: Default::default(),
+            local: Default::default(),
             w4_platform: Default::default(),
             auth: Default::default(),
             session_epoch: 0,
@@ -581,6 +586,7 @@ impl Core {
             Effect::ReleaseSlot(message_id) => self.release_slot(message_id).await,
             Effect::RefetchMessage(message_id) => self.refetch_message(message_id).await,
             Effect::Idle(idle) => self.send_idle(idle).await,
+            Effect::AutoReadNotifications(ids) => self.run_auto_read_notifications(ids).await,
             Effect::BrowserSignIn(attempt) => self.run_browser_sign_in(attempt).await,
             Effect::FetchInvite(code) => self.fetch_invite(code).await,
             Effect::KeepAwake { on, .. } => self.set_awake(on),

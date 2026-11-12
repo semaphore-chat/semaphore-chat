@@ -8,8 +8,9 @@ use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::routing::{get, post};
+use semaphore_wire::enums::RegistrationMode;
 use semaphore_wire::types::{
     CommunityResponseDto, CreateCommunityDto, CreateUserDto, ForgotPasswordRequestDto,
     PublicInviteCreatorDto, PublicInviteDto,
@@ -22,6 +23,8 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
         .route("/api/users", post(register))
         .route("/api/auth/forgot-password", post(forgot_password))
         .route("/api/invite/public/{code}", get(public_invite))
+        .route("/api/onboarding/status", get(instance_status))
+        .route("/api/invite/{code}/accept", post(accept_invite))
         .route("/api/community", post(create_community))
 }
 
@@ -30,13 +33,29 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
         ("POST", "/api/users") => "UserController_register",
         ("POST", "/api/auth/forgot-password") => "AuthController_forgotPassword",
         ("GET", "/api/invite/public/{code}") => "InviteController_getPublicInvite",
+        ("GET", "/api/onboarding/status") => "OnboardingController_getStatus",
+        ("POST", "/api/invite/{code}/accept") => "inviteControllerAcceptInvite",
         ("POST", "/api/community") => "CommunityController_create",
         _ => return None,
     })
 }
 
-/// `UserService.createUser`. A usable invite is required whatever the registration mode (an
-/// unknown, expired, used-up or disabled code is a 404, checked before any name), then a taken
+/// The instance's registration mode: a `public_settings` control wins, else the instance settings
+/// the admin page edits. Read before the accounts lock, which it never holds with another.
+fn registration_mode(inner: &Inner) -> RegistrationMode {
+    if let Some(mode) = lock(&inner.accounts)
+        .public_settings
+        .get("registrationMode")
+        .cloned()
+    {
+        return serde_json::from_value(mode).unwrap_or(RegistrationMode::InviteOnly);
+    }
+    lock(&inner.w6_instance).settings.registration_mode.clone()
+}
+
+/// `UserService.createUser`, which honours the instance's registration mode: `CLOSED` refuses
+/// before anything else, `INVITE_ONLY` needs a usable code, and `OPEN` takes a code when one is
+/// given. An unknown, expired, used-up or disabled code is a 404, checked before any name; a taken
 /// username or email is a 409. The username is stored lowercase, and is the display name.
 async fn register(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     let Ok(dto) = typed::<CreateUserDto>(&body) else {
@@ -49,22 +68,36 @@ async fn register(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     {
         return invalid("email must be an email");
     }
+    let mode = registration_mode(&inner);
+    if mode == RegistrationMode::Closed {
+        return inner.error(
+            403,
+            "FORBIDDEN",
+            "Registration is closed on this server",
+            false,
+        );
+    }
     let now = inner.now();
     let username = dto.username.to_lowercase();
     let mut accounts = lock(&inner.accounts);
 
-    let invite = accounts
+    let wanted = accounts
         .invites
         .iter()
         .position(|invite| invite.code == dto.code && invite.usable(now));
-    let Some(invite) = invite else {
-        drop(accounts);
-        return inner.error(
-            404,
-            "NOT_FOUND",
-            "No invite found for the provided code.",
-            false,
-        );
+    let invite = match (mode, wanted) {
+        // Open with no code: no invite, and the account joins no community.
+        (RegistrationMode::Open, None) if dto.code.trim().is_empty() => None,
+        (_, Some(index)) => Some(index),
+        _ => {
+            drop(accounts);
+            return inner.error(
+                404,
+                "NOT_FOUND",
+                "No invite found for the provided code.",
+                false,
+            );
+        }
     };
 
     let username_taken = accounts.credentials.contains_key(&username)
@@ -99,7 +132,9 @@ async fn register(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
             email: dto.email.clone(),
         },
     );
-    accounts.invites[invite].uses += 1;
+    if let Some(invite) = invite {
+        accounts.invites[invite].uses += 1;
+    }
     drop(accounts);
     json_response(
         StatusCode::CREATED,
@@ -122,20 +157,55 @@ async fn forgot_password(State(inner): State<Arc<Inner>>, body: Bytes) -> Respon
     )
 }
 
-/// `InviteService.getPublicInvite`: what the join screen shows. The backend returns `null` for an
-/// unknown, expired, used-up or disabled invite, which Nest sends as a 200 with an empty body, so
-/// does this.
+/// `OnboardingService.getStatus`: an instance with no users yet must be set up in a browser. The
+/// fake always has its scenario's users, so this answers "set up" unless a control says a fresh
+/// instance. A fresh one gets a setup token, as the backend makes one on every such read.
+async fn instance_status(State(inner): State<Arc<Inner>>) -> Response {
+    let needs_setup = lock(&inner.accounts).needs_setup;
+    let mut body = json!({ "needsSetup": needs_setup, "hasUsers": !needs_setup });
+    if needs_setup {
+        body["setupToken"] = json!("fixture-setup-token");
+    }
+    json_response(StatusCode::OK, body)
+}
+
+/// `InviteService.getPublicInvite`: what the join screen shows. Every unusable code answers 404
+/// with its own reason (expiry and exhaustion before `disabled`, as the backend orders them), so
+/// the join screen can say why and a generated client never decodes an empty body.
 async fn public_invite(State(inner): State<Arc<Inner>>, Path(code): Path<String>) -> Response {
     let now = inner.now();
-    let accounts = lock(&inner.accounts);
-    let Some(invite) = accounts
+    let invite = lock(&inner.accounts)
         .invites
         .iter()
-        .find(|invite| invite.code == code && invite.usable(now))
-    else {
-        drop(accounts);
-        return StatusCode::OK.into_response();
+        .find(|invite| invite.code == code)
+        .cloned();
+    let Some(invite) = invite else {
+        return inner.error(
+            404,
+            "INVITE_NOT_FOUND",
+            "This invite link is invalid.",
+            false,
+        );
     };
+    if invite.valid_until.is_some_and(|until| now > until) {
+        return inner.error(404, "INVITE_EXPIRED", "This invite has expired.", false);
+    }
+    if invite.max_uses.is_some_and(|max| invite.uses >= max) {
+        return inner.error(
+            404,
+            "INVITE_EXHAUSTED",
+            "This invite has reached its maximum number of uses.",
+            false,
+        );
+    }
+    if invite.disabled {
+        return inner.error(
+            404,
+            "INVITE_DISABLED",
+            "This invite has been disabled.",
+            false,
+        );
+    }
     let dto = PublicInviteDto {
         code: invite.code.clone(),
         created_by: invite
@@ -147,7 +217,6 @@ async fn public_invite(State(inner): State<Arc<Inner>>, Path(code): Path<String>
         uses: invite.uses,
         valid_until: invite.valid_until,
     };
-    drop(accounts);
     json_response(
         StatusCode::OK,
         serde_json::to_value(dto).expect("an invite serializes"),
@@ -224,5 +293,99 @@ async fn create_community(
             name: community.name,
         })
         .expect("a community serializes"),
+    )
+}
+
+/// `MembershipService.acceptInvite`: an existing account joins the communities an invite names.
+/// A usable code is required (404 with its message otherwise); each community is joined, or
+/// skipped as `already_member` (the invite spends no use on it) or `banned`. The use is redeemed
+/// once, only when at least one community is actually joined, as the backend does under its row
+/// lock.
+async fn accept_invite(
+    State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+) -> Response {
+    let user = inner.user_of(bearer_token(&headers));
+    let now = inner.now();
+    let invite = lock(&inner.accounts)
+        .invites
+        .iter()
+        .find(|invite| invite.code == code && invite.usable(now))
+        .cloned();
+    let Some(invite) = invite else {
+        return inner.error(
+            404,
+            "NOT_FOUND",
+            "No invite found for the provided code.",
+            false,
+        );
+    };
+
+    let mut joined: Vec<serde_json::Value> = Vec::new();
+    let mut skipped: Vec<serde_json::Value> = Vec::new();
+    let mut pending: Vec<(String, String)> = Vec::new();
+    for community_id in &invite.community_ids {
+        let name = inner
+            .scenario
+            .community(community_id)
+            .map(|community| community.name.clone())
+            .unwrap_or_else(|| community_id.clone());
+        if crate::rbac::is_member(&inner, community_id, &user) {
+            skipped.push(json!({
+                "id": community_id, "name": name, "reason": "already_member",
+            }));
+        } else {
+            pending.push((community_id.clone(), name));
+        }
+    }
+    if pending.is_empty() {
+        return json_response(
+            StatusCode::OK,
+            json!({ "joined": joined, "skipped": skipped }),
+        );
+    }
+
+    // Redeem first: one use, however many communities follow.
+    let redeemed = {
+        let mut accounts = lock(&inner.accounts);
+        match accounts
+            .invites
+            .iter_mut()
+            .find(|invite| invite.code == code && invite.usable(now))
+        {
+            Some(invite) => {
+                invite.uses += 1;
+                true
+            }
+            None => false,
+        }
+    };
+    if !redeemed {
+        return inner.error(
+            404,
+            "NOT_FOUND",
+            "No invite found for the provided code.",
+            false,
+        );
+    }
+
+    for (community_id, name) in pending {
+        if crate::rbac::is_banned(&inner, &community_id, &user) {
+            skipped.push(json!({ "id": community_id, "name": name, "reason": "banned" }));
+            continue;
+        }
+        crate::rbac::add_member(&inner, &community_id, &user);
+        inner.emit_to_user(
+            &user,
+            "memberAddedToCommunity",
+            json!({ "communityId": community_id, "userId": user }),
+        );
+        joined.push(json!({ "id": community_id, "name": name }));
+    }
+
+    json_response(
+        StatusCode::OK,
+        json!({ "joined": joined, "skipped": skipped }),
     )
 }

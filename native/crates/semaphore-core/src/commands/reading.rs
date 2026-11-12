@@ -4,8 +4,8 @@
 use crate::cache::{QueryKey, keys};
 use crate::client::{Core, State};
 use crate::model::{
-    Conversation, ErrorView, LoadState, SearchHit, SearchResultsView, SearchScope, ThreadInfo,
-    UnreadMarker, ViewKey,
+    Conversation, DmPeerReadsView, ErrorView, LoadState, PeerReadView, SearchHit,
+    SearchResultsView, SearchScope, SeenByView, ThreadInfo, UnreadMarker, UserView, ViewKey,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -17,6 +17,8 @@ use std::collections::{HashMap, HashSet};
 pub const NOT_FOUND: &str = "NOT_FOUND";
 /// How many hits one search page asks for: the server's own default.
 pub const SEARCH_PAGE: u32 = 50;
+/// How many readers a "seen by" names before counting the rest: the web's `MAX_TOOLTIP_READERS`.
+pub const SEEN_BY_NAMES: usize = 15;
 
 /// What these commands keep between calls. Forgotten at sign-out.
 #[derive(Debug, Default)]
@@ -60,6 +62,7 @@ impl State {
     /// channel or DM newly opened takes its divider from the unread counts as they are now,
     /// before any read mark from this visit can change them.
     pub(crate) fn reading_opened(&mut self, conversation: &Conversation) {
+        self.w2_auto_read(conversation);
         match conversation {
             Conversation::Thread { parent_message_id } => {
                 let key = meta_key(parent_message_id);
@@ -183,6 +186,56 @@ impl State {
             self.parent_rows_follow(&parent_message_id, reply_count, last_reply_at);
         }
         self.reading_meta_changed(parent_message_id);
+    }
+}
+
+impl State {
+    /// A DM's watermarks changed: its peer list, and every "seen by" of my messages there, may now
+    /// name someone else.
+    pub(crate) fn seen_by_changed(&mut self, dm_group_id: &str) {
+        self.view_changed(ViewKey::DmPeerReads {
+            dm_group_id: dm_group_id.to_owned(),
+        });
+        let conversation = Conversation::DirectMessage {
+            id: dm_group_id.to_owned(),
+        };
+        // The peers' profiles come with the list, so a name arrives without the screen asking.
+        let missing: Vec<String> = self
+            .cache
+            .dm_peer_reads(&keys::scoped(keys::DM_PEER_READS, dm_group_id))
+            .map(|peers| {
+                peers
+                    .iter()
+                    .filter(|peer| {
+                        self.cache
+                            .user(&keys::scoped(keys::USER, &peer.user_id))
+                            .is_none()
+                    })
+                    .map(|peer| peer.user_id.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for id in missing {
+            self.ensure_query(keys::scoped(keys::USER, &id));
+        }
+        let me_id = self.me_id().to_owned();
+        let mine: Vec<String> = self
+            .windows
+            .get(&conversation)
+            .map(|window| {
+                window
+                    .rows()
+                    .filter(|row| row.message.dto.author_id.as_deref() == Some(me_id.as_str()))
+                    .map(|row| row.message.dto.id.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for message_id in mine {
+            self.view_changed(ViewKey::SeenBy {
+                conversation: conversation.clone(),
+                message_id,
+            });
+        }
     }
 }
 
@@ -523,6 +576,122 @@ impl Core {
         });
     }
 
+    /// The other members of a DM and how far each has read, from
+    /// `GET /read-receipts/dm-peer-reads/{id}`. `ViewKey::DmPeerReads { dm_group_id }` says when to
+    /// read again; a peer's read arrives over `readReceiptUpdated` and is applied at once. A room
+    /// whose receipts can't be read shows `Failed` and is read again by `Core::retry_failed`.
+    pub fn dm_peer_reads(&self, dm_group_id: String) -> DmPeerReadsView {
+        self.write(|state, _| {
+            let key = keys::scoped(keys::DM_PEER_READS, &dm_group_id);
+            state.ensure_query(key.clone());
+            let peers = state.cache.dm_peer_reads(&key).cloned().unwrap_or_default();
+            Self::ensure_readers_known(state, peers.iter().map(|peer| peer.user_id.as_str()));
+            DmPeerReadsView {
+                state: state.load_of(&key),
+                dm_group_id,
+                peers: peers
+                    .into_iter()
+                    .map(|peer| PeerReadView {
+                        user: state.user_or_stub(&peer.user_id),
+                        last_read_at_ms: peer.last_read_at.timestamp_millis(),
+                    })
+                    .collect(),
+            }
+        })
+    }
+
+    /// Who has read one message, for "seen by". A DM compares its peers' watermarks with the
+    /// message's sent time (so the message has to be loaded: an unknown one names nobody); a channel
+    /// asks `GET /read-receipts/message/{id}/readers`, which leaves this user out. A thread has no
+    /// readers. Names are cut to `SEEN_BY_NAMES` with the rest counted in `more`, as the web's
+    /// tooltip lists them.
+    pub fn seen_by(&self, conversation: Conversation, message_id: String) -> SeenByView {
+        self.write(|state, _| {
+            let empty = SeenByView::default();
+            match &conversation {
+                Conversation::DirectMessage { id: dm_group_id } => {
+                    let key = keys::scoped(keys::DM_PEER_READS, dm_group_id);
+                    state.ensure_query(key.clone());
+                    let load = state.load_of(&key);
+                    let Some(sent_at_ms) = state
+                        .find_message(&message_id)
+                        .map(|dto| dto.sent_at.timestamp_millis())
+                    else {
+                        // Not loaded: there is no sent time to compare a watermark with.
+                        return SeenByView {
+                            state: LoadState::Ready,
+                            ..empty
+                        };
+                    };
+                    let peers = state.cache.dm_peer_reads(&key).cloned().unwrap_or_default();
+                    let mut readers: Vec<(String, i64)> = peers
+                        .into_iter()
+                        .filter(|peer| peer.last_read_at.timestamp_millis() >= sent_at_ms)
+                        .map(|peer| (peer.user_id, peer.last_read_at.timestamp_millis()))
+                        .collect();
+                    // Earliest reader first, so the list grows with who saw it first.
+                    readers.sort_by_key(|(_, read_at)| *read_at);
+                    Self::ensure_readers_known(state, readers.iter().map(|(id, _)| id.as_str()));
+                    let count = u32::try_from(readers.len()).unwrap_or(u32::MAX);
+                    let named: Vec<UserView> = readers
+                        .iter()
+                        .take(SEEN_BY_NAMES)
+                        .map(|(id, _)| state.user_or_stub(id))
+                        .collect();
+                    SeenByView {
+                        state: load,
+                        more: count - u32::try_from(named.len()).unwrap_or(0),
+                        readers: named,
+                        count,
+                    }
+                }
+                Conversation::Channel { .. } => {
+                    let Some(key) = readers_key(&message_id, &conversation) else {
+                        return empty;
+                    };
+                    state.ensure_query(key.clone());
+                    let rows = state
+                        .cache
+                        .message_readers(&key)
+                        .cloned()
+                        .unwrap_or_default();
+                    let readers: Vec<UserView> = rows
+                        .into_iter()
+                        .map(|reader| UserView {
+                            id: reader.user_id,
+                            username: reader.username,
+                            display_name: reader.display_name,
+                            avatar_file_id: reader.avatar_url,
+                        })
+                        .collect();
+                    let count = u32::try_from(readers.len()).unwrap_or(u32::MAX);
+                    let named: Vec<UserView> = readers.into_iter().take(SEEN_BY_NAMES).collect();
+                    SeenByView {
+                        state: state.load_of(&key),
+                        more: count - u32::try_from(named.len()).unwrap_or(0),
+                        readers: named,
+                        count,
+                    }
+                }
+                Conversation::Thread { .. } => SeenByView {
+                    state: LoadState::Ready,
+                    ..empty
+                },
+            }
+        })
+    }
+
+    /// Asks for the profiles of readers that aren't cached, so a name arrives after the rows do.
+    fn ensure_readers_known<'a>(state: &mut State, ids: impl Iterator<Item = &'a str>) {
+        let missing: Vec<String> = ids
+            .filter(|id| state.cache.user(&keys::scoped(keys::USER, id)).is_none())
+            .map(str::to_owned)
+            .collect();
+        for id in missing {
+            state.ensure_query(keys::scoped(keys::USER, &id));
+        }
+    }
+
     /// Follows a message link on this server: opens its conversation at the message, as
     /// `open_conversation_at` does, and returns the conversation. For a thread reply (a search hit
     /// or a pin) pass its parent: the jump goes to the parent and then opens the thread. A link
@@ -581,19 +750,60 @@ fn hit_conversation(dto: &wire::MessageDto, scope: &SearchScope) -> Option<Conve
     }
 }
 
-/// The view a search query feeds, and the reverse: `commands::view_for` and `key_for` ask here.
+/// The view a reading query feeds, and the reverse: `commands::view_for` and `key_for` ask here.
 pub(crate) fn view_for(key: &QueryKey) -> Option<ViewKey> {
-    Some(ViewKey::Search {
-        scope: search_scope_of(key)?,
-        query: key.segments.get(2).cloned().unwrap_or_default(),
-    })
+    match key.op() {
+        keys::DM_PEER_READS => Some(ViewKey::DmPeerReads {
+            dm_group_id: key.segments.get(1)?.clone(),
+        }),
+        keys::MESSAGE_READERS => Some(ViewKey::SeenBy {
+            conversation: readers_conversation(key)?,
+            message_id: key.segments.get(1)?.clone(),
+        }),
+        _ => Some(ViewKey::Search {
+            scope: search_scope_of(key)?,
+            query: key.segments.get(2).cloned().unwrap_or_default(),
+        }),
+    }
 }
 
 pub(crate) fn key_for(view: &ViewKey) -> Option<QueryKey> {
-    let ViewKey::Search { scope, query } = view else {
-        return None;
+    match view {
+        ViewKey::Search { scope, query } => Some(search_key(scope, query)),
+        ViewKey::DmPeerReads { dm_group_id } => {
+            Some(keys::scoped(keys::DM_PEER_READS, dm_group_id))
+        }
+        ViewKey::SeenBy {
+            conversation,
+            message_id,
+        } => readers_key(message_id, conversation),
+        _ => None,
+    }
+}
+
+/// The conversation a readers key names: its third segment says which kind, its fourth the id.
+fn readers_conversation(key: &QueryKey) -> Option<Conversation> {
+    let id = key.segments.get(3)?.clone();
+    Some(match key.segments.get(2)?.as_str() {
+        "channel" => Conversation::Channel { id },
+        "dm" => Conversation::DirectMessage { id },
+        _ => return None,
+    })
+}
+
+/// The cache key of one message's readers in a channel or DM. Threads have none.
+fn readers_key(message_id: &str, conversation: &Conversation) -> Option<QueryKey> {
+    let (kind, id) = match conversation {
+        Conversation::Channel { id } => ("channel", id),
+        Conversation::DirectMessage { id } => ("dm", id),
+        Conversation::Thread { .. } => return None,
     };
-    Some(search_key(scope, query))
+    Some(QueryKey::new(&[
+        keys::MESSAGE_READERS,
+        message_id,
+        kind,
+        id,
+    ]))
 }
 
 /// The cache key of one search: its scope's operation, the id searched, and the query.

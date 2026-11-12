@@ -27,7 +27,13 @@ pub const RECONNECT_INVALIDATES: &[&str] = &[
 ];
 
 /// What the web keeps fresh some other way, and this client caches: both miss events during a gap.
-const NATIVE_RECONNECT_INVALIDATES: &[&str] = &[keys::MEMBERS, keys::PRESENCE];
+const NATIVE_RECONNECT_INVALIDATES: &[&str] = &[
+    keys::MEMBERS,
+    keys::PRESENCE,
+    // A channel's readers advance with no event (its receipts stay private), so a gap may have
+    // missed them. A DM's are in the web's table above.
+    keys::MESSAGE_READERS,
+];
 
 /// Fetched again at once on reconnect, used or not: no view's read asks for these (the call bar
 /// and an incoming ring read DM call presence straight from the cache), so a stale one would stay.

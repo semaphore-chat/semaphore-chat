@@ -709,6 +709,26 @@ impl MessagesBackend for FakeBackend {
     ) -> BackendResult<wire::ReadReceiptDto> {
         Err(not_found())
     }
+
+    async fn read_receipts_controller_get_dm_peer_reads(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<Vec<wire::DmPeerReadDto>> {
+        self.w4.run("w9_peer_reads", &[&dm_group_id]).await
+    }
+
+    async fn read_receipts_controller_get_message_readers(
+        &self,
+        message_id: String,
+        channel_id: Option<String>,
+        dm_group_id: Option<String>,
+    ) -> BackendResult<Vec<wire::MessageReaderDto>> {
+        let channel = channel_id.unwrap_or_default();
+        let dm = dm_group_id.unwrap_or_default();
+        self.w4
+            .run("w9_readers", &[&message_id, &channel, &dm])
+            .await
+    }
 }
 
 #[async_trait]

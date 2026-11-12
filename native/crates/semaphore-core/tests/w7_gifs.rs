@@ -25,7 +25,8 @@ async fn gifs_rig() -> Rig {
     signed_in_with(true).await
 }
 
-/// Signed in to a probed server, with the GIF picker on or off.
+/// Signed in to a probed server, with the GIF picker on or off, and third-party images allowed
+/// (the host's setting; off by default, and the picker reads nothing while it's off: w9_media).
 async fn signed_in_with(gifs: bool) -> Rig {
     let rig = Rig::new();
     rig.backend
@@ -35,6 +36,7 @@ async fn signed_in_with(gifs: bool) -> Rig {
         .probe_server("http://server".into())
         .await
         .expect("the server answers");
+    rig.core.set_third_party_media(true);
     rig.signed_in().await
 }
 

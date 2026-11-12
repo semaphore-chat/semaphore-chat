@@ -675,7 +675,7 @@ impl Core {
     /// Joins this DM or group DM's call, leaving any other call first. Fails as `join_voice` does;
     /// a blocked 1:1 DM is the server's refusal.
     pub async fn join_dm_call(&self, dm_group_id: String) -> Result<(), CoreError> {
-        self.join_room(VoiceRoom::Dm { dm_group_id }).await
+        self.join_room(VoiceRoom::Dm { dm_group_id }, None).await
     }
 
     /// The call ringing now, if any (`ViewKey::IncomingCall`).

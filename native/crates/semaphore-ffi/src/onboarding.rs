@@ -7,8 +7,9 @@
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
-    BrowserSignInFailure, BrowserSignInView, CreatedCommunity, ErrorView, InvitePreview,
-    InvitePreviewView, LoadState, NewCommunity, RegisterForm, RegistrationMode,
+    BrowserSignInFailure, BrowserSignInView, CreatedCommunity, ErrorView, InviteJoin,
+    InvitePreview, InvitePreviewView, InviteSkipReason, JoinedCommunity, LoadState, NewCommunity,
+    RegisterForm, RegisterRequirements, RegistrationMode, SkippedInviteCommunity,
 };
 
 #[uniffi::remote(Enum)]
@@ -16,6 +17,13 @@ pub enum RegistrationMode {
     Open,
     InviteOnly,
     Closed,
+}
+
+#[uniffi::remote(Record)]
+pub struct RegisterRequirements {
+    pub mode: RegistrationMode,
+    pub can_register: bool,
+    pub invite_required: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -39,6 +47,33 @@ pub struct InvitePreview {
 pub struct InvitePreviewView {
     pub state: LoadState,
     pub invite: Option<InvitePreview>,
+    pub reason: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct JoinedCommunity {
+    pub id: String,
+    pub name: String,
+}
+
+#[uniffi::remote(Enum)]
+pub enum InviteSkipReason {
+    AlreadyMember,
+    Banned,
+    Other,
+}
+
+#[uniffi::remote(Record)]
+pub struct SkippedInviteCommunity {
+    pub id: String,
+    pub name: String,
+    pub reason: InviteSkipReason,
+}
+
+#[uniffi::remote(Record)]
+pub struct InviteJoin {
+    pub joined: Vec<JoinedCommunity>,
+    pub skipped: Vec<SkippedInviteCommunity>,
 }
 
 #[uniffi::remote(Enum)]
@@ -77,8 +112,16 @@ pub fn browser_sign_in_timeout_ms() -> u64 {
 
 #[uniffi::export]
 impl SemaphoreCore {
+    pub fn register_requirements(&self) -> RegisterRequirements {
+        self.core.register_requirements()
+    }
+
     pub async fn register(&self, form: RegisterForm) -> Result<(), CoreError> {
         self.core.register(form).await
+    }
+
+    pub async fn accept_invite(&self, code: String) -> Result<InviteJoin, CoreError> {
+        self.core.accept_invite(code).await
     }
 
     pub async fn forgot_password(&self, email: String) -> Result<(), CoreError> {

@@ -3,8 +3,30 @@
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
-    Conversation, MessageLink, SearchHit, SearchScope, ThreadInfo, UnreadMarker,
+    Conversation, DmPeerReadsView, MessageLink, PeerReadView, SearchHit, SearchScope, SeenByView,
+    ThreadInfo, UnreadMarker, UserView,
 };
+
+#[uniffi::remote(Record)]
+pub struct PeerReadView {
+    pub user: UserView,
+    pub last_read_at_ms: i64,
+}
+
+#[uniffi::remote(Record)]
+pub struct DmPeerReadsView {
+    pub state: semaphore_core::model::LoadState,
+    pub dm_group_id: String,
+    pub peers: Vec<PeerReadView>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SeenByView {
+    pub state: semaphore_core::model::LoadState,
+    pub readers: Vec<UserView>,
+    pub count: u32,
+    pub more: u32,
+}
 
 /// `semaphore_core::links::parse_message_link`: what a link on this server points to.
 #[uniffi::export]
@@ -43,6 +65,14 @@ impl SemaphoreCore {
         limit: Option<u32>,
     ) -> Result<Vec<SearchHit>, CoreError> {
         self.core.search_messages(scope, query, limit).await
+    }
+
+    pub fn dm_peer_reads(&self, dm_group_id: String) -> DmPeerReadsView {
+        self.core.dm_peer_reads(dm_group_id)
+    }
+
+    pub fn seen_by(&self, conversation: Conversation, message_id: String) -> SeenByView {
+        self.core.seen_by(conversation, message_id)
     }
 
     pub fn unread_marker(&self, conversation: Conversation) -> Option<UnreadMarker> {

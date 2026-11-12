@@ -839,7 +839,7 @@ impl AppRoot {
         let state = DesktopAppState {
             close_to_tray: settings.close_to_tray,
             links: self.account.links,
-            link_preview_images: settings.link_preview_images,
+            link_preview_images: settings.third_party_media,
             server_url,
             server_name: self.server.as_ref().map(|(_, name)| name.clone()),
             app_version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -891,9 +891,14 @@ impl AppRoot {
                 self.refresh_desktop_tab(cx);
             }
             DesktopAppEvent::SetLinkPreviewImages(on) => {
-                self.update_settings(|settings| settings.link_preview_images = on);
+                // The one third-party media switch: what the preview fetcher loads and what core's
+                // views say about GIFs both follow it.
+                self.update_settings(|settings| settings.third_party_media = on);
                 if let Some(media) = &self.media {
                     media.previews.set_allowed(on);
+                }
+                if let Some(core) = self.core() {
+                    core.set_third_party_media(on);
                 }
                 self.refresh_desktop_tab(cx);
                 cx.refresh_windows();

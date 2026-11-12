@@ -300,6 +300,8 @@ impl AppRoot {
     fn started(&mut self, services: Services, window: &mut Window, cx: &mut Context<Self>) {
         calls::target_debug_panel(cx);
         let core = services.core.clone();
+        // The one third-party media switch (link previews and GIFs), as the store last saved it.
+        core.set_third_party_media(self.config.settings.get().third_party_media);
         // W4: the system stays awake during calls (`AppConfig::keep_awake`).
         if let Some(keep_awake) = self.config.keep_awake.clone() {
             core.set_keep_awake(keep_awake);
@@ -322,7 +324,7 @@ impl AppRoot {
             exec: services.exec.clone(),
             store: files::store(),
             previews: Arc::new(PreviewFetcher::new(
-                self.config.settings.get().link_preview_images,
+                self.config.settings.get().third_party_media,
             )),
             arrived,
             community: std::cell::RefCell::new(None),

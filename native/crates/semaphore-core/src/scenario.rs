@@ -89,11 +89,13 @@ fn reply_to_view(value: &Value, authors: &HashMap<String, UserView>) -> Option<R
 }
 
 fn link_preview_view(value: &Value) -> LinkPreviewView {
+    let image_url = string(get(value, "imageUrl"));
     LinkPreviewView {
         url: string(get(value, "url")).unwrap_or_default(),
         title: string(get(value, "title")),
         description: string(get(value, "description")),
-        image_url: string(get(value, "imageUrl")),
+        image_host: image_url.as_deref().and_then(crate::text::gif::url_host),
+        image_url,
         site_name: string(get(value, "siteName")),
         favicon_url: string(get(value, "faviconUrl")),
         author_name: string(get(value, "authorName")),

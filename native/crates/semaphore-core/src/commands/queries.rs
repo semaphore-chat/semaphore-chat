@@ -115,6 +115,24 @@ impl Core {
                     .await
                     .map_err(|error| self.backend_failed(error))?,
             ),
+            keys::DM_PEER_READS => CacheValue::DmPeerReads(
+                backend
+                    .read_receipts_controller_get_dm_peer_reads(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::MESSAGE_READERS => {
+                let context = key.segments.get(3).cloned().unwrap_or_default();
+                let channel = (key.segments.get(2).map(String::as_str) == Some("channel"))
+                    .then(|| context.clone());
+                let dm = channel.is_none().then_some(context);
+                CacheValue::MessageReaders(
+                    backend
+                        .read_receipts_controller_get_message_readers(id, channel, dm)
+                        .await
+                        .map_err(|error| self.backend_failed(error))?,
+                )
+            }
             keys::VOICE_PRESENCE => CacheValue::VoicePresence(
                 backend
                     .voice_presence_controller_get_channel_presence(id)
