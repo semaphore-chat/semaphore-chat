@@ -116,7 +116,13 @@ mod tests {
     fn an_unpinned_format_uses_the_real_day() {
         let format = TimeFormat::default();
         assert!(format.now.is_real(), "unpinned means the real clock");
-        assert_eq!(format.day_label(Utc::now().timestamp_millis()), "Today");
+        // Not the rendered day: two reads of the clock can straddle midnight.
+        let real = Utc::now().timestamp_millis();
+        assert!(
+            (format.now.now_ms() - real).abs() < 5_000,
+            "{} is not now ({real})",
+            format.now.now_ms()
+        );
     }
 
     #[test]
