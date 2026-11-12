@@ -127,15 +127,18 @@ async fn channels_for_community(
 
 async fn mentionable_channels(
     State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
     Path(community_id): Path<String>,
 ) -> Response {
     let Some(community) = crate::admin::community(&inner, &community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
+    let user = inner.user_of(bearer_token(&headers));
     let channels: Vec<Value> = community
         .channels
         .iter()
         .filter(|channel| channel.type_ == ChannelType::Text)
+        .filter(|channel| crate::admin::sees(&inner, channel, &user))
         .map(|channel| serde_json::to_value(channel).expect("a channel serializes"))
         .collect();
     json_response(StatusCode::OK, Value::Array(channels))

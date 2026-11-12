@@ -147,11 +147,13 @@ async fn my_instance_roles(State(inner): State<Arc<Inner>>) -> Response {
 
 async fn my_channel_roles(
     State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
     Path(channel_id): Path<String>,
 ) -> Response {
+    let me = inner.user_of(super::bearer_token(&headers));
     json_response(
         StatusCode::OK,
-        actions::my_channel_roles(&inner, &channel_id),
+        actions::my_channel_roles(&inner, &me, &channel_id),
     )
 }
 

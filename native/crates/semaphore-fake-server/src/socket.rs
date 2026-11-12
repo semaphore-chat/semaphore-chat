@@ -355,6 +355,13 @@ async fn handle_send(
 
     let result = parsed.and_then(|body| {
         let target = target?;
+        // The gateway's `RbacGuard` on `sendMessage`/`sendThreadReply`: a channel the sender can't
+        // see is refused before the message exists.
+        if let Some(channel_id) = channel_target(inner, &target)
+            && !crate::admin::can_view(inner, &channel_id, user)
+        {
+            return Err(SendFailure::new(403, "FORBIDDEN", "Forbidden resource"));
+        }
         Ok(messages::send(
             inner,
             user,
@@ -380,6 +387,17 @@ async fn handle_send(
         }
         Ok(Err(failure)) => fail_send(inner, tx, v2, ack, &failure),
         Err(failure) => fail_send(inner, tx, v2, ack, &failure),
+    }
+}
+
+/// The channel a send targets, for the gateway's channel RBAC: a thread reply belongs to its
+/// parent's channel; a DM has none.
+fn channel_target(inner: &Inner, target: &SendTarget) -> Option<String> {
+    match target {
+        SendTarget::Channel(channel_id) => Some(channel_id.clone()),
+        SendTarget::Thread(parent_id) => messages::find_message(&lock(&inner.data), parent_id)
+            .and_then(|parent| parent.channel_id),
+        SendTarget::DirectMessage(_) => None,
     }
 }
 
