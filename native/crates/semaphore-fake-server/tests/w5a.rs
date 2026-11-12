@@ -48,9 +48,24 @@ async fn del(client: &reqwest::Client, base: &str, path: &str) -> (u16, Value) {
 }
 
 async fn upload(client: &reqwest::Client, base: &str, kind: &str, community: &str) -> String {
+    let record = upload_record(client, base, kind, Some(community)).await;
+    record["id"].as_str().unwrap().to_owned()
+}
+
+/// An upload as the fake's file record, optionally naming a `resourceId`.
+async fn upload_record(
+    client: &reqwest::Client,
+    base: &str,
+    kind: &str,
+    resource_id: Option<&str>,
+) -> Value {
     let boundary = "w5aboundary";
     let mut body = Vec::new();
-    for (name, value) in [("resourceType", kind), ("resourceId", community)] {
+    let mut fields = vec![("resourceType", kind)];
+    if let Some(resource_id) = resource_id {
+        fields.push(("resourceId", resource_id));
+    }
+    for (name, value) in fields {
         body.extend_from_slice(
             format!(
                 "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
@@ -76,8 +91,7 @@ async fn upload(client: &reqwest::Client, base: &str, kind: &str, community: &st
         .await
         .unwrap();
     assert_eq!(response.status().as_u16(), 201);
-    let record: Value = response.json().await.unwrap();
-    record["id"].as_str().unwrap().to_owned()
+    response.json().await.unwrap()
 }
 
 fn channel_names(channels: &Value) -> Vec<String> {
@@ -182,6 +196,96 @@ async fn deleting_a_community_tells_its_members_first_then_it_is_gone() {
     );
     let (status, _) = del(&client, &base, &format!("/api/community/{couch}")).await;
     assert_eq!(status, 404);
+}
+
+#[tokio::test]
+async fn community_assets_only_use_files_uploaded_for_that_community() {
+    // `FileUploadService.mapResourceIdToTypedColumn`: a community upload records the community;
+    // `CustomEmojiService.createEmoji` and `SoundboardService.createSound` then refuse a file that
+    // isn't theirs, with the backend's messages.
+    let (_server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    let lumen = id("c-lumen");
+
+    let emoji_record = upload_record(&client, &base, "CUSTOM_EMOJI", Some(&couch)).await;
+    let emoji_id = emoji_record["id"].as_str().unwrap().to_owned();
+    assert_eq!(emoji_record["resourceType"], "CUSTOM_EMOJI");
+    assert_eq!(emoji_record["fileCommunityId"], couch.as_str());
+    assert!(emoji_record["fileMessageId"].is_null());
+    assert!(emoji_record["fileUserId"].is_null());
+    // A message attachment lands in its own column.
+    let attachment = upload_record(&client, &base, "MESSAGE_ATTACHMENT", Some(&couch)).await;
+    assert_eq!(attachment["fileMessageId"], couch.as_str());
+    assert!(attachment["fileCommunityId"].is_null());
+    // Without a resourceId none of the typed columns is set.
+    let loose = upload_record(&client, &base, "COMMUNITY_AVATAR", None).await;
+    assert!(loose["fileCommunityId"].is_null());
+
+    // An emoji file uploaded for another community.
+    let elsewhere = upload(&client, &base, "CUSTOM_EMOJI", &lumen).await;
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/custom-emoji/community/{couch}"),
+        json!({ "name": "borrowed", "fileId": elsewhere }),
+    )
+    .await;
+    assert_eq!(
+        (status, body["message"].as_str()),
+        (400, Some("Emoji image does not belong to this community"))
+    );
+
+    // A sound file uploaded for another community.
+    let sound_elsewhere = upload(&client, &base, "SOUNDBOARD_SOUND", &lumen).await;
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/soundboard/community/{couch}"),
+        json!({ "name": "Borrowed", "fileId": sound_elsewhere }),
+    )
+    .await;
+    assert_eq!(
+        (status, body["message"].as_str()),
+        (
+            400,
+            Some("File is not a soundboard sound for this community")
+        )
+    );
+
+    // A file of the wrong kind.
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/soundboard/community/{couch}"),
+        json!({ "name": "Wrong", "fileId": emoji_id }),
+    )
+    .await;
+    assert_eq!(
+        (status, body["message"].as_str()),
+        (
+            400,
+            Some("File is not a soundboard sound for this community")
+        )
+    );
+
+    // Its own community's file is accepted.
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/custom-emoji/community/{couch}"),
+        json!({ "name": "ours", "fileId": emoji_id }),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    let sound = upload(&client, &base, "SOUNDBOARD_SOUND", &couch).await;
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/soundboard/community/{couch}"),
+        json!({ "name": "Ours", "fileId": sound }),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
 }
 
 // ----- channels -------------------------------------------------------------------------------
@@ -409,11 +513,9 @@ async fn changing_privacy_tells_the_community_to_read_permissions_again() {
     .await;
     assert_eq!(status, 200);
     let heard = settle(&server, &mut [&mut samira]).await;
-    // Private with no member list yet: everyone still sees it, as the scenario had it.
-    assert_eq!(
-        names(&heard[0]),
-        ["channelPermissionsUpdated", "channelUpdated"]
-    );
+    // Private with no member list yet: only its viewers (the instance owner) are still in its
+    // room, so the community only learns to read permissions again.
+    assert_eq!(names(&heard[0]), ["channelPermissionsUpdated"]);
     assert_eq!(
         heard[0][0].1,
         json!({ "communityId": couch, "channelId": memes })

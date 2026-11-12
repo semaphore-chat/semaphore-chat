@@ -116,6 +116,112 @@ async fn the_guard_lets_the_instance_owner_through_but_not_past_the_moderation_r
 }
 
 #[tokio::test]
+async fn channel_roles_are_community_roles_and_hidden_channels_answer_none() {
+    // `RolesController.getMyRolesForChannel`: the channel's community roles for the caller, no
+    // channel overwrites (issue #644), and an empty list for a channel they can't see — exactly
+    // what a missing channel answers.
+    let (server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    let general = id("cc-general");
+    let path = format!("/api/roles/my/channel/{general}");
+
+    let (status, body) = get(&client, &base, &path).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["userId"], id("me").as_str());
+    assert_eq!(body["resourceId"], general.as_str());
+    assert_eq!(body["resourceType"], "CHANNEL");
+    assert_eq!(
+        body["roles"].as_array().unwrap().len(),
+        1,
+        "me is only a Member in c-couch: {body}"
+    );
+    assert_eq!(body["roles"][0]["id"], role("role-member-c-couch"));
+
+    // Another member's own roles, with their own session.
+    let samira = bearer_for(&client, &base, "samira", &id("u-samira")).await;
+    let (status, body) = send(&client, reqwest::Method::GET, &base, &path, &samira, None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["roles"][0]["id"], role("role-community-admin-c-couch"));
+
+    // A non-member of the community sees no roles, as they see no channel.
+    let mateo = bearer_for(&client, &base, "mateo", &id("u-mateo")).await;
+    let (status, body) = send(&client, reqwest::Method::GET, &base, &path, &mateo, None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["roles"], json!([]));
+
+    // act_as changes what the route answers, from the same RBAC model the guard uses.
+    server.act_as(&couch, None, &[&role("role-mods-c-couch")]);
+    let (_, body) = get(&client, &base, &path).await;
+    assert_eq!(body["roles"][0]["id"], role("role-mods-c-couch"));
+    // Overwrites are not applied here (issue #644): the role keeps its actions.
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/api/channels/{general}/overwrites"),
+        json!({ "preset": "CUSTOM", "overwrites": [
+            { "targetType": "EVERYONE", "allow": [], "deny": ["PIN_MESSAGE"] }
+        ] }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (_, body) = get(&client, &base, &path).await;
+    assert!(
+        body["roles"][0]["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|action| action == "PIN_MESSAGE"),
+        "the role as stored, not the channel's effective actions: {body}"
+    );
+
+    // A private channel with no list: a member who isn't on it gets nothing; the instance owner
+    // still sees the channel (and their community roles there).
+    let (status, made) = post(
+        &client,
+        &base,
+        "/api/channels",
+        json!({ "name": "secret", "communityId": couch, "type": "TEXT", "isPrivate": true }),
+    )
+    .await;
+    assert_eq!(status, 201, "{made}");
+    let secret = made["id"].as_str().unwrap().to_owned();
+    let secret_path = format!("/api/roles/my/channel/{secret}");
+    let (status, body) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        &secret_path,
+        &samira,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["roles"], json!([]));
+    let (_, body) = get(&client, &base, &secret_path).await;
+    assert_eq!(body["roles"][0]["id"], role("role-mods-c-couch"));
+
+    // On its list, that member gets their roles again.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/api/channel-membership",
+        json!({ "channelId": secret, "userId": id("u-samira") }),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    let (_, body) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        &secret_path,
+        &samira,
+        None,
+    )
+    .await;
+    assert_eq!(body["roles"][0]["id"], role("role-community-admin-c-couch"));
+}
+
+#[tokio::test]
 async fn roles_are_managed_below_your_own_with_only_what_you_hold() {
     let (server, client, base) = showcase().await;
     let couch = id("c-couch");

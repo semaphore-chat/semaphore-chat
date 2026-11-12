@@ -917,22 +917,48 @@ pub(crate) fn voice_join(inner: &Inner, channel_id: &str) -> Value {
         }
     };
     // As the backend's `handleWebhookChannelParticipantJoined`: a new participant is announced to
-    // the channel; one already listed only has its presence refreshed.
+    // the channel, and a standing server mute is announced again in an update so the client
+    // learns its own mute; one already listed only has its presence refreshed.
     if let Some(user) = joined {
-        inner.broadcast(
+        let audience = crate::admin::audience_of(inner, channel_id);
+        inner.emit_to_users(
+            &audience,
             "voiceChannelUserJoined",
             serde_json::json!({ "channelId": channel_id, "user": user }),
         );
+        if server_muted {
+            inner.emit_to_users(
+                &audience,
+                "voiceChannelUserUpdated",
+                serde_json::json!({ "channelId": channel_id, "userId": me.id, "user": user }),
+            );
+        }
     }
     presence_result(channel_id, "Joined voice channel")
 }
 
 pub(crate) fn voice_leave(inner: &Inner, channel_id: &str) -> Value {
-    {
+    // `VoicePresenceService.leaveVoiceChannel`: a user not listed left silently; one listed is
+    // removed and `voiceChannelUserLeft` goes to the channel.
+    let left = {
         let mut data = lock(&inner.data);
-        if let Some(users) = data.voice.get_mut(channel_id) {
-            users.retain(|user| user.id != inner.scenario.me.id);
-        }
+        data.voice.get_mut(channel_id).and_then(|users| {
+            let index = users
+                .iter()
+                .position(|user| user.id == inner.scenario.me.id)?;
+            Some(users.remove(index))
+        })
+    };
+    if let Some(user) = left {
+        inner.emit_to_users(
+            &crate::admin::audience_of(inner, channel_id),
+            "voiceChannelUserLeft",
+            serde_json::json!({
+                "channelId": channel_id,
+                "userId": inner.scenario.me.id,
+                "user": user,
+            }),
+        );
     }
     presence_result(channel_id, "Left voice channel")
 }
@@ -942,17 +968,32 @@ pub(crate) fn voice_refresh(_inner: &Inner, channel_id: &str) -> Value {
 }
 
 pub(crate) fn voice_deafen(inner: &Inner, channel_id: &str, deafened: bool) -> Value {
-    {
+    // `VoicePresenceService.updateDeafenState`: a user not listed changes nothing and sends no
+    // event; one listed is updated and `voiceChannelUserUpdated` goes to the channel.
+    let updated = {
         let mut data = lock(&inner.data);
-        if let Some(user) = data
-            .voice
-            .entry(channel_id.to_owned())
-            .or_default()
-            .iter_mut()
-            .find(|user| user.id == inner.scenario.me.id)
-        {
-            user.is_deafened = deafened;
-        }
+        data.voice
+            .get_mut(channel_id)
+            .and_then(|users| {
+                users
+                    .iter_mut()
+                    .find(|user| user.id == inner.scenario.me.id)
+            })
+            .map(|user| {
+                user.is_deafened = deafened;
+                user.clone()
+            })
+    };
+    if let Some(user) = updated {
+        inner.emit_to_users(
+            &crate::admin::audience_of(inner, channel_id),
+            "voiceChannelUserUpdated",
+            serde_json::json!({
+                "channelId": channel_id,
+                "userId": inner.scenario.me.id,
+                "user": user,
+            }),
+        );
     }
     presence_result(channel_id, "Deafen state updated")
 }
