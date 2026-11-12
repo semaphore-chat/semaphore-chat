@@ -1002,6 +1002,11 @@ pub fn project(
         name: webhook.name.clone(),
         avatar_url: webhook.avatar_url.clone(),
     });
+    let gif = if removed {
+        None
+    } else {
+        crate::text::gif::lone_gif_url(&display)
+    };
     MessageRow {
         seq: row.seq,
         id: (!message.is_placeholder()).then(|| dto.id.clone()),
@@ -1039,8 +1044,7 @@ pub fn project(
         last_reply_at_ms: dto.last_reply_at.map(|at| at.timestamp_millis()),
         reply_to,
         link_previews,
-        // W7-A fills it.
-        gif: None,
+        gif,
         pinned: dto.pinned,
         pinned_by: pinned_by.filter(|_| dto.pinned),
         pinned_at_ms: dto.pinned_at.map(|at| at.timestamp_millis()),
