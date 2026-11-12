@@ -85,6 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `GET /notifications/channels/:id/override` now answers JSON `null` when there is no override, instead of an empty 200 body that generated clients could not decode. (#650)
 - The public invite lookup now answers 404 with a reason (unknown, expired, used up or disabled) instead of an empty 200 body, and the join page says why a link cannot be used. (#653)
 - A replay clip download is limited to one at a time per user (a second request answers 429), and its temporary file is always removed, including when the client disconnects or FFmpeg fails. (#674)
+- Replay clips now report their `width` and `height`, like uploaded videos, so clients can reserve the clip's box before it loads. (#728)
+- Registration now follows the instance's registration mode: sign-up is refused when registration is closed, needs an invite code when it is invite-only, and needs no code when it is open (a code sent anyway is still validated and redeemed). (#652)
 
 ## [0.9.0] - 2026-11-11
 

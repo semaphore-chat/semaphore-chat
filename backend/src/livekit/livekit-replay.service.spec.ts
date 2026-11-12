@@ -1,4 +1,5 @@
 import { TestBed } from '@suites/unit';
+import type { Mocked } from '@suites/doubles.jest';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CLIP_MESSAGE_CREATE } from '@/common/events/clip-message.events';
@@ -15,6 +16,7 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { AudioCodec, EgressStatus } from 'livekit-server-sdk';
 import { ThumbnailService } from '@/file/thumbnail.service';
+import { MediaDimensionsService } from '@/file/media-dimensions.service';
 import { FfmpegService } from './ffmpeg.service';
 import { ReplaySegmentsService } from './replay-segments.service';
 import { EGRESS_CLIENT } from './providers/egress-client.provider';
@@ -33,6 +35,8 @@ describe('LivekitReplayService', () => {
   let websocketService: any;
 
   let thumbnailService: any;
+
+  let mediaDimensionsService: Mocked<MediaDimensionsService>;
 
   let ffmpegService: any;
 
@@ -83,6 +87,7 @@ describe('LivekitReplayService', () => {
     websocketService = unitRef.get(WebsocketService);
 
     thumbnailService = unitRef.get(ThumbnailService);
+    mediaDimensionsService = unitRef.get(MediaDimensionsService);
     ffmpegService = unitRef.get(FfmpegService);
     replaySegmentsService = unitRef.get(ReplaySegmentsService);
     eventEmitter = unitRef.get(EventEmitter2);
@@ -928,6 +933,34 @@ describe('LivekitReplayService', () => {
         '/app/uploads/thumbnails/file-1.jpg',
       );
       databaseService.file.update.mockResolvedValue({});
+    });
+
+    it('stores the probed clip dimensions on the file record', async () => {
+      mediaDimensionsService.read.mockResolvedValue({
+        width: 1920,
+        height: 1080,
+      });
+
+      await service.captureReplay(userId, dto);
+
+      expect(mediaDimensionsService.read).toHaveBeenCalledWith(
+        expect.stringContaining('replay-'),
+        'video/mp4',
+      );
+      expect(databaseService.file.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ width: 1920, height: 1080 }),
+      });
+    });
+
+    it('still creates the clip when the dimension probe returns null', async () => {
+      mediaDimensionsService.read.mockResolvedValue(null);
+
+      const result = await service.captureReplay(userId, dto);
+
+      expect(result.clipId).toBe('clip-1');
+      expect(databaseService.file.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ width: null, height: null }),
+      });
     });
 
     it('should call generateVideoThumbnail after file creation', async () => {

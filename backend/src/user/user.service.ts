@@ -8,6 +8,7 @@ import {
 import {
   InstanceInvite,
   InstanceRole,
+  RegistrationMode,
   User,
   Prisma,
   RbacActions,
@@ -31,7 +32,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { SessionRevocationService } from '@/auth/session-revocation.service';
 import { PermissionsService } from '@/roles/permissions.service';
-import { InstanceRolesService } from '@/roles/instance-roles.service';
+import { InstanceRolesService } from '../roles/instance-roles.service';
+import { InstanceService } from '../instance/instance.service';
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 
 import { lockUserForSessionRevocation } from '@/auth/session-lock.util';
@@ -57,6 +59,7 @@ export class UserService {
     private readonly sessionRevocationService: SessionRevocationService,
     private readonly permissionsService: PermissionsService,
     private readonly instanceRolesService: InstanceRolesService,
+    private readonly instanceService: InstanceService,
   ) {}
 
   async findByUsername(username: string): Promise<User | null> {
@@ -85,22 +88,39 @@ export class UserService {
   }
 
   async createUser(
-    code: string,
+    code: string | undefined,
     username: string,
     password: string,
     email?: string,
   ): Promise<User> {
-    // The invite first: without one, nobody learns whether a name or email
-    // is taken.
-    const invite = await this.getInvite(code);
-    if (!invite) {
-      throw new NotFoundException('No invite found for the provided code.');
+    const { registrationMode } = await this.instanceService.getSettings();
+
+    // Closed means closed: refusing before the invite lookup keeps a valid
+    // code from being redeemed on a server that takes no registrations.
+    if (registrationMode === RegistrationMode.CLOSED) {
+      throw new ForbiddenException('Registration is closed on this server');
+    }
+
+    // INVITE_ONLY needs a code; OPEN redeems a code when one is given. Either
+    // way an invalid or missing required code is refused before anything
+    // reveals whether a name or email is taken.
+    let invite: InstanceInvite | null = null;
+    if (registrationMode === RegistrationMode.INVITE_ONLY || code) {
+      invite = code ? await this.getInvite(code) : null;
+      if (!invite) {
+        throw new NotFoundException('No invite found for the provided code.');
+      }
     }
     await this.checkForFieldConflicts(username, email);
 
     const userCount = await this.databaseService.user.count();
-    const role = userCount === 0 ? InstanceRole.OWNER : InstanceRole.USER;
-    const verified = userCount === 0;
+    // The first account on an empty instance becomes its owner, but only when
+    // it came in on an invite, as before. Open registration without a code
+    // never makes an owner: if an instance were ever left with no users while
+    // open, the first passer-by would otherwise own it.
+    const firstUser = userCount === 0 && invite !== null;
+    const role = firstUser ? InstanceRole.OWNER : InstanceRole.USER;
+    const verified = firstUser;
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Epoch bumps from the tx-nested role mutations below are collected here
@@ -121,20 +141,26 @@ export class UserService {
         },
       });
 
-      const updatedInvite = await this.instanceInviteService.redeemInviteWithTx(
-        tx,
-        invite.code,
-        createdUser.id,
-      );
+      // An open registration without a code joins no communities: the invite
+      // is the only thing that adds a new user to any.
+      let defaultCommunityIds: string[] = [];
+      if (invite) {
+        const updatedInvite =
+          await this.instanceInviteService.redeemInviteWithTx(
+            tx,
+            invite.code,
+            createdUser.id,
+          );
 
-      if (!updatedInvite) {
-        throw new NotFoundException('Failed to redeem invite.');
+        if (!updatedInvite) {
+          throw new NotFoundException('Failed to redeem invite.');
+        }
+
+        // Add user to default communities specified in the invite
+        defaultCommunityIds = updatedInvite.defaultCommunities.map(
+          (dc) => dc.communityId,
+        );
       }
-
-      // Add user to default communities specified in the invite
-      const defaultCommunityIds = updatedInvite.defaultCommunities.map(
-        (dc) => dc.communityId,
-      );
       if (defaultCommunityIds.length > 0) {
         await tx.membership.createMany({
           data: defaultCommunityIds.map((communityId) => ({
