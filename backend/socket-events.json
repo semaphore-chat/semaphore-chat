@@ -76,6 +76,16 @@
         "$ref": "./openapi.json#/components/schemas/DesktopSignInPayloadDto"
       }
     },
+    "dmVoiceCallDeclined": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmVoiceCallDeclinedPayloadDto"
+      }
+    },
+    "dmVoiceCallEnded": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmVoiceCallEndedPayloadDto"
+      }
+    },
     "dmVoiceCallStarted": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/DmVoiceCallStartedPayloadDto"

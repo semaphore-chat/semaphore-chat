@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Clients now learn when a timeout ends on its own, so posting and voice controls come back without a reload. (#684)
 - A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
+- Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
+
+### Fixed
+
+- The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
 - A moderator can now remove someone from a voice call without kicking them from the community, and the voice presence response tells clients which participants the caller may moderate. (#663)
 
 ### Changed

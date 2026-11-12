@@ -13,6 +13,7 @@ import {
   useTopChromeOffset,
 } from "../../contexts/BottomChromeContext";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
+import { dmVoicePresenceControllerDeclineDmVoiceCall } from "../../api-client/sdk.gen";
 
 const pulseKeyframes = {
   "@keyframes incomingCallPulse": {
@@ -60,7 +61,15 @@ export const IncomingCallBanner: React.FC = () => {
 
   const handleDecline = () => {
     playSound(Sounds.callEnded);
+    // Stop ringing here whatever the server answers: the request only tells
+    // the caller and this account's other devices.
     dismissCall();
+    dmVoicePresenceControllerDeclineDmVoiceCall({
+      path: { dmGroupId: incomingCall.dmGroupId },
+      throwOnError: true,
+    }).catch((error: unknown) => {
+      logger.warn("Failed to decline the incoming DM voice call:", error);
+    });
   };
 
   return (

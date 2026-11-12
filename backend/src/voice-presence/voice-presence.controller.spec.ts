@@ -268,6 +268,29 @@ describe('DmVoicePresenceController', () => {
       });
     });
   });
+
+  describe('declineDmVoiceCall', () => {
+    it('should decline the call for the requesting user', async () => {
+      const dmGroupId = 'dm-group-123';
+
+      service.declineDmVoiceCall.mockResolvedValue();
+
+      const result = await controller.declineDmVoiceCall(
+        dmGroupId,
+        mockRequest,
+      );
+
+      expect(service.declineDmVoiceCall).toHaveBeenCalledWith(
+        dmGroupId,
+        mockUser.id,
+      );
+      expect(result).toEqual({
+        success: true,
+        message: 'Call declined',
+        dmGroupId,
+      });
+    });
+  });
 });
 
 describe('UserVoicePresenceController', () => {

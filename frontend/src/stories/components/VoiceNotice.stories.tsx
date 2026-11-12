@@ -58,3 +58,5 @@ export const ChannelGone = callEnded(VoiceEndReason.ChannelNotFound);
 export const SessionExpired = callEnded(VoiceEndReason.SessionExpired);
 /** Every automatic rejoin failed: Retry. */
 export const ReconnectFailed = callEnded(VoiceEndReason.ReconnectFailed);
+/** The other person declined our 1:1 DM call. */
+export const CallDeclined = callEnded(VoiceEndReason.CallDeclined);
