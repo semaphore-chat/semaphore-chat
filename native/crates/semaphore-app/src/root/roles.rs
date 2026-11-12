@@ -30,7 +30,6 @@ impl AppRoot {
     }
 
     /// The view for `CommunitySettingsScreen::set_roles_slot`, built for this community.
-    #[expect(dead_code, reason = "W5-app skeleton: the community module calls it")]
     pub(super) fn roles_slot(
         &mut self,
         _community_id: &str,
@@ -42,7 +41,6 @@ impl AppRoot {
 
     /// The view for `ChannelsTab::set_permissions_slot` while the Edit Channel dialog is open on
     /// `channel_id` (`ChannelsEvent::OpenEdit`); `close_channel_permissions` on `CloseEdit`.
-    #[expect(dead_code, reason = "W5-app skeleton: the community module calls it")]
     pub(super) fn channel_permissions_slot(
         &mut self,
         _community_id: &str,
@@ -53,11 +51,9 @@ impl AppRoot {
         None
     }
 
-    #[expect(dead_code, reason = "W5-app skeleton: the community module calls it")]
     pub(super) fn close_channel_permissions(&mut self, _cx: &mut Context<Self>) {}
 
     /// One member's roles (`MembersEvent::ManageRoles`, `ModerationMenuEvent::ChangeRoles`).
-    #[expect(dead_code, reason = "W5-app skeleton: the community module calls it")]
     pub(super) fn open_role_assignment(
         &mut self,
         _community_id: String,

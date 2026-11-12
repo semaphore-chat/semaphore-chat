@@ -1177,8 +1177,12 @@ fn the_settings_entry_needs_a_change_not_just_reading() {
         ("create_channel", |c| c.create_channel = true),
         ("update_channel", |c| c.update_channel = true),
         ("delete_channel", |c| c.delete_channel = true),
-        ("manage_private_members", |c| c.manage_private_members = true),
-        ("manage_channel_permissions", |c| c.manage_channel_permissions = true),
+        ("manage_private_members", |c| {
+            c.manage_private_members = true
+        }),
+        ("manage_channel_permissions", |c| {
+            c.manage_channel_permissions = true
+        }),
         ("create_role", |c| c.create_role = true),
         ("update_role", |c| c.update_role = true),
         ("delete_role", |c| c.delete_role = true),

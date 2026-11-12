@@ -29,7 +29,6 @@ impl AppRoot {
     }
 
     /// The view for `CommunitySettingsScreen::set_moderation_slot`, built for this community.
-    #[expect(dead_code, reason = "W5-app skeleton: the community module calls it")]
     pub(super) fn moderation_slot(
         &mut self,
         _community_id: &str,

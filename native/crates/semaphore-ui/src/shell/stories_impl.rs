@@ -4,6 +4,7 @@ use super::fixtures::{Fake, Fixture, FixtureSource};
 use super::*;
 use crate::kit::{Button as KitButton, ButtonSize, on_core_event as subscribe, spacing};
 use crate::stories::{Story, StoryEnv};
+use semaphore_core::model::CommunityCaps;
 use semaphore_core::model::{Conversation, ListOp, MessageRow};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -472,6 +473,41 @@ pub fn stories() -> Vec<Story> {
             },
         ),
         shell_story!("shell-empty-channel", messages: false),
+        // W5: the sidebar's settings button (some change allowed) and the channel list's "+"
+        // (`create_channel`). The scenarios' `me` is an owner, so every other story has both.
+        shell_story!("shell-caps-reader", edit: |fixture| fixture.caps = Some(reader_caps())),
+        shell_story!(
+            "shell-caps-settings-only",
+            edit: |fixture| {
+                fixture.caps = Some(CommunityCaps {
+                    update_community: true,
+                    ..reader_caps()
+                })
+            },
+        ),
+        shell_story!(
+            "shell-caps-create-channel",
+            edit: |fixture| {
+                fixture.caps = Some(CommunityCaps {
+                    create_channel: true,
+                    ..reader_caps()
+                })
+            },
+        ),
+        shell_story!(
+            "shell-caps-voice-only-create",
+            channel: None,
+            edit: |fixture| fixture.views.channels.retain(|c| c.kind == ChannelKind::Voice),
+        ),
+        shell_story!(
+            "shell-empty-community-reader",
+            channel: None,
+            edit: |fixture| {
+                fixture.views.channels.clear();
+                fixture.members.clear();
+                fixture.caps = Some(reader_caps());
+            },
+        ),
         shell_story!(
             "shell-loading",
             edit: |fixture| {
@@ -497,4 +533,16 @@ pub fn stories() -> Vec<Story> {
             },
         ),
     ]
+}
+
+/// What the default Member role holds: reading only, so neither the settings button nor the "+".
+fn reader_caps() -> CommunityCaps {
+    CommunityCaps {
+        read_members: true,
+        read_roles: true,
+        read_alias_groups: true,
+        read_sounds: true,
+        delete_invite: true,
+        ..CommunityCaps::default()
+    }
 }
