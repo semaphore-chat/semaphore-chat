@@ -208,6 +208,31 @@ async fn featured_and_search_are_separate_lists() {
 }
 
 #[tokio::test]
+async fn a_new_connection_reads_the_gif_lists_again() {
+    let rig = gifs_rig().await;
+    rig.backend.w4.answer(
+        "w7a_featured",
+        page_json(&[gif_json("f1", "Featured")], None),
+    );
+    rig.core.gifs(String::new());
+    rig.core.run_until_idle().await;
+    assert_eq!(rig.backend.w4.count("w7a_featured"), 1);
+
+    rig.backend
+        .w4
+        .answer("w7a_featured", page_json(&[gif_json("f2", "Newer")], None));
+    rig.core.ingest(dropped());
+    rig.core.ingest(connected());
+    rig.core.run_until_idle().await;
+    // The list reads again when it is next asked for, and shows what the server has now.
+    rig.core.gifs(String::new());
+    rig.core.run_until_idle().await;
+
+    assert_eq!(rig.backend.w4.count("w7a_featured"), 2);
+    assert_eq!(ids(&rig.core.gifs(String::new())), vec!["f2"]);
+}
+
+#[tokio::test]
 async fn paging_table() {
     // No next: nothing more to read.
     let rig = gifs_rig().await;

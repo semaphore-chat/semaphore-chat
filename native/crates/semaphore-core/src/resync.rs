@@ -61,6 +61,8 @@ impl State {
                     .copied()
                     .flatten(),
             )
+            // W7-A's GIF lists: no socket event tells a client they changed.
+            .chain(crate::commands::gifs::keys::RECONNECT)
         {
             marked.extend(self.invalidate(&keys::op(op)));
         }
