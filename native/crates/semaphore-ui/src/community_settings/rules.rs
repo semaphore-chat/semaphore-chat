@@ -456,7 +456,9 @@ pub fn first_open_tab(caps: &CommunityCaps) -> CommunityTab {
 
 /// Whether the community's settings entry (the sidebar header's button) is offered: some change
 /// these caps allow. Reading alone doesn't count, since the default Member role reads members and
-/// sounds, and every member could otherwise open a page of disabled controls.
+/// sounds, and every member could otherwise open a page of disabled controls. `delete_invite` on
+/// its own doesn't count either: it is deliberately ignored below, and a member who holds nothing
+/// else (see `reader_caps` in the shell stories) gets no settings entry.
 pub fn opens_settings(caps: &CommunityCaps) -> bool {
     let CommunityCaps {
         update_community,

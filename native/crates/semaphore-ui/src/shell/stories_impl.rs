@@ -535,7 +535,8 @@ pub fn stories() -> Vec<Story> {
     ]
 }
 
-/// What the default Member role holds: reading only, so neither the settings button nor the "+".
+/// What the default Member role holds: reading, plus `delete_invite` (which on its own doesn't open
+/// the settings page), so neither the settings button nor the "+".
 fn reader_caps() -> CommunityCaps {
     CommunityCaps {
         read_members: true,
