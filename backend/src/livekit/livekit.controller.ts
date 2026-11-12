@@ -16,7 +16,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerException } from '@nestjs/throttler';
 import { Response } from 'express';
 import { LivekitService } from './livekit.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
@@ -69,6 +69,12 @@ import type { AccessTokenClaims } from '@/auth/token-blacklist.service';
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class LivekitController {
   private readonly logger = new Logger(LivekitController.name);
+
+  /**
+   * Users with a replay download in flight. Each one holds a whole clip of
+   * temporary disk, so a user gets one at a time (429 for a second).
+   */
+  private readonly replayDownloads = new Set<string>();
 
   constructor(
     private readonly livekitService: LivekitService,
@@ -283,7 +289,8 @@ export class LivekitController {
 
   /**
    * Stream a replay clip directly (download-only, no persistence)
-   * Creates a temporary file, streams it, and deletes it after streaming completes
+   * Creates a temporary file, streams it, and deletes it after streaming completes.
+   * One download per user at a time: each holds a whole clip of temp disk.
    */
   @Get('replay/stream')
   @ApiOkResponse({
@@ -297,19 +304,38 @@ export class LivekitController {
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
+    const userId = req.user.id;
+    if (this.replayDownloads.has(userId)) {
+      throw new ThrottlerException(
+        'A replay download is already in progress. Wait for it to finish.',
+      );
+    }
+    this.replayDownloads.add(userId);
+
     let tempPath: string | null = null;
+    let deletion: Promise<void> | null = null;
+    /** Removes the temp file once, whichever path gets here first. */
+    const deleteTempFile = (): Promise<void> => {
+      if (!tempPath) return Promise.resolve();
+      deletion ??= this.storageService
+        .deleteFile(tempPath)
+        .catch((cleanupError) => {
+          // Log but don't throw: the stream outcome stands, and a leftover
+          // file in /tmp is better than a 500 after the clip went out.
+          this.logger.error('Failed to cleanup temp file:', cleanupError);
+        });
+      return deletion;
+    };
 
     try {
-      // Create temp file with concatenated segments
       tempPath = await this.livekitReplayService.streamReplay(
-        req.user.id,
+        userId,
         query.durationMinutes,
       );
+      const pathToSend = tempPath;
 
-      // Get file stats for content-length header
-      const stats = await this.storageService.getFileStats(tempPath);
+      const stats = await this.storageService.getFileStats(pathToSend);
 
-      // Set headers for file download
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader(
         'Content-Disposition',
@@ -317,34 +343,23 @@ export class LivekitController {
       );
       res.setHeader('Content-Length', stats.size);
 
-      // Stream the file and delete after completion
-      res.sendFile(tempPath, (err) => {
-        // Clean up temp file after streaming (success or failure)
-        if (tempPath) {
-          this.storageService.deleteFile(tempPath).catch((cleanupError) => {
-            // Log but don't throw - file might already be deleted
-            this.logger.error('Failed to cleanup temp file:', cleanupError);
-          });
-        }
-
-        // If there was an error streaming, log it
-        if (err) {
-          this.logger.error('Error streaming replay file:', err);
-        }
+      // `close` fires after a completed response and when the client aborts;
+      // the sendFile callback covers a failure before the stream starts.
+      res.once('close', () => {
+        void deleteTempFile();
       });
-    } catch (error) {
-      // If error before streaming started, clean up temp file
-      if (tempPath) {
-        try {
-          await this.storageService.deleteFile(tempPath);
-        } catch (cleanupError) {
-          this.logger.error(
-            'Failed to cleanup temp file after error:',
-            cleanupError,
-          );
-        }
-      }
-      throw error;
+      await new Promise<void>((resolve) => {
+        res.once('close', resolve);
+        res.sendFile(pathToSend, (err) => {
+          if (err) {
+            this.logger.error('Error streaming replay file:', err);
+          }
+          resolve();
+        });
+      });
+    } finally {
+      await deleteTempFile();
+      this.replayDownloads.delete(userId);
     }
   }
 

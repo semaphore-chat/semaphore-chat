@@ -11,6 +11,7 @@ import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { InstanceRolesService } from '@/roles/instance-roles.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { PublicInviteDto } from './dto/public-invite.dto';
+import { ErrorCode } from '@semaphore-chat/shared';
 import {
   InstanceInvite,
   InstanceInviteDefaultCommunity,
@@ -218,8 +219,11 @@ export class InviteService {
   /**
    * What the join screen shows, for a code that can still be used. Anyone can
    * ask, so no ids, no redeemers and no target communities.
+   *
+   * Every unusable code answers 404 with its own reason, so the join screen can
+   * say why and a generated client never has to decode an empty body.
    */
-  async getPublicInvite(code: string): Promise<PublicInviteDto | null> {
+  async getPublicInvite(code: string): Promise<PublicInviteDto> {
     const invite = await this.databaseService.instanceInvite.findUnique({
       where: { code },
       select: {
@@ -231,13 +235,34 @@ export class InviteService {
         createdBy: { select: { username: true } },
       },
     });
-    if (
-      !invite ||
-      invite.disabled ||
-      (invite.validUntil && new Date() > invite.validUntil) ||
-      (invite.maxUses !== null && invite.uses >= invite.maxUses)
-    ) {
-      return null;
+    if (!invite) {
+      throw new NotFoundException('This invite link is invalid.', {
+        description: 'Not Found',
+        errorCode: ErrorCode.INVITE_NOT_FOUND,
+      });
+    }
+    // Expiry and exhaustion before `disabled`: redemption also disables an
+    // invite once its last use is spent, and the more specific reason helps.
+    if (invite.validUntil && new Date() > invite.validUntil) {
+      throw new NotFoundException('This invite has expired.', {
+        description: 'Not Found',
+        errorCode: ErrorCode.INVITE_EXPIRED,
+      });
+    }
+    if (invite.maxUses !== null && invite.uses >= invite.maxUses) {
+      throw new NotFoundException(
+        'This invite has reached its maximum number of uses.',
+        {
+          description: 'Not Found',
+          errorCode: ErrorCode.INVITE_EXHAUSTED,
+        },
+      );
+    }
+    if (invite.disabled) {
+      throw new NotFoundException('This invite has been disabled.', {
+        description: 'Not Found',
+        errorCode: ErrorCode.INVITE_DISABLED,
+      });
     }
     return invite;
   }

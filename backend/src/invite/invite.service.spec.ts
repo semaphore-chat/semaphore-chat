@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
+import { ErrorCode } from '@semaphore-chat/shared';
 import type { Mocked } from '@suites/doubles.jest';
 import { InviteService } from './invite.service';
 import { PermissionsService } from '@/roles/permissions.service';
@@ -179,6 +180,78 @@ describe('InviteService', () => {
 
       const createCall = mockDatabase.instanceInvite.create.mock.calls[0][0];
       expect(createCall.data.code).toHaveLength(12);
+    });
+  });
+
+  describe('getPublicInvite', () => {
+    const invite = {
+      code: 'PUBLIC123',
+      uses: 1,
+      maxUses: 5,
+      validUntil: null,
+      disabled: false,
+      createdBy: { username: 'owner' },
+    };
+
+    /** The error a rejected lookup threw. */
+    const rejection = async (code: string): Promise<NotFoundException> => {
+      try {
+        await service.getPublicInvite(code);
+      } catch (error) {
+        return error as NotFoundException;
+      }
+      throw new Error('expected getPublicInvite to reject');
+    };
+
+    it('returns what the join screen shows for a usable code', async () => {
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue(invite);
+
+      await expect(service.getPublicInvite(invite.code)).resolves.toEqual(
+        invite,
+      );
+    });
+
+    it.each([
+      ['an unknown code', null, ErrorCode.INVITE_NOT_FOUND],
+      [
+        'an expired invite',
+        { ...invite, validUntil: new Date(Date.now() - 60_000) },
+        ErrorCode.INVITE_EXPIRED,
+      ],
+      [
+        'an exhausted invite',
+        { ...invite, uses: 5, maxUses: 5 },
+        ErrorCode.INVITE_EXHAUSTED,
+      ],
+      [
+        'a disabled invite',
+        { ...invite, disabled: true },
+        ErrorCode.INVITE_DISABLED,
+      ],
+    ])('answers 404 with a reason for %s', async (_label, row, code) => {
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue(row);
+
+      const error = await rejection('whatever');
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.getStatus()).toBe(404);
+      expect(error.getResponse()).toMatchObject({ errorCode: code });
+    });
+
+    it('reports exhaustion rather than "disabled" when the last use spent it', async () => {
+      // Redemption also flips `disabled` on the last use.
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue({
+        ...invite,
+        uses: 5,
+        maxUses: 5,
+        disabled: true,
+      });
+
+      const error = await rejection('whatever');
+
+      expect(error.getResponse()).toMatchObject({
+        errorCode: ErrorCode.INVITE_EXHAUSTED,
+      });
     });
   });
 

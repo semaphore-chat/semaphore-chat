@@ -1101,9 +1101,21 @@ export class LivekitReplayService
     const tempFilename = `replay-stream-${userId}-${timestamp}.mp4`;
     const tempPath = path.join('/tmp', tempFilename);
 
-    // 5. Concatenate segments with FFmpeg to temp file
+    // 5. Concatenate segments with FFmpeg to temp file. A failed run can
+    // leave a partial file behind, and the controller never learns its path
+    // (this call throws instead of returning it), so remove it here.
     const segmentPaths = segments.map((s) => s.path);
-    await this.ffmpegService.concatenateSegments(segmentPaths, tempPath);
+    try {
+      await this.ffmpegService.concatenateSegments(segmentPaths, tempPath);
+    } catch (error) {
+      await this.storageService.deleteFile(tempPath).catch((cleanupError) => {
+        this.logger.error(
+          `Failed to remove temp replay file ${tempPath} after FFmpeg failed:`,
+          cleanupError,
+        );
+      });
+      throw error;
+    }
 
     this.logger.log(`Created temp replay file for streaming at ${tempPath}`);
 

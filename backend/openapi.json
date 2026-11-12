@@ -4861,7 +4861,7 @@
             }
           }
         },
-        "summary": "Stream a replay clip directly (download-only, no persistence)\nCreates a temporary file, streams it, and deletes it after streaming completes",
+        "summary": "Stream a replay clip directly (download-only, no persistence)\nCreates a temporary file, streams it, and deletes it after streaming completes.\nOne download per user at a time: each holds a whole clip of temp disk.",
         "tags": [
           "Livekit"
         ]
@@ -6094,6 +6094,47 @@
         },
         "tags": [
           "Membership"
+        ]
+      }
+    },
+    "/api/invite/{code}/accept": {
+      "post": {
+        "operationId": "inviteControllerAcceptInvite",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptInviteResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "",
+        "tags": [
+          "AcceptInvite"
         ]
       }
     },
@@ -7382,11 +7423,16 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "The override, or null when the user has none",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChannelNotificationOverrideDto"
+                  "nullable": true,
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ChannelNotificationOverrideDto"
+                    }
+                  ]
                 }
               }
             }
@@ -7402,7 +7448,7 @@
             }
           }
         },
-        "summary": "Get channel notification override\nGET /notifications/channels/:channelId/override",
+        "summary": "Get channel notification override\nGET /notifications/channels/:channelId/override\n\nAnswers JSON null when the user has no override: an empty 200 body cannot\nbe decoded by generated API clients.",
         "tags": [
           "Notifications"
         ]
@@ -13897,6 +13943,72 @@
           "members"
         ]
       },
+      "InviteCommunityDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "InviteSkipReason": {
+        "type": "string",
+        "enum": [
+          "already_member",
+          "banned"
+        ]
+      },
+      "SkippedInviteCommunityDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InviteSkipReason"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "id",
+          "name"
+        ]
+      },
+      "AcceptInviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "joined": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteCommunityDto"
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkippedInviteCommunityDto"
+            }
+          }
+        },
+        "required": [
+          "joined",
+          "skipped"
+        ]
+      },
       "ModerationBanUserDto": {
         "type": "object",
         "properties": {
@@ -14902,6 +15014,21 @@
           }
         }
       },
+      "UpdateChannelOverrideDto": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationLevel"
+              }
+            ]
+          }
+        },
+        "required": [
+          "level"
+        ]
+      },
       "ChannelNotificationOverrideDto": {
         "type": "object",
         "properties": {
@@ -14933,21 +15060,6 @@
           "level",
           "createdAt",
           "updatedAt"
-        ]
-      },
-      "UpdateChannelOverrideDto": {
-        "type": "object",
-        "properties": {
-          "level": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/NotificationLevel"
-              }
-            ]
-          }
-        },
-        "required": [
-          "level"
         ]
       },
       "SendTestNotificationDto": {
@@ -18204,7 +18316,11 @@
           "ATTACH_NOT_ALLOWED",
           "FILE_NOT_OWNED",
           "UPLOAD_TARGET_NOT_ALLOWED",
-          "STORAGE_QUOTA_EXCEEDED"
+          "STORAGE_QUOTA_EXCEEDED",
+          "INVITE_NOT_FOUND",
+          "INVITE_EXPIRED",
+          "INVITE_EXHAUSTED",
+          "INVITE_DISABLED"
         ]
       },
       "SendAckErrorDto": {

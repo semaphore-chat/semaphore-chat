@@ -1,6 +1,7 @@
 import * as request from 'supertest';
 import { randomUUID } from 'crypto';
 import { RbacActions } from '@prisma/client';
+import { ErrorCode } from '@semaphore-chat/shared';
 import { authzFixture, AuthzFixture, unique } from './helpers/authz-fixture';
 
 /**
@@ -108,18 +109,24 @@ describe('Instance invites (e2e)', () => {
     });
 
     it.each([
-      ['disabled', { disabled: true }],
-      ['expired', { validUntil: new Date(Date.now() - 60_000) }],
-      ['used up', { maxUses: 1 }],
-    ])('does not answer for a %s invite', async (_label, extra) => {
+      ['disabled', { disabled: true }, ErrorCode.INVITE_DISABLED],
+      [
+        'expired',
+        { validUntil: new Date(Date.now() - 60_000) },
+        ErrorCode.INVITE_EXPIRED,
+      ],
+      ['used up', { maxUses: 1 }, ErrorCode.INVITE_EXHAUSTED],
+    ])('does not answer for a %s invite', async (_label, extra, errorCode) => {
       const invite = await seeded(extra);
-      const res = await lookup(invite.code).expect(200);
-      expect(res.body).toEqual({});
+      const res = await lookup(invite.code).expect(404);
+      expect(res.body).toMatchObject({ errorCode });
     });
 
     it('an unknown code answers the same way', async () => {
-      const res = await lookup('no-such-code').expect(200);
-      expect(res.body).toEqual({});
+      const res = await lookup('no-such-code').expect(404);
+      expect(res.body).toMatchObject({
+        errorCode: ErrorCode.INVITE_NOT_FOUND,
+      });
     });
 
     it('the authenticated lookup keeps the full record for invite managers', async () => {
@@ -172,6 +179,118 @@ describe('Instance invites (e2e)', () => {
           },
         }),
       ).toBe(1);
+    });
+  });
+
+  describe('accepting with an existing account', () => {
+    type AcceptBody = {
+      joined: { id: string; name: string }[];
+      skipped: { id: string; name: string; reason: string }[];
+    };
+
+    const accept = (who: Who, code: string) =>
+      f
+        .http()
+        .post(`/api/invite/${code}/accept`)
+        .set('Authorization', f.bearer(who));
+
+    it('joins the invite communities and counts one use', async () => {
+      const c = await f.community();
+      const res = await create('owner', [c.id]).expect(201);
+      const { code } = res.body as { code: string };
+
+      const accepted = await accept('member', code).expect(200);
+      const body = accepted.body as AcceptBody;
+      expect(body.joined).toHaveLength(1);
+      expect(body.joined[0].id).toBe(c.id);
+      expect(typeof body.joined[0].name).toBe('string');
+      expect(body.skipped).toEqual([]);
+
+      expect(
+        await f.db.membership.count({
+          where: { userId: f.id.member, communityId: c.id },
+        }),
+      ).toBe(1);
+      expect(
+        await f.db.userRoles.count({
+          where: {
+            userId: f.id.member,
+            communityId: c.id,
+            role: { name: 'Member' },
+          },
+        }),
+      ).toBe(1);
+
+      const invite = await f.db.instanceInvite.findUniqueOrThrow({
+        where: { code },
+        include: { usages: true },
+      });
+      expect(invite.uses).toBe(1);
+      expect(invite.usages).toHaveLength(1);
+    });
+
+    it('does not spend a use when the user is already in every community', async () => {
+      const c = await f.community();
+      const { code } = (await create('owner', [c.id]).expect(201)).body as {
+        code: string;
+      };
+      await accept('member', code).expect(200);
+
+      const again = await accept('member', code).expect(200);
+      const body = again.body as AcceptBody;
+      expect(body.joined).toEqual([]);
+      expect(body.skipped).toHaveLength(1);
+      expect(body.skipped[0].id).toBe(c.id);
+      expect(body.skipped[0].reason).toBe('already_member');
+      expect(
+        (await f.db.instanceInvite.findUniqueOrThrow({ where: { code } })).uses,
+      ).toBe(1);
+    });
+
+    it('skips a community that banned the user and still joins the others', async () => {
+      const bannedFrom = await f.community();
+      const joined = await f.community();
+      await f.db.communityBan.create({
+        data: {
+          communityId: bannedFrom.id,
+          userId: f.id.member,
+          moderatorId: f.id.owner,
+        },
+      });
+      const { code } = (
+        await create('owner', [bannedFrom.id, joined.id]).expect(201)
+      ).body as { code: string };
+
+      const res = await accept('member', code).expect(200);
+      const body = res.body as AcceptBody;
+
+      expect(body.joined.map((community) => community.id)).toEqual([joined.id]);
+      expect(body.skipped).toHaveLength(1);
+      expect(body.skipped[0]).toMatchObject({
+        id: bannedFrom.id,
+        reason: 'banned',
+      });
+      expect(
+        await f.db.membership.count({
+          where: { userId: f.id.member, communityId: joined.id },
+        }),
+      ).toBe(1);
+      expect(
+        await f.db.membership.count({
+          where: { userId: f.id.member, communityId: bannedFrom.id },
+        }),
+      ).toBe(0);
+    });
+
+    it('refuses an unknown code exactly like registration', async () => {
+      const res = await accept('member', 'no-such-code').expect(404);
+      expect(res.body).toMatchObject({
+        message: 'No invite found for the provided code.',
+      });
+    });
+
+    it('requires a signed-in user', async () => {
+      await f.http().post('/api/invite/code/accept').expect(401);
     });
   });
 });

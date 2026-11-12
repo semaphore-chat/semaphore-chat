@@ -59,9 +59,7 @@ export class InviteController {
   @Public()
   @Throttle({ short: { limit: 5, ttl: 1000 }, long: { limit: 20, ttl: 60000 } })
   @ApiOkResponse({ type: PublicInviteDto })
-  async getPublicInvite(
-    @Param('code') code: string,
-  ): Promise<PublicInviteDto | null> {
+  async getPublicInvite(@Param('code') code: string): Promise<PublicInviteDto> {
     return this.inviteService.getPublicInvite(code);
   }
 
