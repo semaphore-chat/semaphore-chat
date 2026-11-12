@@ -3,7 +3,7 @@
 
 use semaphore_core::Core;
 use semaphore_core::model::{
-    ChannelRow, CommunityRow, ErrorView, LoadState, SessionState, UserView, ViewKey, VoiceView,
+    ChannelRow, CommunityCaps, CommunityRow, ErrorView, LoadState, SessionState, UserView, ViewKey, VoiceView,
 };
 use std::sync::Arc;
 
@@ -43,6 +43,11 @@ pub trait ShellSource {
     }
     fn rail_counts(&self) -> RailCounts;
     fn voice(&self) -> VoiceView;
+    /// W5: what this user may do in the community, for the shell's gated entries (the settings
+    /// button, the channel list's "+"). All false until known, and in sources that don't say.
+    fn community_caps(&self, _community_id: &str) -> CommunityCaps {
+        CommunityCaps::default()
+    }
 }
 
 /// The app's source: core's reads, with `Core::load_state` saying whether each list is there yet.
@@ -114,5 +119,9 @@ impl ShellSource for CoreSource {
 
     fn voice(&self) -> VoiceView {
         self.0.voice()
+    }
+
+    fn community_caps(&self, community_id: &str) -> CommunityCaps {
+        self.0.community_permissions(community_id.to_owned()).caps
     }
 }

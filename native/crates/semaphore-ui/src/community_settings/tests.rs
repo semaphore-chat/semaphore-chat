@@ -1155,3 +1155,54 @@ fn overlapping_changes_show_on_their_own_rows(cx: &mut TestAppContext) {
         "other rows still delete"
     );
 }
+
+#[test]
+fn the_settings_entry_needs_a_change_not_just_reading() {
+    let none = CommunityCaps::default();
+    assert!(!opens_settings(&none));
+    // What the default Member role holds: reading only.
+    let reader = CommunityCaps {
+        read_members: true,
+        read_roles: true,
+        read_alias_groups: true,
+        read_sounds: true,
+        delete_invite: true,
+        ..none
+    };
+    assert!(!opens_settings(&reader));
+    type Grant = fn(&mut CommunityCaps);
+    let one: [(&str, Grant); 27] = [
+        ("update_community", |c| c.update_community = true),
+        ("delete_community", |c| c.delete_community = true),
+        ("create_channel", |c| c.create_channel = true),
+        ("update_channel", |c| c.update_channel = true),
+        ("delete_channel", |c| c.delete_channel = true),
+        ("manage_private_members", |c| c.manage_private_members = true),
+        ("manage_channel_permissions", |c| c.manage_channel_permissions = true),
+        ("create_role", |c| c.create_role = true),
+        ("update_role", |c| c.update_role = true),
+        ("delete_role", |c| c.delete_role = true),
+        ("assign_roles", |c| c.assign_roles = true),
+        ("add_members", |c| c.add_members = true),
+        ("create_alias_group", |c| c.create_alias_group = true),
+        ("update_alias_group", |c| c.update_alias_group = true),
+        ("delete_alias_group", |c| c.delete_alias_group = true),
+        ("manage_alias_members", |c| c.manage_alias_members = true),
+        ("manage_emoji", |c| c.manage_emoji = true),
+        ("create_sound", |c| c.create_sound = true),
+        ("delete_sound", |c| c.delete_sound = true),
+        ("manage_webhooks", |c| c.manage_webhooks = true),
+        ("create_invite", |c| c.create_invite = true),
+        ("ban", |c| c.ban = true),
+        ("unban", |c| c.unban = true),
+        ("kick", |c| c.kick = true),
+        ("timeout", |c| c.timeout = true),
+        ("view_bans", |c| c.view_bans = true),
+        ("view_moderation_log", |c| c.view_moderation_log = true),
+    ];
+    for (name, set) in one {
+        let mut caps = reader;
+        set(&mut caps);
+        assert!(opens_settings(&caps), "{name}");
+    }
+}

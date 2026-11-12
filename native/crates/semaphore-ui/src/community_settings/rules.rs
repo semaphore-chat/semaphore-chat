@@ -454,6 +454,73 @@ pub fn first_open_tab(caps: &CommunityCaps) -> CommunityTab {
         .unwrap_or_default()
 }
 
+/// Whether the community's settings entry (the sidebar header's button) is offered: some change
+/// these caps allow. Reading alone doesn't count, since the default Member role reads members and
+/// sounds, and every member could otherwise open a page of disabled controls.
+pub fn opens_settings(caps: &CommunityCaps) -> bool {
+    let CommunityCaps {
+        update_community,
+        delete_community,
+        create_channel,
+        update_channel,
+        delete_channel,
+        manage_private_members,
+        manage_channel_permissions,
+        read_roles: _,
+        create_role,
+        update_role,
+        delete_role,
+        assign_roles,
+        read_members: _,
+        add_members,
+        read_alias_groups: _,
+        create_alias_group,
+        update_alias_group,
+        delete_alias_group,
+        manage_alias_members,
+        manage_emoji,
+        read_sounds: _,
+        create_sound,
+        delete_sound,
+        manage_webhooks,
+        create_invite,
+        delete_invite: _,
+        ban,
+        unban,
+        kick,
+        timeout,
+        view_bans,
+        view_moderation_log,
+    } = *caps;
+    update_community
+        || delete_community
+        || create_channel
+        || update_channel
+        || delete_channel
+        || manage_private_members
+        || manage_channel_permissions
+        || create_role
+        || update_role
+        || delete_role
+        || assign_roles
+        || add_members
+        || create_alias_group
+        || update_alias_group
+        || delete_alias_group
+        || manage_alias_members
+        || manage_emoji
+        || create_sound
+        || delete_sound
+        || manage_webhooks
+        || create_invite
+        || ban
+        || unban
+        || kick
+        || timeout
+        || view_bans
+        || view_moderation_log
+}
+
 // ---- Which change an op is about. ----
 
 /// A change, as core keys it in `AdminOp::actions`.
