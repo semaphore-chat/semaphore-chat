@@ -4,9 +4,11 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { DatabaseService } from '@/database/database.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Friendship, FriendshipStatus, User } from '@prisma/client';
+import { DatabaseService } from '@/database/database.service';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
+import { RoomEvents } from '@/rooms/room-subscription.events';
 
 export interface FriendshipWithUsers extends Friendship {
   userA: Partial<User>;
@@ -25,7 +27,28 @@ export interface FriendListItem {
 
 @Injectable()
 export class FriendsService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
+
+  /**
+   * Tell the room handler a friendship changed, so the affected users' own
+   * sessions refetch their friends and requests. The actor is carried so the
+   * handler knows who is "the other person".
+   */
+  private announce(
+    event: RoomEvents,
+    friendship: Pick<Friendship, 'id' | 'userAId' | 'userBId'>,
+    actorId: string,
+  ): void {
+    this.eventEmitter.emit(event, {
+      friendshipId: friendship.id,
+      userAId: friendship.userAId,
+      userBId: friendship.userBId,
+      actorId,
+    });
+  }
 
   /**
    * Send a friend request to another user
@@ -79,23 +102,28 @@ export class FriendsService {
       if (existing.status === FriendshipStatus.PENDING) {
         // If they sent us a request, auto-accept it
         if (existing.userAId === receiverId) {
-          return this.databaseService.friendship.update({
+          const accepted = await this.databaseService.friendship.update({
             where: { id: existing.id },
             data: { status: FriendshipStatus.ACCEPTED },
           });
+          // A mutual request is an acceptance: both sides gain a friend.
+          this.announce(RoomEvents.FRIEND_REQUEST_ACCEPTED, accepted, senderId);
+          return accepted;
         }
         throw new ConflictException('Friend request already sent');
       }
     }
 
     // Create new friend request
-    return this.databaseService.friendship.create({
+    const friendship = await this.databaseService.friendship.create({
       data: {
         userAId: senderId,
         userBId: receiverId,
         status: FriendshipStatus.PENDING,
       },
     });
+    this.announce(RoomEvents.FRIEND_REQUEST_SENT, friendship, senderId);
+    return friendship;
   }
 
   /**
@@ -123,10 +151,12 @@ export class FriendsService {
       throw new ConflictException('Friend request is not pending');
     }
 
-    return this.databaseService.friendship.update({
+    const accepted = await this.databaseService.friendship.update({
       where: { id: friendshipId },
       data: { status: FriendshipStatus.ACCEPTED },
     });
+    this.announce(RoomEvents.FRIEND_REQUEST_ACCEPTED, accepted, userId);
+    return accepted;
   }
 
   /**
@@ -157,6 +187,7 @@ export class FriendsService {
     await this.databaseService.friendship.delete({
       where: { id: friendshipId },
     });
+    this.announce(RoomEvents.FRIEND_REQUEST_DECLINED, friendship, userId);
   }
 
   /**
@@ -187,6 +218,7 @@ export class FriendsService {
     await this.databaseService.friendship.delete({
       where: { id: friendshipId },
     });
+    this.announce(RoomEvents.FRIEND_REQUEST_CANCELLED, friendship, userId);
   }
 
   /**
@@ -214,6 +246,7 @@ export class FriendsService {
     await this.databaseService.friendship.delete({
       where: { id: friendshipId },
     });
+    this.announce(RoomEvents.FRIEND_REMOVED, friendship, userId);
   }
 
   /**

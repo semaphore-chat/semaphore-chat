@@ -815,11 +815,35 @@ describe('RoomSubscriptionHandler', () => {
         'dm:dm-group-123',
       );
     });
+
+    it('tells every member the group exists, on their personal rooms', () => {
+      const memberIds = ['user-1', 'user-2'];
+
+      handler.onDmGroupCreated({ groupId: 'dm-group-123', memberIds });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(2);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-1',
+        ServerEvents.DM_GROUP_CREATED,
+        { groupId: 'dm-group-123', memberIds },
+      );
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-2',
+        ServerEvents.DM_GROUP_CREATED,
+        { groupId: 'dm-group-123', memberIds },
+      );
+    });
   });
 
   describe('onDmGroupMemberAdded', () => {
-    it('should join new members to the DM group room', () => {
-      handler.onDmGroupMemberAdded({
+    it('should join new members to the DM group room', async () => {
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
+        { userId: 'user-1' },
+        { userId: 'user-4' },
+        { userId: 'user-5' },
+      ]);
+
+      await handler.onDmGroupMemberAdded({
         groupId: 'dm-group-123',
         userIds: ['user-4', 'user-5'],
       });
@@ -834,10 +858,46 @@ describe('RoomSubscriptionHandler', () => {
         'dm:dm-group-123',
       );
     });
+
+    it('tells every member, including the added ones', async () => {
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
+        { userId: 'user-1' },
+        { userId: 'user-4' },
+      ]);
+
+      await handler.onDmGroupMemberAdded({
+        groupId: 'dm-group-123',
+        userIds: ['user-4', 'new-user'],
+      });
+
+      expect(
+        mockDatabase.directMessageGroupMember.findMany,
+      ).toHaveBeenCalledWith({
+        where: { groupId: 'dm-group-123' },
+        select: { userId: true },
+      });
+      const rooms = (
+        websocketService.sendToRoom.mock.calls as unknown as [string][]
+      ).map((call) => call[0]);
+      expect(rooms.sort()).toEqual([
+        'user:new-user',
+        'user:user-1',
+        'user:user-4',
+      ]);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-1',
+        ServerEvents.DM_GROUP_MEMBER_ADDED,
+        { groupId: 'dm-group-123', userIds: ['user-4', 'new-user'] },
+      );
+    });
   });
 
   describe('onDmGroupMemberLeft', () => {
     it('should remove user from the DM group room and its call', async () => {
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
+        { userId: 'user-1' },
+      ]);
+
       await handler.onDmGroupMemberLeft({
         groupId: 'dm-group-123',
         userId: 'user-123',
@@ -854,6 +914,37 @@ describe('RoomSubscriptionHandler', () => {
       expect(voicePresenceService.leaveDmVoice).toHaveBeenCalledWith(
         'dm-group-123',
         'user-123',
+      );
+    });
+
+    it('tells the remaining members and the one who left', async () => {
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
+        { userId: 'user-1' },
+        { userId: 'user-2' },
+      ]);
+
+      await handler.onDmGroupMemberLeft({
+        groupId: 'dm-group-123',
+        userId: 'user-123',
+      });
+
+      const rooms = (
+        websocketService.sendToRoom.mock.calls as unknown as [string][]
+      ).map((call) => call[0]);
+      expect(rooms.sort()).toEqual([
+        'user:user-1',
+        'user:user-123',
+        'user:user-2',
+      ]);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-1',
+        ServerEvents.DM_GROUP_MEMBER_LEFT,
+        { groupId: 'dm-group-123', userId: 'user-123' },
+      );
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-123',
+        ServerEvents.DM_GROUP_MEMBER_LEFT,
+        { groupId: 'dm-group-123', userId: 'user-123' },
       );
     });
   });
@@ -1149,6 +1240,102 @@ describe('RoomSubscriptionHandler', () => {
           channelId: 'channel-1',
           webhookId: 'webhook-1',
         },
+      );
+    });
+  });
+
+  // =========================================================================
+  // Friends
+  // =========================================================================
+
+  describe('friendship events', () => {
+    const friendship = {
+      friendshipId: 'fr-1',
+      userAId: 'sender',
+      userBId: 'receiver',
+    };
+
+    /** The personal rooms the event reached, sorted. */
+    function rooms(): string[] {
+      return (websocketService.sendToRoom.mock.calls as unknown as [string][])
+        .map((call) => call[0])
+        .sort();
+    }
+
+    it("a request reaches the recipient, and the sender's own devices", () => {
+      handler.onFriendRequestSent({ ...friendship, actorId: 'sender' });
+
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:receiver',
+        ServerEvents.FRIEND_REQUEST_SENT,
+        {
+          friendshipId: 'fr-1',
+          userAId: 'sender',
+          userBId: 'receiver',
+        },
+      );
+    });
+
+    it('an acceptance reaches both sides', () => {
+      handler.onFriendRequestAccepted({ ...friendship, actorId: 'receiver' });
+
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:sender',
+        ServerEvents.FRIEND_REQUEST_ACCEPTED,
+        {
+          friendshipId: 'fr-1',
+          userAId: 'sender',
+          userBId: 'receiver',
+        },
+      );
+    });
+
+    it('a decline reaches both people', () => {
+      handler.onFriendRequestDeclined({ ...friendship, actorId: 'receiver' });
+
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
+    });
+
+    it('a cancellation reaches both people', () => {
+      handler.onFriendRequestCancelled({ ...friendship, actorId: 'sender' });
+
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
+    });
+
+    it('a removal reaches both people, from either side', () => {
+      handler.onFriendRemoved({ ...friendship, actorId: 'sender' });
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
+
+      jest.clearAllMocks();
+      handler.onFriendRemoved({ ...friendship, actorId: 'receiver' });
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
+    });
+
+    it('sends nothing to a community or DM room', () => {
+      handler.onFriendRequestSent({ ...friendship, actorId: 'sender' });
+
+      for (const [room] of websocketService.sendToRoom.mock
+        .calls as unknown as [string][]) {
+        expect(room).toMatch(/^user:/);
+      }
+    });
+  });
+
+  // =========================================================================
+  // Instance Roles
+  // =========================================================================
+
+  describe('onInstanceRolesUpdated', () => {
+    it("tells the user's own sessions which role changed", () => {
+      handler.onInstanceRolesUpdated({ userId: 'user-1', roleId: 'role-1' });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-1',
+        ServerEvents.INSTANCE_ROLES_UPDATED,
+        { userId: 'user-1', roleId: 'role-1' },
       );
     });
   });

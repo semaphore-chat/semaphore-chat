@@ -1,5 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query';
-import type { ServerEvents, NewNotificationPayload, NotificationReadPayload } from '@semaphore-chat/shared';
+import type {
+  ServerEvents,
+  NewNotificationPayload,
+  NotificationReadPayload,
+  NotificationsReadPayload,
+  NotificationDismissedPayload,
+} from '@semaphore-chat/shared';
 import {
   notificationsControllerGetNotificationsQueryKey,
   notificationsControllerGetUnreadCountQueryKey,
@@ -192,4 +198,37 @@ export const handleNotificationRead: SocketEventHandler<typeof ServerEvents.NOTI
       }
     }
   }
+};
+
+/**
+ * Notifications were marked read in bulk: mark-all-read, or the mentions of a
+ * channel/DM whose read receipt was just advanced. The payload names the scope
+ * rather than the rows (a read-all can cover many), so the list and the badge
+ * are both refetched instead of patched.
+ */
+export const handleNotificationsRead: SocketEventHandler<
+  typeof ServerEvents.NOTIFICATIONS_READ
+> = (_payload: NotificationsReadPayload, queryClient: QueryClient) => {
+  queryClient.invalidateQueries({
+    queryKey: notificationsControllerGetNotificationsQueryKey(),
+  });
+  queryClient.invalidateQueries({
+    queryKey: notificationsControllerGetUnreadCountQueryKey(),
+  });
+};
+
+/**
+ * One notification was dismissed: the list loses the row (the badge does not
+ * change, since a dismissal is not a read). Refetch both, like the bulk event,
+ * so a client that filters dismissed rows server-side stays correct.
+ */
+export const handleNotificationDismissed: SocketEventHandler<
+  typeof ServerEvents.NOTIFICATION_DISMISSED
+> = (_payload: NotificationDismissedPayload, queryClient: QueryClient) => {
+  queryClient.invalidateQueries({
+    queryKey: notificationsControllerGetNotificationsQueryKey(),
+  });
+  queryClient.invalidateQueries({
+    queryKey: notificationsControllerGetUnreadCountQueryKey(),
+  });
 };

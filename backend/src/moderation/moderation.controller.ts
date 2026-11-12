@@ -18,7 +18,10 @@ import { ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { ModerationService } from './moderation.service';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
-import { RequiredActions } from '@/auth/rbac-action.decorator';
+import {
+  RequiredActions,
+  RequiredAnyActions,
+} from '@/auth/rbac-action.decorator';
 import { RbacActions, ModerationAction } from '@prisma/client';
 import { ModerationActionValues } from '@/common/enums/swagger-enums';
 import {
@@ -80,6 +83,7 @@ export class ModerationController {
       req.user.id,
       dto.reason,
       expiresAt,
+      req.user.role,
     );
     return { success: true, message: 'User banned successfully' };
   }
@@ -149,6 +153,7 @@ export class ModerationController {
       userId,
       req.user.id,
       dto.reason,
+      req.user.role,
     );
     return { success: true, message: 'User kicked successfully' };
   }
@@ -179,6 +184,7 @@ export class ModerationController {
       req.user.id,
       dto.durationSeconds,
       dto.reason,
+      req.user.role,
     );
     return { success: true, message: 'User timed out successfully' };
   }
@@ -210,7 +216,9 @@ export class ModerationController {
 
   @Get('timeouts/:communityId')
   @UseGuards(RbacGuard)
-  @RequiredActions(RbacActions.VIEW_BAN_LIST) // Same permission as viewing bans
+  // A ban-list viewer and a moderator who can only set timeouts may both see
+  // who is timed out (#688).
+  @RequiredAnyActions(RbacActions.VIEW_BAN_LIST, RbacActions.TIMEOUT_USER)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,
     idKey: 'communityId',

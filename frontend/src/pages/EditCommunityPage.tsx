@@ -127,11 +127,21 @@ const EditCommunityPage: React.FC = () => {
     actions: ["CREATE_CHANNEL"],
   });
 
-  const { hasPermissions: canViewModeration } = useUserPermissions({
+  const { hasPermissions: canViewBans } = useUserPermissions({
     resourceType: "COMMUNITY",
     resourceId: communityId!,
     actions: ["VIEW_BAN_LIST"],
   });
+
+  // The timeout list is also open to a moderator who can set timeouts but has
+  // no ban-list permission (#688).
+  const { hasPermissions: canSeeTimeouts } = useUserPermissions({
+    resourceType: "COMMUNITY",
+    resourceId: communityId!,
+    actions: ["TIMEOUT_USER"],
+  });
+
+  const canViewModeration = canViewBans || canSeeTimeouts;
 
   const { hasPermissions: canManageEmojis } = useUserPermissions({
     resourceType: "COMMUNITY",
@@ -374,16 +384,20 @@ const EditCommunityPage: React.FC = () => {
         canViewModeration ? (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-              <Box sx={{ flex: "1 1 300px", minWidth: { xs: "100%", sm: 300 } }}>
-                <BanListPanel communityId={communityId!} />
-              </Box>
+              {canViewBans && (
+                <Box sx={{ flex: "1 1 300px", minWidth: { xs: "100%", sm: 300 } }}>
+                  <BanListPanel communityId={communityId!} />
+                </Box>
+              )}
               <Box sx={{ flex: "1 1 300px", minWidth: { xs: "100%", sm: 300 } }}>
                 <TimeoutListPanel communityId={communityId!} />
               </Box>
             </Box>
-            <Box>
-              <ModerationLogsPanel communityId={communityId!} />
-            </Box>
+            {canViewBans && (
+              <Box>
+                <ModerationLogsPanel communityId={communityId!} />
+              </Box>
+            )}
           </Box>
         ) : (
           <Alert severity="warning">

@@ -4,6 +4,7 @@ import type { Mocked } from '@suites/doubles.jest';
 import { InviteService } from './invite.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
+import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import {
   createMockDatabase,
   UserFactory,
@@ -32,6 +33,13 @@ describe('InviteService', () => {
   });
 
   describe('createInvite', () => {
+    beforeEach(() => {
+      // An invite that names no community is an instance invite (#685)
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        true,
+      );
+    });
+
     it('should create invite with generated code', async () => {
       const creator = UserFactory.build();
       const mockInvite = InstanceInviteFactory.build({
@@ -142,6 +150,37 @@ describe('InviteService', () => {
           usages: true,
         }),
       });
+    });
+
+    it('requires the instance create action for an invite naming no community (#685)', async () => {
+      const creator = UserFactory.build();
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
+      );
+
+      await expect(
+        service.createInvite(creator, undefined, undefined, []),
+      ).rejects.toThrow("You don't have permission to create instance invites");
+      expect(mockDatabase.instanceInvite.create).not.toHaveBeenCalled();
+    });
+
+    it('lets a community admin invite to their own community without any instance permission (#685)', async () => {
+      const creator = UserFactory.build();
+      const mockInvite = InstanceInviteFactory.build({
+        createdById: creator.id,
+      });
+      permissionsService.verifyActionsForUserAndResource.mockImplementation(
+        (_userId, _resourceId, resourceType) =>
+          Promise.resolve(resourceType === RbacResourceType.COMMUNITY),
+      );
+
+      mockDatabase.instanceInvite.findFirst.mockResolvedValue(null);
+      mockDatabase.instanceInvite.create.mockResolvedValue(mockInvite);
+
+      await expect(
+        service.createInvite(creator, undefined, undefined, ['community-1']),
+      ).resolves.toEqual(mockInvite);
+      expect(mockDatabase.instanceInvite.create).toHaveBeenCalled();
     });
 
     it('should regenerate code on collision', async () => {
@@ -504,6 +543,12 @@ describe('InviteService', () => {
   });
 
   describe('getInvites', () => {
+    beforeEach(() => {
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        true,
+      );
+    });
+
     it('should return all invites created by user', async () => {
       const user = UserFactory.build();
       const mockInvites = [
@@ -558,6 +603,92 @@ describe('InviteService', () => {
     });
   });
 
+  describe('getInvites for one community (#685)', () => {
+    const holdsCommunities = (held: string[]) =>
+      permissionsService.verifyActionsForUserAndResource.mockImplementation(
+        (_userId, resourceId, resourceType) =>
+          Promise.resolve(
+            resourceType === RbacResourceType.COMMUNITY &&
+              held.includes(resourceId as string),
+          ),
+      );
+    const inviteFor = (...communityIds: string[]) => ({
+      ...InstanceInviteFactory.build(),
+      defaultCommunities: communityIds.map((communityId) => ({ communityId })),
+    });
+
+    it('refuses a caller without the community CREATE_INVITE, even with instance read', async () => {
+      const user = UserFactory.build();
+      permissionsService.verifyActionsForUserAndResource.mockImplementation(
+        (_u, _r, resourceType) =>
+          Promise.resolve(resourceType === RbacResourceType.INSTANCE),
+      );
+
+      await expect(service.getInvites(user, 'community-1')).rejects.toThrow(
+        "You don't have permission to view this community's invites",
+      );
+      expect(mockDatabase.instanceInvite.findMany).not.toHaveBeenCalled();
+    });
+
+    it('queries the invites that include the community', async () => {
+      const user = UserFactory.build();
+      holdsCommunities(['community-1']);
+      mockDatabase.instanceInvite.findMany.mockResolvedValue([]);
+
+      await service.getInvites(user, 'community-1');
+
+      expect(mockDatabase.instanceInvite.findMany).toHaveBeenCalledWith({
+        where: { defaultCommunities: { some: { communityId: 'community-1' } } },
+        include: expect.objectContaining({
+          defaultCommunities: true,
+          usages: true,
+        }),
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+
+    it('hides an invite that also names a community the caller cannot invite to', async () => {
+      const user = UserFactory.build();
+      holdsCommunities(['community-1']);
+      const mine = inviteFor('community-1');
+      const mixed = inviteFor('community-1', 'community-2');
+      mockDatabase.instanceInvite.findMany.mockResolvedValue([mixed, mine]);
+
+      const result = await service.getInvites(user, 'community-1');
+
+      expect(result).toEqual([mine]);
+    });
+
+    it('shows an invite naming several communities when the caller may invite to all', async () => {
+      const user = UserFactory.build();
+      holdsCommunities(['community-1', 'community-2']);
+      const both = inviteFor('community-1', 'community-2');
+      mockDatabase.instanceInvite.findMany.mockResolvedValue([both]);
+
+      expect(await service.getInvites(user, 'community-1')).toEqual([both]);
+    });
+
+    it('shows every invite to the instance owner', async () => {
+      const user = UserFactory.build({ role: 'OWNER' });
+      const mixed = inviteFor('community-1', 'community-2');
+      mockDatabase.instanceInvite.findMany.mockResolvedValue([mixed]);
+
+      expect(await service.getInvites(user, 'community-1')).toEqual([mixed]);
+    });
+
+    it('keeps the creator-scoped list when no community is given', async () => {
+      const user = UserFactory.build();
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
+      );
+
+      await expect(service.getInvites(user)).rejects.toThrow(
+        "You don't have permission to view instance invites",
+      );
+      expect(mockDatabase.instanceInvite.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getInviteByCode', () => {
     it('should return invite with creator info', async () => {
       const mockInvite = InstanceInviteFactory.build();
@@ -593,48 +724,123 @@ describe('InviteService', () => {
   });
 
   describe('deleteInvite', () => {
-    it('should delete invite when user is creator', async () => {
+    const notCreatorScenario = (
+      defaultCommunities: { communityId: string }[],
+    ) => {
       const user = UserFactory.build();
-      const mockInvite = InstanceInviteFactory.build({
-        createdById: user.id,
-      });
+      const other = UserFactory.build();
+      const invite = {
+        ...InstanceInviteFactory.build({ createdById: other.id }),
+        defaultCommunities,
+      };
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue(invite);
+      return { user, invite };
+    };
 
-      mockDatabase.instanceInvite.findUnique.mockResolvedValue(mockInvite);
-      mockDatabase.instanceInvite.delete.mockResolvedValue(mockInvite);
+    it('deletes the invite when the caller is its creator', async () => {
+      const user = UserFactory.build();
+      const invite = {
+        ...InstanceInviteFactory.build({ createdById: user.id }),
+        defaultCommunities: [],
+      };
 
-      await service.deleteInvite(user, mockInvite.code);
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue(invite);
+      mockDatabase.instanceInvite.delete.mockResolvedValue(invite);
+
+      await service.deleteInvite(user, invite.code);
 
       expect(mockDatabase.instanceInvite.delete).toHaveBeenCalledWith({
-        where: { code: mockInvite.code },
+        where: { code: invite.code },
       });
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).not.toHaveBeenCalled();
     });
 
-    it('should throw error when invite not found', async () => {
+    it('throws when the invite does not exist', async () => {
       const user = UserFactory.build();
-
       mockDatabase.instanceInvite.findUnique.mockResolvedValue(null);
 
       await expect(service.deleteInvite(user, 'nonexistent')).rejects.toThrow(
         'Invite not found',
       );
-
       expect(mockDatabase.instanceInvite.delete).not.toHaveBeenCalled();
     });
 
-    it('should throw error when user is not creator', async () => {
-      const user = UserFactory.build();
-      const otherUser = UserFactory.build();
-      const mockInvite = InstanceInviteFactory.build({
-        createdById: otherUser.id,
-      });
-
-      mockDatabase.instanceInvite.findUnique.mockResolvedValue(mockInvite);
-
-      await expect(service.deleteInvite(user, mockInvite.code)).rejects.toThrow(
-        'Unauthorized to delete this invite',
+    it('throws for a stranger with no instance delete action and no named community', async () => {
+      const { user, invite } = notCreatorScenario([]);
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
       );
 
+      await expect(service.deleteInvite(user, invite.code)).rejects.toThrow(
+        'Unauthorized to delete this invite',
+      );
       expect(mockDatabase.instanceInvite.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes for a holder of the instance delete action', async () => {
+      const { user, invite } = notCreatorScenario([
+        { communityId: 'community-1' },
+      ]);
+      permissionsService.verifyActionsForUserAndResource.mockImplementation(
+        (_userId, _resourceId, resourceType) =>
+          Promise.resolve(resourceType === RbacResourceType.INSTANCE),
+      );
+      mockDatabase.instanceInvite.delete.mockResolvedValue(invite);
+
+      await service.deleteInvite(user, invite.code);
+
+      expect(mockDatabase.instanceInvite.delete).toHaveBeenCalled();
+    });
+
+    it("deletes for a holder of every named community's delete action", async () => {
+      const { user, invite } = notCreatorScenario([
+        { communityId: 'community-1' },
+        { communityId: 'community-2' },
+      ]);
+      permissionsService.verifyActionsForUserAndResource.mockImplementation(
+        (_userId, _resourceId, resourceType) =>
+          Promise.resolve(resourceType === RbacResourceType.COMMUNITY),
+      );
+      mockDatabase.instanceInvite.delete.mockResolvedValue(invite);
+
+      await service.deleteInvite(user, invite.code);
+
+      expect(mockDatabase.instanceInvite.delete).toHaveBeenCalled();
+    });
+
+    it('refuses when a named community is one the caller cannot delete invites in', async () => {
+      const { user, invite } = notCreatorScenario([
+        { communityId: 'community-1' },
+        { communityId: 'community-2' },
+      ]);
+      permissionsService.verifyActionsForUserAndResource.mockImplementation(
+        (_userId, resourceId, resourceType) =>
+          Promise.resolve(
+            resourceType === RbacResourceType.COMMUNITY &&
+              resourceId === 'community-1',
+          ),
+      );
+
+      await expect(service.deleteInvite(user, invite.code)).rejects.toThrow(
+        'Unauthorized to delete this invite',
+      );
+      expect(mockDatabase.instanceInvite.delete).not.toHaveBeenCalled();
+    });
+
+    it('the instance owner deletes any invite', async () => {
+      const owner = UserFactory.buildOwner();
+      const invite = {
+        ...InstanceInviteFactory.build(),
+        defaultCommunities: [],
+      };
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue(invite);
+      mockDatabase.instanceInvite.delete.mockResolvedValue(invite);
+
+      await service.deleteInvite(owner, invite.code);
+
+      expect(mockDatabase.instanceInvite.delete).toHaveBeenCalled();
     });
   });
 });

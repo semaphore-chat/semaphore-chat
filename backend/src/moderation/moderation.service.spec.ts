@@ -99,6 +99,29 @@ describe('ModerationService', () => {
     roles,
   });
 
+  /** The transaction kick and ban run their membership removal in. */
+  const mockRemovalTransaction = () => {
+    const mockTx = {
+      threadSubscriber: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      communityBan: { upsert: jest.fn().mockResolvedValue({}) },
+      channelMembership: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      aliasGroupMember: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      membership: { delete: jest.fn().mockResolvedValue({}) },
+      moderationLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    mockDatabase.$transaction.mockImplementation(
+      (callback: (tx: typeof mockTx) => unknown) => callback(mockTx),
+    );
+    return mockTx;
+  };
+
   // =========================================
   // POSITION-BASED HIERARCHY TESTS
   // =========================================
@@ -232,6 +255,122 @@ describe('ModerationService', () => {
 
       await expect(
         service.banUser(communityId, userId, moderatorId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('instance owner bypass (#679)', () => {
+    beforeEach(() => {
+      // The owner holds no community role at all: rank alone would refuse all three
+      communityRolesService.getUserRolesForCommunity.mockResolvedValue(
+        createMockUserRoles([]),
+      );
+      membershipService.isMember.mockResolvedValue(true);
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+      mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
+      mockDatabase.communityTimeout.upsert.mockResolvedValue({});
+      mockDatabase.moderationLog.create.mockResolvedValue({});
+    });
+
+    it('bans someone without holding a community role', async () => {
+      const mockTx = mockRemovalTransaction();
+
+      await service.banUser(
+        communityId,
+        userId,
+        moderatorId,
+        'owns the instance',
+        undefined,
+        InstanceRole.OWNER,
+      );
+
+      expect(mockTx.communityBan.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ userId, moderatorId }),
+        }),
+      );
+    });
+
+    it('kicks someone without holding a community role', async () => {
+      const mockTx = mockRemovalTransaction();
+
+      await service.kickUser(
+        communityId,
+        userId,
+        moderatorId,
+        'owns the instance',
+        InstanceRole.OWNER,
+      );
+
+      expect(mockTx.membership.delete).toHaveBeenCalledWith({
+        where: { userId_communityId: { userId, communityId } },
+      });
+    });
+
+    it('times someone out without holding a community role', async () => {
+      await service.timeoutUser(
+        communityId,
+        userId,
+        moderatorId,
+        600,
+        'owns the instance',
+        InstanceRole.OWNER,
+      );
+
+      expect(mockDatabase.communityTimeout.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ userId, moderatorId }),
+        }),
+      );
+    });
+
+    it('still refuses to ban themselves', async () => {
+      await expect(
+        service.banUser(
+          communityId,
+          moderatorId,
+          moderatorId,
+          'self',
+          undefined,
+          InstanceRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('still refuses to kick themselves', async () => {
+      await expect(
+        service.kickUser(
+          communityId,
+          moderatorId,
+          moderatorId,
+          'self',
+          InstanceRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('still refuses to time themselves out', async () => {
+      await expect(
+        service.timeoutUser(
+          communityId,
+          moderatorId,
+          moderatorId,
+          600,
+          'self',
+          InstanceRole.OWNER,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('does not bypass for a non-owner without a community role', async () => {
+      await expect(
+        service.kickUser(
+          communityId,
+          userId,
+          moderatorId,
+          'not the owner',
+          InstanceRole.USER,
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
   });

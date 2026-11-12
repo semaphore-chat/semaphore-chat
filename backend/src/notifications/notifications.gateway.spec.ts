@@ -113,6 +113,44 @@ describe('NotificationsGateway', () => {
     });
   });
 
+  describe('emitNotificationsRead', () => {
+    it("sends the scope to the user's own room only", () => {
+      gateway.emitNotificationsRead('user-123', { scope: 'all' });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-123',
+        ServerEvents.NOTIFICATIONS_READ,
+        { scope: 'all' },
+      );
+    });
+
+    it('narrows the scope to the channel or DM that was read', () => {
+      gateway.emitNotificationsRead('user-123', {
+        scope: 'channel',
+        channelId: 'ch-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-123',
+        ServerEvents.NOTIFICATIONS_READ,
+        { scope: 'channel', channelId: 'ch-1' },
+      );
+    });
+  });
+
+  describe('emitNotificationDismissed', () => {
+    it("sends the dismissed notification to the user's own room", () => {
+      gateway.emitNotificationDismissed('user-123', 'n-1');
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-123',
+        ServerEvents.NOTIFICATION_DISMISSED,
+        { notificationId: 'n-1' },
+      );
+    });
+  });
+
   describe('lifecycle', () => {
     it('afterInit should not throw', () => {
       expect(() => gateway.afterInit({} as any)).not.toThrow();
