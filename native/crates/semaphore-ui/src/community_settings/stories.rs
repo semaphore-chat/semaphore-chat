@@ -211,6 +211,7 @@ fn op(states: Vec<AdminActionState>) -> AdminOp {
         error: last.as_ref().and_then(|state| state.error.clone()),
         action: last.map(|state| state.action),
         actions: states,
+        finished: Vec::new(),
     }
 }
 

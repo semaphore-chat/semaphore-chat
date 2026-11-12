@@ -30,10 +30,10 @@ use crate::backend::{BackendError, BackendResult, FileUpload, UploadProgress};
 use crate::cache::{CacheValue, QueryKey, keys};
 use crate::client::{Core, Effect, Services, State, user_view};
 use crate::model::{
-    AdminAction, AdminActionKind, AdminActionState, AdminOp, ChannelDraft, ChannelKind,
-    ChannelMove, CommunityPatch, CommunitySettingsView, DraftFile, ErrorView, ImageChange,
-    PrivateMemberRow, PrivateMembersView, RemovalCause, UploadView, UserView, ViewKey, VoiceRoom,
-    VoiceView,
+    AdminAction, AdminActionKind, AdminActionOutcome, AdminActionState, AdminOp, ChannelDraft,
+    ChannelKind, ChannelMove, CommunityPatch, CommunitySettingsView, DraftFile, ErrorView,
+    FINISHED_KEPT, ImageChange, PrivateMemberRow, PrivateMembersView, RemovalCause, UploadView,
+    UserView, ViewKey, VoiceRoom, VoiceView,
 };
 use crate::platform::{CoreError, CoreEvent};
 use crate::resync::unavailable;
@@ -101,6 +101,8 @@ impl OpKey {
 #[derive(Default)]
 pub struct W5aState {
     pub(crate) ops: HashMap<ViewKey, Vec<OpEntry>>,
+    /// The changes that ended on each view, oldest first, at most `FINISHED_KEPT`.
+    pub(crate) finished: HashMap<ViewKey, std::collections::VecDeque<AdminActionOutcome>>,
     /// Communities whose removal was announced or that this core deleted: announced once.
     pub(crate) removed_communities: HashSet<String>,
     /// Communities this core is deleting: their `communityDeleted` isn't announced.
@@ -325,21 +327,35 @@ impl State {
         if entry.upload.as_ref().is_some_and(|(of, _)| *of == change) {
             entry.upload = None;
         }
+        let failure = error.clone();
         if error.is_some() {
             entry.error = error;
         }
         if let Some(entries) = self.w5a.ops.get_mut(&op.view) {
             entries.retain(|entry| entry.running > 0 || entry.error.is_some());
         }
+        self.w5a_finished(op, failure);
         self.view_changed(op.view.clone());
+    }
+
+    /// Records that `op`'s change ended, for `AdminOp::finished`.
+    fn w5a_finished(&mut self, op: &OpKey, error: Option<ErrorView>) {
+        let seq = self.next_change();
+        let done = self.w5a.finished.entry(op.view.clone()).or_default();
+        done.push_back(AdminActionOutcome {
+            action: op.action.clone(),
+            seq,
+            error,
+        });
+        while done.len() > FINISHED_KEPT {
+            done.pop_front();
+        }
     }
 
     /// A change refused before it was sent: the form shows why, on that action.
     pub(crate) fn w5a_op_refused(&mut self, op: &OpKey, error: &CoreError) {
         let change = self.next_change();
-        let entry = self.w5a_entry(op);
-        entry.started = change;
-        entry.error = Some(ErrorView {
+        let failure = ErrorView {
             code: "VALIDATION_FAILED".into(),
             message: match error {
                 CoreError::Failed { message } => message.clone(),
@@ -347,13 +363,26 @@ impl State {
             },
             retryable: false,
             retry_after_ms: None,
-        });
+        };
+        let entry = self.w5a_entry(op);
+        entry.started = change;
+        entry.error = Some(failure.clone());
+        self.w5a_finished(op, Some(failure));
         self.view_changed(op.view.clone());
     }
 
     pub(crate) fn w5a_op(&self, view: &ViewKey) -> AdminOp {
+        let finished: Vec<AdminActionOutcome> = self
+            .w5a
+            .finished
+            .get(view)
+            .map(|done| done.iter().cloned().collect())
+            .unwrap_or_default();
         let Some(entries) = self.w5a.ops.get(view).filter(|entries| !entries.is_empty()) else {
-            return AdminOp::default();
+            return AdminOp {
+                finished,
+                ..AdminOp::default()
+            };
         };
         let mut ordered: Vec<&OpEntry> = entries.iter().collect();
         ordered.sort_by_key(|entry| entry.started);
@@ -372,6 +401,7 @@ impl State {
                     error: entry.error.clone(),
                 })
                 .collect(),
+            finished,
         }
     }
 
@@ -508,7 +538,8 @@ impl State {
             self.w5a_end_call();
         }
         for channel_id in &channel_ids {
-            for op in [k::PRIVATE_MEMBERS, k::WEBHOOKS] {
+            // Who's in its voice channels too: Home's "In voice now" reads them.
+            for op in [k::PRIVATE_MEMBERS, k::WEBHOOKS, keys::VOICE_PRESENCE] {
                 self.cache.remove_prefix(&keys::scoped(op, channel_id));
             }
         }

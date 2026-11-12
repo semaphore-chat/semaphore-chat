@@ -7,10 +7,12 @@ import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { ThumbnailService } from '@/file/thumbnail.service';
 import {
+  BadRequestException,
   ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PermissionsService } from '@/roles/permissions.service';
+import { FfmpegProvider } from '@/livekit/providers/ffmpeg.provider';
 import { ResourceType, FileType, StorageType } from '@prisma/client';
 import * as crypto from 'crypto';
 import { Readable } from 'stream';
@@ -26,6 +28,8 @@ describe('FileUploadService', () => {
   let storageQuotaService: Mocked<StorageQuotaService>;
   let thumbnailService: Mocked<ThumbnailService>;
   let permissionsService: Mocked<PermissionsService>;
+  let ffmpegProvider: Mocked<FfmpegProvider>;
+  let ffprobe: jest.Mock;
   let mockS3Provider: jest.Mocked<IStorageProvider>;
 
   const mockUser = {
@@ -57,9 +61,12 @@ describe('FileUploadService', () => {
     storageQuotaService = unitRef.get(StorageQuotaService);
     thumbnailService = unitRef.get(ThumbnailService);
     permissionsService = unitRef.get(PermissionsService);
+    ffmpegProvider = unitRef.get(FfmpegProvider);
+    ffprobe = ffmpegProvider.ffprobe as jest.Mock;
 
     // Reset mocks
     jest.clearAllMocks();
+    ffprobe.mockResolvedValue({ format: { duration: 5 } });
 
     // The fixtures upload for the user's own message.
     (databaseService.message.findUnique as jest.Mock).mockResolvedValue({
@@ -605,6 +612,106 @@ describe('FileUploadService', () => {
           checksum: 'abc123def456',
         }),
       });
+    });
+  });
+
+  describe('uploadFile — soundboard sound duration', () => {
+    const soundFile: Express.Multer.File = {
+      ...mockFile,
+      originalname: 'sound.mp3',
+      mimetype: 'audio/mpeg',
+      filename: 'sound-123.mp3',
+      path: '/tmp/sound-123.mp3',
+      size: 2048,
+    };
+    const createDto = {
+      resourceType: ResourceType.SOUNDBOARD_SOUND,
+      resourceId: 'community-1',
+    };
+
+    beforeEach(() => {
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        true,
+      );
+      (databaseService.file.create as jest.Mock).mockResolvedValue({
+        id: 'file-sound-1',
+        filename: 'sound.mp3',
+        mimeType: 'audio/mpeg',
+        size: 2048,
+        checksum: 'abc123def456',
+      });
+
+      const {
+        ResourceTypeFileValidator,
+      } = require('./validators/resource-type-file.validator');
+      ResourceTypeFileValidator.mockImplementation(() => ({
+        isValid: jest.fn().mockResolvedValue(true),
+      }));
+    });
+
+    it('accepts a sound under the limit', async () => {
+      ffprobe.mockResolvedValue({ format: { duration: 12.5 } });
+
+      await expect(
+        service.uploadFile(soundFile, createDto, mockUser),
+      ).resolves.toBeInstanceOf(FileUploadResponseDto);
+      expect(ffmpegProvider.ffprobe).toHaveBeenCalledWith('/tmp/sound-123.mp3');
+      expect(databaseService.file.create).toHaveBeenCalled();
+    });
+
+    it('accepts a sound exactly at the limit', async () => {
+      ffprobe.mockResolvedValue({ format: { duration: 30 } });
+
+      await expect(
+        service.uploadFile(soundFile, createDto, mockUser),
+      ).resolves.toBeInstanceOf(FileUploadResponseDto);
+    });
+
+    it('rejects a sound longer than the limit, with 400 and no file row', async () => {
+      ffprobe.mockResolvedValue({ format: { duration: 30.5 } });
+
+      const error: unknown = await service
+        .uploadFile(soundFile, createDto, mockUser)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getStatus()).toBe(400);
+      expect((error as BadRequestException).message).toContain('30 seconds');
+      expect(databaseService.file.create).not.toHaveBeenCalled();
+      expect(storageService.deleteFile).toHaveBeenCalledWith(
+        '/tmp/sound-123.mp3',
+      );
+    });
+
+    it('rejects a sound whose length cannot be read as an invalid sound', async () => {
+      ffprobe.mockRejectedValue(new Error('Invalid data'));
+
+      const error: unknown = await service
+        .uploadFile(soundFile, createDto, mockUser)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getStatus()).toBe(400);
+      expect((error as BadRequestException).message).toContain(
+        'Could not read the length',
+      );
+      expect(databaseService.file.create).not.toHaveBeenCalled();
+      expect(storageService.deleteFile).toHaveBeenCalledWith(
+        '/tmp/sound-123.mp3',
+      );
+    });
+
+    it('does not probe the length of other resource types', async () => {
+      await service.uploadFile(
+        mockFile,
+        {
+          resourceType: ResourceType.MESSAGE_ATTACHMENT,
+          resourceId: 'msg-123',
+        },
+        mockUser,
+      );
+
+      expect(ffmpegProvider.ffprobe).not.toHaveBeenCalled();
     });
   });
 

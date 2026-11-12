@@ -16,6 +16,7 @@ import {
   InstanceInvite,
   InstanceInviteDefaultCommunity,
   InstanceInviteUsage,
+  InstanceRole,
   Prisma,
   RbacActions,
 } from '@prisma/client';
@@ -36,32 +37,83 @@ export class InviteService {
   ) {}
 
   /**
-   * An invite joins whoever redeems it to its communities, so its creator needs
-   * the right to invite to each of them, or instance-wide authority. A community
+   * The action on the resource, with the instance owner above it as above
+   * every RBAC check (the guard's own bypass).
+   */
+  private async may(
+    user: UserEntity,
+    action: RbacActions,
+    resourceType: RbacResourceType,
+    resourceId?: string,
+  ): Promise<boolean> {
+    if (user.role === InstanceRole.OWNER) return true;
+    return this.permissionsService.verifyActionsForUserAndResource(
+      user.id,
+      resourceId,
+      resourceType,
+      [action],
+    );
+  }
+
+  /**
+   * An invite joins whoever redeems it to its communities. With communities
+   * named, the creator needs to invite to each of them (the community's own
+   * CREATE_INVITE) or instance-wide authority; with none named it is an
+   * instance invite, which needs CREATE_INSTANCE_INVITE (#685). A community
    * that doesn't exist answers like one you can't invite to.
    */
-  private async assertMayInviteTo(
+  private async assertMayInvite(
     creator: UserEntity,
     communityIds: string[],
   ): Promise<void> {
-    if (communityIds.length === 0) return;
-    if (await this.instanceRolesService.hasFullInstanceAuthority(creator)) {
-      return;
-    }
-    for (const communityId of communityIds) {
-      const allowed =
-        await this.permissionsService.verifyActionsForUserAndResource(
-          creator.id,
-          communityId,
-          RbacResourceType.COMMUNITY,
-          [RbacActions.CREATE_INVITE],
-        );
-      if (!allowed) {
+    if (communityIds.length === 0) {
+      if (
+        !(await this.may(
+          creator,
+          RbacActions.CREATE_INSTANCE_INVITE,
+          RbacResourceType.INSTANCE,
+        ))
+      ) {
         throw new ForbiddenException(
-          `You don't have permission to invite to community ${communityId}`,
+          "You don't have permission to create instance invites",
         );
       }
+      return;
     }
+    const denied = await this.firstCommunityNotInvitableTo(
+      creator,
+      communityIds,
+    );
+    if (denied !== undefined) {
+      throw new ForbiddenException(
+        `You don't have permission to invite to community ${denied}`,
+      );
+    }
+  }
+
+  /**
+   * The first of these communities the user may not invite to (full instance
+   * authority may invite to all), or undefined when they may invite to every
+   * one. The create check and the filtered invite list both use this, so the
+   * two rules cannot drift.
+   */
+  private async firstCommunityNotInvitableTo(
+    user: UserEntity,
+    communityIds: string[],
+  ): Promise<string | undefined> {
+    if (await this.instanceRolesService.hasFullInstanceAuthority(user)) {
+      return undefined;
+    }
+    for (const communityId of communityIds) {
+      const allowed = await this.may(
+        user,
+        RbacActions.CREATE_INVITE,
+        RbacResourceType.COMMUNITY,
+        communityId,
+      );
+      if (!allowed) return communityId;
+    }
+    return undefined;
   }
 
   async createInvite(
@@ -70,7 +122,7 @@ export class InviteService {
     validUntil?: Date,
     communityIds: string[] = [],
   ): Promise<InstanceInviteWithRelations> {
-    await this.assertMayInviteTo(creator, communityIds);
+    await this.assertMayInvite(creator, communityIds);
 
     // generate a short code for the invite
     let shortCode = this.generateInviteCode();
@@ -252,22 +304,73 @@ export class InviteService {
     return updated;
   }
 
-  async getInvites(user: UserEntity): Promise<InstanceInviteWithRelations[]> {
-    return this.databaseService.instanceInvite.findMany({
-      where: { createdById: user.id },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            username: true,
-            displayName: true,
-          },
+  /**
+   * Instance readers see the invites they created, as before. Given a
+   * community, a caller with that community's CREATE_INVITE sees the invites
+   * that include it, whoever created them, as long as they could create the
+   * same invite themselves (#685).
+   */
+  async getInvites(
+    user: UserEntity,
+    communityId?: string,
+  ): Promise<InstanceInviteWithRelations[]> {
+    const include = {
+      createdBy: {
+        select: {
+          id: true,
+          username: true,
+          displayName: true,
         },
-        defaultCommunities: true,
-        usages: true,
       },
+      defaultCommunities: true,
+      usages: true,
+    } as const;
+
+    if (communityId === undefined) {
+      const instanceReader = await this.may(
+        user,
+        RbacActions.READ_INSTANCE_INVITE,
+        RbacResourceType.INSTANCE,
+      );
+      if (!instanceReader) {
+        throw new ForbiddenException(
+          "You don't have permission to view instance invites",
+        );
+      }
+      return this.databaseService.instanceInvite.findMany({
+        where: { createdById: user.id },
+        include,
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    // The caller must be able to create an invite for this community, and
+    // sees only the invites they could create themselves: a code joins its
+    // redeemer to every community it names, so an invite that also reaches a
+    // community the caller can't invite to stays hidden.
+    if (
+      (await this.firstCommunityNotInvitableTo(user, [communityId])) !==
+      undefined
+    ) {
+      throw new ForbiddenException(
+        "You don't have permission to view this community's invites",
+      );
+    }
+
+    const invites = await this.databaseService.instanceInvite.findMany({
+      where: { defaultCommunities: { some: { communityId } } },
+      include,
       orderBy: { createdAt: 'desc' },
     });
+    const visible: InstanceInviteWithRelations[] = [];
+    for (const invite of invites) {
+      const denied = await this.firstCommunityNotInvitableTo(
+        user,
+        invite.defaultCommunities.map((target) => target.communityId),
+      );
+      if (denied === undefined) visible.push(invite);
+    }
+    return visible;
   }
 
   /**
@@ -340,18 +443,46 @@ export class InviteService {
     });
   }
 
+  /**
+   * Deleting: the creator, a holder of the instance delete action, or someone
+   * who may delete invites in every community the invite names (#685).
+   */
   async deleteInvite(user: UserEntity, code: string): Promise<void> {
     const invite = await this.databaseService.instanceInvite.findUnique({
       where: { code },
+      include: { defaultCommunities: true },
     });
 
     if (!invite) {
       throw new NotFoundException('Invite not found');
     }
 
-    // Only allow the creator to delete the invite (admins bypass via RBAC)
     if (invite.createdById !== user.id) {
-      throw new ForbiddenException('Unauthorized to delete this invite');
+      const mayDeleteInstance = await this.may(
+        user,
+        RbacActions.DELETE_INSTANCE_INVITE,
+        RbacResourceType.INSTANCE,
+      );
+      const communityIds = invite.defaultCommunities.map(
+        (target) => target.communityId,
+      );
+      const mayDeleteCommunityInvites =
+        communityIds.length > 0 &&
+        (
+          await Promise.all(
+            communityIds.map((communityId) =>
+              this.may(
+                user,
+                RbacActions.DELETE_INVITE,
+                RbacResourceType.COMMUNITY,
+                communityId,
+              ),
+            ),
+          )
+        ).every(Boolean);
+      if (!mayDeleteInstance && !mayDeleteCommunityInvites) {
+        throw new ForbiddenException('Unauthorized to delete this invite');
+      }
     }
 
     await this.databaseService.instanceInvite.delete({

@@ -41,22 +41,32 @@ describe('VoicePresenceController', () => {
         {
           id: 'user-1',
           username: 'user1',
-          joinedAt: new Date(),
+          joinedAt: new Date().toISOString(),
           isDeafened: false,
+          isServerMuted: false,
+          canModerate: false,
         },
         {
           id: 'user-2',
           username: 'user2',
-          joinedAt: new Date(),
+          joinedAt: new Date().toISOString(),
           isDeafened: false,
+          isServerMuted: false,
+          canModerate: true,
         },
       ];
 
-      service.getChannelPresence.mockResolvedValue(mockUsers as any);
+      service.getChannelPresenceForViewer.mockResolvedValue(mockUsers);
 
-      const result = await controller.getChannelPresence(channelId);
+      const result = await controller.getChannelPresence(
+        channelId,
+        mockRequest,
+      );
 
-      expect(service.getChannelPresence).toHaveBeenCalledWith(channelId);
+      expect(service.getChannelPresenceForViewer).toHaveBeenCalledWith(
+        channelId,
+        mockUser,
+      );
       expect(result).toEqual({
         channelId,
         users: mockUsers,
@@ -67,9 +77,12 @@ describe('VoicePresenceController', () => {
     it('should return empty array when no users in channel', async () => {
       const channelId = 'channel-456';
 
-      service.getChannelPresence.mockResolvedValue([]);
+      service.getChannelPresenceForViewer.mockResolvedValue([]);
 
-      const result = await controller.getChannelPresence(channelId);
+      const result = await controller.getChannelPresence(
+        channelId,
+        mockRequest,
+      );
 
       expect(result.users).toEqual([]);
       expect(result.count).toBe(0);

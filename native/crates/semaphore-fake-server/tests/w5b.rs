@@ -116,6 +116,112 @@ async fn the_guard_lets_the_instance_owner_through_but_not_past_the_moderation_r
 }
 
 #[tokio::test]
+async fn channel_roles_are_community_roles_and_hidden_channels_answer_none() {
+    // `RolesController.getMyRolesForChannel`: the channel's community roles for the caller, no
+    // channel overwrites (issue #644), and an empty list for a channel they can't see — exactly
+    // what a missing channel answers.
+    let (server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    let general = id("cc-general");
+    let path = format!("/api/roles/my/channel/{general}");
+
+    let (status, body) = get(&client, &base, &path).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["userId"], id("me").as_str());
+    assert_eq!(body["resourceId"], general.as_str());
+    assert_eq!(body["resourceType"], "CHANNEL");
+    assert_eq!(
+        body["roles"].as_array().unwrap().len(),
+        1,
+        "me is only a Member in c-couch: {body}"
+    );
+    assert_eq!(body["roles"][0]["id"], role("role-member-c-couch"));
+
+    // Another member's own roles, with their own session.
+    let samira = bearer_for(&client, &base, "samira", &id("u-samira")).await;
+    let (status, body) = send(&client, reqwest::Method::GET, &base, &path, &samira, None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["roles"][0]["id"], role("role-community-admin-c-couch"));
+
+    // A non-member of the community sees no roles, as they see no channel.
+    let mateo = bearer_for(&client, &base, "mateo", &id("u-mateo")).await;
+    let (status, body) = send(&client, reqwest::Method::GET, &base, &path, &mateo, None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["roles"], json!([]));
+
+    // act_as changes what the route answers, from the same RBAC model the guard uses.
+    server.act_as(&couch, None, &[&role("role-mods-c-couch")]);
+    let (_, body) = get(&client, &base, &path).await;
+    assert_eq!(body["roles"][0]["id"], role("role-mods-c-couch"));
+    // Overwrites are not applied here (issue #644): the role keeps its actions.
+    let (status, _) = put(
+        &client,
+        &base,
+        &format!("/api/channels/{general}/overwrites"),
+        json!({ "preset": "CUSTOM", "overwrites": [
+            { "targetType": "EVERYONE", "allow": [], "deny": ["PIN_MESSAGE"] }
+        ] }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (_, body) = get(&client, &base, &path).await;
+    assert!(
+        body["roles"][0]["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|action| action == "PIN_MESSAGE"),
+        "the role as stored, not the channel's effective actions: {body}"
+    );
+
+    // A private channel with no list: a member who isn't on it gets nothing; the instance owner
+    // still sees the channel (and their community roles there).
+    let (status, made) = post(
+        &client,
+        &base,
+        "/api/channels",
+        json!({ "name": "secret", "communityId": couch, "type": "TEXT", "isPrivate": true }),
+    )
+    .await;
+    assert_eq!(status, 201, "{made}");
+    let secret = made["id"].as_str().unwrap().to_owned();
+    let secret_path = format!("/api/roles/my/channel/{secret}");
+    let (status, body) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        &secret_path,
+        &samira,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["roles"], json!([]));
+    let (_, body) = get(&client, &base, &secret_path).await;
+    assert_eq!(body["roles"][0]["id"], role("role-mods-c-couch"));
+
+    // On its list, that member gets their roles again.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/api/channel-membership",
+        json!({ "channelId": secret, "userId": id("u-samira") }),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    let (_, body) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        &secret_path,
+        &samira,
+        None,
+    )
+    .await;
+    assert_eq!(body["roles"][0]["id"], role("role-community-admin-c-couch"));
+}
+
+#[tokio::test]
 async fn roles_are_managed_below_your_own_with_only_what_you_hold() {
     let (server, client, base) = showcase().await;
     let couch = id("c-couch");
@@ -568,4 +674,111 @@ async fn overrides_work_on_a_channel_made_at_runtime() {
     )
     .await;
     assert_eq!(status, 404);
+}
+
+#[tokio::test]
+async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
+    let (server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    let (status, bouncer) = post(
+        &client,
+        &base,
+        &format!("/api/roles/community/{couch}"),
+        json!({ "name": "Bouncer", "position": 15, "actions": ["BAN_USER", "TIMEOUT_USER", "KICK_USER", "VIEW_BAN_LIST", "READ_MEMBER"] }),
+    )
+    .await;
+    assert_eq!(status, 201);
+    let bouncer = bouncer["id"].as_str().unwrap().to_owned();
+    server.act_as(&couch, Some(&id("u-marcus")), &[&bouncer]);
+    let mut kwame = connect_as(&base, &id("u-kwame")).await;
+    let control = |body: Value| {
+        let (client, base) = (client.clone(), base.clone());
+        async move { post(&client, &base, "/__control/moderate_as", body).await }
+    };
+
+    // A timeout, as marcus: the room hears it, the list has it, with marcus as the moderator.
+    let (status, body) = control(json!({
+        "moderatorId": id("u-marcus"), "action": "timeout", "communityId": couch,
+        "userId": id("u-kwame"), "durationSeconds": 600, "reason": "cool off",
+    }))
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let heard = settle(&server, &mut [&mut kwame]).await;
+    assert!(names(&heard[0]).contains(&"userTimedOut"), "{heard:?}");
+    let (_, list) = get(&client, &base, &format!("/api/moderation/timeouts/{couch}")).await;
+    assert_eq!(list[0]["user"]["id"], id("u-kwame"));
+    assert_eq!(list[0]["moderator"]["id"], id("u-marcus"));
+    // Their channel capabilities say until when, as the composer's lock reads it.
+    let kwame_bearer = bearer_for(&client, &base, "kwam3", &id("u-kwame")).await;
+    let (status, caps) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        &format!("/api/channels/community/{couch}/permissions/me"),
+        &kwame_bearer,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{caps}");
+    assert!(caps["channels"][0]["timedOutUntil"].is_string(), "{caps}");
+    let (_, mine) = get(
+        &client,
+        &base,
+        &format!("/api/channels/community/{couch}/permissions/me"),
+    )
+    .await;
+    assert!(mine["channels"][0]["timedOutUntil"].is_null(), "{mine}");
+
+    // The checks are the moderator's: no ban on someone ranked above them, nothing without the
+    // action.
+    let (status, body) = control(json!({
+        "moderatorId": id("u-marcus"), "action": "ban", "communityId": couch,
+        "userId": id("u-samira"),
+    }))
+    .await;
+    assert_eq!(status, 403, "{body}");
+    let (status, _) = control(json!({
+        "moderatorId": id("u-kwame"), "action": "kick", "communityId": couch,
+        "userId": id("u-marcus"),
+    }))
+    .await;
+    assert_eq!(status, 403);
+
+    // A ban: they hear it first, then they're gone.
+    let (status, body) = control(json!({
+        "moderatorId": id("u-marcus"), "action": "ban", "communityId": couch,
+        "userId": id("u-kwame"), "reason": "spam",
+    }))
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let heard = settle(&server, &mut [&mut kwame]).await;
+    assert_eq!(names(&heard[0])[0], "userBanned");
+    assert_eq!(heard[0][0].1["reason"], "spam");
+    // Their community list no longer has it.
+    let (_, mine) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        "/api/community/mine",
+        &kwame_bearer,
+        None,
+    )
+    .await;
+    assert!(
+        mine.as_array()
+            .unwrap()
+            .iter()
+            .all(|community| community["id"] != couch.as_str()),
+        "{mine}"
+    );
+
+    // Bad requests.
+    for body in [
+        json!({ "action": "ban", "communityId": couch, "userId": id("u-kwame") }),
+        json!({ "moderatorId": id("u-marcus"), "action": "mute", "communityId": couch, "userId": id("u-kwame") }),
+        json!({ "moderatorId": id("u-marcus"), "action": "timeout", "communityId": couch, "userId": id("u-kwame"), "durationSeconds": 5 }),
+    ] {
+        let (status, _) = control(body).await;
+        assert_eq!(status, 400);
+    }
 }

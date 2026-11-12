@@ -1,10 +1,10 @@
 //! What the roles views are drawn with: cards, rows, the reason a control is off, the confirm
-//! dialog, loading rows, a user's line, and the group checkbox that can be partly on (the kit's
-//! `Checkbox` has no such state).
+//! dialog, loading rows and a user's line.
 
 use crate::dms::face::user_face;
 use crate::kit::{
-    Alert, Button, Dialog, IconButton, Severity, Skeleton, Variant, spacing, text, with_tip,
+    Alert, Button, ButtonTone, Dialog, IconButton, Severity, Skeleton, Variant, spacing, text,
+    with_tip,
 };
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
@@ -165,15 +165,6 @@ pub(super) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
     error.map(|error| Alert::new(Severity::Error, error.message.clone()))
 }
 
-/// The red outlined action: the kit's filled button ignores a danger colour.
-pub(super) fn danger_button(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    cx: &App,
-) -> Button {
-    Button::new(id, label).outlined().color(cx.sem().error)
-}
-
 /// The web's `ConfirmDialog`: a sentence, Cancel, and the action (red when `danger`).
 pub(super) struct Confirm {
     pub id: &'static str,
@@ -190,16 +181,16 @@ impl Confirm {
         self,
         on_confirm: impl Fn(&mut Window, &mut App) + 'static,
         on_cancel: impl Fn(&mut Window, &mut App) + 'static,
-        cx: &App,
     ) -> Dialog {
         let on_cancel = Rc::new(on_cancel);
         let close = on_cancel.clone();
         let confirm = if self.danger {
-            danger_button(
+            Button::new(
                 SharedString::from(format!("{}-confirm", self.id)),
                 self.confirm,
-                cx,
             )
+            .contained()
+            .tone(ButtonTone::Danger)
         } else {
             Button::new(
                 SharedString::from(format!("{}-confirm", self.id)),
@@ -307,119 +298,4 @@ pub(super) fn user_line(user: &UserView, cx: &App) -> Div {
 /// A chip in a colour of its own: the outlined `Chip color=…` of the web.
 pub(super) fn tone_chip(label: impl Into<SharedString>, color: Hsla) -> crate::kit::Chip {
     crate::kit::Chip::new(label).colors(color.opacity(0.12), color, color)
-}
-
-/// MuiCheckbox with its partly-on state (`indeterminate`), which the kit's `Checkbox` lacks: the
-/// same 18px box, a bar when only some of the group is on.
-pub(super) fn tri_checkbox(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    state: super::rules::Tri,
-    disabled: bool,
-    on_press: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> impl IntoElement {
-    use super::rules::Tri;
-    let sem = cx.sem();
-    let on = if disabled {
-        sem.action_disabled
-    } else {
-        sem.control_on
-    };
-    let off = if disabled {
-        sem.action_disabled
-    } else {
-        sem.text_secondary
-    };
-    let mark = if sem.is_dark {
-        sem.background_default
-    } else {
-        sem.paper
-    };
-    let focus = sem.action_selected;
-    let base_state = match state {
-        Tri::None => gpui_kit::base::CheckboxState::Unchecked,
-        Tri::Some => gpui_kit::base::CheckboxState::Indeterminate,
-        Tri::All => gpui_kit::base::CheckboxState::Checked,
-    };
-    let label = label.into();
-    gpui_kit::base::Checkbox::new(id)
-        .state(base_state)
-        .disabled(disabled)
-        .accessibility_label(label)
-        .flex()
-        .flex_shrink_0()
-        .items_center()
-        .p(px(12.))
-        .rounded(px(21.))
-        .focus_visible(move |style| style.bg(focus))
-        .when(!disabled, |element| element.cursor_pointer())
-        .on_change(move |_, _, window, cx| on_press(window, cx))
-        .child(
-            div()
-                .size(px(18.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(2.))
-                .map(|box_| match state {
-                    Tri::None => box_.border_2().border_color(off),
-                    Tri::Some => box_.bg(on).child(div().w(px(10.)).h(px(2.)).bg(mark)),
-                    Tri::All => box_.bg(on).child(
-                        crate::kit::Icon::new(DesignIcon::Check)
-                            .size(16.)
-                            .color(mark),
-                    ),
-                }),
-        )
-}
-
-/// A checkbox with its label beside it, the label wrapping where the kit's `Checkbox` would run
-/// past a narrow row.
-pub(super) fn check_row(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    caption: Option<String>,
-    checked: bool,
-    disabled: bool,
-    on_press: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> Div {
-    let sem = cx.sem();
-    let label = label.into();
-    let state = if checked {
-        super::rules::Tri::All
-    } else {
-        super::rules::Tri::None
-    };
-    div()
-        .flex()
-        .items_center()
-        .min_w_0()
-        .child(tri_checkbox(
-            id,
-            label.clone(),
-            state,
-            disabled,
-            on_press,
-            cx,
-        ))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .py(px(4.))
-                .child(text(Variant::Body1, label).text_color(if disabled {
-                    sem.text_disabled
-                } else {
-                    sem.text_primary
-                }))
-                .children(
-                    caption.map(|caption| {
-                        text(Variant::Caption, caption).text_color(sem.text_secondary)
-                    }),
-                ),
-        )
 }

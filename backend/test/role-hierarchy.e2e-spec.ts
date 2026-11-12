@@ -313,6 +313,108 @@ describe('Role hierarchy (e2e)', () => {
       ]);
     });
 
+    it('reset-defaults in an existing community that predates BAN_USER: refused for its Community Admin, works for the owner (#692)', async () => {
+      const c = await scene();
+      // An existing community: the Community Admin role has no BAN_USER
+      const legacy = (await roleRow(c.adminRole)).actions.filter(
+        (a) => a !== RbacActions.BAN_USER,
+      );
+      await f.db.role.update({
+        where: { id: c.adminRole },
+        data: { actions: legacy },
+      });
+
+      await f
+        .http()
+        .post(`/api/roles/community/${c.id}/reset-defaults`)
+        .set('Authorization', f.bearer('admin'))
+        .expect(403);
+      expect((await roleRow(c.adminRole)).actions).not.toContain(
+        RbacActions.BAN_USER,
+      );
+
+      await f
+        .http()
+        .post(`/api/roles/community/${c.id}/reset-defaults`)
+        .set('Authorization', f.bearer('owner'))
+        .expect(200);
+      expect((await roleRow(c.adminRole)).actions).toContain(
+        RbacActions.BAN_USER,
+      );
+    });
+
+    /** helper (15) manages a custom role (60) that holds DELETE_COMMUNITY, which it lacks. */
+    async function withRoleHoldingMore() {
+      const { c } = await withHelper();
+      const low = await f.customRole(c.id, 60, [
+        RbacActions.READ_COMMUNITY,
+        RbacActions.DELETE_COMMUNITY,
+      ]);
+      return { c, low };
+    }
+
+    it('can rename a role that holds an action the actor lacks (#690)', async () => {
+      const { c, low } = await withRoleHoldingMore();
+      const name = unique('renamed');
+
+      const res = await f
+        .http()
+        .put(`/api/roles/community/${c.id}/${low}`)
+        .set('Authorization', f.bearer('helper'))
+        .send({
+          name,
+          actions: [RbacActions.READ_COMMUNITY, RbacActions.DELETE_COMMUNITY],
+        })
+        .expect(200);
+
+      expect((res.body as { name: string }).name).toBe(name);
+      expect((await roleRow(low)).actions).toContain(
+        RbacActions.DELETE_COMMUNITY,
+      );
+    });
+
+    it('can remove another action from a role that holds one the actor lacks (#690)', async () => {
+      const { c } = await withHelper();
+      const low = await f.customRole(c.id, 60, [
+        RbacActions.READ_COMMUNITY,
+        RbacActions.KICK_USER,
+        RbacActions.DELETE_COMMUNITY,
+      ]);
+
+      // KICK_USER goes; DELETE_COMMUNITY stays although the helper lacks it
+      await f
+        .http()
+        .put(`/api/roles/community/${c.id}/${low}`)
+        .set('Authorization', f.bearer('helper'))
+        .send({
+          actions: [RbacActions.READ_COMMUNITY, RbacActions.DELETE_COMMUNITY],
+        })
+        .expect(200);
+
+      expect((await roleRow(low)).actions).toEqual([
+        RbacActions.READ_COMMUNITY,
+        RbacActions.DELETE_COMMUNITY,
+      ]);
+    });
+
+    it('cannot add an action the actor lacks (#690)', async () => {
+      const { c } = await withHelper();
+      const low = await f.customRole(c.id, 60, [RbacActions.READ_COMMUNITY]);
+
+      await f
+        .http()
+        .put(`/api/roles/community/${c.id}/${low}`)
+        .set('Authorization', f.bearer('helper'))
+        .send({
+          actions: [RbacActions.READ_COMMUNITY, RbacActions.DELETE_COMMUNITY],
+        })
+        .expect(403);
+
+      expect((await roleRow(low)).actions).toEqual([
+        RbacActions.READ_COMMUNITY,
+      ]);
+    });
+
     it('still allows the legitimate flows', async () => {
       const { c, helperRole } = await withHelper();
       const low = await f.customRole(c.id, 60, [RbacActions.READ_COMMUNITY]);

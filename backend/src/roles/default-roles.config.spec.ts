@@ -34,6 +34,14 @@ describe('Default Roles Config', () => {
       expect(DEFAULT_ADMIN_ROLE.actions).toContain(RbacActions.DELETE_INVITE);
     });
 
+    it('should have community moderation permissions, including banning', () => {
+      expect(DEFAULT_ADMIN_ROLE.actions).toContain(RbacActions.BAN_USER);
+      expect(DEFAULT_ADMIN_ROLE.actions).toContain(RbacActions.KICK_USER);
+      expect(DEFAULT_ADMIN_ROLE.actions).toContain(RbacActions.TIMEOUT_USER);
+      expect(DEFAULT_ADMIN_ROLE.actions).toContain(RbacActions.UNBAN_USER);
+      expect(DEFAULT_ADMIN_ROLE.actions).toContain(RbacActions.VIEW_BAN_LIST);
+    });
+
     it('should NOT have instance-level actions', () => {
       expect(DEFAULT_ADMIN_ROLE.actions).not.toContain(
         RbacActions.READ_INSTANCE_SETTINGS,
@@ -44,7 +52,6 @@ describe('Default Roles Config', () => {
       expect(DEFAULT_ADMIN_ROLE.actions).not.toContain(
         RbacActions.READ_INSTANCE_STATS,
       );
-      expect(DEFAULT_ADMIN_ROLE.actions).not.toContain(RbacActions.BAN_USER);
       expect(DEFAULT_ADMIN_ROLE.actions).not.toContain(RbacActions.READ_USER);
       expect(DEFAULT_ADMIN_ROLE.actions).not.toContain(RbacActions.UPDATE_USER);
       expect(DEFAULT_ADMIN_ROLE.actions).not.toContain(RbacActions.DELETE_USER);

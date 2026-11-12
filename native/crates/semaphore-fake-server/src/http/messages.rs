@@ -6,7 +6,7 @@ use crate::{Inner, lock};
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
-use axum::http::{Method, StatusCode};
+use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::Response;
 use axum::routing::{get, post};
 use semaphore_wire::types::{AnchoredMessagesResponseDto, PaginatedMessagesResponseDto};
@@ -57,11 +57,26 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
     })
 }
 
+/// `RbacGuard`'s answer for a channel message route: a channel the caller can't see (a private
+/// channel they aren't on, or a community they aren't in) is `403` before the handler runs, as the
+/// backend's `READ_MESSAGE` check on the channel is.
+fn guard_channel(inner: &Inner, headers: &HeaderMap, channel_id: &str) -> Option<Response> {
+    let me = inner.user_of(super::bearer_token(headers));
+    if crate::admin::can_view(inner, channel_id, &me) {
+        return None;
+    }
+    Some(crate::rbac::respond(inner, crate::rbac::guard_refusal()))
+}
+
 async fn messages_for_channel(
     State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
     Path(channel_id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
+    if let Some(response) = guard_channel(&inner, &headers, &channel_id) {
+        return response;
+    }
     let (limit, token, direction) = match page_query(&query) {
         Ok(params) => params,
         Err(response) => return response,
@@ -113,9 +128,13 @@ async fn messages_for_group(
 
 async fn messages_around(
     State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
     Path((channel_id, message_id)): Path<(String, String)>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
+    if let Some(response) = guard_channel(&inner, &headers, &channel_id) {
+        return response;
+    }
     let limit = match limit_query(&query) {
         Ok(limit) => limit,
         Err(response) => return response,
@@ -171,7 +190,11 @@ async fn messages_around_for_group(
     )
 }
 
-async fn create_message(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
+async fn create_message(
+    State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     let Ok(send) = typed::<SendBody>(&body) else {
         return invalid("The request body does not match the contract");
     };
@@ -183,10 +206,14 @@ async fn create_message(State(inner): State<Arc<Inner>>, body: Bytes) -> Respons
             false,
         );
     };
+    if let Some(response) = guard_channel(&inner, &headers, &channel_id) {
+        return response;
+    }
     let fault = inner.take_send_fault();
+    let author = inner.user_of(super::bearer_token(&headers));
     match messages::send(
         &inner,
-        &inner.scenario.me.id,
+        &author,
         SendTarget::Channel(channel_id),
         &send,
         fault,

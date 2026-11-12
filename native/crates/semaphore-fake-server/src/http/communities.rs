@@ -89,6 +89,8 @@ async fn communities_mine(State(inner): State<Arc<Inner>>, headers: HeaderMap) -
         .iter()
         .cloned()
         .chain(inner.created_communities_of(&user))
+        // W5: not one they were kicked or banned from since.
+        .filter(|community| !crate::calls::is_kicked(&inner, &community.id, &user))
         // W5-A: as changed or deleted since.
         .filter_map(|community| crate::admin::changed(&inner, community))
         .map(|community| {
@@ -127,15 +129,18 @@ async fn channels_for_community(
 
 async fn mentionable_channels(
     State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
     Path(community_id): Path<String>,
 ) -> Response {
     let Some(community) = crate::admin::community(&inner, &community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
+    let user = inner.user_of(bearer_token(&headers));
     let channels: Vec<Value> = community
         .channels
         .iter()
         .filter(|channel| channel.type_ == ChannelType::Text)
+        .filter(|channel| crate::admin::sees(&inner, channel, &user))
         .map(|channel| serde_json::to_value(channel).expect("a channel serializes"))
         .collect();
     json_response(StatusCode::OK, Value::Array(channels))
@@ -143,11 +148,15 @@ async fn mentionable_channels(
 
 async fn channel_permissions(
     State(inner): State<Arc<Inner>>,
+    headers: axum::http::HeaderMap,
     Path(community_id): Path<String>,
 ) -> Response {
     let Some(community) = crate::admin::community(&inner, &community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
+    // W5: the caller's active timeout, as `getMyCommunityChannelPermissions` reports it.
+    let user = inner.user_of(super::bearer_token(&headers));
+    let timed_out_until = crate::rbac::timed_out_until(&inner, &community_id, &user);
     let channels: Vec<ChannelCapabilitiesDto> = community
         .channels
         .iter()
@@ -162,7 +171,7 @@ async fn channel_permissions(
             share: true,
             speak: true,
             thread_reply: true,
-            timed_out_until: None,
+            timed_out_until,
             video: true,
             view: true,
         })

@@ -454,6 +454,75 @@ pub fn first_open_tab(caps: &CommunityCaps) -> CommunityTab {
         .unwrap_or_default()
 }
 
+/// Whether the community's settings entry (the sidebar header's button) is offered: some change
+/// these caps allow. Reading alone doesn't count, since the default Member role reads members and
+/// sounds, and every member could otherwise open a page of disabled controls. `delete_invite` on
+/// its own doesn't count either: it is deliberately ignored below, and a member who holds nothing
+/// else (see `reader_caps` in the shell stories) gets no settings entry.
+pub fn opens_settings(caps: &CommunityCaps) -> bool {
+    let CommunityCaps {
+        update_community,
+        delete_community,
+        create_channel,
+        update_channel,
+        delete_channel,
+        manage_private_members,
+        manage_channel_permissions,
+        read_roles: _,
+        create_role,
+        update_role,
+        delete_role,
+        assign_roles,
+        read_members: _,
+        add_members,
+        read_alias_groups: _,
+        create_alias_group,
+        update_alias_group,
+        delete_alias_group,
+        manage_alias_members,
+        manage_emoji,
+        read_sounds: _,
+        create_sound,
+        delete_sound,
+        manage_webhooks,
+        create_invite,
+        delete_invite: _,
+        ban,
+        unban,
+        kick,
+        timeout,
+        view_bans,
+        view_moderation_log,
+    } = *caps;
+    update_community
+        || delete_community
+        || create_channel
+        || update_channel
+        || delete_channel
+        || manage_private_members
+        || manage_channel_permissions
+        || create_role
+        || update_role
+        || delete_role
+        || assign_roles
+        || add_members
+        || create_alias_group
+        || update_alias_group
+        || delete_alias_group
+        || manage_alias_members
+        || manage_emoji
+        || create_sound
+        || delete_sound
+        || manage_webhooks
+        || create_invite
+        || ban
+        || unban
+        || kick
+        || timeout
+        || view_bans
+        || view_moderation_log
+}
+
 // ---- Which change an op is about. ----
 
 /// A change, as core keys it in `AdminOp::actions`.
@@ -514,39 +583,29 @@ pub enum Outcome {
     Failed,
 }
 
-/// A change this tab sent, followed through its own entry in `AdminOp::actions` until it ends.
+/// A change a view sent, followed until core records that it ended (`AdminOp::finished`): a
+/// start and an end that reach the view in one batch can't be missed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pending {
     pub action: AdminAction,
-    /// The op as it stood when the change was sent.
-    before: AdminOp,
-    /// Its entry has been seen running.
-    seen: bool,
+    /// `AdminOp::last_finished_seq` as the change was sent: only a later end is this one's.
+    after: u64,
 }
 
 impl Pending {
     pub fn new(action: AdminAction, before: &AdminOp) -> Self {
         Self {
             action,
-            before: before.clone(),
-            seen: false,
+            after: before.last_finished_seq(),
         }
     }
 
-    /// The op as core shows it now. An entry that is running waits; one that failed ends it; once
-    /// its entry is gone it succeeded, if it was seen or the op moved on since the change was sent
-    /// (core adds the entry as the change starts, so an unchanged op means it hasn't yet).
+    /// The op as core shows it now: waiting until this action's end is recorded, then whether
+    /// it failed.
     pub fn observe(&mut self, op: &AdminOp) -> Outcome {
-        match state_of(op, &self.action) {
-            Some(state) if state.busy || state.upload.is_some() => {
-                self.seen = true;
-                Outcome::Waiting
-            }
-            Some(state) if state.error.is_some() && (self.seen || *op != self.before) => {
-                Outcome::Failed
-            }
-            Some(_) => Outcome::Waiting,
-            None if self.seen || *op != self.before => Outcome::Succeeded,
+        match op.finished_since(&self.action, self.after) {
+            Some(done) if done.error.is_some() => Outcome::Failed,
+            Some(_) => Outcome::Succeeded,
             None => Outcome::Waiting,
         }
     }

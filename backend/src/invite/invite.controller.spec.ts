@@ -75,7 +75,17 @@ describe('InviteController', () => {
       const result = await controller.getInvites(mockReq);
 
       expect(result).toEqual(invites);
-      expect(service.getInvites).toHaveBeenCalledWith(mockUser);
+      expect(service.getInvites).toHaveBeenCalledWith(mockUser, undefined);
+    });
+
+    it('should scope the list to a community when asked (#685)', async () => {
+      const mockUser = { id: 'user-456' };
+      const mockReq = { user: mockUser } as any;
+      service.getInvites.mockResolvedValue([]);
+
+      await controller.getInvites(mockReq, 'community-1');
+
+      expect(service.getInvites).toHaveBeenCalledWith(mockUser, 'community-1');
     });
   });
 

@@ -29,6 +29,11 @@ export enum RoomEvents {
   DM_GROUP_CREATED = 'dm-group.created',
   DM_GROUP_MEMBER_ADDED = 'dm-group.member-added',
   DM_GROUP_MEMBER_LEFT = 'dm-group.member-left',
+  FRIEND_REQUEST_SENT = 'friendship.request-sent',
+  FRIEND_REQUEST_ACCEPTED = 'friendship.request-accepted',
+  FRIEND_REQUEST_DECLINED = 'friendship.request-declined',
+  FRIEND_REQUEST_CANCELLED = 'friendship.request-cancelled',
+  FRIEND_REMOVED = 'friendship.removed',
   ALIAS_GROUP_CREATED = 'alias-group.created',
   ALIAS_GROUP_UPDATED = 'alias-group.updated',
   ALIAS_GROUP_MEMBER_ADDED = 'alias-group.member-added',
@@ -48,6 +53,8 @@ export enum RoomEvents {
   ROLE_DELETED = 'role.deleted',
   ROLE_ASSIGNED = 'role.assigned',
   ROLE_UNASSIGNED = 'role.unassigned',
+  /** One of a user's own instance roles changed (assigned, removed, edited). */
+  INSTANCE_ROLES_UPDATED = 'instance-roles.updated',
   USER_PROFILE_UPDATED = 'user.profile-updated',
   AUTH_SESSIONS_REVOKED = 'auth.sessions-revoked',
   AUTH_USER_SESSIONS_ENDED = 'auth.user-sessions-ended',
@@ -159,6 +166,19 @@ export interface DmGroupMemberLeftEvent {
   userId: string;
 }
 
+/**
+ * Any change to a friendship: the actors differ per event (the sender for a
+ * request, the receiver for accept/decline, either for a removal), so the
+ * handler derives the audience from `actorId` and the event.
+ */
+export interface FriendshipChangedEvent {
+  friendshipId: string;
+  userAId: string;
+  userBId: string;
+  /** Who made the change: never notified as "the other person". */
+  actorId: string;
+}
+
 export interface AliasGroupCreatedEvent {
   aliasGroupId: string;
   memberIds: string[];
@@ -245,6 +265,11 @@ export interface RoleAssignedEvent {
   userId: string;
   roleId: string;
   roleName: string;
+}
+
+export interface InstanceRolesUpdatedEvent {
+  userId: string;
+  roleId: string;
 }
 
 export interface RoleUnassignedEvent {

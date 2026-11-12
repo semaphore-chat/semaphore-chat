@@ -254,12 +254,20 @@ fn visible_channels(
     channels
 }
 
-/// The stored file's uploader and kind, if it exists.
-fn file_of(inner: &Inner, file_id: &str) -> Option<(String, String)> {
-    lock(&inner.data)
-        .files
-        .get(file_id)
-        .map(|file| (file.uploaded_by.clone(), file.resource_type.clone()))
+/// What deciding whether a created asset may use an uploaded file needs.
+struct FileInfo {
+    uploaded_by: String,
+    kind: String,
+    community_id: Option<String>,
+}
+
+/// The stored file's uploader, kind and community, if it exists.
+fn file_of(inner: &Inner, file_id: &str) -> Option<FileInfo> {
+    lock(&inner.data).files.get(file_id).map(|file| FileInfo {
+        uploaded_by: file.uploaded_by.clone(),
+        kind: file.resource_type.clone(),
+        community_id: file.community_id.clone(),
+    })
 }
 
 // ----- the community --------------------------------------------------------------------------
@@ -300,7 +308,8 @@ async fn update_community(
     ] {
         if let Some(file_id) = file_id.as_deref().filter(|id| !id.is_empty())
             && Some(file_id) != existing.as_deref()
-            && file_of(&inner, file_id).is_none_or(|(by, of)| by != user || of != kind)
+            && file_of(&inner, file_id)
+                .is_none_or(|file| file.uploaded_by != user || file.kind != kind)
         {
             return forbidden(&inner, "You can only use images you uploaded");
         }
@@ -1105,8 +1114,11 @@ pub(super) async fn create_emoji(
     let file_id = create.file_id.to_string();
     match file_of(&inner, &file_id) {
         None => return not_found(&inner, "Emoji image file not found"),
-        Some((_, kind)) if kind != "CUSTOM_EMOJI" => {
+        Some(file) if file.kind != "CUSTOM_EMOJI" => {
             return bad_request(&inner, "File is not a custom emoji image");
+        }
+        Some(file) if file.community_id.as_deref() != Some(community_id.as_str()) => {
+            return bad_request(&inner, "Emoji image does not belong to this community");
         }
         Some(_) => {}
     }
@@ -1195,7 +1207,10 @@ pub(super) async fn create_sound(
     let file_id = create.file_id.to_string();
     match file_of(&inner, &file_id) {
         None => return not_found(&inner, "Referenced file not found"),
-        Some((_, kind)) if kind != "SOUNDBOARD_SOUND" => {
+        Some(file)
+            if file.kind != "SOUNDBOARD_SOUND"
+                || file.community_id.as_deref() != Some(community_id.as_str()) =>
+        {
             return bad_request(&inner, "File is not a soundboard sound for this community");
         }
         Some(_) => {}

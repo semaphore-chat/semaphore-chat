@@ -7,7 +7,7 @@ import {
   PermissionsCacheService,
   type EpochBump,
 } from './permissions-cache.service';
-import { RbacActions } from '@prisma/client';
+import { Prisma, RbacActions } from '@prisma/client';
 import {
   createMockDatabase,
   UserFactory,
@@ -456,6 +456,35 @@ describe('CommunityRolesService', () => {
   });
 
   describe('updateRole', () => {
+    it('refuses with a conflict when the role changed since it was read', async () => {
+      const existingRole = RoleFactory.build({
+        id: 'role-123',
+        communityId: 'community-123',
+        isDefault: false,
+      });
+      mockDatabase.role.findUnique.mockResolvedValue(existingRole);
+      mockDatabase.role.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.updateRole('role-123', 'community-123', {
+          actions: [RbacActions.READ_MESSAGE],
+        }),
+      ).rejects.toThrow('The role changed, reload and try again');
+      expect(mockDatabase.role.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'role-123',
+            actions: { equals: existingRole.actions },
+          },
+        }),
+      );
+    });
+
     it('should update role actions', async () => {
       const roleId = 'role-123';
       const communityId = 'community-123';
@@ -544,6 +573,97 @@ describe('CommunityRolesService', () => {
     });
 
     describe('privilege escalation prevention', () => {
+      it('should allow renaming a role that holds an action the user does not have', async () => {
+        const communityId = 'community-123';
+        const userId = 'user-123';
+        const existingRole = RoleFactory.build({
+          name: 'Custom Role',
+          communityId,
+          isDefault: false,
+          actions: [RbacActions.READ_MESSAGE, RbacActions.DELETE_COMMUNITY],
+        });
+        // The edit keeps the permission list as it is; only the name changes
+        const updateDto = {
+          name: 'Renamed Role',
+          actions: [RbacActions.READ_MESSAGE, RbacActions.DELETE_COMMUNITY],
+        };
+
+        mockDatabase.role.findUnique.mockResolvedValue(existingRole);
+        const userRole = RoleFactory.buildMember({
+          communityId,
+          actions: [RbacActions.READ_MESSAGE],
+        });
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          {
+            userId,
+            communityId,
+            roleId: userRole.id,
+            isInstanceRole: false,
+            role: userRole,
+          },
+        ]);
+        mockDatabase.role.update.mockResolvedValue({
+          ...existingRole,
+          ...updateDto,
+        });
+
+        await expect(
+          service.updateRole(existingRole.id, communityId, updateDto, userId),
+        ).resolves.toMatchObject({ name: 'Renamed Role' });
+        expect(mockDatabase.role.update).toHaveBeenCalled();
+      });
+
+      it('should allow removing another action from a role that holds one the user does not have', async () => {
+        const communityId = 'community-123';
+        const userId = 'user-123';
+        const existingRole = RoleFactory.build({
+          name: 'Custom Role',
+          communityId,
+          isDefault: false,
+          actions: [
+            RbacActions.READ_MESSAGE,
+            RbacActions.KICK_USER,
+            RbacActions.DELETE_COMMUNITY,
+          ],
+        });
+        // KICK_USER goes, DELETE_COMMUNITY stays although the user lacks it
+        const updateDto = {
+          actions: [RbacActions.READ_MESSAGE, RbacActions.DELETE_COMMUNITY],
+        };
+
+        mockDatabase.role.findUnique.mockResolvedValue(existingRole);
+        const userRole = RoleFactory.buildMember({
+          communityId,
+          actions: [RbacActions.READ_MESSAGE],
+        });
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          {
+            userId,
+            communityId,
+            roleId: userRole.id,
+            isInstanceRole: false,
+            role: userRole,
+          },
+        ]);
+        mockDatabase.role.update.mockResolvedValue({
+          ...existingRole,
+          ...updateDto,
+        });
+
+        const result = await service.updateRole(
+          existingRole.id,
+          communityId,
+          updateDto,
+          userId,
+        );
+
+        expect(result.actions).toEqual([
+          RbacActions.READ_MESSAGE,
+          RbacActions.DELETE_COMMUNITY,
+        ]);
+        expect(mockDatabase.role.update).toHaveBeenCalled();
+      });
+
       it('should throw ForbiddenException when user tries to add actions they do not have', async () => {
         const communityId = 'community-123';
         const userId = 'user-123';
@@ -653,6 +773,41 @@ describe('CommunityRolesService', () => {
         // getUserRolesForCommunity uses userRoles.findMany — should not be called
         expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('assignRoleAsActor', () => {
+    it('still refuses a role that holds an action the actor lacks', async () => {
+      const communityId = 'community-123';
+      const actor = { id: 'actor-1', role: 'USER' };
+      const role = RoleFactory.build({
+        communityId,
+        position: 50,
+        isDefault: false,
+        actions: [RbacActions.READ_MESSAGE, RbacActions.DELETE_COMMUNITY],
+      });
+
+      mockDatabase.role.findUnique.mockResolvedValue(role);
+      mockDatabase.membership.findUnique.mockResolvedValue({ id: 'member-1' });
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+      const actorRole = RoleFactory.buildMember({
+        communityId,
+        actions: [RbacActions.READ_MESSAGE],
+      });
+      mockDatabase.userRoles.findMany.mockResolvedValue([
+        {
+          userId: actor.id,
+          communityId,
+          roleId: actorRole.id,
+          isInstanceRole: false,
+          role: actorRole,
+        },
+      ]);
+
+      await expect(
+        service.assignRoleAsActor(actor, 'target-1', communityId, role.id),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockDatabase.userRoles.create).not.toHaveBeenCalled();
     });
   });
 

@@ -1,7 +1,8 @@
 //! Button, IconButton, Switch, Radio, Checkbox and Slider: gpui-kit's unstyled controls in MUI's paint.
 
 use super::{Action, Icon, Spinner, ValueAction, Variant, text};
-use crate::theme::SemTheme;
+use crate::theme::color::{contrast_ratio, darken, hsla_of, parse_hex, readable_text_color};
+use crate::theme::{Paint, Sem, SemTheme};
 use gpui_kit::base;
 use gpui_kit::component::slider as kit_slider;
 use gpui_kit::prelude::*;
@@ -10,6 +11,7 @@ use semaphore_design::Icon as IconName;
 use std::rc::Rc;
 
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type StateHandler = Rc<dyn Fn(CheckState, &mut Window, &mut App)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ButtonVariant {
@@ -27,6 +29,66 @@ pub enum ButtonSize {
     Large,
 }
 
+/// What a filled button is filled with: the accent (the default), `error`'s red or `warning`'s
+/// amber. Only [`ButtonVariant::Contained`] paints it; outlined and text buttons keep [`Button::color`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ButtonTone {
+    #[default]
+    Default,
+    Danger,
+    Warning,
+}
+
+/// The three paints and the label a filled button draws with. For the default tone `background` and
+/// `hover` are the theme's accent (a gradient in the balanced and vibrant intensities).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FilledTone {
+    background: Paint,
+    hover: Paint,
+    pressed: Paint,
+    label: Hsla,
+}
+
+impl ButtonTone {
+    fn paint(self, sem: &Sem) -> FilledTone {
+        let (main, contrast) = match self {
+            ButtonTone::Default => {
+                return FilledTone {
+                    background: sem.contained,
+                    hover: sem.contained_hover,
+                    pressed: sem.contained_hover,
+                    label: sem.primary_contrast,
+                };
+            }
+            ButtonTone::Danger => (sem.palette.error_main, sem.palette.error_contrast_text),
+            ButtonTone::Warning => (sem.palette.warning_main, sem.palette.warning_contrast_text),
+        };
+        let hover = darken(main, 0.08);
+        let pressed = darken(main, 0.12);
+        FilledTone {
+            background: Paint::Solid(hsla_of(main)),
+            hover: Paint::Solid(hsla_of(hover)),
+            pressed: Paint::Solid(hsla_of(pressed)),
+            label: readable_label(contrast, [main, hover, pressed]),
+        }
+    }
+}
+
+/// The label for a filled tone: white or black, whichever reads better on the fill, and mixed
+/// towards the other extreme until it meets WCAG AA on every state's fill (warning's amber needs
+/// the dark extreme in both modes; dark mode's lighter red does too).
+fn readable_label(contrast: semaphore_design::Rgba, fills: [semaphore_design::Rgba; 3]) -> Hsla {
+    let white = parse_hex("#ffffff");
+    let black = parse_hex("#000000");
+    let preferred = if contrast_ratio(contrast, fills[0]) >= contrast_ratio(black, fills[0]) {
+        contrast
+    } else {
+        black
+    };
+    let towards = if preferred == black { white } else { black };
+    hsla_of(readable_text_color(preferred, &fills, towards))
+}
+
 /// MuiButton, with the theme's `contained` and `outlined` overrides.
 #[derive(IntoElement)]
 pub struct Button {
@@ -34,6 +96,7 @@ pub struct Button {
     label: SharedString,
     variant: ButtonVariant,
     size: ButtonSize,
+    tone: ButtonTone,
     start_icon: Option<IconName>,
     full_width: bool,
     disabled: bool,
@@ -49,6 +112,7 @@ impl Button {
             label: label.into(),
             variant: ButtonVariant::default(),
             size: ButtonSize::default(),
+            tone: ButtonTone::default(),
             start_icon: None,
             full_width: false,
             disabled: false,
@@ -70,6 +134,13 @@ impl Button {
 
     pub fn size(mut self, size: ButtonSize) -> Self {
         self.size = size;
+        self
+    }
+
+    /// A filled button's colour: the accent by default, or the danger or warning tone. Outlined and
+    /// text buttons ignore it; use [`Button::color`] for those.
+    pub fn tone(mut self, tone: ButtonTone) -> Self {
+        self.tone = tone;
         self
     }
 
@@ -118,9 +189,10 @@ impl RenderOnce for Button {
             ButtonSize::Medium => (36., 16., 20., 14.),
             ButtonSize::Large => (42., 22., 22., 15.),
         };
+        let tone = self.tone.paint(&sem);
         let foreground = match self.variant {
             _ if inactive => sem.action_disabled,
-            ButtonVariant::Contained => sem.primary_contrast,
+            ButtonVariant::Contained => tone.label,
             ButtonVariant::Outlined | ButtonVariant::Text => {
                 self.color.unwrap_or(sem.outlined_text)
             }
@@ -129,12 +201,8 @@ impl RenderOnce for Button {
             .color
             .map(|color| color.opacity(0.08))
             .unwrap_or(sem.outlined_hover_bg);
-        let (variant, contained_hover, outlined_hover_border, outlined_border) = (
-            self.variant,
-            sem.contained_hover,
-            sem.outlined_hover_border,
-            sem.outlined_border,
-        );
+        let (variant, outlined_hover_border, outlined_border) =
+            (self.variant, sem.outlined_hover_border, sem.outlined_border);
 
         let mut button = base::Button::new(self.id)
             .disabled(inactive)
@@ -152,9 +220,10 @@ impl RenderOnce for Button {
         button = match variant {
             ButtonVariant::Contained if inactive => button.bg(sem.action_disabled_bg),
             ButtonVariant::Contained => button
-                .bg(sem.contained.background())
-                .hover(move |style| style.bg(contained_hover.background()))
-                .focus_visible(move |style| style.bg(contained_hover.background())),
+                .bg(tone.background.background())
+                .hover(move |style| style.bg(tone.hover.background()))
+                .active(move |style| style.bg(tone.pressed.background()))
+                .focus_visible(move |style| style.bg(tone.hover.background())),
             ButtonVariant::Outlined => button
                 .border_1()
                 .border_color(if inactive {
@@ -478,14 +547,71 @@ impl RenderOnce for Radio {
     }
 }
 
+/// MuiCheckbox's three states: `indeterminate` is the bar a group shows when only some of it is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CheckState {
+    #[default]
+    Unchecked,
+    Checked,
+    Indeterminate,
+}
+
+impl CheckState {
+    pub fn is_checked(self) -> bool {
+        matches!(self, CheckState::Checked)
+    }
+
+    /// What a press gives, as MUI does: a partly selected box becomes checked, a checked one clears.
+    pub fn toggled(self) -> Self {
+        match self {
+            CheckState::Checked => CheckState::Unchecked,
+            CheckState::Unchecked | CheckState::Indeterminate => CheckState::Checked,
+        }
+    }
+
+    fn of(state: base::CheckboxState) -> Self {
+        match state {
+            base::CheckboxState::Unchecked => CheckState::Unchecked,
+            base::CheckboxState::Checked => CheckState::Checked,
+            base::CheckboxState::Indeterminate => CheckState::Indeterminate,
+        }
+    }
+
+    fn base(self) -> base::CheckboxState {
+        match self {
+            CheckState::Unchecked => base::CheckboxState::Unchecked,
+            CheckState::Checked => base::CheckboxState::Checked,
+            CheckState::Indeterminate => base::CheckboxState::Indeterminate,
+        }
+    }
+}
+
+impl From<bool> for CheckState {
+    fn from(checked: bool) -> Self {
+        if checked {
+            CheckState::Checked
+        } else {
+            CheckState::Unchecked
+        }
+    }
+}
+
 /// MuiCheckbox: the 18px box MUI's icon draws, in a 42px target.
+///
+/// The label sits beside the box and wraps onto as many lines as its width needs; [`Checkbox::caption`]
+/// adds a smaller muted line under it. [`Checkbox::hide_label`] keeps the label as the accessible name
+/// and draws only the box, for a row that names the thing itself.
 #[derive(IntoElement)]
 pub struct Checkbox {
     id: ElementId,
     label: SharedString,
-    checked: bool,
+    state: CheckState,
+    caption: Option<SharedString>,
+    hide_label: bool,
+    dense: bool,
     disabled: bool,
-    on_change: Option<ValueAction<bool>>,
+    on_change: Option<StateHandler>,
+    base: Div,
 }
 
 impl Checkbox {
@@ -493,10 +619,38 @@ impl Checkbox {
         Self {
             id: id.into(),
             label: label.into(),
-            checked,
+            state: checked.into(),
+            caption: None,
+            hide_label: false,
+            dense: false,
             disabled: false,
             on_change: None,
+            base: div(),
         }
+    }
+
+    /// The third state: `indeterminate` draws the bar instead of the check.
+    pub fn state(mut self, state: CheckState) -> Self {
+        self.state = state;
+        self
+    }
+
+    /// A smaller, muted line under the label: a permission key, or the username beside a name.
+    pub fn caption(mut self, caption: impl Into<SharedString>) -> Self {
+        self.caption = Some(caption.into());
+        self
+    }
+
+    /// Draw only the box. The label stays the accessible name.
+    pub fn hide_label(mut self) -> Self {
+        self.hide_label = true;
+        self
+    }
+
+    /// A dense list row's tighter geometry: 42px tall rather than 48.
+    pub fn dense(mut self) -> Self {
+        self.dense = true;
+        self
     }
 
     pub fn disabled(mut self, disabled: bool) -> Self {
@@ -504,14 +658,32 @@ impl Checkbox {
         self
     }
 
+    /// The new checked value. A partly selected box reports `true`, as a press checks it.
     pub fn on_change(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
+        self.on_change = Some(Rc::new(move |state, window, cx| {
+            handler(state.is_checked(), window, cx);
+        }));
+        self
+    }
+
+    /// The new state, for a box that has a partly selected state or a handler that decides its own.
+    pub fn on_toggle(
+        mut self,
+        handler: impl Fn(CheckState, &mut Window, &mut App) + 'static,
+    ) -> Self {
         self.on_change = Some(Rc::new(handler));
         self
     }
 }
 
+impl Styled for Checkbox {
+    fn style(&mut self) -> &mut StyleRefinement {
+        self.base.style()
+    }
+}
+
 impl RenderOnce for Checkbox {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem();
         let on = if self.disabled {
             sem.action_disabled
@@ -523,51 +695,84 @@ impl RenderOnce for Checkbox {
         } else {
             sem.text_secondary
         };
-        let checked = self.checked;
         let check_color = if sem.is_dark {
             sem.background_default
         } else {
             sem.paper
         };
         let focus = sem.action_selected;
-        let mut element = base::Checkbox::new(self.id)
-            .checked(checked)
+        let state = self.state;
+        let (outer_padding, gap, label_padding, box_padding, radius) = if self.dense {
+            (0., 0., 4., 12., 4.)
+        } else {
+            (12., 12., 0., 0., 21.)
+        };
+        let mut element = base::Checkbox::new(self.id);
+        *element.style() = self.base.style().clone();
+        element = element
+            .state(state.base())
             .disabled(self.disabled)
             .accessibility_label(self.label.clone())
             .flex()
-            .flex_shrink_0()
+            .min_w_0()
             .items_center()
-            .gap(px(12.))
-            .p(px(12.))
-            .rounded(px(21.))
+            .gap(px(gap))
+            .p(px(outer_padding))
+            .rounded(px(radius))
             .focus_visible(move |style| style.bg(focus))
             .when(!self.disabled, |element| element.cursor_pointer());
         if let Some(handler) = self.on_change {
             element = element.on_change(move |state, _, window, cx| {
-                handler(state == base::CheckboxState::Checked, window, cx);
+                handler(CheckState::of(state), window, cx);
             });
         }
         element
             .child(
                 div()
-                    .size(px(18.))
+                    .flex_shrink_0()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(2.))
-                    .when(checked, |box_| {
-                        box_.bg(on)
-                            .child(Icon::new(IconName::Check).size(16.).color(check_color))
-                    })
-                    .when(!checked, |box_| box_.border_2().border_color(off)),
+                    .p(px(box_padding))
+                    .rounded(px(21.))
+                    .child(
+                        div()
+                            .size(px(18.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(2.))
+                            .map(|box_| match state {
+                                CheckState::Unchecked => box_.border_2().border_color(off),
+                                CheckState::Indeterminate => box_
+                                    .bg(on)
+                                    .child(div().w(px(10.)).h(px(2.)).bg(check_color)),
+                                CheckState::Checked => box_
+                                    .bg(on)
+                                    .child(Icon::new(IconName::Check).size(16.).color(check_color)),
+                            }),
+                    ),
             )
-            .child(
-                text(Variant::Body1, self.label).text_color(if self.disabled {
-                    sem.text_disabled
-                } else {
-                    sem.text_primary
-                }),
-            )
+            .when(!self.hide_label, |element| {
+                element.child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .py(px(label_padding))
+                        .child(
+                            text(Variant::Body1, self.label).text_color(if self.disabled {
+                                sem.text_disabled
+                            } else {
+                                sem.text_primary
+                            }),
+                        )
+                        .children(self.caption.map(|caption| {
+                            text(Variant::Caption, caption).text_color(sem.text_secondary)
+                        })),
+                )
+            })
     }
 }
 
@@ -601,5 +806,55 @@ impl RenderOnce for Slider {
             .horizontal()
             .disabled(self.disabled)
             .accessibility_label(self.label)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // `gpui_kit::*` brings GPUI's `test` attribute in too, and it would win.
+    use crate::theme::ThemeChoice;
+    use crate::theme::color::{contrast_ratio, token_of};
+    use core::prelude::v1::test;
+
+    fn solid(paint: Paint) -> Hsla {
+        match paint {
+            Paint::Solid(color) => color,
+            Paint::Linear(..) => panic!("a tone fill is solid"),
+        }
+    }
+
+    #[test]
+    fn tone_labels_read_on_every_fill_in_every_theme() {
+        for choice in ThemeChoice::all() {
+            let sem = Sem::new(choice);
+            for tone in [ButtonTone::Danger, ButtonTone::Warning] {
+                let paint = tone.paint(&sem);
+                for fill in [paint.background, paint.hover, paint.pressed] {
+                    let ratio = contrast_ratio(token_of(paint.label), token_of(solid(fill)));
+                    assert!(ratio >= 4.5, "{tone:?} label in {}: {ratio}", choice.name());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_default_tone_is_the_accent() {
+        for choice in ThemeChoice::all() {
+            let sem = Sem::new(choice);
+            let paint = ButtonTone::Default.paint(&sem);
+            assert_eq!(paint.background, sem.contained);
+            assert_eq!(paint.hover, sem.contained_hover);
+            assert_eq!(paint.label, sem.primary_contrast);
+        }
+    }
+
+    #[test]
+    fn a_press_checks_a_partly_selected_box() {
+        assert_eq!(CheckState::Unchecked.toggled(), CheckState::Checked);
+        assert_eq!(CheckState::Checked.toggled(), CheckState::Unchecked);
+        assert_eq!(CheckState::Indeterminate.toggled(), CheckState::Checked);
+        assert!(CheckState::Checked.is_checked());
+        assert!(!CheckState::Indeterminate.is_checked());
     }
 }

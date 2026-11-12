@@ -97,6 +97,28 @@ export class ModerationService {
   }
 
   /**
+   * Ban, kick and timeout share the rank rule (as unban, lifting a timeout and
+   * membership removal do). The instance owner is above it, as above every
+   * RBAC check — but nobody moderates themselves: without the bypass the rank
+   * equality already refuses it, and with it the owner is still a member of the
+   * community like anyone.
+   */
+  private async assertMayModerate(
+    moderatorId: string,
+    targetUserId: string,
+    communityId: string,
+    moderatorRole: string | undefined,
+    message: string,
+  ): Promise<void> {
+    if (moderatorRole === InstanceRole.OWNER && targetUserId !== moderatorId) {
+      return;
+    }
+    if (!(await this.canModerate(moderatorId, targetUserId, communityId))) {
+      throw new ForbiddenException(message);
+    }
+  }
+
+  /**
    * Create a moderation log entry
    */
   private async createModerationLog(params: {
@@ -131,13 +153,16 @@ export class ModerationService {
     moderatorId: string,
     reason?: string,
     expiresAt?: Date,
+    moderatorRole?: string,
   ): Promise<void> {
     // Check role hierarchy
-    if (!(await this.canModerate(moderatorId, userId, communityId))) {
-      throw new ForbiddenException(
-        'Cannot ban a user with equal or higher role',
-      );
-    }
+    await this.assertMayModerate(
+      moderatorId,
+      userId,
+      communityId,
+      moderatorRole,
+      'Cannot ban a user with equal or higher role',
+    );
 
     // Check if user is member
     const isMember = await this.membershipService.isMember(userId, communityId);
@@ -361,13 +386,16 @@ export class ModerationService {
     userId: string,
     moderatorId: string,
     reason?: string,
+    moderatorRole?: string,
   ): Promise<void> {
     // Check role hierarchy
-    if (!(await this.canModerate(moderatorId, userId, communityId))) {
-      throw new ForbiddenException(
-        'Cannot kick a user with equal or higher role',
-      );
-    }
+    await this.assertMayModerate(
+      moderatorId,
+      userId,
+      communityId,
+      moderatorRole,
+      'Cannot kick a user with equal or higher role',
+    );
 
     // Check if user is member
     const isMember = await this.membershipService.isMember(userId, communityId);
@@ -476,13 +504,16 @@ export class ModerationService {
     moderatorId: string,
     durationSeconds: number,
     reason?: string,
+    moderatorRole?: string,
   ): Promise<void> {
     // Check role hierarchy
-    if (!(await this.canModerate(moderatorId, userId, communityId))) {
-      throw new ForbiddenException(
-        'Cannot timeout a user with equal or higher role',
-      );
-    }
+    await this.assertMayModerate(
+      moderatorId,
+      userId,
+      communityId,
+      moderatorRole,
+      'Cannot timeout a user with equal or higher role',
+    );
 
     // Check if user is member
     const isMember = await this.membershipService.isMember(userId, communityId);

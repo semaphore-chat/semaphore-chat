@@ -98,6 +98,10 @@ Ask these five questions for each new WebSocket event:
 | `USER_TIMED_OUT/TIMEOUT_REMOVED` | `moderationHandlers.ts` | Member state changes |
 | `USER_PROFILE_UPDATED` | `presenceHandlers.ts` | Infrequent, profile cached in multiple places |
 | `DM_VOICE_CALL_STARTED` | `voiceHandlers.ts` | Conservative: always refetch initial state |
+| `FRIEND_REQUEST_SENT/ACCEPTED/DECLINED/CANCELLED`, `FRIEND_REMOVED` | `friendHandlers.ts` | Ids only; the server decides which row lands in whose list |
+| `DM_GROUP_CREATED/MEMBER_ADDED/MEMBER_LEFT` | `dmGroupHandlers.ts` | Structural; the DM list and the group's member list both change |
+| `NOTIFICATIONS_READ`, `NOTIFICATION_DISMISSED` | `notificationHandlers.ts` | Scope, not rows, so the list and the badge refetch |
+| `INSTANCE_ROLES_UPDATED` | `roleHandlers.ts` | Feeds the instance-role gate behind Admin and community creation |
 
 ### Ephemeral UI State (no cache)
 

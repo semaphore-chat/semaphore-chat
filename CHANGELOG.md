@@ -20,9 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
 - An invite link now works for someone who already has an account: a signed-in visitor to the join page adds their account to the invite's communities instead of registering again, and the API reports which communities were joined or skipped. (#589)
 
+### Changed
+
+- The default Community Admin role (new communities, and "reset defaults") now includes banning members. Existing communities keep their current Community Admin role until someone resets the defaults, and since a reset now grants banning, only someone who already holds ban rights there (or the instance owner) can run it: a Community Admin of an existing community gets a 403 from "reset defaults". (#692)
+- Friend requests, acceptances, declines, cancellations and unfriending now reach the other person's clients immediately, so the friends list and pending requests no longer need a reload. (#645)
+- A new direct-message group, a new member in one, and someone leaving one now reach every member's clients as it happens, instead of at the group's next message. (#646)
+- Marking notifications read (read-all, dismissing one, or reading a channel or direct message) now updates the badge and the list on your other devices. (#647)
+- A change to your own instance roles now updates what your client lets you do, such as creating a community or opening the admin page, without a reload. (#654)
+- Soundboard sounds now have a 30-second length limit at upload, so a small low-bitrate file can no longer play for minutes. (#677)
+
 ### Fixed
 
 - The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
+- Banning, kicking and timing out a member now work for the instance owner moderating a community they hold no role in, as unbanning, lifting a timeout and removing a member already did; the owner still can't moderate themselves. (#679)
+- Community administrators can create, list and delete invites for the community they run without an instance role; an invite naming another community, or none, still needs instance invite authority. (#685)
+- A moderator who can set timeouts but not see the ban list can now see the timeout list. (#688)
+- Saving a role now checks only the permissions the edit adds, so a role that holds a permission you lack can still be renamed or have permissions removed. (#690)
+- A moderator can now remove someone from a voice call without kicking them from the community, and the voice presence response tells clients which participants the caller may moderate. (#663)
+- Lifting a server mute no longer fails against a stock LiveKit server: it gives the participant their microphone permission back and lets them unmute themselves. (#676)
+- The API now explains that the per-channel role lookup returns community roles without the channel's permission overwrites, and points clients at the channel capabilities endpoint for per-channel decisions. (#644)
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
 - `GET /notifications` now reports the total number of matching notifications instead of the size of the page. (#658)
 - Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)

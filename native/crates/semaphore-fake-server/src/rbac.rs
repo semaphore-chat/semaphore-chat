@@ -363,7 +363,6 @@ pub(crate) fn is_banned(inner: &Inner, community_id: &str, user_id: &str) -> boo
 }
 
 /// The end of the user's active timeout, for the capabilities (`timedOutUntil`).
-#[allow(dead_code)]
 pub(crate) fn timed_out_until(
     inner: &Inner,
     community_id: &str,

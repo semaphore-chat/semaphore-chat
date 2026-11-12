@@ -33,6 +33,9 @@ IMAGE="${NATIVE_IMAGE:-$IMAGE}"
 
 "$ROOT/scripts/test-net.sh" >/dev/null
 
+# Keep the per-checkout target volume small: no incremental cache (worktrees are short-lived, and
+# it was 43 GB of a 155 GB volume) and line tables only for debug info (backtraces keep file:line;
+# full debug info made every test binary about 480 MB). Override either from the environment.
 checkout="$(printf '%s' "$ROOT" | sha256sum | cut -c1-8)"
 exec docker run --rm --init \
   --name "native-spike-build-$$" \
@@ -42,5 +45,8 @@ exec docker run --rm --init \
   -v semaphore-native-cargo:/cache/cargo \
   -v "semaphore-native-target-$checkout:/cache/target" \
   -w "$NATIVE_DIR" \
+  -e "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" \
+  -e "CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-line-tables-only}" \
+  -e "CARGO_PROFILE_TEST_DEBUG=${CARGO_PROFILE_TEST_DEBUG:-line-tables-only}" \
   ${NATIVE_DOCKER_ARGS:-} \
   "$IMAGE" "$@"

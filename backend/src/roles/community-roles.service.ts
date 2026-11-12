@@ -906,8 +906,15 @@ export class CommunityRolesService {
         );
       }
 
-      // Privilege escalation prevention: only what you hold
-      if (st) this.assertHolds(st, updateRoleDto.actions);
+      // Privilege escalation prevention: only what you hold, and only for
+      // what this edit adds — a role holding something you lack can still be
+      // renamed or have that action removed (#690).
+      if (st) {
+        const added = updateRoleDto.actions.filter(
+          (action) => !existingRole.actions.includes(action),
+        );
+        this.assertHolds(st, added);
+      }
     }
 
     // If name is being updated, check for conflicts
@@ -930,16 +937,36 @@ export class CommunityRolesService {
       }
     }
 
-    const updatedRole = await database.role.update({
-      where: { id: roleId },
-      data: {
-        name: newName,
-        actions: updateRoleDto.actions,
-        ...(updateRoleDto.position !== undefined && {
-          position: updateRoleDto.position,
-        }),
-      },
-    });
+    // The escalation check above compared against the role as read; when the
+    // edit sets actions, only write if they are still what was read, or a
+    // concurrent edit that removed an action could be overwritten by someone
+    // who lacks it.
+    let updatedRole: Awaited<ReturnType<typeof database.role.update>>;
+    try {
+      updatedRole = await database.role.update({
+        where: {
+          id: roleId,
+          ...(updateRoleDto.actions && {
+            actions: { equals: existingRole.actions },
+          }),
+        },
+        data: {
+          name: newName,
+          actions: updateRoleDto.actions,
+          ...(updateRoleDto.position !== undefined && {
+            position: updateRoleDto.position,
+          }),
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new ConflictException('The role changed, reload and try again');
+      }
+      throw error;
+    }
 
     this.logger.log(`Updated role ${roleId}`);
 

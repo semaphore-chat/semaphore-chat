@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { RBAC_ACTION_KEY } from './rbac-action.decorator';
+import { RBAC_ACTION_KEY, RBAC_ANY_ACTION_KEY } from './rbac-action.decorator';
 import { InstanceRole, RbacActions } from '@prisma/client';
 import { PermissionsService } from '@/roles/permissions.service';
 import {
@@ -28,9 +28,10 @@ export class RbacGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredRbacActions = this.getRequiredRbacActions(context);
-    if (!requiredRbacActions.length) return true;
-
     const resourceOptions = this.getResourceOptions(context);
+    const alternativeActions = this.getAlternativeActions(context);
+    if (!requiredRbacActions.length && !alternativeActions.length) return true;
+
     const resourceId = resourceOptions
       ? this.getResourceId(context, resourceOptions)
       : undefined;
@@ -38,7 +39,12 @@ export class RbacGuard implements CanActivate {
 
     const user = this.getUser(context);
 
-    this.logRbacCheck(requiredRbacActions, user, resourceId, resourceType);
+    this.logRbacCheck(
+      requiredRbacActions.length ? requiredRbacActions : alternativeActions,
+      user,
+      resourceId,
+      resourceType,
+    );
 
     if (!user) return false;
     // An instance owner skips RBAC everywhere except in direct messages: a DM
@@ -55,17 +61,41 @@ export class RbacGuard implements CanActivate {
       return true;
     }
 
-    return this.permissionsService.verifyActionsForUserAndResource(
-      user.id,
-      resourceId,
-      resourceType,
-      requiredRbacActions,
+    // An endpoint declares all-of (RequiredActions) or any-of
+    // (RequiredAnyActions): the former decides when both are present.
+    if (requiredRbacActions.length) {
+      return this.permissionsService.verifyActionsForUserAndResource(
+        user.id,
+        resourceId,
+        resourceType,
+        requiredRbacActions,
+      );
+    }
+    const verdicts = await Promise.all(
+      alternativeActions.map((action) =>
+        this.permissionsService.verifyActionsForUserAndResource(
+          user.id,
+          resourceId,
+          resourceType,
+          [action],
+        ),
+      ),
     );
+    return verdicts.some(Boolean);
   }
 
   private getRequiredRbacActions(context: ExecutionContext): RbacActions[] {
     return (
       this.reflector.getAllAndOverride<RbacActions[]>(RBAC_ACTION_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) || []
+    );
+  }
+
+  private getAlternativeActions(context: ExecutionContext): RbacActions[] {
+    return (
+      this.reflector.getAllAndOverride<RbacActions[]>(RBAC_ANY_ACTION_KEY, [
         context.getHandler(),
         context.getClass(),
       ]) || []

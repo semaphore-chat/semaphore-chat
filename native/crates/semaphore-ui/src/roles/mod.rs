@@ -28,13 +28,6 @@ pub use list::{RolesEvent, RolesPanel};
 pub use overrides::{ChannelOverrides, ChannelOverridesEvent};
 pub use rules::{Card, PresetChoice};
 
-/// "Nov 1, 2026", in UTC.
-pub(crate) fn date_label(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|date| date.format("%b %-d, %Y").to_string())
-        .unwrap_or_default()
-}
-
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
     stories::all()
