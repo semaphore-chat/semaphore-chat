@@ -949,6 +949,7 @@ export class ModerationService {
         messageId,
         channelId: message.channelId,
         directMessageGroupId: null,
+        removal: 'soft',
       },
     );
   }

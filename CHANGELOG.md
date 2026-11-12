@@ -11,8 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
 
+### Added
+
+- Channel permissions now report whether you can pin messages, delete anyone's messages, and keep seeing removed ones, so a client doesn't have to work it out from your roles. (#639)
+- The `deleteMessage` event says whether the message was removed by a moderator (kept for moderators) or deleted for good. (#640)
+- Refusing a message in a blocked 1:1 direct message now carries the error code `DM_BLOCKED`. (#641)
+- Message search takes a `continuationToken` and answers with an `X-Continuation-Token` response header, so results can be read page by page. (#643)
+- Notification list entries carry the channel name, and the live notification event carries the thread's parent message id, so both say the same thing. (#649)
+- Notification settings accept an empty string to clear a do-not-disturb time, as well as an explicit `null`. (#651)
+
 ### Fixed
 
+- `GET /notifications` takes `includeDismissed` (default true); pass `false` to leave dismissed notifications out of the list and the total. (#648)
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
 - `GET /notifications` now reports the total number of matching notifications instead of the size of the page. (#658)
 - Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)

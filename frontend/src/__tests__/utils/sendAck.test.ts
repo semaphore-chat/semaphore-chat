@@ -98,6 +98,9 @@ describe("describeSendFailure", () => {
     expect(
       describeSendFailure(failure(ErrorCode.FORBIDDEN, "Forbidden resource")),
     ).toBe("You can't send messages here");
+    expect(
+      describeSendFailure(failure(ErrorCode.DM_BLOCKED, "You cannot message this user")),
+    ).toBe("You can't send messages here");
     expect(describeSendFailure(failure(ErrorCode.INTERNAL, "Internal"))).toBe(
       "Failed to send",
     );

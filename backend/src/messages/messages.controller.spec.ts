@@ -209,6 +209,101 @@ describe('MessagesController', () => {
     });
   });
 
+  describe('search paging', () => {
+    const response = () => ({ setHeader: jest.fn() }) as any;
+
+    it('passes the cursor through and returns the next-page header for a full page', async () => {
+      const rows = [
+        MessageFactory.build({ id: 'msg-2' }),
+        MessageFactory.build({ id: 'msg-1' }),
+      ];
+      service.searchChannelMessages.mockResolvedValue(rows as any);
+      const res = response();
+
+      await expect(
+        controller.searchChannelMessages('channel-1', 'q', 2, 'msg-3', res),
+      ).resolves.toBe(rows);
+      expect(service.searchChannelMessages).toHaveBeenCalledWith(
+        'channel-1',
+        'q',
+        2,
+        'msg-3',
+      );
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'X-Continuation-Token',
+        'msg-1',
+      );
+    });
+
+    it('omits the header when the page is not full', async () => {
+      service.searchChannelMessages.mockResolvedValue([
+        MessageFactory.build({ id: 'msg-1' }),
+      ] as any);
+      const res = response();
+
+      await controller.searchChannelMessages(
+        'channel-1',
+        'q',
+        2,
+        undefined,
+        res,
+      );
+
+      expect(res.setHeader).not.toHaveBeenCalled();
+    });
+
+    it('pages the group and community searches the same way', async () => {
+      service.searchDirectMessages.mockResolvedValue([
+        MessageFactory.build({ id: 'dm-2' }),
+        MessageFactory.build({ id: 'dm-1' }),
+      ] as any);
+      service.searchCommunityMessages.mockResolvedValue([
+        MessageFactory.build({ id: 'cm-2' }),
+        MessageFactory.build({ id: 'cm-1' }),
+      ] as any);
+      const groupRes = response();
+      const communityRes = response();
+
+      await controller.searchDirectMessages(
+        'group-1',
+        'q',
+        2,
+        'dm-3',
+        groupRes,
+      );
+      await controller.searchCommunityMessages(
+        'community-1',
+        'q',
+        mockRequest,
+        2,
+        'cm-3',
+        communityRes,
+      );
+
+      expect(service.searchDirectMessages).toHaveBeenCalledWith(
+        'group-1',
+        'q',
+        2,
+        'dm-3',
+      );
+      expect(service.searchCommunityMessages).toHaveBeenCalledWith(
+        'community-1',
+        mockUser.id,
+        'q',
+        2,
+        'cm-3',
+      );
+      expect(groupRes.setHeader).toHaveBeenCalledWith(
+        'X-Continuation-Token',
+        'dm-1',
+      );
+      expect(communityRes.setHeader).toHaveBeenCalledWith(
+        'X-Continuation-Token',
+        'cm-1',
+      );
+    });
+  });
+
   describe('addReaction', () => {
     it('should add reaction and emit WebSocket event for channel message', async () => {
       const addReactionDto: AddReactionDto = {
@@ -692,6 +787,7 @@ describe('MessagesController', () => {
           messageId,
           channelId: 'channel-123',
           directMessageGroupId: mockMessage.directMessageGroupId,
+          removal: 'hard',
         },
       );
     });
@@ -716,6 +812,7 @@ describe('MessagesController', () => {
         expect.objectContaining({
           messageId,
           directMessageGroupId: 'dm-group-123',
+          removal: 'hard',
         }),
       );
     });

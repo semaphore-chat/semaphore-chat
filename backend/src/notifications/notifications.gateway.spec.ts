@@ -33,6 +33,7 @@ describe('NotificationsGateway', () => {
         messageId: 'msg-1',
         channelId: 'ch-1',
         directMessageGroupId: null,
+        parentMessageId: null,
         authorId: 'author-1',
         author: {
           id: 'author-1',
@@ -65,7 +66,33 @@ describe('NotificationsGateway', () => {
           type: 'MENTION',
           communityId: 'community-1',
           channelName: 'general',
+          parentMessageId: null,
         }),
+      );
+    });
+
+    it('carries the thread parent of a reply notification (#649)', () => {
+      const notification = {
+        id: 'n-3',
+        type: 'THREAD_REPLY',
+        messageId: 'msg-3',
+        channelId: 'ch-1',
+        directMessageGroupId: null,
+        parentMessageId: 'parent-1',
+        authorId: 'author-1',
+        author: null,
+        message: null,
+        channel: { id: 'ch-1', name: 'general', communityId: 'community-1' },
+        createdAt: new Date(),
+        read: false,
+      } as any;
+
+      gateway.emitNotificationToUser('user-123', notification);
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-123',
+        ServerEvents.NEW_NOTIFICATION,
+        expect.objectContaining({ parentMessageId: 'parent-1' }),
       );
     });
 
@@ -77,6 +104,7 @@ describe('NotificationsGateway', () => {
         messageId: 'msg-2',
         channelId: null,
         directMessageGroupId: 'dm-1',
+        parentMessageId: null,
         authorId: 'author-1',
         author: null,
         message: null,

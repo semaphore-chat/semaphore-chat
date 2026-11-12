@@ -100,6 +100,7 @@ export class NotificationsGateway
       communityId: notification.channel?.communityId ?? null,
       channelName: notification.channel?.name ?? null,
       directMessageGroupId: notification.directMessageGroupId,
+      parentMessageId: notification.parentMessageId ?? null,
       authorId: notification.authorId,
       author: notification.author ?? null,
       message: notification.message

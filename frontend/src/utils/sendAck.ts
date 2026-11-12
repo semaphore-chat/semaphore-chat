@@ -61,7 +61,9 @@ export function emitSend(
 export function describeSendFailure(error: Error | undefined): string {
   if (error instanceof SendFailedError) {
     switch (error.errorCode) {
+      // A blocked DM gets the wording the web used before it had a code of its own.
       case ErrorCode.FORBIDDEN:
+      case ErrorCode.DM_BLOCKED:
         return "You can't send messages here";
       case ErrorCode.VALIDATION_FAILED:
       case ErrorCode.INTERNAL:

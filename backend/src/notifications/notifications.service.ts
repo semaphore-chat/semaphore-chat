@@ -782,10 +782,15 @@ export class NotificationsService {
    * Filter shared by a notifications page and its total count, so the two
    * can never drift apart.
    */
-  private notificationFilter(userId: string, unreadOnly?: boolean) {
+  private notificationFilter(
+    userId: string,
+    unreadOnly?: boolean,
+    includeDismissed = true,
+  ) {
     return {
       userId,
       ...(unreadOnly && { read: false }),
+      ...(!includeDismissed && { dismissed: false }),
     };
   }
 
@@ -793,14 +798,19 @@ export class NotificationsService {
    * Get notifications for a user with pagination
    */
   async getUserNotifications(userId: string, query: NotificationQueryDto) {
-    const { unreadOnly, limit = 50, offset = 0 } = query;
+    const {
+      unreadOnly,
+      includeDismissed = true,
+      limit = 50,
+      offset = 0,
+    } = query;
     // NotificationQueryDto already enforces @Max(100) at the validation
     // layer, but cap again here defensively in case this method is ever
     // called directly (bypassing the pipe).
     const cappedLimit = Math.min(limit, 100);
 
     const notifications = await this.databaseService.notification.findMany({
-      where: this.notificationFilter(userId, unreadOnly),
+      where: this.notificationFilter(userId, unreadOnly, includeDismissed),
       orderBy: { createdAt: 'desc' },
       take: cappedLimit,
       skip: offset,
@@ -825,6 +835,7 @@ export class NotificationsService {
         channel: {
           select: {
             communityId: true,
+            name: true,
           },
         },
       },
@@ -867,7 +878,11 @@ export class NotificationsService {
     query: NotificationQueryDto,
   ): Promise<number> {
     return this.databaseService.notification.count({
-      where: this.notificationFilter(userId, query.unreadOnly),
+      where: this.notificationFilter(
+        userId,
+        query.unreadOnly,
+        query.includeDismissed ?? true,
+      ),
     });
   }
 

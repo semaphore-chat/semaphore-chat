@@ -37,6 +37,9 @@ describe('LivekitController', () => {
     video: true,
     share: true,
     managePermissions: false,
+    pin: false,
+    deleteAny: false,
+    seeRemoved: false,
     timedOutUntil: null,
     postingRoleNames: [],
   };

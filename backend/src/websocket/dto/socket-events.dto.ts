@@ -92,6 +92,9 @@ export class NewNotificationPayloadDto {
   communityId: string | null;
   channelName: string | null;
   directMessageGroupId: string | null;
+  /** Set for a thread reply's notification. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  parentMessageId?: string | null;
   authorId: string;
   @ApiProperty({ type: NotificationAuthorDto, nullable: true })
   author: NotificationAuthorDto | null;
