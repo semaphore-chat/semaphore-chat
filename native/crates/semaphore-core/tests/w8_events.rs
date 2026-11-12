@@ -360,6 +360,30 @@ async fn a_private_channel_added_reads_the_lists_and_the_permissions_again() {
 }
 
 #[tokio::test]
+async fn a_private_channel_removed_added_back_and_removed_again_is_announced_twice() {
+    let mut rig = with_channels().await;
+    rig.core
+        .ingest(private_changed("privateChannelRemoved", COMMUNITY, CHANNEL));
+    let first = rig.settle().await;
+    assert_eq!(
+        removed_channels(&first),
+        [(COMMUNITY.to_owned(), CHANNEL.to_owned())]
+    );
+
+    rig.core
+        .ingest(private_changed("privateChannelAdded", COMMUNITY, CHANNEL));
+    rig.settle().await;
+    rig.core
+        .ingest(private_changed("privateChannelRemoved", COMMUNITY, CHANNEL));
+    let second = rig.settle().await;
+    assert_eq!(
+        removed_channels(&second),
+        [(COMMUNITY.to_owned(), CHANNEL.to_owned())],
+        "a second removal after being added back is announced too"
+    );
+}
+
+#[tokio::test]
 async fn a_private_channel_removed_goes_at_once_like_a_deleted_one() {
     let mut rig = with_channels().await;
     rig.backend

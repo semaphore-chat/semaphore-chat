@@ -653,6 +653,8 @@ impl State {
             // once and is announced, as a deleted one is, and the list reads again either way. A
             // community this session holds nothing of has nothing to take away.
             ServerEvent::PrivateChannelAdded(payload) => {
+                // Back in the channel: a later removal is announced again.
+                self.w5a.removed_channels.remove(&payload.channel_id);
                 self.w5a_private_channel_changed(&payload.community_id);
             }
             ServerEvent::PrivateChannelRemoved(payload) => {
