@@ -10,6 +10,8 @@ import * as moderationHandlers from './moderationHandlers';
 import * as roleHandlers from './roleHandlers';
 import * as notificationHandlers from './notificationHandlers';
 import * as threadHandlers from './threadHandlers';
+import * as friendHandlers from './friendHandlers';
+import * as dmGroupHandlers from './dmGroupHandlers';
 
 /**
  * Central registry mapping every handled ServerEvent to its cache handler(s).
@@ -53,9 +55,23 @@ export const handlerRegistry: {
   // Community
   [ServerEvents.MEMBER_ADDED_TO_COMMUNITY]: [communityHandlers.handleMemberAddedToCommunity],
 
+  // Friends (every friendship event has the same payload: ids only)
+  [ServerEvents.FRIEND_REQUEST_SENT]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REQUEST_ACCEPTED]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REQUEST_DECLINED]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REQUEST_CANCELLED]: [friendHandlers.handleFriendshipChanged],
+  [ServerEvents.FRIEND_REMOVED]: [friendHandlers.handleFriendshipChanged],
+
+  // DM groups
+  [ServerEvents.DM_GROUP_CREATED]: [dmGroupHandlers.handleDmGroupCreated],
+  [ServerEvents.DM_GROUP_MEMBER_ADDED]: [dmGroupHandlers.handleDmGroupMemberAdded],
+  [ServerEvents.DM_GROUP_MEMBER_LEFT]: [dmGroupHandlers.handleDmGroupMemberLeft],
+
   // Notifications
   [ServerEvents.NEW_NOTIFICATION]: [notificationHandlers.handleNewNotification],
   [ServerEvents.NOTIFICATION_READ]: [notificationHandlers.handleNotificationRead],
+  [ServerEvents.NOTIFICATIONS_READ]: [notificationHandlers.handleNotificationsRead],
+  [ServerEvents.NOTIFICATION_DISMISSED]: [notificationHandlers.handleNotificationDismissed],
 
   // Threads (replies cache)
   [ServerEvents.NEW_THREAD_REPLY]: [threadHandlers.handleNewThreadReply],
@@ -105,6 +121,7 @@ export const handlerRegistry: {
   [ServerEvents.ROLE_DELETED]: [roleHandlers.handleRoleDeleted],
   [ServerEvents.ROLE_ASSIGNED]: [roleHandlers.handleRoleAssigned],
   [ServerEvents.ROLE_UNASSIGNED]: [roleHandlers.handleRoleUnassigned],
+  [ServerEvents.INSTANCE_ROLES_UPDATED]: [roleHandlers.handleInstanceRolesUpdated],
 
   // User profile
   [ServerEvents.USER_PROFILE_UPDATED]: [presenceHandlers.handleUserProfileUpdated],

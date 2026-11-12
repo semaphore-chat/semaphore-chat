@@ -16991,6 +16991,57 @@
           "message"
         ]
       },
+      "DmGroupCreatedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "memberIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memberIds",
+          "groupId"
+        ]
+      },
+      "DmGroupMemberAddedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userIds",
+          "groupId"
+        ]
+      },
+      "DmGroupMemberLeftPayloadDto": {
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "userId"
+        ]
+      },
       "UpdateMessagePayloadDto": {
         "type": "object",
         "properties": {
@@ -17358,6 +17409,46 @@
         ]
       },
       "NotificationReadPayloadDto": {
+        "type": "object",
+        "properties": {
+          "notificationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notificationId"
+        ]
+      },
+      "NotificationsReadScope": {
+        "type": "string",
+        "enum": [
+          "all",
+          "channel",
+          "directMessage"
+        ]
+      },
+      "NotificationsReadPayloadDto": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationsReadScope"
+              }
+            ]
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "directMessageGroupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "NotificationDismissedPayloadDto": {
         "type": "object",
         "properties": {
           "notificationId": {
@@ -17924,6 +18015,27 @@
           "userId"
         ]
       },
+      "FriendshipPayloadDto": {
+        "type": "object",
+        "properties": {
+          "friendshipId": {
+            "type": "string"
+          },
+          "userAId": {
+            "type": "string",
+            "description": "The request's sender (one of the two friends once accepted)."
+          },
+          "userBId": {
+            "type": "string",
+            "description": "The request's receiver."
+          }
+        },
+        "required": [
+          "friendshipId",
+          "userAId",
+          "userBId"
+        ]
+      },
       "CommunityUpdatedPayloadDto": {
         "type": "object",
         "properties": {
@@ -18056,6 +18168,21 @@
         },
         "required": [
           "communityId",
+          "userId",
+          "roleId"
+        ]
+      },
+      "InstanceRolesUpdatedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          }
+        },
+        "required": [
           "userId",
           "roleId"
         ]

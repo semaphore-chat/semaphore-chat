@@ -6,7 +6,11 @@ import { DatabaseService } from '@/database/database.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { LivekitService } from '@/livekit/livekit.service';
 import { publishGrantFor } from '@/livekit/publish-grant.util';
-import { ServerEvents } from '@semaphore-chat/shared';
+import {
+  ServerEvents,
+  type FriendshipPayload,
+  type ServerToClientEvents,
+} from '@semaphore-chat/shared';
 import { RoomName } from '@/common/utils/room-name.util';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import {
@@ -25,6 +29,7 @@ import {
   DmGroupCreatedEvent,
   DmGroupMemberAddedEvent,
   DmGroupMemberLeftEvent,
+  FriendshipChangedEvent,
   AliasGroupCreatedEvent,
   AliasGroupUpdatedEvent,
   AliasGroupMemberAddedEvent,
@@ -41,8 +46,26 @@ import {
   RoleDeletedEvent,
   RoleAssignedEvent,
   RoleUnassignedEvent,
+  InstanceRolesUpdatedEvent,
   UserProfileUpdatedEvent,
 } from './room-subscription.events';
+
+/** The wire shape of every friendship event, from the domain event. */
+const friendshipPayload = ({
+  friendshipId,
+  userAId,
+  userBId,
+}: FriendshipChangedEvent): FriendshipPayload => ({
+  friendshipId,
+  userAId,
+  userBId,
+});
+
+/** Who hears a friendship change: both people, on their own rooms. */
+const friendshipRecipients = ({
+  userAId,
+  userBId,
+}: FriendshipChangedEvent): string[] => [userAId, userBId];
 
 /**
  * Centralized handler for all WebSocket room subscription changes.
@@ -452,19 +475,36 @@ export class RoomSubscriptionHandler {
         RoomName.dmGroup(groupId),
       );
     }
+    // Every member's own sessions, so the group shows up before its first
+    // message does.
+    this.sendToUsers(memberIds, ServerEvents.DM_GROUP_CREATED, {
+      groupId,
+      memberIds,
+    });
     this.logger.debug(
       `${memberIds.length} members joined DM group room ${groupId}`,
     );
   }
 
   @OnEvent(RoomEvents.DM_GROUP_MEMBER_ADDED)
-  onDmGroupMemberAdded({ groupId, userIds }: DmGroupMemberAddedEvent): void {
+  async onDmGroupMemberAdded({
+    groupId,
+    userIds,
+  }: DmGroupMemberAddedEvent): Promise<void> {
     for (const userId of userIds) {
+      // The new member's sockets join the room the way the first members'
+      // did, so they receive the group's messages from now on.
       this.websocketService.joinSocketsToRoom(
         RoomName.user(userId),
         RoomName.dmGroup(groupId),
       );
     }
+    // The added users hear it too: the group is new to them, not to the rest.
+    this.sendToUsers(
+      [...userIds, ...(await this.dmGroupMemberIds(groupId))],
+      ServerEvents.DM_GROUP_MEMBER_ADDED,
+      { groupId, userIds },
+    );
     this.logger.debug(
       `${userIds.length} members added to DM group room ${groupId}`,
     );
@@ -479,6 +519,13 @@ export class RoomSubscriptionHandler {
       RoomName.user(userId),
       RoomName.dmGroup(groupId),
     );
+    // The remaining members lose a row; the leaver loses the group. Both are
+    // told on their personal rooms, which they never left.
+    this.sendToUsers(
+      [userId, ...(await this.dmGroupMemberIds(groupId))],
+      ServerEvents.DM_GROUP_MEMBER_LEFT,
+      { groupId, userId },
+    );
     this.logger.debug(`User ${userId} left DM group room ${groupId}`);
 
     // Leaving the group ends their part in its call too. Errors are logged,
@@ -487,6 +534,71 @@ export class RoomSubscriptionHandler {
       this.livekitService.removeParticipant(groupId, userId),
       this.voicePresenceService.leaveDmVoice(groupId, userId),
     ]);
+  }
+
+  /** The current members of a DM group, for choosing who hears about it. */
+  private async dmGroupMemberIds(groupId: string): Promise<string[]> {
+    const members =
+      await this.databaseService.directMessageGroupMember.findMany({
+        where: { groupId },
+        select: { userId: true },
+      });
+    return members.map((member) => member.userId);
+  }
+
+  // =========================================================================
+  // Friends
+  // =========================================================================
+
+  /**
+   * Only the two people in a friendship ever hear about it, each on their own
+   * personal room: a request (or its end) is between them, not their
+   * communities. Both always hear, the one who acted included, so that
+   * person's other devices stay in step.
+   */
+  @OnEvent(RoomEvents.FRIEND_REQUEST_SENT)
+  onFriendRequestSent(event: FriendshipChangedEvent): void {
+    this.sendToUsers(
+      friendshipRecipients(event),
+      ServerEvents.FRIEND_REQUEST_SENT,
+      friendshipPayload(event),
+    );
+  }
+
+  @OnEvent(RoomEvents.FRIEND_REQUEST_ACCEPTED)
+  onFriendRequestAccepted(event: FriendshipChangedEvent): void {
+    this.sendToUsers(
+      friendshipRecipients(event),
+      ServerEvents.FRIEND_REQUEST_ACCEPTED,
+      friendshipPayload(event),
+    );
+  }
+
+  @OnEvent(RoomEvents.FRIEND_REQUEST_DECLINED)
+  onFriendRequestDeclined(event: FriendshipChangedEvent): void {
+    this.sendToUsers(
+      friendshipRecipients(event),
+      ServerEvents.FRIEND_REQUEST_DECLINED,
+      friendshipPayload(event),
+    );
+  }
+
+  @OnEvent(RoomEvents.FRIEND_REQUEST_CANCELLED)
+  onFriendRequestCancelled(event: FriendshipChangedEvent): void {
+    this.sendToUsers(
+      friendshipRecipients(event),
+      ServerEvents.FRIEND_REQUEST_CANCELLED,
+      friendshipPayload(event),
+    );
+  }
+
+  @OnEvent(RoomEvents.FRIEND_REMOVED)
+  onFriendRemoved(event: FriendshipChangedEvent): void {
+    this.sendToUsers(
+      friendshipRecipients(event),
+      ServerEvents.FRIEND_REMOVED,
+      friendshipPayload(event),
+    );
   }
 
   // =========================================================================
@@ -786,6 +898,20 @@ export class RoomSubscriptionHandler {
     );
   }
 
+  @OnEvent(RoomEvents.INSTANCE_ROLES_UPDATED)
+  onInstanceRolesUpdated({ userId, roleId }: InstanceRolesUpdatedEvent): void {
+    // Personal room only: the user's own sessions re-read what they may do
+    // (create a community, open Admin) without a restart.
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.INSTANCE_ROLES_UPDATED,
+      { userId, roleId },
+    );
+    this.logger.debug(
+      `User ${userId} told their instance roles changed (role ${roleId})`,
+    );
+  }
+
   // =========================================================================
   // User Profile
   // =========================================================================
@@ -815,5 +941,16 @@ export class RoomSubscriptionHandler {
     }
 
     this.logger.debug(`User ${event.userId} profile updated`);
+  }
+
+  /** Send one event to each user's personal room, once per user. */
+  private sendToUsers<E extends keyof ServerToClientEvents>(
+    userIds: string[],
+    event: E,
+    ...args: Parameters<ServerToClientEvents[E]>
+  ): void {
+    for (const userId of new Set(userIds)) {
+      this.websocketService.sendToRoom(RoomName.user(userId), event, ...args);
+    }
   }
 }

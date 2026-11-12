@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - The default Community Admin role (new communities, and "reset defaults") now includes banning members. Existing communities keep their current Community Admin role until someone resets the defaults, and since a reset now grants banning, only someone who already holds ban rights there (or the instance owner) can run it: a Community Admin of an existing community gets a 403 from "reset defaults". (#692)
+- Friend requests, acceptances, declines, cancellations and unfriending now reach the other person's clients immediately, so the friends list and pending requests no longer need a reload. (#645)
+- A new direct-message group, a new member in one, and someone leaving one now reach every member's clients as it happens, instead of at the group's next message. (#646)
+- Marking notifications read (read-all, dismissing one, or reading a channel or direct message) now updates the badge and the list on your other devices. (#647)
+- A change to your own instance roles now updates what your client lets you do, such as creating a community or opening the admin page, without a reload. (#654)
 
 ### Fixed
 

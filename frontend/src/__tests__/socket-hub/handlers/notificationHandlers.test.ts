@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import type {
   NotificationListResponseDto,
@@ -14,6 +14,8 @@ import {
 import {
   handleNewNotification,
   handleNotificationRead,
+  handleNotificationsRead,
+  handleNotificationDismissed,
 } from '../../../socket-hub/handlers/notificationHandlers';
 import { NotificationType } from '../../../types/notification.type';
 import type { NewNotificationPayload } from '@semaphore-chat/shared';
@@ -643,6 +645,50 @@ describe('notificationHandlers', () => {
       const data = queryClient.getQueryData<UnreadCountDto[]>(readReceiptsKey);
       expect(data).toHaveLength(1);
       expect(data![0].mentionCount).toBe(2);
+    });
+  });
+
+  // =========================================================================
+  // handleNotificationsRead / handleNotificationDismissed
+  // =========================================================================
+
+  describe('handleNotificationsRead', () => {
+    it('refetches the notification list and the unread badge', () => {
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+      handleNotificationsRead({ scope: 'all' }, queryClient);
+
+      expect(invalidate.mock.calls).toEqual([
+        [{ queryKey: notificationsKey }],
+        [{ queryKey: unreadCountKey }],
+      ]);
+    });
+
+    it('refetches the same two queries for a channel-scoped read', () => {
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+      handleNotificationsRead(
+        { scope: 'channel', channelId: 'ch-1' },
+        queryClient,
+      );
+
+      expect(invalidate.mock.calls).toEqual([
+        [{ queryKey: notificationsKey }],
+        [{ queryKey: unreadCountKey }],
+      ]);
+    });
+  });
+
+  describe('handleNotificationDismissed', () => {
+    it('refetches the notification list and the unread badge', () => {
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+      handleNotificationDismissed({ notificationId: 'notif-1' }, queryClient);
+
+      expect(invalidate.mock.calls).toEqual([
+        [{ queryKey: notificationsKey }],
+        [{ queryKey: unreadCountKey }],
+      ]);
     });
   });
 });
