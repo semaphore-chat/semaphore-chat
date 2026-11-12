@@ -648,6 +648,23 @@ async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
     let heard = settle(&server, &mut [&mut kwame]).await;
     assert_eq!(names(&heard[0])[0], "userBanned");
     assert_eq!(heard[0][0].1["reason"], "spam");
+    // Their community list no longer has it.
+    let (_, mine) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        "/api/community/mine",
+        &kwame_bearer,
+        None,
+    )
+    .await;
+    assert!(
+        mine.as_array()
+            .unwrap()
+            .iter()
+            .all(|community| community["id"] != couch.as_str()),
+        "{mine}"
+    );
 
     // Bad requests.
     for body in [

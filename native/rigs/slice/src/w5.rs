@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! wait core w5 channel "w5-ops" at 2        # the shown community's channel list, 0-based
+//! wait core w5 channel "w5-ops" listed      # listed|gone, wherever it is
 //! wait core w5 role "Member" has CREATE_INVITE
 //! wait core w5 member $ID(u-priya) role "Moderator"
 //! wait core w5 enabled invites-create       # an element's disabled state, by its id
@@ -12,6 +13,7 @@
 //! wait core w5 invites 1                    # invites|emoji|sounds N: rows in that view
 //! wait core w5 webhook-url shown            # shown|gone: the created webhook's one-time URL
 //! wait core w5 removed-notice banned        # banned|kicked|deleted|none
+//! wait core w5 previews 1                   # sound previews played (the soundboard tab's button)
 //! ```
 //!
 //! W5-app skeleton: the words parse; agent B makes `Rig::w5_holds` answer them.
@@ -25,6 +27,8 @@ use gpui_kit::*;
 pub(crate) enum W5 {
     /// `channel <name> at <n>`: the channel called `name` is at `n` in the shown community's list.
     Channel { name: String, position: usize },
+    /// `channel <name> listed|gone`: whether the shown community lists it.
+    ChannelListed { name: String, listed: bool },
     /// `role <name> has <ACTION>`: the community's role holds that wire action.
     RoleHas { role: String, action: String },
     /// `member <user-id> role <name>`: the member holds that role.
@@ -44,6 +48,8 @@ pub(crate) enum W5 {
     WebhookUrl(bool),
     /// `removed-notice banned|kicked|deleted|none`.
     RemovedNotice(Option<String>),
+    /// `previews N`: sound previews asked for (`AppRoot::sound_preview`).
+    Previews(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +69,10 @@ pub(crate) fn parse(words: &[&str]) -> Result<W5> {
         ["channel", name, "at", position] => W5::Channel {
             name: (*name).into(),
             position: number(position)?,
+        },
+        ["channel", name, state @ ("listed" | "gone")] => W5::ChannelListed {
+            name: (*name).into(),
+            listed: *state == "listed",
         },
         ["role", role, "has", action] => W5::RoleHas {
             role: (*role).into(),
@@ -95,6 +105,7 @@ pub(crate) fn parse(words: &[&str]) -> Result<W5> {
         ),
         ["webhook-url", state @ ("shown" | "gone")] => W5::WebhookUrl(*state == "shown"),
         ["removed-notice", "none"] => W5::RemovedNotice(None),
+        ["previews", count] => W5::Previews(number(count)?),
         ["removed-notice", cause @ ("banned" | "kicked" | "deleted")] => {
             W5::RemovedNotice(Some((*cause).into()))
         }
@@ -167,6 +178,9 @@ impl super::Rig {
                     same.sort_by_key(|c| c.position);
                     same.iter().position(|c| c.name == *name) == Some(*position)
                 }
+                W5::ChannelListed { name, listed } => community.is_some_and(|community| {
+                    core.channels(community).iter().any(|c| c.name == *name) == *listed
+                }),
                 W5::RoleHas { role, action } => community.is_some_and(|community| {
                     core.roles(community)
                         .roles
@@ -191,6 +205,7 @@ impl super::Rig {
                     };
                     shown == *count
                 }),
+                W5::Previews(count) => root.sound_preview().1 == *count,
                 W5::RemovedNotice(cause) => {
                     root.removed_notice(cx).map(|(_, shown)| shown.to_owned()) == *cause
                 }
@@ -276,6 +291,14 @@ mod tests {
         assert_eq!(
             parse(&["removed-notice", "none"]).unwrap(),
             W5::RemovedNotice(None)
+        );
+        assert_eq!(parse(&["previews", "2"]).unwrap(), W5::Previews(2));
+        assert_eq!(
+            parse(&["channel", "x", "gone"]).unwrap(),
+            W5::ChannelListed {
+                name: "x".into(),
+                listed: false
+            }
         );
         let bad: [&[&str]; 9] = [
             &[],

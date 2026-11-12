@@ -1187,7 +1187,21 @@ fn apply_feed(
         }
         Feed::Invites => {
             let tab = screen.read(cx).invites();
-            let view = core.community_invites(id);
+            // Listing invites needs instance READ_INSTANCE_INVITE: a member without the invite
+            // permissions has none to list, so it isn't asked (it would only refuse).
+            let instance = core.instance_permissions();
+            let barred = instance.state == semaphore_core::model::LoadState::Ready
+                && !instance.can_create_invite
+                && !instance.can_delete_invite;
+            let view = if barred {
+                semaphore_core::model::InvitesView {
+                    state: semaphore_core::model::LoadState::Ready,
+                    community_id: id,
+                    ..Default::default()
+                }
+            } else {
+                core.community_invites(id)
+            };
             tab.update(cx, |tab, cx| {
                 tab.set_clock(PanelClock::fixed(now_ms), cx);
                 tab.set_view(view, cx);

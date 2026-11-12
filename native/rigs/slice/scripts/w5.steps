@@ -2,12 +2,17 @@
 # scenario, in Couch Co-op, from several users' points of view in turn:
 # - dropbear (Marcus), made a Moderator: Moderator lacks BAN_USER, so his member menu offers Ban
 #   off, with why; he times Priya out.
+# - alexk, the instance owner, given Community Admin: the settings entry, channels (create from
+#   the sidebar's "+", rename, move, delete the one that was open), a webhook's URL shown once,
+#   granting Moderator BAN_USER, giving Kwame a role, banning Tomás and the ban list, an invite and
+#   its copied link, an emoji and a sound uploaded, and the sound's preview heard.
+# - dropbear again: Ban is on now.
 # - pri (Priya), a Member: her composer is locked until the timeout runs out (the app's timer
 #   calls timeout_elapsed at its end), she gets no settings entry and disabled controls with
 #   reasons, and is removed: the notice says so once, over Home.
 # The scenario clock is held from the timeout on, so times on screen don't move between runs.
 
-app 1280 800
+app 1600 1400
 window activate
 wait idle
 server act_as "{\"communityId\": \"$ID(c-couch)\", \"roleIds\": [\"$ID(role-moderator-c-couch)\"], \"userId\": \"$ID(u-marcus)\"}"
@@ -25,12 +30,15 @@ click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
+wait core connection connected
+wait idle
 navigate /community/$ID(c-couch)/channel/$ID(cc-general)
 wait core channel $ID(cc-general)
 wait core element member-$ID(u-priya)
 right-click member-$ID(u-priya)
 wait core element moderation-menu
-wait core w5 label moderate-timeout "Timeout"
+wait core w5 enabled moderate-timeout
+wait core w5 disabled moderate-ban
 wait core w5 reason moderate-ban "permission"
 wait idle
 shot 01-moderator-menu
@@ -51,6 +59,199 @@ click account-sign-out
 wait core session signed-out
 wait core label "Username"
 
+# A1. alexk, in #memes, opens the community's settings from the sidebar.
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait idle
+navigate /community/$ID(c-couch)/channel/$ID(cc-memes)
+wait core channel $ID(cc-memes)
+wait core element community-settings
+click community-settings
+wait core route community-settings/$ID(c-couch)/overview
+wait core element community-name
+wait idle
+shot a1-settings-overview
+
+# A2. A channel from the sidebar's "+": it's in the list, then renamed and moved up one.
+click channels-create
+wait core element channel-create-name
+click channel-create-name
+type "w5-ops"
+wait idle
+shot a2-create-channel
+click channel-create-submit
+wait core no-element channel-create-submit
+wait core w5 channel "w5-ops" at 4
+click-label "Edit w5-ops"
+wait core element channel-edit-name
+click channel-edit-name
+press ctrl-a
+type "w5-room"
+click channel-edit-submit
+wait core w5 channel "w5-room" at 4
+wait core no-element channel-edit-name
+click-label "Move w5-room up"
+wait core w5 channel "w5-room" at 3
+wait idle
+shot a2-channels
+
+# A3. #memes, the channel that was open, deleted: closing the settings lands on #general.
+click-label "Delete memes"
+wait core element channel-delete-confirm
+click channel-delete-confirm
+wait core no-element channel-delete-confirm
+click community-settings-close
+wait core route channel/$ID(cc-general)
+
+# A4. A webhook on #general: its URL is shown once, then gone.
+click community-settings
+wait core element community-tab-channels
+click community-tab-channels
+wait core element channel-edit-$ID(cc-general)
+click channel-edit-$ID(cc-general)
+wait core element webhook-name
+click webhook-name
+type "w5-hook"
+click webhook-create
+wait core w5 webhook-url shown
+wait core element webhook-url
+wait idle
+shot a4-webhook-url
+click webhook-created-done
+wait core w5 webhook-url gone
+# Its permissions tab: the roles' channel presets.
+click channel-edit-tab-permissions
+wait core element overrides-save
+wait idle
+shot a4-channel-permissions
+click channel-edit-close
+wait core no-element overrides-save
+
+# A5. Roles: Moderator gets BAN_USER.
+click community-tab-roles
+wait core element role-edit-$ID(role-moderator-c-couch)
+click role-edit-$ID(role-moderator-c-couch)
+wait core element role-matrix
+# The groups above Moderation folded away, so its rows are on screen.
+click role-group-toggle-messages
+click role-group-toggle-channels
+click role-group-toggle-voice
+click role-group-toggle-community
+click role-group-toggle-members
+click role-group-toggle-roles
+click role-group-toggle-users
+click role-group-toggle-invites
+click role-group-toggle-content
+click role-group-toggle-alias_groups
+wait core element role-action-BAN_USER
+click role-action-BAN_USER
+wait idle
+shot a5-role-editor
+click role-editor-save
+wait core w5 role "Moderator" has BAN_USER
+wait core no-element role-editor
+
+# A6. Kwame gets the mods role from the Members tab.
+click community-tab-members
+wait core element member-roles-$ID(u-kwame)
+click member-roles-$ID(u-kwame)
+wait core element role-assign-$ID(role-mods-c-couch)
+click role-assign-$ID(role-mods-c-couch)
+wait idle
+shot a6-assign-roles
+click role-assign-save
+wait core no-element role-assign-save
+wait core w5 member $ID(u-kwame) role "mods"
+
+# A7. Tomás banned from the Members tab's moderation menu; the ban list has him.
+click member-moderate-$ID(u-tomas)
+wait core element moderate-ban
+wait core w5 enabled moderate-ban
+click moderate-ban
+wait core element ban-confirm
+click ban-confirm
+wait core no-element ban-confirm
+click community-tab-moderation
+wait core element ban-$ID(u-tomas)
+wait idle
+shot a7-ban-list
+
+# A8. An invite, and its link copied.
+click community-tab-invites
+wait core element invite-create
+click invite-create
+wait core element invite-create-submit
+click invite-create-submit
+wait core w5 invites 1
+click-label "Copy invite link"
+expect clipboard "join/"
+wait idle
+shot a8-invites
+
+# A9. An emoji and a sound uploaded through the file pick; the sound's preview plays.
+click community-tab-emoji
+wait core element emoji-choose
+pick-file rigs/slice/fixtures/sketch.png
+click emoji-choose
+wait core element emoji-name
+click emoji-name
+type "w5"
+click emoji-upload
+# The scenario has one already (:party:).
+wait core w5 emoji 2
+wait idle
+shot a9-emoji
+click community-tab-soundboard
+wait core element sound-add
+click sound-add
+wait core element sound-choose
+pick-file rigs/slice/fixtures/opus.ogg
+click sound-choose
+wait core element sound-submit
+click sound-submit
+# Three are the scenario's.
+wait core w5 sounds 4
+click-label "Preview opus"
+wait core w5 previews 1
+wait core sound heard
+wait idle
+shot a9-sounds
+click community-settings-close
+wait core route channel/$ID(cc-general)
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+
+# M. Marcus again: with BAN_USER on Moderator, his Ban is on.
+click auth-username
+type "dropbear"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait idle
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core element member-$ID(u-priya)
+right-click member-$ID(u-priya)
+wait core element moderation-menu
+wait core w5 enabled moderate-ban
+wait idle
+shot m-moderator-can-ban
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+
 # 3. Priya: the composer is locked by the timeout, and opens when it runs out: the app's timer
 # at its end calls timeout_elapsed, which reads the capabilities again.
 click auth-username
@@ -59,6 +260,8 @@ click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
+wait core connection connected
+wait idle
 navigate /community/$ID(c-couch)/channel/$ID(cc-general)
 wait core channel $ID(cc-general)
 wait core w5 composer locked
@@ -72,20 +275,38 @@ wait idle
 shot 04-live-timeout-over
 
 # 4. A Member only: no settings entry, and the member menu says why each action is off.
-# A: expect core no-element community-settings
+expect core no-element community-settings
 right-click member-$ID(u-kwame)
 wait core element moderation-menu
+wait core w5 disabled moderate-ban
+wait core w5 disabled moderate-kick
 wait core w5 reason moderate-ban "permission"
-wait core w5 reason moderate-kick "permission"
 wait idle
 shot 05-live-member-refused
 
-# 5. Removed by Samira: the notice says so once, over Home.
+# 5. The settings page by its path: its controls are off, each with why.
+navigate /community/$ID(c-couch)/edit
+wait core element community-save
+wait core w5 disabled community-save
+wait core w5 reason community-save-locked "permission"
+click community-tab-invites
+wait core element invite-create
+wait core w5 disabled invite-create
+wait core w5 reason invite-create-locked "permission"
+wait idle
+shot 06-settings-refused
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+
+# 6. Removed by Samira: the notice says so once, over Home, whose "In voice now" no longer lists
+# the community's voice channels.
 server moderate_as "{\"moderatorId\": \"$ID(u-samira)\", \"action\": \"kick\", \"communityId\": \"$ID(c-couch)\", \"userId\": \"$ID(u-priya)\", \"reason\": \"Take a break\"}"
 wait core w5 removed-notice kicked
 wait core route home
+wait core no-element community-$ID(c-couch)
+wait core no-element home-voice-$ID(vc-squad)
 wait idle
-shot 06-removed
+shot 07-removed
 click removed-ok
 wait core w5 removed-notice none
 clock run

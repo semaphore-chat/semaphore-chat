@@ -89,6 +89,8 @@ async fn communities_mine(State(inner): State<Arc<Inner>>, headers: HeaderMap) -
         .iter()
         .cloned()
         .chain(inner.created_communities_of(&user))
+        // W5: not one they were kicked or banned from since.
+        .filter(|community| !crate::calls::is_kicked(&inner, &community.id, &user))
         // W5-A: as changed or deleted since.
         .filter_map(|community| crate::admin::changed(&inner, community))
         .map(|community| {
