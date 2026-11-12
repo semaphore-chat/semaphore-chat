@@ -11,8 +11,8 @@ use super::rules::{
     confirms_name, failure, js_len, needs, running, state_of,
 };
 use crate::kit::{
-    Alert, Button, ButtonSize, Dialog, Severity, TextField, Variant, floating_label, notched,
-    spacing, text, text_state,
+    Alert, Button, ButtonSize, ButtonTone, Dialog, Severity, TextField, Variant, floating_label,
+    notched, spacing, text, text_state,
 };
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
@@ -676,8 +676,8 @@ impl OverviewTab {
             )
             .action(
                 Button::new("community-delete-confirm", "Delete Community")
-                    .outlined()
-                    .color(sem.error)
+                    .contained()
+                    .tone(ButtonTone::Danger)
                     .disabled(!matched)
                     .loading(busy)
                     .on_click(move |_, _, cx| {
@@ -808,8 +808,8 @@ impl OverviewTab {
         );
         let delete_locked = (!self.caps.delete_community).then(|| needs("Delete community"));
         let delete = Button::new("community-delete", "Delete Community")
-            .outlined()
-            .color(sem.error)
+            .contained()
+            .tone(ButtonTone::Danger)
             .start_icon(DesignIcon::DeleteOutline)
             .disabled(delete_locked.is_some() || self.busy())
             .on_click(cx.listener(|tab, _, window, cx| {

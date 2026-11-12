@@ -248,7 +248,10 @@ describe('LivekitController', () => {
       expect(service.generateToken).toHaveBeenCalledWith(
         expect.anything(),
         undefined,
-        { canPublish: true, canPublishSources: [TrackSource.MICROPHONE] },
+        {
+          canPublish: true,
+          canPublishSources: [TrackSource.MICROPHONE, TrackSource.UNKNOWN],
+        },
       );
     });
 

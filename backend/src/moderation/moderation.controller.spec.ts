@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { BadRequestException } from '@nestjs/common';
 import { ModerationController } from './moderation.controller';
 import { ModerationService } from './moderation.service';
 import { ModerationAction } from '@prisma/client';
@@ -344,6 +345,27 @@ describe('ModerationController', () => {
         communityId,
         { limit: 20, offset: 10, action: ModerationAction.BAN_USER },
       );
+    });
+
+    it('treats an empty action filter as no filter', async () => {
+      moderationService.getModerationLogs.mockResolvedValue({
+        logs: [],
+        total: 0,
+      });
+
+      await controller.getModerationLogs(communityId, 50, 0, '');
+
+      expect(moderationService.getModerationLogs).toHaveBeenCalledWith(
+        communityId,
+        { limit: 50, offset: 0, action: undefined },
+      );
+    });
+
+    it('rejects an action value the contract does not list (#687)', async () => {
+      await expect(
+        controller.getModerationLogs(communityId, 50, 0, 'NOT_AN_ACTION'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(moderationService.getModerationLogs).not.toHaveBeenCalled();
     });
   });
 });

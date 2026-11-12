@@ -14,14 +14,14 @@
 //! Without an op (the W4 participant menu's kick, until it is wired to core's), `set_busy`,
 //! `set_error` and `close` drive it by hand, as that menu's `set_kick_busy` and `set_kick_error`.
 
-use super::common::{filled_button, reason_field};
+use super::common::reason_field;
 use super::format::{
     BAN_DEFAULT_SECONDS, BanChoice, TIMEOUT_DEFAULT_SECONDS, admin_action, duration_label,
     ends_label, pick_preset, presets_or_default, reason_error, reason_for_send, timeout_request,
 };
 use crate::community_settings::rules::{Outcome, Pending, failure, running};
 use crate::dms::names::user_name;
-use crate::kit::{Alert, Button, Dialog, Radio, Severity, Variant, spacing, text};
+use crate::kit::{Alert, Button, ButtonTone, Dialog, Radio, Severity, Variant, spacing, text};
 use crate::messages::TimeFormat;
 use crate::theme::SemTheme;
 use gpui_kit::component::input::TextareaState;
@@ -524,10 +524,10 @@ impl Render for ModerationDialog {
         let name = user_name(&open.user);
         let words = words(kind, &name, self.ban.permanent);
         let over = reason_error(&self.reason.read(cx).value()).is_some();
-        let fill = match kind {
-            DialogKind::Ban => sem.error,
-            DialogKind::Kick | DialogKind::Timeout => sem.warning,
-            DialogKind::Unban | DialogKind::RemoveTimeout => sem.primary,
+        let tone = match kind {
+            DialogKind::Ban => ButtonTone::Danger,
+            DialogKind::Kick | DialogKind::Timeout => ButtonTone::Warning,
+            DialogKind::Unban | DialogKind::RemoveTimeout => ButtonTone::Default,
         };
         let id = match kind {
             DialogKind::Ban => "ban",
@@ -564,15 +564,17 @@ impl Render for ModerationDialog {
                     .disabled(busy)
                     .on_click(cancel),
             )
-            .action(filled_button(
-                format!("{id}-confirm"),
-                if busy { words.busy } else { words.confirm },
-                fill,
-                busy,
-                !over,
-                &sem,
-                confirm,
-            ))
+            .action(
+                Button::new(
+                    SharedString::from(format!("{id}-confirm")),
+                    if busy { words.busy } else { words.confirm },
+                )
+                .contained()
+                .tone(tone)
+                .disabled(over)
+                .loading(busy)
+                .on_click(confirm),
+            )
             .on_close(move |_, cx| {
                 close.update(cx, |dialog, cx| dialog.cancel(cx)).ok();
             });

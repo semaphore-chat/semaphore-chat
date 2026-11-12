@@ -96,6 +96,9 @@ export class ChannelMembershipService {
           channelId,
           addedBy: addedById,
         },
+        include: {
+          user: { select: PUBLIC_USER_SELECT },
+        },
       });
 
     // Emit domain event — the RoomSubscriptionHandler will join sockets
