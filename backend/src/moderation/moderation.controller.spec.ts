@@ -10,7 +10,7 @@ describe('ModerationController', () => {
   let moderationService: Mocked<ModerationService>;
 
   const userId = 'mod-user-123';
-  const mockReq = { user: { id: userId } } as any;
+  const mockReq = { user: { id: userId, role: 'USER' } } as any;
   const communityId = 'community-123';
   const targetUserId = 'target-user-456';
 
@@ -56,6 +56,7 @@ describe('ModerationController', () => {
         userId,
         'Spam',
         undefined,
+        mockReq.user.role,
       );
     });
 
@@ -72,6 +73,7 @@ describe('ModerationController', () => {
         userId,
         'Temp ban',
         new Date(expiresAt),
+        mockReq.user.role,
       );
     });
   });
@@ -141,6 +143,7 @@ describe('ModerationController', () => {
         targetUserId,
         userId,
         'Disruption',
+        mockReq.user.role,
       );
     });
   });
@@ -171,6 +174,7 @@ describe('ModerationController', () => {
         userId,
         300,
         'Cool down',
+        mockReq.user.role,
       );
     });
   });

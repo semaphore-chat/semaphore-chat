@@ -21,8 +21,11 @@ vi.mock('../../api-client/@tanstack/react-query.gen', async (importOriginal) => 
   }),
   channelsControllerFindAllForCommunityOptions: () => ({ queryKey: ['test-channels'], queryFn: async () => [] }),
 }));
+const permissions = vi.hoisted(() => ({ held: [] as string[] }));
 vi.mock('../../features/roles/useUserPermissions', () => ({
-  useUserPermissions: () => ({ hasPermissions: true }),
+  useUserPermissions: ({ actions }: { actions: string[] }) => ({
+    hasPermissions: actions.every((action) => permissions.held.includes(action)),
+  }),
 }));
 vi.mock('../../components/Community', () => {
   const stub = (name: string) => () => <div>{name} section</div>;
@@ -39,9 +42,9 @@ vi.mock('../../components/Community', () => {
   };
 });
 vi.mock('../../components/Moderation', () => ({
-  BanListPanel: () => null,
-  TimeoutListPanel: () => null,
-  ModerationLogsPanel: () => null,
+  BanListPanel: () => <div>Ban list section</div>,
+  TimeoutListPanel: () => <div>Timeout list section</div>,
+  ModerationLogsPanel: () => <div>Logs section</div>,
 }));
 
 import EditCommunityPage from '../../pages/EditCommunityPage';
@@ -57,6 +60,14 @@ const renderPage = () =>
 describe('EditCommunityPage sections', () => {
   beforeEach(() => {
     responsive.isDesktop = true;
+    permissions.held = [
+      'UPDATE_COMMUNITY',
+      'READ_MEMBER',
+      'CREATE_CHANNEL',
+      'VIEW_BAN_LIST',
+      'TIMEOUT_USER',
+      'MANAGE_EMOJIS',
+    ];
   });
 
   it.each([
@@ -70,6 +81,30 @@ describe('EditCommunityPage sections', () => {
     await user.click(channels);
     expect(channels).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tabpanel')).toHaveTextContent('Channels section');
+  });
+
+  it('a moderator who may only set timeouts sees the timeout list, not the ban list or the logs (#688)', async () => {
+    permissions.held = ['TIMEOUT_USER'];
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'Moderation' }));
+
+    const panel = screen.getByRole('tabpanel');
+    expect(panel).toHaveTextContent('Timeout list section');
+    expect(panel).not.toHaveTextContent('Ban list section');
+    expect(panel).not.toHaveTextContent('Logs section');
+  });
+
+  it('a ban-list viewer still sees the ban list, the timeouts and the logs', async () => {
+    permissions.held = ['VIEW_BAN_LIST'];
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'Moderation' }));
+
+    const panel = screen.getByRole('tabpanel');
+    expect(panel).toHaveTextContent('Ban list section');
+    expect(panel).toHaveTextContent('Timeout list section');
+    expect(panel).toHaveTextContent('Logs section');
   });
 
   it('desktop: the shown section is a tab panel named by its tab, with the section as the title', async () => {

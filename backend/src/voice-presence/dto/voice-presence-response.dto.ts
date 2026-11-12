@@ -38,6 +38,12 @@ export class RefreshDmPresenceResponseDto {
   dmGroupId: string;
 }
 
+export class DeclineDmVoiceCallResponseDto {
+  success: boolean;
+  message: string;
+  dmGroupId: string;
+}
+
 export class UserVoiceChannelsResponseDto {
   userId: string;
   voiceChannels: string[];

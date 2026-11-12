@@ -208,6 +208,17 @@ export class DmVoiceUserLeftPayloadDto {
   user: VoicePresenceUserDto;
 }
 
+export class DmVoiceCallDeclinedPayloadDto {
+  dmGroupId: string;
+  userId: string;
+  /** True for a group DM, false for a 1:1 DM: a 1:1 decline ends the call. */
+  isGroup: boolean;
+}
+
+export class DmVoiceCallEndedPayloadDto {
+  dmGroupId: string;
+}
+
 export class ReplayBufferStoppedPayloadDto {
   sessionId: string;
   egressId: string;

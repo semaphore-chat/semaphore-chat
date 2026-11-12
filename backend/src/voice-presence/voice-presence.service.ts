@@ -1,5 +1,11 @@
 import type { VoicePresenceUser as VoicePresenceUserDto } from '@semaphore-chat/shared';
-import { ForbiddenException, Injectable, Logger, Inject } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  Inject,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import Redis from 'ioredis';
@@ -75,6 +81,8 @@ export class VoicePresenceService {
   private readonly DM_VOICE_PRESENCE_MEMBERS_PREFIX = 'dm_voice_presence:dm';
   private readonly DM_VOICE_PRESENCE_USER_DMS_PREFIX =
     'dm_voice_presence:user_dms';
+  private readonly DM_VOICE_PRESENCE_DECLINES_PREFIX =
+    'dm_voice_presence:declines';
   private readonly VOICE_PRESENCE_TTL = 90; // 90 seconds (3 missed heartbeats at 30s interval)
   // A moderator's server mute, per channel and user: it outlives the call
   private readonly VOICE_SERVER_MUTE_PREFIX = 'voice_server_mute';
@@ -322,7 +330,15 @@ export class VoicePresenceService {
         this.VOICE_PRESENCE_TTL,
       );
 
-      if (result !== 0) return;
+      if (result !== 0) {
+        // A heartbeat means the call is still alive, so this call's declines
+        // are too: they must not expire out from under a long call.
+        await this.redis.expire(
+          this.dmDeclinesKey(dmGroupId),
+          this.VOICE_PRESENCE_TTL,
+        );
+        return;
+      }
 
       // Key expired or missing — verify membership before re-registering
       await this.assertDmMember(dmGroupId, userId);
@@ -701,6 +717,9 @@ export class VoicePresenceService {
     const isFirstUser = addedToCall && memberCount === 1;
 
     if (isFirstUser) {
+      // A new call: any decline left over from a previous one is void
+      await this.redis.del(this.dmDeclinesKey(dmGroupId));
+
       // First user joining - emit "call started" event
       this.websocketService.sendToRoom(
         RoomName.dmGroup(dmGroupId),
@@ -895,19 +914,15 @@ export class VoicePresenceService {
         return;
       }
 
-      // Use pipeline for atomic operations
-      const pipeline = this.redis.pipeline();
-
-      // Remove user data
-      pipeline.del(userDataKey);
-
-      // Remove user from DM members set
-      pipeline.srem(dmMembersKey, userId);
-
-      // Remove DM from user's DMs set
-      pipeline.srem(userDmsKey, dmGroupId);
-
-      await pipeline.exec();
+      // Remove the presence in one transaction that also counts what is left:
+      // the count is what tells the last leave apart from every other one.
+      const results = await this.redis
+        .multi()
+        .del(userDataKey)
+        .srem(dmMembersKey, userId)
+        .srem(userDmsKey, dmGroupId)
+        .scard(dmMembersKey)
+        .exec();
 
       // Notify other users in the DM call
       this.websocketService.sendToRoom(
@@ -920,6 +935,12 @@ export class VoicePresenceService {
         },
       );
 
+      await this.announceDmCallEndIfEmpty(
+        dmGroupId,
+        results?.[1]?.[1],
+        results?.[3]?.[1],
+      );
+
       this.logger.log(`User ${userId} left DM voice call ${dmGroupId}`);
     } catch (error) {
       this.logger.error(
@@ -928,6 +949,82 @@ export class VoicePresenceService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Decline an incoming DM call.
+   *
+   * Only a member who is not in the call can decline it, and the decline is
+   * remembered for the life of that call (see dmDeclinesKey) so a repeat from
+   * another device or a retry is idempotent. Every member of the DM hears it:
+   * the decliner's other devices stop ringing and the caller learns of it.
+   * Whether that ends the call is the clients' call (a 1:1 decline ends it for
+   * the caller); the server never disconnects anyone from LiveKit.
+   */
+  async declineDmVoiceCall(dmGroupId: string, userId: string): Promise<void> {
+    await this.assertDmMember(dmGroupId, userId);
+
+    const users = await this.getDmPresence(dmGroupId);
+    if (users.length === 0) {
+      throw new ConflictException('There is no active call in this DM group');
+    }
+    if (users.some((user) => user.id === userId)) {
+      throw new ConflictException('You are already in this call');
+    }
+
+    const declinesKey = this.dmDeclinesKey(dmGroupId);
+    const added = await this.redis.sadd(declinesKey, userId);
+    await this.redis.expire(declinesKey, this.VOICE_PRESENCE_TTL);
+
+    // The same person declining again (another tab, a retry) is not news
+    if (added === 0) return;
+
+    // The server knows whether this is a 1:1 DM, so clients need not guess
+    // from a cache that may be empty. A DM we cannot read counts as a group:
+    // a client that is told "group" never ends the call.
+    const group = await this.databaseService.directMessageGroup.findUnique({
+      where: { id: dmGroupId },
+      select: { isGroup: true },
+    });
+
+    this.websocketService.sendToRoom(
+      RoomName.dmGroup(dmGroupId),
+      ServerEvents.DM_VOICE_CALL_DECLINED,
+      { dmGroupId, userId, isGroup: group?.isGroup ?? true },
+    );
+
+    this.logger.log(
+      `User ${userId} declined the DM voice call in ${dmGroupId}`,
+    );
+  }
+
+  /** Where this call's declines are remembered (a Redis set of user ids). */
+  private dmDeclinesKey(dmGroupId: string): string {
+    return `${this.DM_VOICE_PRESENCE_DECLINES_PREFIX}:${dmGroupId}`;
+  }
+
+  /**
+   * Announce that a DM call is over once its last participant is gone, so the
+   * devices still ringing stop and this call's declines are forgotten.
+   *
+   * `removed` and `remaining` come from the same Redis transaction as the
+   * removal, so of two simultaneous leaves exactly one sees the empty set and
+   * the event goes out once.
+   */
+  private async announceDmCallEndIfEmpty(
+    dmGroupId: string,
+    removed: unknown,
+    remaining: unknown,
+  ): Promise<void> {
+    if (removed !== 1 || remaining !== 0) return;
+
+    await this.redis.del(this.dmDeclinesKey(dmGroupId));
+    this.websocketService.sendToRoom(
+      RoomName.dmGroup(dmGroupId),
+      ServerEvents.DM_VOICE_CALL_ENDED,
+      { dmGroupId },
+    );
+    this.logger.log(`DM voice call ${dmGroupId} ended`);
   }
 
   /** Throws unless the user is in the DM group, instance owners included. */
@@ -966,6 +1063,7 @@ export class VoicePresenceService {
       const values = await this.redis.mget(userDataKeys);
 
       const users: VoicePresenceUser[] = [];
+      const expiredUserIds: string[] = [];
 
       for (let i = 0; i < values.length; i++) {
         const value = values[i];
@@ -982,8 +1080,31 @@ export class VoicePresenceService {
           this.logger.debug(
             `Cleaning up expired presence for user ${userId} in DM ${dmGroupId}`,
           );
-          await this.redis.srem(dmMembersKey, userId);
+          expiredUserIds.push(userId);
         }
+      }
+
+      if (expiredUserIds.length > 0) {
+        // Drop the expired members and count what is left in one transaction,
+        // so reading the presence is also what ends a call whose every
+        // participant stopped heartbeating.
+        const cleanup = this.redis.multi();
+        for (const expiredUserId of expiredUserIds) {
+          cleanup.srem(dmMembersKey, expiredUserId);
+        }
+        cleanup.scard(dmMembersKey);
+        const results = await cleanup.exec();
+
+        const removed = results
+          ?.slice(0, expiredUserIds.length)
+          .some(([, count]) => count === 1)
+          ? 1
+          : 0;
+        await this.announceDmCallEndIfEmpty(
+          dmGroupId,
+          removed,
+          results?.[expiredUserIds.length]?.[1],
+        );
       }
 
       // Sort by join time, then drop internal fields (sid) and normalise
