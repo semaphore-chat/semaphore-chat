@@ -1,21 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { setTimeout as delay } from 'node:timers/promises';
-import type { FfprobeData } from 'fluent-ffmpeg';
-import { FfmpegProvider } from '@/livekit/providers/ffmpeg.provider';
+import {
+  FfmpegProvider,
+  FfprobeStream,
+  FfprobeStreams,
+} from '@/livekit/providers/ffmpeg.provider';
 
 /** The pixels an attachment occupies once displayed. */
 export interface MediaDimensions {
   width: number;
   height: number;
-}
-
-/** The ffprobe stream fields dimensions are read from. */
-interface ProbeStream {
-  codec_type?: string;
-  width?: number;
-  height?: number;
-  tags?: Record<string, string | undefined>;
-  side_data_list?: Array<{ rotation?: number | string } | undefined>;
 }
 
 /** Upper bound for one probe, matching the timeout style of the FFmpeg runs. */
@@ -47,21 +40,12 @@ export class MediaDimensionsService {
   ): Promise<MediaDimensions | null> {
     if (!this.isMeasurable(mimeType)) return null;
 
-    const probe = this.ffmpegProvider.ffprobe(filePath);
-    // Same bounded-work style as the FFmpeg runs, without holding the
-    // process open for a probe that never answers.
-    const abort = new AbortController();
-    const timedOut = delay(timeoutMs, null, {
-      ref: false,
-      signal: abort.signal,
-    }).then(() => {
-      throw new Error(`ffprobe timed out after ${timeoutMs} ms`);
-    });
-
     try {
-      const metadata = await Promise.race([probe, timedOut]);
+      // The provider kills ffprobe at the limit, so a hung probe on a bad
+      // file cannot pile up processes behind abandoned uploads.
+      const probe = await this.ffmpegProvider.probeStreams(filePath, timeoutMs);
 
-      const dimensions = this.fromMetadata(metadata);
+      const dimensions = this.fromStreams(probe);
       if (!dimensions) {
         this.logger.debug(
           `ffprobe reported no dimensions for ${mimeType} file ${filePath}`,
@@ -75,8 +59,6 @@ export class MediaDimensionsService {
         }`,
       );
       return null;
-    } finally {
-      abort.abort();
     }
   }
 
@@ -87,8 +69,8 @@ export class MediaDimensionsService {
     return type.startsWith('image/') || type.startsWith('video/');
   }
 
-  private fromMetadata(metadata: FfprobeData): MediaDimensions | null {
-    const streams = (metadata?.streams ?? []) as unknown as ProbeStream[];
+  private fromStreams(probe: FfprobeStreams): MediaDimensions | null {
+    const streams = probe?.streams ?? [];
     const stream =
       streams.find(
         (candidate) =>
@@ -113,7 +95,7 @@ export class MediaDimensionsService {
   }
 
   /** The rotation ffprobe reports, normalised to 0, 90, 180 or 270. */
-  private rotationOf(stream: ProbeStream): number {
+  private rotationOf(stream: FfprobeStream): number {
     const fromSideData = stream.side_data_list
       ?.map((entry) => entry?.rotation)
       .find((rotation) => rotation !== undefined);
