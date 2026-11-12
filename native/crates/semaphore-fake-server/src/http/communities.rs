@@ -143,11 +143,15 @@ async fn mentionable_channels(
 
 async fn channel_permissions(
     State(inner): State<Arc<Inner>>,
+    headers: axum::http::HeaderMap,
     Path(community_id): Path<String>,
 ) -> Response {
     let Some(community) = crate::admin::community(&inner, &community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
+    // W5: the caller's active timeout, as `getMyCommunityChannelPermissions` reports it.
+    let user = inner.user_of(super::bearer_token(&headers));
+    let timed_out_until = crate::rbac::timed_out_until(&inner, &community_id, &user);
     let channels: Vec<ChannelCapabilitiesDto> = community
         .channels
         .iter()
@@ -162,7 +166,7 @@ async fn channel_permissions(
             share: true,
             speak: true,
             thread_reply: true,
-            timed_out_until: None,
+            timed_out_until,
             video: true,
             view: true,
         })

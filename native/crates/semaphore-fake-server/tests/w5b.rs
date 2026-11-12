@@ -602,6 +602,21 @@ async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
     let (_, list) = get(&client, &base, &format!("/api/moderation/timeouts/{couch}")).await;
     assert_eq!(list[0]["user"]["id"], id("u-kwame"));
     assert_eq!(list[0]["moderator"]["id"], id("u-marcus"));
+    // Their channel capabilities say until when, as the composer's lock reads it.
+    let kwame_bearer = bearer_for(&client, &base, "kwam3", &id("u-kwame")).await;
+    let (status, caps) = send(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        &format!("/api/channels/community/{couch}/permissions/me"),
+        &kwame_bearer,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{caps}");
+    assert!(caps["channels"][0]["timedOutUntil"].is_string(), "{caps}");
+    let (_, mine) = get(&client, &base, &format!("/api/channels/community/{couch}/permissions/me")).await;
+    assert!(mine["channels"][0]["timedOutUntil"].is_null(), "{mine}");
 
     // The checks are the moderator's: no ban on someone ranked above them, nothing without the
     // action.

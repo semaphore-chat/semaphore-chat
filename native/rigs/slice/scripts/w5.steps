@@ -1,0 +1,91 @@
+# W5: community administration, roles and moderation in the real app, against the showcase
+# scenario, in Couch Co-op, from several users' points of view in turn:
+# - dropbear (Marcus), made a Moderator: Moderator lacks BAN_USER, so his member menu offers Ban
+#   off, with why; he times Priya out.
+# - pri (Priya), a Member: her composer is locked until the timeout runs out (the app's timer
+#   calls timeout_elapsed at its end), she gets no settings entry and disabled controls with
+#   reasons, and is removed: the notice says so once, over Home.
+# The scenario clock is held from the timeout on, so times on screen don't move between runs.
+
+app 1280 800
+window activate
+wait idle
+server act_as "{\"communityId\": \"$ID(c-couch)\", \"roleIds\": [\"$ID(role-moderator-c-couch)\"], \"userId\": \"$ID(u-marcus)\"}"
+server act_as "{\"communityId\": \"$ID(c-couch)\", \"roleIds\": [\"$ID(role-community-admin-c-couch)\"]}"
+server sign_in_as "{\"username\": \"dropbear\", \"userId\": \"$ID(u-marcus)\"}"
+server sign_in_as "{\"username\": \"pri\", \"userId\": \"$ID(u-priya)\"}"
+click auth-connect
+wait core session signed-out within 5
+wait idle
+
+# 1. Marcus, a Moderator. His member menu on Priya offers Timeout; Ban is off, with why.
+click auth-username
+type "dropbear"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core element member-$ID(u-priya)
+right-click member-$ID(u-priya)
+wait core element moderation-menu
+wait core w5 label moderate-timeout "Timeout"
+wait core w5 reason moderate-ban "unavailable"
+wait idle
+shot 01-moderator-menu
+
+# 2. He times her out for ten minutes. The dialog follows its own action and closes when done.
+clock hold
+click moderate-timeout
+wait core element timeout-confirm
+click timeout-length-600
+wait idle
+shot 02-timeout-dialog
+click timeout-confirm
+wait core requests ModerationController_timeoutUser >= 1
+wait core no-element timeout-confirm
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+
+# 3. Priya: the composer is locked by the timeout, and opens when it runs out: the app's timer
+# at its end calls timeout_elapsed, which reads the capabilities again.
+click auth-username
+type "pri"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core w5 composer locked
+wait idle
+shot 03-timed-out
+server advance_clock "{\"ms\": 601000}"
+tick 601000
+wait core w5 composer open
+wait idle
+# The composer has the focus again, and its caret blinks by real time after the tick.
+shot 04-live-timeout-over
+
+# 4. A Member only: no settings entry, and the member menu says why each action is off.
+# A: expect core no-element community-settings
+right-click member-$ID(u-kwame)
+wait core element moderation-menu
+wait core w5 reason moderate-ban "unavailable"
+wait core w5 reason moderate-kick "unavailable"
+wait idle
+shot 05-live-member-refused
+
+# 5. Removed by Samira: the notice says so once, over Home.
+server moderate_as "{\"moderatorId\": \"$ID(u-samira)\", \"action\": \"kick\", \"communityId\": \"$ID(c-couch)\", \"userId\": \"$ID(u-priya)\", \"reason\": \"Take a break\"}"
+wait core w5 removed-notice kicked
+wait core route home
+wait idle
+shot 06-removed
+click removed-ok
+wait core w5 removed-notice none
+clock run

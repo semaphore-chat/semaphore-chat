@@ -6,7 +6,8 @@
 //! wait core w5 member $ID(u-priya) role "Moderator"
 //! wait core w5 enabled invites-create       # an element's disabled state, by its id
 //! wait core w5 disabled invites-create
-//! wait core w5 reason invites-create "You need"   # the locked note beside it contains this
+//! wait core w5 reason invites-create "You need"   # the element's label contains this
+//! wait core w5 label moderate-ban "Ban"     # the element's label is exactly this
 //! wait core w5 composer locked              # locked|open: the timeout lock on the composer
 //! wait core w5 invites 1                    # invites|emoji|sounds N: rows in that view
 //! wait core w5 webhook-url shown            # shown|gone: the created webhook's one-time URL
@@ -30,8 +31,11 @@ pub(crate) enum W5 {
     MemberRole { user_id: String, role: String },
     /// `enabled|disabled <id>`: the element is there and on or off.
     Enabled { id: String, enabled: bool },
-    /// `reason <id> <text>`: the element's locked note contains `text`.
+    /// `reason <id> <text>`: the element's label (a locked note's reason, a menu item's
+    /// "…, unavailable: why") contains `text`.
     Reason { id: String, text: String },
+    /// `label <id> <text>`: the element's label is exactly `text` (an action that is on).
+    Label { id: String, text: String },
     /// `composer locked|open`.
     ComposerLocked(bool),
     /// `invites|emoji|sounds N`.
@@ -76,6 +80,10 @@ pub(crate) fn parse(words: &[&str]) -> Result<W5> {
             id: (*id).into(),
             text: (*text).into(),
         },
+        ["label", id, text] => W5::Label {
+            id: (*id).into(),
+            text: (*text).into(),
+        },
         ["composer", state @ ("locked" | "open")] => W5::ComposerLocked(*state == "locked"),
         [what @ ("invites" | "emoji" | "sounds"), count] => W5::Count(
             match *what {
@@ -107,14 +115,21 @@ impl super::Rig {
                 })?;
                 return Ok(found == Some(*enabled));
             }
-            W5::Reason { id, text } => {
+            W5::Reason { id, text } | W5::Label { id, text } => {
+                let exact = matches!(condition, W5::Label { .. });
                 let id = ElementId::Name(id.clone().into());
                 let label = self.driver.query(|window| {
                     window
                         .try_find(id)
                         .and_then(|element| element.label().map(|label| label.to_string()))
                 })?;
-                return Ok(label.is_some_and(|label| label.contains(text.as_str())));
+                return Ok(label.is_some_and(|label| {
+                    if exact {
+                        label == *text
+                    } else {
+                        label.contains(text.as_str())
+                    }
+                }));
             }
             W5::WebhookUrl(shown) => {
                 // The created webhook's dialog, which shows its URL this once.
@@ -174,7 +189,7 @@ impl super::Rig {
                 W5::RemovedNotice(cause) => {
                     root.removed_notice(cx).map(|(_, shown)| shown.to_owned()) == *cause
                 }
-                W5::Enabled { .. } | W5::Reason { .. } | W5::WebhookUrl(_) => {
+                W5::Enabled { .. } | W5::Reason { .. } | W5::Label { .. } | W5::WebhookUrl(_) => {
                     unreachable!("answered above")
                 }
             }
@@ -189,7 +204,14 @@ mod tests {
 
     #[test]
     fn every_form_parses_and_nothing_else_does() {
-        let good: [(&[&str], W5); 13] = [
+        let good: [(&[&str], W5); 14] = [
+            (
+                &["label", "moderate-ban", "Ban"],
+                W5::Label {
+                    id: "moderate-ban".into(),
+                    text: "Ban".into(),
+                },
+            ),
             (
                 &["channel", "w5-ops", "at", "2"],
                 W5::Channel {

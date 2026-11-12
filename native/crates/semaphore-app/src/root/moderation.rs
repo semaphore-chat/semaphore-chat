@@ -15,7 +15,8 @@
 use super::AppRoot;
 use super::roles::member_user;
 use gpui_kit::*;
-use semaphore_core::CoreEvent;
+use semaphore_core::{CoreError, CoreEvent};
+use std::future::Future;
 use semaphore_core::model::{RemovalCause, UserView, ViewKey};
 use semaphore_ui::moderation::{
     ModerationDialog, ModerationDialogEvent, ModerationMenu, ModerationMenuEvent, ModerationTab,
@@ -605,43 +606,62 @@ impl AppRoot {
         &mut self,
         dialog: &Entity<ModerationDialog>,
         event: &ModerationDialogEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let (Some(core), Some(open)) = (self.core(), self.moderation.dialog.as_ref()) else {
+        let (Some(core), Some(services), Some(open)) = (
+            self.core(),
+            self.services.as_ref(),
+            self.moderation.dialog.as_ref(),
+        ) else {
             return;
         };
         if open.view != *dialog {
             return;
         }
         let c = open.community_id.clone();
-        match event.clone() {
-            ModerationDialogEvent::Ban { user_id, request } => self.w5_fire("banning", async move {
-                core.ban_member(c, user_id, request).await
-            }),
-            ModerationDialogEvent::Kick { user_id, reason } => self.w5_fire("kicking", async move {
-                core.kick_member(c, user_id, reason).await
-            }),
-            ModerationDialogEvent::Timeout { user_id, request } => {
-                self.w5_fire("timing out", async move {
-                    core.timeout_member(c, user_id, request).await
-                })
+        let work: std::pin::Pin<Box<dyn Future<Output = Result<(), CoreError>> + Send>> =
+            match event.clone() {
+                ModerationDialogEvent::Ban { user_id, request } => {
+                    Box::pin(async move { core.ban_member(c, user_id, request).await })
+                }
+                ModerationDialogEvent::Kick { user_id, reason } => {
+                    Box::pin(async move { core.kick_member(c, user_id, reason).await })
+                }
+                ModerationDialogEvent::Timeout { user_id, request } => {
+                    Box::pin(async move { core.timeout_member(c, user_id, request).await })
+                }
+                ModerationDialogEvent::Unban { user_id, reason } => {
+                    Box::pin(async move { core.unban_member(c, user_id, reason).await })
+                }
+                ModerationDialogEvent::RemoveTimeout { user_id, reason } => {
+                    Box::pin(async move { core.remove_timeout(c, user_id, reason).await })
+                }
+                ModerationDialogEvent::Cancel | ModerationDialogEvent::Succeeded { .. } => {
+                    self.moderation.dialog = None;
+                    cx.notify();
+                    return;
+                }
+            };
+        // The dialog follows its action's entry in the op for a refusal, which stays there. A
+        // success removes the entry, and when the start and the end reach the app in one batch
+        // the dialog never sees it running, so the answer itself closes it too.
+        let sent = dialog.downgrade();
+        services.exec.run(window, cx, work, move |this, result, _, cx| {
+            let ours = this
+                .moderation
+                .dialog
+                .as_ref()
+                .is_some_and(|open| open.view.downgrade() == sent);
+            match result {
+                Ok(()) if ours => {
+                    this.moderation.dialog = None;
+                    cx.notify();
+                }
+                Ok(()) => {}
+                Err(error) => log::warn!("moderating: {error}"),
             }
-            ModerationDialogEvent::Unban { user_id, reason } => {
-                self.w5_fire("lifting a ban", async move {
-                    core.unban_member(c, user_id, reason).await
-                })
-            }
-            ModerationDialogEvent::RemoveTimeout { user_id, reason } => {
-                self.w5_fire("lifting a timeout", async move {
-                    core.remove_timeout(c, user_id, reason).await
-                })
-            }
-            ModerationDialogEvent::Cancel | ModerationDialogEvent::Succeeded { .. } => {
-                self.moderation.dialog = None;
-                cx.notify();
-            }
-        }
+        });
     }
 
     /// Whether a moderation dialog is open, and of which kind, for the rig.
