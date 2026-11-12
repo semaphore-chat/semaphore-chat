@@ -55,6 +55,8 @@ export enum ServerEvents {
 
   // Moderation Events
   USER_BANNED = 'userBanned',
+  /** A ban was lifted: refetch the ban list and the moderation log. */
+  USER_UNBANNED = 'userUnbanned',
   USER_KICKED = 'userKicked',
   USER_TIMED_OUT = 'userTimedOut',
   TIMEOUT_REMOVED = 'timeoutRemoved',
@@ -85,6 +87,25 @@ export enum ServerEvents {
   ROLE_DELETED = 'roleDeleted',
   ROLE_ASSIGNED = 'roleAssigned',
   ROLE_UNASSIGNED = 'roleUnassigned',
+
+  // Private Channel Membership
+  /** The user was added to a private channel: refetch their channel list. */
+  PRIVATE_CHANNEL_ADDED = 'privateChannelAdded',
+  /** The user was removed from a private channel. */
+  PRIVATE_CHANNEL_REMOVED = 'privateChannelRemoved',
+
+  // Community Assets
+  CUSTOM_EMOJI_CREATED = 'customEmojiCreated',
+  CUSTOM_EMOJI_DELETED = 'customEmojiDeleted',
+  SOUNDBOARD_SOUND_CREATED = 'soundboardSoundCreated',
+  SOUNDBOARD_SOUND_DELETED = 'soundboardSoundDeleted',
+  ALIAS_GROUP_CREATED = 'aliasGroupCreated',
+  ALIAS_GROUP_UPDATED = 'aliasGroupUpdated',
+  ALIAS_GROUP_DELETED = 'aliasGroupDeleted',
+  /** An alias group's members were added, removed or replaced. */
+  ALIAS_GROUP_MEMBERS_UPDATED = 'aliasGroupMembersUpdated',
+  WEBHOOK_CREATED = 'webhookCreated',
+  WEBHOOK_DELETED = 'webhookDeleted',
 
   // User Profile
   USER_PROFILE_UPDATED = 'userProfileUpdated',

@@ -5,6 +5,7 @@ import * as messageHandlers from './messageHandlers';
 import * as presenceHandlers from './presenceHandlers';
 import * as voiceHandlers from './voiceHandlers';
 import * as communityHandlers from './communityHandlers';
+import * as communityAssetHandlers from './communityAssetHandlers';
 import * as moderationHandlers from './moderationHandlers';
 import * as roleHandlers from './roleHandlers';
 import * as notificationHandlers from './notificationHandlers';
@@ -66,9 +67,26 @@ export const handlerRegistry: {
 
   // Moderation
   [ServerEvents.USER_BANNED]: [moderationHandlers.handleUserBanned],
+  [ServerEvents.USER_UNBANNED]: [moderationHandlers.handleUserUnbanned],
   [ServerEvents.USER_KICKED]: [moderationHandlers.handleUserKicked],
   [ServerEvents.USER_TIMED_OUT]: [moderationHandlers.handleUserTimedOut],
   [ServerEvents.TIMEOUT_REMOVED]: [moderationHandlers.handleTimeoutRemoved],
+
+  // Private channel membership
+  [ServerEvents.PRIVATE_CHANNEL_ADDED]: [communityHandlers.handlePrivateChannelAdded],
+  [ServerEvents.PRIVATE_CHANNEL_REMOVED]: [communityHandlers.handlePrivateChannelRemoved],
+
+  // Community assets
+  [ServerEvents.CUSTOM_EMOJI_CREATED]: [communityAssetHandlers.handleCustomEmojiCreated],
+  [ServerEvents.CUSTOM_EMOJI_DELETED]: [communityAssetHandlers.handleCustomEmojiDeleted],
+  [ServerEvents.SOUNDBOARD_SOUND_CREATED]: [communityAssetHandlers.handleSoundboardSoundCreated],
+  [ServerEvents.SOUNDBOARD_SOUND_DELETED]: [communityAssetHandlers.handleSoundboardSoundDeleted],
+  [ServerEvents.ALIAS_GROUP_CREATED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.ALIAS_GROUP_UPDATED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.ALIAS_GROUP_DELETED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED]: [communityAssetHandlers.handleAliasGroupChanged],
+  [ServerEvents.WEBHOOK_CREATED]: [communityAssetHandlers.handleWebhookCreated],
+  [ServerEvents.WEBHOOK_DELETED]: [communityAssetHandlers.handleWebhookDeleted],
 
   // Channel lifecycle & reorder
   [ServerEvents.CHANNELS_REORDERED]: [communityHandlers.handleChannelsReordered],

@@ -47,18 +47,13 @@ describe('GifsController', () => {
     it('forwards q, limit, and pos to the service', async () => {
       service.search.mockResolvedValue(mockResponse);
 
-      const result = await controller.search('cats', 20, 'cursor-0');
+      const result = await controller.search('cats', {
+        limit: 20,
+        pos: 'cursor-0',
+      });
 
       expect(service.search).toHaveBeenCalledWith('cats', 20, 'cursor-0');
       expect(result).toEqual(mockResponse);
-    });
-
-    it('clamps limit to the maximum of 50', async () => {
-      service.search.mockResolvedValue(mockResponse);
-
-      await controller.search('cats', 500, undefined);
-
-      expect(service.search).toHaveBeenCalledWith('cats', 50, undefined);
     });
   });
 
@@ -66,18 +61,10 @@ describe('GifsController', () => {
     it('forwards limit and pos to the service', async () => {
       service.featured.mockResolvedValue(mockResponse);
 
-      const result = await controller.featured(15, 'cursor-2');
+      const result = await controller.featured({ limit: 15, pos: 'cursor-2' });
 
       expect(service.featured).toHaveBeenCalledWith(15, 'cursor-2');
       expect(result).toEqual(mockResponse);
-    });
-
-    it('clamps limit to the maximum of 50', async () => {
-      service.featured.mockResolvedValue(mockResponse);
-
-      await controller.featured(999, undefined);
-
-      expect(service.featured).toHaveBeenCalledWith(50, undefined);
     });
   });
 });

@@ -1,6 +1,26 @@
 {
   "description": "Socket.IO events and the OpenAPI component each payload follows. Readers must ignore unknown events and unknown fields, and treat an unknown enum value as a fallback.",
   "server": {
+    "aliasGroupCreated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityAliasGroupPayloadDto"
+      }
+    },
+    "aliasGroupDeleted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityAliasGroupPayloadDto"
+      }
+    },
+    "aliasGroupMembersUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityAliasGroupPayloadDto"
+      }
+    },
+    "aliasGroupUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityAliasGroupPayloadDto"
+      }
+    },
     "channelCreated": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/ChannelCreatedPayloadDto"
@@ -34,6 +54,16 @@
     "communityUpdated": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/CommunityUpdatedPayloadDto"
+      }
+    },
+    "customEmojiCreated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityEmojiPayloadDto"
+      }
+    },
+    "customEmojiDeleted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityEmojiPayloadDto"
       }
     },
     "deleteMessage": {
@@ -116,6 +146,16 @@
         "$ref": "./openapi.json#/components/schemas/NotificationReadPayloadDto"
       }
     },
+    "privateChannelAdded": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/PrivateChannelMembershipPayloadDto"
+      }
+    },
+    "privateChannelRemoved": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/PrivateChannelMembershipPayloadDto"
+      }
+    },
     "reactionAdded": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/ReactionAddedPayloadDto"
@@ -169,6 +209,16 @@
     "sessionTerminated": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/SessionTerminatedPayloadDto"
+      }
+    },
+    "soundboardSoundCreated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunitySoundPayloadDto"
+      }
+    },
+    "soundboardSoundDeleted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunitySoundPayloadDto"
       }
     },
     "threadReplyCountUpdated": {
@@ -226,6 +276,11 @@
         "$ref": "./openapi.json#/components/schemas/UserTypingPayloadDto"
       }
     },
+    "userUnbanned": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserUnbannedPayloadDto"
+      }
+    },
     "voiceChannelUserJoined": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/VoiceChannelUserJoinedPayloadDto"
@@ -239,6 +294,16 @@
     "voiceChannelUserUpdated": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/VoiceChannelUserUpdatedPayloadDto"
+      }
+    },
+    "webhookCreated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ChannelWebhookPayloadDto"
+      }
+    },
+    "webhookDeleted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ChannelWebhookPayloadDto"
       }
     }
   },

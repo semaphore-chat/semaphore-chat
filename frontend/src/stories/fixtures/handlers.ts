@@ -109,7 +109,6 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
         defaultStorageQuotaBytes: 5 * 1024 * 1024 * 1024,
         maxFileSizeBytes: 25 * 1024 * 1024,
         vapidPublicKey: null,
-        vapidPrivateKey: null,
         vapidSubject: null,
       } satisfies InstanceSettingsResponseDto)),
 

@@ -94,6 +94,8 @@ describe('InstanceSettingsResponseDto', () => {
       expect(plain.vapidPublicKey).toBe('public-key-123');
       expect(plain.vapidSubject).toBe('mailto:admin@example.com');
       expect(plain).not.toHaveProperty('vapidPrivateKey');
+      expect(JSON.stringify(plain)).not.toContain('secret-private-key');
+      expect(JSON.stringify(plain)).not.toContain('vapidPrivateKey');
     });
 
     it('should preserve all other fields correctly', () => {
