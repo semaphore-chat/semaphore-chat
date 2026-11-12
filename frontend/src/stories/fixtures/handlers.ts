@@ -82,6 +82,27 @@ export interface MakeHandlersOptions {
   extraHandlers?: HttpHandler[];
 }
 
+/**
+ * The size encoded in an `edge-chat-img-<w>x<h>-<key>` attachment id,
+ * scaled down to `bound` on its longest side. The attachment metadata gives
+ * the component that same size, so the placeholder image fills the reserved
+ * box with the right aspect ratio. Returns null for every other file id.
+ */
+function encodedImageSize(
+  id: string,
+  bound: number,
+): { width: number; height: number } | null {
+  const match = /^edge-chat-img-(\d+)x(\d+)-/.exec(id);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const scale = Math.min(1, bound / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
 export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = {}): HttpHandler[] {
   const base: HttpHandler[] = [
     // ── Onboarding / instance ─────────────────────────────────────────
@@ -553,12 +574,16 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
     // ids, custom-emoji ids) falls back to a generic placeholder, same as
     // before.
     http.get('/api/file/:id', ({ params }) => {
-      const svg = resolveFileSvg(String(params.id), { width: 480, height: 320 });
+      const id = String(params.id);
+      const size = encodedImageSize(id, 480) ?? { width: 480, height: 320 };
+      const svg = resolveFileSvg(id, size);
       const [, encoded] = svg.split(',');
       return new HttpResponse(decodeURIComponent(encoded), { headers: { 'Content-Type': 'image/svg+xml' } });
     }),
     http.get('/api/file/:id/thumbnail', ({ params }) => {
-      const svg = resolveFileSvg(String(params.id), { width: 160, height: 120 }, '');
+      const id = String(params.id);
+      const size = encodedImageSize(id, 480) ?? { width: 160, height: 120 };
+      const svg = resolveFileSvg(id, size, '');
       const [, encoded] = svg.split(',');
       return new HttpResponse(decodeURIComponent(encoded), { headers: { 'Content-Type': 'image/svg+xml' } });
     }),

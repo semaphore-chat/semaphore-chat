@@ -119,7 +119,20 @@ function filler(ctx: { channelId?: string; dmId?: string; key: string }, startMi
 }
 
 function file(id: string, filename: string, mimeType: string, fileType: FileMetadata['fileType'], size: number, hasThumbnail = false): FileMetadata {
-  return { id, filename, mimeType, fileType, size, hasThumbnail };
+  // `sizedImageId` encodes the pixels the server would report; the story
+  // needs them so the attachment box is reserved before the image loads.
+  const dimensions = /^edge-chat-img-(\d+)x(\d+)-/.exec(id);
+  return {
+    id,
+    filename,
+    mimeType,
+    fileType,
+    size,
+    hasThumbnail,
+    ...(dimensions
+      ? { width: Number(dimensions[1]), height: Number(dimensions[2]) }
+      : {}),
+  };
 }
 
 /** Image attachment whose file id encodes its pixel size — `chatHandlers()` serves an SVG of exactly that size. */
@@ -287,6 +300,20 @@ export const mediaChannel = addChannel('media', 'media', (ctx) => [
   makeMsg(ctx, ava.id, 50, text('very tall screenshot of the log'), { attachments: [file(sizedImageId('tall', 400, 2400), 'tall-log.png', 'image/png', 'IMAGE', 1_840_000)] }),
   makeMsg(ctx, bo.id, 45, text('panorama from the offsite'), { attachments: [file(sizedImageId('wide', 3200, 300), 'panorama.jpg', 'image/jpeg', 'IMAGE', 4_200_000)] }),
   makeMsg(ctx, cy.id, 40, text(''), { attachments: [file(sizedImageId('tiny', 16, 16), 'favicon.png', 'image/png', 'IMAGE', 900)] }),
+]);
+
+/** One image backed by a server thumbnail, one without, and one below the bound. */
+export const thumbnailChannel = addChannel('thumbs', 'image-thumbnails', (ctx) => [
+  ...filler(ctx, 90),
+  makeMsg(ctx, ava.id, 50, text('dashboard, served from its thumbnail'), {
+    attachments: [file(sizedImageId('thumb-land', 1600, 900), 'dashboard.jpg', 'image/jpeg', 'IMAGE', 2_400_000, true)],
+  }),
+  makeMsg(ctx, bo.id, 45, text('no thumbnail: the client loads the original'), {
+    attachments: [file(sizedImageId('thumb-none', 400, 2400), 'tall-screenshot.png', 'image/png', 'IMAGE', 1_800_000)],
+  }),
+  makeMsg(ctx, cy.id, 40, text('below the 480 px bound, so there is no thumbnail'), {
+    attachments: [file(sizedImageId('thumb-tiny', 16, 16), 'favicon.png', 'image/png', 'IMAGE', 900)],
+  }),
 ]);
 
 export const multiImageChannel = addChannel('multi', 'multi-image', (ctx) => [

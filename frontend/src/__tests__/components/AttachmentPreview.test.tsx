@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { ThemeProvider } from '@mui/material/styles';
 import { generateTheme } from '../../theme/themeConfig';
 import { AttachmentPreview } from '../../components/Message/AttachmentPreview';
+import { useAuthenticatedFile } from '../../hooks/useAuthenticatedFile';
 import type { FileMetadata } from '../../types/message.type';
 
 // Mock child components so we can assert delegation without their side effects
@@ -198,7 +199,70 @@ describe('AttachmentPreview', () => {
   });
 
   describe('ImagePreview states', () => {
-    it('should show loading spinner when blob is loading', async () => {
+    it('loads the thumbnail instead of the original when one exists', () => {
+      vi.mocked(useAuthenticatedFile).mockReturnValue({
+        blobUrl: 'blob:mock-thumbnail-url',
+        isLoading: false,
+        isLoadingBlob: false,
+        isLoadingMetadata: false,
+        error: null,
+        metadata: null,
+      });
+
+      const metadata = makeMetadata({
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        hasThumbnail: true,
+        width: 1600,
+        height: 900,
+      });
+
+      renderWithTheme(<AttachmentPreview metadata={metadata} />);
+
+      expect(useAuthenticatedFile).toHaveBeenCalledWith('file-1', {
+        fetchBlob: false,
+        fetchThumbnail: true,
+        fetchMetadata: false,
+      });
+      const img = screen.getByRole('img');
+      expect(img.getAttribute('src')).toBe('blob:mock-thumbnail-url');
+    });
+
+    it('loads the original when the file has no thumbnail', () => {
+      const metadata = makeMetadata({
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        hasThumbnail: false,
+      });
+
+      renderWithTheme(<AttachmentPreview metadata={metadata} />);
+
+      expect(useAuthenticatedFile).toHaveBeenCalledWith('file-1', {
+        fetchBlob: true,
+        fetchThumbnail: false,
+        fetchMetadata: false,
+      });
+    });
+
+    it('sizes the image box from the recorded dimensions', () => {
+      const metadata = makeMetadata({
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        width: 1600,
+        height: 900,
+      });
+
+      renderWithTheme(<AttachmentPreview metadata={metadata} />);
+
+      const img = screen.getByRole('img');
+      expect(img.getAttribute('width')).toBe('1600');
+      expect(img.getAttribute('height')).toBe('900');
+    });
+
+    it('shows loading spinner when blob is loading', async () => {
       const { useAuthenticatedFile } = await import(
         '../../hooks/useAuthenticatedFile'
       );
