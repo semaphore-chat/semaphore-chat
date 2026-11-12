@@ -3837,6 +3837,45 @@ impl Client {
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
+    /**Sends a `POST` request to `/api/dm-groups/{dmGroupId}/voice-presence/decline`
+
+    */
+    pub async fn dm_voice_presence_controller_decline_dm_voice_call<'a>(
+        &'a self,
+        dm_group_id: &'a str,
+    ) -> Result<ResponseValue<types::DeclineDmVoiceCallResponseDto>, Error<()>> {
+        let url = format!(
+            "{}/api/dm-groups/{}/voice-presence/decline",
+            self.baseurl,
+            encode_path(&dm_group_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "dm_voice_presence_controller_decline_dm_voice_call",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            201u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
     /**Sends a `POST` request to `/api/livekit/token`
 
     */
@@ -5739,7 +5778,7 @@ impl Client {
     pub async fn moderation_controller_get_moderation_logs<'a>(
         &'a self,
         community_id: &'a str,
-        action: Option<&'a str>,
+        action: Option<&'a semaphore_wire::enums::ModerationAction>,
         limit: Option<i64>,
         offset: Option<i64>,
     ) -> Result<ResponseValue<types::ModerationLogsResponseDto>, Error<()>> {
@@ -6047,6 +6086,10 @@ impl Client {
 
     Sends a `GET` request to `/api/notifications`
 
+    Arguments:
+    - `limit`
+    - `offset`
+    - `unread_only`: Only return unread notifications. Absent means all of them.
     */
     pub async fn notifications_controller_get_notifications<'a>(
         &'a self,
@@ -9189,10 +9232,14 @@ impl Client {
 
     Sends a `GET` request to `/api/gifs/search`
 
+    Arguments:
+    - `limit`: Number of GIFs to return, 1 to 50.
+    - `pos`: Provider cursor from the previous page.
+    - `q`
     */
     pub async fn gifs_controller_search<'a>(
         &'a self,
-        limit: Option<i64>,
+        limit: Option<::std::num::NonZeroU64>,
         pos: Option<&'a str>,
         q: &'a str,
     ) -> Result<ResponseValue<types::GifSearchResponseDto>, Error<()>> {
@@ -9232,10 +9279,13 @@ impl Client {
 
     Sends a `GET` request to `/api/gifs/featured`
 
+    Arguments:
+    - `limit`: Number of GIFs to return, 1 to 50.
+    - `pos`: Provider cursor from the previous page.
     */
     pub async fn gifs_controller_featured<'a>(
         &'a self,
-        limit: Option<i64>,
+        limit: Option<::std::num::NonZeroU64>,
         pos: Option<&'a str>,
     ) -> Result<ResponseValue<types::GifSearchResponseDto>, Error<()>> {
         let url = format!("{}/api/gifs/featured", self.baseurl,);

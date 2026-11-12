@@ -131,11 +131,11 @@ impl ModerationBackend for HttpBackend {
     async fn moderation_controller_get_moderation_logs(
         &self,
         community_id: String,
-        action: Option<String>,
+        action: Option<semaphore_wire::enums::ModerationAction>,
         limit: Option<i64>,
         offset: Option<i64>,
     ) -> BackendResult<wire::ModerationLogsResponseDto> {
-        let (community_id, action) = (community_id.as_str(), action.as_deref());
+        let (community_id, action) = (community_id.as_str(), action.as_ref());
         rpc!(self, c => c.moderation_controller_get_moderation_logs(community_id, action, limit, offset))
     }
 }
