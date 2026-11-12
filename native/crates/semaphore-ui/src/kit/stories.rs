@@ -1,9 +1,10 @@
 //! Every primitive, so a screenshot reviews them all at once, in any theme.
 
 use super::{
-    Alert, Avatar, Badge, Button, ButtonSize, Checkbox, Chip, Dialog, Icon, IconButton,
-    LinearProgress, ListRow, Paper, Radio, SelectField, Severity, Skeleton, Slider, Snackbar,
-    Spinner, Switch, Table, Tabs, TextField, Tip, Variant, link, select_state, text, text_state,
+    Alert, Avatar, Badge, Button, ButtonSize, ButtonTone, CheckState, Checkbox, Chip, Dialog, Icon,
+    IconButton, LinearProgress, ListRow, Paper, Radio, SecondaryTone, SelectField, Severity,
+    Skeleton, Slider, Snackbar, Spinner, Switch, Table, Tabs, TextField, Tip, Variant, link,
+    select_state, text, text_state,
 };
 use super::{Menu as KitMenu, MenuItem as KitMenuItem};
 use crate::stories::Story;
@@ -127,6 +128,43 @@ impl Render for Gallery {
                     )
                     .child(
                         row()
+                            .child(Button::new("b7", "Saving").contained().loading(true))
+                            .child(Button::new("b8", "Delete").contained().tone(ButtonTone::Danger))
+                            .child(
+                                Button::new("b9", "Timeout")
+                                    .contained()
+                                    .tone(ButtonTone::Warning),
+                            ),
+                    )
+                    .child(
+                        row()
+                            .child(
+                                Button::new("b10", "Delete")
+                                    .contained()
+                                    .tone(ButtonTone::Danger)
+                                    .disabled(true),
+                            )
+                            .child(
+                                Button::new("b11", "Timeout")
+                                    .contained()
+                                    .tone(ButtonTone::Warning)
+                                    .disabled(true),
+                            )
+                            .child(
+                                Button::new("b12", "Deleting")
+                                    .contained()
+                                    .tone(ButtonTone::Danger)
+                                    .loading(true),
+                            )
+                            .child(
+                                Button::new("b13", "Timing out")
+                                    .contained()
+                                    .tone(ButtonTone::Warning)
+                                    .loading(true),
+                            ),
+                    )
+                    .child(
+                        row()
                             .child(IconButton::new("i1", I::Search, "Search"))
                             .child(IconButton::new("i2", I::Settings, "Settings").small())
                             .child(IconButton::new("i3", I::PushPin, "Pin").selected(true))
@@ -195,6 +233,33 @@ impl Render for Gallery {
                                 }
                             }))
                             .child(Checkbox::new("c2", "Off", false)),
+                    )
+                    .child(
+                        div()
+                            .w(px(300.))
+                            .flex()
+                            .flex_col()
+                            .child(Checkbox::new("c3", "Partly selected", false)
+                                .state(CheckState::Indeterminate))
+                            .child(
+                                Checkbox::new("c4", "Granted", true)
+                                    .caption("CREATE_MESSAGE"),
+                            )
+                            .child(
+                                Checkbox::new(
+                                    "c5",
+                                    "A label long enough that it has to wrap onto several lines before the row runs out of width",
+                                    true,
+                                )
+                                .caption("And a caption under the label, muted and smaller"),
+                            )
+                            .child(
+                                Checkbox::new("c6", "Partly selected, off", false)
+                                    .state(CheckState::Indeterminate)
+                                    .caption("You don't have permission")
+                                    .disabled(true),
+                            )
+                            .child(Checkbox::new("c7", "Box only", false).hide_label()),
                     )
                     .child(row().children((0..3).map(|index| {
                         let view = view.clone();
@@ -334,6 +399,20 @@ impl Render for Gallery {
                         KitMenuItem::new("m1", "Edit", |_, _| {}),
                         KitMenuItem::new("m2", "Disabled", |_, _| {}).disabled(true),
                         KitMenuItem::new("m3", "Delete", |_, _| {}).destructive(),
+                        KitMenuItem::new("m4", "Kick", |_, _| {}).icon(I::PersonRemove),
+                        KitMenuItem::new("m5", "Timeout", |_, _| {})
+                            .icon(I::Timer)
+                            .secondary("Last try failed: the call timed out")
+                            .secondary_tone(SecondaryTone::Error),
+                        KitMenuItem::new("m6", "Ban", |_, _| {})
+                            .icon(I::Block)
+                            .destructive()
+                            .secondary("You don't have permission")
+                            .disabled(true),
+                        KitMenuItem::new("m7", "Pin message", |_, _| {})
+                            .icon(I::PushPin)
+                            .secondary("In progress\u{2026}")
+                            .min_height(48.),
                     ],
                     ))
                     .child(cx.new(|_| Tip("A tooltip".into())))
@@ -394,8 +473,60 @@ impl Render for Gallery {
     }
 }
 
+/// Japanese, Chinese and Korean in every type size, a CJK name beside a Latin one, and a long
+/// line that wraps: the rig image's Noto CJK font, so these shots show glyphs, not boxes.
+struct Cjk;
+
+impl Render for Cjk {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sem = cx.sem().clone();
+        let line = |variant: Variant, label: &'static str, sample: &'static str| {
+            div()
+                .flex()
+                .gap(px(16.))
+                .items_baseline()
+                .child(
+                    div()
+                        .w(px(120.))
+                        .flex_shrink_0()
+                        .child(text(Variant::Caption, label).text_color(sem.text_secondary)),
+                )
+                .child(div().flex_1().min_w_0().child(text(variant, sample)))
+        };
+        div()
+            .id("kit-cjk")
+            .size_full()
+            .bg(sem.background_default)
+            .text_color(sem.text_primary)
+            .font_family(FONT_FAMILY)
+            .p(px(24.))
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .child(line(Variant::H5, "H5 · Japanese", "日本語のチャンネル"))
+            .child(line(Variant::H6, "H6 · Chinese", "简体中文 · 繁體中文"))
+            .child(line(Variant::Body1, "Body1 · Korean", "한국어 메시지를 보냈습니다"))
+            .child(line(Variant::Body2, "Body2 · mixed", "Ban 山田太郎 (yamada_t) for 1 week"))
+            .child(line(
+                Variant::Caption,
+                "Caption",
+                "あなたは「カウチ協同組合」から削除されました",
+            ))
+            .child(
+                div().max_w(px(420.)).child(text(
+                    Variant::Body1,
+                    "長いメッセージは折り返されます。モデレーターが理由を入力すると、ここに表示されます。\
+                     这是一条很长的消息，用来检查自动换行。",
+                )),
+            )
+    }
+}
+
 pub fn stories() -> Vec<Story> {
-    vec![Story::new("kit-gallery", |_, window, cx| {
-        cx.new(|cx| Gallery::new(window, cx)).into()
-    })]
+    vec![
+        Story::new("kit-gallery", |_, window, cx| {
+            cx.new(|cx| Gallery::new(window, cx)).into()
+        }),
+        Story::new("kit-cjk", |_, _, cx| cx.new(|_| Cjk).into()),
+    ]
 }

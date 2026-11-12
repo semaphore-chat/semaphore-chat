@@ -213,18 +213,26 @@ pub(crate) fn my_instance_roles(inner: &Inner) -> Value {
     })
 }
 
-pub(crate) fn my_channel_roles(inner: &Inner, channel_id: &str) -> Value {
+/// `GET /roles/my/channel/{channelId}`, as `RolesController.getMyRolesForChannel` and
+/// `CommunityRolesService.getUserRolesForChannel`: the caller's community roles (never channel
+/// overwrites, which that method does not apply), and none at all for a channel they can't see —
+/// the same answer a missing channel gets, so it can't be used to probe for hidden ones.
+pub(crate) fn my_channel_roles(inner: &Inner, user_id: &str, channel_id: &str) -> Value {
+    let roles = match crate::admin::channel_of(inner, channel_id) {
+        Some((community, channel)) if crate::admin::sees(inner, &channel, user_id) => {
+            crate::rbac::roles_of(inner, &community.id, user_id)
+        }
+        _ => Vec::new(),
+    };
     json!({
-        "userId": inner.scenario.me.id,
+        "userId": user_id,
         "resourceId": channel_id,
         "resourceType": "CHANNEL",
-        "roles": [{
-            "id": "role-moderator",
-            "name": "Moderator",
-            "position": 1,
-            "isDefault": false,
-            "createdAt": inner.scenario.epoch,
-            "actions": ["READ_MESSAGE", "CREATE_MESSAGE", "PIN_MESSAGE", "UNPIN_MESSAGE", "DELETE_ANY_MESSAGE"],
-        }],
+        "roles": roles.iter().map(role_json).collect::<Vec<_>>(),
     })
+}
+
+/// A role as `RoleDto` over the wire.
+fn role_json(role: &semaphore_wire::types::RoleDto) -> Value {
+    serde_json::to_value(role).expect("a role serializes")
 }

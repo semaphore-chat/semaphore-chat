@@ -238,10 +238,73 @@ fn member_row(member: &MemberRow, cx: &mut Context<Shell>) -> impl IntoElement +
         .focus_visible(move |style| style.bg(hover))
         .on_click({
             let user_id = member.user.id.clone();
-            cx.listener(move |_, _, _, cx| {
+            cx.listener(move |shell, _, _, cx| {
+                // The release of a long press that opened the menu isn't a click.
+                if let Some((press, _)) = shell.member_press.take()
+                    && press.fired
+                    && press.user_id == user_id
+                {
+                    return;
+                }
                 cx.emit(super::ShellEvent::OpenProfile {
                     user_id: user_id.clone(),
                 })
+            })
+        })
+        // W5: on a phone, a long press opens the moderation menu (the web's `useLongPress`).
+        .on_mouse_down(MouseButton::Left, {
+            let user_id = member.user.id.clone();
+            cx.listener(move |shell, event: &MouseDownEvent, _, cx| {
+                if !shell.touch.get() {
+                    return;
+                }
+                let press = super::press::Press {
+                    user_id: user_id.clone(),
+                    at: event.position,
+                    fired: false,
+                };
+                let timer = cx.spawn(async move |shell, cx| {
+                    cx.background_executor()
+                        .timer(super::press::LONG_PRESS)
+                        .await;
+                    shell.update(cx, |shell, cx| shell.long_press_due(cx)).ok();
+                });
+                shell.member_press = Some((press, timer));
+            })
+        })
+        .on_mouse_move(cx.listener(|shell, event: &MouseMoveEvent, _, _| {
+            if let Some((press, _)) = &shell.member_press
+                && !press.fired
+                && super::press::moved_too_far(press.at, event.position)
+            {
+                shell.member_press = None;
+            }
+        }))
+        // Off the row is past the slop too; its own moves stop reaching it there.
+        .on_hover(cx.listener(|shell, hovered: &bool, _, _| {
+            if !*hovered
+                && shell
+                    .member_press
+                    .as_ref()
+                    .is_some_and(|(press, _)| !press.fired)
+            {
+                shell.member_press = None;
+            }
+        }))
+        // W5: the moderation menu, as the web's member list has it on a right-click.
+        .on_mouse_down(MouseButton::Right, {
+            let user_id = member.user.id.clone();
+            cx.listener(move |shell, event: &MouseDownEvent, _, cx| {
+                let Some(community_id) = shell.nav.current().community_id().map(str::to_owned)
+                else {
+                    return;
+                };
+                cx.stop_propagation();
+                cx.emit(super::ShellEvent::MemberMenu {
+                    community_id,
+                    user_id: user_id.clone(),
+                    position: event.position,
+                });
             })
         })
         .child(
@@ -276,6 +339,27 @@ fn member_row(member: &MemberRow, cx: &mut Context<Shell>) -> impl IntoElement +
                         .truncate()
                 })),
         )
+}
+
+impl Shell {
+    /// A member row held long enough: its menu, at the finger.
+    fn long_press_due(&mut self, cx: &mut Context<Self>) {
+        let Some((press, _)) = self.member_press.as_mut() else {
+            return;
+        };
+        if press.fired {
+            return;
+        }
+        let Some(community_id) = self.nav.current().community_id().map(str::to_owned) else {
+            return;
+        };
+        press.fired = true;
+        cx.emit(super::ShellEvent::MemberMenu {
+            community_id,
+            user_id: press.user_id.clone(),
+            position: press.at,
+        });
+    }
 }
 
 #[cfg(test)]
@@ -321,5 +405,181 @@ mod tests {
         };
         assert_eq!(names(&sections.online), ["amy", "zoe"]);
         assert_eq!(names(&sections.offline), ["bob"]);
+    }
+
+    // ---- The long press, in a phone-width window. ----
+
+    use super::super::source::{Load, RailCounts, ShellSource};
+    use super::super::{ContentSlot, ShellEvent};
+    use crate::nav::Route;
+    use gpui_kit::{Modifiers, TestAppContext, VisualTestContext, size};
+    use semaphore_core::ConnectionState;
+    use semaphore_core::model::{ChannelRow, CommunityRow, SessionState, VoiceView};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    struct OneMember;
+
+    impl ShellSource for OneMember {
+        fn session(&self) -> SessionState {
+            SessionState::SignedIn {
+                me: UserView::default(),
+            }
+        }
+        fn communities(&self) -> Load<Vec<CommunityRow>> {
+            Load::Ready(Vec::new())
+        }
+        fn channels(&self, _: &str) -> Load<Vec<ChannelRow>> {
+            Load::Ready(vec![ChannelRow {
+                id: "ch1".into(),
+                community_id: "c1".into(),
+                name: "general".into(),
+                kind: semaphore_core::model::ChannelKind::Text,
+                is_private: false,
+                position: 0,
+                unread_count: 0,
+                mention_count: 0,
+                voice_users: Vec::new(),
+                slowmode_seconds: 0,
+                permissions: None,
+                preset: Default::default(),
+            }])
+        }
+        fn members(&self, _: &str) -> Load<Vec<MemberRow>> {
+            Load::Ready(vec![member("ana", true, None)])
+        }
+        fn rail_counts(&self) -> RailCounts {
+            RailCounts::default()
+        }
+        fn voice(&self) -> VoiceView {
+            VoiceView::default()
+        }
+    }
+
+    fn phone_shell(
+        cx: &mut TestAppContext,
+        width: f32,
+    ) -> (&mut VisualTestContext, Rc<RefCell<Vec<ShellEvent>>>) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::theme::init(cx);
+            crate::kit::set_reduced_motion(true, cx);
+        });
+        let content: ContentSlot = Rc::new(|_, _, _| gpui_kit::div().into_any_element());
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let mut shell = Shell::new(
+                Rc::new(OneMember),
+                Route::Channel {
+                    community_id: "c1".into(),
+                    channel_id: "ch1".into(),
+                },
+                content,
+                ConnectionState::Connected,
+                cx,
+            );
+            shell.members_open = true;
+            shell.phone_content = true;
+            shell
+        });
+        cx.simulate_resize(size(px(width), px(800.)));
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let sink = events.clone();
+        cx.update(|_, cx| {
+            cx.subscribe(&view, move |_, event: &ShellEvent, _| {
+                sink.borrow_mut().push(event.clone());
+            })
+            .detach();
+        });
+        draw(cx);
+        (cx, events)
+    }
+
+    fn draw(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.run_until_parked();
+    }
+
+    fn row_centre(cx: &mut VisualTestContext) -> gpui_kit::Point<gpui_kit::Pixels> {
+        use gpui_kit::test::TestWindowExt as _;
+        cx.update(|window, _| {
+            window
+                .try_find("member-ana")
+                .expect("ana's row is drawn")
+                .bounds()
+                .center()
+        })
+    }
+
+    fn menus(events: &Rc<RefCell<Vec<ShellEvent>>>) -> usize {
+        events
+            .borrow()
+            .iter()
+            .filter(
+                |event| matches!(event, ShellEvent::MemberMenu { user_id, .. } if user_id == "ana"),
+            )
+            .count()
+    }
+
+    fn profiles(events: &Rc<RefCell<Vec<ShellEvent>>>) -> usize {
+        events
+            .borrow()
+            .iter()
+            .filter(|event| matches!(event, ShellEvent::OpenProfile { .. }))
+            .count()
+    }
+
+    #[gpui_kit::test]
+    fn a_long_press_on_a_phone_opens_the_menu_and_its_release_isnt_a_click(
+        cx: &mut TestAppContext,
+    ) {
+        let (cx, events) = phone_shell(cx, 390.);
+        let at = row_centre(cx);
+        cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+        cx.executor()
+            .advance_clock(super::super::press::LONG_PRESS - std::time::Duration::from_millis(1));
+        draw(cx);
+        assert_eq!(menus(&events), 0, "not yet");
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(2));
+        draw(cx);
+        assert_eq!(menus(&events), 1, "held long enough");
+        cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+        draw(cx);
+        assert_eq!(
+            profiles(&events),
+            0,
+            "the release that ends it opens nothing"
+        );
+
+        // A short tap is a click: the profile, no menu.
+        cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+        cx.executor()
+            .advance_clock(super::super::press::LONG_PRESS * 2);
+        draw(cx);
+        assert_eq!((menus(&events), profiles(&events)), (1, 1));
+
+        // A drag past the slop cancels it.
+        cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+        let away = gpui_kit::point(at.x, at.y + px(40.));
+        cx.simulate_mouse_move(away, Some(MouseButton::Left), Modifiers::default());
+        cx.executor()
+            .advance_clock(super::super::press::LONG_PRESS * 2);
+        draw(cx);
+        assert_eq!(menus(&events), 1, "a drag isn't a long press");
+    }
+
+    #[gpui_kit::test]
+    fn a_held_mouse_on_a_desktop_is_no_long_press(cx: &mut TestAppContext) {
+        let (cx, events) = phone_shell(cx, 1280.);
+        let at = row_centre(cx);
+        cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+        cx.executor()
+            .advance_clock(super::super::press::LONG_PRESS * 2);
+        draw(cx);
+        cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+        draw(cx);
+        assert_eq!((menus(&events), profiles(&events)), (0, 1));
     }
 }

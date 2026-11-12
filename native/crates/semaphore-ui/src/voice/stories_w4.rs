@@ -231,7 +231,8 @@ fn people() -> Vec<ParticipantView> {
 
 struct MenuFrame {
     stage: AnyView,
-    menu: Entity<ParticipantMenu>,
+    /// The menu, or W5's kick dialog its Kick opens (the app's, `ModerationDialog`).
+    menu: AnyView,
 }
 
 impl Render for MenuFrame {
@@ -268,8 +269,27 @@ fn menu_story(
     }
     let stage = stage_entity(call, window, cx).into();
     let phone = is_phone(window);
+    if let Some((reason, busy, error)) = kick {
+        let user = target.user.clone();
+        let dialog = cx.new(|cx| {
+            let mut dialog = crate::moderation::ModerationDialog::new(window, cx);
+            dialog.open_kick(user, window, cx);
+            dialog.set_reason(reason, window, cx);
+            dialog.set_busy(busy, cx);
+            if let Some(error) = error {
+                dialog.set_error(Some(error.into()), cx);
+            }
+            dialog
+        });
+        return cx
+            .new(|_| MenuFrame {
+                stage,
+                menu: dialog.into(),
+            })
+            .into();
+    }
     let menu = cx.new(|cx| {
-        let mut menu = ParticipantMenu::new(
+        ParticipantMenu::new(
             ParticipantMenuModel {
                 participant: target,
                 volume_percent,
@@ -279,18 +299,13 @@ fn menu_story(
             point(px(if phone { 80. } else { 360. }), px(140.)),
             window,
             cx,
-        );
-        if let Some((reason, busy, error)) = kick {
-            menu.open_kick_confirm(window, cx);
-            menu.set_kick_reason(reason, window, cx);
-            menu.set_kick_busy(busy, cx);
-            if let Some(error) = error {
-                menu.set_kick_error(Some(error.into()), cx);
-            }
-        }
-        menu
+        )
     });
-    cx.new(|_| MenuFrame { stage, menu }).into()
+    cx.new(|_| MenuFrame {
+        stage,
+        menu: menu.into(),
+    })
+    .into()
 }
 
 const MODERATOR: VoiceModerationCaps = VoiceModerationCaps {

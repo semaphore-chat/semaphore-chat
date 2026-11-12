@@ -38,9 +38,12 @@ use std::sync::Mutex;
 
 pub mod account;
 pub mod calls;
+pub mod community;
 pub mod inbox;
+pub mod moderation;
 pub mod onboarding;
 pub mod replay;
+pub mod roles;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
@@ -113,6 +116,12 @@ pub struct AppRoot {
     calls: calls::Calls,
     /// W4: capture, the clip library and sharing (`replay`).
     replay: replay::Replay,
+    /// W5: community settings (`community`).
+    community: community::CommunityAdmin,
+    /// W5: roles, assignment and channel overrides (`roles`).
+    roles: roles::Roles,
+    /// W5: the moderation menu, dialogs, tab, removal notice and timeout timers (`moderation`).
+    moderation: moderation::Moderation,
     /// What the server said about itself when it was last probed.
     server_info: Option<semaphore_core::model::ServerInfo>,
     window: AnyWindowHandle,
@@ -226,6 +235,9 @@ impl AppRoot {
             onboarding: onboarding::Onboarding::default(),
             calls: calls::Calls::default(),
             replay: replay::Replay::default(),
+            community: community::CommunityAdmin::default(),
+            roles: roles::Roles::default(),
+            moderation: moderation::Moderation::default(),
             server_info: None,
             window: window.window_handle(),
             _subscriptions: vec![activation, keys],
@@ -738,6 +750,9 @@ impl AppRoot {
         self.onboarding_on_core(event, cx);
         self.calls_on_core(event, cx);
         self.replay_on_core(event, cx);
+        self.community_on_core(event, cx);
+        self.roles_on_core(event, cx);
+        self.moderation_on_core(event, cx);
     }
 
     /// After sign-in, the first community instead of an empty home.
@@ -813,6 +828,9 @@ impl AppRoot {
                 self.drop_account();
                 self.drop_calls();
                 self.drop_replay();
+                self.drop_community();
+                self.drop_roles();
+                self.drop_moderation();
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -967,6 +985,7 @@ impl AppRoot {
         let server_url: crate::conversation::ServerUrl = Rc::new(move || backend.server_url());
         let (core, exec) = (services.core.clone(), services.exec.clone());
         let (time, scrollbar) = (self.config.time, self.config.scrollbar);
+        let clock = self.config.clock.clone();
         let pane = cx.new(|cx| {
             ConversationPane::new(
                 core,
@@ -980,6 +999,7 @@ impl AppRoot {
                 window,
                 cx,
             )
+            .with_clock(clock)
         });
         self.pane_subscription = Some(cx.subscribe_in(&pane, window, Self::on_pane_event));
         pane
@@ -1126,7 +1146,25 @@ impl AppRoot {
             ShellEvent::Navigated(route) => {
                 self.inbox_navigated(route, cx);
                 self.account_navigated(route, window, cx);
+                self.community_navigated(route, window, cx);
             }
+            ShellEvent::OpenCommunitySettings { community_id } => {
+                self.open_community_settings(community_id.clone(), None, cx)
+            }
+            ShellEvent::CreateChannel { community_id } => {
+                self.create_channel(community_id.clone(), window, cx)
+            }
+            ShellEvent::MemberMenu {
+                community_id,
+                user_id,
+                position,
+            } => self.open_member_menu(
+                community_id.clone(),
+                user_id.clone(),
+                Some(*position),
+                window,
+                cx,
+            ),
             ShellEvent::CreateCommunity => self.open_create_community(window, cx),
             ShellEvent::OpenProfile { user_id } => self.open_profile(user_id.clone(), window, cx),
             ShellEvent::OpenNotifications => self.toggle_centre(cx),
@@ -1148,7 +1186,6 @@ impl AppRoot {
                     pane.update(cx, |pane, cx| pane.close_side(cx));
                 }
             }
-            other => log::info!("{other:?}: not in this build yet"),
         }
     }
 
@@ -1568,6 +1605,10 @@ fn content(
         {
             element
         }
+        (route @ Route::CommunitySettings { .. }, _) => root
+            .upgrade()
+            .and_then(|root| root.read(cx).community_content(route, cx))
+            .unwrap_or_else(|| placeholder("Loading".into(), "")),
         (Route::DirectMessages, _) => placeholder(
             "Your messages".into(),
             "Pick a conversation, or start a new one.",
@@ -1614,6 +1655,9 @@ impl Render for AppRoot {
             overlays.extend(self.account_overlays(cx));
             overlays.extend(self.calls_overlays(window, cx));
             overlays.extend(self.replay_overlays(cx));
+            overlays.extend(self.community_overlays(cx));
+            overlays.extend(self.roles_overlays(cx));
+            overlays.extend(self.moderation_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)

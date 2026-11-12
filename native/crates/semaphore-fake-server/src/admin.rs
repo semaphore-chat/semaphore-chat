@@ -3,7 +3,9 @@
 //! read through [`community`] from then on; a deleted one reads as gone.
 //!
 //! The scenario's `privateMembersByChannel` (`{ channelId: [userId] }`) seeds private channel
-//! members; a private channel with no list is visible to everyone, as the scenarios had it.
+//! members. As `ChannelAccessService.canViewChannel` (`backend/src/roles/channel-access.service.ts`),
+//! a private channel is visible only to its community's members on that list, and to the instance
+//! owner; a private channel with no list is visible only to the owner.
 //!
 //! Permission checks go through `crate::rbac::allows`, which W5-B owns, and are made before this
 //! lock is taken: `admin` is never held with `data` or `rbac`.
@@ -193,12 +195,20 @@ pub(crate) fn is_member(inner: &Inner, community_id: &str, user_id: &str) -> boo
         .any(|member| member.user_id == user_id)
 }
 
-/// Whether `user_id` sees the channel: public, or private with them on its list (or no list).
+/// Whether `user_id` sees the channel, as `ChannelAccessService.canViewChannel`: the instance owner
+/// sees every channel; anyone else must be a member of its community, and for a private channel
+/// also be on its membership list (no list: nobody but the owner).
 pub(crate) fn sees(
     inner: &Inner,
     channel: &semaphore_wire::types::ChannelDto,
     user_id: &str,
 ) -> bool {
+    if crate::rbac::is_owner(inner, user_id) {
+        return true;
+    }
+    if !crate::rbac::is_member(inner, &channel.community_id, user_id) {
+        return false;
+    }
     if !channel.is_private {
         return true;
     }
@@ -207,19 +217,27 @@ pub(crate) fn sees(
     admin
         .private_members
         .get(&channel.id)
-        .is_none_or(|members| members.iter().any(|member| member.user_id == user_id))
+        .is_some_and(|members| members.iter().any(|member| member.user_id == user_id))
 }
 
-/// Who hears about a channel: its community, or a private channel's members.
+/// `sees` for a channel id: false when the fake has no such channel, as the backend's
+/// `canViewChannel` answers for a missing one.
+pub(crate) fn can_view(inner: &Inner, channel_id: &str, user_id: &str) -> bool {
+    channel_of(inner, channel_id).is_some_and(|(_, channel)| sees(inner, &channel, user_id))
+}
+
+/// Who hears about a channel: its community members who can see it.
 pub(crate) fn audience(inner: &Inner, channel: &semaphore_wire::types::ChannelDto) -> Vec<String> {
-    let everyone = member_ids(inner, &channel.community_id);
-    if !channel.is_private {
-        return everyone;
-    }
-    everyone
+    member_ids(inner, &channel.community_id)
         .into_iter()
         .filter(|user| sees(inner, channel, user))
         .collect()
+}
+
+/// `audience` for a channel id, as the backend's `sendToRoom(channelId, ...)` reaches a channel's
+/// room: nobody when the fake has no such channel.
+pub(crate) fn audience_of(inner: &Inner, channel_id: &str) -> Vec<String> {
+    channel_of(inner, channel_id).map_or_else(Vec::new, |(_, channel)| audience(inner, &channel))
 }
 
 /// Custom emoji added and removed here, over those in use (`list` is the scenario's).

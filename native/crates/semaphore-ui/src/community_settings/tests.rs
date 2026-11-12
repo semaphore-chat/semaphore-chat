@@ -6,7 +6,7 @@ use super::*;
 use crate::dms::rig::{Rig, rig};
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
-use semaphore_core::model::{AdminActionKind, AdminActionState};
+use semaphore_core::model::{AdminActionKind, AdminActionOutcome, AdminActionState};
 use semaphore_core::model::{
     AdminOp, ChannelDraft, ChannelKind, ChannelMove, ChannelPreset, ChannelRow, CommunityCaps,
     CommunityPatch, CommunitySettingsView, DraftFile, ErrorView, InviteDraft, InviteRow,
@@ -552,49 +552,107 @@ fn each_change_reads_only_its_own_entry() {
     assert_eq!(failure_of(&AdminOp::default(), &[DeleteChannel]), None);
 }
 
+/// An op whose `finished` holds these ends, as (kind, target, seq, error).
+fn ended(ends: &[(AdminActionKind, Option<&str>, u64, Option<&str>)]) -> AdminOp {
+    AdminOp {
+        finished: ends
+            .iter()
+            .map(|(kind, target, seq, message)| AdminActionOutcome {
+                action: act(*kind, *target),
+                seq: *seq,
+                error: message.map(error),
+            })
+            .collect(),
+        ..AdminOp::default()
+    }
+}
+
 #[test]
-fn a_change_ends_with_its_own_entry() {
-    use AdminActionKind::{AddCustomEmoji, DeleteCustomEmoji};
-    let add = act(AddCustomEmoji, None);
-    let idle = AdminOp::default();
-    let running_add = op_of(vec![entry(AddCustomEmoji, None, true, None)]);
-    let failed_add = op_of(vec![entry(AddCustomEmoji, None, false, Some("no"))]);
-    let other = op_of(vec![entry(DeleteCustomEmoji, Some("e1"), true, None)]);
-
-    let mut pending = Pending::new(add.clone(), &idle);
-    assert_eq!(pending.observe(&idle), Outcome::Waiting, "not started");
-    assert_eq!(pending.observe(&running_add), Outcome::Waiting);
-    assert_eq!(
-        pending.observe(&other),
-        Outcome::Succeeded,
-        "its entry went; another runs"
-    );
-
-    let mut pending = Pending::new(add.clone(), &idle);
-    assert_eq!(
-        pending.observe(&other),
-        Outcome::Succeeded,
-        "never seen, but the op moved on"
-    );
-
-    let mut pending = Pending::new(add.clone(), &idle);
-    assert_eq!(pending.observe(&running_add), Outcome::Waiting);
-    assert_eq!(pending.observe(&failed_add), Outcome::Failed);
-
-    let mut refused = Pending::new(add.clone(), &idle);
-    assert_eq!(
-        refused.observe(&failed_add),
-        Outcome::Failed,
-        "refused before sending"
-    );
-
-    // Sent again after a failure: the old failure isn't this one's until the op changes.
-    let mut again = Pending::new(add.clone(), &failed_add);
-    assert_eq!(again.observe(&failed_add), Outcome::Waiting);
-    assert_eq!(again.observe(&running_add), Outcome::Waiting);
-    assert_eq!(again.observe(&failed_add), Outcome::Failed);
-    let mut again = Pending::new(add, &failed_add);
-    assert_eq!(again.observe(&idle), Outcome::Succeeded);
+fn a_change_ends_when_core_records_its_own_end() {
+    use AdminActionKind::{AddCustomEmoji as Add, DeleteCustomEmoji as Delete};
+    let running = op_of(vec![entry(Add, None, true, None)]);
+    let mut running_after_old = running.clone();
+    running_after_old.finished = ended(&[(Add, None, 3, Some("old"))]).finished;
+    // (op when sent, ops seen in order, outcome after the last)
+    let cases: Vec<(&str, AdminOp, Vec<AdminOp>, Outcome)> = vec![
+        (
+            "not started",
+            AdminOp::default(),
+            vec![AdminOp::default()],
+            Outcome::Waiting,
+        ),
+        (
+            "running",
+            AdminOp::default(),
+            vec![running.clone()],
+            Outcome::Waiting,
+        ),
+        (
+            "start and end in one batch: never seen running",
+            AdminOp::default(),
+            vec![ended(&[(Add, None, 1, None)])],
+            Outcome::Succeeded,
+        ),
+        (
+            "ended after running",
+            AdminOp::default(),
+            vec![running.clone(), ended(&[(Add, None, 4, None)])],
+            Outcome::Succeeded,
+        ),
+        (
+            "failed",
+            AdminOp::default(),
+            vec![running.clone(), ended(&[(Add, None, 2, Some("no"))])],
+            Outcome::Failed,
+        ),
+        (
+            "refused before it was sent",
+            AdminOp::default(),
+            vec![ended(&[(Add, None, 1, Some("too big"))])],
+            Outcome::Failed,
+        ),
+        (
+            "another action ending isn't this one's",
+            AdminOp::default(),
+            vec![ended(&[(Delete, Some("e1"), 5, None)])],
+            Outcome::Waiting,
+        ),
+        (
+            "the same kind on another target isn't this one's",
+            AdminOp::default(),
+            vec![ended(&[(Add, Some("x"), 5, None)])],
+            Outcome::Waiting,
+        ),
+        (
+            "an old failure, sent again: not this one's",
+            running_after_old.clone(),
+            vec![running_after_old.clone()],
+            Outcome::Waiting,
+        ),
+        (
+            "retried after a failure: its own success",
+            running_after_old.clone(),
+            vec![ended(&[(Add, None, 3, Some("old")), (Add, None, 9, None)])],
+            Outcome::Succeeded,
+        ),
+        (
+            "two overlapping: the other's end first, then its own",
+            AdminOp::default(),
+            vec![
+                ended(&[(Delete, Some("e1"), 2, None)]),
+                ended(&[(Delete, Some("e1"), 2, None), (Add, None, 3, Some("no"))]),
+            ],
+            Outcome::Failed,
+        ),
+    ];
+    for (name, before, seen, want) in cases {
+        let mut pending = Pending::new(act(Add, None), &before);
+        let mut last = Outcome::Waiting;
+        for op in &seen {
+            last = pending.observe(op);
+        }
+        assert_eq!(last, want, "{name}");
+    }
 }
 
 // ---- The tabs in a window. ----
@@ -819,7 +877,12 @@ fn creating_a_channel_closes_its_dialog_once_done(cx: &mut TestAppContext) {
     });
     assert!(rig.has(cx, "channel-create-submit"));
     rig.with(cx, |view, _, cx| {
-        view.update(cx, |tab, cx| tab.set_op(AdminOp::default(), cx))
+        view.update(cx, |tab, cx| {
+            tab.set_op(
+                ended(&[(AdminActionKind::CreateChannel, None, 7, None)]),
+                cx,
+            )
+        })
     });
     assert!(!rig.has(cx, "channel-create-submit"));
 }
@@ -1002,7 +1065,7 @@ fn search_waits_for_typing_to_stop_then_adds(cx: &mut TestAppContext) {
             true,
             None,
         )]),
-        AdminOp::default(),
+        ended(&[(AdminActionKind::AddMember, Some("nova"), 1, None)]),
     ] {
         rig.with(cx, |view, _, cx| {
             view.update(cx, |tab, cx| tab.set_op(op, cx))
@@ -1154,4 +1217,59 @@ fn overlapping_changes_show_on_their_own_rows(cx: &mut TestAppContext) {
         rig.has(cx, "channel-delete-confirm"),
         "other rows still delete"
     );
+}
+
+#[test]
+fn the_settings_entry_needs_a_change_not_just_reading() {
+    let none = CommunityCaps::default();
+    assert!(!opens_settings(&none));
+    // What the default Member role holds: reading only.
+    let reader = CommunityCaps {
+        read_members: true,
+        read_roles: true,
+        read_alias_groups: true,
+        read_sounds: true,
+        delete_invite: true,
+        ..none
+    };
+    assert!(!opens_settings(&reader));
+    type Grant = fn(&mut CommunityCaps);
+    let one: [(&str, Grant); 27] = [
+        ("update_community", |c| c.update_community = true),
+        ("delete_community", |c| c.delete_community = true),
+        ("create_channel", |c| c.create_channel = true),
+        ("update_channel", |c| c.update_channel = true),
+        ("delete_channel", |c| c.delete_channel = true),
+        ("manage_private_members", |c| {
+            c.manage_private_members = true
+        }),
+        ("manage_channel_permissions", |c| {
+            c.manage_channel_permissions = true
+        }),
+        ("create_role", |c| c.create_role = true),
+        ("update_role", |c| c.update_role = true),
+        ("delete_role", |c| c.delete_role = true),
+        ("assign_roles", |c| c.assign_roles = true),
+        ("add_members", |c| c.add_members = true),
+        ("create_alias_group", |c| c.create_alias_group = true),
+        ("update_alias_group", |c| c.update_alias_group = true),
+        ("delete_alias_group", |c| c.delete_alias_group = true),
+        ("manage_alias_members", |c| c.manage_alias_members = true),
+        ("manage_emoji", |c| c.manage_emoji = true),
+        ("create_sound", |c| c.create_sound = true),
+        ("delete_sound", |c| c.delete_sound = true),
+        ("manage_webhooks", |c| c.manage_webhooks = true),
+        ("create_invite", |c| c.create_invite = true),
+        ("ban", |c| c.ban = true),
+        ("unban", |c| c.unban = true),
+        ("kick", |c| c.kick = true),
+        ("timeout", |c| c.timeout = true),
+        ("view_bans", |c| c.view_bans = true),
+        ("view_moderation_log", |c| c.view_moderation_log = true),
+    ];
+    for (name, set) in one {
+        let mut caps = reader;
+        set(&mut caps);
+        assert!(opens_settings(&caps), "{name}");
+    }
 }
