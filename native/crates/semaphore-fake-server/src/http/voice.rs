@@ -56,6 +56,10 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
             post(dm_refresh),
         )
         .route(
+            "/api/dm-groups/{dmGroupId}/voice-presence/decline",
+            post(dm_decline),
+        )
+        .route(
             "/api/voice/diagnostics/join-failure",
             post(report_join_failure),
         )
@@ -89,6 +93,9 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
         }
         ("POST", "/api/dm-groups/{dmGroupId}/voice-presence/refresh") => {
             "DmVoicePresenceController_refreshDmPresence"
+        }
+        ("POST", "/api/dm-groups/{dmGroupId}/voice-presence/decline") => {
+            "DmVoicePresenceController_declineDmVoiceCall"
         }
         ("POST", "/api/voice/diagnostics/join-failure") => {
             "VoiceDiagnosticsController_reportJoinFailure"
@@ -273,6 +280,30 @@ async fn dm_refresh(State(inner): State<Arc<Inner>>, Path(group_id): Path<String
         })
         .expect("a refresh serializes"),
     )
+}
+
+/// `POST /dm-groups/{id}/voice-presence/decline`: the member says no. `403` when the caller isn't
+/// a member (`assertDmMember`), `409` with no call or when they're already in it, and otherwise
+/// `201` with the controller's answer, whether or not the decline was the first (a retry is not
+/// news and sends no event).
+async fn dm_decline(
+    State(inner): State<Arc<Inner>>,
+    headers: axum::http::HeaderMap,
+    Path(group_id): Path<String>,
+) -> Response {
+    let me = inner.user_of(super::bearer_token(&headers));
+    match calls::dm_decline(&inner, &group_id, &me) {
+        Ok(()) => json_response(
+            StatusCode::CREATED,
+            serde_json::to_value(semaphore_wire::types::DeclineDmVoiceCallResponseDto {
+                dm_group_id: group_id,
+                message: "Call declined".to_owned(),
+                success: true,
+            })
+            .expect("a decline serializes"),
+        ),
+        Err(refusal) => refused(&inner, refusal),
+    }
 }
 
 /// `POST /voice/diagnostics/join-failure`: `204`, kept for `FakeServer::join_failures`; a

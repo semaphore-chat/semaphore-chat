@@ -342,8 +342,17 @@ impl State {
             ServerEvent::UserTimedOut(event) => {
                 self.w5b_moderated(&event.community_id, &event.user_id);
             }
+            // `expired` says the timeout ran out by itself rather than a moderator lifting it
+            // (`backend/src/moderation/voice-restore.service.ts`): the state afterwards is the
+            // same, so both read the same keys again and only the log tells them apart.
             ServerEvent::TimeoutRemoved(event) => {
                 self.w5b_moderated(&event.community_id, &event.user_id);
+            }
+            // A ban was lifted: the ban list and the log have a new entry. The membership list
+            // doesn't change, as the user has to rejoin (`handleUserUnbanned`).
+            ServerEvent::UserUnbanned(event) => {
+                self.invalidate(&shared::scoped(keys::BANS, &event.community_id));
+                self.invalidate(&shared::scoped(keys::LOGS, &event.community_id));
             }
             ServerEvent::RoleAssigned(event) => {
                 self.invalidate(&key2(keys::USER_ROLES, &event.community_id, &event.user_id));
@@ -730,13 +739,16 @@ impl Core {
                         .and_then(|metadata| metadata.get("durationSeconds"))
                         .and_then(serde_json::Value::as_u64)
                         .map(|seconds| seconds as u32),
-                    // Not in the contract yet (`ModerationLogDto` lacks `targetMessageId`).
-                    target_message_id: entry
-                        .metadata
-                        .as_ref()
-                        .and_then(|metadata| metadata.get("messageId"))
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_owned),
+                    // The message a delete, pin or unpin entry is about. Servers from before the
+                    // field carry it in `metadata.messageId` only.
+                    target_message_id: entry.target_message_id.clone().or_else(|| {
+                        entry
+                            .metadata
+                            .as_ref()
+                            .and_then(|metadata| metadata.get("messageId"))
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_owned)
+                    }),
                 })
                 .collect();
             ModerationLogView {

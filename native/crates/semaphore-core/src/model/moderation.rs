@@ -192,8 +192,7 @@ pub struct ModerationLogRow {
     pub created_at_ms: i64,
     /// A timeout's or ban's length, when the entry has one.
     pub duration_seconds: Option<u32>,
-    /// The message a delete, pin or unpin entry is about. The contract doesn't carry it yet
-    /// (`ModerationLogDto` lacks `targetMessageId`): `None` until it does.
+    /// The message a delete, pin or unpin entry is about (`ModerationLogDto.targetMessageId`).
     pub target_message_id: Option<String>,
 }
 

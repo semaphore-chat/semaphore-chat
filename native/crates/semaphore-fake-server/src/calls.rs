@@ -59,6 +59,9 @@ pub(crate) struct Clip {
 pub(crate) struct Calls {
     /// DM call presence by DM group, in join order.
     pub dm_voice: BTreeMap<String, Vec<VoicePresenceUserDto>>,
+    /// Who has declined a DM group's call, by group and user: the backend's Redis set, forgotten
+    /// when the call ends.
+    pub declines: BTreeSet<(String, String)>,
     /// (channel, user) pairs a moderator server-muted; outlives the call, as the backend's key.
     pub server_muted: BTreeSet<(String, String)>,
     /// (community, user) pairs kicked: no longer members.
@@ -206,6 +209,8 @@ pub(crate) fn dm_leave(inner: &Inner, group_id: &str, user_id: &str, members: &[
         let user = users.remove(index);
         if users.is_empty() {
             calls.dm_voice.remove(group_id);
+            // The backend forgets the call's declines with it (`announceDmCallEndIfEmpty`).
+            calls.declines.retain(|(group, _)| group != group_id);
         }
         user
     };
@@ -215,6 +220,48 @@ pub(crate) fn dm_leave(inner: &Inner, group_id: &str, user_id: &str, members: &[
         json!({ "dmGroupId": group_id, "userId": user_id, "user": user }),
     );
     true
+}
+
+/// `VoicePresenceService.declineDmVoiceCall`: `assertDmMember` (403), 409 with no active call,
+/// 409 when already in it, then the decline goes into the call's set. Only a new one sends
+/// `dmVoiceCallDeclined` to the DM group's room, with the server's `isGroup` (a DM it can't read
+/// counts as a group, so no client ends a call it shouldn't).
+pub(crate) fn dm_decline(inner: &Inner, group_id: &str, user_id: &str) -> Result<(), Refusal> {
+    let members = dm_members_for(inner, group_id, user_id)?;
+    let added = {
+        let mut calls = lock(&inner.calls);
+        {
+            let users = calls.dm_voice.get(group_id);
+            if users.is_none_or(Vec::is_empty) {
+                return Err(refuse(
+                    409,
+                    "CONFLICT",
+                    "There is no active call in this DM group",
+                ));
+            }
+            if users.is_some_and(|users| users.iter().any(|listed| listed.id == user_id)) {
+                return Err(refuse(409, "CONFLICT", "You are already in this call"));
+            }
+        }
+        calls
+            .declines
+            .insert((group_id.to_owned(), user_id.to_owned()))
+    };
+    if !added {
+        return Ok(());
+    }
+    let is_group = inner
+        .scenario
+        .dm_groups
+        .iter()
+        .find(|group| group.id == group_id)
+        .is_none_or(|group| group.is_group);
+    inner.emit_to_users(
+        &members,
+        "dmVoiceCallDeclined",
+        json!({ "dmGroupId": group_id, "userId": user_id, "isGroup": is_group }),
+    );
+    Ok(())
 }
 
 // ----- Server mute and kick --------------------------------------------------------------------

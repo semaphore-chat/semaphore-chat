@@ -20,8 +20,11 @@
 //! `communityUpdated` change the cached lists at once (the shared rules then read them again);
 //! `channelDeleted` sends `CoreEvent::ChannelRemoved` and `communityDeleted` sends
 //! `CoreEvent::CommunityRemoved { cause: Deleted }`, each once, after leaving a call there and
-//! dropping what core holds of it. A community this core deleted itself isn't announced: the
-//! caller knows.
+//! dropping what core holds of it. `privateChannelAdded`/`privateChannelRemoved` read the list,
+//! the mentionable channels and the permissions again; a removal also drops the channel as a
+//! deletion does and announces it. `customEmojiCreated`/`Deleted`,
+//! `soundboardSoundCreated`/`Deleted`, `aliasGroup*` and `webhookCreated`/`Deleted` read their
+//! lists again. A community this core deleted itself isn't announced: the caller knows.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -31,9 +34,9 @@ use crate::cache::{CacheValue, QueryKey, keys};
 use crate::client::{Core, Effect, Services, State, user_view};
 use crate::model::{
     AdminAction, AdminActionKind, AdminActionOutcome, AdminActionState, AdminOp, ChannelDraft,
-    ChannelKind, ChannelMove, CommunityPatch, CommunitySettingsView, DraftFile, ErrorView,
-    FINISHED_KEPT, ImageChange, PrivateMemberRow, PrivateMembersView, RemovalCause, UploadView,
-    UserView, ViewKey, VoiceRoom, VoiceView,
+    ChannelKind, ChannelMove, CommunityPatch, CommunitySettingsView, Conversation, DraftFile,
+    ErrorView, FINISHED_KEPT, ImageChange, PrivateMemberRow, PrivateMembersView, RemovalCause,
+    UploadView, UserView, ViewKey, VoiceRoom, VoiceView,
 };
 use crate::platform::{CoreError, CoreEvent};
 use crate::resync::unavailable;
@@ -477,6 +480,22 @@ impl State {
         for op in [k::PRIVATE_MEMBERS, k::WEBHOOKS] {
             self.cache.remove_prefix(&keys::scoped(op, channel_id));
         }
+        // What core held of the channel itself: its messages (the window and the rows a UI is
+        // shown), its pins, this user's roles there and the capability entry its community's read
+        // carries. A UI hears `ChannelRemoved` and leaves.
+        self.windows.remove(&Conversation::Channel {
+            id: channel_id.to_owned(),
+        });
+        for op in [keys::CHANNEL_MESSAGES, keys::PINS, keys::CHANNEL_ROLES] {
+            self.cache.remove_prefix(&keys::scoped(op, channel_id));
+        }
+        let capabilities_key = keys::scoped(keys::CAPABILITIES, community_id);
+        if let Some(capabilities) = self.cache.capabilities_mut(&capabilities_key) {
+            capabilities
+                .channels
+                .retain(|capability| capability.channel_id != channel_id);
+            self.note_direct_update(&capabilities_key);
+        }
         if self.voice.channel_id.as_deref() == Some(channel_id) {
             self.w5a_end_call();
         }
@@ -489,7 +508,7 @@ impl State {
     }
 
     /// The call ends here, as at sign-out: the server has already dropped its room.
-    fn w5a_end_call(&mut self) {
+    pub(crate) fn w5a_end_call(&mut self) {
         self.voice = VoiceView::default();
         self.media = None;
         self.view_changed(ViewKey::Voice);
@@ -630,6 +649,42 @@ impl State {
             ServerEvent::MemberAddedToCommunity(payload) if payload.user_id == self.me_id() => {
                 self.w5a.removed_communities.remove(&payload.community_id);
             }
+            // A private channel joined or left this user's list. On leaving, the channel goes at
+            // once and is announced, as a deleted one is, and the list reads again either way. A
+            // community this session holds nothing of has nothing to take away.
+            ServerEvent::PrivateChannelAdded(payload) => {
+                // Back in the channel: a later removal is announced again.
+                self.w5a.removed_channels.remove(&payload.channel_id);
+                self.w5a_private_channel_changed(&payload.community_id);
+            }
+            ServerEvent::PrivateChannelRemoved(payload) => {
+                if self.w5a_community_known(&payload.community_id) {
+                    self.w5a_drop_channel(&payload.community_id, &payload.channel_id);
+                }
+                self.w5a_private_channel_changed(&payload.community_id);
+            }
+            // The community's assets: the list the settings tab and the pickers read.
+            ServerEvent::CustomEmojiCreated(payload) | ServerEvent::CustomEmojiDeleted(payload) => {
+                let community_id = payload.community_id.clone();
+                self.w5a_reread(&keys::scoped(keys::EMOJIS, &community_id));
+                self.w5a_reread(&keys::scoped(k::EMOJIS, &community_id));
+            }
+            ServerEvent::SoundboardSoundCreated(payload)
+            | ServerEvent::SoundboardSoundDeleted(payload) => {
+                self.w5a_reread(&keys::scoped(keys::SOUNDBOARD, &payload.community_id));
+            }
+            ServerEvent::AliasGroupCreated(payload)
+            | ServerEvent::AliasGroupDeleted(payload)
+            | ServerEvent::AliasGroupMembersUpdated(payload)
+            | ServerEvent::AliasGroupUpdated(payload) => {
+                self.w5a_reread(&keys::scoped(k::ALIAS_GROUPS, &payload.community_id));
+                self.w5a_reread(&keys::scoped(k::ALIAS_GROUP, &payload.group_id));
+            }
+            // A webhook's name or avatar changed, or it went. Its URL is in no payload and is
+            // never kept here.
+            ServerEvent::WebhookCreated(payload) | ServerEvent::WebhookDeleted(payload) => {
+                self.w5a_reread(&keys::scoped(k::WEBHOOKS, &payload.channel_id));
+            }
             ServerEvent::CommunityDeleted(payload) => {
                 let mine = self.w5a.deleting.contains(&payload.community_id);
                 self.w5a_drop_community(
@@ -639,6 +694,22 @@ impl State {
             }
             _ => {}
         }
+    }
+
+    /// A private channel joined or left this user's list: the list, the mentionable channels and
+    /// the effective permissions all read again (the web's `invalidatePrivateChannelQueries`).
+    fn w5a_private_channel_changed(&mut self, community_id: &str) {
+        self.w5a_reread(&keys::scoped(keys::CHANNELS, community_id));
+        self.w5a_reread(&keys::scoped(keys::MENTIONABLE, community_id));
+        self.w5a_reread(&keys::scoped(keys::CAPABILITIES, community_id));
+    }
+
+    /// Whether this session holds anything of the community: a socket event naming one it knows
+    /// nothing of has nothing to change.
+    fn w5a_community_known(&self, community_id: &str) -> bool {
+        [keys::CHANNELS, keys::CAPABILITIES, k::COMMUNITY]
+            .iter()
+            .any(|op| self.cache.get(&keys::scoped(op, community_id)).is_some())
     }
 
     /// A channel as the server has it now: replaced in its list, or added.

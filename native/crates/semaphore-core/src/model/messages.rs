@@ -159,7 +159,7 @@ pub struct MessageRow {
     pub reply_to: Option<ReplyToView>,
     pub link_previews: Vec<LinkPreviewView>,
     /// W7: the whole text is one GIF URL: draw the GIF (or its "Load" card), not the link and
-    /// its preview card. Filled by W7-A (`text::gif::lone_gif_url`); `None` until then.
+    /// its preview card. Filled by `text::gif::lone_gif_url`; `None` for any other message.
     pub gif: Option<super::GifEmbed>,
     pub pinned: bool,
     pub pinned_by: Option<UserView>,

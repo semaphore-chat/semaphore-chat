@@ -60,6 +60,14 @@ pub trait VoiceBackend: Send + Sync {
     ) -> BackendResult<wire::RefreshDmPresenceResponseDto> {
         Err(unsupported("refreshing DM call presence"))
     }
+    /// Tells the DM's room this user won't answer (`dmVoiceCallDeclined`): a 1:1 caller's call
+    /// ends there. Only a decline the server hasn't seen is news.
+    async fn dm_voice_presence_controller_decline_dm_voice_call(
+        &self,
+        _dm_group_id: String,
+    ) -> BackendResult<wire::DeclineDmVoiceCallResponseDto> {
+        Err(unsupported("declining a DM call"))
+    }
     async fn livekit_controller_mute_participant(
         &self,
         _channel_id: String,
