@@ -519,6 +519,86 @@ describe('LivekitController', () => {
       expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
     });
 
+    it('lifts a mute after the person left the call: state cleared, success, announced once', async () => {
+      service.updatePublishPermissions.mockRejectedValue(
+        new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        ),
+      );
+      voicePresenceService.setServerMuted.mockResolvedValue(undefined);
+      voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: false },
+          mockRequest,
+        ),
+      ).resolves.toEqual({ success: true });
+
+      expect(voicePresenceService.setServerMuted).toHaveBeenCalledWith(
+        'channel-123',
+        'user-456',
+        false,
+      );
+      expect(voicePresenceService.updateServerMuteState).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('lifting a mute fails on a real LiveKit error and leaves the state', async () => {
+      service.updatePublishPermissions.mockRejectedValue(
+        new LivekitException('timeout', HttpStatus.INTERNAL_SERVER_ERROR),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: false },
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({ status: 500 });
+
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
+      expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
+    });
+
+    it('applying a mute to someone not in the call still 404s and records nothing', async () => {
+      service.muteParticipant.mockRejectedValue(
+        new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        ),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: true },
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
+      expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
+    });
+
+    it('applying a mute does not swallow a 404 from the permission update', async () => {
+      service.updatePublishPermissions.mockRejectedValue(
+        new LivekitException('gone', HttpStatus.NOT_FOUND),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: true },
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
+    });
+
     it('refused by the rank rule, it changes nothing', async () => {
       channelAccessService.assertMayModerateParticipant.mockRejectedValue(
         new ForbiddenException(),

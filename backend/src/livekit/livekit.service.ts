@@ -319,7 +319,8 @@ export class LivekitService {
    * them listen-only, a server mute takes the microphone). LiveKit
    * unpublishes tracks the new grant no longer allows.
    *
-   * Throws when LiveKit refuses the update: callers that remember the change
+   * Throws 404 (LivekitException) when the participant or room is gone, and
+   * 500 when LiveKit fails otherwise: callers that remember the change
    * (the mute endpoint) only record it once the room actually accepted it.
    * Without credentials there is nothing to update, so this is a no-op.
    */
@@ -344,6 +345,17 @@ export class LivekitService {
         `Updated publish permissions of ${identity} in room ${roomId}: ${publish.canPublish ? (publish.canPublishSources ?? 'all').toString() : 'none'}`,
       );
     } catch (error) {
+      // 404: the identity isn't in the room, or the room is gone. Callers
+      // decide whether that matters (lifting a mute doesn't).
+      if (
+        error instanceof Error &&
+        (error as Error & { status?: unknown }).status === 404
+      ) {
+        throw new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        );
+      }
       this.logger.error(
         `Could not update publish permissions of ${identity} in room ${roomId}: ${error instanceof Error ? error.message : String(error)}`,
       );

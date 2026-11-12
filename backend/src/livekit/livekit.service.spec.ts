@@ -681,6 +681,31 @@ describe('LivekitService', () => {
       ).rejects.toThrow('Failed to update the participant publish permissions');
     });
 
+    it('answers 404 when the participant or room is gone', async () => {
+      mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
+        Object.assign(new Error('not found'), { status: 404 }),
+      );
+      await expect(
+        service.updatePublishPermissions('room-1', 'user-1', {
+          canPublish: true,
+        }),
+      ).rejects.toMatchObject({
+        message: 'Participant is not in this voice channel',
+        status: 404,
+      });
+    });
+
+    it('answers 500 for a 5xx from LiveKit', async () => {
+      mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
+        Object.assign(new Error('unavailable'), { status: 503 }),
+      );
+      await expect(
+        service.updatePublishPermissions('room-1', 'user-1', {
+          canPublish: true,
+        }),
+      ).rejects.toMatchObject({ status: 500 });
+    });
+
     it('gives up on a hung LiveKit call instead of hanging', async () => {
       jest.useFakeTimers();
       try {

@@ -12853,7 +12853,7 @@
           },
           "canModerate": {
             "type": "boolean",
-            "description": "Whether the caller may server mute this user or remove them from the\ncall. Never set for the caller's own entry."
+            "description": "Whether the caller may server mute this user or remove them from the\ncall. Always present in this response; false for the caller's own entry."
           },
           "id": {
             "type": "string"
@@ -12876,6 +12876,7 @@
         },
         "required": [
           "joinedAt",
+          "canModerate",
           "id",
           "username",
           "isDeafened",

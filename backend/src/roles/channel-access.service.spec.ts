@@ -426,7 +426,7 @@ describe('ChannelAccessService', () => {
         communityId: COMMUNITY,
       });
       permissions.verifyActionsForUserAndResource.mockResolvedValue(true);
-      permissions.outranks.mockResolvedValue(false);
+      permissions.outranksMany.mockResolvedValue(new Map());
     });
 
     it('never includes the caller, and needs the mute action here', async () => {
@@ -452,8 +452,11 @@ describe('ChannelAccessService', () => {
         { id: 'peer', role: InstanceRole.USER },
         { id: 'owner', role: InstanceRole.OWNER },
       ]);
-      permissions.outranks.mockImplementation((_actor, target) =>
-        Promise.resolve(target === 'lower'),
+      permissions.outranksMany.mockResolvedValue(
+        new Map([
+          ['lower', true],
+          ['peer', false],
+        ]),
       );
 
       await expect(
@@ -464,8 +467,13 @@ describe('ChannelAccessService', () => {
           'owner',
         ]),
       ).resolves.toEqual(new Set(['lower']));
-      // The instance owner is never a target, so never ranked
-      expect(permissions.outranks).toHaveBeenCalledTimes(2);
+      // One batched call; the instance owner is never a target, so never ranked
+      expect(permissions.outranksMany).toHaveBeenCalledTimes(1);
+      expect(permissions.outranksMany).toHaveBeenCalledWith(
+        'actor',
+        ['lower', 'peer'],
+        COMMUNITY,
+      );
     });
 
     it('lets an instance owner moderate everyone else', async () => {

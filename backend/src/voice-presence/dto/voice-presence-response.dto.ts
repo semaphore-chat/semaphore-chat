@@ -20,10 +20,10 @@ export class VoicePresenceUserDto {
 export class ChannelVoicePresenceUserDto extends VoicePresenceUserDto {
   /**
    * Whether the caller may server mute this user or remove them from the
-   * call. Never set for the caller's own entry.
+   * call. Always present in this response; false for the caller's own entry.
    */
-  @ApiProperty({ required: false })
-  canModerate?: boolean;
+  @ApiProperty()
+  canModerate: boolean;
 }
 
 export class ChannelVoicePresenceResponseDto {

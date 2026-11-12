@@ -19,6 +19,7 @@ import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { LivekitService } from './livekit.service';
+import { LivekitException } from './exceptions/livekit.exception';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { LivekitAccessService } from './livekit-access.service';
 import { DatabaseService } from '@/database/database.service';
@@ -215,11 +216,20 @@ export class LivekitController {
       dto.participantIdentity,
       channelId,
     );
-    await this.livekitService.updatePublishPermissions(
-      channelId,
-      dto.participantIdentity,
-      caps ? publishGrantFor(caps, dto.mute) : { canPublish: false },
-    );
+    try {
+      await this.livekitService.updatePublishPermissions(
+        channelId,
+        dto.participantIdentity,
+        caps ? publishGrantFor(caps, dto.mute) : { canPublish: false },
+      );
+    } catch (error) {
+      // Lifting a mute after they left the call (or the room closed): there
+      // is no live grant to restore, and their next join computes it from the
+      // stored mute state, so clearing that state is all that is left.
+      const gone =
+        error instanceof LivekitException && error.getStatus() === 404;
+      if (dto.mute || !gone) throw error;
+    }
     await this.voicePresenceService.setServerMuted(
       channelId,
       dto.participantIdentity,

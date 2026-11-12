@@ -392,18 +392,56 @@ export class PermissionsService {
 
   /**
    * Moderation's rule: the actor holds a role and strictly outranks the
-   * target. A user with no roles ranks below everyone.
+   * target. A user with no roles ranks below everyone. A thin wrapper over
+   * {@link outranksMany}, so the single and the batched answer cannot drift.
    */
   async outranks(
     actorId: string,
     targetId: string,
     communityId: string,
   ): Promise<boolean> {
-    const [actor, target] = await Promise.all([
+    const result = await this.outranksMany(actorId, [targetId], communityId);
+    return result.get(targetId) ?? false;
+  }
+
+  /**
+   * {@link outranks} for many targets at once: the actor's rank is computed
+   * once and every target's best role position comes from one query, so the
+   * number of DB calls does not grow with the number of targets. Every target
+   * id is a key of the result; the actor never outranks themself.
+   */
+  async outranksMany(
+    actorId: string,
+    targetIds: string[],
+    communityId: string,
+  ): Promise<Map<string, boolean>> {
+    const result = new Map<string, boolean>();
+    const uniqueTargets = [...new Set(targetIds)];
+    if (uniqueTargets.length === 0) return result;
+
+    const [actor, targetRoles] = await Promise.all([
       this.getRank(actorId, communityId),
-      this.getRank(targetId, communityId),
+      this.databaseService.userRoles.findMany({
+        where: {
+          userId: { in: uniqueTargets },
+          communityId,
+          isInstanceRole: false,
+        },
+        select: { userId: true, role: { select: { position: true } } },
+      }),
     ]);
-    return actor.best !== Number.MAX_SAFE_INTEGER && actor.best < target.best;
+
+    const bestByTarget = new Map<string, number>();
+    for (const row of targetRoles) {
+      const best = bestByTarget.get(row.userId) ?? Number.MAX_SAFE_INTEGER;
+      bestByTarget.set(row.userId, Math.min(best, row.role.position));
+    }
+    const actorHoldsRole = actor.best !== Number.MAX_SAFE_INTEGER;
+    for (const id of uniqueTargets) {
+      const targetBest = bestByTarget.get(id) ?? Number.MAX_SAFE_INTEGER;
+      result.set(id, actorHoldsRole && actor.best < targetBest);
+    }
+    return result;
   }
 
   /**

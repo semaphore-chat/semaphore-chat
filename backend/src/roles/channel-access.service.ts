@@ -147,14 +147,14 @@ export class ChannelAccessService {
         .map((target) => target.id),
     );
     const ranking = candidates.filter((id) => !instanceOwners.has(id));
-    const outranks = await Promise.all(
-      ranking.map((id) =>
-        this.permissionsService.outranks(actor.id, id, channel.communityId),
-      ),
+    const outranks = await this.permissionsService.outranksMany(
+      actor.id,
+      ranking,
+      channel.communityId,
     );
-    ranking.forEach((id, index) => {
-      if (outranks[index]) moderatable.add(id);
-    });
+    for (const id of ranking) {
+      if (outranks.get(id)) moderatable.add(id);
+    }
     return moderatable;
   }
 
