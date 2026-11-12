@@ -9,6 +9,7 @@ export const VOICE_END_MESSAGES: Record<VoiceEndReason, string> = {
   [VoiceEndReason.AccessLost]: 'You no longer have access to this voice channel',
   [VoiceEndReason.ChannelNotFound]: 'This voice channel no longer exists',
   [VoiceEndReason.SessionExpired]: 'Your session has ended. Sign in again to rejoin voice',
+  [VoiceEndReason.CallDeclined]: 'Call declined',
 };
 
 export function describeVoiceEnd(reason: VoiceEndReason): string {
@@ -69,4 +70,5 @@ export const VOICE_END_DETAILS: Record<VoiceEndReason, string> = {
   [VoiceEndReason.AccessLost]: 'Your permissions changed while you were reconnecting.',
   [VoiceEndReason.ChannelNotFound]: 'It may have been deleted.',
   [VoiceEndReason.SessionExpired]: 'You were signed out on this device.',
+  [VoiceEndReason.CallDeclined]: 'They declined this call.',
 };

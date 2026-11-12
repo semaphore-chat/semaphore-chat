@@ -434,6 +434,19 @@ export type DmVoiceUserLeftPayloadDto = {
     user: VoicePresenceUserDto;
 };
 
+export type DmVoiceCallDeclinedPayloadDto = {
+    dmGroupId: string;
+    userId: string;
+    /**
+     * True for a group DM, false for a 1:1 DM: a 1:1 decline ends the call.
+     */
+    isGroup: boolean;
+};
+
+export type DmVoiceCallEndedPayloadDto = {
+    dmGroupId: string;
+};
+
 export type ReplayBufferStoppedPayloadDto = {
     sessionId: string;
     egressId: string;

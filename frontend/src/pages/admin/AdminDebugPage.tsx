@@ -168,6 +168,20 @@ const EVENT_CATALOG: EventDef[] = [
       user: { id: "", username: "", joinedAt: new Date().toISOString() },
     },
   },
+  {
+    value: "dmVoiceCallDeclined",
+    label: "DM Voice Call Declined",
+    category: "DM Voice",
+    roomTarget: "dmGroup",
+    template: { dmGroupId: "", userId: "" },
+  },
+  {
+    value: "dmVoiceCallEnded",
+    label: "DM Voice Call Ended",
+    category: "DM Voice",
+    roomTarget: "dmGroup",
+    template: { dmGroupId: "" },
+  },
 
   // Moderation
   {

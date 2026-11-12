@@ -27,6 +27,12 @@ vi.mock('../../hooks/useVoiceConnection', () => ({
   useVoiceConnection: () => ({ state: {}, actions: voice.actions }),
 }));
 
+const api = vi.hoisted(() => ({ decline: vi.fn() }));
+vi.mock('../../api-client/sdk.gen', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api-client/sdk.gen')>()),
+  dmVoicePresenceControllerDeclineDmVoiceCall: api.decline,
+}));
+
 const sounds = vi.hoisted(() => ({ playSound: vi.fn() }));
 vi.mock('../../hooks/useSound', () => ({
   playSound: sounds.playSound,
@@ -53,6 +59,7 @@ describe('IncomingCallBanner', () => {
     call.dismissCall.mockReset();
     voice.actions.joinDmVoice.mockReset().mockResolvedValue(undefined);
     sounds.playSound.mockReset();
+    api.decline.mockReset().mockResolvedValue({ data: { success: true } });
   });
 
   it('renders nothing when no call is ringing', () => {
@@ -93,13 +100,27 @@ describe('IncomingCallBanner', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('declines the call, playing the end sound and dismissing it', async () => {
+  it('declines the call on the server, playing the end sound and dismissing it', async () => {
     const { user } = renderWithProviders(<IncomingCallBanner />);
 
     await user.click(screen.getByTestId('CallEndIcon').closest('button') as HTMLElement);
 
+    expect(api.decline).toHaveBeenCalledWith({
+      path: { dmGroupId: 'dm-1' },
+      throwOnError: true,
+    });
     expect(sounds.playSound).toHaveBeenCalledWith('callEnded');
     expect(call.dismissCall).toHaveBeenCalledTimes(1);
     expect(voice.actions.joinDmVoice).not.toHaveBeenCalled();
+  });
+
+  it('stops ringing even when the server refuses the decline', async () => {
+    api.decline.mockRejectedValueOnce({ statusCode: 409, message: 'There is no active call in this DM group' });
+    const { user } = renderWithProviders(<IncomingCallBanner />);
+
+    await user.click(screen.getByTestId('CallEndIcon').closest('button') as HTMLElement);
+
+    await waitFor(() => expect(api.decline).toHaveBeenCalled());
+    expect(call.dismissCall).toHaveBeenCalledTimes(1);
   });
 });

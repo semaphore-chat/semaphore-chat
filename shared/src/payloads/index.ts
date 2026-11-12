@@ -20,6 +20,8 @@ export {
   type DmVoiceCallStartedPayload,
   type DmVoiceUserJoinedPayload,
   type DmVoiceUserLeftPayload,
+  type DmVoiceCallDeclinedPayload,
+  type DmVoiceCallEndedPayload,
   type ReplayBufferStoppedPayload,
   type ReplayBufferFailedPayload,
   type ChannelsReorderedPayload,
