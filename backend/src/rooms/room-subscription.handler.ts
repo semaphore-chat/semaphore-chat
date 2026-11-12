@@ -61,14 +61,11 @@ const friendshipPayload = ({
   userBId,
 });
 
-/** Who hears a friendship change: both sides, or only the one who didn't act. */
-const friendshipRecipients = (
-  { userAId, userBId, actorId }: FriendshipChangedEvent,
-  audience: 'both' | 'other',
-): string[] =>
-  audience === 'both'
-    ? [userAId, userBId]
-    : [actorId === userAId ? userBId : userAId];
+/** Who hears a friendship change: both people, on their own rooms. */
+const friendshipRecipients = ({
+  userAId,
+  userBId,
+}: FriendshipChangedEvent): string[] => [userAId, userBId];
 
 /**
  * Centralized handler for all WebSocket room subscription changes.
@@ -556,12 +553,13 @@ export class RoomSubscriptionHandler {
   /**
    * Only the two people in a friendship ever hear about it, each on their own
    * personal room: a request (or its end) is between them, not their
-   * communities.
+   * communities. Both always hear, the one who acted included, so that
+   * person's other devices stay in step.
    */
   @OnEvent(RoomEvents.FRIEND_REQUEST_SENT)
   onFriendRequestSent(event: FriendshipChangedEvent): void {
     this.sendToUsers(
-      friendshipRecipients(event, 'other'),
+      friendshipRecipients(event),
       ServerEvents.FRIEND_REQUEST_SENT,
       friendshipPayload(event),
     );
@@ -569,9 +567,8 @@ export class RoomSubscriptionHandler {
 
   @OnEvent(RoomEvents.FRIEND_REQUEST_ACCEPTED)
   onFriendRequestAccepted(event: FriendshipChangedEvent): void {
-    // Both sides gain a friend row.
     this.sendToUsers(
-      friendshipRecipients(event, 'both'),
+      friendshipRecipients(event),
       ServerEvents.FRIEND_REQUEST_ACCEPTED,
       friendshipPayload(event),
     );
@@ -580,7 +577,7 @@ export class RoomSubscriptionHandler {
   @OnEvent(RoomEvents.FRIEND_REQUEST_DECLINED)
   onFriendRequestDeclined(event: FriendshipChangedEvent): void {
     this.sendToUsers(
-      friendshipRecipients(event, 'other'),
+      friendshipRecipients(event),
       ServerEvents.FRIEND_REQUEST_DECLINED,
       friendshipPayload(event),
     );
@@ -589,7 +586,7 @@ export class RoomSubscriptionHandler {
   @OnEvent(RoomEvents.FRIEND_REQUEST_CANCELLED)
   onFriendRequestCancelled(event: FriendshipChangedEvent): void {
     this.sendToUsers(
-      friendshipRecipients(event, 'other'),
+      friendshipRecipients(event),
       ServerEvents.FRIEND_REQUEST_CANCELLED,
       friendshipPayload(event),
     );
@@ -598,7 +595,7 @@ export class RoomSubscriptionHandler {
   @OnEvent(RoomEvents.FRIEND_REMOVED)
   onFriendRemoved(event: FriendshipChangedEvent): void {
     this.sendToUsers(
-      friendshipRecipients(event, 'other'),
+      friendshipRecipients(event),
       ServerEvents.FRIEND_REMOVED,
       friendshipPayload(event),
     );

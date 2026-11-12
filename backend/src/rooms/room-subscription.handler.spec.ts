@@ -1262,10 +1262,10 @@ describe('RoomSubscriptionHandler', () => {
         .sort();
     }
 
-    it('a request reaches only the recipient', () => {
+    it("a request reaches the recipient, and the sender's own devices", () => {
       handler.onFriendRequestSent({ ...friendship, actorId: 'sender' });
 
-      expect(rooms()).toEqual(['user:receiver']);
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'user:receiver',
         ServerEvents.FRIEND_REQUEST_SENT,
@@ -1292,25 +1292,25 @@ describe('RoomSubscriptionHandler', () => {
       );
     });
 
-    it('a decline reaches only the sender, whoever acted', () => {
+    it('a decline reaches both people', () => {
       handler.onFriendRequestDeclined({ ...friendship, actorId: 'receiver' });
 
-      expect(rooms()).toEqual(['user:sender']);
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
     });
 
-    it('a cancellation reaches only the receiver', () => {
+    it('a cancellation reaches both people', () => {
       handler.onFriendRequestCancelled({ ...friendship, actorId: 'sender' });
 
-      expect(rooms()).toEqual(['user:receiver']);
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
     });
 
-    it('a removal reaches only the other person, from either side', () => {
+    it('a removal reaches both people, from either side', () => {
       handler.onFriendRemoved({ ...friendship, actorId: 'sender' });
-      expect(rooms()).toEqual(['user:receiver']);
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
 
       jest.clearAllMocks();
       handler.onFriendRemoved({ ...friendship, actorId: 'receiver' });
-      expect(rooms()).toEqual(['user:sender']);
+      expect(rooms()).toEqual(['user:receiver', 'user:sender']);
     });
 
     it('sends nothing to a community or DM room', () => {

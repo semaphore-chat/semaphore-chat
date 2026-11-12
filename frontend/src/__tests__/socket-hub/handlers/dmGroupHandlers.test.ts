@@ -1,6 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import { vi } from 'vitest';
 import {
   handleDmGroupCreated,
   handleDmGroupMemberAdded,
