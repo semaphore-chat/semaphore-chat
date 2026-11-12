@@ -197,20 +197,9 @@ pub(crate) fn pins(inner: &Inner, channel_id: &str) -> Value {
 
 /// `GET /roles/my/instance`: the signed-in user's instance roles; the default one may create
 /// communities.
-pub(crate) fn my_instance_roles(inner: &Inner) -> Value {
-    json!({
-        "userId": inner.scenario.me.id,
-        "resourceId": null,
-        "resourceType": "INSTANCE",
-        "roles": [{
-            "id": "role-instance-member",
-            "name": "Member",
-            "position": 0,
-            "isDefault": true,
-            "createdAt": inner.scenario.epoch,
-            "actions": ["CREATE_COMMUNITY"],
-        }],
-    })
+/// W6: the signed-in user's; the answer is W6-E's (`crate::w6::roles::instance_roles_json`).
+pub(crate) fn my_instance_roles(inner: &Inner, user_id: &str) -> Value {
+    crate::w6::roles::instance_roles_json(inner, user_id)
 }
 
 /// `GET /roles/my/channel/{channelId}`, as `RolesController.getMyRolesForChannel` and

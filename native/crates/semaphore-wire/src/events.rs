@@ -13,6 +13,14 @@ use crate::types;
 /// [`ServerEvent::Malformed`]. Neither loses the payload.
 #[derive(Clone, Debug)]
 pub enum ServerEvent {
+    /// `aliasGroupCreated`
+    AliasGroupCreated(types::CommunityAliasGroupPayloadDto),
+    /// `aliasGroupDeleted`
+    AliasGroupDeleted(types::CommunityAliasGroupPayloadDto),
+    /// `aliasGroupMembersUpdated`
+    AliasGroupMembersUpdated(types::CommunityAliasGroupPayloadDto),
+    /// `aliasGroupUpdated`
+    AliasGroupUpdated(types::CommunityAliasGroupPayloadDto),
     /// `channelCreated`
     ChannelCreated(types::ChannelCreatedPayloadDto),
     /// `channelDeleted`
@@ -27,10 +35,18 @@ pub enum ServerEvent {
     CommunityDeleted(types::CommunityDeletedPayloadDto),
     /// `communityUpdated`
     CommunityUpdated(types::CommunityUpdatedPayloadDto),
+    /// `customEmojiCreated`
+    CustomEmojiCreated(types::CommunityEmojiPayloadDto),
+    /// `customEmojiDeleted`
+    CustomEmojiDeleted(types::CommunityEmojiPayloadDto),
     /// `deleteMessage`
     DeleteMessage(types::DeleteMessagePayloadDto),
     /// `desktopSignIn`
     DesktopSignIn(types::DesktopSignInPayloadDto),
+    /// `dmVoiceCallDeclined`
+    DmVoiceCallDeclined(types::DmVoiceCallDeclinedPayloadDto),
+    /// `dmVoiceCallEnded`
+    DmVoiceCallEnded(types::DmVoiceCallEndedPayloadDto),
     /// `dmVoiceCallStarted`
     DmVoiceCallStarted(types::DmVoiceCallStartedPayloadDto),
     /// `dmVoiceUserJoined`
@@ -55,6 +71,10 @@ pub enum ServerEvent {
     NewThreadReply(types::NewThreadReplyPayloadDto),
     /// `notificationRead`
     NotificationRead(types::NotificationReadPayloadDto),
+    /// `privateChannelAdded`
+    PrivateChannelAdded(types::PrivateChannelMembershipPayloadDto),
+    /// `privateChannelRemoved`
+    PrivateChannelRemoved(types::PrivateChannelMembershipPayloadDto),
     /// `reactionAdded`
     ReactionAdded(types::ReactionAddedPayloadDto),
     /// `reactionRemoved`
@@ -77,6 +97,10 @@ pub enum ServerEvent {
     RoleUpdated(types::RoleUpdatedPayloadDto),
     /// `sessionTerminated`
     SessionTerminated(types::SessionTerminatedPayloadDto),
+    /// `soundboardSoundCreated`
+    SoundboardSoundCreated(types::CommunitySoundPayloadDto),
+    /// `soundboardSoundDeleted`
+    SoundboardSoundDeleted(types::CommunitySoundPayloadDto),
     /// `threadReplyCountUpdated`
     ThreadReplyCountUpdated(types::ThreadReplyCountUpdatedPayloadDto),
     /// `timeoutRemoved`
@@ -99,12 +123,18 @@ pub enum ServerEvent {
     UserTimedOut(types::UserTimedOutPayloadDto),
     /// `userTyping`
     UserTyping(types::UserTypingPayloadDto),
+    /// `userUnbanned`
+    UserUnbanned(types::UserUnbannedPayloadDto),
     /// `voiceChannelUserJoined`
     VoiceChannelUserJoined(types::VoiceChannelUserJoinedPayloadDto),
     /// `voiceChannelUserLeft`
     VoiceChannelUserLeft(types::VoiceChannelUserLeftPayloadDto),
     /// `voiceChannelUserUpdated`
     VoiceChannelUserUpdated(types::VoiceChannelUserUpdatedPayloadDto),
+    /// `webhookCreated`
+    WebhookCreated(types::ChannelWebhookPayloadDto),
+    /// `webhookDeleted`
+    WebhookDeleted(types::ChannelWebhookPayloadDto),
     /// An event this build does not know, kept whole so a newer server's event is still
     /// visible to the caller.
     Unknown { name: String, payload: Value },
@@ -121,6 +151,12 @@ impl ServerEvent {
     /// Decodes one server event. Never fails.
     pub fn decode(name: &str, payload: Value) -> ServerEvent {
         match name {
+            "aliasGroupCreated" => decode_payload(name, payload, ServerEvent::AliasGroupCreated),
+            "aliasGroupDeleted" => decode_payload(name, payload, ServerEvent::AliasGroupDeleted),
+            "aliasGroupMembersUpdated" => {
+                decode_payload(name, payload, ServerEvent::AliasGroupMembersUpdated)
+            }
+            "aliasGroupUpdated" => decode_payload(name, payload, ServerEvent::AliasGroupUpdated),
             "channelCreated" => decode_payload(name, payload, ServerEvent::ChannelCreated),
             "channelDeleted" => decode_payload(name, payload, ServerEvent::ChannelDeleted),
             "channelPermissionsUpdated" => {
@@ -130,8 +166,14 @@ impl ServerEvent {
             "channelUpdated" => decode_payload(name, payload, ServerEvent::ChannelUpdated),
             "communityDeleted" => decode_payload(name, payload, ServerEvent::CommunityDeleted),
             "communityUpdated" => decode_payload(name, payload, ServerEvent::CommunityUpdated),
+            "customEmojiCreated" => decode_payload(name, payload, ServerEvent::CustomEmojiCreated),
+            "customEmojiDeleted" => decode_payload(name, payload, ServerEvent::CustomEmojiDeleted),
             "deleteMessage" => decode_payload(name, payload, ServerEvent::DeleteMessage),
             "desktopSignIn" => decode_payload(name, payload, ServerEvent::DesktopSignIn),
+            "dmVoiceCallDeclined" => {
+                decode_payload(name, payload, ServerEvent::DmVoiceCallDeclined)
+            }
+            "dmVoiceCallEnded" => decode_payload(name, payload, ServerEvent::DmVoiceCallEnded),
             "dmVoiceCallStarted" => decode_payload(name, payload, ServerEvent::DmVoiceCallStarted),
             "dmVoiceUserJoined" => decode_payload(name, payload, ServerEvent::DmVoiceUserJoined),
             "dmVoiceUserLeft" => decode_payload(name, payload, ServerEvent::DmVoiceUserLeft),
@@ -148,6 +190,12 @@ impl ServerEvent {
             "newNotification" => decode_payload(name, payload, ServerEvent::NewNotification),
             "newThreadReply" => decode_payload(name, payload, ServerEvent::NewThreadReply),
             "notificationRead" => decode_payload(name, payload, ServerEvent::NotificationRead),
+            "privateChannelAdded" => {
+                decode_payload(name, payload, ServerEvent::PrivateChannelAdded)
+            }
+            "privateChannelRemoved" => {
+                decode_payload(name, payload, ServerEvent::PrivateChannelRemoved)
+            }
             "reactionAdded" => decode_payload(name, payload, ServerEvent::ReactionAdded),
             "reactionRemoved" => decode_payload(name, payload, ServerEvent::ReactionRemoved),
             "readReceiptUpdated" => decode_payload(name, payload, ServerEvent::ReadReceiptUpdated),
@@ -161,6 +209,12 @@ impl ServerEvent {
             "roleUnassigned" => decode_payload(name, payload, ServerEvent::RoleUnassigned),
             "roleUpdated" => decode_payload(name, payload, ServerEvent::RoleUpdated),
             "sessionTerminated" => decode_payload(name, payload, ServerEvent::SessionTerminated),
+            "soundboardSoundCreated" => {
+                decode_payload(name, payload, ServerEvent::SoundboardSoundCreated)
+            }
+            "soundboardSoundDeleted" => {
+                decode_payload(name, payload, ServerEvent::SoundboardSoundDeleted)
+            }
             "threadReplyCountUpdated" => {
                 decode_payload(name, payload, ServerEvent::ThreadReplyCountUpdated)
             }
@@ -174,6 +228,7 @@ impl ServerEvent {
             "userProfileUpdated" => decode_payload(name, payload, ServerEvent::UserProfileUpdated),
             "userTimedOut" => decode_payload(name, payload, ServerEvent::UserTimedOut),
             "userTyping" => decode_payload(name, payload, ServerEvent::UserTyping),
+            "userUnbanned" => decode_payload(name, payload, ServerEvent::UserUnbanned),
             "voiceChannelUserJoined" => {
                 decode_payload(name, payload, ServerEvent::VoiceChannelUserJoined)
             }
@@ -183,6 +238,8 @@ impl ServerEvent {
             "voiceChannelUserUpdated" => {
                 decode_payload(name, payload, ServerEvent::VoiceChannelUserUpdated)
             }
+            "webhookCreated" => decode_payload(name, payload, ServerEvent::WebhookCreated),
+            "webhookDeleted" => decode_payload(name, payload, ServerEvent::WebhookDeleted),
             _ => ServerEvent::Unknown {
                 name: name.to_owned(),
                 payload,

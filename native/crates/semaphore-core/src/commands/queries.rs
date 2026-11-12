@@ -234,6 +234,13 @@ impl Core {
                 if let Some(value) = self.w5b_fetch(key).await {
                     return value;
                 }
+                // W6 and W7: each hub fetches its own queries.
+                if let Some(value) = self.w6_fetch(key).await {
+                    return value;
+                }
+                if let Some(value) = self.w7_fetch(key).await {
+                    return value;
+                }
                 return Err(CoreError::Failed {
                     message: format!("no fetch for {op}"),
                 });

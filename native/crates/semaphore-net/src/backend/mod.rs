@@ -727,10 +727,16 @@ macro_rules! rpc {
 
 // The `Backend` impl, one area trait per file. Declared after `rpc!` so they can use it.
 mod account;
+mod admin_content;
+mod admin_storage;
+mod admin_users;
 mod communities;
 mod community_admin;
 mod dms;
 mod files;
+mod gifs;
+mod instance_admin;
+mod instance_roles;
 mod messages;
 mod moderation;
 mod notify;

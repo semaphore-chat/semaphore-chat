@@ -133,6 +133,10 @@ pub enum CacheValue {
     W5a(crate::commands::community_admin::W5aValue),
     /// W5-B's queries (`commands::moderation::W5bValue`).
     W5b(crate::commands::moderation::W5bValue),
+    /// W6's queries (`commands::instance_admin::W6Value`, one variant per lane).
+    W6(crate::commands::instance_admin::W6Value),
+    /// W7-A's queries (`commands::gifs::GifsValue`).
+    W7(crate::commands::gifs::GifsValue),
 }
 
 /// Friends and pending requests, from two calls read as one.

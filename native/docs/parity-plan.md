@@ -357,6 +357,8 @@ engine report of `screen_audio: Failed` starts the video alone at once.
 
 ### Wave 5: community administration and moderation
 
+**Done** (2026-11-12): core, the three screen groups and the app wiring (`w5.steps`) are on `spike/native-gpui`.
+
 | Unit | Delivers | Touches | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | W5-core | Community update/delete, channel CRUD and reorder, private channel membership, roles CRUD/assign, channel permission overrides, community/instance permission set for gating, alias groups, custom emoji, soundboard, webhooks, invites management, ban/kick/timeout, ban/timeout lists, moderation log | core lane files, net, fake server | W4-core | L (split in two with W0-seams) | core tests per command; permission-set gating tests |
@@ -452,6 +454,74 @@ Model changes after the freeze are additive only, with the coordinator. A's fake
 | W7-thumbnails | Server-sized thumbnails (U12) so image boxes size correctly | `backend/` (U12, API-contract stack), core, `ui/src/messages` | U12 landing | S | core test on dimensions; story shot with mixed aspect ratios |
 | W7-preview-images | Link-preview images per Mike's decision (direct fetch with the existing limits, or a server proxy) | `semaphore-app/src/files.rs`, possibly `backend/` | Mike's decision | S | `slice-e2e.sh` link-preview step flips from "unrequested" to drawn |
 
+### W6/W7 freeze
+
+Landed on `native/w6-core` (2026-11-12) in three commits: a mechanical contract repin, the seam
+and model freeze, and these docs. First run is **not** built natively (owner decision below), so
+W6-onboarding and the setup lanes are gone; W7-preview-images was already done in W3 (the app's
+`PreviewFetcher` behind a setting) and is folded into W7-app.
+
+The shared core files only call two hubs: `commands/instance_admin/mod.rs` (W6, which calls one
+file per lane: `instance.rs`, `users.rs`, `storage.rs`, `content.rs`, `roles.rs`) and
+`commands/gifs.rs` (W7-A). `CacheValue::W6(W6Value::<Lane>(..))`/`CacheValue::W7`, `State.w6`/`w7`,
+`view_for`, `key_for`, `query_changed`, the fetch arm, `apply_event` and the reconnect keys all
+delegate there. Changes show on their view's `AdminOp` through W5-A's machinery (`OpKey`,
+`w5a_begin`, `w5a_settle`, `w5a_op`, `w5a_refuse`, `AdminOp::finished`). The freeze fills two things
+itself: `InstancePermissionsView::admin` (`InstanceAdminCaps`, from my instance roles; the owner gets
+everything) and `ServerInfo::gif_search`. The fake server has one state module and lock per lane
+(`src/w6/*.rs`, `src/gifs.rs`) and `crate::w6::allows(inner, user, action)` for instance guards
+(the owner only until W6-E adds assigned instance roles). Briefs for the spelled-out lanes:
+`docs/lane-briefs/`.
+
+| Lane | Owns (besides its freeze stubs) | Depends on | Size | Who |
+|---|---|---|---|---|
+| W6-A instance | `core/src/commands/instance_admin/instance.rs`, `core/src/backend/instance_admin.rs`, `net/src/backend/instance_admin.rs`, `fake-server/src/{http/instance_admin.rs, w6/instance.rs}`, `core/tests/{w6_instance.rs, common/w6_instance.rs}`, `net/tests/w6_instance.rs`, `fake-server/tests/w6_instance.rs` | freeze | S-M | DeepSeek: `lane-briefs/w6-a-instance.md` |
+| W6-B users | the same set named `users` / `admin_users` / `w6_users` (the fake's ban, password and delete use `accounts.rs`'s existing session methods; the owner role goes through `Accounts::users`) | freeze | M | DeepSeek: `w6-b-users.md` |
+| W6-C storage | the same set named `storage` / `admin_storage` / `w6_storage` | freeze | S | DeepSeek: `w6-c-storage.md` |
+| W6-D content | the same set named `content` / `admin_content` / `w6_content` | freeze | M | DeepSeek: `w6-d-content.md` |
+| W6-E instance roles | the same set named `roles` / `instance_roles` / `w6_roles` (the fake's `w6/roles.rs` also answers `GET /roles/my/instance` and `GET /roles/user/{id}/instance`, and serves instance role assignment for W6-B) | freeze | S-M | DeepSeek: `w6-e-roles.md` |
+| W7-A gifs core | `core/src/{commands/gifs.rs, text/gif.rs, backend/gifs.rs}`, the `MessageRow::gif` fill in `core/src/store.rs` and `scenario.rs` (one line each), `net/src/backend/gifs.rs`, `fake-server/src/{http/gifs.rs, gifs.rs}`, `core/tests/{w7_gifs.rs, common/w7_gifs.rs}`, `net/tests/w7_gifs.rs`, `fake-server/tests/w7_gifs.rs` | freeze | S-M | DeepSeek: `w7-a-gifs.md` |
+| W7-thumbnails | core fills `AttachmentView::{width,height}`; `ui/src/messages` sizing | backend #715, then a repin | S | blocked |
+| W6-ui-shell | `ui/src/admin/{mod.rs, layout, dashboard, settings}` | freeze | M | Claude |
+| W6-ui-users | `ui/src/admin/users/*` | freeze | L | Claude |
+| W6-ui-content | `ui/src/admin/{communities, invites}/*` | freeze | M | Claude |
+| W6-ui-roles-storage | `ui/src/admin/{roles, storage}/*` (may use `ui/src/roles` widgets, never edit them) | freeze | M | Claude |
+| W7-ui-gifs | `ui/src/gifs/*`, the GIF button in `ui/src/composer` | freeze | M | Claude |
+| W7-ui-embed | `ui/src/messages/*`: the GIF embed and its "Load" card | freeze | S | Claude |
+| W6-app | `semaphore-app/*` admin route and the "set up in a browser" connect notice (probe reads `onboarding_controller_get_status` into `ServerInfo::needs_setup`), `rigs/slice/scripts/w6.steps` | W6 lanes | M | Claude |
+| W7-app | `semaphore-app/{files.rs, settings.rs, conversation.rs}`: the merged third-party media setting (migrated from `link_preview_images`), GIF fetches through `PreviewFetcher`, a frame limit for animated images; `w7.steps` | W7-A, W7-ui-* | M | Claude |
+
+At most three UI lanes at once: shell, users, content; then roles-storage, gifs, embed.
+Left for W6-app: `AdminUserRolesView::available` (it joins W6-B's user roles with W6-E's roles list,
+built in parallel).
+
+**Contract has it, core doesn't use it yet** (the 2026-11-12 repin; core ignores them as it did
+while they were unknown): `userUnbanned`, `privateChannelAdded`/`privateChannelRemoved`,
+`customEmojiCreated`/`Deleted`, `soundboardSoundCreated`/`Deleted`, `aliasGroupCreated`/`Updated`/
+`Deleted`/`MembersUpdated`, `webhookCreated`/`Deleted`, `dmVoiceCallDeclined`, `dmVoiceCallEnded`,
+`timeoutRemoved.expired`, `POST /dm-groups/{id}/voice-presence/decline`, `ErrorCode::CURRENT_SESSION_UNKNOWN`,
+`VoiceClientPlatform::native`, `ModerationLogDto.targetMessageId`. The moderation log filter is now
+the generated `ModerationAction` enum. Another repin follows when the open backend PRs land.
+
+**W6/W7 defaults** (chosen with the owner, 2026-11-11/12):
+
+- The admin debug page (event injection) isn't built natively.
+- Per-user storage quota editing is included (the web has none).
+- The Admin entry shows for anyone holding any admin permission (the web: the owner or
+  READ_INSTANCE_INVITE).
+- Third-party media: no server proxy. One setting, "Load images from other sites (link previews,
+  GIFs)", off by default and migrated from `link_preview_images`. The first time such media appears
+  the user can press Enable, and it stays on. While off, the GIF picker shows a one-click "Allow"
+  notice instead of the grid, and a received GIF is a "GIF from <host>: Load" card. The web loads all
+  of these straight from the third party.
+- First run isn't built natively: setup happens on the web. The connection probe learns
+  `needs_setup` from `GET /onboarding/status`, and the connect screen says the server needs to be set
+  up in a browser, with its web address to open.
+- The instance owner bypasses RBAC for administration and moderation; privacy boundaries (DMs)
+  stay.
+- Instance invites are their own query (`inviteControllerGetInvites.admin`), apart from W5-A's
+  per-community list, so the two never edit each other's cache.
+
 ### Wave summary
 
 | Wave | Units (parallel) | Then |
@@ -462,8 +532,8 @@ Model changes after the freeze are additive only, with the coordinator. A's fake
 | 3 | W3-core, W3-player; W3-ui-profile, W3-ui-settings, W3-ui-auth; W2-app | W3-app |
 | 4 | W4-core, W4-media, W4-av-publish; W4-ui-voice, W4-ui-replay; W3-app | W4-app |
 | 5 | W5-core; W5-ui-community, W5-ui-roles, W5-ui-moderation; W4-app | W5-app |
-| 6 | W6-core; W6-ui-admin, W6-ui-onboarding; W5-app | W6-app |
-| 7 | W7-gifs, W7-thumbnails, W7-preview-images (each when unblocked) | |
+| 6 | W6-A to W6-E; W6-ui-shell, W6-ui-users, W6-ui-content, W6-ui-roles-storage (3 at once) | W6-app |
+| 7 | W7-A; W7-ui-gifs, W7-ui-embed; W7-thumbnails when #715 lands | W7-app |
 
 ## 3. Cross-cutting work
 
@@ -577,3 +647,15 @@ Issues: #679 to #688, plus those named.
 | Reordering sets positions 10, 20, ...: with ten or more roles besides Member, the tenth ties Member at 100 and later ones rank below it | `backend/src/roles/community-roles.service.ts:683` | Yes | none |
 | The default Community Admin role has UNBAN_USER but not BAN_USER (product?) | `backend/src/roles/default-roles.config.ts:188-269` | Yes: community admins can't ban by default | none |
 | The web role editor leaves CAPTURE_REPLAY out of every permission group, so it can't be granted there | `frontend/src/constants/rbacActions.ts:114-200` (frontend) | Yes | Native's catalog puts it under voice |
+
+### Backend asks W6
+
+Found while designing W6 and W7 (2026-11-11).
+
+| Ask | Where | Affects the web | State |
+|---|---|---|---|
+| `READ_ALL_COMMUNITIES` is in no role and can't be put in an instance role (valid instance actions are the Instance Admin role's 12), so only owners reach the admin Communities page or force-delete; the Community Creator role can't be created or edited through the API | `backend/src/roles/default-roles.config.ts`, `roles/instance-roles.service.ts`, `community/community.controller.ts` | Yes | #706, open: needs a decision. Native gates on the action, so in practice owners only |
+| Force-delete emits no `communityDeleted`; setup stored the instance name where nothing reads it; a setup race could make two owners; setup's username and password rules; instance role delete had no actor check; instance settings bounds differed from storage settings; GIF `limit` unbounded; `vapidPrivateKey` in the spec | various | Yes | #707 to #714, fixed in #719 |
+| No image dimensions or image thumbnails (thumbnails are video-only; `AttachmentDto` has no width or height) | `backend/src/file/thumbnail.service.ts`, `AttachmentDto` | Yes (layout) | #715, open: blocks W7-thumbnails |
+| A server proxy for GIF and link-preview media | | | #716, closed as not planned (owner decision above) |
+

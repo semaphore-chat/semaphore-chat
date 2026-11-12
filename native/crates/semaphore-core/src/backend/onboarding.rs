@@ -31,6 +31,12 @@ pub trait OnboardingBackend: Send + Sync {
     ) -> BackendResult<Option<wire::PublicInviteDto>> {
         Err(unsupported("reading an invite"))
     }
+    /// Public. W6: `needsSetup` says the instance has no users yet and must be set up in a
+    /// browser (`ServerInfo::needs_setup`). The answer also carries a setup token: never log or
+    /// keep it. The probe's use of it is W6-app's.
+    async fn onboarding_controller_get_status(&self) -> BackendResult<wire::OnboardingStatusDto> {
+        Err(unsupported("the setup status"))
+    }
     async fn community_controller_create(
         &self,
         _body: wire::CreateCommunityDto,

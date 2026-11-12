@@ -357,11 +357,11 @@ impl ModerationBackend for FakeBackend {
     async fn moderation_controller_get_moderation_logs(
         &self,
         community_id: String,
-        action: Option<String>,
+        action: Option<semaphore_wire::enums::ModerationAction>,
         limit: Option<i64>,
         offset: Option<i64>,
     ) -> BackendResult<wire::ModerationLogsResponseDto> {
-        let action = action.unwrap_or_else(|| "-".into());
+        let action = action.map_or_else(|| "-".into(), |action| action.as_str().into_owned());
         let (limit, offset) = (
             limit.unwrap_or_default().to_string(),
             offset.unwrap_or_default().to_string(),

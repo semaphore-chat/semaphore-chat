@@ -104,6 +104,29 @@ pub enum AdminActionKind {
     Kick,
     Timeout,
     RemoveTimeout,
+    /// W6-A: on `InstanceSettings`.
+    UpdateInstanceSettings,
+    /// W6-B: on `AdminUsers` and `AdminUser` (target: the user); the role changes on
+    /// `AdminUserRoles` (target: the role).
+    SetOwner,
+    BanUser,
+    UnbanUser,
+    SetUserPassword,
+    DeleteUser,
+    AssignInstanceRole,
+    UnassignInstanceRole,
+    /// W6-C: on `AdminStorage` (target: the user).
+    SetUserQuota,
+    RecalculateStorage,
+    /// W6-D: on `AdminCommunities` (target: the community) and `AdminInvites` (target: the code;
+    /// `None` for a create).
+    ForceDeleteCommunity,
+    CreateInstanceInvite,
+    DeleteInstanceInvite,
+    /// W6-E: on `InstanceRoles` (target: the role; `None` for a create).
+    CreateInstanceRole,
+    UpdateInstanceRole,
+    DeleteInstanceRole,
 }
 
 /// A change and what it changes: the community, channel, user, group, emoji, sound, webhook or

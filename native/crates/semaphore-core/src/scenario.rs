@@ -318,6 +318,11 @@ fn message_row(
         )
     };
     let mine = !me_id.is_empty() && author.id == me_id;
+    let gif = if removed {
+        None
+    } else {
+        crate::text::gif::lone_gif_url(&display)
+    };
     Ok(MessageRow {
         seq: 0,
         id: string(get(message, "id")),
@@ -349,6 +354,7 @@ fn message_row(
                 .map(link_preview_view)
                 .collect()
         },
+        gif,
         pinned: flag(get(message, "pinned")),
         pinned_by: None,
         pinned_at_ms: time_ms(get(message, "pinnedAt")),

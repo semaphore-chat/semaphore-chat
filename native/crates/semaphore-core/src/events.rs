@@ -567,6 +567,8 @@ impl State {
         // W5: each lane's own handling, before the shared rules below (which only invalidate).
         self.w5a_event(&event, now);
         self.w5b_event(&event, now);
+        self.w6_event(&event, now);
+        self.w7_event(&event, now);
         match event {
             ServerEvent::NewMessage(event) | ServerEvent::NewDirectMessage(event) => {
                 self.on_new_message(event.message);
@@ -779,6 +781,23 @@ impl State {
             | ServerEvent::RoleUpdated(_)
             | ServerEvent::TimeoutRemoved(_)
             | ServerEvent::UserTimedOut(_) => self.invalidate_for(name),
+            // In the contract since the repin of 2026-11-12; a later lane wires them. Until then
+            // they're ignored, as they were while unknown.
+            ServerEvent::AliasGroupCreated(_)
+            | ServerEvent::AliasGroupDeleted(_)
+            | ServerEvent::AliasGroupMembersUpdated(_)
+            | ServerEvent::AliasGroupUpdated(_)
+            | ServerEvent::CustomEmojiCreated(_)
+            | ServerEvent::CustomEmojiDeleted(_)
+            | ServerEvent::DmVoiceCallDeclined(_)
+            | ServerEvent::DmVoiceCallEnded(_)
+            | ServerEvent::PrivateChannelAdded(_)
+            | ServerEvent::PrivateChannelRemoved(_)
+            | ServerEvent::SoundboardSoundCreated(_)
+            | ServerEvent::SoundboardSoundDeleted(_)
+            | ServerEvent::UserUnbanned(_)
+            | ServerEvent::WebhookCreated(_)
+            | ServerEvent::WebhookDeleted(_) => log::debug!("not handled yet: {name}"),
             ServerEvent::Unknown { name, .. } => log::debug!("ignoring unknown event {name}"),
             ServerEvent::Malformed {
                 name,

@@ -11,10 +11,16 @@
 //! implements each area trait, and gets `Backend` from the blanket impl.
 
 mod account;
+mod admin_content;
+mod admin_storage;
+mod admin_users;
 mod communities;
 mod community_admin;
 mod dms;
 mod files;
+mod gifs;
+mod instance_admin;
+mod instance_roles;
 mod messages;
 mod moderation;
 mod notify;
@@ -29,10 +35,16 @@ mod threads;
 mod voice;
 
 pub use account::AccountBackend;
+pub use admin_content::AdminContentBackend;
+pub use admin_storage::AdminStorageBackend;
+pub use admin_users::AdminUsersBackend;
 pub use communities::CommunitiesBackend;
 pub use community_admin::CommunityAdminBackend;
 pub use dms::DmsBackend;
 pub use files::FilesBackend;
+pub use gifs::GifsBackend;
+pub use instance_admin::InstanceAdminBackend;
+pub use instance_roles::InstanceRolesBackend;
 pub use messages::MessagesBackend;
 pub use moderation::ModerationBackend;
 pub use notify::NotifyBackend;
@@ -113,6 +125,12 @@ pub trait Backend:
     + SoundboardBackend
     + CommunityAdminBackend
     + RolesBackend
+    + InstanceAdminBackend
+    + AdminUsersBackend
+    + AdminStorageBackend
+    + AdminContentBackend
+    + InstanceRolesBackend
+    + GifsBackend
 {
 }
 
@@ -137,6 +155,12 @@ impl<T> Backend for T where
         + SoundboardBackend
         + CommunityAdminBackend
         + RolesBackend
+        + InstanceAdminBackend
+        + AdminUsersBackend
+        + AdminStorageBackend
+        + AdminContentBackend
+        + InstanceRolesBackend
+        + GifsBackend
 {
 }
 

@@ -24,6 +24,7 @@ use crate::model::{
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
+use semaphore_wire::enums::ModerationAction as WireModerationAction;
 use semaphore_wire::events::ServerEvent;
 use semaphore_wire::types as wire;
 
@@ -191,16 +192,16 @@ pub(crate) fn action_kind(action: &str) -> ModerationActionKind {
     }
 }
 
-fn action_name(kind: ModerationActionKind) -> Option<&'static str> {
+fn action_name(kind: ModerationActionKind) -> Option<WireModerationAction> {
     Some(match kind {
-        ModerationActionKind::Ban => "BAN_USER",
-        ModerationActionKind::Unban => "UNBAN_USER",
-        ModerationActionKind::Kick => "KICK_USER",
-        ModerationActionKind::Timeout => "TIMEOUT_USER",
-        ModerationActionKind::RemoveTimeout => "REMOVE_TIMEOUT",
-        ModerationActionKind::DeleteMessage => "DELETE_MESSAGE",
-        ModerationActionKind::PinMessage => "PIN_MESSAGE",
-        ModerationActionKind::UnpinMessage => "UNPIN_MESSAGE",
+        ModerationActionKind::Ban => WireModerationAction::BanUser,
+        ModerationActionKind::Unban => WireModerationAction::UnbanUser,
+        ModerationActionKind::Kick => WireModerationAction::KickUser,
+        ModerationActionKind::Timeout => WireModerationAction::TimeoutUser,
+        ModerationActionKind::RemoveTimeout => WireModerationAction::RemoveTimeout,
+        ModerationActionKind::DeleteMessage => WireModerationAction::DeleteMessage,
+        ModerationActionKind::PinMessage => WireModerationAction::PinMessage,
+        ModerationActionKind::UnpinMessage => WireModerationAction::UnpinMessage,
         ModerationActionKind::Unknown => return None,
     })
 }
@@ -420,7 +421,6 @@ impl Core {
                         .log_filter
                         .get(&a)
                         .and_then(|kind| action_name(*kind))
-                        .map(str::to_owned)
                 });
                 backend
                     .moderation_controller_get_moderation_logs(a, filter, Some(LOG_PAGE), Some(0))
@@ -788,8 +788,7 @@ impl Core {
                 .w5b
                 .log_filter
                 .get(&community_id)
-                .and_then(|kind| action_name(*kind))
-                .map(str::to_owned);
+                .and_then(|kind| action_name(*kind));
             state.w5b.log_loading.insert(community_id.clone());
             state.view_changed(ViewKey::ModerationLog {
                 community_id: community_id.clone(),

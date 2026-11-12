@@ -19,9 +19,9 @@ feature of the Electron app and where its native counterpart stands.
 | 2 | DMs, friends, notifications, tray, deep links, single instance | on `main` |
 | 3 | Profile, settings, registration, password reset, browser sign-in, in-app audio and video player | on `main` |
 | 4 | Voice and video: channel and DM calls, soundboard, moderator actions, replay clips, mic test | on `main` |
-| 5 | Community administration, roles and moderation | in progress |
-| 6 | Instance administration and first run | not started |
-| 7 | GIFs, thumbnails, link-preview images | not started |
+| 5 | Community administration, roles and moderation | done (on `spike/native-gpui`) |
+| 6 | Instance administration (first run stays on the web) | frozen, lanes not started |
+| 7 | GIFs, thumbnails, link-preview images | frozen, lanes not started (link-preview images done in W3) |
 
 There are no packaged builds yet. Backend and web-client problems found along the way are filed
 as GitHub issues and linked from the plan.

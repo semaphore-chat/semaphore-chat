@@ -290,6 +290,7 @@ impl Core {
                     can_create_community: true,
                     can_create_invite: true,
                     can_delete_invite: true,
+                    admin: state.instance_admin_caps(),
                 };
             }
             state.ensure_query(key.clone());
@@ -305,6 +306,7 @@ impl Core {
                 can_create_community: has(RbacAction::CreateCommunity),
                 can_create_invite: has(RbacAction::CreateInstanceInvite),
                 can_delete_invite: has(RbacAction::DeleteInstanceInvite),
+                admin: state.instance_admin_caps(),
                 state: state.query_load_state(&key),
             }
         })

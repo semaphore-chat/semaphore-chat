@@ -9,6 +9,7 @@ mod accounts;
 mod actions;
 mod admin;
 mod calls;
+mod gifs;
 mod http;
 pub mod livekit;
 mod messages;
@@ -17,6 +18,7 @@ mod rbac;
 pub mod scenario;
 mod social;
 mod socket;
+mod w6;
 
 use axum::Json;
 use axum::response::{IntoResponse, Response};
@@ -153,6 +155,21 @@ pub(crate) struct Inner {
     /// W5-B: roles, assignments, overrides, bans, timeouts and the moderation log. Never held with
     /// `data` or `admin`.
     pub rbac: Mutex<rbac::Rbac>,
+    /// W6, one lock per lane (`w6/`). Never held with `data`, `admin` or `rbac`, nor with each
+    /// other.
+    #[allow(dead_code)]
+    pub w6_instance: Mutex<w6::instance::Instance>,
+    #[allow(dead_code)]
+    pub w6_users: Mutex<w6::users::Users>,
+    #[allow(dead_code)]
+    pub w6_storage: Mutex<w6::storage::Storage>,
+    #[allow(dead_code)]
+    pub w6_content: Mutex<w6::content::Content>,
+    #[allow(dead_code)]
+    pub w6_roles: Mutex<w6::roles::Roles>,
+    /// W7-A's fixture GIFs.
+    #[allow(dead_code)]
+    pub gifs: Mutex<gifs::Gifs>,
     pub faults: Mutex<Faults>,
     next_sid: std::sync::atomic::AtomicU64,
     next_message: std::sync::atomic::AtomicU64,
@@ -507,6 +524,12 @@ impl FakeServer {
             calls: Mutex::new(calls::Calls::default()),
             admin: Mutex::new(admin::Admin::default()),
             rbac: Mutex::new(rbac::Rbac::default()),
+            w6_instance: Mutex::new(Default::default()),
+            w6_users: Mutex::new(Default::default()),
+            w6_storage: Mutex::new(Default::default()),
+            w6_content: Mutex::new(Default::default()),
+            w6_roles: Mutex::new(Default::default()),
+            gifs: Mutex::new(Default::default()),
             faults: Mutex::new(Faults::default()),
             next_sid: std::sync::atomic::AtomicU64::new(0),
             next_message: std::sync::atomic::AtomicU64::new(0),
