@@ -202,12 +202,7 @@ export class MembershipService {
     code: string,
     userId: string,
   ): Promise<AcceptInviteResponseDto> {
-    // A user who already spent a use on this invite (an earlier, partial
-    // acceptance) may finish even if that use was the last and the invite is
-    // now disabled.
-    const invite =
-      (await this.inviteService.validateInviteCode(code)) ??
-      (await this.inviteService.findInviteUsedBy(code, userId));
+    const invite = await this.inviteService.validateInviteCode(code);
     if (!invite) {
       throw new NotFoundException('No invite found for the provided code.');
     }
@@ -242,7 +237,9 @@ export class MembershipService {
 
     // Redeem first, atomically (the invite row is locked in the transaction),
     // so the use limit and expiry hold however many users accept at once. A
-    // user who already spent a use gets 'already_used': no second use. If
+    // user who already spent a use on a still-usable invite gets
+    // 'already_used': no second use. A past use is no pass once the invite is
+    // disabled, expired or used up (otherwise a kicked member could rejoin). If
     // every join below then fails (e.g. banned everywhere) the use stays
     // consumed: the invite was valid and the user took part in it.
     const redemption = await this.databaseService.$transaction((tx) =>

@@ -144,26 +144,14 @@ export class InviteService {
   }
 
   /**
-   * The invite (with its communities) when `userId` already spent a use on it,
-   * whatever its state now: spending the last use disables the invite, and
-   * that user must still be able to finish an earlier, partial acceptance.
-   */
-  async findInviteUsedBy(
-    inviteCode: string,
-    userId: string,
-  ): Promise<InstanceInviteWithRelations | null> {
-    return this.databaseService.instanceInvite.findFirst({
-      where: { code: inviteCode, usages: { some: { userId } } },
-      include: { defaultCommunities: true, usages: true },
-    });
-  }
-
-  /**
    * Spend a use of the invite for an existing account, atomically.
    * - `redeemed`: a use was consumed now.
-   * - `already_used`: this user spent a use on the invite earlier; nothing is
-   *   consumed (`redeemInviteWithTx` returns null for this case too).
-   * - `unusable`: unknown code, disabled, expired or out of uses.
+   * - `already_used`: the invite is still usable and this user spent a use on
+   *   it earlier; nothing more is consumed.
+   * - `unusable`: unknown code, disabled, expired or out of uses. This holds
+   *   for someone who used it before too: a past use is not a standing pass
+   *   back into the invite's communities (e.g. after being kicked) once the
+   *   invite has been disabled, has expired or is used up.
    */
   async redeemForExistingUser(
     tx: Prisma.TransactionClient,
@@ -173,9 +161,22 @@ export class InviteService {
     await this.lockInvite(tx, inviteCode);
     const invite = await tx.instanceInvite.findUnique({
       where: { code: inviteCode },
-      select: { id: true },
+      select: {
+        id: true,
+        disabled: true,
+        validUntil: true,
+        uses: true,
+        maxUses: true,
+      },
     });
     if (!invite) return 'unusable';
+    if (
+      invite.disabled ||
+      (invite.validUntil && new Date() > invite.validUntil) ||
+      (invite.maxUses !== null && invite.uses >= invite.maxUses)
+    ) {
+      return 'unusable';
+    }
     const existingUsage = await tx.instanceInviteUsage.findUnique({
       where: { inviteId_userId: { inviteId: invite.id, userId } },
     });

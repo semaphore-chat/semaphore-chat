@@ -410,25 +410,32 @@ describe('InviteService', () => {
       expect(tx.instanceInviteUsage.create).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['exhausted', { maxUses: 1, uses: 1 }],
+      ['disabled', { disabled: true }],
+      ['expired', { validUntil: new Date(Date.now() - 1000) }],
+    ])(
+      'answers unusable for an %s invite even to someone who used it before',
+      async (_name, patch) => {
+        const invite = InstanceInviteFactory.build({
+          code: 'C',
+          disabled: false,
+          maxUses: 5,
+          uses: 0,
+          ...patch,
+        });
+        const { tx } = buildTx({ invite, usage: { id: 'x' } });
+        await expect(
+          service.redeemForExistingUser(tx as any, 'C', 'u1'),
+        ).resolves.toBe('unusable');
+      },
+    );
+
     it('answers unusable for an unknown code', async () => {
       const { tx } = buildTx({ invite: null });
       await expect(
         service.redeemForExistingUser(tx as any, 'nope', 'u1'),
       ).resolves.toBe('unusable');
-    });
-  });
-
-  describe('findInviteUsedBy', () => {
-    it("looks the invite up through the user's usage row", async () => {
-      const find = jest
-        .spyOn(mockDatabase.instanceInvite, 'findFirst')
-        .mockResolvedValue(null as any);
-      await expect(service.findInviteUsedBy('C', 'u1')).resolves.toBeNull();
-      expect(find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { code: 'C', usages: { some: { userId: 'u1' } } },
-        }),
-      );
     });
   });
 

@@ -376,8 +376,6 @@ describe('MembershipService', () => {
     beforeEach(() => {
       mockDatabase.$transaction.mockImplementation((cb: any) => cb({}));
       inviteService.validateInviteCode.mockReset();
-      inviteService.findInviteUsedBy.mockReset();
-      inviteService.findInviteUsedBy.mockResolvedValue(null);
       inviteService.redeemForExistingUser.mockReset();
       inviteService.redeemForExistingUser.mockResolvedValue('redeemed');
     });
@@ -463,10 +461,8 @@ describe('MembershipService', () => {
       expect(create).not.toHaveBeenCalled();
     });
 
-    it('finishes an earlier partial acceptance without a second use', async () => {
-      // The earlier use was the last one: the invite no longer validates.
-      inviteService.validateInviteCode.mockResolvedValue(null);
-      inviteService.findInviteUsedBy.mockResolvedValue(inviteFor('c1', 'c2'));
+    it('joins the rest without a second use when the invite is still usable', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1', 'c2'));
       mockDatabase.community.findMany.mockResolvedValue(
         communities('c1', 'c2'),
       );
@@ -479,7 +475,19 @@ describe('MembershipService', () => {
       const result = await service.acceptInvite('INV', 'u1');
 
       expect(result.joined).toEqual([{ id: 'c2', name: 'name-c2' }]);
-      expect(inviteService.findInviteUsedBy).toHaveBeenCalledWith('INV', 'u1');
+    });
+
+    it('refuses someone who used the invite before once it no longer validates', async () => {
+      // e.g. kicked from a community after joining through an invite that has
+      // since been disabled, expired or used up.
+      inviteService.validateInviteCode.mockResolvedValue(null);
+      const create = jest.spyOn(service, 'create');
+
+      await expect(service.acceptInvite('INV', 'u1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(create).not.toHaveBeenCalled();
+      expect(inviteService.redeemForExistingUser).not.toHaveBeenCalled();
     });
 
     it('lets exactly one of several concurrent users use a one-use invite', async () => {
