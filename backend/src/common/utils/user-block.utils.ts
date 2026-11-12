@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { ErrorCode } from '@semaphore-chat/shared';
 
 /** Minimal Prisma-client surface, so a transaction client works too. */
 interface UserBlockDb {
@@ -63,6 +64,9 @@ export async function assertNotBlockedInDm(
     .map((member) => member.userId)
     .filter((id) => id !== userId);
   if (await isBlockedWithAny(db, userId, others)) {
-    throw new ForbiddenException('You cannot message this user');
+    throw new ForbiddenException('You cannot message this user', {
+      description: 'Forbidden',
+      errorCode: ErrorCode.DM_BLOCKED,
+    });
   }
 }

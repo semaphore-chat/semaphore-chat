@@ -33,6 +33,8 @@ export enum ErrorCode {
   NONCE_CONFLICT = 'NONCE_CONFLICT',
   /** A retry of a send whose message has since been deleted. */
   MESSAGE_DELETED = 'MESSAGE_DELETED',
+  /** The 1:1 DM's other member blocked this user, or was blocked by them. */
+  DM_BLOCKED = 'DM_BLOCKED',
 
   // Sessions
   /**
@@ -47,6 +49,14 @@ export enum ErrorCode {
   FILE_NOT_OWNED = 'FILE_NOT_OWNED',
   UPLOAD_TARGET_NOT_ALLOWED = 'UPLOAD_TARGET_NOT_ALLOWED',
   STORAGE_QUOTA_EXCEEDED = 'STORAGE_QUOTA_EXCEEDED',
+
+  // Instance invites
+  /** No invite exists for the code. */
+  INVITE_NOT_FOUND = 'INVITE_NOT_FOUND',
+  INVITE_EXPIRED = 'INVITE_EXPIRED',
+  /** The invite reached its maximum number of uses. */
+  INVITE_EXHAUSTED = 'INVITE_EXHAUSTED',
+  INVITE_DISABLED = 'INVITE_DISABLED',
 }
 
 /**

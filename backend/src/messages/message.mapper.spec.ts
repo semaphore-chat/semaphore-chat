@@ -131,6 +131,8 @@ describe('toMessageDto', () => {
               mimeType: 'image/png',
               fileType: 'IMAGE',
               size: 3,
+              width: 1920,
+              height: 1080,
               thumbnailPath: '/private/thumb.png',
             },
           },
@@ -146,8 +148,33 @@ describe('toMessageDto', () => {
         fileType: 'IMAGE',
         size: 3,
         hasThumbnail: true,
+        width: 1920,
+        height: 1080,
       },
     ]);
+  });
+
+  it('reports null dimensions for an attachment whose size is unknown', () => {
+    const dto = toMessageDto(
+      row({
+        attachments: [
+          {
+            file: {
+              id: 'f1',
+              filename: 'a.pdf',
+              mimeType: 'application/pdf',
+              fileType: 'DOCUMENT',
+              size: 3,
+              width: null,
+              height: null,
+              thumbnailPath: null,
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(dto.attachments[0]).toMatchObject({ width: null, height: null });
   });
 
   it('groups reactions', () => {

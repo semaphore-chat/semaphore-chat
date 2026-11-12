@@ -1,6 +1,7 @@
 import { OverwriteTarget, RbacActions as A } from '@prisma/client';
 import {
   canViewChannel,
+  ChannelCapabilities,
   effectiveForRole,
   effectiveForRoleSet,
   postingRoleNames,
@@ -241,6 +242,46 @@ describe('channel permission resolution', () => {
     });
   });
 
+  describe('pin, delete-any and see-removed capabilities', () => {
+    const cases: [keyof ChannelCapabilities, A][] = [
+      ['pin', A.PIN_MESSAGE],
+      ['deleteAny', A.DELETE_ANY_MESSAGE],
+      ['seeRemoved', A.DELETE_ANY_MESSAGE],
+    ];
+
+    it.each(cases)(
+      '%s: false without %s, true with it, overwritable',
+      (flag, action) => {
+        // The Member role holds neither action.
+        expect(toCapabilities(input({ baseActions: MEMBER }))[flag]).toBe(
+          false,
+        );
+
+        const granted = [...MEMBER, action];
+        expect(toCapabilities(input({ baseActions: granted }))[flag]).toBe(
+          true,
+        );
+
+        expect(
+          toCapabilities(
+            input({ baseActions: granted, overwrites: [everyone([action])] }),
+          )[flag],
+        ).toBe(false);
+
+        // A role-level allow re-adds it.
+        expect(
+          toCapabilities(
+            input({
+              baseActions: granted,
+              roleIds: [MOD_ROLE],
+              overwrites: [everyone([action]), role(MOD_ROLE, [action])],
+            }),
+          )[flag],
+        ).toBe(true);
+      },
+    );
+  });
+
   describe('timeouts (community-scoped, anti-spam)', () => {
     const allChannel = [
       ...MEMBER,
@@ -409,6 +450,9 @@ describe('channel permission resolution', () => {
         video: false,
         share: false,
         managePermissions: true,
+        pin: false,
+        deleteAny: false,
+        seeRemoved: false,
       });
     });
   });

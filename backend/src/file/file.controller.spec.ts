@@ -92,8 +92,30 @@ describe('FileController', () => {
         fileType: FileType.IMAGE,
         size: 1024,
         hasThumbnail: false,
+        width: null,
+        height: null,
       });
       expect(service.findOne).toHaveBeenCalledWith(fileId);
+    });
+
+    it('should return the stored width and height', async () => {
+      const fileId = 'file-image';
+      service.findOne.mockResolvedValue({
+        id: fileId,
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        fileType: FileType.IMAGE,
+        size: 2048,
+        width: 1080,
+        height: 1920,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/photo.jpg',
+        thumbnailPath: null,
+      } as any);
+
+      const result = await controller.getFileMetadata(fileId);
+
+      expect(result).toMatchObject({ width: 1080, height: 1920 });
     });
 
     it('should return hasThumbnail true when thumbnailPath exists', async () => {

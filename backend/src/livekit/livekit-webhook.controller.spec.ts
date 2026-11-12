@@ -471,6 +471,9 @@ describe('LivekitWebhookController', () => {
           video: false,
           share: false,
           managePermissions: false,
+          pin: false,
+          deleteAny: false,
+          seeRemoved: false,
           timedOutUntil: null,
           postingRoleNames: [],
         });
@@ -499,6 +502,9 @@ describe('LivekitWebhookController', () => {
           video: false,
           share: false,
           managePermissions: false,
+          pin: false,
+          deleteAny: false,
+          seeRemoved: false,
           timedOutUntil: null,
           postingRoleNames: [],
         });
@@ -527,6 +533,9 @@ describe('LivekitWebhookController', () => {
           video: true,
           share: true,
           managePermissions: false,
+          pin: false,
+          deleteAny: false,
+          seeRemoved: false,
           timedOutUntil: null,
           postingRoleNames: [],
         });
@@ -581,6 +590,9 @@ describe('LivekitWebhookController', () => {
         video: false,
         share: false,
         managePermissions: false,
+        pin: false,
+        deleteAny: false,
+        seeRemoved: false,
         timedOutUntil: null,
         postingRoleNames: [],
       });

@@ -158,6 +158,12 @@ export interface ChannelCapabilities {
   video: boolean;
   share: boolean;
   managePermissions: boolean;
+  /** Pin messages here (PIN_MESSAGE). */
+  pin: boolean;
+  /** Delete anyone's messages here (DELETE_ANY_MESSAGE). */
+  deleteAny: boolean;
+  /** Keep seeing the text of messages removed here (DELETE_ANY_MESSAGE). */
+  seeRemoved: boolean;
 }
 
 export const ALL_CAPABILITIES: ChannelCapabilities = {
@@ -171,6 +177,9 @@ export const ALL_CAPABILITIES: ChannelCapabilities = {
   video: true,
   share: true,
   managePermissions: true,
+  pin: true,
+  deleteAny: true,
+  seeRemoved: true,
 };
 
 export function toCapabilities(
@@ -190,6 +199,10 @@ export function toCapabilities(
     speak: has(RbacActions.SPEAK),
     video: has(RbacActions.VIDEO),
     share: has(RbacActions.SCREEN_SHARE),
+    pin: has(RbacActions.PIN_MESSAGE),
+    deleteAny: has(RbacActions.DELETE_ANY_MESSAGE),
+    // The same action as PermissionsService.canSeeRemovedMessages.
+    seeRemoved: has(RbacActions.DELETE_ANY_MESSAGE),
     // Community-scoped: holds on every channel, visible or not (lockout safeguard).
     managePermissions: base.has(RbacActions.MANAGE_CHANNEL_PERMISSIONS),
   };

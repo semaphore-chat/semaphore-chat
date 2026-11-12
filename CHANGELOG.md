@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes / upgrade checklist
+
+- **One database migration for attachment dimensions.** `20261112090749_file_dimensions` adds two nullable `Int` columns, `File.width` and `File.height`; existing files keep null. Back up your database before upgrading. (#715)
+
 ### Security
 
 - Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
@@ -18,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
 - Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
+- An invite link now works for someone who already has an account: a signed-in visitor to the join page adds their account to the invite's communities instead of registering again, and the API reports which communities were joined or skipped. (#589)
+- Image and video attachments now report their display `width` and `height` in pixels, so clients can reserve space before the file loads. (#715)
 
 ### Changed
 
@@ -38,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A moderator can now remove someone from a voice call without kicking them from the community, and the voice presence response tells clients which participants the caller may moderate. (#663)
 - Lifting a server mute no longer fails against a stock LiveKit server: it gives the participant their microphone permission back and lets them unmute themselves. (#676)
 - The API now explains that the per-channel role lookup returns community roles without the channel's permission overwrites, and points clients at the channel capabilities endpoint for per-channel decisions. (#644)
+- Channel permissions now report whether you can pin messages, delete anyone's messages, and keep seeing removed ones, so a client doesn't have to work it out from your roles. (#639)
+- The `deleteMessage` event says whether the message was removed by a moderator (kept for moderators) or deleted for good. (#640)
+- Refusing a message in a blocked 1:1 direct message now carries the error code `DM_BLOCKED`. (#641)
+- Message search takes a `continuationToken` and answers with an `X-Continuation-Token` response header, so results can be read page by page. (#643)
+- Notification list entries carry the channel name, and the live notification event carries the thread's parent message id, so both say the same thing. (#649)
+- Notification settings accept an empty string to clear a do-not-disturb time, as well as an explicit `null`. (#651)
+- `GET /notifications` takes `includeDismissed` (default true); pass `false` to leave dismissed notifications out of the list and the total. (#648)
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
 - `GET /notifications` now reports the total number of matching notifications instead of the size of the page. (#658)
 - Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)
@@ -69,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Instance settings now enforce the same storage quota and maximum file size limits as the storage settings. (#712)
 - GIF search and featured reject a limit outside 1 to 50 with a 400 instead of passing it to the provider. (#713)
 - The API contract no longer lists the VAPID private key as part of the instance settings response. (#714)
+- `GET /notifications/channels/:id/override` now answers JSON `null` when there is no override, instead of an empty 200 body that generated clients could not decode. (#650)
+- The public invite lookup now answers 404 with a reason (unknown, expired, used up or disabled) instead of an empty 200 body, and the join page says why a link cannot be used. (#653)
+- A replay clip download is limited to one at a time per user (a second request answers 429), and its temporary file is always removed, including when the client disconnects or FFmpeg fails. (#674)
 
 ## [0.9.0] - 2026-11-11
 

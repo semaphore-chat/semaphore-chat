@@ -12,11 +12,13 @@ import {
   Logger,
   Query,
   Req,
+  Res,
   DefaultValuePipe,
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse, ApiQuery } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { MessagesService } from './messages.service';
 import { MessageSendService } from './message-send.service';
 import { ReactionsService } from './reactions.service';
@@ -57,6 +59,33 @@ import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
 import { LINK_PREVIEWS_QUEUE } from '@/jobs/jobs.constants';
 import { LinkPreviewJobData } from '@/jobs/jobs.types';
+
+/**
+ * Search results are a bare array, so the cursor for the next page travels in
+ * this response header; absent on the last page.
+ */
+const SEARCH_CONTINUATION_HEADER = 'X-Continuation-Token';
+const SEARCH_PAGE_RESPONSE = {
+  headers: {
+    [SEARCH_CONTINUATION_HEADER]: {
+      description:
+        'Cursor for the next page; pass it back as continuationToken. Absent when the page is not full.',
+      schema: { type: 'string' },
+    },
+  },
+} as const;
+
+/** The next page continues after this page's last row, when the page is full. */
+function setSearchPageHeader(
+  res: Response,
+  results: { id: string }[],
+  limit: number,
+): void {
+  const last = results[results.length - 1];
+  if (last && results.length === limit) {
+    res.setHeader(SEARCH_CONTINUATION_HEADER, last.id);
+  }
+}
 
 @Controller('messages')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -216,63 +245,89 @@ export class MessagesController {
   }
 
   @Get('search/channel/:channelId')
-  @ApiOkResponse({ type: [MessageDto] })
+  @ApiOkResponse({ type: [MessageDto], ...SEARCH_PAGE_RESPONSE })
   @ApiQuery({ name: 'limit', required: false, type: 'integer' })
+  @ApiQuery({ name: 'continuationToken', required: false, type: 'string' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
     idKey: 'channelId',
     source: ResourceIdSource.PARAM,
   })
-  searchChannelMessages(
+  async searchChannelMessages(
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Query('q') query: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('continuationToken') continuationToken: string | undefined,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<MessageDto[]> {
     limit = Math.min(limit, 100);
-    return this.messagesService.searchChannelMessages(channelId, query, limit);
+    const results = await this.messagesService.searchChannelMessages(
+      channelId,
+      query,
+      limit,
+      continuationToken,
+    );
+    setSearchPageHeader(res, results, limit);
+    return results;
   }
 
   @Get('search/group/:groupId')
-  @ApiOkResponse({ type: [MessageDto] })
+  @ApiOkResponse({ type: [MessageDto], ...SEARCH_PAGE_RESPONSE })
   @ApiQuery({ name: 'limit', required: false, type: 'integer' })
+  @ApiQuery({ name: 'continuationToken', required: false, type: 'string' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.DM_GROUP,
     idKey: 'groupId',
     source: ResourceIdSource.PARAM,
   })
-  searchDirectMessages(
+  async searchDirectMessages(
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query('q') query: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('continuationToken') continuationToken: string | undefined,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<MessageDto[]> {
     limit = Math.min(limit, 100);
-    return this.messagesService.searchDirectMessages(groupId, query, limit);
+    const results = await this.messagesService.searchDirectMessages(
+      groupId,
+      query,
+      limit,
+      continuationToken,
+    );
+    setSearchPageHeader(res, results, limit);
+    return results;
   }
 
   @Get('search/community/:communityId')
-  @ApiOkResponse({ type: [CommunitySearchResultDto] })
+  @ApiOkResponse({ type: [CommunitySearchResultDto], ...SEARCH_PAGE_RESPONSE })
   @ApiQuery({ name: 'limit', required: false, type: 'integer' })
+  @ApiQuery({ name: 'continuationToken', required: false, type: 'string' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,
     idKey: 'communityId',
     source: ResourceIdSource.PARAM,
   })
-  searchCommunityMessages(
+  async searchCommunityMessages(
     @Param('communityId', ParseUUIDPipe) communityId: string,
     @Query('q') query: string,
     @Req() req: AuthenticatedRequest,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('continuationToken') continuationToken: string | undefined,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<CommunitySearchResultDto[]> {
     limit = Math.min(limit, 100);
-    return this.messagesService.searchCommunityMessages(
+    const results = await this.messagesService.searchCommunityMessages(
       communityId,
       req.user.id,
       query,
       limit,
+      continuationToken,
     );
+    setSearchPageHeader(res, results, limit);
+    return results;
   }
 
   @Post('reactions')
@@ -499,6 +554,7 @@ export class MessagesController {
         messageId: id,
         channelId: messageToDelete.channelId,
         directMessageGroupId: messageToDelete.directMessageGroupId,
+        removal: 'hard',
       });
 
       if (messageToDelete.parentMessageId) {

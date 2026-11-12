@@ -6,14 +6,22 @@ import { DatabaseService } from '@/database/database.service';
 import { CommunityService } from '@/community/community.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
+import { InviteService } from '@/invite/invite.service';
+import type { InstanceInviteWithRelations } from '@/invite/invite.service';
+import { MembershipResponseDto } from './dto/membership-response.dto';
 
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   createMockDatabase,
   UserFactory,
   CommunityFactory,
   MembershipFactory,
   RoleFactory,
+  InstanceInviteFactory,
   expectNoSensitiveUserFields,
 } from '@/test-utils';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
@@ -26,6 +34,7 @@ describe('MembershipService', () => {
   let communityRolesService: Mocked<CommunityRolesService>;
   let eventEmitter: Mocked<EventEmitter2>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
+  let inviteService: Mocked<InviteService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -40,6 +49,7 @@ describe('MembershipService', () => {
     communityRolesService = unitRef.get(CommunityRolesService);
     eventEmitter = unitRef.get(EventEmitter2);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
+    inviteService = unitRef.get(InviteService);
   });
 
   afterEach(() => {
@@ -338,6 +348,190 @@ describe('MembershipService', () => {
       );
       await expect(service.create(createDto)).rejects.toThrow(
         'User or community not found',
+      );
+    });
+  });
+
+  describe('acceptInvite', () => {
+    const inviteFor = (
+      ...communityIds: string[]
+    ): InstanceInviteWithRelations => {
+      const invite = InstanceInviteFactory.build({ code: 'INV' });
+      return {
+        ...invite,
+        defaultCommunities: communityIds.map((communityId) => ({
+          id: `${invite.id}-${communityId}`,
+          inviteId: invite.id,
+          communityId,
+        })),
+        usages: [],
+      };
+    };
+    const joinedOk = () => new MembershipResponseDto(MembershipFactory.build());
+
+    /** The community rows `acceptInvite` looks up. */
+    const communities = (...ids: string[]) =>
+      ids.map((id) => ({ id, name: `name-${id}` }));
+
+    beforeEach(() => {
+      mockDatabase.$transaction.mockImplementation((cb: any) => cb({}));
+      inviteService.validateInviteCode.mockReset();
+      inviteService.redeemForExistingUser.mockReset();
+      inviteService.redeemForExistingUser.mockResolvedValue('redeemed');
+    });
+
+    it('joins the communities the user is not in yet and counts one use', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1', 'c2'));
+      mockDatabase.community.findMany.mockResolvedValue(
+        communities('c1', 'c2'),
+      );
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { communityId: 'c2' },
+      ]);
+      const create = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue(joinedOk());
+
+      const result = await service.acceptInvite('INV', 'u1');
+
+      expect(result.joined).toEqual([{ id: 'c1', name: 'name-c1' }]);
+      expect(result.skipped).toEqual([
+        { id: 'c2', name: 'name-c2', reason: 'already_member' },
+      ]);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledWith({
+        userId: 'u1',
+        communityId: 'c1',
+      });
+      expect(inviteService.redeemForExistingUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not spend a use when the user is already in every community', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1'));
+      mockDatabase.community.findMany.mockResolvedValue(communities('c1'));
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { communityId: 'c1' },
+      ]);
+      const create = jest.spyOn(service, 'create');
+
+      const result = await service.acceptInvite('INV', 'u1');
+
+      expect(result.joined).toEqual([]);
+      expect(result.skipped).toEqual([
+        { id: 'c1', name: 'name-c1', reason: 'already_member' },
+      ]);
+      expect(create).not.toHaveBeenCalled();
+      expect(inviteService.redeemForExistingUser).not.toHaveBeenCalled();
+    });
+
+    it('skips a community that banned the user and still joins the others', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1', 'c2'));
+      mockDatabase.community.findMany.mockResolvedValue(
+        communities('c1', 'c2'),
+      );
+      mockDatabase.membership.findMany.mockResolvedValue([]);
+      const create = jest.spyOn(service, 'create');
+      create.mockImplementation(({ communityId }) => {
+        if (communityId === 'c2') {
+          throw new ForbiddenException('You are banned from this community');
+        }
+        return Promise.resolve(joinedOk());
+      });
+
+      const result = await service.acceptInvite('INV', 'u1');
+
+      expect(result.joined).toEqual([{ id: 'c1', name: 'name-c1' }]);
+      expect(result.skipped).toEqual([
+        { id: 'c2', name: 'name-c2', reason: 'banned' },
+      ]);
+      // The community that banned them failed; the request still succeeded.
+      expect(inviteService.redeemForExistingUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses and joins nothing when the invite expired between validation and redemption', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1'));
+      mockDatabase.community.findMany.mockResolvedValue(communities('c1'));
+      mockDatabase.membership.findMany.mockResolvedValue([]);
+      inviteService.redeemForExistingUser.mockResolvedValue('unusable');
+      const create = jest.spyOn(service, 'create');
+
+      await expect(service.acceptInvite('INV', 'u1')).rejects.toThrow(
+        'No invite found for the provided code.',
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('joins the rest without a second use when the invite is still usable', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1', 'c2'));
+      mockDatabase.community.findMany.mockResolvedValue(
+        communities('c1', 'c2'),
+      );
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { communityId: 'c1' },
+      ]);
+      inviteService.redeemForExistingUser.mockResolvedValue('already_used');
+      jest.spyOn(service, 'create').mockResolvedValue(joinedOk());
+
+      const result = await service.acceptInvite('INV', 'u1');
+
+      expect(result.joined).toEqual([{ id: 'c2', name: 'name-c2' }]);
+    });
+
+    it('refuses someone who used the invite before once it no longer validates', async () => {
+      // e.g. kicked from a community after joining through an invite that has
+      // since been disabled, expired or used up.
+      inviteService.validateInviteCode.mockResolvedValue(null);
+      const create = jest.spyOn(service, 'create');
+
+      await expect(service.acceptInvite('INV', 'u1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(create).not.toHaveBeenCalled();
+      expect(inviteService.redeemForExistingUser).not.toHaveBeenCalled();
+    });
+
+    it('lets exactly one of several concurrent users use a one-use invite', async () => {
+      // A stateful stand-in for the locked redemption: one use, first come.
+      let usesLeft = 1;
+      const spent = new Set<string>();
+      inviteService.redeemForExistingUser.mockImplementation(
+        async (_tx, _code, userId) => {
+          await Promise.resolve();
+          if (spent.has(userId)) return 'already_used';
+          if (usesLeft <= 0) return 'unusable';
+          usesLeft -= 1;
+          spent.add(userId);
+          return 'redeemed';
+        },
+      );
+      inviteService.validateInviteCode.mockResolvedValue(inviteFor('c1'));
+      mockDatabase.community.findMany.mockResolvedValue(communities('c1'));
+      mockDatabase.membership.findMany.mockResolvedValue([]);
+      const members = new Set<string>();
+      jest.spyOn(service, 'create').mockImplementation(({ userId }) => {
+        members.add(userId);
+        return Promise.resolve(joinedOk());
+      });
+
+      const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+      const results = await Promise.allSettled(
+        users.map((id) => service.acceptInvite('INV', id)),
+      );
+
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const refused = results.filter((r) => r.status === 'rejected');
+      expect(refused).toHaveLength(4);
+      for (const r of refused) {
+        expect(r.reason).toBeInstanceOf(NotFoundException);
+      }
+      expect(members.size).toBe(1);
+    });
+
+    it('answers 404 exactly like registration for an unusable code', async () => {
+      inviteService.validateInviteCode.mockResolvedValue(null);
+
+      await expect(service.acceptInvite('gone', 'u1')).rejects.toThrow(
+        'No invite found for the provided code.',
       );
     });
   });

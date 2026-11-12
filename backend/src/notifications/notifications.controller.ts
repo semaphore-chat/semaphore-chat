@@ -9,11 +9,13 @@ import {
   Query,
   UseGuards,
   Req,
+  Res,
   HttpCode,
   ForbiddenException,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
+import { Response } from 'express';
 import { NotificationsService } from './notifications.service';
 import { UpdateNotificationSettingsDto } from './dto/update-notification-settings.dto';
 import { UpdateChannelOverrideDto } from './dto/update-channel-override.dto';
@@ -66,6 +68,7 @@ export class NotificationsController {
       notifications: notifications.map(({ channel, ...notification }) => ({
         ...notification,
         communityId: channel?.communityId ?? null,
+        channelName: channel?.name ?? null,
       })),
       total,
       unreadCount,
@@ -173,14 +176,28 @@ export class NotificationsController {
   /**
    * Get channel notification override
    * GET /notifications/channels/:channelId/override
+   *
+   * Answers JSON null when the user has no override: an empty 200 body cannot
+   * be decoded by generated API clients.
    */
   @Get('channels/:channelId/override')
-  @ApiOkResponse({ type: ChannelNotificationOverrideDto })
+  @ApiOkResponse({
+    description: 'The override, or null when the user has none',
+    schema: {
+      nullable: true,
+      allOf: [{ $ref: getSchemaPath(ChannelNotificationOverrideDto) }],
+    },
+  })
   async getChannelOverride(
     @Req() req: AuthenticatedRequest,
     @Param('channelId', ParseUUIDPipe) channelId: string,
-  ): Promise<ChannelNotificationOverrideDto | null> {
-    return this.notificationsService.getChannelOverride(req.user.id, channelId);
+    @Res() res: Response,
+  ): Promise<void> {
+    const override = await this.notificationsService.getChannelOverride(
+      req.user.id,
+      channelId,
+    );
+    res.json(override);
   }
 
   /**

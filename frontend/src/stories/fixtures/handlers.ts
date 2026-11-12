@@ -426,7 +426,7 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
         updatedAt: '2025-01-01T00:00:00Z',
       } satisfies UserNotificationSettingsDto)),
     http.put('/api/notifications/settings', async ({ request }) => HttpResponse.json(await request.json())),
-    http.get('/api/notifications/channels/:channelId/override', () => HttpResponse.json(null, { status: 404 })),
+    http.get('/api/notifications/channels/:channelId/override', () => HttpResponse.json(null)),
     http.put('/api/notifications/channels/:channelId/override', async ({ request }) => HttpResponse.json(await request.json())),
     http.delete('/api/notifications/channels/:channelId/override', () => HttpResponse.json({ success: true })),
     http.post('/api/notifications/read-all', () => HttpResponse.json({ success: true })),

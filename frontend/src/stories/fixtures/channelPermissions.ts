@@ -22,6 +22,9 @@ export const ALL_CAPS: Caps = {
   video: true,
   share: true,
   managePermissions: true,
+  pin: true,
+  deleteAny: true,
+  seeRemoved: true,
   timedOutUntil: null,
   postingRoleNames: [],
 };
@@ -40,6 +43,9 @@ export function capsFromActions(actions: readonly string[]): Caps {
     video: has('VIDEO'),
     share: has('SCREEN_SHARE'),
     managePermissions: has('MANAGE_CHANNEL_PERMISSIONS'),
+    pin: has('PIN_MESSAGE'),
+    deleteAny: has('DELETE_ANY_MESSAGE'),
+    seeRemoved: has('DELETE_ANY_MESSAGE'),
     timedOutUntil: null,
     postingRoleNames: [],
   };

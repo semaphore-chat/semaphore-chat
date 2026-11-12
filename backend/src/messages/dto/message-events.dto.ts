@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MessageDto, ReactionDto } from './message-response.dto';
 
 /** Payloads of the message socket events, in the same document as REST. */
@@ -15,6 +15,9 @@ export class DeleteMessagePayloadDto {
   messageId: string;
   channelId: string | null;
   directMessageGroupId: string | null;
+  /** A moderator removal that keeps the row, or a hard delete. */
+  @ApiPropertyOptional({ enum: ['soft', 'hard'], enumName: 'MessageRemoval' })
+  removal?: 'soft' | 'hard';
 }
 
 export class ReactionAddedPayloadDto {

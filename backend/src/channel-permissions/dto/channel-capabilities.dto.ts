@@ -26,6 +26,12 @@ export class ChannelCapabilitiesDto {
   share: boolean;
   /** Edit this channel's permission overwrites. */
   managePermissions: boolean;
+  /** Pin messages here. */
+  pin: boolean;
+  /** Delete other members' messages here. */
+  deleteAny: boolean;
+  /** Keep seeing the text of messages removed by a moderator here. */
+  seeRemoved: boolean;
   /** End of the user's community timeout, if one is active. */
   @ApiProperty({ type: Date, nullable: true })
   timedOutUntil: Date | null;
