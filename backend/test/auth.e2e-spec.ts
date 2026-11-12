@@ -14,6 +14,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '@/database/database.service';
 import { RefreshThrottlerGuard } from '@/auth/refresh-throttler.guard';
+import { InstanceService } from '@/instance/instance.service';
+import { RegistrationMode } from '@prisma/client';
 
 /**
  * Full authentication lifecycle against real Postgres + Redis:
@@ -69,6 +71,65 @@ describe('Auth flow (e2e)', () => {
       // UserEntity @Exclude() fields must not survive serialization
       expect(res.body).not.toHaveProperty('hashedPassword');
       expect(res.body).not.toHaveProperty('email');
+    });
+  });
+
+  describe('registration mode', () => {
+    const setMode = (registrationMode: RegistrationMode) =>
+      app.get(InstanceService).updateSettings({ registrationMode });
+
+    afterEach(async () => {
+      await setMode(RegistrationMode.INVITE_ONLY);
+    });
+
+    it('CLOSED refuses sign-up, with or without a code', async () => {
+      await setMode(RegistrationMode.CLOSED);
+
+      await request(app.getHttpServer())
+        .post('/api/users')
+        .send({
+          username: `e2e-closed-${randomUUID().slice(0, 8)}`,
+          password: 'Password123!',
+        })
+        .expect(403);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/users')
+        .send({
+          code: E2E_INVITE_CODE,
+          username: `e2e-closed-${randomUUID().slice(0, 8)}`,
+          password: 'Password123!',
+        })
+        .expect(403);
+      const body = res.body as { message: string };
+      expect(body.message).toBe('Registration is closed on this server');
+    });
+
+    it('INVITE_ONLY refuses sign-up without a code', async () => {
+      await setMode(RegistrationMode.INVITE_ONLY);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/users')
+        .send({
+          username: `e2e-invite-${randomUUID().slice(0, 8)}`,
+          password: 'Password123!',
+        })
+        .expect(404);
+      const body = res.body as { message: string };
+      expect(body.message).toBe('No invite found for the provided code.');
+    });
+
+    it('OPEN allows sign-up without a code', async () => {
+      await setMode(RegistrationMode.OPEN);
+      const username = `e2e-open-${randomUUID().slice(0, 8)}`;
+
+      const res = await request(app.getHttpServer())
+        .post('/api/users')
+        .send({ username, password: 'Password123!' })
+        .expect(201);
+
+      expect(res.body).toMatchObject({ username, role: 'USER' });
+      expect(res.body).not.toHaveProperty('hashedPassword');
     });
   });
 

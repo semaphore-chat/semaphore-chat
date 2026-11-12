@@ -6,6 +6,7 @@ import { InviteModule } from '../invite/invite.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { RolesModule } from '../roles/roles.module';
 import { TokenRevocationModule } from '@/auth/token-revocation.module';
+import { InstanceModule } from '@/instance/instance.module';
 
 @Module({
   controllers: [UserController],
@@ -17,6 +18,7 @@ import { TokenRevocationModule } from '@/auth/token-revocation.module';
     ChannelsModule,
     RolesModule,
     TokenRevocationModule,
+    InstanceModule,
   ],
 })
 export class UserModule {}

@@ -2,18 +2,26 @@ import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { UserService } from './user.service';
 import { DatabaseService } from '@/database/database.service';
-import { InviteService } from '@/invite/invite.service';
+import {
+  InviteService,
+  type InstanceInviteWithRelations,
+} from '@/invite/invite.service';
 import { ChannelsService } from '@/channels/channels.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
 import { SessionRevocationService } from '@/auth/session-revocation.service';
 import { InstanceRolesService } from '@/roles/instance-roles.service';
+import { InstanceService } from '@/instance/instance.service';
 import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { InstanceRole } from '@prisma/client';
+import {
+  InstanceRole,
+  type InstanceSettings,
+  RegistrationMode,
+} from '@prisma/client';
 import { PermissionsService } from '@/roles/permissions.service';
 import * as bcrypt from 'bcrypt';
 import { instanceToPlain } from 'class-transformer';
@@ -26,6 +34,39 @@ import {
 
 jest.mock('bcrypt');
 
+function instanceSettings(
+  registrationMode: RegistrationMode = RegistrationMode.INVITE_ONLY,
+): InstanceSettings {
+  return {
+    id: 'instance-settings-1',
+    name: 'Test Instance',
+    description: null,
+    registrationMode,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    defaultStorageQuotaBytes: BigInt(53687091200),
+    maxFileSizeBytes: BigInt(524288000),
+    vapidPublicKey: null,
+    vapidPrivateKey: null,
+    vapidSubject: null,
+  };
+}
+
+function inviteWithCommunities(
+  communityIds: string[] = [],
+): InstanceInviteWithRelations {
+  const invite = InstanceInviteFactory.build();
+  return {
+    ...invite,
+    defaultCommunities: communityIds.map((communityId, index) => ({
+      id: `default-community-${index}`,
+      inviteId: invite.id,
+      communityId,
+    })),
+    usages: [],
+  };
+}
+
 describe('UserService', () => {
   let service: UserService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
@@ -35,6 +76,7 @@ describe('UserService', () => {
   let permissionsCacheService: Mocked<PermissionsCacheService>;
   let sessionRevocationService: Mocked<SessionRevocationService>;
   let instanceRolesService: Mocked<InstanceRolesService>;
+  let instanceService: Mocked<InstanceService>;
   let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
@@ -56,7 +98,11 @@ describe('UserService', () => {
     permissionsCacheService = unitRef.get(PermissionsCacheService);
     sessionRevocationService = unitRef.get(SessionRevocationService);
     instanceRolesService = unitRef.get(InstanceRolesService);
+    instanceService = unitRef.get(InstanceService);
     permissionsService = unitRef.get(PermissionsService);
+
+    // Existing tests exercise the historical invite-only flow.
+    instanceService.getSettings.mockResolvedValue(instanceSettings());
 
     // Mock bcrypt
     (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
@@ -575,6 +621,167 @@ describe('UserService', () => {
 
       expect(permissionsCacheService.executeBumps).not.toHaveBeenCalled();
       expect(permissionsCacheService.bumpUserEpoch).not.toHaveBeenCalled();
+    });
+
+    describe('registration mode', () => {
+      describe('CLOSED', () => {
+        beforeEach(() => {
+          instanceService.getSettings.mockResolvedValue(
+            instanceSettings(RegistrationMode.CLOSED),
+          );
+        });
+
+        it('refuses sign-up without a code', async () => {
+          await expect(
+            service.createUser(undefined, 'user', 'password'),
+          ).rejects.toThrow(ForbiddenException);
+          await expect(
+            service.createUser(undefined, 'user', 'password'),
+          ).rejects.toThrow('Registration is closed on this server');
+          expect(mockDatabase.user.create).not.toHaveBeenCalled();
+        });
+
+        it('refuses sign-up even with a valid code and does not redeem it', async () => {
+          inviteService.validateInviteCode.mockResolvedValue(
+            inviteWithCommunities(),
+          );
+
+          await expect(
+            service.createUser('invite-code', 'user', 'password'),
+          ).rejects.toThrow('Registration is closed on this server');
+
+          expect(inviteService.validateInviteCode).not.toHaveBeenCalled();
+          expect(inviteService.redeemInviteWithTx).not.toHaveBeenCalled();
+          expect(mockDatabase.user.create).not.toHaveBeenCalled();
+        });
+      });
+
+      describe('INVITE_ONLY', () => {
+        beforeEach(() => {
+          instanceService.getSettings.mockResolvedValue(
+            instanceSettings(RegistrationMode.INVITE_ONLY),
+          );
+        });
+
+        it('refuses sign-up without a code', async () => {
+          await expect(
+            service.createUser(undefined, 'user', 'password'),
+          ).rejects.toThrow(NotFoundException);
+          await expect(
+            service.createUser(undefined, 'user', 'password'),
+          ).rejects.toThrow('No invite found for the provided code.');
+          expect(mockDatabase.user.create).not.toHaveBeenCalled();
+        });
+
+        it('creates the user and redeems a valid code', async () => {
+          const invite = inviteWithCommunities();
+          const newUser = UserFactory.build();
+          mockDatabase.user.findFirst.mockResolvedValue(null);
+          mockDatabase.user.count.mockResolvedValue(2);
+          inviteService.validateInviteCode.mockResolvedValue(invite);
+          inviteService.redeemInviteWithTx.mockResolvedValue(invite);
+          mockDatabase.user.create.mockResolvedValue(newUser);
+
+          const result = await service.createUser(
+            'invite-code',
+            'user',
+            'password',
+          );
+
+          expect(result).toEqual(newUser);
+          expect(inviteService.redeemInviteWithTx).toHaveBeenCalledWith(
+            expect.anything(),
+            invite.code,
+            newUser.id,
+          );
+        });
+
+        it('refuses an invalid code', async () => {
+          inviteService.validateInviteCode.mockResolvedValue(null);
+
+          await expect(
+            service.createUser('bad-code', 'user', 'password'),
+          ).rejects.toThrow('No invite found for the provided code.');
+          expect(mockDatabase.user.create).not.toHaveBeenCalled();
+        });
+      });
+
+      describe('OPEN', () => {
+        beforeEach(() => {
+          instanceService.getSettings.mockResolvedValue(
+            instanceSettings(RegistrationMode.OPEN),
+          );
+        });
+
+        it('never makes an owner of a sign-up without a code, even on an empty instance', async () => {
+          const newUser = UserFactory.build();
+          mockDatabase.user.findFirst.mockResolvedValue(null);
+          mockDatabase.user.count.mockResolvedValue(0);
+          mockDatabase.user.create.mockResolvedValue(newUser);
+
+          await service.createUser(undefined, 'user', 'password');
+
+          expect(mockDatabase.user.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+              data: expect.objectContaining({
+                role: InstanceRole.USER,
+                verified: false,
+              }),
+            }),
+          );
+        });
+
+        it('creates the user without a code and joins no communities', async () => {
+          const newUser = UserFactory.build();
+          mockDatabase.user.findFirst.mockResolvedValue(null);
+          mockDatabase.user.count.mockResolvedValue(3);
+          mockDatabase.user.create.mockResolvedValue(newUser);
+
+          const result = await service.createUser(
+            undefined,
+            'user',
+            'password',
+          );
+
+          expect(result).toEqual(newUser);
+          expect(inviteService.validateInviteCode).not.toHaveBeenCalled();
+          expect(inviteService.redeemInviteWithTx).not.toHaveBeenCalled();
+          expect(mockDatabase.membership.createMany).not.toHaveBeenCalled();
+        });
+
+        it('validates and redeems a given code, joining its communities', async () => {
+          const invite = inviteWithCommunities(['community-1']);
+          const newUser = UserFactory.build();
+          mockDatabase.user.findFirst.mockResolvedValue(null);
+          mockDatabase.user.count.mockResolvedValue(3);
+          inviteService.validateInviteCode.mockResolvedValue(invite);
+          inviteService.redeemInviteWithTx.mockResolvedValue(invite);
+          mockDatabase.user.create.mockResolvedValue(newUser);
+
+          await service.createUser('invite-code', 'user', 'password');
+
+          expect(inviteService.validateInviteCode).toHaveBeenCalledWith(
+            'invite-code',
+          );
+          expect(inviteService.redeemInviteWithTx).toHaveBeenCalledWith(
+            expect.anything(),
+            invite.code,
+            newUser.id,
+          );
+          expect(mockDatabase.membership.createMany).toHaveBeenCalledWith({
+            data: [{ userId: newUser.id, communityId: 'community-1' }],
+          });
+        });
+
+        it('still refuses an invalid code', async () => {
+          inviteService.validateInviteCode.mockResolvedValue(null);
+
+          await expect(
+            service.createUser('bad-code', 'user', 'password'),
+          ).rejects.toThrow('No invite found for the provided code.');
+          expect(mockDatabase.user.create).not.toHaveBeenCalled();
+        });
+      });
     });
   });
 

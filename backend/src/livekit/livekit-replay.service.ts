@@ -46,6 +46,7 @@ import {
 } from '@/common/events/voice-presence.events';
 import { getErrorMessage } from '@/common/utils/error.utils';
 import { ThumbnailService } from '@/file/thumbnail.service';
+import { MediaDimensionsService } from '@/file/media-dimensions.service';
 import { FfmpegService } from './ffmpeg.service';
 import { ReplaySegmentsService } from './replay-segments.service';
 import {
@@ -114,6 +115,7 @@ export class LivekitReplayService
     private readonly thumbnailService: ThumbnailService,
     private readonly permissionsService: PermissionsService,
     private readonly storageQuotaService: StorageQuotaService,
+    private readonly mediaDimensionsService: MediaDimensionsService,
   ) {
     // Load configuration
     // segmentsPath is now loaded from StorageService which handles prefix resolution
@@ -1320,12 +1322,20 @@ export class LivekitReplayService
 
     // 7. Create File record with REPLAY_CLIP resourceType
     // resourceId stays as userId for clip library ownership
+    // Best-effort, like uploads: a failed probe stores null and never fails
+    // the capture.
+    const dimensions = await this.mediaDimensionsService.read(
+      clipPath,
+      'video/mp4',
+    );
     const file = await this.databaseService.file.create({
       data: {
         filename: clipFilename,
         mimeType: 'video/mp4',
         fileType: 'VIDEO',
         size: stats.size,
+        width: dimensions?.width ?? null,
+        height: dimensions?.height ?? null,
         checksum,
         uploadedById: userId,
         storageType: 'LOCAL',
