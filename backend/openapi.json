@@ -16427,6 +16427,10 @@
             "type": "integer",
             "format": "int64"
           },
+          "hasThumbnail": {
+            "type": "boolean",
+            "description": "Whether a thumbnail was generated for this file. Clients fetch it from\n`GET /file/:id/thumbnail`."
+          },
           "width": {
             "type": "integer",
             "nullable": true,
@@ -16499,6 +16503,7 @@
         "required": [
           "fileType",
           "size",
+          "hasThumbnail",
           "resourceType",
           "storageType",
           "id",

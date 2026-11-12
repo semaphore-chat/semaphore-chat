@@ -9,6 +9,7 @@ import {
   channelPath,
   mediaChannel,
   multiImageChannel,
+  thumbnailChannel,
   filesChannel,
   gifsChannel,
   useDriver,
@@ -42,6 +43,9 @@ export const TallWideTiny = channelStory(mediaChannel);
 
 /** Five mixed-aspect images in one message, then image + PDF + video in one message. */
 export const MultiImage = channelStory(multiImageChannel);
+
+/** Image with a server thumbnail, image without one (original), and a 16×16 image below the 480 px bound. */
+export const ImageThumbnails = channelStory(thumbnailChannel);
 
 /** Video (with thumbnail), a 24.9 MB zip with a 90-char filename, audio, and a message whose 3 attachments are still uploading (pendingAttachments=3). */
 export const FilesAndPendingUploads = channelStory(filesChannel);

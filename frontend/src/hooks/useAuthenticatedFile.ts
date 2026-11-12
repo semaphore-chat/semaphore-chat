@@ -18,7 +18,11 @@ const requestKeyOf = (
   fileId: string | null | undefined,
   fetchBlob: boolean,
   fetchMetadata: boolean,
-): string | null => (fileId ? `${fileId}|${fetchBlob ? 1 : 0}|${fetchMetadata ? 1 : 0}` : null);
+  fetchThumbnail: boolean,
+): string | null =>
+  fileId
+    ? `${fileId}|${fetchBlob ? 1 : 0}|${fetchMetadata ? 1 : 0}|${fetchThumbnail ? 1 : 0}`
+    : null;
 
 /**
  * Hook to fetch file metadata and/or blob URL with authentication
@@ -26,6 +30,12 @@ const requestKeyOf = (
  * @param fileId - The file ID to fetch
  * @param options - Optional configuration
  * @returns Object with blobUrl, metadata, loading states, and errors
+ *
+ * With `fetchThumbnail`, `blobUrl` is the thumbnail instead of the
+ * original: images show a bounded preview while the full file is fetched
+ * only when it is actually opened (the lightbox). If the thumbnail request
+ * fails, the hook falls back to the original, so a missing or broken
+ * thumbnail never leaves a blank attachment.
  *
  * The starting state for a file id (loading, or an already-cached blob) is
  * derived during render, not set from the effect: the effect only ever
@@ -41,19 +51,25 @@ export const useAuthenticatedFile = (
   options?: {
     fetchBlob?: boolean; // Default: true
     fetchMetadata?: boolean; // Default: false
+    fetchThumbnail?: boolean; // Default: false; supersedes fetchBlob, with original fallback
   }
 ) => {
-  const { fetchBlob = true, fetchMetadata = false } = options || {};
+  const {
+    fetchBlob = true,
+    fetchMetadata = false,
+    fetchThumbnail = false,
+  } = options || {};
   const fileCache = useFileCache();
-  const key = requestKeyOf(fileId, fetchBlob, fetchMetadata);
+  const key = requestKeyOf(fileId, fetchBlob, fetchMetadata, fetchThumbnail);
 
   const startState = (): FileState => {
-    const cachedUrl = fileId && fetchBlob ? fileCache.getBlob(fileId) : null;
+    const cachedUrl =
+      fileId && fetchBlob && !fetchThumbnail ? fileCache.getBlob(fileId) : null;
     return {
       key,
       blobUrl: cachedUrl,
       metadata: null,
-      isLoadingBlob: !!fileId && fetchBlob && !cachedUrl,
+      isLoadingBlob: !!fileId && (fetchBlob || fetchThumbnail) && !cachedUrl,
       isLoadingMetadata: !!fileId && fetchMetadata,
       error: null,
     };
@@ -86,8 +102,14 @@ export const useAuthenticatedFile = (
 
     const fetchData = async () => {
       try {
-        // Fetch blob using centralized fetchBlob (handles caching and deduplication)
-        if (fetchBlob) {
+        if (fetchThumbnail) {
+          const url = await fileCache.fetchThumbnail(fileId).catch(
+            async () =>
+              fileCache.getBlob(fileId) ?? (await fileCache.fetchBlob(fileId))
+          );
+          update({ blobUrl: url, isLoadingBlob: false });
+        } else if (fetchBlob) {
+          // Fetch blob using centralized fetchBlob (handles caching and deduplication)
           const url = fileCache.getBlob(fileId) ?? (await fileCache.fetchBlob(fileId));
           update({ blobUrl: url, isLoadingBlob: false });
         }
@@ -123,7 +145,7 @@ export const useAuthenticatedFile = (
     return () => {
       isCancelled = true;
     };
-  }, [key, fileId, fetchBlob, fetchMetadata, fileCache]);
+  }, [key, fileId, fetchBlob, fetchMetadata, fetchThumbnail, fileCache]);
 
   return {
     blobUrl: state.blobUrl,

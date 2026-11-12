@@ -34,6 +34,32 @@ const StyledImage = styled("img")({
   },
 });
 
+/** VideoPreview has always capped its display at 400px tall; images match it. */
+const PREVIEW_MAX_HEIGHT = 400;
+
+/**
+ * The box an image occupies, from the dimensions the server recorded. It is
+ * capped at the original's own width (never enlarged), at the container
+ * width, and at the height that would make it 400px tall, so the space is
+ * reserved before the thumbnail arrives and the layout does not jump.
+ * Null when the dimensions are unknown (older files), which keeps the
+ * intrinsic-size behaviour.
+ */
+function previewBoxSx(
+  width?: number | null,
+  height?: number | null,
+): { width: string; aspectRatio: string } | undefined {
+  if (!width || !height || width <= 0 || height <= 0) return undefined;
+  const widthAtMaxHeight = Math.max(
+    1,
+    Math.round((PREVIEW_MAX_HEIGHT * width) / height),
+  );
+  return {
+    width: `min(100%, ${width}px, ${widthAtMaxHeight}px)`,
+    aspectRatio: `${width} / ${height}`,
+  };
+}
+
 interface AttachmentPreviewProps {
   metadata: import("../../types/message.type").FileMetadata;
   alt?: string;
@@ -84,7 +110,7 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   );
 };
 
-/** Internal image preview that fetches the blob */
+/** Internal image preview that fetches a thumbnail, or the original if none exists */
 const ImagePreview: React.FC<AttachmentPreviewProps> = ({
   metadata,
   alt = "Attachment",
@@ -92,9 +118,11 @@ const ImagePreview: React.FC<AttachmentPreviewProps> = ({
   onImageClick,
 }) => {
   const { blobUrl, isLoading, error } = useAuthenticatedFile(metadata.id, {
-    fetchBlob: true,
+    fetchBlob: !metadata.hasThumbnail,
+    fetchThumbnail: !!metadata.hasThumbnail,
     fetchMetadata: false,
   });
+  const boxSx = previewBoxSx(metadata.width, metadata.height);
 
   if (error) {
     return (
@@ -109,7 +137,7 @@ const ImagePreview: React.FC<AttachmentPreviewProps> = ({
   if (isLoading || !blobUrl) {
     return (
       <AttachmentCard>
-        <LoadingContainer>
+        <LoadingContainer sx={boxSx}>
           <CircularProgress size={32} />
         </LoadingContainer>
       </AttachmentCard>
@@ -121,6 +149,9 @@ const ImagePreview: React.FC<AttachmentPreviewProps> = ({
       <StyledImage
         src={blobUrl}
         alt={alt}
+        width={metadata.width ?? undefined}
+        height={metadata.height ?? undefined}
+        sx={boxSx}
         onClick={onImageClick || onClick}
       />
     </AttachmentCard>

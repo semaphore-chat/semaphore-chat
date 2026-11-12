@@ -19,6 +19,7 @@ import * as crypto from 'crypto';
 import { Readable } from 'stream';
 import type { IStorageProvider } from '@/storage/interfaces/storage-provider.interface';
 import { FileUploadResponseDto } from './dto/file-upload-response.dto';
+import { FileFactory } from '@/test-utils';
 
 jest.mock('./validators/resource-type-file.validator');
 
@@ -156,7 +157,8 @@ describe('FileUploadService', () => {
 
       const result = await service.uploadFile(mockFile, createDto, mockUser);
 
-      expect(result).toEqual(createdFile);
+      expect(result).toMatchObject(createdFile);
+      expect(result.hasThumbnail).toBe(false);
       expect(databaseService.file.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           resourceType: ResourceType.MESSAGE_ATTACHMENT,
@@ -282,15 +284,86 @@ describe('FileUploadService', () => {
         expect(result.thumbnailPath).toBeNull();
       });
 
-      it('should not generate thumbnails for non-video files', async () => {
-        databaseService.file.create.mockResolvedValue({
-          id: 'file-img-1',
-          fileType: FileType.IMAGE,
-        } as any);
+      it('should generate an image thumbnail instead of a video thumbnail', async () => {
+        databaseService.file.create.mockResolvedValue(
+          FileFactory.buildImage({ id: 'file-img-1' }),
+        );
+        thumbnailService.generateImageThumbnail.mockResolvedValue(
+          'uploads/thumbnails/file-img-1.jpg',
+        );
+        databaseService.file.update.mockResolvedValue(
+          FileFactory.buildImage({
+            id: 'file-img-1',
+            thumbnailPath: 'uploads/thumbnails/file-img-1.jpg',
+          }),
+        );
 
-        await service.uploadFile(mockFile, createDto, mockUser);
+        const result = await service.uploadFile(mockFile, createDto, mockUser);
 
         expect(thumbnailService.generateVideoThumbnail).not.toHaveBeenCalled();
+        expect(thumbnailService.generateImageThumbnail).toHaveBeenCalledWith(
+          '/tmp/test-123.png',
+          'file-img-1',
+          StorageType.LOCAL,
+          'image/png',
+          null,
+        );
+        expect(result.hasThumbnail).toBe(true);
+      });
+
+      it('still succeeds when image thumbnail generation returns null (small or SVG)', async () => {
+        databaseService.file.create.mockResolvedValue(
+          FileFactory.buildImage({ id: 'file-img-2' }),
+        );
+        thumbnailService.generateImageThumbnail.mockResolvedValue(null);
+
+        const result = await service.uploadFile(mockFile, createDto, mockUser);
+
+        expect(result.id).toBe('file-img-2');
+        expect(result.hasThumbnail).toBe(false);
+        expect(databaseService.file.update).not.toHaveBeenCalled();
+      });
+
+      it('still succeeds when image thumbnail generation throws', async () => {
+        databaseService.file.create.mockResolvedValue(
+          FileFactory.buildImage({ id: 'file-img-3' }),
+        );
+        thumbnailService.generateImageThumbnail.mockRejectedValue(
+          new Error('FFmpeg crashed'),
+        );
+
+        const result = await service.uploadFile(mockFile, createDto, mockUser);
+
+        expect(result.id).toBe('file-img-3');
+        expect(result.hasThumbnail).toBe(false);
+      });
+
+      it('should not generate thumbnails for audio, document or other files', async () => {
+        for (const [mimetype, fileType] of [
+          ['audio/mpeg', FileType.AUDIO],
+          ['application/pdf', FileType.DOCUMENT],
+          ['application/zip', FileType.OTHER],
+        ] as const) {
+          databaseService.file.create.mockResolvedValue(
+            FileFactory.build({
+              id: `file-${fileType}`,
+              fileType,
+            }),
+          );
+
+          await service.uploadFile(
+            { ...mockFile, mimetype },
+            createDto,
+            mockUser,
+          );
+
+          expect(
+            thumbnailService.generateVideoThumbnail,
+          ).not.toHaveBeenCalled();
+          expect(
+            thumbnailService.generateImageThumbnail,
+          ).not.toHaveBeenCalled();
+        }
       });
     });
 
@@ -585,15 +658,24 @@ describe('FileUploadService', () => {
       });
     });
 
-    it('should not generate thumbnail for image uploads', async () => {
+    it('should generate an image thumbnail for image uploads', async () => {
       const createDto = {
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
         resourceId: 'msg-123',
       };
 
-      databaseService.file.create.mockResolvedValue({
-        id: 'file-img-1',
-      } as any);
+      databaseService.file.create.mockResolvedValue(
+        FileFactory.buildImage({ id: 'file-img-1' }),
+      );
+      thumbnailService.generateImageThumbnail.mockResolvedValue(
+        '/uploads/thumbnails/file-img-1.jpg',
+      );
+      databaseService.file.update.mockResolvedValue(
+        FileFactory.buildImage({
+          id: 'file-img-1',
+          thumbnailPath: '/uploads/thumbnails/file-img-1.jpg',
+        }),
+      );
 
       const {
         ResourceTypeFileValidator,
@@ -604,7 +686,13 @@ describe('FileUploadService', () => {
 
       await service.uploadFile(mockFile, createDto, mockUser);
 
-      expect(thumbnailService.generateVideoThumbnail).not.toHaveBeenCalled();
+      expect(thumbnailService.generateImageThumbnail).toHaveBeenCalledWith(
+        '/tmp/test-123.png',
+        'file-img-1',
+        StorageType.LOCAL,
+        'image/png',
+        null,
+      );
     });
 
     it('should not update file record when thumbnail generation fails', async () => {
@@ -900,6 +988,41 @@ describe('FileUploadService', () => {
         '/tmp/clip-123.mp4',
       );
     });
+
+    it('passes the S3 storageType through to image thumbnail generation', async () => {
+      const imageFile = {
+        ...mockFile,
+        originalname: 'photo.png',
+        mimetype: 'image/png',
+        filename: 'photo-123.png',
+        path: '/tmp/photo-123.png',
+      };
+      databaseService.file.create.mockResolvedValue(
+        FileFactory.buildImage({ id: 'file-image-s3' }),
+      );
+      thumbnailService.generateImageThumbnail.mockResolvedValue(
+        'thumbnails/file-image-s3.jpg',
+      );
+      databaseService.file.update.mockResolvedValue(
+        FileFactory.buildImage({
+          id: 'file-image-s3',
+          thumbnailPath: 'thumbnails/file-image-s3.jpg',
+        }),
+      );
+
+      await service.uploadFile(imageFile, createDto, mockUser);
+
+      expect(thumbnailService.generateImageThumbnail).toHaveBeenCalledWith(
+        '/tmp/photo-123.png',
+        'file-image-s3',
+        StorageType.S3,
+        'image/png',
+        null,
+      );
+      expect(storageService.deleteFile).toHaveBeenCalledWith(
+        '/tmp/photo-123.png',
+      );
+    });
   });
 
   describe('filename sanitization', () => {
@@ -1004,7 +1127,8 @@ describe('FileUploadService', () => {
 
       const result = await service.remove(fileId, userId);
 
-      expect(result).toEqual(deletedFile);
+      expect(result).toMatchObject(deletedFile);
+      expect(result.hasThumbnail).toBe(false);
       expect(databaseService.file.update).toHaveBeenCalledWith({
         where: { id: fileId },
         data: { deletedAt: expect.any(Date) },

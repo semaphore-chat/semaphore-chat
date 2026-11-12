@@ -16,6 +16,12 @@ export class FileUploadResponseDto {
   @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
   /**
+   * Whether a thumbnail was generated for this file. Clients fetch it from
+   * `GET /file/:id/thumbnail`.
+   */
+  @ApiProperty()
+  hasThumbnail: boolean;
+  /**
    * Display width in pixels, for images and videos; null when unknown.
    */
   @ApiPropertyOptional({ type: 'integer', nullable: true })
@@ -45,5 +51,7 @@ export class FileUploadResponseDto {
 
   constructor(partial: Partial<FileUploadResponseDto>) {
     Object.assign(this, partial);
+    // `thumbnailPath` is never sent; clients only learn whether one exists.
+    this.hasThumbnail = partial.hasThumbnail ?? !!partial.thumbnailPath;
   }
 }
