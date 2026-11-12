@@ -15,14 +15,14 @@
 use super::AppRoot;
 use super::roles::member_user;
 use gpui_kit::*;
-use semaphore_core::{CoreError, CoreEvent};
-use std::future::Future;
 use semaphore_core::model::{RemovalCause, UserView, ViewKey};
+use semaphore_core::{CoreError, CoreEvent};
 use semaphore_ui::moderation::{
     ModerationDialog, ModerationDialogEvent, ModerationMenu, ModerationMenuEvent, ModerationTab,
     ModerationTabEvent, RemovedNotice, RemovedNoticeEvent,
 };
 use std::collections::{HashMap, VecDeque};
+use std::future::Future;
 use std::time::Duration;
 
 /// A timeout the server still reports at the time it was due to end is tried again this late.
@@ -156,7 +156,12 @@ pub(crate) fn feeds(view: &ViewKey, open: Open) -> Vec<Feed> {
             }
             if tab(community_id) {
                 // What the caps let the tab read changes too.
-                out.extend([Feed::TabCaps, Feed::TabBans, Feed::TabTimeouts, Feed::TabLog]);
+                out.extend([
+                    Feed::TabCaps,
+                    Feed::TabBans,
+                    Feed::TabTimeouts,
+                    Feed::TabLog,
+                ]);
             }
         }
         ViewKey::Channels { community_id } => out.push(Feed::Timer(community_id.clone())),
@@ -222,13 +227,22 @@ impl AppRoot {
                 cause,
             } => {
                 let m = &mut self.moderation;
-                if m.menu.as_ref().is_some_and(|x| x.community_id == *community_id) {
+                if m.menu
+                    .as_ref()
+                    .is_some_and(|x| x.community_id == *community_id)
+                {
                     m.menu = None;
                 }
-                if m.dialog.as_ref().is_some_and(|x| x.community_id == *community_id) {
+                if m.dialog
+                    .as_ref()
+                    .is_some_and(|x| x.community_id == *community_id)
+                {
                     m.dialog = None;
                 }
-                if m.tab.as_ref().is_some_and(|x| x.community_id == *community_id) {
+                if m.tab
+                    .as_ref()
+                    .is_some_and(|x| x.community_id == *community_id)
+                {
                     m.tab = None;
                 }
                 m.timers.remove(community_id);
@@ -355,8 +369,7 @@ impl AppRoot {
             return;
         };
         let until = until.expect("a delay has an end");
-        if m
-            .timers
+        if m.timers
             .get(&community_id)
             .is_some_and(|timer| timer.until_ms == until)
         {
@@ -365,7 +378,8 @@ impl AppRoot {
         let id = community_id.clone();
         let task = cx.spawn(async move |this, cx| {
             cx.background_executor().timer(delay).await;
-            this.update(cx, |this, cx| this.timeout_due(id, until, cx)).ok();
+            this.update(cx, |this, cx| this.timeout_due(id, until, cx))
+                .ok();
         });
         m.timers.insert(
             community_id,
@@ -434,7 +448,12 @@ impl AppRoot {
             view: view.clone(),
             _events: events,
         });
-        for feed in [Feed::TabCaps, Feed::TabBans, Feed::TabTimeouts, Feed::TabLog] {
+        for feed in [
+            Feed::TabCaps,
+            Feed::TabBans,
+            Feed::TabTimeouts,
+            Feed::TabLog,
+        ] {
             self.moderation_feed(feed, cx);
         }
         Some(view.into())
@@ -538,14 +557,9 @@ impl AppRoot {
             ModerationMenuEvent::Timeout { user } => {
                 self.open_moderation_dialog(c, target(&user), user, Kind::Timeout, window, cx)
             }
-            ModerationMenuEvent::RemoveTimeout { user } => self.open_moderation_dialog(
-                c,
-                target(&user),
-                user,
-                Kind::RemoveTimeout,
-                window,
-                cx,
-            ),
+            ModerationMenuEvent::RemoveTimeout { user } => {
+                self.open_moderation_dialog(c, target(&user), user, Kind::RemoveTimeout, window, cx)
+            }
             ModerationMenuEvent::Ban { user } => {
                 self.open_moderation_dialog(c, target(&user), user, Kind::Ban, window, cx)
             }
@@ -647,21 +661,23 @@ impl AppRoot {
         // success removes the entry, and when the start and the end reach the app in one batch
         // the dialog never sees it running, so the answer itself closes it too.
         let sent = dialog.downgrade();
-        services.exec.run(window, cx, work, move |this, result, _, cx| {
-            let ours = this
-                .moderation
-                .dialog
-                .as_ref()
-                .is_some_and(|open| open.view.downgrade() == sent);
-            match result {
-                Ok(()) if ours => {
-                    this.moderation.dialog = None;
-                    cx.notify();
+        services
+            .exec
+            .run(window, cx, work, move |this, result, _, cx| {
+                let ours = this
+                    .moderation
+                    .dialog
+                    .as_ref()
+                    .is_some_and(|open| open.view.downgrade() == sent);
+                match result {
+                    Ok(()) if ours => {
+                        this.moderation.dialog = None;
+                        cx.notify();
+                    }
+                    Ok(()) => {}
+                    Err(error) => log::warn!("moderating: {error}"),
                 }
-                Ok(()) => {}
-                Err(error) => log::warn!("moderating: {error}"),
-            }
-        });
+            });
     }
 
     /// Whether a moderation dialog is open, and of which kind, for the rig.
@@ -693,7 +709,10 @@ enum Kind {
     Ban,
     Kick,
     Timeout,
-    #[expect(dead_code, reason = "W5-app: the Moderation tab opens it (agent A mounts it)")]
+    #[expect(
+        dead_code,
+        reason = "W5-app: the Moderation tab opens it (agent A mounts it)"
+    )]
     Unban,
     RemoveTimeout,
 }
@@ -802,7 +821,11 @@ mod tests {
             (u64::MAX, Some(5), None, Some(ms(0))),
         ];
         for (now, until, fired, want) in cases {
-            assert_eq!(wake_in(now, until, fired), want, "{now} {until:?} {fired:?}");
+            assert_eq!(
+                wake_in(now, until, fired),
+                want,
+                "{now} {until:?} {fired:?}"
+            );
         }
     }
 

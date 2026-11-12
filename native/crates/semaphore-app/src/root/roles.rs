@@ -175,9 +175,14 @@ pub(crate) fn changes(add: &[String], remove: &[String]) -> Vec<Change> {
 pub(crate) enum ChainEnd {
     Done,
     /// Step `at` failed: the steps after it weren't sent.
-    Failed { at: usize, error: String },
+    Failed {
+        at: usize,
+        error: String,
+    },
     /// The dialog went before step `at`, which wasn't sent.
-    Abandoned { at: usize },
+    Abandoned {
+        at: usize,
+    },
 }
 
 /// Runs `steps` one at a time with `run`, stopping at the first failure, and before any step once
@@ -254,10 +259,20 @@ impl AppRoot {
             }
             CoreEvent::CommunityRemoved { community_id, .. } => {
                 let ours = |id: &str| id == community_id;
-                if self.roles.panel.as_ref().is_some_and(|p| ours(&p.community_id)) {
+                if self
+                    .roles
+                    .panel
+                    .as_ref()
+                    .is_some_and(|p| ours(&p.community_id))
+                {
                     self.roles.panel = None;
                 }
-                if self.roles.assign.as_ref().is_some_and(|a| ours(&a.community_id)) {
+                if self
+                    .roles
+                    .assign
+                    .as_ref()
+                    .is_some_and(|a| ours(&a.community_id))
+                {
                     self.roles.assign = None;
                 }
                 if self
@@ -321,7 +336,9 @@ impl AppRoot {
                         .members_of
                         .clone()
                         .map(|role| core.role_members(panel.community_id.clone(), role));
-                    panel.view.update(cx, |p, cx| p.set_role_members(members, cx));
+                    panel
+                        .view
+                        .update(cx, |p, cx| p.set_role_members(members, cx));
                 }
             }
             Feed::AssignRoles => {
@@ -423,11 +440,9 @@ impl AppRoot {
         };
         let id = community_id.clone();
         match event.clone() {
-            RolesEvent::Create { draft } => {
-                self.w5_fire("creating a role", async move {
-                    core.create_role(id, draft).await.map(|_| ())
-                })
-            }
+            RolesEvent::Create { draft } => self.w5_fire("creating a role", async move {
+                core.create_role(id, draft).await.map(|_| ())
+            }),
             RolesEvent::Update { role_id, patch } => self.w5_fire("saving a role", async move {
                 core.update_role(id, role_id, patch).await
             }),
@@ -582,9 +597,11 @@ impl AppRoot {
                 add,
                 remove,
             } => {
-                let (Some(core), Some(services), Some(assign)) =
-                    (self.core(), self.services.as_ref(), self.roles.assign.as_ref())
-                else {
+                let (Some(core), Some(services), Some(assign)) = (
+                    self.core(),
+                    self.services.as_ref(),
+                    self.roles.assign.as_ref(),
+                ) else {
                     return;
                 };
                 if assign.view != dialog {
@@ -671,7 +688,11 @@ mod tests {
         };
         let cases: Vec<(ViewKey, Open, Vec<Feed>)> = vec![
             (key_roles("c1"), Open::default(), vec![]),
-            (key_roles("c1"), all, vec![Feed::PanelRoles, Feed::AssignRoles]),
+            (
+                key_roles("c1"),
+                all,
+                vec![Feed::PanelRoles, Feed::AssignRoles],
+            ),
             (key_roles("c2"), all, vec![]),
             (
                 key_roles("c1"),
@@ -838,10 +859,15 @@ mod tests {
             (None, Some(1), ChainEnd::Abandoned { at: 1 }, 1),
             (None, Some(2), ChainEnd::Abandoned { at: 2 }, 2),
             // Gone after the failing step's turn: the failure is what ends it.
-            (Some(1), Some(2), ChainEnd::Failed {
-                at: 1,
-                error: "no".into(),
-            }, 2),
+            (
+                Some(1),
+                Some(2),
+                ChainEnd::Failed {
+                    at: 1,
+                    error: "no".into(),
+                },
+                2,
+            ),
         ];
         for (fail_at, gone_before, want, sent_count) in cases {
             let gone = AtomicBool::new(false);
@@ -866,7 +892,11 @@ mod tests {
             .await;
             let sent = sent.into_inner().unwrap();
             assert_eq!(end, want, "fail {fail_at:?} gone {gone_before:?}");
-            assert_eq!(sent.len(), sent_count, "fail {fail_at:?} gone {gone_before:?}");
+            assert_eq!(
+                sent.len(),
+                sent_count,
+                "fail {fail_at:?} gone {gone_before:?}"
+            );
             assert_eq!(sent[..], steps[..sent.len()]);
         }
         // Gone before the first step: nothing is sent.

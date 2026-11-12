@@ -395,7 +395,13 @@ async fn ban(
     ban_by(&inner, actor, &community_id, &user_id, &body)
 }
 
-fn ban_by(inner: &Inner, actor: String, community_id: &str, user_id: &str, body: &Value) -> Response {
+fn ban_by(
+    inner: &Inner,
+    actor: String,
+    community_id: &str,
+    user_id: &str,
+    body: &Value,
+) -> Response {
     let (community_id, user_id) = (community_id.to_owned(), user_id.to_owned());
     let result = rbac::guard(inner, &actor, &community_id, &["BAN_USER"]).and_then(|()| {
         may_moderate(inner, &actor, &community_id, &user_id, "ban")?;

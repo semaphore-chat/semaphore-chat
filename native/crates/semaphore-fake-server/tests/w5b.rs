@@ -615,7 +615,12 @@ async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
     .await;
     assert_eq!(status, 200, "{caps}");
     assert!(caps["channels"][0]["timedOutUntil"].is_string(), "{caps}");
-    let (_, mine) = get(&client, &base, &format!("/api/channels/community/{couch}/permissions/me")).await;
+    let (_, mine) = get(
+        &client,
+        &base,
+        &format!("/api/channels/community/{couch}/permissions/me"),
+    )
+    .await;
     assert!(mine["channels"][0]["timedOutUntil"].is_null(), "{mine}");
 
     // The checks are the moderator's: no ban on someone ranked above them, nothing without the

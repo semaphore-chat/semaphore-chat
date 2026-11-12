@@ -304,7 +304,6 @@ impl ParticipantMenu {
         }
         list
     }
-
 }
 
 impl Render for ParticipantMenu {

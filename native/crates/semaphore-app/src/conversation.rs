@@ -294,7 +294,9 @@ impl ConversationPane {
             .and_then(|row| row.permissions.as_ref());
         let (post, react, thread_reply) = permissions.map_or((true, true, true), |p| {
             (
-                p.post && p.timed_out_until_ms.is_none_or(|until| until <= self.now_ms()),
+                p.post
+                    && p.timed_out_until_ms
+                        .is_none_or(|until| until <= self.now_ms()),
                 p.react,
                 p.thread_reply,
             )

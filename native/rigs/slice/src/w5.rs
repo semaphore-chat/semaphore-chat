@@ -145,9 +145,14 @@ impl super::Rig {
             let Some(core) = root.core() else {
                 return false;
             };
-            let community = root
-                .shell()
-                .and_then(|shell| shell.read(cx).nav().current().community_id().map(str::to_owned));
+            let community = root.shell().and_then(|shell| {
+                shell
+                    .read(cx)
+                    .nav()
+                    .current()
+                    .community_id()
+                    .map(str::to_owned)
+            });
             match condition {
                 W5::Channel { name, position } => {
                     let Some(community) = community else {
