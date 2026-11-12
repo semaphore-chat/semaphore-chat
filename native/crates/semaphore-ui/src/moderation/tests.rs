@@ -5,6 +5,7 @@ use super::*;
 use crate::dms::rig::{Rig, rig};
 use crate::messages::TimeFormat;
 use core::prelude::v1::test;
+use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{TestAppContext, point, px};
 use semaphore_core::model::{
     AdminAction, AdminActionKind, AdminActionState, AdminOp, BanDuration, BanListView, BanRequest,
@@ -99,6 +100,18 @@ fn refused_items_show_but_send_nothing(cx: &mut TestAppContext) {
             "moderate-roles",
         ] {
             assert!(rig.has(cx, id), "{id} is drawn, disabled");
+            let semantics = rig.with(cx, {
+                let id = id.to_owned();
+                move |_, window, _| {
+                    let found = window.try_find(id).expect("drawn");
+                    (found.role(), found.disabled())
+                }
+            });
+            assert_eq!(
+                semantics,
+                (Some(gpui_kit::Role::MenuItem), Some(true)),
+                "{id}: a disabled menu item, to assistive technology too"
+            );
             rig.click(cx, id);
         }
         assert_eq!(rig.events(), [], "{reason:?}");

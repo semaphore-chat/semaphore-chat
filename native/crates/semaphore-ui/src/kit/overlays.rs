@@ -167,11 +167,12 @@ impl RenderOnce for MenuItem {
             None => self.label.to_string(),
         };
         let handler = self.on_select.clone();
-        div()
-            .id(ElementId::Name(self.id.clone()))
-            .test_support()
+        // A base button with the menu item role: it reports a disabled item as disabled.
+        base::Button::new(ElementId::Name(self.id.clone()))
             .role(Role::MenuItem)
-            .aria_label(accessible)
+            .disabled(self.disabled)
+            .accessibility_label(accessible)
+            .w_full()
             .min_h(px(self.min_height))
             .px(px(16.))
             .py(px(6.))

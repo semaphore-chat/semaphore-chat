@@ -1335,56 +1335,16 @@ fn read_audio(path: &Path) -> Result<DraftFile, String> {
 
 // ---- Preview decoding. ----
 
-/// The longest preview decoded: the engine's soundboard limit.
-const PREVIEW_MAX_SECONDS: usize = 30;
-
-/// A sound file as mono 16-bit samples and their rate: WAV by our reader; anything else by the
-/// player's decoder when the app is built with it (`player::sound_decoder`), as the engine's
-/// soundboard does for what it doesn't decode built in.
+/// A sound file as mono 16-bit samples and their rate, decoded as the engine's soundboard does
+/// (`soundboard::decode`: WAV, Ogg Opus and WebM Opus built in), with the player's decoder for the
+/// rest when the app is built with it (`player::sound_decoder`).
 pub fn decode_preview(bytes: &[u8]) -> Result<(u32, Vec<i16>), String> {
-    let wav = bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WAVE");
-    if wav {
-        let (rate, samples) = crate::sounds::read_wav(bytes)
-            .map_err(|why| format!("This sound can't be played: {why}"))?;
-        return bounded(rate, samples);
-    }
-    let Some(decoder) = crate::player::sound_decoder() else {
-        return Err("This build of the app previews WAV sounds only".into());
-    };
-    let pcm = decoder.decode(bytes)?;
-    bounded(pcm.sample_rate, mono(&pcm.samples, pcm.channels)?)
-}
-
-/// Interleaved samples in -1.0..=1.0, mixed down to mono 16-bit.
-pub fn mono(samples: &[f32], channels: u16) -> Result<Vec<i16>, String> {
-    let channels = usize::from(channels);
-    if channels == 0 || channels > 8 {
-        return Err("This sound can't be played: it has an impossible channel count".into());
-    }
-    Ok(samples
-        .chunks_exact(channels)
-        .map(|frame| {
-            let sample = frame.iter().sum::<f32>() / channels as f32;
-            let sample = if sample.is_finite() { sample } else { 0. };
-            (sample * 32_767.).clamp(-32_768., 32_767.) as i16
-        })
-        .collect())
-}
-
-/// Refuses what no preview should be: no sound, an impossible rate, longer than the limit.
-fn bounded(rate: u32, samples: Vec<i16>) -> Result<(u32, Vec<i16>), String> {
-    if !(8_000..=192_000).contains(&rate) {
-        return Err("This sound can't be played: it has an impossible sample rate".into());
-    }
-    if samples.is_empty() {
-        return Err("This sound can't be played: it has no audio".into());
-    }
-    if samples.len() > PREVIEW_MAX_SECONDS * rate as usize {
-        return Err(format!(
-            "This sound is longer than {PREVIEW_MAX_SECONDS} seconds"
-        ));
-    }
-    Ok((rate, samples))
+    let extra = crate::player::sound_decoder();
+    let samples = semaphore_media_livekit::soundboard::decode(bytes, extra.as_deref())?;
+    Ok((
+        semaphore_media_livekit::audio::SAMPLE_RATE,
+        samples.to_vec(),
+    ))
 }
 
 #[cfg(test)]
@@ -1392,7 +1352,7 @@ mod tests {
     // Not `super::*`: gpui_kit's glob brings its own `test` attribute.
     use super::{
         CommunityTab, Feed, OpenState, Ticket, Upload, ViewKey, check_upload, decode_preview,
-        feeds, mono, read_upload, tab_feeds, tab_keys,
+        feeds, read_upload, tab_feeds, tab_keys,
     };
     use gpui_kit::AppContext as _;
 
@@ -1937,52 +1897,43 @@ mod tests {
     }
 
     #[test]
-    fn previews_decode_wav_and_refuse_what_cant_play() {
-        assert_eq!(
-            decode_preview(&wav_file(8_000, &[1, -2, 3])).unwrap(),
-            (8_000, vec![1, -2, 3])
-        );
+    fn previews_decode_wav_and_opus_and_refuse_what_cant_play() {
+        // WAV, resampled to the engine's 48 kHz mono.
+        let (rate, samples) = decode_preview(&wav_file(8_000, &[1_000; 800])).unwrap();
+        assert_eq!(rate, 48_000);
+        assert_eq!(samples.len(), 4_800);
+        // Ogg Opus, built in: no player feature needed.
+        let ogg = include_bytes!("../../../../rigs/slice/fixtures/opus.ogg");
+        let (rate, samples) = decode_preview(ogg).unwrap();
+        assert_eq!(rate, 48_000);
+        assert!(!samples.is_empty());
+        // WebM Opus likewise.
+        let webm = include_bytes!("../../../../rigs/slice/fixtures/vp9-opus.webm");
+        let decoded = decode_preview(webm);
         assert!(
-            decode_preview(&wav_file(8_000, &[]))
-                .unwrap_err()
-                .contains("no audio")
+            decoded.is_ok() || decoded.as_ref().unwrap_err().contains("longer than"),
+            "{decoded:?}"
         );
-        assert!(
-            decode_preview(&wav_file(4_000, &[1]))
-                .unwrap_err()
-                .contains("sample rate")
-        );
-        let long = vec![1i16; 8_000 * 30 + 1];
-        assert!(
-            decode_preview(&wav_file(8_000, &long))
-                .unwrap_err()
-                .contains("30 seconds")
-        );
-        let mut broken = wav_file(8_000, &[1, 2]);
-        broken.truncate(broken.len() - 1);
-        assert!(
-            decode_preview(&broken)
-                .unwrap_err()
-                .contains("can't be played")
-        );
-        // Not WAV: the player's decoder when built with it, else a sentence.
-        let refused = decode_preview(b"<html>not a sound</html>").unwrap_err();
-        assert!(
-            refused.contains("WAV sounds only") || refused.contains("can't be played"),
-            "{refused}"
-        );
-    }
-
-    #[test]
-    fn decoded_audio_is_mixed_down_to_mono_16_bit() {
-        assert_eq!(mono(&[1.0, -1.0, 0.5, 0.5], 2).unwrap(), vec![0, 16_383]);
-        assert_eq!(
-            mono(&[2.0, f32::NAN, -2.0], 1).unwrap(),
-            vec![32_767, 0, -32_768]
-        );
-        // A trailing partial frame is dropped.
-        assert_eq!(mono(&[0.0, 0.0, 1.0], 2).unwrap(), vec![0]);
-        assert!(mono(&[0.0], 0).is_err());
-        assert!(mono(&[0.0; 9], 9).is_err());
+        // Refused, with a sentence: no audio, too long, broken, not a sound.
+        let cases: [(Vec<u8>, &str); 4] = [
+            (wav_file(8_000, &[]), "can't be played"),
+            (
+                wav_file(8_000, &vec![1i16; 8_000 * 31]),
+                "longer than 30 seconds",
+            ),
+            (
+                {
+                    let mut broken = wav_file(8_000, &[1, 2]);
+                    broken.truncate(20);
+                    broken
+                },
+                "can't be played",
+            ),
+            (b"<html>not a sound</html>".to_vec(), "can't be played"),
+        ];
+        for (bytes, want) in cases {
+            let refused = decode_preview(&bytes).unwrap_err();
+            assert!(refused.contains(want), "{refused} should say {want}");
+        }
     }
 }
