@@ -13,6 +13,8 @@ export class FileFactory {
       mimeType: overrides.mimeType || 'text/plain',
       fileType: overrides.fileType || FileType.DOCUMENT,
       size: overrides.size || 1024,
+      width: overrides.width ?? null,
+      height: overrides.height ?? null,
       checksum: overrides.checksum || this.generateChecksum(),
       uploadedById: overrides.uploadedById || this.generateId(),
       uploadedAt: overrides.uploadedAt || new Date(),

@@ -12398,6 +12398,16 @@
             "type": "integer",
             "format": "int64"
           },
+          "width": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display width in pixels, for images and videos; null when unknown."
+          },
+          "height": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display height in pixels, for images and videos; null when unknown."
+          },
           "id": {
             "type": "string"
           },
@@ -13938,6 +13948,16 @@
           "size": {
             "type": "integer",
             "format": "int64"
+          },
+          "width": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display width in pixels, for images and videos; null when unknown."
+          },
+          "height": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display height in pixels, for images and videos; null when unknown."
           },
           "id": {
             "type": "string"
@@ -16154,6 +16174,16 @@
           "size": {
             "type": "integer",
             "format": "int64"
+          },
+          "width": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display width in pixels, for images and videos; null when unknown."
+          },
+          "height": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Display height in pixels, for images and videos; null when unknown."
           },
           "resourceType": {
             "allOf": [

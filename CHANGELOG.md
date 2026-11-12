@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes / upgrade checklist
+
+- **One database migration for attachment dimensions.** `20261112090749_file_dimensions` adds two nullable `Int` columns, `File.width` and `File.height`; existing files keep null. Back up your database before upgrading. (#715)
+
 ### Security
 
 - Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
@@ -19,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
 - Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
 - An invite link now works for someone who already has an account: a signed-in visitor to the join page adds their account to the invite's communities instead of registering again, and the API reports which communities were joined or skipped. (#589)
+- Image and video attachments now report their display `width` and `height` in pixels, so clients can reserve space before the file loads. (#715)
 
 ### Changed
 
