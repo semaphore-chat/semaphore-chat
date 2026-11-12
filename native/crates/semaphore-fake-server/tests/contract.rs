@@ -856,14 +856,14 @@ fn uuid(n: u128) -> String {
 
 /// A route the fake does not implement names itself in its 501.
 async fn assert_routes_are_implemented(_schemas: &Schemas, client: &reqwest::Client, base: &str) {
-    // W5-B serves community roles now; instance roles are W6's.
-    let (status, body) = get(client, base, "/api/roles/instance/all").await;
+    // W6-E serves instance roles now; the admin users list is W6-B's.
+    let (status, body) = get(client, base, "/api/users/admin/list").await;
     assert_eq!(status, 501, "{body}");
     assert!(
         body["message"]
             .as_str()
             .unwrap_or_default()
-            .contains("/api/roles/instance/all"),
+            .contains("/api/users/admin/list"),
         "{body}"
     );
 }
