@@ -57,6 +57,8 @@ pub struct RolesPanel {
     confirming: Option<Confirming>,
     pub(super) editor: Option<EditorState>,
     pending: Vec<Pending>,
+    /// The zone and clock dates are written in: the app's, unless a story fixes them.
+    time: crate::messages::TimeFormat,
 }
 
 impl EventEmitter<RolesEvent> for RolesPanel {}
@@ -83,7 +85,19 @@ impl RolesPanel {
             confirming: None,
             editor: None,
             pending: Vec::new(),
+            time: crate::messages::TimeFormat::default(),
         }
+    }
+
+    /// A role's "Created" date, in the panel's zone.
+    pub(crate) fn created_label(&self, ms: i64) -> String {
+        crate::community_settings::rules::date_label(&self.time, ms)
+    }
+
+    /// The zone and clock the roles' dates are written in.
+    pub fn set_time(&mut self, time: crate::messages::TimeFormat, cx: &mut Context<Self>) {
+        self.time = time;
+        cx.notify();
     }
 
     /// `Core::roles(community)`, again on `ViewKey::Roles`.
@@ -332,7 +346,7 @@ impl RolesPanel {
                 chips.child(text(Variant::Caption, "No permissions").text_color(sem.text_secondary))
             });
         let created = role.created_at_ms.map(|ms| {
-            text(Variant::Body2, super::date_label(ms))
+            text(Variant::Body2, self.created_label(ms))
                 .text_color(sem.text_secondary)
                 .whitespace_nowrap()
         });

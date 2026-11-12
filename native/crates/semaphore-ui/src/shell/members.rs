@@ -238,12 +238,48 @@ fn member_row(member: &MemberRow, cx: &mut Context<Shell>) -> impl IntoElement +
         .focus_visible(move |style| style.bg(hover))
         .on_click({
             let user_id = member.user.id.clone();
-            cx.listener(move |_, _, _, cx| {
+            cx.listener(move |shell, _, _, cx| {
+                // The release of a long press that opened the menu isn't a click.
+                if let Some((press, _)) = shell.member_press.take()
+                    && press.fired
+                    && press.user_id == user_id
+                {
+                    return;
+                }
                 cx.emit(super::ShellEvent::OpenProfile {
                     user_id: user_id.clone(),
                 })
             })
         })
+        // W5: on a phone, a long press opens the moderation menu (the web's `useLongPress`).
+        .on_mouse_down(MouseButton::Left, {
+            let user_id = member.user.id.clone();
+            cx.listener(move |shell, event: &MouseDownEvent, _, cx| {
+                if !shell.touch.get() {
+                    return;
+                }
+                let press = super::press::Press {
+                    user_id: user_id.clone(),
+                    at: event.position,
+                    fired: false,
+                };
+                let timer = cx.spawn(async move |shell, cx| {
+                    cx.background_executor()
+                        .timer(super::press::LONG_PRESS)
+                        .await;
+                    shell.update(cx, |shell, cx| shell.long_press_due(cx)).ok();
+                });
+                shell.member_press = Some((press, timer));
+            })
+        })
+        .on_mouse_move(cx.listener(|shell, event: &MouseMoveEvent, _, _| {
+            if let Some((press, _)) = &shell.member_press
+                && !press.fired
+                && super::press::moved_too_far(press.at, event.position)
+            {
+                shell.member_press = None;
+            }
+        }))
         // W5: the moderation menu, as the web's member list has it on a right-click.
         .on_mouse_down(MouseButton::Right, {
             let user_id = member.user.id.clone();
@@ -292,6 +328,27 @@ fn member_row(member: &MemberRow, cx: &mut Context<Shell>) -> impl IntoElement +
                         .truncate()
                 })),
         )
+}
+
+impl Shell {
+    /// A member row held long enough: its menu, at the finger.
+    fn long_press_due(&mut self, cx: &mut Context<Self>) {
+        let Some((press, _)) = self.member_press.as_mut() else {
+            return;
+        };
+        if press.fired {
+            return;
+        }
+        let Some(community_id) = self.nav.current().community_id().map(str::to_owned) else {
+            return;
+        };
+        press.fired = true;
+        cx.emit(super::ShellEvent::MemberMenu {
+            community_id,
+            user_id: press.user_id.clone(),
+            position: press.at,
+        });
+    }
 }
 
 #[cfg(test)]

@@ -296,15 +296,18 @@ fn a_dialog_follows_its_own_entry_to_success(cx: &mut TestAppContext) {
         ]),
     );
     assert_eq!(state(&rig, cx), (true, true, None));
-    // The ban's entry goes: it worked.
+    // The ban's end is recorded: it worked.
     feed(
         &rig,
         cx,
-        op(vec![entry(
-            AdminActionKind::Timeout,
-            false,
-            Some("timeout refused"),
-        )]),
+        with_ends(
+            op(vec![entry(
+                AdminActionKind::Timeout,
+                false,
+                Some("timeout refused"),
+            )]),
+            &[(AdminActionKind::Ban, Some("ana"), 1, false)],
+        ),
     );
     assert_eq!(state(&rig, cx), (false, false, None));
     assert_eq!(
@@ -329,21 +332,28 @@ fn a_dialog_shows_its_own_failure_and_can_try_again(cx: &mut TestAppContext) {
     assert_eq!(state(&rig, cx), (true, false, None));
     rig.click(cx, "kick-confirm");
     feed(&rig, cx, op(vec![entry(AdminActionKind::Kick, true, None)]));
-    feed(
-        &rig,
-        cx,
+    let refused = with_ends(
         op(vec![entry(AdminActionKind::Kick, false, Some("Nope"))]),
+        &[(AdminActionKind::Kick, Some("ana"), 1, true)],
     );
+    feed(&rig, cx, refused.clone());
     assert_eq!(state(&rig, cx), (true, false, Some("Nope".into())));
     // Another member's entry or another action's doesn't end it.
     rig.click(cx, "kick-confirm");
     feed(
         &rig,
         cx,
-        op(vec![
-            entry(AdminActionKind::Kick, true, None),
-            entry(AdminActionKind::Ban, false, Some("ban refused")),
-        ]),
+        with_ends(
+            op(vec![
+                entry(AdminActionKind::Kick, true, None),
+                entry(AdminActionKind::Ban, false, Some("ban refused")),
+            ]),
+            &[
+                (AdminActionKind::Kick, Some("ana"), 1, true),
+                (AdminActionKind::Ban, Some("ana"), 2, true),
+                (AdminActionKind::Kick, Some("bo"), 3, false),
+            ],
+        ),
     );
     assert_eq!(state(&rig, cx), (true, true, None));
     let kicks = rig
@@ -580,4 +590,27 @@ fn the_removal_notice_shows_once(cx: &mut TestAppContext) {
         }]
     );
     assert!(!rig.with(cx, |notice, _, cx| notice.read(cx).is_shown()));
+}
+
+/// `op` with these ends recorded, as (kind, target, seq, failed).
+fn with_ends(mut op: AdminOp, ends: &[(AdminActionKind, Option<&str>, u64, bool)]) -> AdminOp {
+    op.finished = ends
+        .iter()
+        .map(
+            |(kind, target, seq, failed)| semaphore_core::model::AdminActionOutcome {
+                action: semaphore_core::model::AdminAction {
+                    kind: *kind,
+                    target_id: target.map(str::to_owned),
+                },
+                seq: *seq,
+                error: failed.then(|| ErrorView {
+                    code: "X".into(),
+                    message: "failed".into(),
+                    retryable: false,
+                    retry_after_ms: None,
+                }),
+            },
+        )
+        .collect();
+    op
 }

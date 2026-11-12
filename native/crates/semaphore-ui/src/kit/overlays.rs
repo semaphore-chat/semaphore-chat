@@ -315,12 +315,17 @@ impl RenderOnce for Dialog {
                             .text_color(secondary)
                             .children(self.body),
                     )
+                    // The actions keep to the body's side padding, so a filled button never
+                    // runs past the column the fields end at, and wrap on a narrow window.
                     .child(
                         div()
                             .flex()
+                            .flex_wrap()
                             .justify_end()
+                            .items_center()
                             .gap(px(8.))
-                            .p(px(8.))
+                            .px(px(24.))
+                            .pb(px(20.))
                             .children(self.actions),
                     ),
             );
