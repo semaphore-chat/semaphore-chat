@@ -2813,6 +2813,142 @@
         ]
       }
     },
+    "/api/instance/settings/public": {
+      "get": {
+        "operationId": "InstanceController_getPublicSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSettingsResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get instance settings (public - needed for registration mode)",
+        "tags": [
+          "Instance"
+        ]
+      }
+    },
+    "/api/instance/settings": {
+      "get": {
+        "operationId": "InstanceController_getSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceSettingsResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get full instance settings (admin only)",
+        "tags": [
+          "Instance"
+        ]
+      },
+      "patch": {
+        "operationId": "InstanceController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInstanceSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceSettingsResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update instance settings (admin only)",
+        "tags": [
+          "Instance"
+        ]
+      }
+    },
+    "/api/instance/stats": {
+      "get": {
+        "operationId": "InstanceController_getStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceStatsResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get instance statistics (admin only)",
+        "tags": [
+          "Instance"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "HealthController_check",
@@ -9120,142 +9256,6 @@
         ]
       }
     },
-    "/api/instance/settings/public": {
-      "get": {
-        "operationId": "InstanceController_getPublicSettings",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicSettingsResponseDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get instance settings (public - needed for registration mode)",
-        "tags": [
-          "Instance"
-        ]
-      }
-    },
-    "/api/instance/settings": {
-      "get": {
-        "operationId": "InstanceController_getSettings",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstanceSettingsResponseDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get full instance settings (admin only)",
-        "tags": [
-          "Instance"
-        ]
-      },
-      "patch": {
-        "operationId": "InstanceController_updateSettings",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateInstanceSettingsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstanceSettingsResponseDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Update instance settings (admin only)",
-        "tags": [
-          "Instance"
-        ]
-      }
-    },
-    "/api/instance/stats": {
-      "get": {
-        "operationId": "InstanceController_getStats",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstanceStatsResponseDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get instance statistics (admin only)",
-        "tags": [
-          "Instance"
-        ]
-      }
-    },
     "/api/appearance-settings": {
       "get": {
         "operationId": "AppearanceSettingsController_getSettings",
@@ -11048,7 +11048,8 @@
         "type": "object",
         "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "Invite code. Required when the instance is invite-only; optional when registration is open."
           },
           "username": {
             "type": "string",
@@ -11067,7 +11068,6 @@
           }
         },
         "required": [
-          "code",
           "username",
           "password"
         ]
@@ -11967,6 +11967,174 @@
         },
         "required": [
           "communityId"
+        ]
+      },
+      "RegistrationMode": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "INVITE_ONLY",
+          "CLOSED"
+        ]
+      },
+      "PublicSettingsResponseDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "registrationMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegistrationMode"
+              }
+            ]
+          },
+          "maxFileSizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "gifSearchEnabled": {
+            "type": "boolean",
+            "description": "Whether the Giphy GIF picker is available (GIPHY_API_KEY configured)."
+          },
+          "passwordResetEnabled": {
+            "type": "boolean"
+          },
+          "desktopBrowserLogin": {
+            "type": "boolean",
+            "description": "The desktop app can sign in through the browser (POST\n/auth/desktop/authorize and /auth/desktop/token). Older servers don't\nsend it: the app hides the button for them."
+          }
+        },
+        "required": [
+          "name",
+          "registrationMode",
+          "maxFileSizeBytes",
+          "gifSearchEnabled",
+          "passwordResetEnabled",
+          "desktopBrowserLogin"
+        ]
+      },
+      "InstanceSettingsResponseDto": {
+        "type": "object",
+        "properties": {
+          "registrationMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegistrationMode"
+              }
+            ]
+          },
+          "defaultStorageQuotaBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "maxFileSizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "vapidPublicKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "vapidSubject": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "registrationMode",
+          "defaultStorageQuotaBytes",
+          "maxFileSizeBytes",
+          "id",
+          "name",
+          "description",
+          "createdAt",
+          "updatedAt",
+          "vapidPublicKey",
+          "vapidSubject"
+        ]
+      },
+      "UpdateInstanceSettingsDto": {
+        "type": "object",
+        "properties": {
+          "registrationMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegistrationMode"
+              }
+            ]
+          },
+          "defaultStorageQuotaBytes": {
+            "type": "integer",
+            "description": "Default storage quota for new users in bytes.\nExample: 53687091200 = 50GB",
+            "minimum": 1073741824,
+            "format": "int64"
+          },
+          "maxFileSizeBytes": {
+            "type": "integer",
+            "description": "Maximum file size allowed for uploads in bytes.\nExample: 524288000 = 500MB",
+            "minimum": 1048576,
+            "maximum": 1073741824,
+            "format": "int64"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "InstanceStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "totalUsers": {
+            "type": "integer"
+          },
+          "totalCommunities": {
+            "type": "integer"
+          },
+          "totalChannels": {
+            "type": "integer"
+          },
+          "totalMessages": {
+            "type": "integer"
+          },
+          "activeInvites": {
+            "type": "integer"
+          },
+          "bannedUsers": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "totalUsers",
+          "totalCommunities",
+          "totalChannels",
+          "totalMessages",
+          "activeInvites",
+          "bannedUsers"
         ]
       },
       "CreateCommunityDto": {
@@ -16345,174 +16513,6 @@
           "fileMessageId",
           "storagePath",
           "thumbnailPath"
-        ]
-      },
-      "RegistrationMode": {
-        "type": "string",
-        "enum": [
-          "OPEN",
-          "INVITE_ONLY",
-          "CLOSED"
-        ]
-      },
-      "PublicSettingsResponseDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "registrationMode": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/RegistrationMode"
-              }
-            ]
-          },
-          "maxFileSizeBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "gifSearchEnabled": {
-            "type": "boolean",
-            "description": "Whether the Giphy GIF picker is available (GIPHY_API_KEY configured)."
-          },
-          "passwordResetEnabled": {
-            "type": "boolean"
-          },
-          "desktopBrowserLogin": {
-            "type": "boolean",
-            "description": "The desktop app can sign in through the browser (POST\n/auth/desktop/authorize and /auth/desktop/token). Older servers don't\nsend it: the app hides the button for them."
-          }
-        },
-        "required": [
-          "name",
-          "registrationMode",
-          "maxFileSizeBytes",
-          "gifSearchEnabled",
-          "passwordResetEnabled",
-          "desktopBrowserLogin"
-        ]
-      },
-      "InstanceSettingsResponseDto": {
-        "type": "object",
-        "properties": {
-          "registrationMode": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/RegistrationMode"
-              }
-            ]
-          },
-          "defaultStorageQuotaBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "maxFileSizeBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string",
-            "nullable": true
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "vapidPublicKey": {
-            "type": "string",
-            "nullable": true
-          },
-          "vapidSubject": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "registrationMode",
-          "defaultStorageQuotaBytes",
-          "maxFileSizeBytes",
-          "id",
-          "name",
-          "description",
-          "createdAt",
-          "updatedAt",
-          "vapidPublicKey",
-          "vapidSubject"
-        ]
-      },
-      "UpdateInstanceSettingsDto": {
-        "type": "object",
-        "properties": {
-          "registrationMode": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/RegistrationMode"
-              }
-            ]
-          },
-          "defaultStorageQuotaBytes": {
-            "type": "integer",
-            "description": "Default storage quota for new users in bytes.\nExample: 53687091200 = 50GB",
-            "minimum": 1073741824,
-            "format": "int64"
-          },
-          "maxFileSizeBytes": {
-            "type": "integer",
-            "description": "Maximum file size allowed for uploads in bytes.\nExample: 524288000 = 500MB",
-            "minimum": 1048576,
-            "maximum": 1073741824,
-            "format": "int64"
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 100
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 500
-          }
-        }
-      },
-      "InstanceStatsResponseDto": {
-        "type": "object",
-        "properties": {
-          "totalUsers": {
-            "type": "integer"
-          },
-          "totalCommunities": {
-            "type": "integer"
-          },
-          "totalChannels": {
-            "type": "integer"
-          },
-          "totalMessages": {
-            "type": "integer"
-          },
-          "activeInvites": {
-            "type": "integer"
-          },
-          "bannedUsers": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "totalUsers",
-          "totalCommunities",
-          "totalChannels",
-          "totalMessages",
-          "activeInvites",
-          "bannedUsers"
         ]
       },
       "AppearanceSettingsResponseDto": {

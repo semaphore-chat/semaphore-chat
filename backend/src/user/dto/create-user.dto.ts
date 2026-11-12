@@ -6,6 +6,7 @@ import {
   MaxLength,
   Matches,
 } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MAX_LENGTH_MESSAGE,
@@ -19,8 +20,13 @@ import {
 } from '@/common/constants/credential-rules.constant';
 
 export class CreateUserDto {
+  @IsOptional()
   @IsString()
-  code: string;
+  @ApiPropertyOptional({
+    description:
+      'Invite code. Required when the instance is invite-only; optional when registration is open.',
+  })
+  code?: string;
 
   @IsString()
   @MinLength(USERNAME_MIN_LENGTH, { message: USERNAME_MIN_LENGTH_MESSAGE })

@@ -22,6 +22,7 @@ import { LivekitWebhookController } from './livekit-webhook.controller';
 import { UserModule } from '@/user/user.module';
 import { RolesModule } from '@/roles/roles.module';
 import { ThumbnailService } from '@/file/thumbnail.service';
+import { MediaDimensionsService } from '@/file/media-dimensions.service';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ThumbnailService } from '@/file/thumbnail.service';
     RoomServiceProvider,
     EgressClientProvider,
     ThumbnailService,
+    MediaDimensionsService,
   ],
   exports: [
     LivekitService,
