@@ -667,7 +667,11 @@ export class RoomSubscriptionHandler {
     );
   }
 
-  /** Webhooks carry no secret here: ids only, never the token or URL. */
+  /**
+   * Webhooks carry no secret here: ids only, never the token or URL. Sent to
+   * the channel room, so only members who can see the channel hear of it (a
+   * private channel's existence must not reach the whole community).
+   */
   @OnEvent(RoomEvents.WEBHOOK_CREATED)
   onWebhookCreated({
     communityId,
@@ -675,7 +679,7 @@ export class RoomSubscriptionHandler {
     webhookId,
   }: WebhookChangedEvent): void {
     this.websocketService.sendToRoom(
-      RoomName.community(communityId),
+      RoomName.channel(channelId),
       ServerEvents.WEBHOOK_CREATED,
       { communityId, channelId, webhookId },
     );
@@ -688,7 +692,7 @@ export class RoomSubscriptionHandler {
     webhookId,
   }: WebhookChangedEvent): void {
     this.websocketService.sendToRoom(
-      RoomName.community(communityId),
+      RoomName.channel(channelId),
       ServerEvents.WEBHOOK_DELETED,
       { communityId, channelId, webhookId },
     );

@@ -10,6 +10,8 @@ export const handleUserBanned: SocketEventHandler<typeof ServerEvents.USER_BANNE
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'communityControllerFindAllMine' }] });
+  // Moderators watching the lists and the log: this action added an entry.
+  invalidateModerationQueries(queryClient);
 };
 
 /**
@@ -29,6 +31,8 @@ export const handleUserKicked: SocketEventHandler<typeof ServerEvents.USER_KICKE
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'communityControllerFindAllMine' }] });
+  // Moderators watching the lists and the log: this action added an entry.
+  invalidateModerationQueries(queryClient);
 };
 
 export const handleUserTimedOut: SocketEventHandler<typeof ServerEvents.USER_TIMED_OUT> = (
@@ -41,6 +45,8 @@ export const handleUserTimedOut: SocketEventHandler<typeof ServerEvents.USER_TIM
   // A timeout takes posting, reacting and voice publishing away (and its
   // removal gives them back): refetch the effective channel permissions.
   invalidateChannelPermissionQueries(queryClient);
+  // Moderators watching the lists and the log: this action added an entry.
+  invalidateModerationQueries(queryClient);
 };
 
 export const handleTimeoutRemoved: SocketEventHandler<typeof ServerEvents.TIMEOUT_REMOVED> = (
@@ -56,4 +62,6 @@ export const handleTimeoutRemoved: SocketEventHandler<typeof ServerEvents.TIMEOU
   // A timeout takes posting, reacting and voice publishing away (and its
   // removal gives them back): refetch the effective channel permissions.
   invalidateChannelPermissionQueries(queryClient);
+  // Moderators watching the lists and the log: this action added an entry.
+  invalidateModerationQueries(queryClient);
 };

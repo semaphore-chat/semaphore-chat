@@ -38,9 +38,9 @@ describe('moderationHandlers', () => {
       );
     });
 
-    it('invalidates exactly 2 query types', () => {
+    it('invalidates members, communities, the ban list and the log', () => {
       handleUserBanned({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(2);
+      expect(invalidateSpy).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -89,9 +89,9 @@ describe('moderationHandlers', () => {
       );
     });
 
-    it('invalidates exactly 2 query types', () => {
+    it('invalidates members, communities, the ban list and the log', () => {
       handleUserKicked({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(2);
+      expect(invalidateSpy).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -118,7 +118,7 @@ describe('moderationHandlers', () => {
     it('does NOT invalidate communities (timeout is not removal)', () => {
       handleUserTimedOut({} as never, queryClient);
       // members + timeout status + the 4 channel-permission queries
-      expect(invalidateSpy).toHaveBeenCalledTimes(6);
+      expect(invalidateSpy).toHaveBeenCalledTimes(8);
       expect(invalidateSpy).not.toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: [{ _id: 'communityControllerFindAllMine' }] }),
       );
@@ -178,7 +178,7 @@ describe('moderationHandlers', () => {
 
     it('does NOT invalidate communities', () => {
       handleTimeoutRemoved({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(7);
+      expect(invalidateSpy).toHaveBeenCalledTimes(9);
       expect(invalidateSpy).not.toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: [{ _id: 'communityControllerFindAllMine' }] }),
       );

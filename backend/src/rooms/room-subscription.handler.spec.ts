@@ -1124,7 +1124,7 @@ describe('RoomSubscriptionHandler', () => {
       });
 
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
-        'community:community-456',
+        'channel-1',
         ServerEvents.WEBHOOK_CREATED,
         {
           communityId: 'community-456',
@@ -1142,7 +1142,7 @@ describe('RoomSubscriptionHandler', () => {
       });
 
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
-        'community:community-456',
+        'channel-1',
         ServerEvents.WEBHOOK_DELETED,
         {
           communityId: 'community-456',
