@@ -15,7 +15,6 @@ import { JwtService } from '@nestjs/jwt';
 import { TrackSource } from 'livekit-server-sdk';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { FULL_PUBLISH_GRANT } from './publish-grant.util';
-<<<<<<< HEAD
 import { LivekitAccessService } from './livekit-access.service';
 import { LivekitReplayService } from './livekit-replay.service';
 import { StorageService } from '@/storage/storage.service';
@@ -41,9 +40,7 @@ function makeDownloadResponse(
   );
   return res;
 }
-=======
 import { LivekitException } from './exceptions/livekit.exception';
->>>>>>> origin/main
 
 describe('LivekitController', () => {
   let controller: LivekitController;
@@ -51,12 +48,9 @@ describe('LivekitController', () => {
   let voicePresenceService: Mocked<VoicePresenceService>;
   let jwtService: Mocked<JwtService>;
   let channelAccessService: Mocked<ChannelAccessService>;
-<<<<<<< HEAD
   let livekitAccessService: Mocked<LivekitAccessService>;
   let replayService: Mocked<LivekitReplayService>;
   let storageService: Mocked<StorageService>;
-=======
->>>>>>> origin/main
 
   const allCaps = {
     channelId: 'room-1',
@@ -91,12 +85,9 @@ describe('LivekitController', () => {
     voicePresenceService = unitRef.get(VoicePresenceService);
     jwtService = unitRef.get(JwtService);
     channelAccessService = unitRef.get(ChannelAccessService);
-<<<<<<< HEAD
     livekitAccessService = unitRef.get(LivekitAccessService);
     replayService = unitRef.get(LivekitReplayService);
     storageService = unitRef.get(StorageService);
-=======
->>>>>>> origin/main
     channelAccessService.channelCapabilities.mockResolvedValue(allCaps);
   });
 
@@ -678,7 +669,6 @@ describe('LivekitController', () => {
     });
   });
 
-<<<<<<< HEAD
   describe('streamReplay', () => {
     const replayPath = '/tmp/replay-stream-user.mp4';
     const query: StreamReplayDto = { durationMinutes: 1 };
@@ -770,7 +760,9 @@ describe('LivekitController', () => {
       );
 
       expect(storageService.deleteFile).toHaveBeenCalledWith(replayPath);
-=======
+    });
+  });
+
   describe('removeParticipant', () => {
     it('answers 200, matching its @ApiOkResponse', () => {
       expect(
@@ -831,7 +823,6 @@ describe('LivekitController', () => {
 
       expect(error).toBeInstanceOf(LivekitException);
       expect((error as LivekitException).getStatus()).toBe(404);
->>>>>>> origin/main
     });
   });
 });
