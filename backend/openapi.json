@@ -12863,7 +12863,7 @@
           },
           "canModerate": {
             "type": "boolean",
-            "description": "Whether the caller may server mute this user or remove them from the\ncall. Always present in this response; false for the caller's own entry."
+            "description": "Whether the caller may server mute this user or remove them from the\ncall. The server always sends it in this response (false for the caller's\nown entry). Optional in the type because clients also add users to this\nlist from socket events, which don't carry it."
           },
           "id": {
             "type": "string"
@@ -12886,7 +12886,6 @@
         },
         "required": [
           "joinedAt",
-          "canModerate",
           "id",
           "username",
           "isDeafened",

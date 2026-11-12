@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class VoicePresenceUserDto {
   id: string;
@@ -20,10 +20,12 @@ export class VoicePresenceUserDto {
 export class ChannelVoicePresenceUserDto extends VoicePresenceUserDto {
   /**
    * Whether the caller may server mute this user or remove them from the
-   * call. Always present in this response; false for the caller's own entry.
+   * call. The server always sends it in this response (false for the caller's
+   * own entry). Optional in the type because clients also add users to this
+   * list from socket events, which don't carry it.
    */
-  @ApiProperty()
-  canModerate: boolean;
+  @ApiPropertyOptional()
+  canModerate?: boolean;
 }
 
 export class ChannelVoicePresenceResponseDto {
