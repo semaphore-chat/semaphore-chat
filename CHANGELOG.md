@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Clients now learn when a timeout ends on its own, so posting and voice controls come back without a reload. (#684)
 - A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
+- Friend requests, acceptances, declines, cancellations and unfriending now reach the other person's clients immediately, so the friends list and pending requests no longer need a reload. (#645)
+- A new direct-message group, a new member in one, and someone leaving one now reach every member's clients as it happens, instead of at the group's next message. (#646)
+- Marking notifications read (read-all, dismissing one, or reading a channel or direct message) now updates the badge and the list on your other devices. (#647)
+- A change to your own instance roles now updates what your client lets you do, such as creating a community or opening the admin page, without a reload. (#654)
 
 ### Fixed
 

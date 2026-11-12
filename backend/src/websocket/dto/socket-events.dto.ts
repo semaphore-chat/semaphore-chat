@@ -106,6 +106,26 @@ export class NotificationReadPayloadDto {
   notificationId: string;
 }
 
+/**
+ * NOTIFICATIONS_READ: the notifications that were marked read in bulk, as the
+ * scope they were read in. A client refetches the list and the badge.
+ */
+export class NotificationsReadPayloadDto {
+  @ApiProperty({
+    enum: ['all', 'channel', 'directMessage'],
+    enumName: 'NotificationsReadScope',
+  })
+  scope: 'all' | 'channel' | 'directMessage';
+  @ApiPropertyOptional()
+  channelId?: string;
+  @ApiPropertyOptional()
+  directMessageGroupId?: string;
+}
+
+export class NotificationDismissedPayloadDto {
+  notificationId: string;
+}
+
 /** USER_ONLINE and USER_OFFLINE. */
 export class UserPresencePayloadDto {
   userId: string;
@@ -141,6 +161,25 @@ export class VoiceChannelUserUpdatedPayloadDto {
   channelId: string;
   userId: string;
   user: VoicePresenceUserDto;
+}
+
+/** DM_GROUP_CREATED: every member of the new group. */
+export class DmGroupCreatedPayloadDto {
+  groupId: string;
+  @ApiProperty({ type: [String] })
+  memberIds: string[];
+}
+
+/** DM_GROUP_MEMBER_ADDED: the group and the users who joined it. */
+export class DmGroupMemberAddedPayloadDto {
+  groupId: string;
+  @ApiProperty({ type: [String] })
+  userIds: string[];
+}
+
+export class DmGroupMemberLeftPayloadDto {
+  groupId: string;
+  userId: string;
 }
 
 export class DmVoiceCallStarterDto {
@@ -267,6 +306,15 @@ export class MemberAddedToCommunityPayloadDto {
   userId: string;
 }
 
+/** FRIEND_REQUEST_* and FRIEND_REMOVED: the friendship and the two users. */
+export class FriendshipPayloadDto {
+  friendshipId: string;
+  /** The request's sender (one of the two friends once accepted). */
+  userAId: string;
+  /** The request's receiver. */
+  userBId: string;
+}
+
 export class CommunityUpdatedPayloadDto {
   communityId: string;
   name: string;
@@ -305,6 +353,12 @@ export class RoleAssignedPayloadDto {
 
 export class RoleUnassignedPayloadDto {
   communityId: string;
+  userId: string;
+  roleId: string;
+}
+
+/** INSTANCE_ROLES_UPDATED: the user and the instance role that changed. */
+export class InstanceRolesUpdatedPayloadDto {
   userId: string;
   roleId: string;
 }

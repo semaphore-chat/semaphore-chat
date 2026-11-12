@@ -6,6 +6,7 @@ import {
   handleRoleDeleted,
   handleRoleAssigned,
   handleRoleUnassigned,
+  handleInstanceRolesUpdated,
 } from '../../../socket-hub/handlers/roleHandlers';
 
 describe('roleHandlers', () => {
@@ -110,6 +111,30 @@ describe('roleHandlers', () => {
       expect(keys).toContain('rolesControllerGetMyRolesForChannel');
       expect(keys).toContain('channelPermissionsControllerGetMyCommunityChannelPermissions');
       expect(keys).toContain('channelPermissionsControllerGetMyChannelPermissions');
+    });
+  });
+
+  describe('handleInstanceRolesUpdated', () => {
+    it("refetches the user's own instance roles, which gate Admin and community creation", () => {
+      handleInstanceRolesUpdated(
+        { userId: 'u1', roleId: 'r1' },
+        queryClient,
+      );
+
+      expect(invalidateSpy.mock.calls).toEqual([
+        [{ queryKey: [{ _id: 'rolesControllerGetMyInstanceRoles' }] }],
+      ]);
+    });
+
+    it('leaves the community role lists alone', () => {
+      handleInstanceRolesUpdated(
+        { userId: 'u1', roleId: 'r1' },
+        queryClient,
+      );
+
+      expect(queryKeysInvalidated()).not.toContain(
+        'rolesControllerGetCommunityRoles',
+      );
     });
   });
 });

@@ -239,6 +239,21 @@ export type NewMessagePayloadDto = {
     message: MessageDto;
 };
 
+export type DmGroupCreatedPayloadDto = {
+    memberIds: Array<string>;
+    groupId: string;
+};
+
+export type DmGroupMemberAddedPayloadDto = {
+    userIds: Array<string>;
+    groupId: string;
+};
+
+export type DmGroupMemberLeftPayloadDto = {
+    groupId: string;
+    userId: string;
+};
+
 export type UpdateMessagePayloadDto = {
     message: MessageDto;
 };
@@ -376,6 +391,16 @@ export type NewNotificationPayloadDto = {
 };
 
 export type NotificationReadPayloadDto = {
+    notificationId: string;
+};
+
+export type NotificationsReadPayloadDto = {
+    scope: NotificationsReadScope;
+    channelId?: string;
+    directMessageGroupId?: string;
+};
+
+export type NotificationDismissedPayloadDto = {
     notificationId: string;
 };
 
@@ -550,6 +575,18 @@ export type MemberAddedToCommunityPayloadDto = {
     userId: string;
 };
 
+export type FriendshipPayloadDto = {
+    friendshipId: string;
+    /**
+     * The request's sender (one of the two friends once accepted).
+     */
+    userAId: string;
+    /**
+     * The request's receiver.
+     */
+    userBId: string;
+};
+
 export type CommunityUpdatedPayloadDto = {
     communityId: string;
     name: string;
@@ -592,6 +629,11 @@ export type RoleUnassignedPayloadDto = {
     roleId: string;
 };
 
+export type InstanceRolesUpdatedPayloadDto = {
+    userId: string;
+    roleId: string;
+};
+
 export type UserProfileUpdatedPayloadDto = {
     userId: string;
     displayName: string | null;
@@ -621,3 +663,11 @@ export type ReauthenticateResultDto = {
     error?: ReauthenticateError;
     ok: boolean;
 };
+
+export const NotificationsReadScope = {
+    ALL: 'all',
+    CHANNEL: 'channel',
+    DIRECT_MESSAGE: 'directMessage'
+} as const;
+
+export type NotificationsReadScope = typeof NotificationsReadScope[keyof typeof NotificationsReadScope];
