@@ -244,16 +244,16 @@ async fn edit_react_pin_remove_and_delete_over_the_wire() {
     .await;
     assert!(!row(&events, &channel, THEIRS).unwrap().display.is_empty());
 
-    // The author's own delete: gone, and the read after the event finds nothing.
+    // The author's own delete says `removal: "hard"`: gone at once, and nothing to read back
+    // (an older server, which says no kind, is read again and finds it missing).
     core.delete_message(MINE.into(), None).await.unwrap();
     assert!(row(&events, &channel, MINE).is_none());
-    until("the 404 after deleteMessage", || {
-        answered(&server)
+    assert!(
+        !answered(&server)
             .get("MessagesController_findOne")
-            .is_some_and(|statuses| statuses.contains(&404))
-    })
-    .await;
-    assert!(row(&events, &channel, MINE).is_none());
+            .is_some_and(|statuses| statuses.contains(&404)),
+        "no read follows a hard delete"
+    );
 
     // The scenario's user is an instance owner, whom core never asks for roles: the call itself.
     let roles =

@@ -1226,9 +1226,12 @@ impl Client {
     }
     /**Sends a `GET` request to `/api/invite`
 
+    Arguments:
+    - `community_id`: Only the invites that include this community
     */
     pub async fn invite_controller_get_invites<'a>(
         &'a self,
+        community_id: Option<&'a str>,
     ) -> Result<ResponseValue<::std::vec::Vec<types::InviteResponseDto>>, Error<()>> {
         let url = format!("{}/api/invite", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
@@ -1244,6 +1247,10 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "communityId",
+                &community_id,
+            ))
             .headers(header_map)
             .build()?;
         let info = OperationInfo {
@@ -1442,7 +1449,11 @@ impl Client {
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
-    /**Sends a `GET` request to `/api/roles/my/channel/{channelId}`
+    /**The caller's community roles, as they apply to a channel
+
+    Returns the caller's community roles for the channel's community. These do NOT include the channel's permission overwrites: a channel that denies or grants an action is not reflected here. For per-channel decisions (post, attach, react, voice, manage permissions) use GET /api/channels/{id}/permissions/me, which returns the effective channel capabilities.
+
+    Sends a `GET` request to `/api/roles/my/channel/{channelId}`
 
     */
     pub async fn roles_controller_get_my_roles_for_channel<'a>(
@@ -3181,6 +3192,7 @@ impl Client {
     pub async fn messages_controller_search_channel_messages<'a>(
         &'a self,
         channel_id: &'a str,
+        continuation_token: Option<&'a str>,
         limit: Option<i64>,
         q: &'a str,
     ) -> Result<ResponseValue<::std::vec::Vec<types::MessageDto>>, Error<()>> {
@@ -3202,6 +3214,10 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "continuationToken",
+                &continuation_token,
+            ))
             .query(&progenitor_client::QueryParam::new("limit", &limit))
             .query(&progenitor_client::QueryParam::new("q", &q))
             .headers(header_map)
@@ -3224,6 +3240,7 @@ impl Client {
     pub async fn messages_controller_search_direct_messages<'a>(
         &'a self,
         group_id: &'a str,
+        continuation_token: Option<&'a str>,
         limit: Option<i64>,
         q: &'a str,
     ) -> Result<ResponseValue<::std::vec::Vec<types::MessageDto>>, Error<()>> {
@@ -3245,6 +3262,10 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "continuationToken",
+                &continuation_token,
+            ))
             .query(&progenitor_client::QueryParam::new("limit", &limit))
             .query(&progenitor_client::QueryParam::new("q", &q))
             .headers(header_map)
@@ -3267,6 +3288,7 @@ impl Client {
     pub async fn messages_controller_search_community_messages<'a>(
         &'a self,
         community_id: &'a str,
+        continuation_token: Option<&'a str>,
         limit: Option<i64>,
         q: &'a str,
     ) -> Result<ResponseValue<::std::vec::Vec<types::CommunitySearchResultDto>>, Error<()>> {
@@ -3288,6 +3310,10 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "continuationToken",
+                &continuation_token,
+            ))
             .query(&progenitor_client::QueryParam::new("limit", &limit))
             .query(&progenitor_client::QueryParam::new("q", &q))
             .headers(header_map)
@@ -3989,6 +4015,51 @@ impl Client {
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
+    /**Remove someone from this voice call only: they leave the LiveKit room but
+    stay a community member, and may rejoin. The participant_left webhook
+    announces the leave and clears their presence
+
+    Sends a `POST` request to `/api/livekit/channels/{channelId}/remove-participant`
+
+    */
+    pub async fn livekit_controller_remove_participant<'a>(
+        &'a self,
+        channel_id: &'a str,
+        body: &'a types::RemoveParticipantDto,
+    ) -> Result<ResponseValue<types::SuccessResponseDto>, Error<()>> {
+        let url = format!(
+            "{}/api/livekit/channels/{}/remove-participant",
+            self.baseurl,
+            encode_path(&channel_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "livekit_controller_remove_participant",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
     /**Sends a `GET` request to `/api/livekit/connection-info`
 
     */
@@ -4132,7 +4203,8 @@ impl Client {
         }
     }
     /**Stream a replay clip directly (download-only, no persistence)
-    Creates a temporary file, streams it, and deletes it after streaming completes
+    Creates a temporary file, streams it, and deletes it after streaming completes.
+    One download per user at a time: each holds a whole clip of temp disk
 
     Sends a `GET` request to `/api/livekit/replay/stream`
 
@@ -5276,6 +5348,45 @@ impl Client {
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
+    /**Sends a `POST` request to `/api/invite/{code}/accept`
+
+    */
+    pub async fn invite_controller_accept_invite<'a>(
+        &'a self,
+        code: &'a str,
+    ) -> Result<ResponseValue<types::AcceptInviteResponseDto>, Error<()>> {
+        let url = format!(
+            "{}/api/invite/{}/accept",
+            self.baseurl,
+            encode_path(&code.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "invite_controller_accept_invite",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
     /**Sends a `POST` request to `/api/moderation/ban/{communityId}/{userId}`
 
     */
@@ -6087,12 +6198,14 @@ impl Client {
     Sends a `GET` request to `/api/notifications`
 
     Arguments:
+    - `include_dismissed`: Include dismissed notifications in the page and total. Defaults to true.
     - `limit`
     - `offset`
     - `unread_only`: Only return unread notifications. Absent means all of them.
     */
     pub async fn notifications_controller_get_notifications<'a>(
         &'a self,
+        include_dismissed: Option<bool>,
         limit: Option<::std::num::NonZeroU64>,
         offset: Option<u64>,
         unread_only: Option<bool>,
@@ -6111,6 +6224,10 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "includeDismissed",
+                &include_dismissed,
+            ))
             .query(&progenitor_client::QueryParam::new("limit", &limit))
             .query(&progenitor_client::QueryParam::new("offset", &offset))
             .query(&progenitor_client::QueryParam::new(
@@ -6402,13 +6519,19 @@ impl Client {
     /**Get channel notification override
     GET /notifications/channels/:channelId/override
 
+    Answers JSON null when the user has no override: an empty 200 body cannot
+    be decoded by generated API clients
+
     Sends a `GET` request to `/api/notifications/channels/{channelId}/override`
 
     */
     pub async fn notifications_controller_get_channel_override<'a>(
         &'a self,
         channel_id: &'a str,
-    ) -> Result<ResponseValue<types::ChannelNotificationOverrideDto>, Error<()>> {
+    ) -> Result<
+        ResponseValue<::std::option::Option<types::ChannelNotificationOverrideDto>>,
+        Error<()>,
+    > {
         let url = format!(
             "{}/api/notifications/channels/{}/override",
             self.baseurl,

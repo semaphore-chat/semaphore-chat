@@ -751,6 +751,7 @@ fn capability(channel_id: &str, post: bool) -> Value {
         "channelId": channel_id, "view": true, "post": post, "attach": false, "react": true,
         "threadReply": true, "connect": true, "speak": false, "video": false, "share": false,
         "managePermissions": false, "postingRoleNames": ["Admin"],
+        "pin": true, "deleteAny": true, "seeRemoved": true,
         "timedOutUntil": "2026-09-22T19:00:00.000Z",
     })
 }

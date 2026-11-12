@@ -170,11 +170,15 @@ impl NotifyBackend for FakeBackend {
             .w2
             .run("notifications", &[&limit.to_string(), &offset.to_string()])
             .await?;
-        // The scripted answer is every row; serve the page asked for, as the server does.
-        let rows = page["notifications"]
+        // The scripted answer is every row; serve the page the server would: dismissed rows
+        // left out (core asks for `includeDismissed=false`), then the offset and limit.
+        let rows: Vec<Value> = page["notifications"]
             .as_array()
             .cloned()
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|row| row["dismissed"] != Value::Bool(true))
+            .collect();
         let total = rows.len();
         let slice: Vec<Value> = rows
             .into_iter()

@@ -35,6 +35,61 @@ use semaphore_wire::types as wire;
 /// The most lines the debug panel's log keeps.
 const DIAGNOSTIC_EVENTS: usize = 50;
 
+/// One presence entry, whichever shape its room kind sends: a channel's REST answer carries
+/// `canModerate` (unused here, W5's remove-from-call menu), a DM's has no such field.
+pub(crate) struct PresenceUser<'a> {
+    pub id: &'a str,
+    pub username: &'a str,
+    pub display_name: Option<&'a str>,
+    pub avatar_url: Option<&'a str>,
+    pub is_server_muted: bool,
+    pub is_deafened: bool,
+}
+
+/// A room's presence list, borrowed from the cache, in its own shape.
+#[derive(Clone)]
+pub(crate) enum PresenceUsers<'a> {
+    Channel(std::slice::Iter<'a, wire::ChannelVoicePresenceUserDto>),
+    Dm(std::slice::Iter<'a, wire::VoicePresenceUserDto>),
+}
+
+impl<'a> PresenceUsers<'a> {
+    pub(crate) fn channel(users: &'a [wire::ChannelVoicePresenceUserDto]) -> Self {
+        PresenceUsers::Channel(users.iter())
+    }
+}
+
+impl<'a> Iterator for PresenceUsers<'a> {
+    type Item = PresenceUser<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(match self {
+            PresenceUsers::Channel(users) => {
+                let user = users.next()?;
+                PresenceUser {
+                    id: &user.id,
+                    username: &user.username,
+                    display_name: user.display_name.as_deref(),
+                    avatar_url: user.avatar_url.as_deref(),
+                    is_server_muted: user.is_server_muted,
+                    is_deafened: user.is_deafened,
+                }
+            }
+            PresenceUsers::Dm(users) => {
+                let user = users.next()?;
+                PresenceUser {
+                    id: &user.id,
+                    username: &user.username,
+                    display_name: user.display_name.as_deref(),
+                    avatar_url: user.avatar_url.as_deref(),
+                    is_server_muted: user.is_server_muted,
+                    is_deafened: user.is_deafened,
+                }
+            }
+        })
+    }
+}
+
 /// W4's state of one session.
 #[derive(Default)]
 pub struct W4State {
@@ -116,19 +171,16 @@ fn name_of(user: &UserView) -> String {
 
 impl State {
     /// Who the server lists in this room's call, once read.
-    pub(crate) fn room_presence(
-        &self,
-        room: &VoiceRoom,
-    ) -> Option<&Vec<wire::VoicePresenceUserDto>> {
+    pub(crate) fn room_presence(&self, room: &VoiceRoom) -> Option<PresenceUsers<'_>> {
         match room {
             VoiceRoom::Channel { channel_id, .. } => self
                 .cache
                 .voice_presence(&keys::scoped(keys::VOICE_PRESENCE, channel_id))
-                .map(|presence| &presence.users),
+                .map(|presence| PresenceUsers::channel(&presence.users)),
             VoiceRoom::Dm { dm_group_id } => self
                 .cache
                 .dm_voice_presence(&keys::scoped(keys::DM_VOICE_PRESENCE, dm_group_id))
-                .map(|presence| &presence.users),
+                .map(|presence| PresenceUsers::Dm(presence.users.iter())),
         }
     }
 
@@ -148,7 +200,7 @@ impl State {
             .and_then(|room| self.room_presence(room))
             .is_some_and(|users| {
                 users
-                    .iter()
+                    .into_iter()
                     .any(|user| user.id == me && user.is_server_muted)
             })
     }
@@ -471,9 +523,8 @@ impl State {
         let me = self.me_id().to_owned();
         let Some(others) = self.room_presence(&room).map(|users| {
             users
-                .iter()
-                .filter(|user| user.id != me)
-                .map(|user| user.id.clone())
+                .filter(|user| user.id != me.as_str())
+                .map(|user| user.id.to_owned())
                 .collect::<BTreeSet<_>>()
         }) else {
             return;

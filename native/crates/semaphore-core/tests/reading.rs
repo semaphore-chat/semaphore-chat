@@ -241,7 +241,8 @@ async fn a_channel_search_asks_the_channel_endpoint() {
             "channel".to_owned(),
             CHANNEL.to_owned(),
             "needle".to_owned(),
-            Some(20)
+            Some(20),
+            None
         )]
     );
     assert_eq!(hits.len(), 2);
@@ -277,7 +278,13 @@ async fn a_dm_search_asks_the_group_endpoint() {
         .unwrap();
     assert_eq!(
         *rig.backend.reading.search_calls.lock().unwrap(),
-        vec![("group".to_owned(), "g-1".to_owned(), "dm".to_owned(), None)]
+        vec![(
+            "group".to_owned(),
+            "g-1".to_owned(),
+            "dm".to_owned(),
+            None,
+            None
+        )]
     );
     assert_eq!(
         hits[0].conversation,
@@ -307,7 +314,8 @@ async fn a_community_search_carries_channel_names() {
             "community".to_owned(),
             "c-1".to_owned(),
             "hit".to_owned(),
-            Some(5)
+            Some(5),
+            None
         )
     );
     assert_eq!(hits[0].channel_name.as_deref(), Some("general"));
@@ -335,6 +343,196 @@ async fn a_blank_search_asks_nothing() {
             .unwrap();
         assert!(hits.is_empty());
     }
+    assert!(rig.backend.reading.search_calls.lock().unwrap().is_empty());
+}
+
+// --- Search paging ---
+
+/// A search's answers, newest first: `count` messages, each found.
+fn search_rows(count: usize) -> Vec<serde_json::Value> {
+    (0..count)
+        .map(|n| {
+            let mut row = message_json(&format!("m-{n:02}"), "ava", "needle");
+            row["sentAt"] = json!(format!("2026-09-22T18:{:02}:00.000Z", 59 - n));
+            row
+        })
+        .collect()
+}
+
+fn channel_scope() -> SearchScope {
+    SearchScope::Channel { id: CHANNEL.into() }
+}
+
+#[tokio::test]
+async fn a_search_pages_a_page_at_a_time() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.reading.search_results.lock().unwrap() = search_rows(51);
+    let scope = channel_scope();
+
+    // The first page: 50 of 51, and a cursor because the page was full.
+    assert_eq!(
+        rig.core
+            .search_results(scope.clone(), "needle".into())
+            .state,
+        LoadState::Loading
+    );
+    rig.core.run_until_idle().await;
+    let view = rig.core.search_results(scope.clone(), "needle".into());
+    assert_eq!(view.state, LoadState::Ready);
+    assert_eq!(view.hits.len(), 50);
+    assert!(view.more);
+    assert!(!view.loading_more);
+    assert_eq!(
+        rig.backend.reading.search_calls.lock().unwrap()[0].4,
+        None,
+        "the first page continues after nothing"
+    );
+
+    // The last: one more, and no cursor, so nothing more to read.
+    rig.core
+        .load_more_search(scope.clone(), "needle".into())
+        .await
+        .unwrap();
+    let view = rig.core.search_results(scope.clone(), "needle".into());
+    assert_eq!(view.hits.len(), 51);
+    assert!(!view.more);
+    assert!(!view.loading_more);
+    assert_eq!(
+        rig.backend.reading.search_calls.lock().unwrap()[1]
+            .4
+            .as_deref(),
+        Some("m-49"),
+        "the second page continued after the first page's last id"
+    );
+    rig.core
+        .load_more_search(scope, "needle".into())
+        .await
+        .unwrap();
+    assert_eq!(
+        rig.backend.reading.search_calls.lock().unwrap().len(),
+        2,
+        "nothing more to read"
+    );
+}
+
+#[tokio::test]
+async fn a_new_query_is_its_own_page() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.reading.search_results.lock().unwrap() = search_rows(51);
+    let scope = channel_scope();
+    rig.core.search_results(scope.clone(), "needle".into());
+    rig.core.run_until_idle().await;
+    rig.core
+        .load_more_search(scope.clone(), "needle".into())
+        .await
+        .unwrap();
+    assert_eq!(
+        rig.core
+            .search_results(scope.clone(), "needle".into())
+            .hits
+            .len(),
+        51
+    );
+
+    // A new query starts over: its own first page, not the pages of the one before.
+    assert_eq!(
+        rig.core
+            .search_results(scope.clone(), "haystack".into())
+            .state,
+        LoadState::Loading
+    );
+    rig.core.run_until_idle().await;
+    let view = rig.core.search_results(scope.clone(), "haystack".into());
+    assert_eq!(view.hits.len(), 50);
+    assert!(view.more);
+    // The first query still holds what it read.
+    assert_eq!(
+        rig.core
+            .search_results(scope.clone(), "needle".into())
+            .hits
+            .len(),
+        51
+    );
+}
+
+#[tokio::test]
+async fn an_answer_for_a_search_the_user_moved_on_from_lands_in_its_own_page() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.reading.search_results.lock().unwrap() = search_rows(51);
+    let scope = channel_scope();
+    rig.core.search_results(scope.clone(), "needle".into());
+    rig.core.run_until_idle().await;
+
+    let (release, gate) = oneshot::channel();
+    *rig.backend.reading.search_gate.lock().unwrap() = Some(gate);
+    let more = rig.core.load_more_search(scope.clone(), "needle".into());
+    let (result, ()) = tokio::join!(more, async {
+        tokio::task::yield_now().await;
+        // The page for "needle" is held at the server. Meanwhile the user searches again.
+        rig.core.search_results(scope.clone(), "haystack".into());
+        rig.core.run_until_idle().await;
+        assert_eq!(
+            rig.core
+                .search_results(scope.clone(), "haystack".into())
+                .hits
+                .len(),
+            50,
+            "the held page isn't in this search"
+        );
+        release.send(()).unwrap();
+    });
+    result.unwrap();
+    assert_eq!(
+        rig.core
+            .search_results(scope.clone(), "needle".into())
+            .hits
+            .len(),
+        51,
+        "it landed in the search it belongs to"
+    );
+    assert_eq!(
+        rig.core.search_results(scope, "haystack".into()).hits.len(),
+        50
+    );
+}
+
+#[tokio::test]
+async fn an_answer_after_sign_out_takes_its_page_nowhere() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.reading.search_results.lock().unwrap() = search_rows(51);
+    let scope = channel_scope();
+    rig.core.search_results(scope.clone(), "needle".into());
+    rig.core.run_until_idle().await;
+    let (release, gate) = oneshot::channel();
+    *rig.backend.reading.search_gate.lock().unwrap() = Some(gate);
+    let more = rig.core.load_more_search(scope.clone(), "needle".into());
+    let (result, ()) = tokio::join!(more, async {
+        tokio::task::yield_now().await;
+        rig.core.sign_out().await.unwrap();
+        release.send(()).unwrap();
+    });
+    assert!(result.is_err(), "an answer for an ended session fails");
+    assert!(matches!(
+        rig.core.session(),
+        semaphore_core::model::SessionState::SignedOut
+    ));
+    assert!(
+        rig.core
+            .search_results(scope, "needle".into())
+            .hits
+            .is_empty(),
+        "none of the answer landed"
+    );
+}
+
+#[tokio::test]
+async fn a_blank_search_reads_nothing_and_is_ready() {
+    let rig = Rig::new().signed_in().await;
+    let view = rig.core.search_results(channel_scope(), "   ".into());
+    assert_eq!(view.state, LoadState::Ready);
+    assert!(view.hits.is_empty());
+    assert!(!view.more);
+    rig.core.run_until_idle().await;
     assert!(rig.backend.reading.search_calls.lock().unwrap().is_empty());
 }
 

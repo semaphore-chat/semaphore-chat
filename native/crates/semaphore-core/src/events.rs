@@ -243,12 +243,27 @@ fn context(channel_id: &Option<String>, group_id: &Option<String>) -> Option<Con
     }
 }
 
-fn presence_user_view(user: &wire::VoicePresenceUserDto) -> UserView {
+/// A socket event's presence user in the REST answer's shape. The events carry no
+/// `canModerate`; the contract says so too.
+fn channel_presence_user(user: wire::VoicePresenceUserDto) -> wire::ChannelVoicePresenceUserDto {
+    wire::ChannelVoicePresenceUserDto {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+        is_server_muted: user.is_server_muted,
+        is_deafened: user.is_deafened,
+        joined_at: user.joined_at,
+        can_moderate: None,
+    }
+}
+
+fn presence_user_view(user: crate::commands::calls::PresenceUser<'_>) -> UserView {
     UserView {
-        id: user.id.clone(),
-        username: user.username.clone(),
-        display_name: user.display_name.clone(),
-        avatar_file_id: user.avatar_url.clone(),
+        id: user.id.to_owned(),
+        username: user.username.to_owned(),
+        display_name: user.display_name.map(str::to_owned),
+        avatar_file_id: user.avatar_url.map(str::to_owned),
     }
 }
 
@@ -382,8 +397,7 @@ impl State {
             let may_see = dto
                 .channel_id
                 .as_deref()
-                .and_then(|channel_id| self.moderation_of(channel_id))
-                .is_some_and(|moderation| moderation.remove_any);
+                .is_some_and(|channel_id| self.may_see_removed(channel_id));
             if may_see {
                 if self.find_message(&id).is_some() {
                     self.push_effect(crate::client::Effect::RefetchMessage(id));
@@ -408,11 +422,18 @@ impl State {
         }
     }
 
-    /// `handleDeleteMessage`, except for a reader who may see removed messages: the payload doesn't
-    /// say whether a moderator removed the message (the row stays, text and all) or it was deleted
-    /// (it goes), so for them the row turns removed and is read again.
+    /// `handleDeleteMessage`. `removal` says which it was: `hard`, the author's own delete or the
+    /// server's cleanup, takes the row away; `soft`, a moderator's removal, leaves it removed for
+    /// a reader who may see removed messages (the row keeps its text) and takes it away for one
+    /// who may not, as the web shows both. A server older than the field sends neither, and for a
+    /// reader who may see removed messages the payload then can't say which it was: the row turns
+    /// removed and is read again, and goes if that read finds nothing.
     fn on_delete_message(&mut self, payload: wire::DeleteMessagePayloadDto, now: u64) {
         self.drop_from_pins(payload.channel_id.as_deref(), &payload.message_id);
+        if payload.removal == Some(semaphore_wire::enums::MessageRemoval::Hard) {
+            self.remove_message(&payload);
+            return;
+        }
         if self.removal_kept(&payload, now) {
             return;
         }
@@ -524,7 +545,7 @@ impl State {
         &mut self,
         channel_id: &str,
         name: &str,
-        change: impl FnOnce(&mut Vec<wire::VoicePresenceUserDto>),
+        change: impl FnOnce(&mut Vec<wire::ChannelVoicePresenceUserDto>),
     ) {
         let key = keys::scoped(keys::VOICE_PRESENCE, channel_id);
         self.note_direct_update(&key);
@@ -728,7 +749,7 @@ impl State {
                 }
             }
             ServerEvent::VoiceChannelUserJoined(event) => {
-                let user = event.user;
+                let user = channel_presence_user(event.user);
                 self.on_voice_presence(&event.channel_id, name, |users| {
                     if !users.iter().any(|existing| existing.id == user.id) {
                         users.push(user);
@@ -742,11 +763,14 @@ impl State {
                 });
             }
             ServerEvent::VoiceChannelUserUpdated(event) => {
-                let user = event.user;
+                let user = channel_presence_user(event.user);
                 self.on_voice_presence(&event.channel_id, name, |users| {
                     if let Some(existing) = users.iter_mut().find(|existing| existing.id == user.id)
                     {
+                        // Only the REST answer says whether the caller may moderate them.
+                        let can_moderate = existing.can_moderate;
                         *existing = user;
+                        existing.can_moderate = can_moderate;
                     }
                 });
             }
@@ -834,6 +858,23 @@ impl State {
             // W4: a DM call the other person declined, or one that ended.
             ServerEvent::DmVoiceCallDeclined(event) => self.w4_declined(&event),
             ServerEvent::DmVoiceCallEnded(event) => self.w4_ended(&event.dm_group_id),
+            // A DM group or a friendship changed, on this device or another: core reads the DM and
+            // friend lists again after its own changes and when they're shown, so these add
+            // nothing yet.
+            ServerEvent::DmGroupCreated(_)
+            | ServerEvent::DmGroupMemberAdded(_)
+            | ServerEvent::DmGroupMemberLeft(_)
+            | ServerEvent::FriendRemoved(_)
+            | ServerEvent::FriendRequestAccepted(_)
+            | ServerEvent::FriendRequestCancelled(_)
+            | ServerEvent::FriendRequestDeclined(_)
+            | ServerEvent::FriendRequestSent(_) => {}
+            // An instance role assignment: the next read of the instance roles (W6's screens, and
+            // the admin entry) picks it up, as it did before the event existed.
+            ServerEvent::InstanceRolesUpdated(_) => {}
+            // A notification dismissed or read on another device: the centre reads again when
+            // shown, and the badge with it, so neither is changed here.
+            ServerEvent::NotificationDismissed(_) | ServerEvent::NotificationsRead(_) => {}
             ServerEvent::Unknown { name, .. } => log::debug!("ignoring unknown event {name}"),
             ServerEvent::Malformed {
                 name,
@@ -950,7 +991,11 @@ impl Core {
         state
             .cache
             .voice_presence(&keys::scoped(keys::VOICE_PRESENCE, channel_id))
-            .map(|presence| presence.users.iter().map(presence_user_view).collect())
+            .map(|presence| {
+                crate::commands::calls::PresenceUsers::channel(&presence.users)
+                    .map(presence_user_view)
+                    .collect()
+            })
             .unwrap_or_default()
     }
 }

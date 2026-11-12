@@ -1,18 +1,25 @@
-//! Message search (W1 part B): a case-insensitive match on the text, newest first, no paging,
-//! and removed messages never found, as the backend's search. Thread replies are found in
+//! Message search (W1 part B): a case-insensitive match on the text, newest first, a page at a
+//! time, and removed messages never found, as the backend's search. Thread replies are found in
 //! their parent's channel or conversation. Nothing is broadcast.
+//!
+//! Paging is the backend's (`setSearchPageHeader`): the page continues after the message the
+//! `continuationToken` names, and a page that came back full carries its last message's id in
+//! `X-Continuation-Token`.
 
 use super::{invalid, json_response, limit_query};
 use crate::{Inner, lock};
 use axum::Router;
 use axum::extract::{Path, Query, State};
-use axum::http::{Method, StatusCode};
+use axum::http::{HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
 use semaphore_wire::MessageDto;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// The header a full page carries its next cursor in (`SEARCH_CONTINUATION_HEADER`).
+pub(crate) const CONTINUATION: &str = "x-continuation-token";
 
 pub(super) fn routes() -> Router<Arc<Inner>> {
     Router::new()
@@ -39,14 +46,18 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
     })
 }
 
-/// `q` and `limit`, or the 400 the backend gives.
-fn params(query: &HashMap<String, String>) -> Result<(String, usize), Response> {
+/// `q`, `limit` and `continuationToken`, or the 400 the backend gives.
+fn params(query: &HashMap<String, String>) -> Result<(String, usize, Option<String>), Response> {
     let q = query
         .get("q")
         .map(|q| q.trim().to_lowercase())
         .filter(|q| !q.is_empty())
         .ok_or_else(|| invalid("q is required"))?;
-    Ok((q, limit_query(query)?))
+    let cursor = query
+        .get("continuationToken")
+        .filter(|token| !token.is_empty())
+        .cloned();
+    Ok((q, limit_query(query)?, cursor))
 }
 
 fn text_of(message: &MessageDto) -> String {
@@ -58,17 +69,23 @@ fn text_of(message: &MessageDto) -> String {
         .to_lowercase()
 }
 
-/// Matches among `messages`, newest first, at most `limit`.
+/// Matches among `messages`, newest first, the page after `cursor` and at most `limit` long.
 fn matching<'a>(
     messages: impl Iterator<Item = &'a MessageDto>,
     q: &str,
     limit: usize,
+    cursor: Option<&str>,
 ) -> Vec<MessageDto> {
     let mut found: Vec<MessageDto> = messages
         .filter(|message| message.deleted_at.is_none() && text_of(message).contains(q))
         .cloned()
         .collect();
     found.sort_by(|a, b| (b.sent_at, b.id.as_str()).cmp(&(a.sent_at, a.id.as_str())));
+    if let Some(cursor) = cursor
+        && let Some(index) = found.iter().position(|message| message.id == cursor)
+    {
+        found.drain(..=index);
+    }
     found.truncate(limit);
     found
 }
@@ -87,8 +104,16 @@ fn context_messages<'a>(
     )
 }
 
-fn array(found: Vec<Value>) -> Response {
-    json_response(StatusCode::OK, Value::Array(found))
+/// A page, with the cursor after it when it came back full.
+fn array(found: Vec<Value>, cursor: Option<&str>, size: usize, limit: usize) -> Response {
+    let mut response = json_response(StatusCode::OK, Value::Array(found));
+    if size == limit
+        && let Some(last) = cursor
+        && let Ok(value) = HeaderValue::from_str(last)
+    {
+        response.headers_mut().insert(CONTINUATION, value);
+    }
+    response
 }
 
 fn values(found: Vec<MessageDto>) -> Vec<Value> {
@@ -103,7 +128,7 @@ async fn in_channel(
     Path(channel_id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
-    let (q, limit) = match params(&query) {
+    let (q, limit, cursor) = match params(&query) {
         Ok(params) => params,
         Err(response) => return response,
     };
@@ -111,9 +136,10 @@ async fn in_channel(
     let messages = context_messages(&data, data.channel_messages.get(&channel_id), |reply| {
         reply.channel_id.as_deref() == Some(channel_id.as_str())
     });
-    let found = matching(messages, &q, limit);
+    let found = matching(messages, &q, limit, cursor.as_deref());
+    let (size, last) = (found.len(), found.last().map(|message| message.id.clone()));
     drop(data);
-    array(values(found))
+    array(values(found), last.as_deref(), size, limit)
 }
 
 async fn in_group(
@@ -121,7 +147,7 @@ async fn in_group(
     Path(group_id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
-    let (q, limit) = match params(&query) {
+    let (q, limit, cursor) = match params(&query) {
         Ok(params) => params,
         Err(response) => return response,
     };
@@ -129,9 +155,10 @@ async fn in_group(
     let messages = context_messages(&data, data.dm_messages.get(&group_id), |reply| {
         reply.direct_message_group_id.as_deref() == Some(group_id.as_str())
     });
-    let found = matching(messages, &q, limit);
+    let found = matching(messages, &q, limit, cursor.as_deref());
+    let (size, last) = (found.len(), found.last().map(|message| message.id.clone()));
     drop(data);
-    array(values(found))
+    array(values(found), last.as_deref(), size, limit)
 }
 
 /// `CommunitySearchResultDto`: a message with its channel's name.
@@ -140,7 +167,7 @@ async fn in_community(
     Path(community_id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
-    let (q, limit) = match params(&query) {
+    let (q, limit, cursor) = match params(&query) {
         Ok(params) => params,
         Err(response) => return response,
     };
@@ -164,7 +191,8 @@ async fn in_community(
                 .as_deref()
                 .is_some_and(|id| names.contains_key(id))
         }));
-    let found = matching(messages, &q, limit);
+    let found = matching(messages, &q, limit, cursor.as_deref());
+    let (size, last) = (found.len(), found.last().map(|message| message.id.clone()));
     drop(data);
     let found = found
         .into_iter()
@@ -180,5 +208,5 @@ async fn in_community(
             value
         })
         .collect();
-    array(found)
+    array(found, last.as_deref(), size, limit)
 }

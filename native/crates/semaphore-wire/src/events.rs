@@ -43,6 +43,12 @@ pub enum ServerEvent {
     DeleteMessage(types::DeleteMessagePayloadDto),
     /// `desktopSignIn`
     DesktopSignIn(types::DesktopSignInPayloadDto),
+    /// `dmGroupCreated`
+    DmGroupCreated(types::DmGroupCreatedPayloadDto),
+    /// `dmGroupMemberAdded`
+    DmGroupMemberAdded(types::DmGroupMemberAddedPayloadDto),
+    /// `dmGroupMemberLeft`
+    DmGroupMemberLeft(types::DmGroupMemberLeftPayloadDto),
     /// `dmVoiceCallDeclined`
     DmVoiceCallDeclined(types::DmVoiceCallDeclinedPayloadDto),
     /// `dmVoiceCallEnded`
@@ -55,6 +61,18 @@ pub enum ServerEvent {
     DmVoiceUserLeft(types::DmVoiceUserLeftPayloadDto),
     /// `egressSegmentsReady`
     EgressSegmentsReady(types::EgressSegmentsReadyPayloadDto),
+    /// `friendRemoved`
+    FriendRemoved(types::FriendshipPayloadDto),
+    /// `friendRequestAccepted`
+    FriendRequestAccepted(types::FriendshipPayloadDto),
+    /// `friendRequestCancelled`
+    FriendRequestCancelled(types::FriendshipPayloadDto),
+    /// `friendRequestDeclined`
+    FriendRequestDeclined(types::FriendshipPayloadDto),
+    /// `friendRequestSent`
+    FriendRequestSent(types::FriendshipPayloadDto),
+    /// `instanceRolesUpdated`
+    InstanceRolesUpdated(types::InstanceRolesUpdatedPayloadDto),
     /// `memberAddedToCommunity`
     MemberAddedToCommunity(types::MemberAddedToCommunityPayloadDto),
     /// `messagePinned`
@@ -69,8 +87,12 @@ pub enum ServerEvent {
     NewNotification(types::NewNotificationPayloadDto),
     /// `newThreadReply`
     NewThreadReply(types::NewThreadReplyPayloadDto),
+    /// `notificationDismissed`
+    NotificationDismissed(types::NotificationDismissedPayloadDto),
     /// `notificationRead`
     NotificationRead(types::NotificationReadPayloadDto),
+    /// `notificationsRead`
+    NotificationsRead(types::NotificationsReadPayloadDto),
     /// `privateChannelAdded`
     PrivateChannelAdded(types::PrivateChannelMembershipPayloadDto),
     /// `privateChannelRemoved`
@@ -170,6 +192,9 @@ impl ServerEvent {
             "customEmojiDeleted" => decode_payload(name, payload, ServerEvent::CustomEmojiDeleted),
             "deleteMessage" => decode_payload(name, payload, ServerEvent::DeleteMessage),
             "desktopSignIn" => decode_payload(name, payload, ServerEvent::DesktopSignIn),
+            "dmGroupCreated" => decode_payload(name, payload, ServerEvent::DmGroupCreated),
+            "dmGroupMemberAdded" => decode_payload(name, payload, ServerEvent::DmGroupMemberAdded),
+            "dmGroupMemberLeft" => decode_payload(name, payload, ServerEvent::DmGroupMemberLeft),
             "dmVoiceCallDeclined" => {
                 decode_payload(name, payload, ServerEvent::DmVoiceCallDeclined)
             }
@@ -180,6 +205,20 @@ impl ServerEvent {
             "egressSegmentsReady" => {
                 decode_payload(name, payload, ServerEvent::EgressSegmentsReady)
             }
+            "friendRemoved" => decode_payload(name, payload, ServerEvent::FriendRemoved),
+            "friendRequestAccepted" => {
+                decode_payload(name, payload, ServerEvent::FriendRequestAccepted)
+            }
+            "friendRequestCancelled" => {
+                decode_payload(name, payload, ServerEvent::FriendRequestCancelled)
+            }
+            "friendRequestDeclined" => {
+                decode_payload(name, payload, ServerEvent::FriendRequestDeclined)
+            }
+            "friendRequestSent" => decode_payload(name, payload, ServerEvent::FriendRequestSent),
+            "instanceRolesUpdated" => {
+                decode_payload(name, payload, ServerEvent::InstanceRolesUpdated)
+            }
             "memberAddedToCommunity" => {
                 decode_payload(name, payload, ServerEvent::MemberAddedToCommunity)
             }
@@ -189,7 +228,11 @@ impl ServerEvent {
             "newMessage" => decode_payload(name, payload, ServerEvent::NewMessage),
             "newNotification" => decode_payload(name, payload, ServerEvent::NewNotification),
             "newThreadReply" => decode_payload(name, payload, ServerEvent::NewThreadReply),
+            "notificationDismissed" => {
+                decode_payload(name, payload, ServerEvent::NotificationDismissed)
+            }
             "notificationRead" => decode_payload(name, payload, ServerEvent::NotificationRead),
+            "notificationsRead" => decode_payload(name, payload, ServerEvent::NotificationsRead),
             "privateChannelAdded" => {
                 decode_payload(name, payload, ServerEvent::PrivateChannelAdded)
             }

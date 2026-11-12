@@ -163,7 +163,8 @@ pub enum SendOutcome {
 /// What to tell the sender. Generic refusals read badly as the server words them.
 fn describe_refusal(code: &ErrorCode, message: &str) -> String {
     match code.as_str().as_ref() {
-        "FORBIDDEN" => "You can't send messages here".to_owned(),
+        // A blocked DM reads as the web's words for it (`describeSendFailure`).
+        "FORBIDDEN" | "DM_BLOCKED" => "You can't send messages here".to_owned(),
         "VALIDATION_FAILED" | "INTERNAL" | "UNKNOWN" => "Failed to send".to_owned(),
         _ if message.is_empty() => "Failed to send".to_owned(),
         _ => message.to_owned(),

@@ -809,9 +809,11 @@ fn post_clip_message(
             file_type: semaphore_wire::enums::FileType::Video,
             filename: clip.filename.clone(),
             has_thumbnail: false,
+            height: None,
             id: clip.file_id.clone(),
             mime_type: "video/mp4".to_owned(),
             size: clip.size,
+            width: None,
         }],
         ..Default::default()
     };

@@ -238,7 +238,7 @@ impl CommunityAdminBackend for HttpBackend {
     }
 
     async fn invite_controller_get_invites(&self) -> BackendResult<Vec<wire::InviteResponseDto>> {
-        rpc!(self, c => c.invite_controller_get_invites())
+        rpc!(self, c => c.invite_controller_get_invites(None))
     }
 
     async fn invite_controller_create_invite(

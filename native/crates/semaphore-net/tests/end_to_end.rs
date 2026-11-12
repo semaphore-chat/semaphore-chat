@@ -813,9 +813,15 @@ async fn search_finds_messages_in_each_scope() {
     // The raw calls, as the backend sees them.
     assert_eq!(
         rig.backend
-            .messages_controller_search_channel_messages(CHANNEL.into(), "zzz-nothing".into(), None)
+            .messages_controller_search_channel_messages(
+                CHANNEL.into(),
+                "zzz-nothing".into(),
+                None,
+                None,
+            )
             .await
             .unwrap()
+            .items
             .len(),
         0
     );
@@ -857,6 +863,57 @@ async fn search_finds_messages_in_each_scope() {
             )
             .await
             .is_err()
+    );
+}
+
+/// The search routes page through the real client: the cursor comes back in a response header,
+/// which the generated client keeps, and the second page continues after the first.
+#[tokio::test]
+async fn search_pages_through_the_real_backend() {
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+
+    let first = rig
+        .backend
+        .messages_controller_search_channel_messages(
+            CHANNEL.into(),
+            "plan before next week".into(),
+            Some(2),
+            None,
+        )
+        .await
+        .unwrap();
+    let ids: Vec<&str> = first
+        .items
+        .iter()
+        .map(|message| message.id.as_str())
+        .collect();
+    assert_eq!(ids.len(), 2, "{ids:?}");
+    let cursor = first
+        .next
+        .clone()
+        .expect("a full page carries the next page's cursor");
+
+    let second = rig
+        .backend
+        .messages_controller_search_channel_messages(
+            CHANNEL.into(),
+            "plan before next week".into(),
+            Some(2),
+            Some(cursor),
+        )
+        .await
+        .unwrap();
+    let second_ids: Vec<&str> = second
+        .items
+        .iter()
+        .map(|message| message.id.as_str())
+        .collect();
+    assert_eq!(second_ids.len(), 1, "{second_ids:?}");
+    assert!(second.next.is_none(), "a short page is the last one");
+    assert!(
+        ids.iter().all(|id| !second_ids.contains(id)),
+        "the pages don't overlap: {ids:?} then {second_ids:?}"
     );
 }
 

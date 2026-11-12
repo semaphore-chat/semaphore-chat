@@ -659,7 +659,7 @@ fn script_notifications(rig: &Rig, rows: Vec<Value>) {
 }
 
 #[tokio::test]
-async fn the_centre_leaves_out_dismissed_rows_and_pages() {
+async fn the_centre_asks_for_undismissed_rows_and_pages() {
     let rig = w2_rig().await;
     let mut rows: Vec<Value> = (0..60)
         .map(|n| {
@@ -672,21 +672,98 @@ async fn the_centre_leaves_out_dismissed_rows_and_pages() {
             )
         })
         .collect();
+    // The server leaves a dismissed row out of its pages (`includeDismissed=false`), so neither
+    // page holds one, and the second begins where the first ended.
     rows[1]["dismissed"] = json!(true);
     script_notifications(&rig, rows);
     rig.core.notifications();
     rig.core.run_until_idle().await;
     let list = rig.core.notifications();
     assert_eq!(list.state, LoadState::Ready);
-    assert_eq!(list.rows.len(), 49, "a page of 50, one dismissed");
+    assert_eq!(
+        list.rows.len(),
+        50,
+        "a page of 50, the dismissed one left out"
+    );
     assert!(list.has_more);
     assert_eq!(list.rows[0].kind, NotificationKind::Mention);
     assert_eq!(list.rows[0].author.display_name.as_deref(), Some("Alice"));
     assert_eq!(list.rows[0].preview, "text n-0");
     rig.core.load_more_notifications().await.unwrap();
     let list = rig.core.notifications();
-    assert_eq!(list.rows.len(), 59);
+    assert_eq!(list.rows.len(), 59, "the other 59");
     assert!(!list.has_more);
+}
+
+#[tokio::test]
+async fn a_row_carries_the_servers_channel_name_and_thread_parent() {
+    let rig = w2_rig().await;
+    let mut row = notification("n-1", "THREAD_REPLY", Some(CHANNEL), None, false);
+    row["channelName"] = json!("general");
+    row["parentMessageId"] = json!("parent-1");
+    script_notifications(&rig, vec![row]);
+    rig.core.notifications();
+    rig.core.run_until_idle().await;
+    let list = rig.core.notifications();
+    assert_eq!(
+        list.rows[0].channel_name.as_deref(),
+        Some("general"),
+        "from the row: the channel list isn't loaded here"
+    );
+    assert_eq!(list.rows[0].parent_message_id.as_deref(), Some("parent-1"));
+}
+
+#[tokio::test]
+async fn a_new_notifications_thread_parent_reaches_the_row_and_the_raise() {
+    let rig = w2_rig().await;
+    rig.core.notifications();
+    rig.core.run_until_idle().await;
+    rig.events.take();
+    rig.core.ingest(event(
+        "newNotification",
+        json!({
+            "notificationId": "n-1", "type": "THREAD_REPLY", "messageId": "msg-n-1",
+            "channelId": CHANNEL, "communityId": "comm", "channelName": "general",
+            "directMessageGroupId": null, "authorId": ALICE, "parentMessageId": "parent-1",
+            "author": { "id": ALICE, "username": "alice", "displayName": "Alice", "avatarUrl": null },
+            "message": { "id": "msg-n-1", "spans": [{ "type": "PLAINTEXT", "text": "a reply" }], "channelId": CHANNEL, "directMessageGroupId": null },
+            "createdAt": "2026-09-22T18:00:00.000Z", "read": false,
+        }),
+    ));
+    let raised = notifies(&rig.events.take());
+    assert_eq!(raised.len(), 1);
+    assert_eq!(raised[0].parent_message_id.as_deref(), Some("parent-1"));
+    let list = rig.core.notifications();
+    assert_eq!(list.rows[0].parent_message_id.as_deref(), Some("parent-1"));
+    assert_eq!(list.rows[0].channel_name.as_deref(), Some("general"));
+}
+
+#[tokio::test]
+async fn a_dismissed_notification_leaves_the_centre() {
+    let rig = w2_rig().await;
+    script_notifications(
+        &rig,
+        vec![
+            notification("n-1", "USER_MENTION", Some(CHANNEL), None, false),
+            notification("n-2", "USER_MENTION", Some(CHANNEL), None, false),
+        ],
+    );
+    rig.core.notifications();
+    rig.core.run_until_idle().await;
+    assert_eq!(rig.core.notifications().rows.len(), 2);
+    rig.backend.w2.answer(
+        "dismiss",
+        notification("n-1", "USER_MENTION", Some(CHANNEL), None, false),
+    );
+    rig.core.dismiss_notification("n-1".into()).await.unwrap();
+    let ids: Vec<String> = rig
+        .core
+        .notifications()
+        .rows
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+    assert_eq!(ids, vec!["n-2"]);
 }
 
 #[tokio::test]
@@ -1068,17 +1145,26 @@ async fn clearing_a_dnd_time_sends_null_and_a_bad_time_is_refused_here() {
     rig.core
         .update_notification_settings(NotificationSettingsPatch {
             dnd_start: Some(String::new()),
+            dnd_end: Some(String::new()),
+            dnd_timezone: Some(String::new()),
             ..Default::default()
         })
         .await
         .unwrap();
-    assert!(
-        rig.backend
-            .w2
-            .calls()
-            .iter()
-            .any(|call| call.contains(r#""dndStartTime":null"#))
-    );
+    let body = rig
+        .backend
+        .w2
+        .calls()
+        .into_iter()
+        .find(|call| call.starts_with("update_settings"))
+        .expect("the change reached the server");
+    for field in [
+        r#""dndStartTime":null"#,
+        r#""dndEndTime":null"#,
+        r#""dndTimezone":null"#,
+    ] {
+        assert!(body.contains(field), "{field} in {body}");
+    }
     let error = rig
         .core
         .update_notification_settings(NotificationSettingsPatch {
