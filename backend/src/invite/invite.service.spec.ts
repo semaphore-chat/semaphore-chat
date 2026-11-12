@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
-import { Logger } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
+import { ErrorCode } from '@semaphore-chat/shared';
 import type { Mocked } from '@suites/doubles.jest';
 import { InviteService } from './invite.service';
 import { PermissionsService } from '@/roles/permissions.service';
@@ -221,6 +222,78 @@ describe('InviteService', () => {
     });
   });
 
+  describe('getPublicInvite', () => {
+    const invite = {
+      code: 'PUBLIC123',
+      uses: 1,
+      maxUses: 5,
+      validUntil: null,
+      disabled: false,
+      createdBy: { username: 'owner' },
+    };
+
+    /** The error a rejected lookup threw. */
+    const rejection = async (code: string): Promise<NotFoundException> => {
+      try {
+        await service.getPublicInvite(code);
+      } catch (error) {
+        return error as NotFoundException;
+      }
+      throw new Error('expected getPublicInvite to reject');
+    };
+
+    it('returns what the join screen shows for a usable code', async () => {
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue(invite);
+
+      await expect(service.getPublicInvite(invite.code)).resolves.toEqual(
+        invite,
+      );
+    });
+
+    it.each([
+      ['an unknown code', null, ErrorCode.INVITE_NOT_FOUND],
+      [
+        'an expired invite',
+        { ...invite, validUntil: new Date(Date.now() - 60_000) },
+        ErrorCode.INVITE_EXPIRED,
+      ],
+      [
+        'an exhausted invite',
+        { ...invite, uses: 5, maxUses: 5 },
+        ErrorCode.INVITE_EXHAUSTED,
+      ],
+      [
+        'a disabled invite',
+        { ...invite, disabled: true },
+        ErrorCode.INVITE_DISABLED,
+      ],
+    ])('answers 404 with a reason for %s', async (_label, row, code) => {
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue(row);
+
+      const error = await rejection('whatever');
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.getStatus()).toBe(404);
+      expect(error.getResponse()).toMatchObject({ errorCode: code });
+    });
+
+    it('reports exhaustion rather than "disabled" when the last use spent it', async () => {
+      // Redemption also flips `disabled` on the last use.
+      mockDatabase.instanceInvite.findUnique.mockResolvedValue({
+        ...invite,
+        uses: 5,
+        maxUses: 5,
+        disabled: true,
+      });
+
+      const error = await rejection('whatever');
+
+      expect(error.getResponse()).toMatchObject({
+        errorCode: ErrorCode.INVITE_EXHAUSTED,
+      });
+    });
+  });
+
   describe('validateInviteCode', () => {
     it('should return invite when valid', async () => {
       const mockInvite = InstanceInviteFactory.build({
@@ -312,6 +385,99 @@ describe('InviteService', () => {
     });
   });
 
+  describe('redeemForExistingUser', () => {
+    const buildTx = (opts: { invite?: any; usage?: any; maxUses?: number }) => {
+      const invite =
+        opts.invite === undefined
+          ? InstanceInviteFactory.build({
+              code: 'C',
+              disabled: false,
+              maxUses: opts.maxUses ?? 5,
+              uses: 0,
+            })
+          : opts.invite;
+      return {
+        invite,
+        tx: {
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          instanceInvite: {
+            findUnique: jest.fn().mockResolvedValue(invite),
+            update: jest.fn().mockResolvedValue(invite),
+          },
+          instanceInviteUsage: {
+            findUnique: jest.fn().mockResolvedValue(opts.usage ?? null),
+            create: jest.fn().mockResolvedValue({}),
+          },
+        },
+      };
+    };
+
+    it('locks the invite row and spends a use', async () => {
+      const { tx } = buildTx({});
+      await expect(
+        service.redeemForExistingUser(tx as any, 'C', 'u1'),
+      ).resolves.toBe('redeemed');
+      expect(tx.$queryRaw).toHaveBeenCalled();
+      expect(tx.instanceInviteUsage.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers already_used without a second use', async () => {
+      const { tx } = buildTx({ usage: { id: 'x' } });
+      await expect(
+        service.redeemForExistingUser(tx as any, 'C', 'u1'),
+      ).resolves.toBe('already_used');
+      expect(tx.instanceInviteUsage.create).not.toHaveBeenCalled();
+      expect(tx.instanceInvite.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['exhausted', { maxUses: 1, uses: 1 }],
+      ['disabled', { disabled: true }],
+      ['expired', { validUntil: new Date(Date.now() - 1000) }],
+    ])('answers unusable for an %s invite', async (_name, patch) => {
+      const invite = InstanceInviteFactory.build({
+        code: 'C',
+        disabled: false,
+        maxUses: 5,
+        uses: 0,
+        ...patch,
+      });
+      const { tx } = buildTx({ invite });
+      await expect(
+        service.redeemForExistingUser(tx as any, 'C', 'u1'),
+      ).resolves.toBe('unusable');
+      expect(tx.instanceInviteUsage.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['exhausted', { maxUses: 1, uses: 1 }],
+      ['disabled', { disabled: true }],
+      ['expired', { validUntil: new Date(Date.now() - 1000) }],
+    ])(
+      'answers unusable for an %s invite even to someone who used it before',
+      async (_name, patch) => {
+        const invite = InstanceInviteFactory.build({
+          code: 'C',
+          disabled: false,
+          maxUses: 5,
+          uses: 0,
+          ...patch,
+        });
+        const { tx } = buildTx({ invite, usage: { id: 'x' } });
+        await expect(
+          service.redeemForExistingUser(tx as any, 'C', 'u1'),
+        ).resolves.toBe('unusable');
+      },
+    );
+
+    it('answers unusable for an unknown code', async () => {
+      const { tx } = buildTx({ invite: null });
+      await expect(
+        service.redeemForExistingUser(tx as any, 'nope', 'u1'),
+      ).resolves.toBe('unusable');
+    });
+  });
+
   describe('redeemInviteWithTx', () => {
     it('should redeem valid invite and increment uses', async () => {
       const userId = 'user-123';
@@ -324,6 +490,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
           update: jest.fn().mockResolvedValue({
@@ -387,6 +554,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
           update: jest.fn().mockResolvedValue({
@@ -420,6 +588,7 @@ describe('InviteService', () => {
 
     it('should return null when invite not found', async () => {
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(null),
         },
@@ -449,6 +618,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },
@@ -477,6 +647,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },
@@ -499,6 +670,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },
@@ -520,6 +692,7 @@ describe('InviteService', () => {
       });
 
       const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         instanceInvite: {
           findUnique: jest.fn().mockResolvedValue(mockInvite),
         },

@@ -1119,6 +1119,8 @@ describe('MessagesService', () => {
           fileType: file1.fileType,
           size: file1.size,
           hasThumbnail: false,
+          width: null,
+          height: null,
         },
         {
           id: file2.id,
@@ -1127,6 +1129,8 @@ describe('MessagesService', () => {
           fileType: file2.fileType,
           size: file2.size,
           hasThumbnail: false,
+          width: null,
+          height: null,
         },
       ]);
     });

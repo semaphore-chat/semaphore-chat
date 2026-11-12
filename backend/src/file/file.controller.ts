@@ -72,6 +72,8 @@ export class FileController {
       fileType: file.fileType,
       size: file.size,
       hasThumbnail: !!file.thumbnailPath,
+      width: file.width ?? null,
+      height: file.height ?? null,
     };
   }
 

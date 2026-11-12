@@ -389,6 +389,8 @@ describe('LinkPreviewsService', () => {
           fileType: 'IMAGE',
           size: 2048,
           hasThumbnail: true,
+          width: null,
+          height: null,
         },
       ]);
     });

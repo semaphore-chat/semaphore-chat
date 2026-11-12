@@ -11,6 +11,7 @@ import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { InstanceRolesService } from '@/roles/instance-roles.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { PublicInviteDto } from './dto/public-invite.dto';
+import { ErrorCode } from '@semaphore-chat/shared';
 import {
   InstanceInvite,
   InstanceInviteDefaultCommunity,
@@ -182,12 +183,66 @@ export class InviteService {
     return invite;
   }
 
+  /**
+   * Lock the invite row until the transaction ends, so concurrent redemptions
+   * of one code run one after another: without it, two transactions both read
+   * `uses < maxUses` and both pass the limit check below.
+   */
+  private async lockInvite(
+    tx: Prisma.TransactionClient,
+    inviteCode: string,
+  ): Promise<void> {
+    await tx.$queryRaw`SELECT "id" FROM "InstanceInvite" WHERE "code" = ${inviteCode} FOR UPDATE`;
+  }
+
+  /**
+   * Spend a use of the invite for an existing account, atomically.
+   * - `redeemed`: a use was consumed now.
+   * - `already_used`: the invite is still usable and this user spent a use on
+   *   it earlier; nothing more is consumed.
+   * - `unusable`: unknown code, disabled, expired or out of uses. This holds
+   *   for someone who used it before too: a past use is not a standing pass
+   *   back into the invite's communities (e.g. after being kicked) once the
+   *   invite has been disabled, has expired or is used up.
+   */
+  async redeemForExistingUser(
+    tx: Prisma.TransactionClient,
+    inviteCode: string,
+    userId: string,
+  ): Promise<'redeemed' | 'already_used' | 'unusable'> {
+    await this.lockInvite(tx, inviteCode);
+    const invite = await tx.instanceInvite.findUnique({
+      where: { code: inviteCode },
+      select: {
+        id: true,
+        disabled: true,
+        validUntil: true,
+        uses: true,
+        maxUses: true,
+      },
+    });
+    if (!invite) return 'unusable';
+    if (
+      invite.disabled ||
+      (invite.validUntil && new Date() > invite.validUntil) ||
+      (invite.maxUses !== null && invite.uses >= invite.maxUses)
+    ) {
+      return 'unusable';
+    }
+    const existingUsage = await tx.instanceInviteUsage.findUnique({
+      where: { inviteId_userId: { inviteId: invite.id, userId } },
+    });
+    if (existingUsage) return 'already_used';
+    const redeemed = await this.redeemInviteWithTx(tx, inviteCode, userId);
+    return redeemed ? 'redeemed' : 'unusable';
+  }
+
   async redeemInviteWithTx(
     tx: Prisma.TransactionClient,
     inviteCode: string,
     userId: string,
   ): Promise<InstanceInviteWithRelations | null> {
-    // Use a transaction for safety
+    await this.lockInvite(tx, inviteCode);
     const invite = await tx.instanceInvite.findUnique({
       where: { code: inviteCode },
       include: {
@@ -321,8 +376,11 @@ export class InviteService {
   /**
    * What the join screen shows, for a code that can still be used. Anyone can
    * ask, so no ids, no redeemers and no target communities.
+   *
+   * Every unusable code answers 404 with its own reason, so the join screen can
+   * say why and a generated client never has to decode an empty body.
    */
-  async getPublicInvite(code: string): Promise<PublicInviteDto | null> {
+  async getPublicInvite(code: string): Promise<PublicInviteDto> {
     const invite = await this.databaseService.instanceInvite.findUnique({
       where: { code },
       select: {
@@ -334,13 +392,34 @@ export class InviteService {
         createdBy: { select: { username: true } },
       },
     });
-    if (
-      !invite ||
-      invite.disabled ||
-      (invite.validUntil && new Date() > invite.validUntil) ||
-      (invite.maxUses !== null && invite.uses >= invite.maxUses)
-    ) {
-      return null;
+    if (!invite) {
+      throw new NotFoundException('This invite link is invalid.', {
+        description: 'Not Found',
+        errorCode: ErrorCode.INVITE_NOT_FOUND,
+      });
+    }
+    // Expiry and exhaustion before `disabled`: redemption also disables an
+    // invite once its last use is spent, and the more specific reason helps.
+    if (invite.validUntil && new Date() > invite.validUntil) {
+      throw new NotFoundException('This invite has expired.', {
+        description: 'Not Found',
+        errorCode: ErrorCode.INVITE_EXPIRED,
+      });
+    }
+    if (invite.maxUses !== null && invite.uses >= invite.maxUses) {
+      throw new NotFoundException(
+        'This invite has reached its maximum number of uses.',
+        {
+          description: 'Not Found',
+          errorCode: ErrorCode.INVITE_EXHAUSTED,
+        },
+      );
+    }
+    if (invite.disabled) {
+      throw new NotFoundException('This invite has been disabled.', {
+        description: 'Not Found',
+        errorCode: ErrorCode.INVITE_DISABLED,
+      });
     }
     return invite;
   }

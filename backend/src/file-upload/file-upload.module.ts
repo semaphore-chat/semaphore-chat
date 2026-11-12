@@ -10,10 +10,16 @@ import { StorageQuotaModule } from '@/storage-quota/storage-quota.module';
 import { LivekitModule } from '@/livekit/livekit.module';
 import { ThumbnailService } from '@/file/thumbnail.service';
 import { ThumbnailBackfillService } from '@/file/thumbnail-backfill.service';
+import { MediaDimensionsService } from '@/file/media-dimensions.service';
 
 @Module({
   controllers: [FileUploadController],
-  providers: [FileUploadService, ThumbnailService, ThumbnailBackfillService],
+  providers: [
+    FileUploadService,
+    ThumbnailService,
+    ThumbnailBackfillService,
+    MediaDimensionsService,
+  ],
   exports: [FileUploadService],
   imports: [
     MulterModule.registerAsync({

@@ -4,7 +4,8 @@ import { ForbiddenException } from '@nestjs/common';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { PushNotificationsService } from '@/push-notifications/push-notifications.service';
-import { InstanceRole } from '@prisma/client';
+import { ChannelNotificationOverride, InstanceRole } from '@prisma/client';
+import type { Response } from 'express';
 
 describe('NotificationsController', () => {
   let controller: NotificationsController;
@@ -208,14 +209,39 @@ describe('NotificationsController', () => {
   });
 
   describe('getChannelOverride', () => {
+    const channelId = 'ch-123';
+    const mockRes = (): Response =>
+      ({ json: jest.fn() }) as unknown as Response;
+
     it('should return channel override', async () => {
-      const channelId = 'ch-123';
-      const mockOverride = { channelId, muted: true } as any;
+      const mockOverride: ChannelNotificationOverride = {
+        id: 'o-1',
+        userId,
+        channelId,
+        level: 'mentions',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
       notificationsService.getChannelOverride.mockResolvedValue(mockOverride);
+      const res = mockRes();
 
-      const result = await controller.getChannelOverride(mockReq, channelId);
+      await controller.getChannelOverride(mockReq, channelId, res);
 
-      expect(result).toEqual(mockOverride);
+      expect(notificationsService.getChannelOverride).toHaveBeenCalledWith(
+        userId,
+        channelId,
+      );
+      expect(res.json).toHaveBeenCalledWith(mockOverride);
+    });
+
+    it('answers JSON null when there is no override', async () => {
+      notificationsService.getChannelOverride.mockResolvedValue(null);
+      const res = mockRes();
+
+      await controller.getChannelOverride(mockReq, channelId, res);
+
+      // An empty 200 body cannot be decoded by generated clients.
+      expect(res.json).toHaveBeenCalledWith(null);
     });
   });
 
