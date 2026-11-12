@@ -7,10 +7,16 @@
 #![allow(clippy::result_large_err)]
 
 mod account;
+mod admin_content;
+mod admin_storage;
+mod admin_users;
 mod communities;
 mod community_admin;
 mod dms;
 mod files;
+mod gifs;
+mod instance_admin;
+mod instance_roles;
 mod messages;
 mod moderation;
 mod notify;
@@ -59,6 +65,13 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(soundboard::routes())
         .merge(community_admin::routes())
         .merge(roles::routes())
+        // W6 and W7.
+        .merge(instance_admin::routes())
+        .merge(admin_users::routes())
+        .merge(admin_storage::routes())
+        .merge(admin_content::routes())
+        .merge(instance_roles::routes())
+        .merge(gifs::routes())
         .route("/socket.io/", any(crate::socket::socket_io))
         .route("/__control/{name}", post(control))
         .fallback(not_implemented)
@@ -84,6 +97,12 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| soundboard::operation_id(method, route))
         .or_else(|| community_admin::operation_id(method, route))
         .or_else(|| roles::operation_id(method, route))
+        .or_else(|| instance_admin::operation_id(method, route))
+        .or_else(|| admin_users::operation_id(method, route))
+        .or_else(|| admin_storage::operation_id(method, route))
+        .or_else(|| admin_content::operation_id(method, route))
+        .or_else(|| instance_roles::operation_id(method, route))
+        .or_else(|| gifs::operation_id(method, route))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -544,6 +563,13 @@ async fn control(
             if let Some(response) = crate::admin::control(&inner, other, &request)
                 .or_else(|| crate::rbac::control(&inner, other, &request))
                 .or_else(|| moderation::control(&inner, other, &request))
+                // W6 and W7: each lane's own controls.
+                .or_else(|| crate::w6::instance::control(&inner, other, &request))
+                .or_else(|| crate::w6::users::control(&inner, other, &request))
+                .or_else(|| crate::w6::storage::control(&inner, other, &request))
+                .or_else(|| crate::w6::content::control(&inner, other, &request))
+                .or_else(|| crate::w6::roles::control(&inner, other, &request))
+                .or_else(|| crate::gifs::control(&inner, other, &request))
             {
                 return response;
             }

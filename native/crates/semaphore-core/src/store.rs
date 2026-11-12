@@ -1039,6 +1039,8 @@ pub fn project(
         last_reply_at_ms: dto.last_reply_at.map(|at| at.timestamp_millis()),
         reply_to,
         link_previews,
+        // W7-A fills it.
+        gif: None,
         pinned: dto.pinned,
         pinned_by: pinned_by.filter(|_| dto.pinned),
         pinned_at_ms: dto.pinned_at.map(|at| at.timestamp_millis()),

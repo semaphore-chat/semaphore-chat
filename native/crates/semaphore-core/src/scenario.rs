@@ -349,6 +349,7 @@ fn message_row(
                 .map(link_preview_view)
                 .collect()
         },
+        gif: None,
         pinned: flag(get(message, "pinned")),
         pinned_by: None,
         pinned_at_ms: time_ms(get(message, "pinnedAt")),

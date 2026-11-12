@@ -32,6 +32,7 @@ pub struct InstancePermissionsView {
     pub can_create_community: bool,
     pub can_create_invite: bool,
     pub can_delete_invite: bool,
+    pub admin: semaphore_core::model::InstanceAdminCaps,
 }
 
 #[uniffi::remote(Enum)]

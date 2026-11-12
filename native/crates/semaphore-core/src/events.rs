@@ -567,6 +567,8 @@ impl State {
         // W5: each lane's own handling, before the shared rules below (which only invalidate).
         self.w5a_event(&event, now);
         self.w5b_event(&event, now);
+        self.w6_event(&event, now);
+        self.w7_event(&event, now);
         match event {
             ServerEvent::NewMessage(event) | ServerEvent::NewDirectMessage(event) => {
                 self.on_new_message(event.message);

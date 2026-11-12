@@ -54,6 +54,13 @@ impl State {
             .iter()
             // W5-A's views without socket events, as that lane asked.
             .chain(crate::commands::community_admin::admin_keys::RECONNECT)
+            // W6's views without socket events, per lane.
+            .chain(
+                crate::commands::instance_admin::RECONNECT
+                    .iter()
+                    .copied()
+                    .flatten(),
+            )
         {
             marked.extend(self.invalidate(&keys::op(op)));
         }

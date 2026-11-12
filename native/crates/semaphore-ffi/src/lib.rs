@@ -35,7 +35,9 @@ mod account;
 mod actions;
 mod admin_w5a;
 mod admin_w5b;
+mod admin_w6;
 mod dms;
+mod gifs_w7;
 mod notify;
 mod onboarding;
 mod profile;
@@ -233,6 +235,7 @@ pub struct MessageRow {
     pub last_reply_at_ms: Option<i64>,
     pub reply_to: Option<ReplyToView>,
     pub link_previews: Vec<LinkPreviewView>,
+    pub gif: Option<semaphore_core::model::GifEmbed>,
     pub pinned: bool,
     pub pinned_by: Option<UserView>,
     pub pinned_at_ms: Option<i64>,
@@ -547,6 +550,34 @@ pub enum ViewKey {
     },
     ModerationLog {
         community_id: String,
+    },
+    AdminDashboard,
+    InstanceSettings,
+    AdminUsers {
+        query: semaphore_core::model::AdminUserQuery,
+    },
+    AdminUser {
+        user_id: String,
+    },
+    AdminUserRoles {
+        user_id: String,
+    },
+    AdminStorage {
+        min_percent: u32,
+    },
+    AdminCommunities {
+        search: String,
+    },
+    AdminCommunity {
+        community_id: String,
+    },
+    AdminInvites,
+    InstanceRoles,
+    InstanceRoleUsers {
+        role_id: String,
+    },
+    Gifs {
+        query: String,
     },
 }
 

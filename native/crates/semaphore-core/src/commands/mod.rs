@@ -14,6 +14,8 @@ pub(crate) mod community_admin;
 mod community_assets;
 mod diagnostics;
 mod dms;
+pub mod gifs;
+pub mod instance_admin;
 mod messages;
 pub(crate) mod moderation;
 pub(crate) mod notify;
@@ -103,7 +105,11 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::REPLAY_SESSION => Some(ViewKey::ReplaySession),
         keys::USER => Some(ViewKey::Profile { user_id: id() }),
         // W5: each lane maps its own queries.
-        _ => community_admin::view_for(key).or_else(|| moderation::view_for(key)),
+        _ => community_admin::view_for(key)
+            .or_else(|| moderation::view_for(key))
+            // W6 and W7: each hub maps its own queries.
+            .or_else(|| instance_admin::view_for(key))
+            .or_else(|| gifs::view_for(key)),
     }
 }
 
@@ -132,7 +138,10 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         ViewKey::UserClips { user_id } => Some(keys::scoped(keys::USER_CLIPS, user_id)),
         ViewKey::ReplaySession => Some(keys::op(keys::REPLAY_SESSION)),
         // W5: each lane maps its own views.
-        _ => community_admin::key_for(view).or_else(|| moderation::key_for(view)),
+        _ => community_admin::key_for(view)
+            .or_else(|| moderation::key_for(view))
+            .or_else(|| instance_admin::key_for(view))
+            .or_else(|| gifs::key_for(view)),
     }
 }
 
@@ -172,6 +181,8 @@ impl State {
         self.w4 = Default::default();
         self.w5a = Default::default();
         self.w5b = Default::default();
+        self.w6 = Default::default();
+        self.w7 = Default::default();
         self.session_epoch += 1;
         // The sleep inhibitor isn't the session's: a change to it queued just now still runs.
         self.effects
@@ -358,9 +369,10 @@ impl State {
             }
             // W5: each lane says what its own queries change.
             _ => {
-                if !self.w5a_query_changed(key) {
-                    self.w5b_query_changed(key);
-                }
+                let _ = self.w5a_query_changed(key)
+                    || self.w5b_query_changed(key)
+                    || self.w6_query_changed(key)
+                    || self.w7_query_changed(key);
             }
         }
     }
