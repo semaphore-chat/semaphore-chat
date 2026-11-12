@@ -153,3 +153,159 @@ pub fn parse_message_link(server_url: &str, link: &str) -> Option<MessageLink> {
         message_id,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SERVER: &str = "https://chat.example";
+
+    fn channel(community: &str, channel: &str, message: Option<&str>) -> Option<MessageLink> {
+        Some(MessageLink {
+            community_id: Some(community.into()),
+            conversation: Conversation::Channel { id: channel.into() },
+            message_id: message.map(Into::into),
+        })
+    }
+
+    fn dm(group: &str, message: Option<&str>) -> Option<MessageLink> {
+        Some(MessageLink {
+            community_id: None,
+            conversation: Conversation::DirectMessage { id: group.into() },
+            message_id: message.map(Into::into),
+        })
+    }
+
+    #[test]
+    fn the_web_path_and_hash_forms_are_read() {
+        for link in [
+            "https://chat.example/community/c1/channel/x1?highlight=m1",
+            "https://chat.example/#/community/c1/channel/x1?highlight=m1",
+            "HTTPS://CHAT.EXAMPLE:443/community/c1/channel/x1/?highlight=m1",
+            "https://chat.example./community/c1/channel/x1?other=1&highlight=m1",
+            "  https://chat.example/community/c1/channel/x1?highlight=m1  ",
+        ] {
+            assert_eq!(
+                parse_message_link(SERVER, link),
+                channel("c1", "x1", Some("m1")),
+                "{link}"
+            );
+        }
+        assert_eq!(
+            parse_message_link(SERVER, "https://chat.example/direct-messages/g1"),
+            dm("g1", None)
+        );
+        assert_eq!(
+            parse_message_link(
+                SERVER,
+                "https://chat.example/#/direct-messages?group=g1&highlight=m2"
+            ),
+            dm("g1", Some("m2"))
+        );
+    }
+
+    #[test]
+    fn another_server_or_a_lookalike_is_not_this_one() {
+        for link in [
+            "https://chat.example.evil.com/community/c1/channel/x1",
+            "https://evil.com/chat.example/community/c1/channel/x1",
+            "https://chat.example@evil.com/community/c1/channel/x1",
+            "https://evil.com@chat.example/community/c1/channel/x1",
+            "http://chat.example/community/c1/channel/x1",
+            "https://chat.example:8443/community/c1/channel/x1",
+            "https://chat.example:99999/community/c1/channel/x1",
+            "https://chat.example:44a/community/c1/channel/x1",
+            "javascript://chat.example/community/c1/channel/x1",
+            "https:///community/c1/channel/x1",
+            "https://chat_example/community/c1/channel/x1",
+            "https://ch\u{e2}t.example/community/c1/channel/x1",
+            "chat.example/community/c1/channel/x1",
+            "",
+        ] {
+            assert_eq!(parse_message_link(SERVER, link), None, "{link}");
+        }
+    }
+
+    #[test]
+    fn ids_must_be_plain_tokens() {
+        for link in [
+            "https://chat.example/community/c1/channel/..",
+            "https://chat.example/community/c%2F1/channel/x1",
+            "https://chat.example/community/c1/channel/x.1",
+            "https://chat.example/community/c1/channel/x1?highlight=m%201",
+            "https://chat.example/community/c1/channel/x1?highlight=",
+            "https://chat.example/direct-messages?group=",
+            "https://chat.example/direct-messages?group=../x",
+        ] {
+            assert_eq!(parse_message_link(SERVER, link), None, "{link}");
+        }
+        let long = "a".repeat(129);
+        assert_eq!(
+            parse_message_link(
+                SERVER,
+                &format!("https://chat.example/direct-messages/{long}")
+            ),
+            None
+        );
+        let longest = "a".repeat(128);
+        assert!(
+            parse_message_link(
+                SERVER,
+                &format!("https://chat.example/direct-messages/{longest}")
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn only_the_known_routes_are_links() {
+        for link in [
+            "https://chat.example/",
+            "https://chat.example/community/c1",
+            "https://chat.example/community/c1/channel",
+            "https://chat.example/community/c1/channel/x1/extra",
+            "https://chat.example/settings",
+            "https://chat.example/#/settings",
+            "https://chat.example/#community/c1/channel/x1",
+        ] {
+            assert_eq!(parse_message_link(SERVER, link), None, "{link}");
+        }
+    }
+
+    #[test]
+    fn a_server_under_a_path_keeps_its_links_under_it() {
+        let server = "https://host.example/chat/";
+        assert_eq!(
+            parse_message_link(server, "https://host.example/chat/direct-messages/g1"),
+            dm("g1", None)
+        );
+        assert_eq!(
+            parse_message_link(server, "https://host.example/chat/#/direct-messages/g1"),
+            dm("g1", None)
+        );
+        for link in [
+            "https://host.example/direct-messages/g1",
+            "https://host.example/chatroom/direct-messages/g1",
+        ] {
+            assert_eq!(parse_message_link(server, link), None, "{link}");
+        }
+    }
+
+    #[test]
+    fn ipv6_servers_compare_by_address_and_port() {
+        let server = "http://[::1]:3000";
+        assert_eq!(
+            parse_message_link(server, "http://[::1]:3000/direct-messages/g1"),
+            dm("g1", None)
+        );
+        assert_eq!(
+            parse_message_link(server, "http://[::1]/direct-messages/g1"),
+            None
+        );
+        assert_eq!(
+            parse_message_link(server, "http://[::1]x/direct-messages/g1"),
+            None
+        );
+        assert_eq!(parse_message_link("not a url", "http://[::1]:3000/"), None);
+    }
+}

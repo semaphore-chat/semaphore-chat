@@ -38,8 +38,15 @@ impl Core {
                     if let CacheValue::Members(pages) = &value {
                         state.seed_users_from_members(pages, now);
                     }
+                    let search = matches!(value, CacheValue::MemberSearch(_));
                     state.cache.set(key.clone(), value, now);
                     state.failed_queries.remove(&key);
+                    if search {
+                        // One per typed mention query: keep the recent ones, not the session's.
+                        state
+                            .cache
+                            .evict_least_used(keys::MEMBER_SEARCH, super::MEMBER_SEARCHES_KEPT);
+                    }
                     // W4: an answer that was out when its data changed is from before the change.
                     state.w4.answer_dirty = dirty;
                     state.query_changed(&key);
@@ -254,9 +261,12 @@ impl Core {
                 )
                 .await
                 .map_err(|error| self.backend_failed(error))?;
+            // A page that adds nothing can't be followed: a server that keeps saying more follow
+            // would otherwise be asked forever. What was read stands, marked as not all of it.
+            let added = page.members.len();
             members.extend(page.members);
             token = page.continuation_token.filter(|token| !token.is_empty());
-            if token.is_none() || members.len() >= MAX_MEMBERS {
+            if token.is_none() || added == 0 || members.len() >= MAX_MEMBERS {
                 let truncated = token.is_some();
                 members.truncate(MAX_MEMBERS);
                 return Ok(MemberPages { members, truncated });

@@ -490,7 +490,11 @@ async fn fetch_with_retries(
                 message: "cancelled".into(),
             });
         }
-        match fetch.fetch(start, end).await {
+        let result = fetch
+            .fetch(start, end)
+            .await
+            .and_then(|fetched| whole(fetched, start, end));
+        match result {
             Ok(fetched) => return Ok(fetched),
             Err(error) if error.retryable && attempt < RETRIES => {
                 // A bounded retry's backoff, not a wait for something to happen.
@@ -500,6 +504,27 @@ async fn fetch_with_retries(
             Err(error) => return Err(error),
         }
     }
+}
+
+/// A block as asked for: `start..=end`, or up to the file's end when the answer says the file
+/// stops sooner. Fewer bytes (a dropped connection, a proxy) would be kept as the block and fail
+/// every read past them, so they are a retryable failure; more are cut.
+fn whole(mut fetched: Fetched, start: u64, end: u64) -> Result<Fetched, FetchError> {
+    let last = fetched
+        .size
+        .map_or(end, |size| end.min(size.saturating_sub(1)));
+    let wanted = (last + 1).saturating_sub(start);
+    let got = fetched.bytes.len() as u64;
+    if got < wanted {
+        return Err(FetchError {
+            retryable: true,
+            message: format!("a short range: {got} of {wanted} bytes from {start}"),
+        });
+    }
+    fetched
+        .bytes
+        .truncate(usize::try_from(end - start + 1).unwrap_or(usize::MAX));
+    Ok(fetched)
 }
 
 impl Read for RangeSource {

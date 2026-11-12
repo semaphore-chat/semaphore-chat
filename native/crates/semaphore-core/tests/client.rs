@@ -76,6 +76,9 @@ async fn a_new_connection_after_resume_is_a_gap_and_resyncs() {
     rig.core.ingest(dropped());
     rig.core.ingest(connected());
     let events = rig.settle().await;
+    // The channel list reads again, as told, and that fetches the counts.
+    rig.core.channels("comm".into());
+    rig.core.run_until_idle().await;
 
     assert!(page_requests(&rig) > requests);
     assert!(rig.backend.unread_requests.load(Ordering::SeqCst) > unread_requests);

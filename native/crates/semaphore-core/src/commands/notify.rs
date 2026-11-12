@@ -256,9 +256,13 @@ pub(crate) fn tag_for(conversation: &Conversation) -> Option<String> {
     }
 }
 
-fn truncate(text: &str, chars: usize) -> String {
-    let mut out: String = text.chars().take(chars).collect();
-    if text.chars().count() > chars {
+/// At most `graphemes` characters as a reader counts them, then `…`: an emoji of several code
+/// points (a family, a flag, a skin tone) or a letter with its accent is never cut in two.
+fn truncate(text: &str, graphemes: usize) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    let mut kept = text.graphemes(true);
+    let mut out: String = kept.by_ref().take(graphemes).collect();
+    if kept.next().is_some() {
         out.push('…');
     }
     out
@@ -1058,5 +1062,40 @@ impl Core {
         if let Some(services) = self.services() {
             services.realtime.set_idle(idle);
         }
+    }
+}
+
+#[cfg(test)]
+mod truncate_tests {
+    use super::truncate;
+
+    #[test]
+    fn short_text_is_left_alone_and_long_text_gets_an_ellipsis() {
+        assert_eq!(truncate("", 5), "");
+        assert_eq!(truncate("hello", 5), "hello");
+        assert_eq!(truncate("hello!", 5), "hello…");
+        assert_eq!(truncate("hello", 0), "…");
+    }
+
+    #[test]
+    fn a_character_made_of_several_code_points_is_never_split() {
+        // A family (four people and three joiners), a flag (two regional indicators), an accent.
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";
+        assert_eq!(
+            truncate(&format!("ab{family}cd"), 3),
+            format!("ab{family}…")
+        );
+        assert_eq!(
+            truncate(&format!("{family}{family}"), 1),
+            format!("{family}…")
+        );
+        let flag = "\u{1F1EF}\u{1F1F5}";
+        assert_eq!(truncate(&format!("x{flag}{flag}"), 2), format!("x{flag}…"));
+        assert_eq!(truncate("cafe\u{301}s", 4), "cafe\u{301}…");
+        // Counted as the reader sees them: three, so not cut.
+        assert_eq!(
+            truncate(&format!("{family}{flag}e\u{301}"), 3),
+            format!("{family}{flag}e\u{301}")
+        );
     }
 }

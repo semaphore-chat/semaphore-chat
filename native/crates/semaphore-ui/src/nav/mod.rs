@@ -618,4 +618,64 @@ mod tests {
         );
         assert!(!nav.open_deep_link("semaphore://nope"));
     }
+
+    mod properties {
+        use super::*;
+        use proptest::prelude::*;
+        use proptest::test_runner::{Config, RngSeed};
+        use std::prelude::rust_2024::test;
+
+        fn config() -> Config {
+            Config {
+                cases: 512,
+                rng_seed: RngSeed::Fixed(0xdee9_0001),
+                ..Config::default()
+            }
+        }
+
+        fn rest() -> impl Strategy<Value = String> {
+            let piece = prop_oneof![
+                Just("community".to_owned()),
+                Just("channel".to_owned()),
+                Just("direct-messages".to_owned()),
+                Just("join".to_owned()),
+                Just(UUID.to_owned()),
+                Just("/".to_owned()),
+                Just("%".to_owned()),
+                Just("%2F".to_owned()),
+                Just("%00".to_owned()),
+                Just("%E2%82".to_owned()),
+                Just("..".to_owned()),
+                Just("?".to_owned()),
+                Just("#".to_owned()),
+                ".",
+            ];
+            prop::collection::vec(piece, 0..10).prop_map(|pieces| pieces.concat())
+        }
+
+        proptest! {
+            #![proptest_config(config())]
+
+            #[test]
+            fn no_link_panics_the_parser(rest in rest(), any in ".{0,60}") {
+                let _ = parse_deep_link(&format!("semaphore://{rest}"));
+                let _ = parse_deep_link(&any);
+            }
+
+            #[test]
+            fn a_parsed_link_names_only_well_formed_ids(rest in rest()) {
+                if let Some(link) = parse_deep_link(&format!("semaphore://{rest}")) {
+                    match link {
+                        DeepLink::Community { community_id } => prop_assert!(is_uuid(&community_id)),
+                        DeepLink::Channel { community_id, channel_id } => {
+                            prop_assert!(is_uuid(&community_id) && is_uuid(&channel_id));
+                        }
+                        DeepLink::Dm { dm_group_id } => prop_assert!(is_uuid(&dm_group_id)),
+                        DeepLink::Invite { invite_code } => prop_assert!(is_invite_code(&invite_code)),
+                        DeepLink::DmInbox => {}
+                    }
+                }
+            }
+        }
+    }
 }

@@ -218,6 +218,9 @@ pub struct FakeBackend {
     /// Every member, in order. Served a page at a time, with a token while more remain.
     pub members: Mutex<Vec<Value>>,
     pub member_page_requests: AtomicU64,
+    /// A broken server: every member page is empty and says more follow.
+    pub endless_member_pages: Mutex<bool>,
+    pub member_search_requests: AtomicU64,
     pub bulk_presence: Mutex<HashMap<String, bool>>,
     pub notification_count: Mutex<i64>,
     pub notification_requests: AtomicU64,
@@ -473,6 +476,12 @@ impl CommunitiesBackend for FakeBackend {
         token: Option<String>,
     ) -> BackendResult<wire::PaginatedMembershipsResponseDto> {
         self.member_page_requests.fetch_add(1, Ordering::SeqCst);
+        if *self.endless_member_pages.lock().unwrap() {
+            // A real server takes time to answer; without a yield a client that loops on this
+            // would never let a test's timeout run.
+            tokio::task::yield_now().await;
+            return decoded(json!({ "members": [], "continuationToken": "again" }));
+        }
         let members = self.members.lock().unwrap().clone();
         let start = token.map_or(0, |token| {
             members
@@ -512,6 +521,7 @@ impl CommunitiesBackend for FakeBackend {
         _: String,
         _: Option<i64>,
     ) -> BackendResult<Vec<wire::MembershipResponseDto>> {
+        self.member_search_requests.fetch_add(1, Ordering::SeqCst);
         decoded(json!([{
             "id": "m1", "userId": "ava", "communityId": "comm", "joinedAt": "2026-09-22T18:00:00.000Z",
             "roles": [], "user": user_json("ava"),

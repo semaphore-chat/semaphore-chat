@@ -36,6 +36,7 @@ semaphore-player = { path = "../semaphore-player", optional = true }
 semaphore-sysaudio.workspace = true
 semaphore-ui.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
+unicode-segmentation = "1"
 
 # The main window's HWND, for the taskbar's unread overlay.
 [target.'cfg(windows)'.dependencies]
