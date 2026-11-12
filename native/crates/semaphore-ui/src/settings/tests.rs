@@ -242,7 +242,7 @@ fn session_dates_are_written_in_the_users_zone() {
         let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
         let zone_time = TimeFormat {
             zone: Some(zone),
-            now_ms: Some(NOW),
+            now: PanelClock::fixed(NOW),
         };
         let signed_in = SessionRow {
             created_at_ms: ms,

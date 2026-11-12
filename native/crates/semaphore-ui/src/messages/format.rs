@@ -1,14 +1,16 @@
 //! Times and sizes as the web client writes them (`utils/messageTime.ts`, `utils/format.ts`), in
 //! English for now. `now` and the zone are parameters so stories and tests don't depend on the clock.
 
+use crate::panel::PanelClock;
 use chrono::{DateTime, Datelike as _, FixedOffset, Local, NaiveDate, Utc};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TimeFormat {
     /// `None` is the user's local zone.
     pub zone: Option<FixedOffset>,
-    /// `None` is the current time.
-    pub now_ms: Option<i64>,
+    /// The app's one display clock: what "Today" is and what every relative age is measured from.
+    /// The real one unless a rig or a story fixes it.
+    pub now: PanelClock,
 }
 
 impl TimeFormat {
@@ -16,7 +18,7 @@ impl TimeFormat {
     pub fn fixed(now_ms: i64) -> Self {
         Self {
             zone: FixedOffset::east_opt(0),
-            now_ms: Some(now_ms),
+            now: PanelClock::fixed(now_ms),
         }
     }
 
@@ -47,7 +49,7 @@ impl TimeFormat {
 
     /// "Today", "Yesterday", "Friday, September 18", with the year when it isn't this year.
     pub fn day_label(&self, ms: i64) -> String {
-        let now = self.day(self.now_ms.unwrap_or_else(|| Utc::now().timestamp_millis()));
+        let now = self.day(self.now.now_ms());
         let day = self.day(ms);
         if day == now {
             "Today".into()
@@ -92,6 +94,32 @@ mod tests {
     }
 
     #[test]
+    fn a_fixed_display_clock_decides_each_day_label() {
+        // Just before and just after midnight in the fixed UTC zone.
+        let midnight = 1_793_923_200_000; // 2026-11-06T00:00:00Z
+        let before = TimeFormat::fixed(midnight - 1);
+        assert_eq!(before.day_label(midnight - 1), "Today");
+        assert_eq!(before.day_label(midnight), "Friday, November 6");
+        let after = TimeFormat::fixed(midnight);
+        assert_eq!(after.day_label(midnight - 1), "Yesterday");
+        assert_eq!(after.day_label(midnight), "Today");
+        // An hour earlier is still yesterday; a day and a minute earlier is the date itself.
+        assert_eq!(after.day_label(midnight - 3_600_000), "Yesterday");
+        assert_eq!(after.day_label(midnight - 86_400_000), "Yesterday");
+        assert_eq!(
+            after.day_label(midnight - 86_400_001),
+            "Wednesday, November 4"
+        );
+    }
+
+    #[test]
+    fn an_unpinned_format_uses_the_real_day() {
+        let format = TimeFormat::default();
+        assert!(format.now.is_real(), "unpinned means the real clock");
+        assert_eq!(format.day_label(Utc::now().timestamp_millis()), "Today");
+    }
+
+    #[test]
     fn day_labels_follow_the_web_rules() {
         let format = TimeFormat::fixed(NOW);
         assert_eq!(format.day_label(NOW), "Today");
@@ -116,7 +144,7 @@ mod tests {
         let after_midnight = 1_793_804_460_000;
         let east = TimeFormat {
             zone: FixedOffset::east_opt(9 * 3600),
-            now_ms: Some(NOW),
+            now: PanelClock::fixed(NOW),
         };
         assert_eq!(east.format_at(after_midnight, "%b %-d, %Y"), "Nov 5, 2026");
         assert_eq!(
@@ -126,7 +154,7 @@ mod tests {
         // 2026-11-05 18:16 UTC, already the 6th in +05:45.
         let nepal = TimeFormat {
             zone: FixedOffset::east_opt(5 * 3600 + 45 * 60),
-            now_ms: Some(NOW),
+            now: PanelClock::fixed(NOW),
         };
         assert_eq!(
             nepal.format_at(1_793_902_560_000, "%-m/%-d/%Y"),

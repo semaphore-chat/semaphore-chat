@@ -468,7 +468,7 @@ impl AppRoot {
         };
         // Dates in the app's zone and clock; links to the server signed in to.
         let time = self.config.time;
-        let clock = PanelClock::fixed(self.config.clock.now_ms() as i64);
+        let clock = time.now;
         let me = self.core().and_then(|core| match core.session() {
             SessionState::SignedIn { me } => Some(me.id),
             _ => None,
@@ -612,12 +612,12 @@ impl AppRoot {
             return;
         }
         let id = community_id.to_owned();
-        // Core's clock, as the pane's: the invites' expiry is measured from it.
-        let now_ms = self.config.clock.now_ms() as i64;
+        // The display clock, as the pane's: the invites' expiry is shown against it.
+        let clock = self.config.time.now;
         let mut retab = false;
         for feed in feeds {
             retab |= feed == Feed::Permissions;
-            apply_feed(&core, &screen, &id, feed, now_ms, window, cx);
+            apply_feed(&core, &screen, &id, feed, clock, window, cx);
         }
         if retab {
             self.community_sync_tab(window, cx);
@@ -1110,7 +1110,7 @@ fn apply_feed(
     screen: &Entity<CommunitySettingsScreen>,
     community_id: &str,
     feed: Feed,
-    now_ms: i64,
+    clock: PanelClock,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -1203,7 +1203,7 @@ fn apply_feed(
                 core.community_invites(id)
             };
             tab.update(cx, |tab, cx| {
-                tab.set_clock(PanelClock::fixed(now_ms), cx);
+                tab.set_clock(clock, cx);
                 tab.set_view(view, cx);
             });
         }

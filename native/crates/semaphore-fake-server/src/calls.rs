@@ -196,9 +196,11 @@ pub(crate) fn dm_join(inner: &Inner, group_id: &str, user_id: &str, members: &[S
 }
 
 /// `VoicePresenceService.leaveDmVoice` (LiveKit's `participant_left`; there's no REST leave):
-/// `dmVoiceUserLeft` to the DM group's room. Not listed: nothing. Whether they were.
+/// `dmVoiceUserLeft` to the DM group's room, and `dmVoiceCallEnded` when they were the last one
+/// in it (`announceDmCallEndIfEmpty`: the same transaction's count said the room is empty).
+/// Not listed: nothing. Whether they were.
 pub(crate) fn dm_leave(inner: &Inner, group_id: &str, user_id: &str, members: &[String]) -> bool {
-    let user = {
+    let (user, ended) = {
         let mut calls = lock(&inner.calls);
         let Some(users) = calls.dm_voice.get_mut(group_id) else {
             return false;
@@ -207,18 +209,26 @@ pub(crate) fn dm_leave(inner: &Inner, group_id: &str, user_id: &str, members: &[
             return false;
         };
         let user = users.remove(index);
-        if users.is_empty() {
+        let ended = users.is_empty();
+        if ended {
             calls.dm_voice.remove(group_id);
             // The backend forgets the call's declines with it (`announceDmCallEndIfEmpty`).
             calls.declines.retain(|(group, _)| group != group_id);
         }
-        user
+        (user, ended)
     };
     inner.emit_to_users(
         members,
         "dmVoiceUserLeft",
         json!({ "dmGroupId": group_id, "userId": user_id, "user": user }),
     );
+    if ended {
+        inner.emit_to_users(
+            members,
+            "dmVoiceCallEnded",
+            json!({ "dmGroupId": group_id }),
+        );
+    }
     true
 }
 

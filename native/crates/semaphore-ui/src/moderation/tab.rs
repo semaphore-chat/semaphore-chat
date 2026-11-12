@@ -137,7 +137,7 @@ impl ModerationTab {
     }
 
     fn keep_ticking(&self) -> bool {
-        self.time.now_ms.is_none()
+        self.time.now.is_real()
             && self.caps.view_bans
             && self.timeouts.state == LoadState::Ready
             && !self.timeouts.timeouts.is_empty()

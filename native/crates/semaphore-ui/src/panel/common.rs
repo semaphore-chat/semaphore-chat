@@ -243,7 +243,8 @@ pub(crate) fn preview_text(display: &str, max_chars: Option<usize>) -> String {
     }
 }
 
-/// The clock panels measure times against: the real one, or a fixed instant for stories and tests.
+/// The app's display clock: what every "5m ago", "Today" and "Yesterday" is measured from. The real
+/// one, or a fixed instant when a rig or a story pins it (the rigs pin it so screenshots compare).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PanelClock {
     fixed_now_ms: Option<i64>,
@@ -259,6 +260,12 @@ impl PanelClock {
     pub fn now_ms(&self) -> i64 {
         self.fixed_now_ms
             .unwrap_or_else(|| chrono::Utc::now().timestamp_millis())
+    }
+
+    /// Whether this is the real clock. Anything that must keep moving with real time (a timeout
+    /// counting down, a "left" label refreshing every second) is off when a rig pins it.
+    pub fn is_real(&self) -> bool {
+        self.fixed_now_ms.is_none()
     }
 }
 
@@ -293,6 +300,34 @@ mod tests {
             "almost 2 years ago"
         );
         assert_eq!(relative_time(now, now + 5 * MIN), "in 5 minutes");
+    }
+
+    #[test]
+    fn a_fixed_clock_drives_relative_times_exactly() {
+        let clock = PanelClock::fixed(1_793_895_120_000);
+        let now = clock.now_ms();
+        assert!(!clock.is_real(), "a pinned clock is not the real one");
+        // A minute: one millisecond either side of the label.
+        assert_eq!(relative_time(now, now - 29_999), "less than a minute ago");
+        assert_eq!(relative_time(now, now - 30_000), "1 minute ago");
+        // An hour: 44 minutes, then 45 round to "about 1 hour".
+        assert_eq!(relative_time(now, now - 44 * MIN), "44 minutes ago");
+        assert_eq!(relative_time(now, now - 45 * MIN), "about 1 hour ago");
+        // A day: the last minute of "about 24 hours", then "1 day".
+        assert_eq!(relative_time(now, now - 1439 * MIN), "about 24 hours ago");
+        assert_eq!(relative_time(now, now - 1440 * MIN), "1 day ago");
+    }
+
+    #[test]
+    fn the_default_clock_is_the_real_one() {
+        let clock = PanelClock::default();
+        assert!(clock.is_real(), "unpinned means the real clock");
+        let real = chrono::Utc::now().timestamp_millis();
+        assert!(
+            (clock.now_ms() - real).abs() < 5_000,
+            "{} is not now ({real})",
+            clock.now_ms()
+        );
     }
 
     #[test]

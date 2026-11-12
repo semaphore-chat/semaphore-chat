@@ -29,7 +29,6 @@ use semaphore_ui::home::{
 };
 use semaphore_ui::kit::{Alert, Button, Severity};
 use semaphore_ui::nav::Route;
-use semaphore_ui::panel::PanelClock;
 use semaphore_ui::profile::{
     FriendAction, ProfileActions, ProfileEditEvent, ProfileEditForm, ProfileEvent, ProfileModal,
     ProfilePage,
@@ -100,12 +99,7 @@ impl AppRoot {
                 cx,
             )
         });
-        let clock = self
-            .config
-            .time
-            .now_ms
-            .map(PanelClock::fixed)
-            .unwrap_or_default();
+        let clock = self.config.time.now;
         sessions.update(cx, |sessions, cx| sessions.set_clock(clock, cx));
         self.account = Account {
             subscriptions: vec![

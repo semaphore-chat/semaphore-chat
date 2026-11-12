@@ -1246,6 +1246,9 @@ impl Rig {
                 })
             },
             server_url: Some(self.server.clone()),
+            // The display clock too: every relative age (the notification centre, the DM list,
+            // the panels) is measured from this same instant, so shots never depend on the wall
+            // clock. Frozen, not counting: only `tick` and `clock hold|run` move core's clock.
             time: TimeFormat::fixed(self.now_ms),
             scrollbar: false,
             notifier: Some(self.notifier.clone()),

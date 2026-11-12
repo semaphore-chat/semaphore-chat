@@ -250,6 +250,11 @@ impl AppRoot {
         });
         let centre = cx.new(NotificationCenter::new);
         let level = cx.new(ChannelNotifyMenu::new);
+        // One display clock for every age these show: the notification centre's labels and the
+        // DM list's must agree with each other and be the same on every run.
+        let time = self.config.time;
+        sidebar.update(cx, |sidebar, cx| sidebar.set_time(time, cx));
+        centre.update(cx, |centre, cx| centre.set_clock(time.now, cx));
         self.inbox.subscriptions = vec![
             cx.subscribe_in(&sidebar, window, Self::on_dm_sidebar),
             cx.subscribe_in(&header, window, Self::on_dm_header),
