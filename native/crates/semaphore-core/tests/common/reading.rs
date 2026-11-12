@@ -1,7 +1,9 @@
 //! [`FakeBackend`] for W1 part B: threads and search, scripted through `FakeBackend::reading`.
 
 use super::{FakeBackend, decoded, not_found};
-use semaphore_core::backend::{BackendError, BackendResult, SearchBackend, ThreadsBackend};
+use semaphore_core::backend::{
+    BackendError, BackendResult, SearchBackend, SearchPage, ThreadsBackend,
+};
 use semaphore_wire::types as wire;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -9,8 +11,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::oneshot;
 
-/// One search request: scope (`channel`, `group`, `community`), id, query and limit.
-pub type SearchCall = (String, String, String, Option<i64>);
+/// One search request: scope (`channel`, `group`, `community`), id, query, limit and the cursor
+/// it continued after (`None` for a first page).
+pub type SearchCall = (String, String, String, Option<i64>, Option<String>);
 
 #[derive(Default)]
 pub struct ReadingFakes {
@@ -28,6 +31,8 @@ pub struct ReadingFakes {
     pub search_results: Mutex<Vec<Value>>,
     /// What a community search answers.
     pub community_results: Mutex<Vec<Value>>,
+    /// Holds the next search page at the server until this fires.
+    pub search_gate: Mutex<Option<oneshot::Receiver<()>>>,
 }
 
 impl ReadingFakes {
@@ -69,11 +74,57 @@ impl ReadingFakes {
         }
     }
 
-    fn search(&self, scope: &str, id: String, q: String, limit: Option<i64>) {
+    /// Waits while a held search page is on the server, when a test holds one.
+    async fn hold_search(&self) {
+        let gate = self.search_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+    }
+
+    fn search(
+        &self,
+        scope: &str,
+        id: String,
+        q: String,
+        limit: Option<i64>,
+        cursor: Option<String>,
+    ) {
         self.search_calls
             .lock()
             .unwrap()
-            .push((scope.to_owned(), id, q, limit));
+            .push((scope.to_owned(), id, q, limit, cursor));
+    }
+
+    /// One page of `rows`, paged as the backend does: after the row the cursor names (the last
+    /// id of the page before), at most `limit` (the server's default of 50), and the last row's
+    /// id as the next cursor only when the page came back full.
+    fn page<T: serde::de::DeserializeOwned>(
+        &self,
+        rows: Vec<Value>,
+        limit: Option<i64>,
+        cursor: Option<String>,
+    ) -> BackendResult<SearchPage<T>> {
+        let after = cursor
+            .as_deref()
+            .and_then(|cursor| {
+                rows.iter()
+                    .position(|row| row["id"].as_str() == Some(cursor))
+            })
+            .map_or(0, |index| index + 1);
+        let limit = usize::try_from(limit.unwrap_or(50).clamp(0, 100)).unwrap_or(0);
+        let page: Vec<Value> = rows.into_iter().skip(after).take(limit).collect();
+        let next = (page.len() == limit && limit > 0)
+            .then(|| {
+                page.last()
+                    .and_then(|row| row["id"].as_str())
+                    .map(str::to_owned)
+            })
+            .flatten();
+        Ok(SearchPage {
+            items: decoded(Value::Array(page))?,
+            next,
+        })
     }
 }
 
@@ -113,11 +164,13 @@ impl SearchBackend for FakeBackend {
         channel_id: String,
         q: String,
         limit: Option<i64>,
-    ) -> BackendResult<Vec<wire::MessageDto>> {
-        self.reading.search("channel", channel_id, q, limit);
-        decoded(Value::Array(
-            self.reading.search_results.lock().unwrap().clone(),
-        ))
+        continuation_token: Option<String>,
+    ) -> BackendResult<SearchPage<wire::MessageDto>> {
+        self.reading
+            .search("channel", channel_id, q, limit, continuation_token.clone());
+        self.reading.hold_search().await;
+        let rows = self.reading.search_results.lock().unwrap().clone();
+        self.reading.page(rows, limit, continuation_token)
     }
 
     async fn messages_controller_search_direct_messages(
@@ -125,11 +178,13 @@ impl SearchBackend for FakeBackend {
         group_id: String,
         q: String,
         limit: Option<i64>,
-    ) -> BackendResult<Vec<wire::MessageDto>> {
-        self.reading.search("group", group_id, q, limit);
-        decoded(Value::Array(
-            self.reading.search_results.lock().unwrap().clone(),
-        ))
+        continuation_token: Option<String>,
+    ) -> BackendResult<SearchPage<wire::MessageDto>> {
+        self.reading
+            .search("group", group_id, q, limit, continuation_token.clone());
+        self.reading.hold_search().await;
+        let rows = self.reading.search_results.lock().unwrap().clone();
+        self.reading.page(rows, limit, continuation_token)
     }
 
     async fn messages_controller_search_community_messages(
@@ -137,10 +192,17 @@ impl SearchBackend for FakeBackend {
         community_id: String,
         q: String,
         limit: Option<i64>,
-    ) -> BackendResult<Vec<wire::CommunitySearchResultDto>> {
-        self.reading.search("community", community_id, q, limit);
-        decoded(Value::Array(
-            self.reading.community_results.lock().unwrap().clone(),
-        ))
+        continuation_token: Option<String>,
+    ) -> BackendResult<SearchPage<wire::CommunitySearchResultDto>> {
+        self.reading.search(
+            "community",
+            community_id,
+            q,
+            limit,
+            continuation_token.clone(),
+        );
+        self.reading.hold_search().await;
+        let rows = self.reading.community_results.lock().unwrap().clone();
+        self.reading.page(rows, limit, continuation_token)
     }
 }

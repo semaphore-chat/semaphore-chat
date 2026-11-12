@@ -157,6 +157,11 @@ async fn channel_permissions(
     // W5: the caller's active timeout, as `getMyCommunityChannelPermissions` reports it.
     let user = inner.user_of(super::bearer_token(&headers));
     let timed_out_until = crate::rbac::timed_out_until(&inner, &community_id, &user);
+    // The three flags the backend derives from the caller's roles (`toCapabilities`):
+    // `seeRemoved` is the same action as `canSeeRemovedMessages`.
+    let allows = |action: &str| crate::rbac::allows(&inner, &user, &community_id, action);
+    let pin = allows("PIN_MESSAGE");
+    let delete_any = allows("DELETE_ANY_MESSAGE");
     let channels: Vec<ChannelCapabilitiesDto> = community
         .channels
         .iter()
@@ -164,10 +169,13 @@ async fn channel_permissions(
             attach: true,
             channel_id: channel.id.clone(),
             connect: true,
+            delete_any,
             manage_permissions: true,
+            pin,
             post: true,
             posting_role_names: Vec::new(),
             react: true,
+            see_removed: delete_any,
             share: true,
             speak: true,
             thread_reply: true,

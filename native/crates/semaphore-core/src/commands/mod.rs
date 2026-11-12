@@ -109,7 +109,8 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
             .or_else(|| moderation::view_for(key))
             // W6 and W7: each hub maps its own queries.
             .or_else(|| instance_admin::view_for(key))
-            .or_else(|| gifs::view_for(key)),
+            .or_else(|| gifs::view_for(key))
+            .or_else(|| reading::view_for(key)),
     }
 }
 
@@ -141,7 +142,8 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         _ => community_admin::key_for(view)
             .or_else(|| moderation::key_for(view))
             .or_else(|| instance_admin::key_for(view))
-            .or_else(|| gifs::key_for(view)),
+            .or_else(|| gifs::key_for(view))
+            .or_else(|| reading::key_for(view)),
     }
 }
 

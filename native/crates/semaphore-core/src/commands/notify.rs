@@ -376,6 +376,7 @@ impl State {
                     author: event.author.clone(),
                     author_id: event.author_id.clone(),
                     channel_id: event.channel_id.clone(),
+                    channel_name: event.channel_name.clone(),
                     community_id: event.community_id.clone(),
                     created_at: event.created_at,
                     direct_message_group_id: event.direct_message_group_id.clone(),
@@ -383,7 +384,7 @@ impl State {
                     id: event.notification_id.clone(),
                     message: event.message.clone(),
                     message_id: event.message_id.clone(),
-                    parent_message_id: None,
+                    parent_message_id: event.parent_message_id.clone(),
                     read: event.read,
                     type_: event.type_.clone(),
                     user_id: me_id,
@@ -412,7 +413,7 @@ impl State {
             author_id: &event.author_id,
             read: event.read,
             conversation: &conversation,
-            parent_message_id: None,
+            parent_message_id: event.parent_message_id.as_deref(),
             me_id: &me_id,
             already_raised: self.w2.raised.contains(&event.notification_id),
             settings: &settings,
@@ -495,7 +496,7 @@ impl State {
                     conversation,
                     message_id: event.message_id.clone(),
                 },
-                parent_message_id: None,
+                parent_message_id: event.parent_message_id.clone(),
                 sound,
             },
         });
@@ -570,10 +571,11 @@ impl State {
                 ..NotificationList::default()
             };
         };
+        // Only undismissed rows arrive (`includeDismissed=false`), and dismissing one takes it
+        // out of the pages below, so no row here is filtered out.
         let rows = pages
             .rows
             .iter()
-            .filter(|row| !row.dismissed)
             .filter_map(|row| {
                 let conversation = conversation_of(&row.channel_id, &row.direct_message_group_id)?;
                 Some(NotificationRow {
@@ -586,10 +588,11 @@ impl State {
                         message_id: row.message_id.clone(),
                     },
                     parent_message_id: row.parent_message_id.clone(),
-                    channel_name: row
-                        .channel_id
-                        .as_deref()
-                        .and_then(|id| self.channel_name(id)),
+                    channel_name: row.channel_name.clone().or_else(|| {
+                        row.channel_id
+                            .as_deref()
+                            .and_then(|id| self.channel_name(id))
+                    }),
                     preview: row
                         .message
                         .as_ref()
@@ -869,12 +872,10 @@ impl Core {
             }
             let key = keys::op(keys::NOTIFICATIONS);
             state.note_direct_update(&key);
-            if let Some(row) = state
-                .cache
-                .notifications_mut(&key)
-                .and_then(|pages| pages.rows.iter_mut().find(|row| row.id == notification_id))
-            {
-                row.dismissed = true;
+            if let Some(pages) = state.cache.notifications_mut(&key) {
+                // Gone from the page, as the server now leaves it out: the rows after it move up
+                // by one, which is what `load_more_notifications` continues after.
+                pages.rows.retain(|row| row.id != notification_id);
             }
             state.notifications_changed();
             state.recount_notifications();

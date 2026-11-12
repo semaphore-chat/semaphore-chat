@@ -258,6 +258,26 @@ async fn only_the_author_edits_and_an_edit_adds_no_files() {
 }
 
 #[tokio::test]
+async fn an_attachment_carries_the_servers_measurements() {
+    let id = uuid(1);
+    let mut value = message_json(&id, ME, "a picture and a document");
+    value["attachments"] = json!([
+        { "id": "f1", "filename": "f1.png", "mimeType": "image/png", "fileType": "IMAGE", "size": 10,
+          "hasThumbnail": true, "width": 1920, "height": 1080 },
+        { "id": "f2", "filename": "f2.png", "mimeType": "image/png", "fileType": "IMAGE", "size": 10,
+          "hasThumbnail": false, "width": null, "height": null },
+    ]);
+    let rig = rig_with(vec![dto(value)]).await;
+    let files = &rig.row(&id).attachments;
+    assert_eq!((files[0].width, files[0].height), (Some(1920), Some(1080)));
+    assert_eq!(
+        (files[1].width, files[1].height),
+        (None, None),
+        "a file the server never measured"
+    );
+}
+
+#[tokio::test]
 async fn an_edit_can_remove_attachments() {
     let id = uuid(1);
     let mut value = message_json(&id, ME, "files");
@@ -276,6 +296,135 @@ async fn an_edit_can_remove_attachments() {
         .map(|file| file.file_id.as_str())
         .collect();
     assert_eq!(kept, vec!["f2"]);
+}
+
+// --- What the channel's capabilities add (the backend's `pin`, `deleteAny`, `seeRemoved`) ---
+
+/// A channel of `community`, as the channels list sends it: `community_of_channel` needs it to
+/// find the community's capability list.
+fn channel_json(community: &str) -> Value {
+    json!({
+        "id": CHANNEL, "name": "general", "communityId": community, "type": "TEXT",
+        "position": 1, "slowmodeSeconds": 0, "preset": "NORMAL", "isPrivate": false,
+        "createdAt": "2026-09-22T18:00:00.000Z",
+    })
+}
+
+/// A community's capabilities, the channel's flags as the server derived them from its roles.
+fn capabilities_json(community: &str, pin: bool, delete_any: bool, see_removed: bool) -> Value {
+    json!({
+        "communityId": community,
+        "channels": [{
+            "channelId": CHANNEL, "view": true, "post": true, "attach": true, "react": true,
+            "threadReply": true, "connect": true, "speak": true, "video": true, "share": true,
+            "managePermissions": false, "postingRoleNames": [],
+            "pin": pin, "deleteAny": delete_any, "seeRemoved": see_removed,
+            "timedOutUntil": null,
+        }],
+    })
+}
+
+/// A rig whose channel sits in `comm`, with the community's capabilities loaded: they're in
+/// place before sign-in, so the queries that open the community read them.
+async fn rig_with_capabilities(
+    rows: Vec<MessageDto>,
+    pin: bool,
+    delete_any: bool,
+    see_removed: bool,
+) -> Rig {
+    let rig = Rig::new();
+    *rig.backend.channels.lock().unwrap() = vec![channel_json("comm")];
+    *rig.backend.capabilities.lock().unwrap() =
+        Some(capabilities_json("comm", pin, delete_any, see_removed));
+    let rig = rig.signed_in().await;
+    let rig = rig.open_channel(rows).await;
+    rig.core.channels("comm".into());
+    rig
+}
+
+#[tokio::test]
+async fn the_channels_capabilities_decide_pin_and_removal_when_present() {
+    // No roles are loaded at all: the capability list alone answers.
+    let mut rig =
+        rig_with_capabilities(vec![message(&uuid(1), "ava", "x")], true, true, false).await;
+    rig.settle().await;
+    let moderation = rig.core.channel_moderation(CHANNEL.into());
+    assert_eq!(moderation.state, LoadState::Ready);
+    assert_eq!(
+        moderation.allowed,
+        ChannelModeration {
+            // Unpin has no capability of its own: the roles alone say, and none are loaded.
+            pin: true,
+            unpin: false,
+            remove_any: true
+        }
+    );
+
+    // The roles say yes and the channel itself says no: the channel's answer wins, as the server
+    // would enforce it.
+    let mut rig =
+        rig_with_capabilities(vec![message(&uuid(2), "ava", "y")], false, false, false).await;
+    rig.backend.make_moderator();
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.settle().await;
+    let moderation = rig.core.channel_moderation(CHANNEL.into());
+    assert_eq!(moderation.state, LoadState::Ready);
+    assert_eq!(
+        moderation.allowed,
+        ChannelModeration {
+            pin: false,
+            unpin: true,
+            remove_any: false
+        }
+    );
+    let error = rig.core.delete_message(uuid(2), None).await.unwrap_err();
+    assert!(error.to_string().contains("can't remove"), "{error}");
+}
+
+#[tokio::test]
+async fn without_a_capability_list_the_roles_decide() {
+    let rig = rig_with(vec![message(&uuid(1), "ava", "x")]).await;
+    rig.backend.make_moderator();
+    assert!(
+        rig.core.channel_moderation(CHANNEL.into()).state == LoadState::Loading,
+        "no list, no roles yet"
+    );
+    rig.core.run_until_idle().await;
+    assert_eq!(
+        rig.core.channel_moderation(CHANNEL.into()).allowed,
+        ChannelModeration {
+            pin: true,
+            unpin: true,
+            remove_any: true
+        }
+    );
+}
+
+#[tokio::test]
+async fn see_removed_decides_who_keeps_a_removed_row() {
+    // Allowed to see removed messages by the channel, though not to remove them.
+    let id = uuid(1);
+    let mut rig =
+        rig_with_capabilities(vec![message(&id, "ava", "kept")], false, false, true).await;
+    rig.settle().await;
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({ "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null }),
+    ));
+    rig.sync();
+    assert!(rig.row(&id).removed, "kept, shown removed");
+
+    // A moderator by role, but this channel withholds it: the row goes.
+    let id = uuid(2);
+    let mut rig = rig_with_capabilities(vec![message(&id, "ava", "gone")], true, true, false).await;
+    rig.backend.make_moderator();
+    rig.settle().await;
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({ "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null }),
+    ));
+    rig.sync();
+    assert!(rig.ids().is_empty());
 }
 
 // --- Delete and removal ---
@@ -404,6 +553,76 @@ async fn a_moderator_keeps_a_removed_row_and_loses_a_deleted_one() {
             .action_calls()
             .contains(&format!("find_one {deleted}"))
     );
+}
+
+#[tokio::test]
+async fn a_hard_removal_takes_the_row_from_a_moderator_too() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![message(&id, "ava", "gone")]).await;
+    rig.backend.make_moderator();
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.core.run_until_idle().await;
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({
+            "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null,
+            "removal": "hard",
+        }),
+    ));
+    rig.sync();
+    assert!(rig.ids().is_empty(), "a hard delete leaves no row");
+    assert!(
+        !rig.backend
+            .action_calls()
+            .iter()
+            .any(|call| call.starts_with("find_one")),
+        "nothing to read again"
+    );
+}
+
+#[tokio::test]
+async fn a_soft_removal_keeps_the_row_for_a_reader_who_may_see_removed() {
+    let id = uuid(1);
+    let mut rig = rig_with_capabilities(vec![message(&id, "ava", "rude")], true, true, true).await;
+    rig.settle().await;
+    let mut server_copy = message_json(&id, "ava", "rude");
+    server_copy["deletedAt"] = json!("2026-09-22T19:00:00Z");
+    server_copy["deletedByReason"] = json!("spam");
+    rig.backend
+        .actions
+        .found
+        .lock()
+        .unwrap()
+        .insert(id.clone(), dto(server_copy));
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({
+            "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null,
+            "removal": "soft",
+        }),
+    ));
+    rig.sync();
+    assert!(rig.row(&id).removed);
+    rig.settle().await;
+    let row = rig.row(&id);
+    assert!(row.removed);
+    assert_eq!(row.display, "rude");
+    assert_eq!(row.removed_reason.as_deref(), Some("spam"));
+}
+
+#[tokio::test]
+async fn a_soft_removal_takes_the_row_from_a_reader_who_may_not() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![message(&id, "ava", "rude")]).await;
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({
+            "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null,
+            "removal": "soft",
+        }),
+    ));
+    rig.settle().await;
+    assert!(rig.ids().is_empty(), "as on the web");
 }
 
 #[tokio::test]

@@ -635,7 +635,22 @@ async fn the_list_is_newest_first_with_dismissed_rows_and_the_backends_total() {
     let (_, empty) = get(&client, &base, "/api/notifications?unreadOnly=").await;
     assert_eq!(empty["notifications"].as_array().unwrap().len(), 11);
 
-    for bad in ["limit=0", "limit=101", "limit=x", "offset=-1"] {
+    // The centre asks for its pages without dismissed rows; only `true` and `false` are taken.
+    let (_, undismissed) = get(&client, &base, "/api/notifications?includeDismissed=false").await;
+    assert_eq!(undismissed["notifications"].as_array().unwrap().len(), 10);
+    let (_, with_dismissed) = get(&client, &base, "/api/notifications?includeDismissed=true").await;
+    assert_eq!(
+        with_dismissed["notifications"].as_array().unwrap().len(),
+        11
+    );
+
+    for bad in [
+        "limit=0",
+        "limit=101",
+        "limit=x",
+        "offset=-1",
+        "includeDismissed=1",
+    ] {
         let (status, body) = get(&client, &base, &format!("/api/notifications?{bad}")).await;
         assert_eq!(status, 400, "{bad}: {body}");
         assert_eq!(body["errorCode"], "VALIDATION_FAILED");

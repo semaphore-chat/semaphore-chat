@@ -501,6 +501,10 @@ pub enum ViewKey {
         user_id: String,
     },
     ReplaySession,
+    Search {
+        scope: SearchScope,
+        query: String,
+    },
     VoiceDiagnostics,
     CommunitySettings {
         community_id: String,

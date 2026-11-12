@@ -766,21 +766,19 @@ impl Core {
                 .media
                 .as_ref()
                 .map_or(&empty, |media| &media.participants);
-            let users = state
+            let mut participants: Vec<ParticipantView> = state
                 .room_presence(room)
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            let mut participants: Vec<ParticipantView> = users
-                .iter()
+                .into_iter()
+                .flatten()
                 .map(|user| {
-                    let media = seen.iter().find(|media| media.identity == user.id);
+                    let media = seen.iter().find(|media| media.identity.as_str() == user.id);
                     ParticipantView {
-                        identity: user.id.clone(),
+                        identity: user.id.to_owned(),
                         user: UserView {
-                            id: user.id.clone(),
-                            username: user.username.clone(),
-                            display_name: user.display_name.clone(),
-                            avatar_file_id: user.avatar_url.clone(),
+                            id: user.id.to_owned(),
+                            username: user.username.to_owned(),
+                            display_name: user.display_name.map(str::to_owned),
+                            avatar_file_id: user.avatar_url.map(str::to_owned),
                         },
                         is_self: user.id == state.me_id(),
                         speaking: media.is_some_and(|media| media.speaking),
@@ -796,7 +794,13 @@ impl Core {
                 .collect();
             participants.extend(
                 seen.iter()
-                    .filter(|media| !users.iter().any(|user| user.id == media.identity))
+                    .filter(|media| {
+                        !state
+                            .room_presence(room)
+                            .into_iter()
+                            .flatten()
+                            .any(|user| user.id == media.identity.as_str())
+                    })
                     .cloned(),
             );
             for participant in &mut participants {

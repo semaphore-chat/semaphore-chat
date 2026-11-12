@@ -27,11 +27,14 @@ pub(crate) struct ReasonBody {
     pub reason: Option<String>,
 }
 
-fn room_payload(message: &MessageDto) -> Value {
+/// A `deleteMessage` payload: which removal it was (`hard` for an author's own, `soft` for a
+/// moderator's) is what a reader keeps the row for.
+fn room_payload(message: &MessageDto, removal: &str) -> Value {
     json!({
         "messageId": message.id,
         "channelId": message.channel_id,
         "directMessageGroupId": message.direct_message_group_id,
+        "removal": removal,
     })
 }
 
@@ -79,7 +82,7 @@ pub(crate) fn delete(inner: &Inner, id: &str) -> Result<(), Refusal> {
         }
     }
     data.threads.remove(id);
-    inner.broadcast("deleteMessage", room_payload(&message));
+    inner.broadcast("deleteMessage", room_payload(&message, "hard"));
     Ok(())
 }
 
@@ -113,7 +116,7 @@ pub(crate) fn remove_as_mod(
     message.deleted_by_reason = reason;
     let removed = message.clone();
     drop(data);
-    inner.broadcast("deleteMessage", room_payload(&removed));
+    inner.broadcast("deleteMessage", room_payload(&removed, "soft"));
     Ok(())
 }
 

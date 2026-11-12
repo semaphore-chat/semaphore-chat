@@ -19,6 +19,19 @@ pub enum SearchScope {
     Community { id: String },
 }
 
+/// The first page of a search, and everything read since. `more` says the server has another
+/// page; `Core::load_more_search` reads it, and `loading_more` is set while it's on its way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchResultsView {
+    pub state: LoadState,
+    pub scope: SearchScope,
+    /// Trimmed: what the server was asked.
+    pub query: String,
+    pub hits: Vec<SearchHit>,
+    pub more: bool,
+    pub loading_more: bool,
+}
+
 /// One search result. A thread reply carries its parent, which is what a jump opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchHit {

@@ -52,7 +52,10 @@ impl NotifyBackend for HttpBackend {
         unread_only: Option<bool>,
     ) -> BackendResult<wire::NotificationListResponseDto> {
         let limit = limit.and_then(std::num::NonZeroU64::new);
-        rpc!(self, c => c.notifications_controller_get_notifications(limit, offset, unread_only))
+        // The centre never shows a dismissed row, so the server leaves them out of its pages:
+        // the count of rows loaded then matches what `load_more` continues after.
+        let include_dismissed = Some(false);
+        rpc!(self, c => c.notifications_controller_get_notifications(include_dismissed, limit, offset, unread_only))
     }
 
     async fn notifications_controller_mark_as_read(

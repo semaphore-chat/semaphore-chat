@@ -51,7 +51,7 @@ pub use notify::NotifyBackend;
 pub use onboarding::OnboardingBackend;
 pub use replay::ReplayBackend;
 pub use roles::RolesBackend;
-pub use search::SearchBackend;
+pub use search::{SearchBackend, SearchPage};
 pub use session::SessionBackend;
 pub use social::SocialBackend;
 pub use soundboard::SoundboardBackend;
