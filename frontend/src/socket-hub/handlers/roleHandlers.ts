@@ -63,3 +63,17 @@ export const handleRoleUnassigned: SocketEventHandler<typeof ServerEvents.ROLE_U
   invalidateChannelPermissionQueries(queryClient);
   invalidateMembershipQueries(queryClient);
 };
+
+/**
+ * One of the user's own instance roles was assigned, removed or edited. The
+ * instance-role query feeds `useUserPermissions("INSTANCE", ...)`, which is
+ * both "may I create a community" and the Admin entry: refetching it re-gates
+ * both without a reload.
+ */
+export const handleInstanceRolesUpdated: SocketEventHandler<
+  typeof ServerEvents.INSTANCE_ROLES_UPDATED
+> = (_payload, queryClient: QueryClient) => {
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'rolesControllerGetMyInstanceRoles' }],
+  });
+};

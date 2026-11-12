@@ -191,6 +191,57 @@ export class LivekitService {
   }
 
   /**
+   * Disconnect a participant from a room, removing them from the call but not
+   * the community: they may rejoin. Unlike removeParticipant (best effort for
+   * bans and kicks), this reports the outcome: 404 when they are not
+   * connected, 500 when LiveKit fails.
+   *
+   * The participant_left webhook clears their presence and tells the room, so
+   * no presence bookkeeping happens here.
+   */
+  async disconnectParticipant(
+    roomId: string,
+    participantIdentity: string,
+  ): Promise<void> {
+    if (!this.roomServiceClient) {
+      throw new LivekitException(
+        'LiveKit credentials not configured',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    try {
+      await withTimeout(
+        this.roomServiceClient.removeParticipant(roomId, participantIdentity),
+        `removeParticipant ${roomId}/${participantIdentity}`,
+      );
+      this.logger.log(
+        `Removed participant ${participantIdentity} from room ${roomId}`,
+      );
+    } catch (error) {
+      // LiveKit answers 404 when the identity isn't in the room, or the room
+      // doesn't exist (nobody is connected): a client error, not our fault
+      if (
+        error instanceof Error &&
+        (error as Error & { status?: unknown }).status === 404
+      ) {
+        throw new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      this.logger.error(
+        `Failed to remove participant ${participantIdentity} from room ${roomId}`,
+        error,
+      );
+      throw new LivekitException(
+        'Failed to remove participant from the call',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * Identities of the participants connected to one LiveKit room. Best
    * effort: a room that doesn't exist (nobody connected), an unreachable or
    * an unconfigured LiveKit yields [].
@@ -265,8 +316,13 @@ export class LivekitService {
 
   /**
    * Changes what a connected participant may publish (e.g. a timeout makes
-   * them listen-only). LiveKit unpublishes tracks the new grant no longer
-   * allows. A participant who isn't in the room is ignored.
+   * them listen-only, a server mute takes the microphone). LiveKit
+   * unpublishes tracks the new grant no longer allows.
+   *
+   * Throws 404 (LivekitException) when the participant or room is gone, and
+   * 500 when LiveKit fails otherwise: callers that remember the change
+   * (the mute endpoint) only record it once the room actually accepted it.
+   * Without credentials there is nothing to update, so this is a no-op.
    */
   async updatePublishPermissions(
     roomId: string,
@@ -289,19 +345,39 @@ export class LivekitService {
         `Updated publish permissions of ${identity} in room ${roomId}: ${publish.canPublish ? (publish.canPublishSources ?? 'all').toString() : 'none'}`,
       );
     } catch (error) {
-      this.logger.warn(
+      // 404: the identity isn't in the room, or the room is gone. Callers
+      // decide whether that matters (lifting a mute doesn't).
+      if (
+        error instanceof Error &&
+        (error as Error & { status?: unknown }).status === 404
+      ) {
+        throw new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      this.logger.error(
         `Could not update publish permissions of ${identity} in room ${roomId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new LivekitException(
+        'Failed to update the participant publish permissions',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
 
   /**
-   * Mute or unmute a participant's audio tracks in a room
+   * Mute a participant's microphone tracks in a room.
+   *
+   * There is deliberately no unmute direction: LiveKit refuses a server-side
+   * unmute unless the room enables it (`enable_remote_unmute`, off by
+   * default), and a moderator lifting a mute must not reach into someone's
+   * live microphone anyway. Lifting a server mute restores the publish grant
+   * instead, and the user unmutes themselves.
    */
   async muteParticipant(
     roomId: string,
     participantIdentity: string,
-    mute: boolean,
   ): Promise<void> {
     if (!this.roomServiceClient) {
       throw new LivekitException(
@@ -323,7 +399,7 @@ export class LivekitService {
               roomId,
               participantIdentity,
               track.sid,
-              mute,
+              true,
             ),
             `mutePublishedTrack ${roomId}/${participantIdentity}`,
           );
@@ -331,7 +407,7 @@ export class LivekitService {
       }
 
       this.logger.log(
-        `${mute ? 'Muted' : 'Unmuted'} participant ${participantIdentity} in room ${roomId}`,
+        `Muted participant ${participantIdentity} in room ${roomId}`,
       );
     } catch (error) {
       // LiveKit answers 404 (ServerError status) when the identity isn't in
@@ -347,11 +423,11 @@ export class LivekitService {
         );
       }
       this.logger.error(
-        `Failed to ${mute ? 'mute' : 'unmute'} participant ${participantIdentity} in room ${roomId}`,
+        `Failed to mute participant ${participantIdentity} in room ${roomId}`,
         error,
       );
       throw new LivekitException(
-        `Failed to ${mute ? 'mute' : 'unmute'} participant`,
+        'Failed to mute participant',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

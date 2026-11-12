@@ -25,9 +25,18 @@ export enum ServerEvents {
   // Messaging: Direct Messages
   NEW_DM = 'newDirectMessage',
 
+  // Direct Message Groups
+  /** A group this user belongs to was created: refetch the DM list. */
+  DM_GROUP_CREATED = 'dmGroupCreated',
+  DM_GROUP_MEMBER_ADDED = 'dmGroupMemberAdded',
+  DM_GROUP_MEMBER_LEFT = 'dmGroupMemberLeft',
+
   // Mentions & Notifications
   NEW_NOTIFICATION = 'newNotification',
   NOTIFICATION_READ = 'notificationRead',
+  /** Notifications were marked read in bulk: refetch the list and the badge. */
+  NOTIFICATIONS_READ = 'notificationsRead',
+  NOTIFICATION_DISMISSED = 'notificationDismissed',
 
   // Presence & Typing
   USER_ONLINE = 'userOnline',
@@ -70,6 +79,18 @@ export enum ServerEvents {
   // Community Membership
   MEMBER_ADDED_TO_COMMUNITY = 'memberAddedToCommunity',
 
+  // Friends
+  /** Someone sent this user a friend request. */
+  FRIEND_REQUEST_SENT = 'friendRequestSent',
+  /** A friend request involving this user was accepted. */
+  FRIEND_REQUEST_ACCEPTED = 'friendRequestAccepted',
+  /** The recipient declined the request this user sent. */
+  FRIEND_REQUEST_DECLINED = 'friendRequestDeclined',
+  /** The sender withdrew the request this user received. */
+  FRIEND_REQUEST_CANCELLED = 'friendRequestCancelled',
+  /** The other person ended the friendship. */
+  FRIEND_REMOVED = 'friendRemoved',
+
   // Channel Lifecycle
   CHANNEL_CREATED = 'channelCreated',
   CHANNEL_UPDATED = 'channelUpdated',
@@ -87,6 +108,8 @@ export enum ServerEvents {
   ROLE_DELETED = 'roleDeleted',
   ROLE_ASSIGNED = 'roleAssigned',
   ROLE_UNASSIGNED = 'roleUnassigned',
+  /** The user's own instance roles changed: refetch them and re-gate Admin. */
+  INSTANCE_ROLES_UPDATED = 'instanceRolesUpdated',
 
   // Private Channel Membership
   /** The user was added to a private channel: refetch their channel list. */

@@ -1544,6 +1544,7 @@
     },
     "/api/roles/my/channel/{channelId}": {
       "get": {
+        "description": "Returns the caller's community roles for the channel's community. These do NOT include the channel's permission overwrites: a channel that denies or grants an action is not reflected here. For per-channel decisions (post, attach, react, voice, manage permissions) use GET /api/channels/{id}/permissions/me, which returns the effective channel capabilities.",
         "operationId": "RolesController_getMyRolesForChannel",
         "parameters": [
           {
@@ -1577,6 +1578,7 @@
             }
           }
         },
+        "summary": "The caller's community roles, as they apply to a channel",
         "tags": [
           "Roles"
         ]
@@ -4693,6 +4695,57 @@
             }
           }
         },
+        "tags": [
+          "Livekit"
+        ]
+      }
+    },
+    "/api/livekit/channels/{channelId}/remove-participant": {
+      "post": {
+        "operationId": "LivekitController_removeParticipant",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveParticipantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Remove someone from this voice call only: they leave the LiveKit room but\nstay a community member, and may rejoin. The participant_left webhook\nannounces the leave and clears their presence.",
         "tags": [
           "Livekit"
         ]
@@ -12800,13 +12853,17 @@
           }
         }
       },
-      "VoicePresenceUserDto": {
+      "ChannelVoicePresenceUserDto": {
         "type": "object",
         "properties": {
           "joinedAt": {
             "type": "string",
             "description": "ISO-8601 timestamp, as sent on the socket.",
             "format": "date-time"
+          },
+          "canModerate": {
+            "type": "boolean",
+            "description": "Whether the caller may server mute this user or remove them from the\ncall. The server always sends it in this response (false for the caller's\nown entry). Optional in the type because clients also add users to this\nlist from socket events, which don't carry it."
           },
           "id": {
             "type": "string"
@@ -12838,23 +12895,23 @@
       "ChannelVoicePresenceResponseDto": {
         "type": "object",
         "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelVoicePresenceUserDto"
+            }
+          },
           "count": {
             "type": "integer"
           },
           "channelId": {
             "type": "string"
-          },
-          "users": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VoicePresenceUserDto"
-            }
           }
         },
         "required": [
+          "users",
           "count",
-          "channelId",
-          "users"
+          "channelId"
         ]
       },
       "RefreshPresenceResponseDto": {
@@ -12903,6 +12960,41 @@
         "required": [
           "userId",
           "voiceChannels"
+        ]
+      },
+      "VoicePresenceUserDto": {
+        "type": "object",
+        "properties": {
+          "joinedAt": {
+            "type": "string",
+            "description": "ISO-8601 timestamp, as sent on the socket.",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string"
+          },
+          "isDeafened": {
+            "type": "boolean"
+          },
+          "isServerMuted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "joinedAt",
+          "id",
+          "username",
+          "isDeafened",
+          "isServerMuted"
         ]
       },
       "DmVoicePresenceResponseDto": {
@@ -13029,6 +13121,17 @@
         "required": [
           "participantIdentity",
           "mute"
+        ]
+      },
+      "RemoveParticipantDto": {
+        "type": "object",
+        "properties": {
+          "participantIdentity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "participantIdentity"
         ]
       },
       "ConnectionInfoResponseDto": {
@@ -16991,6 +17094,57 @@
           "message"
         ]
       },
+      "DmGroupCreatedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "memberIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memberIds",
+          "groupId"
+        ]
+      },
+      "DmGroupMemberAddedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userIds",
+          "groupId"
+        ]
+      },
+      "DmGroupMemberLeftPayloadDto": {
+        "type": "object",
+        "properties": {
+          "groupId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupId",
+          "userId"
+        ]
+      },
       "UpdateMessagePayloadDto": {
         "type": "object",
         "properties": {
@@ -17358,6 +17512,46 @@
         ]
       },
       "NotificationReadPayloadDto": {
+        "type": "object",
+        "properties": {
+          "notificationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "notificationId"
+        ]
+      },
+      "NotificationsReadScope": {
+        "type": "string",
+        "enum": [
+          "all",
+          "channel",
+          "directMessage"
+        ]
+      },
+      "NotificationsReadPayloadDto": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationsReadScope"
+              }
+            ]
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "directMessageGroupId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "NotificationDismissedPayloadDto": {
         "type": "object",
         "properties": {
           "notificationId": {
@@ -17924,6 +18118,27 @@
           "userId"
         ]
       },
+      "FriendshipPayloadDto": {
+        "type": "object",
+        "properties": {
+          "friendshipId": {
+            "type": "string"
+          },
+          "userAId": {
+            "type": "string",
+            "description": "The request's sender (one of the two friends once accepted)."
+          },
+          "userBId": {
+            "type": "string",
+            "description": "The request's receiver."
+          }
+        },
+        "required": [
+          "friendshipId",
+          "userAId",
+          "userBId"
+        ]
+      },
       "CommunityUpdatedPayloadDto": {
         "type": "object",
         "properties": {
@@ -18056,6 +18271,21 @@
         },
         "required": [
           "communityId",
+          "userId",
+          "roleId"
+        ]
+      },
+      "InstanceRolesUpdatedPayloadDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          }
+        },
+        "required": [
           "userId",
           "roleId"
         ]

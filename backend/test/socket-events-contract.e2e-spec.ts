@@ -430,6 +430,184 @@ describe('Socket event contract (e2e)', () => {
     await seen(ServerEvents.ROLE_DELETED, (p) => p.roleId === roleId);
   });
 
+  it('instance roles: assigning one tells the user their own roles changed', async () => {
+    const created = await http()
+      .post('/api/roles/instance')
+      .set('Authorization', auth('owner'))
+      .send({ name: 'E2E Instance Role', actions: ['READ_USER'] })
+      .expect(201);
+    const roleId = (created.body as { id: string }).id;
+
+    await http()
+      .post(`/api/roles/instance/${roleId}/assign`)
+      .set('Authorization', auth('owner'))
+      .send({ userId: account.member.id })
+      .expect(204);
+    const assigned = await seen<{ userId: string; roleId: string }>(
+      ServerEvents.INSTANCE_ROLES_UPDATED,
+      (p) => p.roleId === roleId,
+    );
+    expect(assigned).toEqual({ userId: account.member.id, roleId });
+
+    await http()
+      .delete(`/api/roles/instance/${roleId}/users/${account.member.id}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+    await http()
+      .delete(`/api/roles/instance/${roleId}`)
+      .set('Authorization', auth('owner'))
+      .expect(204);
+  });
+
+  it('friends: a request, its acceptance, a decline, a cancellation and a removal', async () => {
+    const request = await http()
+      .post(`/api/friends/request/${account.member.id}`)
+      .set('Authorization', auth('owner'))
+      .expect(201);
+    const friendshipId = (request.body as { id: string }).id;
+    const sent = await seen<{
+      friendshipId: string;
+      userAId: string;
+      userBId: string;
+    }>(
+      ServerEvents.FRIEND_REQUEST_SENT,
+      (p) => p.friendshipId === friendshipId,
+    );
+    expect(sent).toEqual({
+      friendshipId,
+      userAId: account.owner.id,
+      userBId: account.member.id,
+    });
+
+    await http()
+      .post(`/api/friends/accept/${friendshipId}`)
+      .set('Authorization', auth('member'))
+      .expect(201);
+    await seen(
+      ServerEvents.FRIEND_REQUEST_ACCEPTED,
+      (p) => p.friendshipId === friendshipId,
+    );
+
+    const toDecline = await http()
+      .post(`/api/friends/request/${account.extra.id}`)
+      .set('Authorization', auth('target'))
+      .expect(201);
+    const declinedId = (toDecline.body as { id: string }).id;
+    await http()
+      .delete(`/api/friends/decline/${declinedId}`)
+      .set('Authorization', auth('extra'))
+      .expect(200);
+    await seen(
+      ServerEvents.FRIEND_REQUEST_DECLINED,
+      (p) => p.friendshipId === declinedId,
+    );
+
+    const toCancel = await http()
+      .post(`/api/friends/request/${account.owner.id}`)
+      .set('Authorization', auth('extra'))
+      .expect(201);
+    const cancelledId = (toCancel.body as { id: string }).id;
+    await http()
+      .delete(`/api/friends/cancel/${cancelledId}`)
+      .set('Authorization', auth('extra'))
+      .expect(200);
+    await seen(
+      ServerEvents.FRIEND_REQUEST_CANCELLED,
+      (p) => p.friendshipId === cancelledId,
+    );
+
+    await http()
+      .delete(`/api/friends/${friendshipId}`)
+      .set('Authorization', auth('member'))
+      .expect(200);
+    await seen(
+      ServerEvents.FRIEND_REMOVED,
+      (p) => p.friendshipId === friendshipId,
+    );
+  });
+
+  it('DM groups: created, a member added, that member leaving', async () => {
+    const created = await http()
+      .post('/api/direct-messages')
+      .set('Authorization', auth('owner'))
+      .send({ userIds: [account.member.id], isGroup: true, name: 'Squad' })
+      .expect(201);
+    const groupId = (created.body as { id: string }).id;
+    const createdEvent = await seen<{ groupId: string; memberIds: string[] }>(
+      ServerEvents.DM_GROUP_CREATED,
+      (p) => p.groupId === groupId,
+    );
+    expect([...createdEvent.memberIds].sort()).toEqual(
+      [account.owner.id, account.member.id].sort(),
+    );
+
+    await http()
+      .post(`/api/direct-messages/${groupId}/members`)
+      .set('Authorization', auth('owner'))
+      .send({ userIds: [account.target.id] })
+      .expect(201);
+    const added = await seen<{ groupId: string; userIds: string[] }>(
+      ServerEvents.DM_GROUP_MEMBER_ADDED,
+      (p) => p.groupId === groupId,
+    );
+    expect(added.userIds).toEqual([account.target.id]);
+
+    await http()
+      .delete(`/api/direct-messages/${groupId}/members/me`)
+      .set('Authorization', auth('target'))
+      .expect(204);
+    await seen(
+      ServerEvents.DM_GROUP_MEMBER_LEFT,
+      (p) => p.groupId === groupId && p.userId === account.target.id,
+    );
+  });
+
+  it('notification read state: a context read, a dismissal and read-all', async () => {
+    const mention = (text: string) =>
+      socket.member!.timeout(5000).emitWithAck(ClientEvents.SEND_MESSAGE, {
+        channelId,
+        spans: [{ type: 'USER_MENTION', userId: account.target.id, text }],
+        attachments: [],
+      });
+
+    const mentioned: unknown = await mention('@target in context');
+    const mentionedNotification = await seen<NewNotificationPayload>(
+      ServerEvents.NEW_NOTIFICATION,
+      (p) => p.messageId === mentioned,
+    );
+
+    // Reading the channel reads its mentions too.
+    socket.target!.emit(ClientEvents.MARK_AS_READ, {
+      channelId,
+      lastReadMessageId: mentioned,
+    });
+    const contextRead = await seen(
+      ServerEvents.NOTIFICATIONS_READ,
+      (p) => p.scope === 'channel',
+    );
+    expect(contextRead).toEqual({ scope: 'channel', channelId });
+
+    await http()
+      .post(
+        `/api/notifications/${mentionedNotification.notificationId}/dismiss`,
+      )
+      .set('Authorization', auth('target'))
+      .expect(200);
+    await seen(
+      ServerEvents.NOTIFICATION_DISMISSED,
+      (p) => p.notificationId === mentionedNotification.notificationId,
+    );
+
+    const unread: unknown = await mention('@target once more');
+    await seen(ServerEvents.NEW_NOTIFICATION, (p) => p.messageId === unread);
+
+    await http()
+      .post('/api/notifications/read-all')
+      .set('Authorization', auth('target'))
+      .expect(200);
+    await seen(ServerEvents.NOTIFICATIONS_READ, (p) => p.scope === 'all');
+  });
+
   it('a profile change: USER_PROFILE_UPDATED', async () => {
     await http()
       .patch('/api/users/profile')
