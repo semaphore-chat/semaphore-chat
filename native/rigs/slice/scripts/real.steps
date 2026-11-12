@@ -119,3 +119,34 @@ expect stored-session yes
 exec "python3 scripts/real-api.py $SERVER expect-device testuser \"Semaphore Desktop on Linux\""
 wait idle
 shot 09-restored-after-revoke-others
+
+# 11. W5 against the real backend: from the community's settings, a channel created and deleted,
+# and an invite created.
+wait core element community-settings within 20
+click community-settings
+wait core element community-tab-channels within 20
+click channels-create
+wait core element channel-create-name
+click channel-create-name
+type "w5-real"
+click channel-create-submit
+wait core no-element channel-create-submit within 20
+wait core w5 channel "w5-real" listed within 20
+wait idle
+shot 10-w5-channel-created
+click-label "Delete w5-real"
+wait core element channel-delete-confirm
+click channel-delete-confirm
+wait core no-element channel-delete-confirm within 20
+wait core w5 channel "w5-real" gone within 20
+click community-tab-invites
+wait core element invite-create within 20
+click invite-create
+wait core element invite-create-submit
+click invite-create-submit
+wait core no-element invite-create-submit within 20
+wait core element invites-list within 20
+wait idle
+shot 11-w5-invite
+click community-settings-close
+wait core channel {{CH_GENERAL}} within 20

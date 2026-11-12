@@ -18,17 +18,24 @@ import type {
   CommunityUpdatedPayloadDto,
   DeleteMessagePayloadDto,
   DesktopSignInPayloadDto,
+  DmGroupCreatedPayloadDto,
+  DmGroupMemberAddedPayloadDto,
+  DmGroupMemberLeftPayloadDto,
   DmVoiceCallStartedPayloadDto,
   DmVoiceCallDeclinedPayloadDto,
   DmVoiceCallEndedPayloadDto,
   DmVoiceUserJoinedPayloadDto,
   DmVoiceUserLeftPayloadDto,
   EgressSegmentsReadyPayloadDto,
+  FriendshipPayloadDto,
+  InstanceRolesUpdatedPayloadDto,
   MemberAddedToCommunityPayloadDto,
   MessagePinnedPayloadDto,
   MessageUnpinnedPayloadDto,
   NewMessagePayloadDto,
   NewThreadReplyPayloadDto,
+  NotificationDismissedPayloadDto,
+  NotificationsReadPayloadDto,
   ReactionAddedPayloadDto,
   ReactionRemovedPayloadDto,
   ReadReceiptUpdatedPayloadDto,
@@ -194,6 +201,31 @@ export type ThreadReplyCountUpdatedPayload = ThreadReplyCountUpdatedPayloadDto;
 export type MemberAddedToCommunityPayload = MemberAddedToCommunityPayloadDto;
 
 // =============================================================================
+// Friend Payloads
+// =============================================================================
+
+/** The friendship the change was made to, with the two users it connects. */
+export type FriendshipPayload = FriendshipPayloadDto;
+
+// =============================================================================
+// Direct Message Group Payloads
+// =============================================================================
+
+export type DmGroupCreatedPayload = DmGroupCreatedPayloadDto;
+
+export type DmGroupMemberAddedPayload = DmGroupMemberAddedPayloadDto;
+
+export type DmGroupMemberLeftPayload = DmGroupMemberLeftPayloadDto;
+
+// =============================================================================
+// Notification Read State Payloads
+// =============================================================================
+
+export type NotificationsReadPayload = NotificationsReadPayloadDto;
+
+export type NotificationDismissedPayload = NotificationDismissedPayloadDto;
+
+// =============================================================================
 // Channel Lifecycle Payloads
 // =============================================================================
 
@@ -245,6 +277,9 @@ export type RoleAssignedPayload = RoleAssignedPayloadDto;
 
 export type RoleUnassignedPayload = RoleUnassignedPayloadDto;
 
+/** One instance role change affecting the receiving user. */
+export type InstanceRolesUpdatedPayload = InstanceRolesUpdatedPayloadDto;
+
 // =============================================================================
 // User Profile Payloads
 // =============================================================================
@@ -282,9 +317,16 @@ export type ServerEventPayloads = {
   // Messaging: Direct Messages
   [ServerEvents.NEW_DM]: NewMessagePayload;
 
+  // Direct Message Groups
+  [ServerEvents.DM_GROUP_CREATED]: DmGroupCreatedPayload;
+  [ServerEvents.DM_GROUP_MEMBER_ADDED]: DmGroupMemberAddedPayload;
+  [ServerEvents.DM_GROUP_MEMBER_LEFT]: DmGroupMemberLeftPayload;
+
   // Mentions & Notifications
   [ServerEvents.NEW_NOTIFICATION]: NewNotificationPayload;
   [ServerEvents.NOTIFICATION_READ]: NotificationReadPayload;
+  [ServerEvents.NOTIFICATIONS_READ]: NotificationsReadPayload;
+  [ServerEvents.NOTIFICATION_DISMISSED]: NotificationDismissedPayload;
 
   // Presence & Typing
   [ServerEvents.USER_ONLINE]: UserOnlinePayload;
@@ -324,6 +366,13 @@ export type ServerEventPayloads = {
   // Community Membership
   [ServerEvents.MEMBER_ADDED_TO_COMMUNITY]: MemberAddedToCommunityPayload;
 
+  // Friends
+  [ServerEvents.FRIEND_REQUEST_SENT]: FriendshipPayload;
+  [ServerEvents.FRIEND_REQUEST_ACCEPTED]: FriendshipPayload;
+  [ServerEvents.FRIEND_REQUEST_DECLINED]: FriendshipPayload;
+  [ServerEvents.FRIEND_REQUEST_CANCELLED]: FriendshipPayload;
+  [ServerEvents.FRIEND_REMOVED]: FriendshipPayload;
+
   // Channel Lifecycle
   [ServerEvents.CHANNEL_CREATED]: ChannelCreatedPayload;
   [ServerEvents.CHANNEL_UPDATED]: ChannelUpdatedPayload;
@@ -356,6 +405,7 @@ export type ServerEventPayloads = {
   [ServerEvents.ROLE_DELETED]: RoleDeletedPayload;
   [ServerEvents.ROLE_ASSIGNED]: RoleAssignedPayload;
   [ServerEvents.ROLE_UNASSIGNED]: RoleUnassignedPayload;
+  [ServerEvents.INSTANCE_ROLES_UPDATED]: InstanceRolesUpdatedPayload;
 
   // User Profile
   [ServerEvents.USER_PROFILE_UPDATED]: UserProfileUpdatedPayload;

@@ -115,6 +115,7 @@ pub(crate) fn seed_files(scenario: &Scenario, files: &mut HashMap<String, Stored
                 StoredFile {
                     uploaded_by: scenario.me.id.clone(),
                     resource_type: "SOUNDBOARD_SOUND".to_owned(),
+                    community_id: Some(community.id.clone()),
                     filename: (*filename).to_owned(),
                     mime_type: (*mime).to_owned(),
                     bytes: bytes.to_vec(),

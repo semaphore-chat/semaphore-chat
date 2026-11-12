@@ -118,6 +118,10 @@ pub(crate) struct StoredFile {
     /// Who uploaded it and as what (`resourceType`): a profile or community image must be one's own.
     pub uploaded_by: String,
     pub resource_type: String,
+    /// The community the upload named as its `resourceId`, for the community resource types
+    /// (`COMMUNITY_AVATAR`, `COMMUNITY_BANNER`, `CUSTOM_EMOJI`, `SOUNDBOARD_SOUND`): the backend's
+    /// `File.fileCommunityId`.
+    pub community_id: Option<String>,
     pub filename: String,
     pub mime_type: String,
     pub bytes: Vec<u8>,

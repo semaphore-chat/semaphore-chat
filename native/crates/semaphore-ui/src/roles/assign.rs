@@ -7,12 +7,14 @@
 //! `set_member_roles` and calls `set_saving(false)`: the error shows, the choice stays, and a retry
 //! sends only what is still different.
 
-use super::common::{check_row, empty_line, loading_rows, locked_note, tone_chip};
+use super::common::{empty_line, loading_rows, locked_note, tone_chip};
 use super::rules::{
     actions_preview, any_running, assign_block, assignment_diff, failure, member_block,
     permissions_count, role_action, running,
 };
-use crate::kit::{Alert, Button, Chip, Dialog, Severity, Variant, spacing, text, with_tip};
+use crate::kit::{
+    Alert, Button, Checkbox, Chip, Dialog, Severity, Variant, spacing, text, with_tip,
+};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
@@ -199,17 +201,17 @@ impl RoleAssignmentDialog {
                     summary.push_str(&format!(" +{more} more"));
                 }
                 let entity = cx.weak_entity();
-                let checkbox = check_row(
+                let checkbox = Checkbox::new(
                     SharedString::from(format!("role-assign-{}", role.id)),
                     role.name.clone(),
-                    Some(summary),
                     on,
-                    disabled,
-                    move |_, cx| {
-                        entity.update(cx, |dialog, cx| dialog.toggle(&id, cx)).ok();
-                    },
-                    cx,
                 )
+                .caption(summary)
+                .disabled(disabled)
+                .dense()
+                .on_toggle(move |_, _, cx| {
+                    entity.update(cx, |dialog, cx| dialog.toggle(&id, cx)).ok();
+                })
                 .flex_1();
                 let checkbox: AnyElement = match &block {
                     Some(reason) => with_tip(

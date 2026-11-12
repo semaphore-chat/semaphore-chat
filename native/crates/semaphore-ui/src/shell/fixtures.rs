@@ -3,8 +3,8 @@
 
 use super::{Load, MemberRow, RailCounts, ShellSource};
 use semaphore_core::model::{
-    ChannelRow, CommunityRow, ErrorView, ParticipantView, SessionState, UserView, VoiceStatus,
-    VoiceView,
+    ChannelRow, CommunityCaps, CommunityRow, ErrorView, ParticipantView, SessionState, UserView,
+    VoiceStatus, VoiceView,
 };
 use semaphore_core::scenario::ScenarioViews;
 use serde_json::Value;
@@ -29,6 +29,47 @@ pub struct Fixture {
     pub communities_state: Fake,
     pub channels_state: Fake,
     pub members_state: Fake,
+    /// W5: what `me` may do in every community. `None`: the scenarios' `me`, an owner, may do
+    /// everything.
+    pub caps: Option<CommunityCaps>,
+}
+
+/// Every flag set: the owner's caps.
+pub fn owner_caps() -> CommunityCaps {
+    CommunityCaps {
+        update_community: true,
+        delete_community: true,
+        create_channel: true,
+        update_channel: true,
+        delete_channel: true,
+        manage_private_members: true,
+        manage_channel_permissions: true,
+        read_roles: true,
+        create_role: true,
+        update_role: true,
+        delete_role: true,
+        assign_roles: true,
+        read_members: true,
+        add_members: true,
+        read_alias_groups: true,
+        create_alias_group: true,
+        update_alias_group: true,
+        delete_alias_group: true,
+        manage_alias_members: true,
+        manage_emoji: true,
+        read_sounds: true,
+        create_sound: true,
+        delete_sound: true,
+        manage_webhooks: true,
+        create_invite: true,
+        delete_invite: true,
+        ban: true,
+        unban: true,
+        kick: true,
+        timeout: true,
+        view_bans: true,
+        view_moderation_log: true,
+    }
 }
 
 fn failed<T>() -> Load<T> {
@@ -97,6 +138,10 @@ impl ShellSource for FixtureSource {
 
     fn voice(&self) -> VoiceView {
         self.0.borrow().views.voice.clone()
+    }
+
+    fn community_caps(&self, _community_id: &str) -> CommunityCaps {
+        self.0.borrow().caps.unwrap_or_else(owner_caps)
     }
 }
 

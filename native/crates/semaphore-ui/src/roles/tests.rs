@@ -438,47 +438,6 @@ fn each_change_reads_its_own_entry() {
     assert!(!any_running(&both, &[AdminActionKind::ReorderRoles]));
 }
 
-#[test]
-fn a_pending_change_ends_by_its_own_entry() {
-    let action = role_action(AdminActionKind::UpdateRole, Some("a"));
-    let other = state(AdminActionKind::DeleteRole, Some("b"), true, false);
-    // Sent; core hasn't started it: waiting, even while another change runs.
-    let before = op(vec![]);
-    let mut pending = Pending::new(action.clone(), &before);
-    assert_eq!(pending.observe(&before), Outcome::Waiting);
-    assert_eq!(
-        pending.observe(&op(vec![
-            state(AdminActionKind::UpdateRole, Some("a"), true, false),
-            other.clone()
-        ])),
-        Outcome::Waiting
-    );
-    assert_eq!(
-        pending.observe(&op(vec![other.clone()])),
-        Outcome::Succeeded
-    );
-    // A refusal before sending: the entry fails without ever running.
-    let mut pending = Pending::new(action.clone(), &before);
-    assert_eq!(
-        pending.observe(&op(vec![state(
-            AdminActionKind::UpdateRole,
-            Some("a"),
-            false,
-            true
-        )])),
-        Outcome::Failed
-    );
-    // An old failure still there when sent isn't this one's outcome.
-    let stale = op(vec![state(
-        AdminActionKind::UpdateRole,
-        Some("a"),
-        false,
-        true,
-    )]);
-    let mut pending = Pending::new(action, &stale);
-    assert_eq!(pending.observe(&stale), Outcome::Waiting);
-}
-
 // ---- Assignment. ----
 
 #[test]
@@ -833,8 +792,13 @@ fn the_editor_sends_only_the_changed_actions_and_closes_when_saved(cx: &mut Test
         view.update(cx, |p, cx| p.set_roles(busy, cx))
     });
     assert!(rig.has(cx, "role-editor"));
+    let mut saved = roles_view(vec![]);
+    saved.op = with_ends(
+        saved.op,
+        &[(AdminActionKind::UpdateRole, Some("a"), 1, false)],
+    );
     rig.with(cx, |view, _, cx| {
-        view.update(cx, |p, cx| p.set_roles(roles_view(vec![]), cx))
+        view.update(cx, |p, cx| p.set_roles(saved, cx))
     });
     assert!(!rig.has(cx, "role-editor"), "saved: back to the list");
 }
@@ -1053,10 +1017,67 @@ fn a_saved_choice_follows_the_new_stored_set(cx: &mut TestAppContext) {
     });
     let mut saved = overrides_view(true, vec![]);
     saved.detected = detected(ChannelPreset::Announcement, &["mods"], false);
+    saved.op = with_ends(
+        saved.op,
+        &[(AdminActionKind::ReplaceOverwrites, Some("ch"), 1, false)],
+    );
     rig.with(cx, |view, _, cx| {
         view.update(cx, |e, cx| e.set_overwrites(saved, cx))
     });
     rig.clear();
     rig.click(cx, "overrides-save");
     assert!(rig.events().is_empty(), "nothing left to save");
+}
+
+/// `op` with these ends recorded, as (kind, target, seq, failed).
+fn with_ends(mut op: AdminOp, ends: &[(AdminActionKind, Option<&str>, u64, bool)]) -> AdminOp {
+    op.finished = ends
+        .iter()
+        .map(
+            |(kind, target, seq, failed)| semaphore_core::model::AdminActionOutcome {
+                action: semaphore_core::model::AdminAction {
+                    kind: *kind,
+                    target_id: target.map(str::to_owned),
+                },
+                seq: *seq,
+                error: failed.then(|| ErrorView {
+                    code: "X".into(),
+                    message: "failed".into(),
+                    retryable: false,
+                    retry_after_ms: None,
+                }),
+            },
+        )
+        .collect();
+    op
+}
+
+#[gpui_kit::test]
+fn role_dates_are_written_in_the_panels_zone(cx: &mut TestAppContext) {
+    use crate::messages::TimeFormat;
+    use chrono::FixedOffset;
+    let rig = roles_rig(cx, roles_view(vec![]));
+    // 2026-11-01 02:00 UTC.
+    let ms = 1_793_498_400_000;
+    // (minutes east of UTC, the date there)
+    let cases = [
+        (0, "Nov 1, 2026"),
+        (9 * 60, "Nov 1, 2026"),
+        (-5 * 60, "Oct 31, 2026"),
+        (-(2 * 60 + 30), "Oct 31, 2026"),
+        (2 * 60, "Nov 1, 2026"),
+    ];
+    for (minutes, want) in cases {
+        let time = TimeFormat {
+            zone: Some(FixedOffset::east_opt(minutes * 60).expect("a zone")),
+            now_ms: Some(ms),
+        };
+        let shown = rig.with(cx, move |view, _, cx| {
+            view.update(cx, |panel, cx| {
+                panel.set_time(time, cx);
+                panel.created_label(ms)
+            })
+        });
+        assert_eq!(shown, want, "{minutes} minutes east");
+    }
 }

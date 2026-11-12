@@ -15,7 +15,31 @@ import { JwtService } from '@nestjs/jwt';
 import { TrackSource } from 'livekit-server-sdk';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { FULL_PUBLISH_GRANT } from './publish-grant.util';
-import { LivekitAccessService } from './livekit-access.service';
+import { LivekitReplayService } from './livekit-replay.service';
+import { StorageService } from '@/storage/storage.service';
+import { StreamReplayDto } from './dto/capture-replay.dto';
+import { ThrottlerException } from '@nestjs/throttler';
+import { EventEmitter } from 'events';
+import type { Response } from 'express';
+import type { AuthenticatedRequest } from '@/types';
+
+/** A response whose `sendFile` finishes only when the test says so. */
+interface FakeDownloadResponse extends EventEmitter {
+  setHeader: jest.Mock;
+  sendFile: jest.Mock;
+}
+
+function makeDownloadResponse(
+  transfer: (done: (err?: Error) => void) => void = (done) => done(),
+): FakeDownloadResponse {
+  const res = new EventEmitter() as FakeDownloadResponse;
+  res.setHeader = jest.fn();
+  res.sendFile = jest.fn((_path: string, done: (err?: Error) => void) =>
+    transfer(done),
+  );
+  return res;
+}
+import { LivekitException } from './exceptions/livekit.exception';
 
 describe('LivekitController', () => {
   let controller: LivekitController;
@@ -23,7 +47,8 @@ describe('LivekitController', () => {
   let voicePresenceService: Mocked<VoicePresenceService>;
   let jwtService: Mocked<JwtService>;
   let channelAccessService: Mocked<ChannelAccessService>;
-  let livekitAccessService: Mocked<LivekitAccessService>;
+  let replayService: Mocked<LivekitReplayService>;
+  let storageService: Mocked<StorageService>;
 
   const allCaps = {
     channelId: 'room-1',
@@ -58,7 +83,8 @@ describe('LivekitController', () => {
     voicePresenceService = unitRef.get(VoicePresenceService);
     jwtService = unitRef.get(JwtService);
     channelAccessService = unitRef.get(ChannelAccessService);
-    livekitAccessService = unitRef.get(LivekitAccessService);
+    replayService = unitRef.get(LivekitReplayService);
+    storageService = unitRef.get(StorageService);
     channelAccessService.channelCapabilities.mockResolvedValue(allCaps);
   });
 
@@ -442,7 +468,6 @@ describe('LivekitController', () => {
       expect(service.muteParticipant).toHaveBeenCalledWith(
         'channel-123',
         'user-456',
-        true,
       );
       expect(voicePresenceService.updateServerMuteState).toHaveBeenCalledWith(
         'channel-123',
@@ -480,10 +505,130 @@ describe('LivekitController', () => {
         'user-456',
         false,
       );
+      expect(voicePresenceService.updateServerMuteState).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('records and announces the change only after LiveKit accepted the grant', async () => {
+      voicePresenceService.setServerMuted.mockResolvedValue(undefined);
+      voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);
+
+      await controller.muteParticipant(
+        'channel-123',
+        { participantIdentity: 'user-456', mute: false },
+        mockRequest,
+      );
+
+      const permissionUpdate =
+        service.updatePublishPermissions.mock.invocationCallOrder[0];
+      expect(permissionUpdate).toBeLessThan(
+        voicePresenceService.setServerMuted.mock.invocationCallOrder[0],
+      );
+      expect(permissionUpdate).toBeLessThan(
+        voicePresenceService.updateServerMuteState.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('leaves presence alone when LiveKit refuses the permission update', async () => {
+      service.updatePublishPermissions.mockRejectedValue(
+        new LivekitException('refused', 500),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: false },
+          mockRequest,
+        ),
+      ).rejects.toBeInstanceOf(LivekitException);
+
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
+      expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
+    });
+
+    it('lifts a mute after the person left the call: state cleared, success, announced once', async () => {
+      service.updatePublishPermissions.mockRejectedValue(
+        new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        ),
+      );
+      voicePresenceService.setServerMuted.mockResolvedValue(undefined);
+      voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: false },
+          mockRequest,
+        ),
+      ).resolves.toEqual({ success: true });
+
+      expect(voicePresenceService.setServerMuted).toHaveBeenCalledWith(
+        'channel-123',
+        'user-456',
+        false,
+      );
+      expect(voicePresenceService.updateServerMuteState).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('lifting a mute fails on a real LiveKit error and leaves the state', async () => {
+      service.updatePublishPermissions.mockRejectedValue(
+        new LivekitException('timeout', HttpStatus.INTERNAL_SERVER_ERROR),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: false },
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({ status: 500 });
+
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
+      expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
+    });
+
+    it('applying a mute to someone not in the call still 404s and records nothing', async () => {
+      service.muteParticipant.mockRejectedValue(
+        new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        ),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: true },
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
+      expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
+    });
+
+    it('applying a mute does not swallow a 404 from the permission update', async () => {
+      service.updatePublishPermissions.mockRejectedValue(
+        new LivekitException('gone', HttpStatus.NOT_FOUND),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: true },
+          mockRequest,
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
     });
 
     it('refused by the rank rule, it changes nothing', async () => {
-      livekitAccessService.assertMayServerMute.mockRejectedValue(
+      channelAccessService.assertMayModerateParticipant.mockRejectedValue(
         new ForbiddenException(),
       );
 
@@ -495,11 +640,9 @@ describe('LivekitController', () => {
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
 
-      expect(livekitAccessService.assertMayServerMute).toHaveBeenCalledWith(
-        mockUser,
-        'channel-123',
-        'user-456',
-      );
+      expect(
+        channelAccessService.assertMayModerateParticipant,
+      ).toHaveBeenCalledWith(mockUser, 'channel-123', 'user-456');
       expect(service.muteParticipant).not.toHaveBeenCalled();
       expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
       expect(service.updatePublishPermissions).not.toHaveBeenCalled();
@@ -520,6 +663,163 @@ describe('LivekitController', () => {
       ).rejects.toThrow('Mute failed');
 
       expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('streamReplay', () => {
+    const replayPath = '/tmp/replay-stream-user.mp4';
+    const query: StreamReplayDto = { durationMinutes: 1 };
+    const reqFor = (userId: string) =>
+      ({ user: { id: userId } }) as unknown as AuthenticatedRequest;
+    // Lets the handler reach `sendFile` (two already-resolved awaits).
+    const flush = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+
+    beforeEach(() => {
+      replayService.streamReplay.mockResolvedValue(replayPath);
+      storageService.getFileStats.mockResolvedValue({
+        size: 42,
+        mtime: new Date(),
+        ctime: new Date(),
+      });
+      storageService.deleteFile.mockResolvedValue(undefined);
+    });
+
+    it('answers 429 to a second download while one is in flight', async () => {
+      let finish!: (err?: Error) => void;
+      const first = controller.streamReplay(
+        query,
+        reqFor('replay-user-1'),
+        makeDownloadResponse((done) => {
+          finish = done;
+        }) as unknown as Response,
+      );
+      await flush();
+
+      await expect(
+        controller.streamReplay(
+          query,
+          reqFor('replay-user-1'),
+          makeDownloadResponse() as unknown as Response,
+        ),
+      ).rejects.toBeInstanceOf(ThrottlerException);
+
+      finish();
+      await first;
+
+      // The slot is free again once the first download is over.
+      await expect(
+        controller.streamReplay(
+          query,
+          reqFor('replay-user-1'),
+          makeDownloadResponse() as unknown as Response,
+        ),
+      ).resolves.toBeUndefined();
+      expect(storageService.deleteFile).toHaveBeenCalled();
+    });
+
+    it('deletes the temp file after a completed download', async () => {
+      await controller.streamReplay(
+        query,
+        reqFor('replay-user-2'),
+        makeDownloadResponse() as unknown as Response,
+      );
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(replayPath);
+    });
+
+    it('deletes the temp file when the client aborts', async () => {
+      const res = makeDownloadResponse(() => {
+        // Never finishes on its own: the client leaves first.
+      });
+      const running = controller.streamReplay(
+        query,
+        reqFor('replay-user-3'),
+        res as unknown as Response,
+      );
+      await flush();
+
+      res.emit('close');
+      await running;
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(replayPath);
+    });
+
+    it('deletes the temp file when sending it fails', async () => {
+      await controller.streamReplay(
+        query,
+        reqFor('replay-user-4'),
+        makeDownloadResponse((done) =>
+          done(new Error('gone')),
+        ) as unknown as Response,
+      );
+
+      expect(storageService.deleteFile).toHaveBeenCalledWith(replayPath);
+    });
+  });
+
+  describe('removeParticipant', () => {
+    it('answers 200, matching its @ApiOkResponse', () => {
+      expect(
+        Reflect.getMetadata(
+          HTTP_CODE_METADATA,
+          LivekitController.prototype.removeParticipant,
+        ),
+      ).toBe(HttpStatus.OK);
+    });
+
+    it('checks the rank and disconnects the participant from the call', async () => {
+      service.disconnectParticipant.mockResolvedValue(undefined);
+
+      const result = await controller.removeParticipant(
+        'channel-123',
+        { participantIdentity: 'user-456' },
+        mockRequest,
+      );
+
+      expect(
+        channelAccessService.assertMayModerateParticipant,
+      ).toHaveBeenCalledWith(mockUser, 'channel-123', 'user-456', 'remove');
+      expect(service.disconnectParticipant).toHaveBeenCalledWith(
+        'channel-123',
+        'user-456',
+      );
+      expect(result).toEqual({ success: true });
+    });
+
+    it('refuses without the rank, without touching LiveKit', async () => {
+      channelAccessService.assertMayModerateParticipant.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.removeParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456' },
+          mockRequest,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(service.disconnectParticipant).not.toHaveBeenCalled();
+    });
+
+    it('404s a participant who is not in the call', async () => {
+      service.disconnectParticipant.mockRejectedValue(
+        new LivekitException('Participant is not in this voice channel', 404),
+      );
+
+      const error: unknown = await controller
+        .removeParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456' },
+          mockRequest,
+        )
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(LivekitException);
+      expect((error as LivekitException).getStatus()).toBe(404);
     });
   });
 });

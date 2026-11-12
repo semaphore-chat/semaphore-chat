@@ -12,12 +12,16 @@
 //! - **Never in the way:** [`Sounds::play`] only queues for the sounds' own thread (opening a device
 //!   can take a while). If opening fails, that is logged once and the app carries on silently.
 //!
+//! - **Previews** (W5, the soundboard tab's play button): a decoded sound ([`Sounds::play_pcm`]) on
+//!   a stream of its own, so a message's sound doesn't cut it; one at a time, a new one replacing
+//!   it, until it ends or [`Sounds::stop_preview`].
+//!
 //! The WAV reader is ours and small: RIFF with a `fmt ` chunk of 16-bit integer PCM, any rate and
 //! channel count (mixed down, resampled linearly), which is what the bundled files are.
 
 use semaphore_core::model::{NotifySound, SoundCue};
 use semaphore_media_livekit::audio::{AudioIo, AudioStream, SAMPLE_RATE};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
@@ -188,6 +192,15 @@ enum Command {
     StopRing,
     /// The stream of this play has given all its samples.
     Done(u64),
+    /// A decoded sound (48 kHz mono) on the preview's own stream, replacing the one there.
+    Preview {
+        id: u64,
+        samples: Arc<[i16]>,
+        device: Option<String>,
+    },
+    StopPreview,
+    /// The preview `id` has given all its samples.
+    PreviewDone(u64),
     Quit,
 }
 
@@ -197,15 +210,22 @@ pub struct Sounds {
     /// Core's cues as they were asked for, for the rig: (cue, times).
     played: Mutex<Vec<(SoundCue, usize)>>,
     ringing: AtomicBool,
+    /// The preview playing (0: none), cleared by the thread once it has played out.
+    preview: Arc<AtomicU64>,
+    /// Previews asked for, for the rig.
+    previews: AtomicUsize,
+    next_preview: AtomicU64,
 }
 
 impl Sounds {
     pub fn start(io: Arc<dyn AudioIo>) -> Self {
         let (commands, receiver) = mpsc::channel();
         let looped = commands.clone();
+        let preview = Arc::new(AtomicU64::new(0));
+        let playing = preview.clone();
         let spawned = std::thread::Builder::new()
             .name("sounds".into())
-            .spawn(move || run(io, looped, receiver));
+            .spawn(move || run(io, looped, receiver, playing));
         if let Err(error) = spawned {
             log::warn!("sounds: cannot start their thread: {error}");
         }
@@ -213,7 +233,45 @@ impl Sounds {
             commands,
             played: Mutex::default(),
             ringing: AtomicBool::new(false),
+            preview,
+            previews: AtomicUsize::new(0),
+            next_preview: AtomicU64::new(1),
         }
+    }
+
+    /// A decoded sound, `samples` of mono at `rate` Hz, on `device` (`None`: the default output):
+    /// the soundboard's preview. It replaces the preview playing, and plays beside the other
+    /// sounds. Nothing (empty, or no rate) stops the one playing.
+    pub fn play_pcm(&self, rate: u32, samples: &[i16], device: Option<String>) {
+        if rate == 0 || samples.is_empty() {
+            self.stop_preview();
+            return;
+        }
+        let id = self.next_preview.fetch_add(1, Ordering::Relaxed);
+        self.previews.fetch_add(1, Ordering::Relaxed);
+        self.preview.store(id, Ordering::Relaxed);
+        let samples: Arc<[i16]> = resample(samples, rate, SAMPLE_RATE).into();
+        let _ = self.commands.send(Command::Preview {
+            id,
+            samples,
+            device,
+        });
+    }
+
+    /// Stops the preview, if one plays: leaving the soundboard tab, signing out.
+    pub fn stop_preview(&self) {
+        self.preview.store(0, Ordering::Relaxed);
+        let _ = self.commands.send(Command::StopPreview);
+    }
+
+    /// A preview is playing.
+    pub fn previewing(&self) -> bool {
+        self.preview.load(Ordering::Relaxed) != 0
+    }
+
+    /// How many previews were asked for.
+    pub fn previews(&self) -> usize {
+        self.previews.load(Ordering::Relaxed)
     }
 
     /// Plays `sound` on `device` (`None`: the default output), stopping any sound playing.
@@ -279,7 +337,12 @@ impl Drop for Sounds {
     }
 }
 
-fn run(io: Arc<dyn AudioIo>, commands: mpsc::Sender<Command>, receiver: mpsc::Receiver<Command>) {
+fn run(
+    io: Arc<dyn AudioIo>,
+    commands: mpsc::Sender<Command>,
+    receiver: mpsc::Receiver<Command>,
+    previewing: Arc<AtomicU64>,
+) {
     let clips: Vec<(Sound, Arc<[i16]>)> =
         ALL.into_iter().map(|sound| (sound, clip(sound))).collect();
     let samples_of = |sound: Sound| {
@@ -291,6 +354,7 @@ fn run(io: Arc<dyn AudioIo>, commands: mpsc::Sender<Command>, receiver: mpsc::Re
     };
     let mut playing: Option<(u64, AudioStream)> = None;
     let mut ring: Option<AudioStream> = None;
+    let mut preview: Option<(u64, AudioStream)> = None;
     let mut plays = 0u64;
     let mut warned = false;
     let on_error: semaphore_media_livekit::audio::ErrorCallback =
@@ -320,6 +384,45 @@ fn run(io: Arc<dyn AudioIo>, commands: mpsc::Sender<Command>, receiver: mpsc::Re
                 }
             }
             Command::StopRing => drop(ring.take()),
+            Command::StopPreview => drop(preview.take()),
+            Command::PreviewDone(id) => {
+                if preview.as_ref().is_some_and(|(current, _)| *current == id) {
+                    preview = None;
+                }
+                // Unless another has started since.
+                let _ = previewing.compare_exchange(id, 0, Ordering::Relaxed, Ordering::Relaxed);
+            }
+            Command::Preview {
+                id,
+                samples,
+                device,
+            } => {
+                drop(preview.take());
+                let done = commands.clone();
+                let mut position = 0usize;
+                let mut told = false;
+                let feed = Box::new(move |out: &mut [i16], _ahead: u32| {
+                    for sample in out.iter_mut() {
+                        *sample = samples.get(position).copied().unwrap_or(0);
+                        position += 1;
+                    }
+                    if position >= samples.len() && !told {
+                        told = true;
+                        let _ = done.send(Command::PreviewDone(id));
+                    }
+                });
+                match open(device.as_deref(), feed) {
+                    Some(stream) => preview = Some((id, stream)),
+                    None => {
+                        let _ = previewing.compare_exchange(
+                            id,
+                            0,
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        );
+                    }
+                }
+            }
             Command::Ring { device } => {
                 drop(ring.take());
                 let Some(samples) = samples_of(Sound::Cue(SoundCue::IncomingRingStart)) else {
@@ -477,6 +580,50 @@ mod tests {
         assert_eq!(out.len(), 480);
         assert!(out.windows(2).all(|pair| pair[0] <= pair[1]));
         assert_eq!(resample(&ramp, 48_000, 48_000), ramp);
+    }
+
+    /// A preview plays on a stream of its own (on the device asked for), a new one replaces it,
+    /// and it ends by itself or when stopped.
+    #[test]
+    fn a_preview_plays_once_replaces_the_last_and_stops() {
+        let io = Arc::new(VirtualIo::new());
+        let heard = Arc::new(Mutex::new(0usize));
+        let counter = heard.clone();
+        io.set_speaker(Box::new(move |frame: &[i16]| {
+            *counter.lock().unwrap() += frame.iter().filter(|&&s| s != 0).count();
+        }));
+        let sounds = Sounds::start(io.clone());
+        let wait = |what: &str, done: &dyn Fn() -> bool| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !done() {
+                assert!(Instant::now() < deadline, "{what}");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        // 0.1 s at 24 kHz: resampled to 48 kHz, played, then done by itself.
+        sounds.play_pcm(24_000, &[1000; 2_400], None);
+        assert!(sounds.previewing());
+        wait("the preview never played", &|| {
+            *heard.lock().unwrap() >= 4_000
+        });
+        wait("the preview never ended", &|| !sounds.previewing());
+        assert_eq!(sounds.previews(), 1);
+        // A long one, replaced by another on the device asked for, then stopped.
+        sounds.play_pcm(48_000, &[1000; 480_000], None);
+        sounds.play_pcm(48_000, &[1000; 480_000], Some("spk-0".into()));
+        assert!(sounds.previewing());
+        wait("both previews didn't open", &|| {
+            io.opened_outputs().len() >= 3
+        });
+        assert_eq!(io.opened_outputs().last(), Some(&Some("spk-0".to_owned())));
+        sounds.stop_preview();
+        assert!(!sounds.previewing());
+        assert_eq!(sounds.previews(), 3);
+        // Nothing to play stops what plays and counts as no preview.
+        sounds.play_pcm(48_000, &[], None);
+        sounds.play_pcm(0, &[1], None);
+        assert_eq!(sounds.previews(), 3);
+        assert!(!sounds.previewing());
     }
 
     /// The virtual device, never a real one: what it heard, until it has heard `count` samples

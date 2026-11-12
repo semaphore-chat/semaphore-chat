@@ -12,7 +12,7 @@ import {
   HttpCode,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import { ChannelAccessService } from './channel-access.service';
 import { CommunityRolesService } from './community-roles.service';
 import { InstanceRolesService } from './instance-roles.service';
@@ -57,6 +57,11 @@ export class RolesController {
   }
 
   @Get('my/channel/:channelId')
+  @ApiOperation({
+    summary: "The caller's community roles, as they apply to a channel",
+    description:
+      "Returns the caller's community roles for the channel's community. These do NOT include the channel's permission overwrites: a channel that denies or grants an action is not reflected here. For per-channel decisions (post, attach, react, voice, manage permissions) use GET /api/channels/{id}/permissions/me, which returns the effective channel capabilities.",
+  })
   async getMyRolesForChannel(
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Req() req: AuthenticatedRequest,

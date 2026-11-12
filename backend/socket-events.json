@@ -76,6 +76,21 @@
         "$ref": "./openapi.json#/components/schemas/DesktopSignInPayloadDto"
       }
     },
+    "dmGroupCreated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmGroupCreatedPayloadDto"
+      }
+    },
+    "dmGroupMemberAdded": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmGroupMemberAddedPayloadDto"
+      }
+    },
+    "dmGroupMemberLeft": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmGroupMemberLeftPayloadDto"
+      }
+    },
     "dmVoiceCallDeclined": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/DmVoiceCallDeclinedPayloadDto"
@@ -104,6 +119,36 @@
     "egressSegmentsReady": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/EgressSegmentsReadyPayloadDto"
+      }
+    },
+    "friendRemoved": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/FriendshipPayloadDto"
+      }
+    },
+    "friendRequestAccepted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/FriendshipPayloadDto"
+      }
+    },
+    "friendRequestCancelled": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/FriendshipPayloadDto"
+      }
+    },
+    "friendRequestDeclined": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/FriendshipPayloadDto"
+      }
+    },
+    "friendRequestSent": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/FriendshipPayloadDto"
+      }
+    },
+    "instanceRolesUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/InstanceRolesUpdatedPayloadDto"
       }
     },
     "memberAddedToCommunity": {
@@ -141,9 +186,19 @@
         "$ref": "./openapi.json#/components/schemas/NewThreadReplyPayloadDto"
       }
     },
+    "notificationDismissed": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/NotificationDismissedPayloadDto"
+      }
+    },
     "notificationRead": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/NotificationReadPayloadDto"
+      }
+    },
+    "notificationsRead": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/NotificationsReadPayloadDto"
       }
     },
     "privateChannelAdded": {

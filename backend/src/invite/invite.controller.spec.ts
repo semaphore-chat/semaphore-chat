@@ -1,4 +1,6 @@
 import { TestBed } from '@suites/unit';
+import { NotFoundException } from '@nestjs/common';
+import { ErrorCode } from '@semaphore-chat/shared';
 import { InviteController } from './invite.controller';
 import { InviteService } from './invite.service';
 import type { Mocked } from '@suites/doubles.jest';
@@ -105,14 +107,15 @@ describe('InviteController', () => {
       expect(service.getPublicInvite).toHaveBeenCalledWith(code);
     });
 
-    it('should return null when invite not found', async () => {
+    it('propagates the coded 404 for an unusable code', async () => {
       const code = 'NOTFOUND';
+      const notFound = new NotFoundException('This invite link is invalid.', {
+        description: 'Not Found',
+        errorCode: ErrorCode.INVITE_NOT_FOUND,
+      });
+      service.getPublicInvite.mockRejectedValue(notFound);
 
-      service.getPublicInvite.mockResolvedValue(null);
-
-      const result = await controller.getPublicInvite(code);
-
-      expect(result).toBeNull();
+      await expect(controller.getPublicInvite(code)).rejects.toBe(notFound);
       expect(service.getPublicInvite).toHaveBeenCalledWith(code);
     });
   });

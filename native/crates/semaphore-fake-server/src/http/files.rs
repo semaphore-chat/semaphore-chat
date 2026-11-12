@@ -145,6 +145,7 @@ async fn upload_file(
                         file = Some(crate::StoredFile {
                             uploaded_by: String::new(),
                             resource_type: String::new(),
+                            community_id: None,
                             filename,
                             mime_type,
                             bytes: bytes.to_vec(),
@@ -164,6 +165,17 @@ async fn upload_file(
     let uploader = inner.user_of(super::bearer_token(&headers));
     file.uploaded_by = uploader.clone();
     file.resource_type = resource_type.clone();
+    // `FileUploadService.mapResourceIdToTypedColumn`: the typed FK a resource id lands in.
+    let resource_id = resource_id.filter(|id| !id.is_empty());
+    let (file_user_id, file_community_id, file_message_id) = match resource_type.as_str() {
+        "USER_AVATAR" | "USER_BANNER" | "REPLAY_CLIP" => (resource_id.clone(), None, None),
+        "COMMUNITY_AVATAR" | "COMMUNITY_BANNER" | "CUSTOM_EMOJI" | "SOUNDBOARD_SOUND" => {
+            (None, resource_id.clone(), None)
+        }
+        "MESSAGE_ATTACHMENT" => (None, None, resource_id.clone()),
+        _ => (None, None, None),
+    };
+    file.community_id = file_community_id.clone();
     // Deterministic, so a run's screenshots and logs repeat: the nth upload's id is always the same.
     let next = lock(&inner.data).files.len() as u128 + 1;
     let id = uuid::Uuid::from_u128(0x0000_f11e_0000_4000_8000_0000_0000_0000 | next).to_string();
@@ -171,8 +183,8 @@ async fn upload_file(
         .as_str()
         .into_owned();
     let record = json!({
-        "id": id, "checksum": "fake", "deletedAt": null, "fileCommunityId": null,
-        "fileMessageId": resource_id, "fileType": file_type, "fileUserId": null,
+        "id": id, "checksum": "fake", "deletedAt": null, "fileCommunityId": file_community_id,
+        "fileMessageId": file_message_id, "fileType": file_type, "fileUserId": file_user_id,
         "filename": file.filename, "mimeType": file.mime_type, "resourceType": resource_type,
         "size": file.bytes.len(), "storagePath": format!("fake/{id}"), "storageType": "LOCAL",
         "thumbnailPath": null, "uploadedAt": inner.now(), "uploadedById": uploader,

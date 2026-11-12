@@ -16,9 +16,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, ThrottlerException } from '@nestjs/throttler';
 import { Response } from 'express';
 import { LivekitService } from './livekit.service';
+import { LivekitException } from './exceptions/livekit.exception';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { LivekitAccessService } from './livekit-access.service';
 import { DatabaseService } from '@/database/database.service';
@@ -29,6 +30,7 @@ import { ClipLibraryService } from './clip-library.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { CreateTokenDto } from './dto/create-token.dto';
 import { MuteParticipantDto } from './dto/mute-participant.dto';
+import { RemoveParticipantDto } from './dto/remove-participant.dto';
 import { StartReplayBufferDto } from './dto/start-replay-buffer.dto';
 import {
   CaptureReplayDto,
@@ -69,6 +71,12 @@ import type { AccessTokenClaims } from '@/auth/token-blacklist.service';
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class LivekitController {
   private readonly logger = new Logger(LivekitController.name);
+
+  /**
+   * Users with a replay download in flight. Each one holds a whole clip of
+   * temporary disk, so a user gets one at a time (429 for a second).
+   */
+  private readonly replayDownloads = new Set<string>();
 
   constructor(
     private readonly livekitService: LivekitService,
@@ -189,7 +197,7 @@ export class LivekitController {
     @Body() dto: MuteParticipantDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<{ success: boolean }> {
-    await this.livekitAccessService.assertMayServerMute(
+    await this.channelAccessService.assertMayModerateParticipant(
       req.user,
       channelId,
       dto.participantIdentity,
@@ -202,31 +210,73 @@ export class LivekitController {
       await this.livekitService.muteParticipant(
         channelId,
         dto.participantIdentity,
-        true,
       );
     }
 
     // Muting the track alone doesn't hold: the client can unmute it, or
-    // publish a new one. The mute is remembered and takes the microphone out
-    // of what they may publish, now and on every later join.
+    // publish a new one. The mute also takes the microphone out of what they
+    // may publish, now and on every later join — and lifting it gives the
+    // microphone back. Only once LiveKit accepted the new grant do we record
+    // and announce the change.
+    const caps = await this.channelAccessService.channelCapabilities(
+      dto.participantIdentity,
+      channelId,
+    );
+    try {
+      await this.livekitService.updatePublishPermissions(
+        channelId,
+        dto.participantIdentity,
+        caps ? publishGrantFor(caps, dto.mute) : { canPublish: false },
+      );
+    } catch (error) {
+      // Lifting a mute after they left the call (or the room closed): there
+      // is no live grant to restore, and their next join computes it from the
+      // stored mute state, so clearing that state is all that is left.
+      const gone =
+        error instanceof LivekitException && error.getStatus() === 404;
+      if (dto.mute || !gone) throw error;
+    }
     await this.voicePresenceService.setServerMuted(
       channelId,
       dto.participantIdentity,
       dto.mute,
     );
-    const caps = await this.channelAccessService.channelCapabilities(
-      dto.participantIdentity,
-      channelId,
-    );
-    await this.livekitService.updatePublishPermissions(
-      channelId,
-      dto.participantIdentity,
-      caps ? publishGrantFor(caps, dto.mute) : { canPublish: false },
-    );
     await this.voicePresenceService.updateServerMuteState(
       channelId,
       dto.participantIdentity,
       dto.mute,
+    );
+    return { success: true };
+  }
+
+  /**
+   * Remove someone from this voice call only: they leave the LiveKit room but
+   * stay a community member, and may rejoin. The participant_left webhook
+   * announces the leave and clears their presence.
+   */
+  @Post('channels/:channelId/remove-participant')
+  @HttpCode(HttpStatus.OK)
+  @RequiredActions(RbacActions.MUTE_PARTICIPANT)
+  @RbacResource({
+    type: RbacResourceType.CHANNEL,
+    idKey: 'channelId',
+    source: ResourceIdSource.PARAM,
+  })
+  @ApiOkResponse({ type: SuccessResponseDto })
+  async removeParticipant(
+    @Param('channelId') channelId: string,
+    @Body() dto: RemoveParticipantDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ success: boolean }> {
+    await this.channelAccessService.assertMayModerateParticipant(
+      req.user,
+      channelId,
+      dto.participantIdentity,
+      'remove',
+    );
+    await this.livekitService.disconnectParticipant(
+      channelId,
+      dto.participantIdentity,
     );
     return { success: true };
   }
@@ -283,7 +333,8 @@ export class LivekitController {
 
   /**
    * Stream a replay clip directly (download-only, no persistence)
-   * Creates a temporary file, streams it, and deletes it after streaming completes
+   * Creates a temporary file, streams it, and deletes it after streaming completes.
+   * One download per user at a time: each holds a whole clip of temp disk.
    */
   @Get('replay/stream')
   @ApiOkResponse({
@@ -297,19 +348,38 @@ export class LivekitController {
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
+    const userId = req.user.id;
+    if (this.replayDownloads.has(userId)) {
+      throw new ThrottlerException(
+        'A replay download is already in progress. Wait for it to finish.',
+      );
+    }
+    this.replayDownloads.add(userId);
+
     let tempPath: string | null = null;
+    let deletion: Promise<void> | null = null;
+    /** Removes the temp file once, whichever path gets here first. */
+    const deleteTempFile = (): Promise<void> => {
+      if (!tempPath) return Promise.resolve();
+      deletion ??= this.storageService
+        .deleteFile(tempPath)
+        .catch((cleanupError) => {
+          // Log but don't throw: the stream outcome stands, and a leftover
+          // file in /tmp is better than a 500 after the clip went out.
+          this.logger.error('Failed to cleanup temp file:', cleanupError);
+        });
+      return deletion;
+    };
 
     try {
-      // Create temp file with concatenated segments
       tempPath = await this.livekitReplayService.streamReplay(
-        req.user.id,
+        userId,
         query.durationMinutes,
       );
+      const pathToSend = tempPath;
 
-      // Get file stats for content-length header
-      const stats = await this.storageService.getFileStats(tempPath);
+      const stats = await this.storageService.getFileStats(pathToSend);
 
-      // Set headers for file download
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader(
         'Content-Disposition',
@@ -317,34 +387,23 @@ export class LivekitController {
       );
       res.setHeader('Content-Length', stats.size);
 
-      // Stream the file and delete after completion
-      res.sendFile(tempPath, (err) => {
-        // Clean up temp file after streaming (success or failure)
-        if (tempPath) {
-          this.storageService.deleteFile(tempPath).catch((cleanupError) => {
-            // Log but don't throw - file might already be deleted
-            this.logger.error('Failed to cleanup temp file:', cleanupError);
-          });
-        }
-
-        // If there was an error streaming, log it
-        if (err) {
-          this.logger.error('Error streaming replay file:', err);
-        }
+      // `close` fires after a completed response and when the client aborts;
+      // the sendFile callback covers a failure before the stream starts.
+      res.once('close', () => {
+        void deleteTempFile();
       });
-    } catch (error) {
-      // If error before streaming started, clean up temp file
-      if (tempPath) {
-        try {
-          await this.storageService.deleteFile(tempPath);
-        } catch (cleanupError) {
-          this.logger.error(
-            'Failed to cleanup temp file after error:',
-            cleanupError,
-          );
-        }
-      }
-      throw error;
+      await new Promise<void>((resolve) => {
+        res.once('close', resolve);
+        res.sendFile(pathToSend, (err) => {
+          if (err) {
+            this.logger.error('Error streaming replay file:', err);
+          }
+          resolve();
+        });
+      });
+    } finally {
+      await deleteTempFile();
+      this.replayDownloads.delete(userId);
     }
   }
 

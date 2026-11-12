@@ -266,13 +266,20 @@ async fn a_server_mute_updates_the_participant_and_outlives_the_call() {
     assert_eq!(mine["isServerMuted"], true);
     server.server_mute(&squad, &id("me"), false);
     let heard = settle(&server, &mut [&mut me]).await.remove(0);
-    // My join is announced, listing me muted; lifting it updates me.
+    // My join is announced, listing me muted; the standing mute is announced again so my client
+    // knows, then lifting it updates me.
     assert_eq!(
         names(&heard),
-        ["voiceChannelUserJoined", "voiceChannelUserUpdated"]
+        [
+            "voiceChannelUserJoined",
+            "voiceChannelUserUpdated",
+            "voiceChannelUserUpdated"
+        ]
     );
     assert_eq!(heard[0].1["user"]["isServerMuted"], true);
-    assert_eq!(heard[1].1["user"]["isServerMuted"], false);
+    assert_eq!(heard[1].1["user"]["isServerMuted"], true);
+    assert_eq!(heard[1].1["userId"], id("me").as_str());
+    assert_eq!(heard[2].1["user"]["isServerMuted"], false);
 }
 
 #[tokio::test]
@@ -338,8 +345,9 @@ async fn a_kick_tells_the_member_ends_their_call_and_unlists_them() {
         heard[0][1].1,
         json!({ "communityId": couch, "userId": id("u-kwame"), "moderatorId": id("me"), "reason": "spam" })
     );
-    // Theirs first, from their own room, then the voice removal.
-    assert_eq!(names(&heard[1]), ["userKicked", "voiceChannelUserLeft"]);
+    // The kicked user is out of the channel's room before its presence is cleared, so only the
+    // remaining viewers hear `voiceChannelUserLeft`; the kicked user hears `userKicked` alone.
+    assert_eq!(names(&heard[1]), ["userKicked"]);
 
     let (_, presence) = get(
         &client,
@@ -1138,6 +1146,145 @@ async fn joining_a_channel_call_tells_the_channel_once() {
     assert_eq!(heard[0].1["channelId"], squad.as_str());
     assert_eq!(heard[0].1["user"]["id"], id("me").as_str());
     assert_eq!(heard[0].1["user"]["isServerMuted"], false);
+}
+
+#[tokio::test]
+async fn joining_a_server_muted_channel_announces_the_join_and_the_mute() {
+    // `handleWebhookChannelParticipantJoined`: the join, then (a mute still stands) an update that
+    // names the user, so their client learns it is muted after rejoining.
+    let (server, client, base) = showcase().await;
+    let squad = id("vc-squad");
+    let mut me = connect_as(&base, &id("me")).await;
+    let (status, _) = control(
+        &client,
+        &base,
+        "server_mute",
+        json!({ "channelId": squad, "userId": id("me"), "mute": true }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    post(
+        &client,
+        &base,
+        &format!("/api/channels/{squad}/voice-presence/join"),
+        json!({}),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut me]).await.remove(0);
+    assert_eq!(
+        names(&heard),
+        ["voiceChannelUserJoined", "voiceChannelUserUpdated"]
+    );
+    assert_eq!(heard[0].1["user"]["id"], id("me").as_str());
+    assert_eq!(heard[1].1["channelId"], squad.as_str());
+    assert_eq!(heard[1].1["userId"], id("me").as_str());
+    assert_eq!(heard[1].1["user"]["isServerMuted"], true);
+}
+
+#[tokio::test]
+async fn leaving_a_channel_call_tells_its_viewers_and_leaving_again_is_silent() {
+    // `VoicePresenceService.leaveVoiceChannel`: a listed user is removed and `voiceChannelUserLeft`
+    // goes to the channel's room; one not listed leaves silently. The room is the channel's
+    // viewers: a member of another community hears neither.
+    let (server, client, base) = showcase().await;
+    let squad = id("vc-squad");
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut samira = connect_as(&base, &id("u-samira")).await;
+    let mut mateo = connect_as(&base, &id("u-mateo")).await;
+    let join = format!("/api/channels/{squad}/voice-presence/join");
+    post(&client, &base, &join, json!({})).await;
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut mateo]).await;
+    assert_eq!(names(&heard[0]), ["voiceChannelUserJoined"]);
+    assert_eq!(names(&heard[1]), ["voiceChannelUserJoined"]);
+    assert!(heard[2].is_empty(), "not in the community: {:?}", heard[2]);
+
+    let leave = format!("/api/channels/{squad}/voice-presence/leave");
+    let (status, body) = post(&client, &base, &leave, json!({})).await;
+    assert_eq!(status, 201, "{body}");
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut mateo]).await;
+    assert_eq!(names(&heard[0]), ["voiceChannelUserLeft"]);
+    assert_eq!(names(&heard[1]), ["voiceChannelUserLeft"]);
+    assert!(heard[2].is_empty(), "not in the community: {:?}", heard[2]);
+    assert_eq!(heard[0][0].1["channelId"], squad.as_str());
+    assert_eq!(heard[0][0].1["userId"], id("me").as_str());
+    assert_eq!(heard[0][0].1["user"]["id"], id("me").as_str());
+    let (_, presence) = get(
+        &client,
+        &base,
+        &format!("/api/channels/{squad}/voice-presence"),
+    )
+    .await;
+    assert!(
+        presence["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|user| user["id"] != id("me").as_str()),
+        "{presence}"
+    );
+
+    // Already gone: the backend returns before emitting anything.
+    post(&client, &base, &leave, json!({})).await;
+    let heard = settle(&server, &mut [&mut me, &mut samira]).await;
+    assert!(heard[0].is_empty(), "{:?}", heard[0]);
+    assert!(heard[1].is_empty(), "{:?}", heard[1]);
+}
+
+#[tokio::test]
+async fn deafening_tells_the_channel_only_while_in_the_call() {
+    // `VoicePresenceService.updateDeafenState`: updates and announces a listed user; a user not in
+    // the call changes nothing and sends no event, though the request still answers 201.
+    let (server, client, base) = showcase().await;
+    let squad = id("vc-squad");
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut samira = connect_as(&base, &id("u-samira")).await;
+    let mut mateo = connect_as(&base, &id("u-mateo")).await;
+    let deafen = format!("/api/channels/{squad}/voice-presence/deafen");
+    let (status, _) = post(&client, &base, &deafen, json!({ "isDeafened": true })).await;
+    assert_eq!(status, 201);
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut mateo]).await;
+    assert!(
+        heard.iter().all(Vec::is_empty),
+        "nobody in the call: {heard:?}"
+    );
+
+    post(
+        &client,
+        &base,
+        &format!("/api/channels/{squad}/voice-presence/join"),
+        json!({}),
+    )
+    .await;
+    settle(&server, &mut [&mut me, &mut samira, &mut mateo]).await;
+
+    let (status, body) = post(&client, &base, &deafen, json!({ "isDeafened": true })).await;
+    assert_eq!(status, 201, "{body}");
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut mateo]).await;
+    assert_eq!(names(&heard[0]), ["voiceChannelUserUpdated"]);
+    assert_eq!(names(&heard[1]), ["voiceChannelUserUpdated"]);
+    assert!(heard[2].is_empty(), "not in the community: {:?}", heard[2]);
+    assert_eq!(heard[0][0].1["channelId"], squad.as_str());
+    assert_eq!(heard[0][0].1["userId"], id("me").as_str());
+    assert_eq!(heard[0][0].1["user"]["isDeafened"], true);
+    let (_, presence) = get(
+        &client,
+        &base,
+        &format!("/api/channels/{squad}/voice-presence"),
+    )
+    .await;
+    let mine = presence["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["id"] == id("me").as_str())
+        .expect("listening");
+    assert_eq!(mine["isDeafened"], true);
+
+    let (status, _) = post(&client, &base, &deafen, json!({ "isDeafened": false })).await;
+    assert_eq!(status, 201);
+    let heard = settle(&server, &mut [&mut me]).await.remove(0);
+    assert_eq!(names(&heard), ["voiceChannelUserUpdated"]);
+    assert_eq!(heard[0].1["user"]["isDeafened"], false);
 }
 
 #[tokio::test]

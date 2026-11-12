@@ -11,7 +11,7 @@ use super::format::{MemberAction, admin_action, blocked, blocked_reason, now_ms,
 use crate::community_settings::rules::{failure, running};
 use crate::dms::face::user_face;
 use crate::dms::names::user_name;
-use crate::kit::{Icon, Spinner, Variant, spacing, text};
+use crate::kit::{MenuItem, SecondaryTone, Spinner, Variant, spacing, text};
 use crate::messages::TimeFormat;
 use crate::panel::common::is_phone;
 use crate::theme::SemTheme;
@@ -149,7 +149,6 @@ impl ModerationMenu {
     }
 
     fn item(&self, action: MemberAction, cx: &mut Context<Self>) -> AnyElement {
-        let sem = cx.sem().clone();
         let (id, glyph, label, danger) = match action {
             MemberAction::ChangeRoles => (
                 "moderate-roles",
@@ -189,62 +188,27 @@ impl ModerationMenu {
             .and_then(|entry| failure(&self.target.op, entry))
             .map(|error| format!("Last try failed: {}", error.message));
         let enabled = ready && reason.is_none() && !in_flight;
-        let (icon_color, color) = if !enabled {
-            (sem.text_disabled, sem.text_disabled)
-        } else if danger {
-            (sem.error, sem.error)
-        } else {
-            (sem.action_active, sem.text_primary)
-        };
-        let hover = sem.list_hover;
-        let accessible = match reason {
-            Some(reason) => format!("{label}, unavailable: {reason}"),
-            None if in_flight => format!("{label}, in progress"),
-            None => label.to_owned(),
+        let secondary = match (reason, in_flight, failed) {
+            (Some(reason), _, _) => Some((reason.to_owned(), SecondaryTone::Muted)),
+            (None, true, _) => Some(("In progress\u{2026}".to_owned(), SecondaryTone::Muted)),
+            (None, false, Some(failed)) => Some((failed, SecondaryTone::Error)),
+            (None, false, None) => None,
         };
         let touch = self.phone_cache;
-        div()
-            .id(id)
-            .test_support()
-            .role(Role::MenuItem)
-            .aria_label(accessible)
-            .min_h(px(if touch { 48. } else { 36. }))
-            .px(px(16.))
-            .py(px(6.))
-            .flex()
-            .items_center()
-            .gap(px(12.))
-            .text_color(color)
-            .child(Icon::new(glyph).size(20.).color(icon_color))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(text(Variant::Body1, label))
-                    .children(reason.map(|reason| {
-                        text(Variant::Caption, reason).text_color(sem.text_secondary)
-                    }))
-                    .when(in_flight && reason.is_none(), |label| {
-                        label.child(
-                            text(Variant::Caption, "In progress\u{2026}")
-                                .text_color(sem.text_secondary),
-                        )
-                    })
-                    .when(!in_flight && reason.is_none(), |label| {
-                        label.children(
-                            failed
-                                .map(|failed| text(Variant::Caption, failed).text_color(sem.error)),
-                        )
-                    }),
-            )
-            .when(enabled, |item| {
-                item.cursor_pointer()
-                    .hover(move |style| style.bg(hover))
-                    .on_click(cx.listener(move |menu, _, _, cx| menu.choose(action, cx)))
-            })
-            .into_any_element()
+        let menu = cx.weak_entity();
+        let mut item = MenuItem::new(id, label, move |_, cx| {
+            menu.update(cx, |menu, cx| menu.choose(action, cx)).ok();
+        })
+        .icon(glyph)
+        .disabled(!enabled)
+        .min_height(if touch { 48. } else { 36. });
+        if danger {
+            item = item.destructive();
+        }
+        if let Some((secondary, tone)) = secondary {
+            item = item.secondary(secondary).secondary_tone(tone);
+        }
+        item.into_any_element()
     }
 
     fn header(&self, cx: &App) -> Div {
@@ -310,32 +274,19 @@ impl ModerationMenu {
         };
         if self.can_view_profile {
             let user_id = self.user.id.clone();
-            let hover = sem.list_hover;
+            let menu = cx.weak_entity();
             list = list.child(Self::divider(cx)).child(
-                div()
-                    .id("moderate-profile")
-                    .test_support()
-                    .role(Role::MenuItem)
-                    .aria_label("View Profile")
-                    .min_h(px(if phone { 48. } else { 36. }))
-                    .px(px(16.))
-                    .flex()
-                    .items_center()
-                    .gap(px(12.))
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(hover))
-                    .child(
-                        Icon::new(IconName::Person)
-                            .size(20.)
-                            .color(sem.action_active),
-                    )
-                    .child(text(Variant::Body1, "View Profile"))
-                    .on_click(cx.listener(move |_, _, _, cx| {
+                MenuItem::new("moderate-profile", "View Profile", move |_, cx| {
+                    menu.update(cx, |_, cx| {
                         cx.emit(ModerationMenuEvent::ViewProfile {
                             user_id: user_id.clone(),
                         });
                         cx.emit(ModerationMenuEvent::Close);
-                    })),
+                    })
+                    .ok();
+                })
+                .icon(IconName::Person)
+                .min_height(if phone { 48. } else { 36. }),
             );
         }
         list = list.child(Self::divider(cx));

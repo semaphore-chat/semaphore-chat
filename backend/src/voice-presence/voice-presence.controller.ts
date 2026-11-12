@@ -44,8 +44,12 @@ export class VoicePresenceController {
   @ApiOkResponse({ type: ChannelVoicePresenceResponseDto })
   async getChannelPresence(
     @Param('channelId') channelId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<ChannelVoicePresenceResponseDto> {
-    const users = await this.voicePresenceService.getChannelPresence(channelId);
+    const users = await this.voicePresenceService.getChannelPresenceForViewer(
+      channelId,
+      req.user,
+    );
     return {
       channelId,
       users,

@@ -1084,4 +1084,93 @@ describe('PermissionsService', () => {
       expect(mockDatabase.channel.findUnique).not.toHaveBeenCalled();
     });
   });
+
+  describe('outranks / outranksMany', () => {
+    // Role positions per user (lower position = higher rank); a missing key
+    // is a user with no roles.
+    const positions: Record<string, number[]> = {
+      actor: [20, 40],
+      higher: [10],
+      equal: [20],
+      lower: [30, 50],
+      mixed: [5, 90],
+      norole: [],
+    };
+
+    beforeEach(() => {
+      mockDatabase.userRoles.findMany.mockImplementation(
+        (args: { where: { userId: string | { in: string[] } } }) => {
+          const ids =
+            typeof args.where.userId === 'string'
+              ? [args.where.userId]
+              : args.where.userId.in;
+          return Promise.resolve(
+            ids.flatMap((userId) =>
+              (positions[userId] ?? []).map((position) => ({
+                userId,
+                role: { position },
+              })),
+            ),
+          );
+        },
+      );
+      mockDatabase.role.findFirst.mockResolvedValue({ position: 5 });
+    });
+
+    const cases: [string, string, boolean][] = [
+      ['actor', 'higher', false],
+      ['actor', 'equal', false],
+      ['actor', 'lower', true],
+      ['actor', 'mixed', false],
+      ['actor', 'norole', true],
+      ['actor', 'actor', false],
+      ['norole', 'lower', false],
+      ['norole', 'norole', false],
+      ['higher', 'actor', true],
+    ];
+
+    it.each(cases)('%s vs %s: outranks is %s', async (actor, target, want) => {
+      await expect(service.outranks(actor, target, 'co-1')).resolves.toBe(want);
+    });
+
+    it('outranksMany answers like per-target outranks for every case', async () => {
+      for (const actor of ['actor', 'norole', 'higher']) {
+        const targets = Object.keys(positions);
+        const many = await service.outranksMany(actor, targets, 'co-1');
+        for (const target of targets) {
+          expect(many.get(target)).toBe(
+            await service.outranks(actor, target, 'co-1'),
+          );
+        }
+        expect([...many.keys()].sort()).toEqual([...targets].sort());
+      }
+    });
+
+    it('answers nothing, and queries nothing, for no targets', async () => {
+      mockDatabase.userRoles.findMany.mockClear();
+      await expect(service.outranksMany('actor', [], 'co-1')).resolves.toEqual(
+        new Map(),
+      );
+      expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
+    });
+
+    it('does not make more DB calls for more targets', async () => {
+      const dbCalls = () =>
+        mockDatabase.userRoles.findMany.mock.calls.length +
+        mockDatabase.role.findFirst.mock.calls.length;
+
+      mockDatabase.userRoles.findMany.mockClear();
+      mockDatabase.role.findFirst.mockClear();
+      await service.outranksMany('actor', ['higher'], 'co-1');
+      const forOne = dbCalls();
+
+      mockDatabase.userRoles.findMany.mockClear();
+      mockDatabase.role.findFirst.mockClear();
+      const many = Array.from({ length: 50 }, (_, i) => `member-${i}`);
+      await service.outranksMany('actor', many, 'co-1');
+
+      expect(dbCalls()).toBe(forOne);
+      expect(forOne).toBe(3); // actor roles, community top role, all targets
+    });
+  });
 });

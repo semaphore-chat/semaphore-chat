@@ -3,14 +3,15 @@
 //! user can't grant are off with the reason; actions this build doesn't know show in "Other",
 //! read-only, and are kept on save. A role the user can't edit opens read-only, with why.
 
-use super::common::{check_row, locked_note, tri_checkbox};
+use super::common::locked_note;
 use super::list::{RolesEvent, RolesPanel};
 use super::rules::{
     NameError, OTHER_GROUP, RoleDraftState, Tri, check_role_name, clean_name, failure, group_label,
     label_of, matrix_groups, patch_is_empty, permissions_count, role_action, running,
 };
 use crate::kit::{
-    Alert, Button, Chip, IconButton, Severity, TextField, Variant, spacing, text, with_tip,
+    Alert, Button, CheckState, Checkbox, Chip, IconButton, Severity, TextField, Variant, spacing,
+    text, with_tip,
 };
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -231,21 +232,29 @@ impl RolesPanel {
             .gap(spacing(1.))
             .px(spacing(1.))
             .when(state == Tri::Some, |h| h.bg(sem.action_hover))
-            .child(tri_checkbox(
-                SharedString::from(format!("role-group-{group_id}")),
-                format!("All of {label}"),
-                state,
-                busy || !any_grantable,
-                {
+            .child(
+                Checkbox::new(
+                    SharedString::from(format!("role-group-{group_id}")),
+                    format!("All of {label}"),
+                    state == Tri::All,
+                )
+                .state(match state {
+                    Tri::None => CheckState::Unchecked,
+                    Tri::Some => CheckState::Indeterminate,
+                    Tri::All => CheckState::Checked,
+                })
+                .disabled(busy || !any_grantable)
+                .hide_label()
+                .dense()
+                .on_toggle({
                     let entity = cx.weak_entity();
-                    move |_, cx| {
+                    move |_, _, cx| {
                         entity
                             .update(cx, |panel, cx| panel.toggle_group(&actions, cx))
                             .ok();
                     }
-                },
-                cx,
-            ))
+                }),
+            )
             .child(
                 text(Variant::Subtitle2, label.clone())
                     .text_color(sem.text_primary)
@@ -298,21 +307,23 @@ impl RolesPanel {
                     let disabled = reason.is_some() || busy;
                     let target = action.clone();
                     let entity = cx.weak_entity();
-                    let checkbox = check_row(
+                    let mut checkbox = Checkbox::new(
                         SharedString::from(format!("role-action-{action}")),
                         label_of(action),
-                        super::rules::action_label(action).map(|_| action.clone()),
                         checked,
-                        disabled,
-                        move |_, cx| {
-                            if !disabled {
-                                entity
-                                    .update(cx, |panel, cx| panel.toggle_action(&target, cx))
-                                    .ok();
-                            }
-                        },
-                        cx,
-                    );
+                    )
+                    .disabled(disabled)
+                    .dense()
+                    .on_toggle(move |_, _, cx| {
+                        if !disabled {
+                            entity
+                                .update(cx, |panel, cx| panel.toggle_action(&target, cx))
+                                .ok();
+                        }
+                    });
+                    if super::rules::action_label(action).is_some() {
+                        checkbox = checkbox.caption(action.clone());
+                    }
                     let checkbox: AnyElement = match &reason {
                         Some(reason) if editor.read_only.is_none() => with_tip(
                             div()
