@@ -90,6 +90,37 @@ fn kinds_are_labelled_as_the_web_labels_them() {
 }
 
 #[test]
+fn a_fixed_display_clock_decides_the_age_label() {
+    let clock = PanelClock::fixed(1_793_895_120_000);
+    let now = clock.now_ms();
+    let mut near = row("n", NotificationKind::DirectMessage, true);
+    near.channel_name = None;
+    near.preview.clear();
+    // A minute: one millisecond either side of the label (seconds under 30 read as less than one).
+    near.created_at_ms = now - 29_999;
+    assert_eq!(
+        notification_label(&near, clock.now_ms()),
+        "Ava: New message, less than a minute ago"
+    );
+    near.created_at_ms = now - 30_000;
+    assert_eq!(
+        notification_label(&near, clock.now_ms()),
+        "Ava: New message, 1 minute ago"
+    );
+    // An hour and a day.
+    near.created_at_ms = now - 45 * 60_000;
+    assert_eq!(
+        notification_label(&near, clock.now_ms()),
+        "Ava: New message, about 1 hour ago"
+    );
+    near.created_at_ms = now - 1440 * 60_000;
+    assert_eq!(
+        notification_label(&near, clock.now_ms()),
+        "Ava: New message, 1 day ago"
+    );
+}
+
+#[test]
 fn the_tooltip_says_whether_the_level_is_the_default() {
     assert_eq!(
         level_tooltip(None, NotifyLevel::Mentions),

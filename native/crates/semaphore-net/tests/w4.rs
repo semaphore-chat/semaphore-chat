@@ -305,6 +305,40 @@ async fn the_ring_stops_when_the_caller_gives_up() {
 }
 
 #[tokio::test]
+async fn every_ringing_callee_stops_when_the_caller_hangs_up_before_anyone_answers() {
+    let server = server().await;
+    server.sign_in_as("aiko", &id("u-aiko"));
+    let me = signed_in(&server).await;
+    let aiko = signed_in_as(&server, "aiko").await;
+    let dm = id("dm-launch");
+    assert!(server.dm_call_join(&dm, &id("u-samira")));
+    until("both rings", || {
+        me.core.incoming_call().is_some() && aiko.core.incoming_call().is_some()
+    })
+    .await;
+    assert_eq!(me.core.incoming_call().unwrap().caller.id, id("u-samira"));
+
+    // Nobody answers: the caller hangs up, and the call's presence empties.
+    assert!(server.dm_call_leave(&dm, &id("u-samira")));
+    until("both rings to stop", || {
+        me.core.incoming_call().is_none() && aiko.core.incoming_call().is_none()
+    })
+    .await;
+    for client in [&me, &aiko] {
+        let cues = client.events.cues();
+        assert!(
+            cues.contains(&SoundCue::IncomingRingStart),
+            "it rang: {cues:?}"
+        );
+        assert!(
+            cues.contains(&SoundCue::IncomingRingStop),
+            "the ring stopped: {cues:?}"
+        );
+        assert_eq!(client.core.voice().room, None, "nobody answered");
+    }
+}
+
+#[tokio::test]
 async fn the_ring_stops_when_another_of_my_devices_answers() {
     let server = server().await;
     let client = signed_in(&server).await;

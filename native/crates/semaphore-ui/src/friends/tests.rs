@@ -71,6 +71,29 @@ fn request_dates_read_like_the_web() {
 }
 
 #[test]
+fn a_fixed_display_clock_decides_each_request_date() {
+    let clock = PanelClock::fixed(100 * DAY);
+    let now = clock.now_ms();
+    // A minute, an hour and a day: one millisecond either side of the label.
+    assert_eq!(
+        request_date(&TimeFormat::fixed(now), now, now - 60_000),
+        "Today"
+    );
+    assert_eq!(
+        request_date(&TimeFormat::fixed(now), now, now - 3_600_000),
+        "Today"
+    );
+    assert_eq!(
+        request_date(&TimeFormat::fixed(now), now, now - DAY + 1),
+        "Today"
+    );
+    assert_eq!(
+        request_date(&TimeFormat::fixed(now), now, now - DAY),
+        "Yesterday"
+    );
+}
+
+#[test]
 fn old_request_dates_are_written_in_the_users_zone() {
     use crate::messages::TimeFormat;
     use chrono::FixedOffset;
@@ -92,7 +115,7 @@ fn old_request_dates_are_written_in_the_users_zone() {
         let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
         let time = TimeFormat {
             zone: Some(zone),
-            now_ms: Some(ms + 8 * DAY),
+            now: PanelClock::fixed(ms + 8 * DAY),
         };
         assert_eq!(
             request_date(&time, ms + 8 * DAY, ms),

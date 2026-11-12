@@ -4,6 +4,7 @@
 use super::rules::*;
 use super::*;
 use crate::dms::rig::{Rig, rig};
+use crate::panel::PanelClock;
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
 use semaphore_core::model::{AdminActionKind, AdminActionOutcome, AdminActionState};
@@ -423,7 +424,7 @@ fn dates_are_written_in_the_users_zone() {
         let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
         let time = TimeFormat {
             zone: Some(zone),
-            now_ms: Some(ms),
+            now: PanelClock::fixed(ms),
         };
         assert_eq!(date_label(&time, ms), local, "{minutes} minutes east");
         assert_eq!(

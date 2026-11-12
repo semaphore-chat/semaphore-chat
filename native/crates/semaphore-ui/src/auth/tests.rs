@@ -4,6 +4,7 @@
 use super::invite::invite_date;
 use super::*;
 use crate::dms::rig::rig;
+use crate::panel::PanelClock;
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
 use semaphore_core::model::{ErrorView, InvitePreview, InvitePreviewView, LoadState, RegisterForm};
@@ -135,7 +136,7 @@ fn invite_dates_are_written_in_the_users_zone() {
         let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
         let time = TimeFormat {
             zone: Some(zone),
-            now_ms: Some(ms),
+            now: PanelClock::fixed(ms),
         };
         assert_eq!(invite_date(&time, ms), local, "{minutes} minutes east");
         assert_eq!(

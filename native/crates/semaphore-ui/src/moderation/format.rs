@@ -153,7 +153,7 @@ pub fn timeout_request(seconds: u32, reason: &str) -> TimeoutRequest {
 
 /// `TimeFormat`'s clock: the fixed instant, or now.
 pub fn now_ms(time: &TimeFormat) -> i64 {
-    time.now_ms.unwrap_or_else(|| Utc::now().timestamp_millis())
+    time.now.now_ms()
 }
 
 /// An instant in `TimeFormat`'s zone (the user's, unless a story fixes one), as message times are.

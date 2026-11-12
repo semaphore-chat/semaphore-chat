@@ -128,12 +128,57 @@ async fn leaving_tells_the_group_and_the_call_can_start_again() {
         [
             "dmVoiceCallStarted",
             "dmVoiceUserLeft",
+            "dmVoiceCallEnded",
             "dmVoiceCallStarted"
         ]
     );
     let left = &heard[1].1;
     assert_eq!(left["userId"], id("u-priya").as_str());
     assert_eq!(left["user"]["username"], "pri");
+    assert_eq!(heard[2].1, json!({ "dmGroupId": dm }));
+}
+
+#[tokio::test]
+async fn only_the_last_one_out_ends_the_call_and_every_member_hears_it() {
+    let (server, _client, base) = showcase().await;
+    let dm = id("dm-launch");
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut samira = connect_as(&base, &id("u-samira")).await;
+    // A member who is not in the call: the end goes to her too, as she was ringing.
+    let mut aiko = connect_as(&base, &id("u-aiko")).await;
+    assert!(server.dm_call_join(&dm, &id("u-samira")));
+    assert!(server.dm_call_join(&dm, &id("u-diego")));
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut aiko]).await;
+    assert_eq!(
+        names(&heard[0]),
+        ["dmVoiceCallStarted", "dmVoiceUserJoined"],
+        "{heard:?}"
+    );
+
+    // Diego leaves and Samira stays: his leave, no end.
+    assert!(server.dm_call_leave(&dm, &id("u-diego")));
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut aiko]).await;
+    for heard in &heard {
+        assert_eq!(names(heard), ["dmVoiceUserLeft"], "{heard:?}");
+    }
+
+    // Samira, the last, leaves: `dmVoiceUserLeft` then `dmVoiceCallEnded`, once each, to every
+    // member's socket.
+    assert!(server.dm_call_leave(&dm, &id("u-samira")));
+    let heard = settle(&server, &mut [&mut me, &mut samira, &mut aiko]).await;
+    for heard in &heard {
+        assert_eq!(
+            names(heard),
+            ["dmVoiceUserLeft", "dmVoiceCallEnded"],
+            "{heard:?}"
+        );
+        assert_eq!(heard[1].1, json!({ "dmGroupId": dm }));
+    }
+
+    // The call is over, so the next join starts it again rather than joining one.
+    assert!(server.dm_call_join(&dm, &id("u-aiko")));
+    let heard = settle(&server, &mut [&mut me]).await;
+    assert_eq!(names(&heard[0]), ["dmVoiceCallStarted"], "{heard:?}");
 }
 
 #[tokio::test]
