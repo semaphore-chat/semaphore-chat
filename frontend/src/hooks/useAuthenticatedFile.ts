@@ -63,8 +63,15 @@ export const useAuthenticatedFile = (
   const key = requestKeyOf(fileId, fetchBlob, fetchMetadata, fetchThumbnail);
 
   const startState = (): FileState => {
-    const cachedUrl =
-      fileId && fetchBlob && !fetchThumbnail ? fileCache.getBlob(fileId) : null;
+    // A thumbnail already in the cache (stored under `thumb:<id>`) renders at
+    // once, like a cached original does.
+    const cachedUrl = !fileId
+      ? null
+      : fetchThumbnail
+        ? fileCache.getBlob(`thumb:${fileId}`)
+        : fetchBlob
+          ? fileCache.getBlob(fileId)
+          : null;
     return {
       key,
       blobUrl: cachedUrl,

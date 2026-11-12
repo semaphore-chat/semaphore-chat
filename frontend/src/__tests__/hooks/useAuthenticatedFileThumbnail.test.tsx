@@ -61,6 +61,27 @@ describe('useAuthenticatedFile with fetchThumbnail', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('shows an already-cached thumbnail at once, without a loading state', async () => {
+    mockFetch.mockResolvedValue(blobResponse());
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) =>
+        useAuthenticatedFile(id, { fetchBlob: false, fetchThumbnail: true }),
+      { wrapper, initialProps: { id: 'file-1' } },
+    );
+    await waitFor(() => expect(result.current.isLoadingBlob).toBe(false));
+    rerender({ id: 'file-2' });
+    await waitFor(() => expect(result.current.isLoadingBlob).toBe(false));
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    // Back to the first file: its thumbnail is in the cache.
+    rerender({ id: 'file-1' });
+
+    expect(result.current.isLoadingBlob).toBe(false);
+    expect(result.current.blobUrl).toBe('blob:resolved');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
   it('falls back to the original when the thumbnail request fails', async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: false, status: 404 })

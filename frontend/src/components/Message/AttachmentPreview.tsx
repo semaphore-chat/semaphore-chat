@@ -141,7 +141,7 @@ const ImagePreview: React.FC<AttachmentPreviewProps> = ({
   if (isLoading || !blobUrl) {
     return (
       <AttachmentCard>
-        <LoadingContainer sx={boxSx}>
+        <LoadingContainer sx={boxSx ? { ...boxSx, minHeight: 0 } : undefined}>
           <CircularProgress size={32} />
         </LoadingContainer>
       </AttachmentCard>
