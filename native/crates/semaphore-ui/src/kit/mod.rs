@@ -18,7 +18,8 @@ mod typography;
 pub use assets::{UiAssets, icon_path};
 pub use bus::{emit_core_event, on_core_event};
 pub use controls::{
-    Button, ButtonSize, ButtonVariant, Checkbox, IconButton, Radio, Slider, Switch,
+    Button, ButtonSize, ButtonTone, ButtonVariant, CheckState, Checkbox, IconButton, Radio, Slider,
+    Switch,
 };
 pub use display::{
     Alert, Avatar, AvatarImages, Badge, Chip, Icon, LinearProgress, Severity, Skeleton, Snackbar,
@@ -27,7 +28,7 @@ pub use display::{
 pub use fields::{SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
 pub use lists::{ListRow, Table, Tabs};
-pub use overlays::{Dialog, Menu, MenuItem, Paper, Popover, Tip, with_tip};
+pub use overlays::{Dialog, Menu, MenuItem, Paper, Popover, SecondaryTone, Tip, with_tip};
 pub use typography::{Variant, link, text};
 
 /// An action with no payload.

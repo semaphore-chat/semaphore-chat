@@ -5,7 +5,8 @@
 use super::ClipEvent;
 use super::model::{self, clip_attachment};
 use crate::kit::{
-    Alert, Button, Dialog, IconButton, Severity, Skeleton, Spinner, Switch, Variant, text, with_tip,
+    Alert, Button, ButtonTone, Dialog, IconButton, Severity, Skeleton, Spinner, Switch, Variant,
+    text, with_tip,
 };
 use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, empty_block, error_block, is_phone};
@@ -408,7 +409,8 @@ impl ClipLibrary {
                     "clip-delete-confirm",
                     if asked { "Deleting..." } else { "Delete" },
                 )
-                .color(cx.sem().error)
+                .contained()
+                .tone(ButtonTone::Danger)
                 .disabled(asked)
                 .on_click(move |_, _, cx| {
                     view.update(cx, |library, cx| library.confirm_delete(cx))

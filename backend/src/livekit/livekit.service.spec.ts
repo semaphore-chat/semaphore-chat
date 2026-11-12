@@ -3,7 +3,7 @@ import { LivekitService } from './livekit.service';
 import { ConfigService } from '@nestjs/config';
 import { createMockConfigService } from '@/test-utils';
 import { LivekitException } from './exceptions/livekit.exception';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, TrackSource } from 'livekit-server-sdk';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
@@ -238,6 +238,26 @@ describe('LivekitService', () => {
         });
       },
     );
+
+    it('leaves the soundboard source out of the JWT grant, which cannot name it (#659)', async () => {
+      await service.generateToken(
+        { identity: 'user-123', roomId: 'room-456' },
+        undefined,
+        {
+          canPublish: true,
+          canPublishSources: [TrackSource.MICROPHONE, TrackSource.UNKNOWN],
+        },
+      );
+
+      const mockAccessTokenInstance = (AccessToken as jest.Mock).mock.results[
+        (AccessToken as jest.Mock).mock.results.length - 1
+      ].value;
+      expect(mockAccessTokenInstance.addGrant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          canPublishSources: [TrackSource.MICROPHONE],
+        }),
+      );
+    });
 
     it('should throw LivekitException when API key is missing', async () => {
       jest.spyOn(configService, 'get').mockImplementation((key: string) => {

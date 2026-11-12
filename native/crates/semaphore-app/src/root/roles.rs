@@ -410,7 +410,9 @@ impl AppRoot {
         let view = cx.new(|cx| RolesPanel::new(window, cx));
         let catalog = core.permission_catalog();
         let roles = core.roles(community_id.to_owned());
+        let time = self.config.time;
         view.update(cx, |panel, cx| {
+            panel.set_time(time, cx);
             panel.set_catalog(catalog, cx);
             panel.set_roles(roles, cx);
         });

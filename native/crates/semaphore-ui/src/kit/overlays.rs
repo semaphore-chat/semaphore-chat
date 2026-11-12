@@ -1,11 +1,12 @@
 //! Paper, Menu, Popover, Dialog and Tooltip.
 
-use super::{Action, Variant, text};
+use super::{Action, Icon, Variant, text};
 use crate::theme::SemTheme;
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use semaphore_design::Icon as IconName;
 use std::rc::Rc;
 
 /// MuiPaper as the theme overrides it: `background.paper`, an accent hairline, and the balanced and
@@ -71,12 +72,26 @@ impl RenderOnce for Paper {
     }
 }
 
-/// One line of a [`Menu`].
+/// The second line of a [`MenuItem`]: muted for a reason, or `error` for a failed last try.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SecondaryTone {
+    #[default]
+    Muted,
+    Error,
+}
+
+/// One line of a [`Menu`]. It can stand alone too, for a menu that builds its own list (the
+/// moderation menu's header and dividers), because it is an element of its own.
+#[derive(IntoElement)]
 pub struct MenuItem {
     id: SharedString,
     label: SharedString,
+    secondary: Option<SharedString>,
+    secondary_tone: SecondaryTone,
+    icon: Option<IconName>,
     destructive: bool,
     disabled: bool,
+    min_height: f32,
     on_select: Action,
 }
 
@@ -89,10 +104,30 @@ impl MenuItem {
         Self {
             id: id.into(),
             label: label.into(),
+            secondary: None,
+            secondary_tone: SecondaryTone::Muted,
+            icon: None,
             destructive: false,
             disabled: false,
+            min_height: 36.,
             on_select: Rc::new(on_select),
         }
+    }
+
+    /// A smaller line under the label: why the item is off, or what it is doing.
+    pub fn secondary(mut self, secondary: impl Into<SharedString>) -> Self {
+        self.secondary = Some(secondary.into());
+        self
+    }
+
+    pub fn secondary_tone(mut self, tone: SecondaryTone) -> Self {
+        self.secondary_tone = tone;
+        self
+    }
+
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon = Some(icon);
+        self
     }
 
     pub fn destructive(mut self) -> Self {
@@ -103,6 +138,69 @@ impl MenuItem {
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
+    }
+
+    /// A phone's rows take touch height (48); a desktop's are 36.
+    pub fn min_height(mut self, height: f32) -> Self {
+        self.min_height = height;
+        self
+    }
+}
+
+impl RenderOnce for MenuItem {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let sem = cx.sem();
+        let (label_color, icon_color) = if self.disabled {
+            (sem.text_disabled, sem.text_disabled)
+        } else if self.destructive {
+            (sem.error, sem.error)
+        } else {
+            (sem.text_primary, sem.action_active)
+        };
+        let secondary_color = match self.secondary_tone {
+            SecondaryTone::Muted => sem.text_secondary,
+            SecondaryTone::Error => sem.error,
+        };
+        let hover = sem.action_hover;
+        let accessible = match &self.secondary {
+            Some(secondary) => format!("{}, {secondary}", self.label),
+            None => self.label.to_string(),
+        };
+        let handler = self.on_select.clone();
+        div()
+            .id(ElementId::Name(self.id.clone()))
+            .test_support()
+            .role(Role::MenuItem)
+            .aria_label(accessible)
+            .min_h(px(self.min_height))
+            .px(px(16.))
+            .py(px(6.))
+            .flex()
+            .items_center()
+            .justify_start()
+            .gap(px(12.))
+            .text_color(label_color)
+            .children(
+                self.icon
+                    .map(|icon| Icon::new(icon).size(20.).color(icon_color)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(text(Variant::Body1, self.label))
+                    .children(self.secondary.map(|secondary| {
+                        text(Variant::Caption, secondary).text_color(secondary_color)
+                    })),
+            )
+            .when(!self.disabled, |row| {
+                row.cursor_pointer()
+                    .hover(move |style| style.bg(hover))
+                    .focus_visible(move |style| style.bg(hover))
+                    .on_click(move |_, window, cx| handler(window, cx))
+            })
     }
 }
 
@@ -123,14 +221,7 @@ impl Menu {
 }
 
 impl RenderOnce for Menu {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let sem = cx.sem();
-        let (hover, primary, disabled_color, danger) = (
-            sem.action_hover,
-            sem.text_primary,
-            sem.text_disabled,
-            sem.error,
-        );
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         let items = div()
             .id("menu")
             .test_support()
@@ -140,33 +231,7 @@ impl RenderOnce for Menu {
             .py(px(8.))
             .flex()
             .flex_col()
-            .children(self.items.into_iter().map(move |item| {
-                let handler = item.on_select.clone();
-                let color = if item.disabled {
-                    disabled_color
-                } else if item.destructive {
-                    danger
-                } else {
-                    primary
-                };
-                base::Button::new(ElementId::Name(item.id.clone()))
-                    .role(Role::MenuItem)
-                    .disabled(item.disabled)
-                    .accessibility_label(item.label.clone())
-                    .min_h(px(36.))
-                    .px(px(16.))
-                    .flex()
-                    .items_center()
-                    .justify_start()
-                    .text_color(color)
-                    .when(!item.disabled, |row| {
-                        row.cursor_pointer()
-                            .hover(move |style| style.bg(hover))
-                            .focus_visible(move |style| style.bg(hover))
-                            .on_click(move |_, window, cx| handler(window, cx))
-                    })
-                    .child(text(Variant::Body1, item.label))
-            }));
+            .children(self.items);
         Paper::new().elevated().child(items)
     }
 }
@@ -250,12 +315,17 @@ impl RenderOnce for Dialog {
                             .text_color(secondary)
                             .children(self.body),
                     )
+                    // The actions keep to the body's side padding, so a filled button never
+                    // runs past the column the fields end at, and wrap on a narrow window.
                     .child(
                         div()
                             .flex()
+                            .flex_wrap()
                             .justify_end()
+                            .items_center()
                             .gap(px(8.))
-                            .p(px(8.))
+                            .px(px(24.))
+                            .pb(px(20.))
                             .children(self.actions),
                     ),
             );

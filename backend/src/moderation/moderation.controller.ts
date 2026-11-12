@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -19,6 +20,7 @@ import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
 import { RbacActions, ModerationAction } from '@prisma/client';
+import { ModerationActionValues } from '@/common/enums/swagger-enums';
 import {
   RbacResource,
   RbacResourceType,
@@ -338,16 +340,39 @@ export class ModerationController {
   @ApiOkResponse({ type: ModerationLogsResponseDto })
   @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @ApiQuery({ name: 'offset', required: false, type: 'integer' })
+  @ApiQuery({
+    name: 'action',
+    required: false,
+    enum: ModerationActionValues,
+    enumName: 'ModerationAction',
+  })
   async getModerationLogs(
     @Param('communityId', ParseUUIDPipe) communityId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
-    @Query('action') action?: ModerationAction,
+    @Query('action') action?: string,
   ): Promise<ModerationLogsResponseDto> {
     return this.moderationService.getModerationLogs(communityId, {
       limit: clampLimit(limit, 100),
       offset: Math.max(offset, 0),
-      action,
+      action: parseActionFilter(action),
     });
   }
+}
+
+/**
+ * The log action filter, or a 400 for a value the API contract doesn't list
+ * (the value used to be passed through unchecked, #687).
+ */
+function parseActionFilter(
+  value: string | undefined,
+): ModerationAction | undefined {
+  if (value === undefined || value === '') return undefined;
+  const match = ModerationActionValues.find((allowed) => allowed === value);
+  if (!match) {
+    throw new BadRequestException(
+      `action must be one of: ${ModerationActionValues.join(', ')}`,
+    );
+  }
+  return match;
 }

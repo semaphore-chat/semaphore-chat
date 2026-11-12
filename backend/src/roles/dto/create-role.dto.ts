@@ -2,6 +2,7 @@ import {
   IsString,
   IsArray,
   ArrayMinSize,
+  IsNotEmpty,
   MaxLength,
   IsEnum,
   IsOptional,
@@ -9,12 +10,18 @@ import {
   Min,
   Max,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { RbacActions } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RbacActionsValues } from '@/common/enums/swagger-enums';
 
 export class CreateRoleDto {
+  @ApiProperty({ minLength: 1, maxLength: 50 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
+  @IsNotEmpty({ message: 'Role name must not be empty' })
   @MaxLength(50, { message: 'Role name must not exceed 50 characters' })
   name: string;
 

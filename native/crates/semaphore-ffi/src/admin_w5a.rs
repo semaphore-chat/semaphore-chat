@@ -4,11 +4,11 @@
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
-    AdminAction, AdminActionKind, AdminActionState, AdminOp, AliasGroupRow, AliasGroupView,
-    AliasGroupsView, ChannelDraft, ChannelKind, ChannelMove, CommunityPatch, CommunitySettingsView,
-    CreatedWebhook, CustomEmojiRow, CustomEmojiView, DraftFile, ErrorView, ImageChange,
-    InviteDraft, InviteRow, InvitesView, LoadState, PrivateMemberRow, PrivateMembersView,
-    SoundDraft, UploadView, UserView, WebhookRow, WebhooksView,
+    AdminAction, AdminActionKind, AdminActionOutcome, AdminActionState, AdminOp, AliasGroupRow,
+    AliasGroupView, AliasGroupsView, ChannelDraft, ChannelKind, ChannelMove, CommunityPatch,
+    CommunitySettingsView, CreatedWebhook, CustomEmojiRow, CustomEmojiView, DraftFile, ErrorView,
+    ImageChange, InviteDraft, InviteRow, InvitesView, LoadState, PrivateMemberRow,
+    PrivateMembersView, SoundDraft, UploadView, UserView, WebhookRow, WebhooksView,
 };
 
 #[uniffi::remote(Record)]
@@ -18,6 +18,14 @@ pub struct AdminOp {
     pub error: Option<ErrorView>,
     pub action: Option<AdminAction>,
     pub actions: Vec<AdminActionState>,
+    pub finished: Vec<AdminActionOutcome>,
+}
+
+#[uniffi::remote(Record)]
+pub struct AdminActionOutcome {
+    pub action: AdminAction,
+    pub seq: u64,
+    pub error: Option<ErrorView>,
 }
 
 #[uniffi::remote(Enum)]

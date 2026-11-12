@@ -84,6 +84,9 @@ describe('ChannelMembershipService', () => {
           channelId: channel.id,
           addedBy: undefined,
         },
+        include: {
+          user: { select: PUBLIC_USER_SELECT },
+        },
       });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         RoomEvents.CHANNEL_MEMBERSHIP_CREATED,
@@ -130,7 +133,49 @@ describe('ChannelMembershipService', () => {
           channelId: channel.id,
           addedBy: adder.id,
         },
+        include: {
+          user: { select: PUBLIC_USER_SELECT },
+        },
       });
+    });
+
+    it('should return the added user through PUBLIC_USER_SELECT', async () => {
+      const user = UserFactory.buildComplete();
+      const community = CommunityFactory.build();
+      const channel = ChannelFactory.build({
+        isPrivate: true,
+        communityId: community.id,
+      });
+      const createDto = { userId: user.id, channelId: channel.id };
+
+      mockDatabase.channel.findUnique.mockResolvedValue({
+        ...channel,
+        community,
+      });
+      mockDatabase.user.findUnique.mockResolvedValue(user);
+      mockDatabase.membership.findUnique.mockResolvedValue(
+        MembershipFactory.build({
+          userId: user.id,
+          communityId: community.id,
+        }),
+      );
+      mockDatabase.channelMembership.findUnique.mockResolvedValue(null);
+      mockDatabase.channelMembership.create.mockResolvedValue({
+        ...ChannelMembershipFactory.build({
+          userId: user.id,
+          channelId: channel.id,
+        }),
+        user,
+      });
+
+      const result = await service.create(createDto);
+
+      expect(result.user).toMatchObject({
+        id: user.id,
+        username: user.username,
+      });
+      // The raw user has every sensitive field; the DTO must strip them
+      expectNoSensitiveUserFields(result);
     });
 
     it('should throw ForbiddenException for public channel', async () => {

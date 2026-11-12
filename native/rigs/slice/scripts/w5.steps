@@ -31,7 +31,7 @@ wait core element member-$ID(u-priya)
 right-click member-$ID(u-priya)
 wait core element moderation-menu
 wait core w5 label moderate-timeout "Timeout"
-wait core w5 reason moderate-ban "unavailable"
+wait core w5 reason moderate-ban "permission"
 wait idle
 shot 01-moderator-menu
 
@@ -75,8 +75,8 @@ shot 04-live-timeout-over
 # A: expect core no-element community-settings
 right-click member-$ID(u-kwame)
 wait core element moderation-menu
-wait core w5 reason moderate-ban "unavailable"
-wait core w5 reason moderate-kick "unavailable"
+wait core w5 reason moderate-ban "permission"
+wait core w5 reason moderate-kick "permission"
 wait idle
 shot 05-live-member-refused
 
