@@ -107,6 +107,9 @@ pub(crate) struct Data {
     pub thread_subscriptions: std::collections::BTreeMap<String, (bool, DateTime<Utc>)>,
     pub voice: std::collections::BTreeMap<String, Vec<semaphore_wire::VoicePresenceUserDto>>,
     pub unread: std::collections::BTreeMap<String, (i64, i64)>,
+    /// When each user last read a channel or a DM, by (context id, user id). One map for both:
+    /// the ids differ across the two.
+    pub receipts: std::collections::BTreeMap<(String, String), DateTime<Utc>>,
     pub nonces: HashMap<(String, String), NonceEntry>,
     /// What clients uploaded, by file id: served back from the file routes.
     pub files: HashMap<String, StoredFile>,
@@ -499,6 +502,7 @@ impl FakeServer {
             thread_subscriptions: Default::default(),
             voice: scenario.voice.clone(),
             unread: scenario.unread.clone(),
+            receipts: Default::default(),
             nonces: HashMap::new(),
             files,
             social: social::Social::seed(&scenario),
@@ -678,7 +682,7 @@ impl FakeServer {
         );
     }
 
-    /// Plant an invite, for the public invite lookup and for registration.
+    /// Plant an invite, for the public invite lookup, registration and joining with an account.
     pub fn seed_invite(&self, invite: InviteSeed) {
         lock(&self.inner.accounts).invites.push(accounts::Invite {
             code: invite.code,
@@ -687,6 +691,7 @@ impl FakeServer {
             valid_until: invite.valid_until,
             disabled: invite.disabled,
             created_by: invite.created_by,
+            community_ids: invite.community_ids,
         });
     }
 

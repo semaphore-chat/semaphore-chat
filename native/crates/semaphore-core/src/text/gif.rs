@@ -87,3 +87,14 @@ pub fn lone_gif_url(text: &str) -> Option<GifEmbed> {
         host,
     })
 }
+
+/// The lower-case host of one http(s) URL, without a port, for "Image from <host>". `None` for
+/// anything that isn't one (a relative path, another scheme, an empty host). Never panics.
+pub fn url_host(url: &str) -> Option<String> {
+    let url = url.trim();
+    let length = scheme_at(url.as_bytes(), 0)?;
+    let rest = &url[length..];
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let host = rest[..host_end].split(':').next().unwrap_or_default();
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}

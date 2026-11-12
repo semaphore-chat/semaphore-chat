@@ -62,6 +62,24 @@ pub trait MessagesBackend: Send + Sync {
         &self,
         body: wire::MarkAsReadDto,
     ) -> BackendResult<wire::ReadReceiptDto>;
+    /// `GET /api/read-receipts/dm-peer-reads/{id}`: the other members' watermarks in one DM, for
+    /// "seen by". Channels keep their receipts private, so this answers for DMs only.
+    async fn read_receipts_controller_get_dm_peer_reads(
+        &self,
+        _dm_group_id: String,
+    ) -> BackendResult<Vec<wire::DmPeerReadDto>> {
+        Err(unsupported("reading a DM's peer reads"))
+    }
+    /// `GET /api/read-receipts/message/{id}/readers`: who has read one message, this user left out.
+    /// Exactly one of the channel and the DM names it.
+    async fn read_receipts_controller_get_message_readers(
+        &self,
+        _message_id: String,
+        _channel_id: Option<String>,
+        _dm_group_id: Option<String>,
+    ) -> BackendResult<Vec<wire::MessageReaderDto>> {
+        Err(unsupported("reading a message's readers"))
+    }
 
     // Edit and delete (W1). Defaults until a backend has them.
     /// `PATCH /api/messages/{id}`. No `attachments` leaves them; a list, even empty, keeps those.

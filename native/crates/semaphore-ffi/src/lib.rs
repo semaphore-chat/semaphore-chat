@@ -202,6 +202,7 @@ pub struct LinkPreviewView {
     pub title: Option<String>,
     pub description: Option<String>,
     pub image_url: Option<String>,
+    pub image_host: Option<String>,
     pub site_name: Option<String>,
     pub favicon_url: Option<String>,
     pub author_name: Option<String>,
@@ -504,6 +505,13 @@ pub enum ViewKey {
     Search {
         scope: SearchScope,
         query: String,
+    },
+    DmPeerReads {
+        dm_group_id: String,
+    },
+    SeenBy {
+        conversation: Conversation,
+        message_id: String,
     },
     VoiceDiagnostics,
     CommunitySettings {
@@ -924,6 +932,22 @@ impl SemaphoreCore {
 
     pub async fn join_voice(&self, channel_id: String) -> Result<(), CoreError> {
         self.core.join_voice(channel_id).await
+    }
+
+    pub async fn join_voice_with(
+        &self,
+        channel_id: String,
+        options: semaphore_core::model::VoiceJoinOptions,
+    ) -> Result<(), CoreError> {
+        self.core.join_voice_with(channel_id, options).await
+    }
+
+    pub fn voice_prejoin(
+        &self,
+        community_id: String,
+        channel_id: String,
+    ) -> semaphore_core::model::VoicePreJoinView {
+        self.core.voice_prejoin(community_id, channel_id)
     }
 
     pub async fn leave_voice(&self) -> Result<(), CoreError> {

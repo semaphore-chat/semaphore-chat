@@ -5,7 +5,8 @@ use crate::cache::keys;
 use crate::client::{Core, Effect, State};
 use crate::model::{
     JoinFailure, JoinFailureClass, LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest,
-    UserView, VideoDemand, ViewKey, VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
+    UserView, VideoDemand, ViewKey, VoiceJoinMode, VoiceJoinOptions, VoiceModerationCaps,
+    VoicePreJoinView, VoiceRoom, VoiceStatus, VoiceView,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -83,17 +84,106 @@ fn ended(core: &LocalShare, before: &LocalShare, now: &LocalShare) -> bool {
 }
 
 impl Core {
+    /// Joins a voice channel with the mute and deafen already asked for (the bar's toggles work
+    /// before a join), or unmuted when nothing was asked.
     pub async fn join_voice(&self, channel_id: String) -> Result<(), CoreError> {
-        self.join_room(VoiceRoom::Channel {
-            channel_id,
-            community_id: None,
-        })
+        self.join_room(
+            VoiceRoom::Channel {
+                channel_id,
+                community_id: None,
+            },
+            None,
+        )
         .await
     }
 
+    /// Joins a voice channel as the pre-join screen chose: muted ("Join muted"), deafened, or both.
+    /// The engine is told before it connects, so the call starts that way.
+    pub async fn join_voice_with(
+        &self,
+        channel_id: String,
+        options: VoiceJoinOptions,
+    ) -> Result<(), CoreError> {
+        self.join_room(
+            VoiceRoom::Channel {
+                channel_id,
+                community_id: None,
+            },
+            Some(options),
+        )
+        .await
+    }
+
+    /// A voice channel this user isn't in, as the pre-join screen shows it: who's here, which join
+    /// controls the channel's permissions allow, and whether joining would move them from another
+    /// call. `ViewKey::Voice` says when to read again.
+    pub fn voice_prejoin(&self, community_id: String, channel_id: String) -> VoicePreJoinView {
+        self.write(|state, _| {
+            let channels_key = keys::scoped(keys::CHANNELS, &community_id);
+            let capabilities_key = keys::scoped(keys::CAPABILITIES, &community_id);
+            let presence_key = keys::scoped(keys::VOICE_PRESENCE, &channel_id);
+            state.ensure_query(channels_key.clone());
+            state.ensure_query(capabilities_key.clone());
+            state.ensure_query(presence_key.clone());
+            let channel = state
+                .cache
+                .channels(&channels_key)
+                .and_then(|channels| channels.iter().find(|channel| channel.id == channel_id))
+                .cloned();
+            let capability = state
+                .cache
+                .capabilities(&capabilities_key)
+                .and_then(|capabilities| {
+                    capabilities
+                        .channels
+                        .iter()
+                        .find(|capability| capability.channel_id == channel_id)
+                })
+                .cloned();
+            let mode = match &capability {
+                Some(capability) if !capability.connect => VoiceJoinMode::None,
+                Some(capability) if !capability.speak => VoiceJoinMode::ListenOnly,
+                // Unknown yet (the read is on its way): offer both, and let the server refuse.
+                _ => VoiceJoinMode::Full,
+            };
+            let connected_elsewhere = state
+                .voice
+                .channel_id
+                .as_deref()
+                .filter(|current| *current != channel_id)
+                .and_then(|current| {
+                    state.cache.channels(&channels_key).and_then(|channels| {
+                        channels
+                            .iter()
+                            .find(|channel| channel.id == current)
+                            .map(|channel| channel.name.clone())
+                    })
+                });
+            VoicePreJoinView {
+                state: state.load_of(&presence_key),
+                channel_id: channel_id.clone(),
+                community_id,
+                channel_name: channel.map(|channel| channel.name).unwrap_or_default(),
+                users: Core::presence_users(state, &channel_id),
+                mode,
+                timed_out_until_ms: capability
+                    .and_then(|capability| capability.timed_out_until)
+                    .map(|at| at.timestamp_millis()),
+                connected_elsewhere,
+                muted: state.voice.muted,
+                deafened: state.voice.deafened,
+            }
+        })
+    }
+
     /// Joins a channel's call or a DM's (W4), leaving any other call first. A channel's
-    /// `community_id` is filled from the cached channel lists.
-    pub(crate) async fn join_room(&self, room: VoiceRoom) -> Result<(), CoreError> {
+    /// `community_id` is filled from the cached channel lists. `Some` starts the call as those
+    /// options say; `None` keeps the mute and deafen already chosen (or unmuted, when none were).
+    pub(crate) async fn join_room(
+        &self,
+        room: VoiceRoom,
+        options: Option<VoiceJoinOptions>,
+    ) -> Result<(), CoreError> {
         let services = self.services().ok_or_else(|| unavailable("voice"))?.clone();
         let media = services.media.clone().ok_or_else(|| unavailable("voice"))?;
         let me = self
@@ -129,6 +219,10 @@ impl Core {
             state.media = None;
             state.call += 1;
             state.call_ended_early = None;
+            if let Some(options) = options {
+                state.voice.muted = options.muted;
+                state.voice.deafened = options.deafened;
+            }
             state.view_changed(ViewKey::Voice);
             state.ensure_query(State::room_presence_key(&room));
             state.w4_log(now, format!("joining {}", room_label(&room)));

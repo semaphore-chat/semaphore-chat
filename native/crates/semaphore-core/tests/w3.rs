@@ -329,6 +329,44 @@ async fn without_a_loopback_browser_sign_in_is_unavailable() {
     ));
 }
 
+// --- The connection probe's setup status ---
+
+#[tokio::test]
+async fn the_probe_learns_an_instance_with_no_users_needs_setup() {
+    let rig = Rig::new();
+    rig.backend
+        .w3
+        .answer("public_settings", settings(false, "OPEN"));
+    rig.backend.w3.answer(
+        "onboarding_status",
+        json!({ "needsSetup": true, "hasUsers": false, "setupToken": "a-setup-token" }),
+    );
+    let info = rig.core.probe_server("http://server".into()).await.unwrap();
+    assert!(info.needs_setup);
+    // The rest of the probe still answers.
+    assert_eq!(info.name.as_deref(), Some("Test"));
+    assert_eq!(info.registration, RegistrationMode::Open);
+    // A token is never kept or shown.
+    assert!(!format!("{info:?}").contains("a-setup-token"));
+    assert!(!format!("{:?}", rig.events.take()).contains("a-setup-token"));
+}
+
+#[tokio::test]
+async fn a_server_that_cannot_say_whether_it_needs_setup_still_probes() {
+    // An older build without the route, or a failed read: the settings already answered, and a
+    // signed-in instance is what the rest of the app assumes.
+    let rig = Rig::new();
+    rig.backend
+        .w3
+        .answer("public_settings", settings(false, "INVITE_ONLY"));
+    rig.backend
+        .w3
+        .fail_next("onboarding_status", error(404, "NOT_FOUND"));
+    let info = rig.core.probe_server("http://server".into()).await.unwrap();
+    assert!(!info.needs_setup);
+    assert_eq!(info.registration, RegistrationMode::InviteOnly);
+}
+
 // --- Registering, forgot password, invites ---
 
 #[tokio::test]
@@ -336,9 +374,9 @@ async fn register_creates_the_account_then_signs_in_with_it() {
     let rig = Rig::new();
     rig.backend
         .w3
-        .answer("public_settings", settings(false, "CLOSED"));
+        .answer("public_settings", settings(false, "INVITE_ONLY"));
     let info = rig.core.probe_server("http://server".into()).await.unwrap();
-    assert_eq!(info.registration, RegistrationMode::Closed);
+    assert_eq!(info.registration, RegistrationMode::InviteOnly);
     rig.backend.w3.answer("register", user_json(ME));
     let form = RegisterForm {
         username: " me ".into(),
@@ -350,7 +388,7 @@ async fn register_creates_the_account_then_signs_in_with_it() {
     rig.core.register(form.clone()).await.unwrap();
     assert_eq!(
         rig.backend.w3.calls(),
-        vec!["public_settings", "register me INVITE"]
+        vec!["public_settings", "onboarding_status", "register me INVITE"]
     );
     assert!(matches!(rig.core.session(), SessionState::SignedIn { .. }));
 
@@ -433,12 +471,14 @@ async fn an_invite_preview_loads_says_why_and_fails_until_retried() {
     assert_eq!((invite.uses, invite.max_uses), (3, Some(5)));
     assert_eq!(invite.created_by.as_deref(), Some("ann"));
 
-    // One the server won't honour: an empty answer, the same for unknown, expired or used up.
+    // One the server won't honour, answered the older way: an empty body, with no reason said.
+    // Today's backend names the reason instead (w9_invite).
     rig.backend.w3.answer("invite", Value::Null);
     rig.core.invite_preview("used".into());
     rig.core.run_until_idle().await;
     let view = rig.core.invite_preview("used".into());
     assert_eq!((view.state, view.invite), (LoadState::Ready, None));
+    assert_eq!(view.reason, None);
 
     rig.backend.w3.fail_next("invite", error(0, "UNKNOWN"));
     rig.core.invite_preview("gone".into());

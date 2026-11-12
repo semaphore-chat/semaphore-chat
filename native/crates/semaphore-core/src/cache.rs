@@ -44,6 +44,10 @@ pub mod keys {
     pub const CHANNELS: &str = "channelsControllerFindAllForCommunity";
     pub const CAPABILITIES: &str = "channelPermissionsControllerGetMyCommunityChannelPermissions";
     pub const UNREAD: &str = "readReceiptsControllerGetUnreadCounts";
+    /// Who has read a DM up to when, other than this user, keyed by DM group ("seen by").
+    pub const DM_PEER_READS: &str = "readReceiptsControllerGetDmPeerReads";
+    /// Who has read one message, keyed by message and its channel or DM ("seen by" in a channel).
+    pub const MESSAGE_READERS: &str = "readReceiptsControllerGetMessageReaders";
     pub const VOICE_PRESENCE: &str = "voicePresenceControllerGetChannelPresence";
     pub const MEMBER_SEARCH: &str = "membershipControllerSearchCommunityMembers";
     pub const MENTIONABLE: &str = "channelsControllerGetMentionableChannels";
@@ -99,6 +103,10 @@ pub enum CacheValue {
     Channels(Vec<wire::ChannelDto>),
     Capabilities(wire::CommunityChannelCapabilitiesDto),
     UnreadCounts(Vec<wire::UnreadCountDto>),
+    /// Watermarks of the other members of one DM, keyed by DM group.
+    DmPeerReads(Vec<wire::DmPeerReadDto>),
+    /// The readers of one message, keyed by the message and its conversation.
+    MessageReaders(Vec<wire::MessageReaderDto>),
     VoicePresence(wire::ChannelVoicePresenceResponseDto),
     MemberSearch(Vec<wire::MembershipResponseDto>),
     MentionableChannels(Vec<wire::ChannelDto>),
@@ -300,6 +308,18 @@ impl QueryCache {
         unread_counts_mut,
         UnreadCounts,
         Vec<wire::UnreadCountDto>
+    );
+    typed_read!(
+        dm_peer_reads,
+        dm_peer_reads_mut,
+        DmPeerReads,
+        Vec<wire::DmPeerReadDto>
+    );
+    typed_read!(
+        message_readers,
+        message_readers_mut,
+        MessageReaders,
+        Vec<wire::MessageReaderDto>
     );
     typed_read!(
         voice_presence,

@@ -258,6 +258,7 @@ fn preview() -> InvitePreviewView {
             max_uses: None,
             valid_until_ms: None,
         }),
+        reason: None,
     }
 }
 
@@ -288,6 +289,7 @@ fn an_invite_is_joined_or_refused_retried_or_explained(cx: &mut TestAppContext) 
         InvitePreviewView {
             state: LoadState::Ready,
             invite: None,
+            reason: None,
         },
         cx,
     );
@@ -303,6 +305,7 @@ fn an_invite_is_joined_or_refused_retried_or_explained(cx: &mut TestAppContext) 
                 error: error("NETWORK"),
             },
             invite: None,
+            reason: None,
         },
         cx,
     );

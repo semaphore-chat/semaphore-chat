@@ -21,6 +21,7 @@ mod messages;
 mod moderation;
 mod notify;
 mod onboarding;
+mod receipts;
 mod replay;
 mod roles;
 mod search;
@@ -61,6 +62,7 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(notify::routes())
         .merge(account::routes())
         .merge(onboarding::routes())
+        .merge(receipts::routes())
         .merge(replay::routes())
         .merge(soundboard::routes())
         .merge(community_admin::routes())
@@ -93,6 +95,7 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| notify::operation_id(method, route))
         .or_else(|| account::operation_id(method, route))
         .or_else(|| onboarding::operation_id(method, route))
+        .or_else(|| receipts::operation_id(method, route))
         .or_else(|| replay::operation_id(method, route))
         .or_else(|| soundboard::operation_id(method, route))
         .or_else(|| community_admin::operation_id(method, route))
@@ -132,6 +135,7 @@ fn is_public(operation: Option<&str>) -> bool {
                 | "AuthController_forgotPassword"
                 | "UserController_register"
                 | "InviteController_getPublicInvite"
+                | "OnboardingController_getStatus"
                 | "InstanceController_getPublicSettings"
                 | "Fixture_image"
         )
@@ -410,6 +414,16 @@ async fn control(
             if let Some(max) = request.get("maxUses").and_then(Value::as_i64) {
                 invite.max_uses = Some(max);
             }
+            invite.community_ids = request
+                .get("communityIds")
+                .and_then(Value::as_array)
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
             lock(&inner.accounts).invites.push(crate::accounts::Invite {
                 code: invite.code,
                 uses: invite.uses,
@@ -417,6 +431,7 @@ async fn control(
                 valid_until: invite.valid_until,
                 disabled: invite.disabled,
                 created_by: invite.created_by,
+                community_ids: invite.community_ids,
             });
         }
         "add_session" => {
@@ -435,6 +450,45 @@ async fn control(
             }
             let id = accounts.sessions[index].id.clone();
             return json_response(StatusCode::OK, json!({ "id": id }));
+        }
+        // W9: a read receipt a test plants for another user (or for me on another device). A DM's
+        // is announced to the group, as `markReadAndAnnounce` does; a channel's stays private.
+        "read_receipt" => {
+            let field = |name: &str| request.get(name).and_then(Value::as_str);
+            let Some(user) = field("userId") else {
+                return invalid("userId is required");
+            };
+            let Some(context) = field("dmGroupId").or_else(|| field("channelId")) else {
+                return invalid("dmGroupId or channelId is required");
+            };
+            let at = field("at")
+                .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+                .map(|at| at.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|| inner.now());
+            lock(&inner.data)
+                .receipts
+                .insert((context.to_owned(), user.to_owned()), at);
+            if let Some(dm) = field("dmGroupId") {
+                let members =
+                    crate::social::dm_member_ids(&lock(&inner.data), dm).unwrap_or_default();
+                inner.emit_to_users(
+                    &members,
+                    "readReceiptUpdated",
+                    json!({
+                        "channelId": null,
+                        "directMessageGroupId": dm,
+                        "userId": user,
+                        "lastReadMessageId": field("messageId").unwrap_or_default(),
+                        "lastReadAt": at,
+                    }),
+                );
+            }
+        }
+        "onboarding" => {
+            lock(&inner.accounts).needs_setup = request
+                .get("needsSetup")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
         }
         "public_settings" => {
             let Some(fields) = request.as_object() else {

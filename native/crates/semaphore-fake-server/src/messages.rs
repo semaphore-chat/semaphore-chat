@@ -860,10 +860,13 @@ pub(crate) fn mark_read(
     let context = channel_id.or(dm_id);
     {
         let mut data = lock(&inner.data);
-        if let Some(context) = context
-            && let Some(counts) = data.unread.get_mut(context)
-        {
-            *counts = (0, 0);
+        if let Some(context) = context {
+            if let Some(counts) = data.unread.get_mut(context) {
+                *counts = (0, 0);
+            }
+            // The watermark the readers routes compare with: `markAsRead` stamps the receipt.
+            data.receipts
+                .insert((context.to_owned(), user.clone()), now);
         }
     }
     let mut body = json!({

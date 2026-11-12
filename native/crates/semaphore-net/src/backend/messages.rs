@@ -109,6 +109,29 @@ impl MessagesBackend for HttpBackend {
         rpc!(self, c => c.read_receipts_controller_mark_as_read(body))
     }
 
+    async fn read_receipts_controller_get_dm_peer_reads(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<Vec<wire::DmPeerReadDto>> {
+        let dm_group_id = &dm_group_id;
+        rpc!(self, c => c.read_receipts_controller_get_dm_peer_reads(dm_group_id))
+    }
+
+    async fn read_receipts_controller_get_message_readers(
+        &self,
+        message_id: String,
+        channel_id: Option<String>,
+        dm_group_id: Option<String>,
+    ) -> BackendResult<Vec<wire::MessageReaderDto>> {
+        let message_id = &message_id;
+        let channel_id = channel_id.as_deref();
+        let dm_group_id = dm_group_id.as_deref();
+        rpc!(
+            self,
+            c => c.read_receipts_controller_get_message_readers(message_id, channel_id, dm_group_id)
+        )
+    }
+
     async fn messages_controller_update(
         &self,
         id: String,

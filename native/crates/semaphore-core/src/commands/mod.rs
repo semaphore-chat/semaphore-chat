@@ -16,6 +16,7 @@ mod diagnostics;
 mod dms;
 pub mod gifs;
 pub mod instance_admin;
+pub(crate) mod local;
 mod messages;
 pub(crate) mod moderation;
 pub(crate) mod notify;
@@ -310,7 +311,13 @@ impl State {
                 self.w4_dms_arrived();
             }
             keys::FRIENDS => self.view_changed(ViewKey::Friends),
-            keys::NOTIFICATIONS => self.view_changed(ViewKey::Notifications),
+            keys::NOTIFICATIONS => {
+                self.view_changed(ViewKey::Notifications);
+                // The list arrived for a conversation that's open: its rows are read now.
+                if let Some(conversation) = self.main_conversation.clone() {
+                    self.w2_auto_read(&conversation);
+                }
+            }
             keys::NOTIFY_SETTINGS => {
                 self.view_changed(ViewKey::NotificationSettings);
                 for key in self.cache.keys_with_op(keys::CHANNEL_LEVEL) {
@@ -334,6 +341,12 @@ impl State {
             keys::USER_CLIPS => self.view_changed(ViewKey::UserClips { user_id: id }),
             keys::REPLAY_SESSION => self.view_changed(ViewKey::ReplaySession),
             keys::THREAD_META => self.reading_meta_arrived(id),
+            keys::DM_PEER_READS => self.seen_by_changed(&id),
+            keys::MESSAGE_READERS => {
+                if let Some(view) = view_for(key) {
+                    self.view_changed(view);
+                }
+            }
             keys::UNREAD => {
                 self.reading_counts_arrived();
                 self.w2_dms_touched();

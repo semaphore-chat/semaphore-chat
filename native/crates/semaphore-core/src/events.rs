@@ -497,6 +497,7 @@ impl State {
             .as_deref()
             .is_some_and(|user_id| user_id != self.me_id());
         if is_peer {
+            self.peer_read_arrived(&payload);
             return;
         }
         let Some(conversation) = context(&payload.channel_id, &payload.direct_message_group_id)
@@ -538,6 +539,34 @@ impl State {
         let context_id = context_id.clone();
         self.unread_views_changed(&context_id);
         self.w2_on_context_read(&conversation, &payload.last_read_message_id);
+    }
+
+    /// `readReceiptUpdated` naming someone else, to a DM's room: their watermark moved, so "seen
+    /// by" of my messages there may now name them. Applied directly when the watermarks are
+    /// loaded; otherwise the next read gets them as they are then.
+    fn peer_read_arrived(&mut self, payload: &wire::ReadReceiptUpdatedPayloadDto) {
+        let (Some(dm_group_id), Some(user_id)) = (
+            payload.direct_message_group_id.clone(),
+            payload.user_id.clone(),
+        ) else {
+            // A channel's receipts stay private, and a mark without a user is my own other device.
+            return;
+        };
+        let key = keys::scoped(keys::DM_PEER_READS, &dm_group_id);
+        if self.cache.dm_peer_reads_mut(&key).is_none() {
+            return;
+        }
+        self.note_direct_update(&key);
+        if let Some(peers) = self.cache.dm_peer_reads_mut(&key) {
+            match peers.iter_mut().find(|peer| peer.user_id == user_id) {
+                Some(peer) => peer.last_read_at = payload.last_read_at,
+                None => peers.push(wire::DmPeerReadDto {
+                    user_id,
+                    last_read_at: payload.last_read_at,
+                }),
+            }
+        }
+        self.seen_by_changed(&dm_group_id);
     }
 
     /// The hybrid pattern: an update if this channel's presence is loaded, a refetch if not.
