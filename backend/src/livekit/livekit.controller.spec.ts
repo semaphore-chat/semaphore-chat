@@ -15,7 +15,6 @@ import { JwtService } from '@nestjs/jwt';
 import { TrackSource } from 'livekit-server-sdk';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { FULL_PUBLISH_GRANT } from './publish-grant.util';
-import { LivekitAccessService } from './livekit-access.service';
 import { LivekitReplayService } from './livekit-replay.service';
 import { StorageService } from '@/storage/storage.service';
 import { StreamReplayDto } from './dto/capture-replay.dto';
@@ -48,7 +47,6 @@ describe('LivekitController', () => {
   let voicePresenceService: Mocked<VoicePresenceService>;
   let jwtService: Mocked<JwtService>;
   let channelAccessService: Mocked<ChannelAccessService>;
-  let livekitAccessService: Mocked<LivekitAccessService>;
   let replayService: Mocked<LivekitReplayService>;
   let storageService: Mocked<StorageService>;
 
@@ -85,7 +83,6 @@ describe('LivekitController', () => {
     voicePresenceService = unitRef.get(VoicePresenceService);
     jwtService = unitRef.get(JwtService);
     channelAccessService = unitRef.get(ChannelAccessService);
-    livekitAccessService = unitRef.get(LivekitAccessService);
     replayService = unitRef.get(LivekitReplayService);
     storageService = unitRef.get(StorageService);
     channelAccessService.channelCapabilities.mockResolvedValue(allCaps);
