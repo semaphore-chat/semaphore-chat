@@ -29,8 +29,13 @@ pub const REAUTHENTICATE: &str = "reauthenticate";
 pub const TOKEN_EXPIRING: &str = "tokenExpiring";
 pub const SESSION_TERMINATED: &str = "sessionTerminated";
 
-const MAX_SERVER_DISCONNECT_RETRIES: u32 = 3;
-const MAX_SERVER_DISCONNECT_BACKOFF: Duration = Duration::from_secs(10);
+/// The wait after the server ends a connection without saying why, before connecting again.
+///
+/// `SocketProvider.tsx` counts these and signs out at three, backing off 1 s, 2 s, 4 s, but it
+/// resets the count on every connect, and every reconnect connects first, so the count never
+/// passes one: it always waits 1 s and never signs out. This says that directly. A server that
+/// keeps refusing the session refuses the handshake instead (AUTH_FAILED), and that path signs out.
+const SERVER_DISCONNECT_DELAY: Duration = Duration::from_secs(1);
 const SESSION_REFRESH_DELAYS: [Duration; 3] = [
     Duration::from_secs(1),
     Duration::from_secs(2),
@@ -140,6 +145,9 @@ enum Command {
         refresh: bool,
     },
     TokenRefreshed(String),
+    /// Tests: how many acks the actor is holding a place for.
+    #[cfg(test)]
+    PendingAcks(oneshot::Sender<usize>),
 }
 
 /// Handle to the session actor. Cheap to clone.
@@ -169,11 +177,11 @@ impl SocketClient {
             next_ack_id: 0,
             pending: HashMap::new(),
             attempts: 0,
-            server_disconnects: 0,
             session_end_reason: None,
             refresh_at: None,
             last_ping: Instant::now(),
             resume_probe: None,
+            refreshing: Arc::new(AtomicBool::new(false)),
         };
         tokio::spawn(actor.run());
         (Self { commands, idle }, event_rx)
@@ -205,6 +213,14 @@ impl SocketClient {
     /// answer. With no socket, this connects. `refresh` comes from core's `ResyncPlan`.
     pub fn resume(&self, refresh: bool) {
         let _ = self.commands.send(Command::Resume { refresh });
+    }
+
+    /// How many acks the actor is holding a place for.
+    #[cfg(test)]
+    async fn pending_acks(&self) -> usize {
+        let (answer, count) = oneshot::channel();
+        let _ = self.commands.send(Command::PendingAcks(answer));
+        count.await.unwrap_or(usize::MAX)
     }
 
     pub fn set_idle(&self, idle: bool) {
@@ -283,11 +299,13 @@ struct Actor {
     next_ack_id: u64,
     pending: HashMap<u64, oneshot::Sender<Result<Vec<Value>, EmitError>>>,
     attempts: u32,
-    server_disconnects: u32,
     session_end_reason: Option<String>,
     refresh_at: Option<Instant>,
     last_ping: Instant,
     resume_probe: Option<ResumeProbe>,
+    /// A refresh started by `tokenExpiring` or `resume` is running. Another is not started meanwhile:
+    /// each would rotate the refresh token and send its own `reauthenticate`.
+    refreshing: Arc<AtomicBool>,
 }
 
 /// An ack-requested `presenceOnline` sent to a socket that survived a suspend. TCP keeps order, so
@@ -348,6 +366,10 @@ impl Actor {
             Command::Suspend => self.want = Want::Suspended,
             Command::Resume { refresh } => self.resume(refresh).await,
             Command::RestartTransport | Command::TokenRefreshed(_) => {}
+            #[cfg(test)]
+            Command::PendingAcks(answer) => {
+                let _ = answer.send(self.pending.len());
+            }
         }
     }
 
@@ -384,12 +406,9 @@ impl Actor {
 
     /// socket.io-client's backoff: base times 2^attempts, randomized, capped.
     fn next_backoff(&mut self) -> Duration {
-        let exponential =
-            self.config.reconnect_delay.as_secs_f64() * 2f64.powi(self.attempts.min(20) as i32);
+        let delay = backoff_delay(&self.config, self.attempts, jitter_unit());
         self.attempts += 1;
-        let spread = (2.0 * jitter_unit() - 1.0) * self.config.randomization;
-        let delay = exponential * (1.0 + spread);
-        Duration::from_secs_f64(delay.min(self.config.reconnect_delay_max.as_secs_f64()))
+        delay
     }
 
     /// One attempt: WebSocket, Engine.IO open, namespace connect with the latest token.
@@ -452,7 +471,6 @@ impl Actor {
         (ws, interval, ping_timeout, sid): (Ws, u64, u64, String),
     ) {
         self.attempts = 0;
-        self.server_disconnects = 0;
         self.session_end_reason = None;
         self.emit_event(SocketEvent::Connected { sid });
         let ended = self
@@ -503,15 +521,7 @@ impl Actor {
             self.recover_session().await;
             return;
         }
-        self.server_disconnects += 1;
-        if self.server_disconnects >= MAX_SERVER_DISCONNECT_RETRIES {
-            self.emit_event(SocketEvent::AuthLost { reason: None });
-            self.want = Want::Stopped;
-            return;
-        }
-        let delay = Duration::from_secs(1 << (self.server_disconnects - 1))
-            .min(MAX_SERVER_DISCONNECT_BACKOFF);
-        self.wait(delay).await;
+        self.wait(SERVER_DISCONNECT_DELAY).await;
     }
 
     /// `SocketProvider.recoverSession`: a fresh token is the only way back. Signs out only when
@@ -642,7 +652,9 @@ impl Actor {
 
     fn on_event(&mut self, name: String, payload: Value) {
         match name.as_str() {
-            TOKEN_EXPIRING if self.refresh_at.is_none() => {
+            TOKEN_EXPIRING
+                if self.refresh_at.is_none() && !self.refreshing.load(Ordering::SeqCst) =>
+            {
                 let jitter = self.config.token_refresh_jitter.as_secs_f64() * jitter_unit();
                 self.refresh_at = Some(Instant::now() + Duration::from_secs_f64(jitter));
             }
@@ -659,12 +671,18 @@ impl Actor {
 
     /// Refreshing can take seconds, and the socket must keep answering pings meanwhile.
     fn start_refresh(&self) {
+        if self.refreshing.swap(true, Ordering::SeqCst) {
+            return;
+        }
         let tokens = self.tokens.clone();
         let commands = self.commands.clone();
+        let refreshing = self.refreshing.clone();
         tokio::spawn(async move {
+            let refreshed = tokens.refresh().await;
+            refreshing.store(false, Ordering::SeqCst);
             // A failure is left to the expiry: the server ends the session and
             // `recover_session` refreshes again, as SocketProvider does.
-            if let Refresh::Refreshed(token) = tokens.refresh().await
+            if let Refresh::Refreshed(token) = refreshed
                 && let Some(commands) = commands.upgrade()
             {
                 let _ = commands.send(Command::TokenRefreshed(token));
@@ -681,6 +699,10 @@ impl Actor {
                 sent,
             } => {
                 let ack_id = ack.map(|ack| {
+                    // A caller that stopped waiting (`emit_with_ack` timed out) dropped its
+                    // receiver: its place goes, or each timeout would hold one until the socket
+                    // closed.
+                    self.pending.retain(|_, waiting| !waiting.is_closed());
                     self.next_ack_id += 1;
                     self.pending.insert(self.next_ack_id, ack);
                     self.next_ack_id
@@ -757,6 +779,11 @@ impl Actor {
                     .err()
                     .map(|_| Ended::Transport("transport error"))
             }
+            #[cfg(test)]
+            Command::PendingAcks(answer) => {
+                let _ = answer.send(self.pending.len());
+                None
+            }
         }
     }
 }
@@ -778,6 +805,15 @@ async fn next_frame(ws: &mut Ws) -> Option<Result<Frame, socketio::FrameError>> 
             Ok(_) => {}
         }
     }
+}
+
+/// The `attempts`th reconnect delay for a `jitter` in [0, 1): base times 2^attempts, spread by
+/// `randomization` either way, capped at the maximum.
+fn backoff_delay(config: &SocketConfig, attempts: u32, jitter: f64) -> Duration {
+    let exponential = config.reconnect_delay.as_secs_f64() * 2f64.powi(attempts.min(20) as i32);
+    let spread = (2.0 * jitter - 1.0) * config.randomization;
+    let delay = exponential * (1.0 + spread);
+    Duration::from_secs_f64(delay.min(config.reconnect_delay_max.as_secs_f64()))
 }
 
 /// Uniform in [0, 1). Backoff jitter needs spread, not quality, and this avoids a rand dependency.
@@ -1080,6 +1116,611 @@ mod tests {
             handshake(&auth),
             json!({ "token": "Bearer first", "protocol": 2 })
         );
+    }
+
+    /// A token source that answers refreshes from a script (then `Refreshed("fresh")`), counts
+    /// them, and can hold them until released.
+    #[derive(Default)]
+    struct ScriptedTokens {
+        token: std::sync::Mutex<String>,
+        script: std::sync::Mutex<std::collections::VecDeque<&'static str>>,
+        calls: std::sync::atomic::AtomicUsize,
+        gate: Option<tokio::sync::Semaphore>,
+    }
+
+    impl ScriptedTokens {
+        fn new(script: &[&'static str]) -> Arc<Self> {
+            Arc::new(Self {
+                token: std::sync::Mutex::new("first".into()),
+                script: std::sync::Mutex::new(script.iter().copied().collect()),
+                ..Self::default()
+            })
+        }
+
+        fn held() -> Arc<Self> {
+            Arc::new(Self {
+                token: std::sync::Mutex::new("first".into()),
+                gate: Some(tokio::sync::Semaphore::new(0)),
+                ..Self::default()
+            })
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl TokenSource for ScriptedTokens {
+        async fn access_token(&self) -> Option<String> {
+            Some(self.token.lock().unwrap().clone())
+        }
+        async fn refresh(&self) -> Refresh {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(gate) = &self.gate {
+                gate.acquire().await.unwrap().forget();
+            }
+            let next = self.script.lock().unwrap().pop_front();
+            match next {
+                Some("rejected") => Refresh::Rejected,
+                Some("unavailable") => Refresh::Unavailable,
+                _ => {
+                    *self.token.lock().unwrap() = "fresh".into();
+                    Refresh::Refreshed("fresh".into())
+                }
+            }
+        }
+    }
+
+    fn start_client(
+        listener: &TcpListener,
+        tokens: Arc<ScriptedTokens>,
+        tweak: impl FnOnce(&mut SocketConfig),
+    ) -> (SocketClient, mpsc::UnboundedReceiver<SocketEvent>) {
+        let mut config = SocketConfig::new(format!("http://{}", listener.local_addr().unwrap()));
+        config.reconnect_delay = Duration::from_millis(1);
+        config.presence_interval = Duration::from_secs(3600);
+        config.token_refresh_jitter = Duration::ZERO;
+        tweak(&mut config);
+        let (client, events) = SocketClient::start(config, tokens);
+        client.connect();
+        (client, events)
+    }
+
+    /// The WebSocket alone, with nothing sent.
+    async fn accept_raw(listener: &TcpListener) -> ServerWs {
+        let (stream, _) = timeout(Duration::from_secs(5), listener.accept())
+            .await
+            .expect("a connection")
+            .unwrap();
+        accept_async(stream).await.unwrap()
+    }
+
+    /// The Engine.IO open, then the client's auth packet.
+    async fn accept_opened(listener: &TcpListener) -> (ServerWs, String) {
+        let mut ws = accept_raw(listener).await;
+        ws.send(Message::text(
+            r#"0{"sid":"e1","upgrades":[],"pingInterval":25000,"pingTimeout":200}"#,
+        ))
+        .await
+        .unwrap();
+        let auth = next_text(&mut ws).await;
+        (ws, auth)
+    }
+
+    /// A handshake the middleware refuses with `message`. Returns the auth the client sent.
+    async fn accept_refusing(listener: &TcpListener, message: &str) -> String {
+        let (mut ws, auth) = accept_opened(listener).await;
+        ws.send(Message::text(format!(r#"44{{"message":"{message}"}}"#)))
+            .await
+            .unwrap();
+        auth
+    }
+
+    /// A handshake, and the two frames every connect sends.
+    async fn accept_live(listener: &TcpListener) -> (ServerWs, String) {
+        let (mut ws, auth) = accept(listener, 25_000).await;
+        next_text(&mut ws).await;
+        next_text(&mut ws).await;
+        (ws, auth)
+    }
+
+    async fn next_event(events: &mut mpsc::UnboundedReceiver<SocketEvent>) -> SocketEvent {
+        timeout(Duration::from_secs(5), events.recv())
+            .await
+            .expect("an event in time")
+            .expect("the actor is alive")
+    }
+
+    /// The next event `wanted` accepts, skipping others.
+    async fn event_where(
+        events: &mut mpsc::UnboundedReceiver<SocketEvent>,
+        wanted: impl Fn(&SocketEvent) -> bool,
+    ) -> SocketEvent {
+        loop {
+            let event = next_event(events).await;
+            if wanted(&event) {
+                return event;
+            }
+        }
+    }
+
+    /// No connection is made for a while: what "it doesn't come back" means in a test.
+    async fn assert_no_connection(listener: &TcpListener) {
+        assert!(
+            timeout(Duration::from_millis(300), listener.accept())
+                .await
+                .is_err(),
+            "the client connected again"
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_failed_with_a_refused_refresh_signs_out_and_stays_out() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tokens = ScriptedTokens::new(&["rejected"]);
+        let (client, mut events) = start_client(&listener, tokens.clone(), |_| {});
+
+        accept_refusing(&listener, "AUTH_FAILED").await;
+
+        assert_eq!(
+            next_event(&mut events).await,
+            SocketEvent::ConnectError {
+                message: "AUTH_FAILED".into()
+            }
+        );
+        assert_eq!(
+            next_event(&mut events).await,
+            SocketEvent::AuthLost { reason: None }
+        );
+        assert_eq!(tokens.calls(), 1);
+        assert_no_connection(&listener).await;
+        assert_eq!(
+            client.emit("x", Value::Null).await,
+            Err(EmitError::NotConnected)
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_lost_after_session_terminated_carries_the_servers_reason() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tokens = ScriptedTokens::new(&["rejected"]);
+        let (_client, mut events) = start_client(&listener, tokens, |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        ws.send(Message::text(
+            r#"42["sessionTerminated",{"reason":"REVOKED"}]"#,
+        ))
+        .await
+        .unwrap();
+        ws.send(Message::text("41")).await.unwrap();
+
+        let lost = event_where(&mut events, |event| {
+            matches!(event, SocketEvent::AuthLost { .. })
+        })
+        .await;
+        assert_eq!(
+            lost,
+            SocketEvent::AuthLost {
+                reason: Some("REVOKED".into())
+            }
+        );
+        assert_no_connection(&listener).await;
+    }
+
+    #[tokio::test]
+    async fn auth_failed_with_an_unreachable_refresh_retries_then_reconnects_with_the_new_token() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tokens = ScriptedTokens::new(&["unavailable"]);
+        let (_client, mut events) = start_client(&listener, tokens.clone(), |_| {});
+
+        assert_eq!(
+            handshake(&accept_refusing(&listener, "AUTH_FAILED").await)["token"],
+            "Bearer first"
+        );
+        // The first refresh fails, the one a second later works, and then it connects.
+        let (_ws, auth) = accept_live(&listener).await;
+
+        assert_eq!(handshake(&auth)["token"], "Bearer fresh");
+        assert_eq!(tokens.calls(), 2);
+        assert!(matches!(
+            event_where(&mut events, |event| matches!(
+                event,
+                SocketEvent::Connected { .. } | SocketEvent::AuthLost { .. }
+            ))
+            .await,
+            SocketEvent::Connected { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_refusal_other_than_auth_backs_off_without_a_refresh() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tokens = ScriptedTokens::new(&[]);
+        let (_client, mut events) = start_client(&listener, tokens.clone(), |_| {});
+
+        accept_refusing(&listener, "RATE_LIMITED").await;
+        assert_eq!(
+            next_event(&mut events).await,
+            SocketEvent::ConnectError {
+                message: "RATE_LIMITED".into()
+            }
+        );
+        let (_ws, auth) = accept_live(&listener).await;
+
+        assert_eq!(handshake(&auth)["token"], "Bearer first");
+        assert_eq!(tokens.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_server_disconnect_without_a_reason_waits_a_second_each_time_and_never_signs_out() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tokens = ScriptedTokens::new(&[]);
+        let (_client, mut events) = start_client(&listener, tokens.clone(), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        // More than the three the web's dead cap would have allowed.
+        for _ in 0..4 {
+            ws.send(Message::text("41")).await.unwrap();
+            let cut = Instant::now();
+            ws = accept_live(&listener).await.0;
+            let waited = cut.elapsed();
+            assert!(
+                (Duration::from_millis(900)..Duration::from_secs(3)).contains(&waited),
+                "{waited:?}"
+            );
+        }
+
+        let mut seen = Vec::new();
+        while let Ok(event) = events.try_recv() {
+            seen.push(event);
+        }
+        assert!(
+            !seen
+                .iter()
+                .any(|event| matches!(event, SocketEvent::AuthLost { .. }))
+        );
+        assert_eq!(
+            seen.iter()
+                .filter(|event| **event
+                    == SocketEvent::Disconnected {
+                        reason: "io server disconnect".into()
+                    })
+                .count(),
+            4
+        );
+        assert_eq!(
+            tokens.calls(),
+            0,
+            "a plain disconnect is no reason to refresh"
+        );
+    }
+
+    #[tokio::test]
+    async fn disconnect_says_goodbye_and_does_not_come_back() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        client.disconnect();
+
+        assert_eq!(next_text(&mut ws).await, "41");
+        assert_eq!(
+            event_where(&mut events, |event| matches!(
+                event,
+                SocketEvent::Disconnected { .. }
+            ))
+            .await,
+            SocketEvent::Disconnected {
+                reason: "io client disconnect".into()
+            }
+        );
+        assert_no_connection(&listener).await;
+        assert_eq!(
+            client.emit("x", Value::Null).await,
+            Err(EmitError::NotConnected)
+        );
+        // And connect brings it back.
+        client.connect();
+        accept_live(&listener).await;
+    }
+
+    #[tokio::test]
+    async fn a_bad_frame_is_reported_and_the_session_carries_on() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+        assert!(matches!(
+            next_event(&mut events).await,
+            SocketEvent::Connected { .. }
+        ));
+
+        for bad in ["42{not json", "451-[\"x\"]", "9", "42/admin,[\"x\"]"] {
+            ws.send(Message::text(bad)).await.unwrap();
+            let SocketEvent::ConnectError { message } = next_event(&mut events).await else {
+                panic!("{bad:?} was not reported");
+            };
+            assert!(message.starts_with("bad frame"), "{message}");
+        }
+        // A binary frame isn't an event either.
+        ws.send(Message::binary(vec![1, 2, 3])).await.unwrap();
+        ws.send(Message::text(r#"42["after",1]"#)).await.unwrap();
+
+        assert_eq!(
+            next_event(&mut events).await,
+            SocketEvent::Event {
+                name: "after".into(),
+                payload: json!(1)
+            }
+        );
+        assert_no_connection(&listener).await;
+    }
+
+    #[tokio::test]
+    async fn a_bad_engine_open_fails_the_attempt_and_the_next_one_connects() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+
+        let mut ws = accept_raw(&listener).await;
+        ws.send(Message::text(r#"0{"sid":"e1"}"#)).await.unwrap();
+        let SocketEvent::ConnectError { message } = next_event(&mut events).await else {
+            panic!("no connect error");
+        };
+        assert!(message.starts_with("expected engine open"), "{message}");
+
+        accept_live(&listener).await;
+    }
+
+    #[tokio::test]
+    async fn an_event_before_the_namespace_connect_fails_the_attempt() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+
+        let (mut ws, _) = accept_opened(&listener).await;
+        ws.send(Message::text(r#"42["early",1]"#)).await.unwrap();
+        let SocketEvent::ConnectError { message } = next_event(&mut events).await else {
+            panic!("no connect error");
+        };
+        assert!(message.starts_with("expected connect"), "{message}");
+
+        accept_live(&listener).await;
+    }
+
+    #[tokio::test]
+    async fn a_ping_during_the_handshake_is_answered() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+
+        let (mut ws, _) = accept_opened(&listener).await;
+        ws.send(Message::text("2")).await.unwrap();
+        assert_eq!(next_text(&mut ws).await, "3");
+        ws.send(Message::text("6")).await.unwrap();
+        ws.send(Message::text(r#"40{"sid":"s9"}"#)).await.unwrap();
+
+        assert_eq!(
+            next_event(&mut events).await,
+            SocketEvent::Connected { sid: "s9".into() }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_server_that_never_opens_times_out() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |config| {
+            config.connect_timeout = Duration::from_millis(100);
+        });
+
+        let _silent = accept_raw(&listener).await;
+
+        assert_eq!(
+            next_event(&mut events).await,
+            SocketEvent::ConnectError {
+                message: "timeout".into()
+            }
+        );
+        accept_live(&listener).await;
+    }
+
+    #[tokio::test]
+    async fn an_engine_close_or_a_websocket_close_reconnects() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+
+        let (mut ws, _) = accept_live(&listener).await;
+        ws.send(Message::text("1")).await.unwrap();
+        let (mut ws, _) = accept_live(&listener).await;
+        ws.close(None).await.unwrap();
+        accept_live(&listener).await;
+
+        let mut reasons = Vec::new();
+        while reasons.len() < 2 {
+            if let SocketEvent::Disconnected { reason } = next_event(&mut events).await {
+                reasons.push(reason);
+            }
+        }
+        assert_eq!(reasons, ["transport close", "transport close"]);
+    }
+
+    #[tokio::test]
+    async fn restart_transport_drops_the_socket_and_connects_again() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        client.restart_transport();
+
+        // No goodbye: the old socket just ends.
+        let ended = timeout(Duration::from_secs(5), ws.next()).await.unwrap();
+        assert!(
+            !matches!(&ended, Some(Ok(Message::Text(text))) if text.as_str() == "41"),
+            "{ended:?}"
+        );
+        accept_live(&listener).await;
+        assert_eq!(
+            event_where(&mut events, |event| matches!(
+                event,
+                SocketEvent::Disconnected { .. }
+            ))
+            .await,
+            SocketEvent::Disconnected {
+                reason: "transport close".into()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_late_or_unknown_ack_changes_nothing() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, mut events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        let gave_up = client
+            .emit_with_ack("slow", json!({}), Duration::from_millis(20))
+            .await;
+        assert_eq!(gave_up, Err(EmitError::Timeout));
+        assert_eq!(next_text(&mut ws).await, r#"421["slow",{}]"#);
+        ws.send(Message::text(r#"431["late"]"#)).await.unwrap();
+        ws.send(Message::text(r#"43999["unknown"]"#)).await.unwrap();
+
+        // The next call gets its own answer, not a stale one.
+        let call = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .emit_with_ack("next", json!({}), Duration::from_secs(5))
+                    .await
+            }
+        });
+        assert_eq!(next_text(&mut ws).await, r#"422["next",{}]"#);
+        ws.send(Message::text(r#"432["mine"]"#)).await.unwrap();
+        assert_eq!(call.await.unwrap(), Ok(vec![json!("mine")]));
+        assert!(matches!(
+            next_event(&mut events).await,
+            SocketEvent::Connected { .. }
+        ));
+        assert!(events.try_recv().is_err(), "an ack is not an event");
+    }
+
+    #[tokio::test]
+    async fn acks_that_timed_out_are_not_kept() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, _events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        for _ in 0..3 {
+            let result = client
+                .emit_with_ack("slow", json!({}), Duration::from_millis(10))
+                .await;
+            assert_eq!(result, Err(EmitError::Timeout));
+            next_text(&mut ws).await;
+        }
+        let waiting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .emit_with_ack("waiting", json!({}), Duration::from_secs(5))
+                    .await
+            }
+        });
+        next_text(&mut ws).await;
+
+        // Only the call still waiting holds a place.
+        assert_eq!(client.pending_acks().await, 1);
+        ws.send(Message::text(r#"434["ok"]"#)).await.unwrap();
+        assert_eq!(waiting.await.unwrap(), Ok(vec![json!("ok")]));
+        assert_eq!(client.pending_acks().await, 0);
+    }
+
+    #[tokio::test]
+    async fn a_second_token_expiring_during_a_refresh_does_not_start_another() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tokens = ScriptedTokens::held();
+        let (_client, mut events) = start_client(&listener, tokens.clone(), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        ws.send(Message::text(r#"42["tokenExpiring",{"expiresAt":1}]"#))
+            .await
+            .unwrap();
+        for _ in 0..500 {
+            if tokens.calls() == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(tokens.calls(), 1, "the first refresh started");
+        ws.send(Message::text(r#"42["tokenExpiring",{"expiresAt":1}]"#))
+            .await
+            .unwrap();
+        // Both reached the actor.
+        for _ in 0..2 {
+            event_where(
+                &mut events,
+                |event| matches!(event, SocketEvent::Event { name, .. } if name == TOKEN_EXPIRING),
+            )
+            .await;
+        }
+        ws.send(Message::text("2")).await.unwrap();
+        assert_eq!(next_text(&mut ws).await, "3");
+        // A second refresh would start within a few ticks of the actor's loop.
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            assert_eq!(tokens.calls(), 1, "a second refresh started");
+        }
+        tokens.gate.as_ref().unwrap().add_permits(2);
+        assert_eq!(
+            next_text(&mut ws).await,
+            r#"421["reauthenticate",{"token":"Bearer fresh"}]"#
+        );
+        // A tokenExpiring after it finished refreshes again.
+        ws.send(Message::text(r#"42["tokenExpiring",{"expiresAt":2}]"#))
+            .await
+            .unwrap();
+        assert_eq!(
+            next_text(&mut ws).await,
+            r#"422["reauthenticate",{"token":"Bearer fresh"}]"#
+        );
+        assert_eq!(tokens.calls(), 2);
+    }
+
+    #[test]
+    fn backoff_doubles_from_the_base_and_stops_at_the_cap() {
+        let mut config = SocketConfig::new("http://x");
+        config.randomization = 0.0;
+        let delays: Vec<u64> = (0..8)
+            .map(|attempts| backoff_delay(&config, attempts, 0.5).as_millis() as u64)
+            .collect();
+        assert_eq!(
+            delays,
+            [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000, 30_000]
+        );
+        // However many attempts: the exponent stops growing, and nothing overflows.
+        assert_eq!(
+            backoff_delay(&config, u32::MAX, 0.5),
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn backoff_jitter_spreads_by_the_randomization_either_way() {
+        let config = SocketConfig::new("http://x");
+        // Randomization 0.5: from half to one and a half times the step.
+        assert_eq!(backoff_delay(&config, 1, 0.0), Duration::from_millis(1_000));
+        assert_eq!(backoff_delay(&config, 1, 0.5), Duration::from_millis(2_000));
+        assert_eq!(backoff_delay(&config, 1, 0.999_999).as_millis(), 2_999);
+        // Spread never lifts a delay past the cap.
+        assert_eq!(
+            backoff_delay(&config, 5, 0.999_999),
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn backoff_with_a_zero_base_is_zero() {
+        let mut config = SocketConfig::new("http://x");
+        config.reconnect_delay = Duration::ZERO;
+        for attempts in [0, 1, 30] {
+            assert_eq!(backoff_delay(&config, attempts, 0.9), Duration::ZERO);
+        }
     }
 
     #[test]

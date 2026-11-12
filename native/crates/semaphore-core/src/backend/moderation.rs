@@ -54,4 +54,66 @@ pub trait ModerationBackend: Send + Sync {
     ) -> BackendResult<wire::SuccessMessageDto> {
         Err(unsupported("kicking a member"))
     }
+    /// W5.
+    async fn moderation_controller_ban_user(
+        &self,
+        _community_id: String,
+        _user_id: String,
+        _body: wire::ModerationBanUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        Err(unsupported("banning a member"))
+    }
+    async fn moderation_controller_unban_user(
+        &self,
+        _community_id: String,
+        _user_id: String,
+        _body: wire::UnbanUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        Err(unsupported("lifting a ban"))
+    }
+    async fn moderation_controller_get_ban_list(
+        &self,
+        _community_id: String,
+    ) -> BackendResult<Vec<wire::CommunityBanDto>> {
+        Err(unsupported("listing bans"))
+    }
+    async fn moderation_controller_timeout_user(
+        &self,
+        _community_id: String,
+        _user_id: String,
+        _body: wire::TimeoutUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        Err(unsupported("timing out a member"))
+    }
+    async fn moderation_controller_remove_timeout(
+        &self,
+        _community_id: String,
+        _user_id: String,
+        _body: wire::RemoveTimeoutDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        Err(unsupported("lifting a timeout"))
+    }
+    async fn moderation_controller_get_timeout_list(
+        &self,
+        _community_id: String,
+    ) -> BackendResult<Vec<wire::CommunityTimeoutDto>> {
+        Err(unsupported("listing timeouts"))
+    }
+    async fn moderation_controller_get_timeout_status(
+        &self,
+        _community_id: String,
+        _user_id: String,
+    ) -> BackendResult<wire::TimeoutStatusResponseDto> {
+        Err(unsupported("reading a timeout"))
+    }
+    /// Newest first. `action` is a `ModerationAction` wire name.
+    async fn moderation_controller_get_moderation_logs(
+        &self,
+        _community_id: String,
+        _action: Option<String>,
+        _limit: Option<i64>,
+        _offset: Option<i64>,
+    ) -> BackendResult<wire::ModerationLogsResponseDto> {
+        Err(unsupported("reading the moderation log"))
+    }
 }

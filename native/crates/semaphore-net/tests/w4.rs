@@ -373,6 +373,8 @@ async fn a_moderator_mutes_someone_and_a_mute_on_me_holds_my_mic() {
 #[tokio::test]
 async fn kicking_a_member_sends_the_reason() {
     let server = server().await;
+    // W5: kicking needs a role that outranks theirs; `me` is only a Member there.
+    server.act_as(&id("c-couch"), None, &["role-community-admin-c-couch"]);
     let client = signed_in(&server).await;
     client
         .core

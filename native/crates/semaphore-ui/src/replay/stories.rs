@@ -5,6 +5,7 @@
 use super::model::{Handle, PickOption};
 use super::{CaptureReplayDialog, CaptureTarget, ClipLibrary, DestinationKind, ShareClipDialog};
 use crate::dms::stories::dialog_framed;
+use crate::messages::TimeFormat;
 use crate::player::Players;
 use crate::player::fake::{FakeOpener, Script};
 use crate::stories::Story;
@@ -198,6 +199,7 @@ impl Library {
         let players = Players::new(opener, VideoFrames::for_window(window));
         cx.new(|cx| {
             let mut library = ClipLibrary::new(self.own, Some(players), cx);
+            library.set_time(TimeFormat::fixed(CAPTURED), cx);
             library.set_view(self.view, cx);
             library.set_downloading(self.downloading, cx);
             if let Some((id, asked)) = self.confirm {

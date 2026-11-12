@@ -4,6 +4,7 @@ use super::{FriendsEvent, FriendsPanel, FriendsTab, RequestsTab};
 use crate::dms::face::user_face;
 use crate::dms::names::user_name;
 use crate::kit::{Button, ButtonSize, Skeleton, Tabs, Variant, spacing, text};
+use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, empty_block, error_block, icon_button, is_phone};
 use crate::theme::SemTheme;
 use gpui_kit::base;
@@ -15,16 +16,15 @@ use semaphore_design::Icon as DesignIcon;
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
-/// `FriendRequestCard`'s `formatDate`: "Today", "Yesterday", "3 days ago", then the date.
-pub fn request_date(now_ms: i64, sent_at_ms: i64) -> String {
+/// `FriendRequestCard`'s `formatDate`: "Today", "Yesterday", "3 days ago", then the date in
+/// `time`'s zone.
+pub fn request_date(time: &TimeFormat, now_ms: i64, sent_at_ms: i64) -> String {
     let days = (now_ms - sent_at_ms).max(0) / DAY_MS;
     match days {
         0 => "Today".to_owned(),
         1 => "Yesterday".to_owned(),
         days if days < 7 => format!("{days} days ago"),
-        _ => chrono::DateTime::from_timestamp_millis(sent_at_ms)
-            .map(|date| date.format("%-m/%-d/%Y").to_string())
-            .unwrap_or_default(),
+        _ => time.format_at(sent_at_ms, "%-m/%-d/%Y"),
     }
 }
 
@@ -223,7 +223,7 @@ impl FriendsPanel {
         let name = user_name(&row.user);
         let id = row.friendship_id.clone();
         let busy = row.busy;
-        let when = request_date(now_ms, row.sent_at_ms);
+        let when = request_date(&self.time, now_ms, row.sent_at_ms);
         let secondary = if incoming {
             format!("Sent {when}")
         } else {

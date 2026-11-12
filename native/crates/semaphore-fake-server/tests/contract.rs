@@ -194,13 +194,6 @@ async fn every_implemented_route_matches_openapi() {
             schema: schemas.component("LoginResponseDto"),
         },
         Case {
-            method: reqwest::Method::POST,
-            path: "/api/auth/logout".to_owned(),
-            body: Some(json!({})),
-            status: 201,
-            schema: schemas.component("LogoutResponseDto"),
-        },
-        Case {
             method: reqwest::Method::GET,
             path: "/api/users/profile".to_owned(),
             body: None,
@@ -597,6 +590,35 @@ async fn every_implemented_route_matches_openapi() {
     );
 
     assert_routes_are_implemented(&schemas, &client, &base).await;
+
+    // Signing out last, because it ends the session: 201 with the contract's reply, then the token
+    // that asked is refused, as the backend's blacklisting makes it.
+    let (status, body) = request(
+        &client,
+        reqwest::Method::POST,
+        &base,
+        "/api/auth/logout",
+        Some(json!({})),
+        true,
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("LogoutResponseDto"),
+        &body,
+        "logout",
+    );
+    let (status, body) = request(
+        &client,
+        reqwest::Method::GET,
+        &base,
+        "/api/users/profile",
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, 401, "the signed-out token still works: {body}");
 }
 
 async fn file_bytes(client: &reqwest::Client, base: &str, path: &str) -> Vec<u8> {
@@ -834,13 +856,14 @@ fn uuid(n: u128) -> String {
 
 /// A route the fake does not implement names itself in its 501.
 async fn assert_routes_are_implemented(_schemas: &Schemas, client: &reqwest::Client, base: &str) {
-    let (status, body) = get(client, base, "/api/roles/community/community-1").await;
+    // W5-B serves community roles now; instance roles are W6's.
+    let (status, body) = get(client, base, "/api/roles/instance/all").await;
     assert_eq!(status, 501, "{body}");
     assert!(
         body["message"]
             .as_str()
             .unwrap_or_default()
-            .contains("/api/roles/community/community-1"),
+            .contains("/api/roles/instance/all"),
         "{body}"
     );
 }
@@ -1811,6 +1834,12 @@ async fn w4_voice_routes_match_openapi_and_socket_events() {
     use reqwest::Method as M;
     let schemas = Schemas::load();
     let server = start("showcase").await;
+    // W5: kicking needs a role that outranks theirs; `me` is only a Member in c-couch.
+    server.act_as(
+        &semaphore_fake_server::entity_uuid("c-couch"),
+        None,
+        &["role-community-admin-c-couch"],
+    );
     let base = server.base_url();
     let client = http();
     let id = |readable: &str| semaphore_fake_server::entity_uuid(readable);

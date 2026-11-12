@@ -58,4 +58,5 @@ windows = { version = "=0.62.2", features = [
 ] }
 
 [dev-dependencies]
+proptest.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }

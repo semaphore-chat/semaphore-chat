@@ -539,16 +539,97 @@ pub async fn write_file(path: std::path::PathBuf, bytes: Vec<u8>) -> Result<(), 
         .map_err(|e| e.to_string())?
 }
 
-/// A server's file name, made safe to suggest in a save dialog: the last path component only, no
-/// leading dots, no control characters, at most 100 characters.
+/// File types the OS would run, install or follow rather than show: never handed to its opener.
+/// One list for every platform, since a file can come from anyone.
+const RUN_NOT_SHOWN: &[&str] = &[
+    "exe", "msi", "bat", "cmd", "com", "scr", "pif", "ps1", "vbs", "js", "jse", "wsf", "hta",
+    "lnk", "url", "reg", "jar", "sh", "run", "bin", "appimage", "desktop", "deb", "rpm",
+];
+
+/// Whether an attachment called `name` may go to the OS's default app. Programs, scripts,
+/// installers and shortcuts may not, and nor may a name with no extension, which the OS would
+/// judge by content: those are saved instead. Judged on the name as it would be written, so
+/// trailing dots and direction marks can't hide the real extension.
+pub fn may_open_with_the_os(name: &str) -> bool {
+    let safe = safe_file_name(name);
+    match safe.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() && !extension.is_empty() => {
+            let extension = extension.to_ascii_lowercase();
+            !RUN_NOT_SHOWN.contains(&extension.as_str())
+        }
+        _ => false,
+    }
+}
+
+/// Characters that change how a name reads without being seen: direction overrides and
+/// isolates (which can make `fdp.exe` read as `exe.pdf`), marks, zero-width spaces, BOMs. Not
+/// the zero-width joiner and non-joiner: emoji and several scripts need them.
+fn is_invisible(c: char) -> bool {
+    matches!(c,
+        '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{200B}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}'
+        | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
+}
+
+/// Names Windows keeps for devices, whatever their extension: `NUL.txt` is the null device.
+fn is_device_name(name: &str) -> bool {
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end()
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.len() == 4
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+}
+
+/// At most `most` graphemes, keeping a short extension: `long-name….pdf` stays a PDF, and no
+/// character made of several code points is split.
+fn bounded(name: &str, most: usize) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    if name.graphemes(true).count() <= most {
+        return name.to_owned();
+    }
+    let extension = name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension)
+        .filter(|extension| !extension.is_empty() && extension.graphemes(true).count() <= 16);
+    match extension {
+        Some(extension) => {
+            let keep = most - extension.graphemes(true).count() - 1;
+            let stem: String = name.graphemes(true).take(keep).collect();
+            format!("{stem}.{extension}")
+        }
+        None => name.graphemes(true).take(most).collect(),
+    }
+}
+
+/// A server's file name, made safe to suggest in a save dialog or write: the last path component
+/// only, no leading dots, no trailing dots or spaces (Windows drops them, so `a.exe.` is
+/// `a.exe`), no control or invisible characters, not a Windows device name, at most 100
+/// graphemes with its extension kept.
 pub fn safe_file_name(name: &str) -> String {
     let last = name.rsplit(['/', '\\']).next().unwrap_or_default();
     let cleaned: String = last
         .chars()
-        .filter(|c| !c.is_control() && !matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .filter(|c| {
+            !c.is_control()
+                && !is_invisible(*c)
+                && !matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
         .collect();
-    let trimmed = cleaned.trim().trim_start_matches('.').trim();
-    let bounded: String = trimmed.chars().take(100).collect();
+    let trimmed = cleaned
+        .trim()
+        .trim_start_matches('.')
+        .trim_end_matches(['.', ' '])
+        .trim();
+    let named = if is_device_name(trimmed) {
+        format!("_{trimmed}")
+    } else {
+        trimmed.to_owned()
+    };
+    let bounded = bounded(&named, 100);
     if bounded.is_empty() {
         "download".into()
     } else {
@@ -642,6 +723,118 @@ mod tests {
         assert_eq!(safe_file_name("..."), "download");
         assert_eq!(safe_file_name("a\u{0}b?.txt"), "ab.txt");
         assert_eq!(safe_file_name(&"x".repeat(300)).chars().count(), 100);
+    }
+
+    #[test]
+    fn windows_device_names_are_not_saved_as_themselves() {
+        for (name, safe) in [
+            ("CON", "_CON"),
+            ("nul.txt", "_nul.txt"),
+            ("Com1.tar.gz", "_Com1.tar.gz"),
+            ("lpt9", "_lpt9"),
+            ("AUX ", "_AUX"),
+            ("prn .txt", "_prn .txt"),
+            ("COM10.txt", "COM10.txt"),
+            ("console.txt", "console.txt"),
+            ("nullable", "nullable"),
+        ] {
+            assert_eq!(safe_file_name(name), safe, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn trailing_dots_and_spaces_go_as_windows_would_drop_them() {
+        for (name, safe) in [
+            ("report.pdf.", "report.pdf"),
+            ("report.pdf .  ", "report.pdf"),
+            ("a.exe. . .", "a.exe"),
+            ("   spaced name.txt  ", "spaced name.txt"),
+        ] {
+            assert_eq!(safe_file_name(name), safe, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn invisible_and_direction_marks_are_stripped() {
+        for (name, safe) in [
+            ("invoice\u{202E}fdp.exe", "invoicefdp.exe"),
+            ("\u{2066}a\u{2069}.txt", "a.txt"),
+            ("\u{2067}\u{2068}b.txt", "b.txt"),
+            ("a\u{200E}\u{200F}b", "ab"),
+            ("a\u{200B}b\u{FEFF}", "ab"),
+            ("\u{061C}c\u{202A}\u{202B}\u{202C}\u{202D}", "c"),
+        ] {
+            assert_eq!(safe_file_name(name), safe, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn a_long_name_is_cut_before_its_extension_and_between_characters() {
+        let long = format!("{}.pdf", "x".repeat(300));
+        let safe = safe_file_name(&long);
+        assert_eq!(safe.chars().count(), 100);
+        assert!(safe.ends_with(".pdf"), "{safe}");
+
+        // A grapheme of several code points is kept whole or not at all.
+        let coder = "\u{1F469}\u{200D}\u{1F4BB}";
+        assert_eq!(safe_file_name(&coder.repeat(150)), coder.repeat(100));
+        let accented = "e\u{301}";
+        assert_eq!(safe_file_name(&accented.repeat(150)), accented.repeat(100));
+
+        // An "extension" too long to be one is cut like the rest of the name.
+        let odd = format!("a.{}", "b".repeat(300));
+        assert_eq!(safe_file_name(&odd).chars().count(), 100);
+    }
+
+    #[test]
+    fn only_documents_and_media_open_with_the_os() {
+        for name in [
+            "report.pdf",
+            "photo.JPG",
+            "a.exe.pdf",
+            "song.mp3",
+            "notes.txt",
+            "clip.webm",
+        ] {
+            assert!(may_open_with_the_os(name), "{name:?} was refused");
+        }
+        for name in [
+            "setup.exe",
+            "SETUP.EXE",
+            "a.pdf.exe",
+            "installer.msi",
+            "x.bat",
+            "x.cmd",
+            "x.com",
+            "x.scr",
+            "x.pif",
+            "x.ps1",
+            "x.vbs",
+            "x.js",
+            "x.JSE",
+            "x.wsf",
+            "x.hta",
+            "evil.lnk",
+            "x.url",
+            "x.reg",
+            "x.jar",
+            "run.Sh",
+            "x.run",
+            "x.bin",
+            "x.AppImage",
+            "app.desktop",
+            "pkg.deb",
+            "pkg.rpm",
+            "noextension",
+            ".exe",
+            "x.",
+            "trailing.exe.",
+            "trailing.exe .",
+            "invoice\u{202E}fdp.exe",
+            "CON.exe",
+        ] {
+            assert!(!may_open_with_the_os(name), "{name:?} would be opened");
+        }
     }
 
     /// One canned HTTP answer per connection, for the fetcher's limits.

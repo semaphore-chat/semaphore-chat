@@ -364,7 +364,10 @@ impl Shell {
             | CoreEvent::Notify { .. }
             | CoreEvent::WithdrawNotifications { .. }
             | CoreEvent::DesktopSignedIn { .. }
-            | CoreEvent::Sound { .. } => {}
+            | CoreEvent::Sound { .. }
+            // W5-app routes these (the removal dialog, leaving a removed channel).
+            | CoreEvent::CommunityRemoved { .. }
+            | CoreEvent::ChannelRemoved { .. } => {}
         }
         cx.notify();
     }

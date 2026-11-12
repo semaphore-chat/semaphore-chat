@@ -7,6 +7,8 @@ mod compose;
 mod js;
 mod link;
 mod mention;
+#[cfg(test)]
+mod props;
 mod shortcuts;
 #[cfg(test)]
 mod vectors;

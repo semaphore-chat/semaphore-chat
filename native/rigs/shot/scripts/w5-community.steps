@@ -1,0 +1,645 @@
+# W5 community settings: the shell for owner, admin, moderator and member, then every tab's states and dialogs,
+# each on a desktop (dark) and a phone (light), then a few in another theme.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w5-community.steps
+story community-settings-owner 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-owner-desktop
+story community-settings-owner 390 844 light-blue-balanced
+wait idle
+shot w5-community-owner-phone
+story community-settings-admin 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-admin-desktop
+story community-settings-admin 390 844 light-blue-balanced
+wait idle
+shot w5-community-admin-phone
+story community-settings-moderator 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-moderator-desktop
+story community-settings-moderator 390 844 light-blue-balanced
+wait idle
+shot w5-community-moderator-phone
+story community-settings-member 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-member-desktop
+story community-settings-member 390 844 light-blue-balanced
+wait idle
+shot w5-community-member-phone
+story community-settings-member-locked-tab 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-member-locked-tab-desktop
+story community-settings-member-locked-tab 390 844 light-blue-balanced
+wait idle
+shot w5-community-member-locked-tab-phone
+story community-settings-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-loading-desktop
+story community-settings-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-loading-phone
+story community-settings-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-failed-desktop
+story community-settings-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-failed-phone
+story community-settings-roles-slot 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-roles-slot-desktop
+story community-settings-roles-slot 390 844 light-blue-balanced
+wait idle
+shot w5-community-roles-slot-phone
+story community-settings-members-open 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-open-desktop
+story community-settings-members-open 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-open-phone
+story community-settings-overview-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-loading-desktop
+story community-settings-overview-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-loading-phone
+story community-settings-overview-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-failed-desktop
+story community-settings-overview-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-failed-phone
+story community-settings-overview 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-desktop
+story community-settings-overview 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-phone
+story community-settings-overview-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-long-desktop
+story community-settings-overview-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-long-phone
+story community-settings-overview-picked 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-picked-desktop
+story community-settings-overview-picked 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-picked-phone
+story community-settings-overview-uploading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-uploading-desktop
+story community-settings-overview-uploading 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-uploading-phone
+story community-settings-overview-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-error-desktop
+story community-settings-overview-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-error-phone
+story community-settings-overview-invalid 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-invalid-desktop
+story community-settings-overview-invalid 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-invalid-phone
+story community-settings-overview-pick-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-pick-error-desktop
+story community-settings-overview-pick-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-pick-error-phone
+story community-settings-overview-readonly 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-readonly-desktop
+story community-settings-overview-readonly 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-readonly-phone
+story community-settings-overview-delete 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-delete-desktop
+story community-settings-overview-delete 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-delete-phone
+story community-settings-overview-delete-matched 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-delete-matched-desktop
+story community-settings-overview-delete-matched 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-delete-matched-phone
+story community-settings-overview-delete-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-delete-busy-desktop
+story community-settings-overview-delete-busy 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-delete-busy-phone
+story community-settings-overview-delete-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-overview-delete-error-desktop
+story community-settings-overview-delete-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-overview-delete-error-phone
+story community-settings-members-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-loading-desktop
+story community-settings-members-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-loading-phone
+story community-settings-members-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-empty-desktop
+story community-settings-members-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-empty-phone
+story community-settings-members 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-desktop
+story community-settings-members 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-phone
+story community-settings-members-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-long-desktop
+story community-settings-members-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-long-phone
+story community-settings-members-search 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-search-desktop
+story community-settings-members-search 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-search-phone
+story community-settings-members-search-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-search-empty-desktop
+story community-settings-members-search-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-search-empty-phone
+story community-settings-members-search-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-search-failed-desktop
+story community-settings-members-search-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-search-failed-phone
+story community-settings-members-add-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-add-error-desktop
+story community-settings-members-add-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-add-error-phone
+story community-settings-members-moderator 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-members-moderator-desktop
+story community-settings-members-moderator 390 844 light-blue-balanced
+wait idle
+shot w5-community-members-moderator-phone
+story community-settings-channels-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-loading-desktop
+story community-settings-channels-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-loading-phone
+story community-settings-channels-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-failed-desktop
+story community-settings-channels-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-failed-phone
+story community-settings-channels-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-empty-desktop
+story community-settings-channels-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-empty-phone
+story community-settings-channels 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-desktop
+story community-settings-channels 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-phone
+story community-settings-channels-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-long-desktop
+story community-settings-channels-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-long-phone
+story community-settings-channels-moving 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-moving-desktop
+story community-settings-channels-moving 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-moving-phone
+story community-settings-channels-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-error-desktop
+story community-settings-channels-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-error-phone
+story community-settings-channels-overlap 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-overlap-desktop
+story community-settings-channels-overlap 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-overlap-phone
+story community-settings-channels-readonly 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-readonly-desktop
+story community-settings-channels-readonly 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-readonly-phone
+story community-settings-channels-create 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-create-desktop
+story community-settings-channels-create 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-create-phone
+story community-settings-channels-create-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-create-busy-desktop
+story community-settings-channels-create-busy 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-create-busy-phone
+story community-settings-channels-create-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-create-error-desktop
+story community-settings-channels-create-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-create-error-phone
+story community-settings-channels-edit 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-desktop
+story community-settings-channels-edit 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-phone
+story community-settings-channels-edit-webhooks-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-empty-desktop
+story community-settings-channels-edit-webhooks-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-empty-phone
+story community-settings-channels-edit-webhooks-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-loading-desktop
+story community-settings-channels-edit-webhooks-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-loading-phone
+story community-settings-channels-edit-webhooks-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-failed-desktop
+story community-settings-channels-edit-webhooks-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-failed-phone
+story community-settings-channels-edit-webhook-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhook-error-desktop
+story community-settings-channels-edit-webhook-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhook-error-phone
+story community-settings-channels-edit-webhooks-locked 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-locked-desktop
+story community-settings-channels-edit-webhooks-locked 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-webhooks-locked-phone
+story community-settings-channels-edit-voice 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-voice-desktop
+story community-settings-channels-edit-voice 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-voice-phone
+story community-settings-channels-edit-permissions 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-edit-permissions-desktop
+story community-settings-channels-edit-permissions 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-edit-permissions-phone
+story community-settings-channels-webhook-created 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-webhook-created-desktop
+story community-settings-channels-webhook-created 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-webhook-created-phone
+story community-settings-channels-delete 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-channels-delete-desktop
+story community-settings-channels-delete 390 844 light-blue-balanced
+wait idle
+shot w5-community-channels-delete-phone
+story community-settings-private-none 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-none-desktop
+story community-settings-private-none 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-none-phone
+story community-settings-private-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-loading-desktop
+story community-settings-private-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-loading-phone
+story community-settings-private-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-failed-desktop
+story community-settings-private-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-failed-phone
+story community-settings-private 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-desktop
+story community-settings-private 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-phone
+story community-settings-private-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-empty-desktop
+story community-settings-private-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-empty-phone
+story community-settings-private-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-long-desktop
+story community-settings-private-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-long-phone
+story community-settings-private-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-busy-desktop
+story community-settings-private-busy 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-busy-phone
+story community-settings-private-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-private-error-desktop
+story community-settings-private-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-private-error-phone
+story community-settings-groups-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-loading-desktop
+story community-settings-groups-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-loading-phone
+story community-settings-groups-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-failed-desktop
+story community-settings-groups-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-failed-phone
+story community-settings-groups-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-empty-desktop
+story community-settings-groups-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-empty-phone
+story community-settings-groups 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-desktop
+story community-settings-groups 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-phone
+story community-settings-groups-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-long-desktop
+story community-settings-groups-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-long-phone
+story community-settings-groups-readonly 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-readonly-desktop
+story community-settings-groups-readonly 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-readonly-phone
+story community-settings-groups-editor-new 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-editor-new-desktop
+story community-settings-groups-editor-new 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-editor-new-phone
+story community-settings-groups-editor-edit 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-editor-edit-desktop
+story community-settings-groups-editor-edit 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-editor-edit-phone
+story community-settings-groups-editor-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-editor-loading-desktop
+story community-settings-groups-editor-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-editor-loading-phone
+story community-settings-groups-editor-no-match 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-editor-no-match-desktop
+story community-settings-groups-editor-no-match 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-editor-no-match-phone
+story community-settings-groups-editor-invalid 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-editor-invalid-desktop
+story community-settings-groups-editor-invalid 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-editor-invalid-phone
+story community-settings-groups-editor-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-groups-editor-error-desktop
+story community-settings-groups-editor-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-groups-editor-error-phone
+story community-settings-emoji-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-loading-desktop
+story community-settings-emoji-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-loading-phone
+story community-settings-emoji-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-failed-desktop
+story community-settings-emoji-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-failed-phone
+story community-settings-emoji-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-empty-desktop
+story community-settings-emoji-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-empty-phone
+story community-settings-emoji 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-desktop
+story community-settings-emoji 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-phone
+story community-settings-emoji-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-long-desktop
+story community-settings-emoji-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-long-phone
+story community-settings-emoji-uploading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-uploading-desktop
+story community-settings-emoji-uploading 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-uploading-phone
+story community-settings-emoji-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-error-desktop
+story community-settings-emoji-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-error-phone
+story community-settings-emoji-pick-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-pick-error-desktop
+story community-settings-emoji-pick-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-pick-error-phone
+story community-settings-emoji-locked 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-emoji-locked-desktop
+story community-settings-emoji-locked 390 844 light-blue-balanced
+wait idle
+shot w5-community-emoji-locked-phone
+story community-settings-sounds-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-loading-desktop
+story community-settings-sounds-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-loading-phone
+story community-settings-sounds-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-failed-desktop
+story community-settings-sounds-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-failed-phone
+story community-settings-sounds-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-empty-desktop
+story community-settings-sounds-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-empty-phone
+story community-settings-sounds 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-desktop
+story community-settings-sounds 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-phone
+story community-settings-sounds-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-long-desktop
+story community-settings-sounds-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-long-phone
+story community-settings-sounds-readonly 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-readonly-desktop
+story community-settings-sounds-readonly 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-readonly-phone
+story community-settings-sounds-delete-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-delete-error-desktop
+story community-settings-sounds-delete-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-delete-error-phone
+story community-settings-sounds-add 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-add-desktop
+story community-settings-sounds-add 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-add-phone
+story community-settings-sounds-add-invalid 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-add-invalid-desktop
+story community-settings-sounds-add-invalid 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-add-invalid-phone
+story community-settings-sounds-add-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-add-busy-desktop
+story community-settings-sounds-add-busy 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-add-busy-phone
+story community-settings-sounds-add-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-sounds-add-error-desktop
+story community-settings-sounds-add-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-sounds-add-error-phone
+story community-settings-invites-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-loading-desktop
+story community-settings-invites-loading 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-loading-phone
+story community-settings-invites-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-failed-desktop
+story community-settings-invites-failed 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-failed-phone
+story community-settings-invites-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-empty-desktop
+story community-settings-invites-empty 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-empty-phone
+story community-settings-invites 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-desktop
+story community-settings-invites 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-phone
+story community-settings-invites-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-long-desktop
+story community-settings-invites-long 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-long-phone
+story community-settings-invites-admin 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-admin-desktop
+story community-settings-invites-admin 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-admin-phone
+story community-settings-invites-create 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-create-desktop
+story community-settings-invites-create 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-create-phone
+story community-settings-invites-create-invalid 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-create-invalid-desktop
+story community-settings-invites-create-invalid 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-create-invalid-phone
+story community-settings-invites-create-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-create-error-desktop
+story community-settings-invites-create-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-create-error-phone
+story community-settings-invites-delete-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-community-invites-delete-error-desktop
+story community-settings-invites-delete-error 390 844 light-blue-balanced
+wait idle
+shot w5-community-invites-delete-error-phone
+story community-settings-owner 1280 800 light-teal-minimal
+wait idle
+shot w5-community-owner-desktop-light
+story community-settings-member 1280 800 light-teal-minimal
+wait idle
+shot w5-community-member-desktop-light
+story community-settings-channels-edit 1280 800 light-teal-minimal
+wait idle
+shot w5-community-channels-edit-desktop-light
+story community-settings-invites 1280 800 light-teal-minimal
+wait idle
+shot w5-community-invites-desktop-light
+story community-settings-overview-delete 1280 800 light-teal-minimal
+wait idle
+shot w5-community-overview-delete-desktop-light
+story community-settings-members-open 390 844 dark-blue-balanced
+wait idle
+shot w5-community-members-open-phone-dark

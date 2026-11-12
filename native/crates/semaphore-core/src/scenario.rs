@@ -7,9 +7,9 @@
 //! and a story must still render when a newer export adds another one.
 
 use crate::model::{
-    AttachmentKind, AttachmentView, ChannelKind, ChannelRow, CommunityRow, Conversation,
-    LinkPreviewView, MessageRow, ReactionView, ReplyToView, SendState, TextStyle, UserView,
-    VoiceView, WebhookView,
+    AttachmentKind, AttachmentView, ChannelKind, ChannelPreset, ChannelRow, CommunityRow,
+    Conversation, LinkPreviewView, MessageRow, ReactionView, ReplyToView, SendState, TextStyle,
+    UserView, VoiceView, WebhookView,
 };
 use crate::platform::CoreError;
 use crate::text::{SpanInput, layout_spans};
@@ -150,6 +150,13 @@ fn channel_row(
         voice_users: voice_users.get(&id).cloned().unwrap_or_default(),
         slowmode_seconds: integer(get(value, "slowmodeSeconds")).max(0) as u32,
         permissions: None,
+        preset: match get(value, "preset").as_str() {
+            Some("READ_ONLY") => ChannelPreset::ReadOnly,
+            Some("ANNOUNCEMENT") => ChannelPreset::Announcement,
+            Some("MODS_ONLY") => ChannelPreset::ModsOnly,
+            Some("CUSTOM") => ChannelPreset::Custom,
+            _ => ChannelPreset::Normal,
+        },
     }
 }
 

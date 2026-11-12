@@ -1492,3 +1492,64 @@ async fn a_clip_is_an_mp4_without_a_thumbnail_until_the_server_says() {
     assert_eq!(clip.mime_type, "video/mp4");
     assert!(!clip.has_thumbnail);
 }
+
+// --- Carried over from the wave 4 rig: a late answer from the previous ring ---
+
+#[tokio::test]
+async fn a_late_empty_presence_from_the_previous_ring_does_not_end_the_next_one() {
+    let mut rig = ringing(DM, "bob").await;
+    assert!(rig.core.incoming_call().is_some());
+    // Bob gives up: the ring stops. Then a read of the DM's presence goes out (here a reconnect's
+    // resync), while the call is empty, and is slow to come back.
+    rig.backend.w4.answer("dm_users", json!([]));
+    let held = rig.backend.w4.hold("dm_presence");
+    let reads = rig.backend.w4.count("dm_presence");
+    rig.core.ingest(dm_left(DM, "bob"));
+    rig.sync();
+    assert!(rig.core.incoming_call().is_none());
+    // A new connection reads what is cached again, the DM's presence among it.
+    rig.core.ingest(dropped());
+    rig.core.ingest(connected());
+    rig.sync();
+    let core = rig.core.clone();
+    let running = tokio::spawn(async move { core.run_until_idle().await });
+    for _ in 0..1000 {
+        if rig.backend.w4.count("dm_presence") > reads {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        rig.backend.w4.count("dm_presence"),
+        reads + 1,
+        "the read is out"
+    );
+    // Bob calls again; this time the server has him.
+    rig.backend.w4.answer("dm_users", json!([presence("bob")]));
+    rig.core.ingest(started(DM, "bob"));
+    rig.sync();
+    assert!(rig.core.incoming_call().is_some(), "the second ring rings");
+    // Now the empty answer of the first ring's read arrives.
+    held.send(()).unwrap();
+    running.await.unwrap();
+    rig.settle().await;
+    assert!(
+        rig.core.incoming_call().is_some(),
+        "an answer from before this ring can't say its caller left"
+    );
+}
+
+#[tokio::test]
+async fn a_late_leave_of_the_previous_call_does_not_end_the_next_ring() {
+    let mut rig = ringing(DM, "bob").await;
+    rig.backend.w4.answer("dm_users", json!([]));
+    rig.core.ingest(dm_left(DM, "bob"));
+    rig.settle().await;
+    assert!(rig.core.incoming_call().is_none());
+    // Bob calls again, and his join arrives...
+    rig.backend.w4.answer("dm_users", json!([presence("bob")]));
+    rig.core.ingest(started(DM, "bob"));
+    rig.core.ingest(dm_joined(DM, "bob"));
+    rig.settle().await;
+    assert!(rig.core.incoming_call().is_some());
+}

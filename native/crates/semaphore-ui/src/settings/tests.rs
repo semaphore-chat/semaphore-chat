@@ -194,8 +194,9 @@ fn row(id: &str) -> SessionRow {
 
 #[test]
 fn session_lines_read_against_the_clock() {
+    let utc = crate::messages::TimeFormat::fixed(NOW);
     assert_eq!(
-        session_details(&row("a"), NOW),
+        session_details(&row("a"), &utc, NOW),
         [
             "Last active: 5 minutes ago",
             "IP: 203.0.113.9",
@@ -210,13 +211,57 @@ fn session_lines_read_against_the_clock() {
     };
     assert_eq!(session_device_name(&bare), "Unknown device");
     assert_eq!(
-        session_details(&bare, NOW),
+        session_details(&bare, &utc, NOW),
         [
             "Last active: 3 days ago",
             "Signed in Oct 22, 2026 · Expires Nov 21, 2026"
         ]
     );
     assert_eq!(session_device_name(&row("c")), "Firefox on Linux");
+}
+
+#[test]
+fn session_dates_are_written_in_the_users_zone() {
+    use crate::messages::TimeFormat;
+    use chrono::FixedOffset;
+
+    // Zone minutes east of UTC, the instant, the local date, and the UTC date.
+    let cases = [
+        (9 * 60, 1_793_804_340_000, "Nov 4, 2026", "Nov 4, 2026"),
+        (9 * 60, 1_793_804_460_000, "Nov 5, 2026", "Nov 4, 2026"),
+        (-8 * 60, 1_793_865_540_000, "Nov 4, 2026", "Nov 5, 2026"),
+        (-8 * 60, 1_793_865_660_000, "Nov 5, 2026", "Nov 5, 2026"),
+        // 2026-12-31 15:30 UTC: New Year's Day in +09:00.
+        (9 * 60, 1_798_731_000_000, "Jan 1, 2027", "Dec 31, 2026"),
+        // 2026-11-05 18:31 UTC: 00:01 the 6th in +05:30.
+        (5 * 60 + 30, 1_793_903_460_000, "Nov 6, 2026", "Nov 5, 2026"),
+        // 2026-11-05 18:16 UTC: 00:01 the 6th in +05:45.
+        (5 * 60 + 45, 1_793_902_560_000, "Nov 6, 2026", "Nov 5, 2026"),
+    ];
+    for (minutes, ms, local, utc_date) in cases {
+        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let zone_time = TimeFormat {
+            zone: Some(zone),
+            now_ms: Some(NOW),
+        };
+        let signed_in = SessionRow {
+            created_at_ms: ms,
+            expires_at_ms: ms,
+            last_used_at_ms: NOW,
+            ip_address: None,
+            ..row("zone")
+        };
+        assert_eq!(
+            session_details(&signed_in, &zone_time, NOW).last(),
+            Some(&format!("Signed in {local} · Expires {local}")),
+            "{minutes} minutes east"
+        );
+        assert_eq!(
+            TimeFormat::fixed(NOW).format_at(ms, "%b %-d, %Y"),
+            utc_date,
+            "{minutes} minutes east: the UTC date"
+        );
+    }
 }
 
 #[test]

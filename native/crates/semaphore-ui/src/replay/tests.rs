@@ -94,6 +94,74 @@ fn clocks_are_minutes_then_hours() {
     assert_eq!(clock(3725), "1:02:05");
 }
 
+#[test]
+fn capture_times_are_written_in_the_users_zone() {
+    use crate::messages::TimeFormat;
+    use chrono::FixedOffset;
+
+    // Zone minutes east of UTC, the instant, the local time, and the UTC time.
+    let cases = [
+        (
+            9 * 60,
+            1_793_804_340_000,
+            "Nov 4, 2026 11:59 PM",
+            "Nov 4, 2026 2:59 PM",
+        ),
+        (
+            9 * 60,
+            1_793_804_460_000,
+            "Nov 5, 2026 12:01 AM",
+            "Nov 4, 2026 3:01 PM",
+        ),
+        (
+            -8 * 60,
+            1_793_865_540_000,
+            "Nov 4, 2026 11:59 PM",
+            "Nov 5, 2026 7:59 AM",
+        ),
+        (
+            -8 * 60,
+            1_793_865_660_000,
+            "Nov 5, 2026 12:01 AM",
+            "Nov 5, 2026 8:01 AM",
+        ),
+        // 2026-12-31 15:30 UTC: New Year's Day in +09:00.
+        (
+            9 * 60,
+            1_798_731_000_000,
+            "Jan 1, 2027 12:30 AM",
+            "Dec 31, 2026 3:30 PM",
+        ),
+        // 2026-11-05 18:31 UTC: 00:01 the 6th in +05:30.
+        (
+            5 * 60 + 30,
+            1_793_903_460_000,
+            "Nov 6, 2026 12:01 AM",
+            "Nov 5, 2026 6:31 PM",
+        ),
+        // 2026-11-05 18:16 UTC: 00:01 the 6th in +05:45.
+        (
+            5 * 60 + 45,
+            1_793_902_560_000,
+            "Nov 6, 2026 12:01 AM",
+            "Nov 5, 2026 6:16 PM",
+        ),
+    ];
+    for (minutes, ms, local, utc) in cases {
+        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let time = TimeFormat {
+            zone: Some(zone),
+            now_ms: Some(ms),
+        };
+        assert_eq!(captured_at(&time, ms), local, "{minutes} minutes east");
+        assert_eq!(
+            TimeFormat::fixed(ms).format_at(ms, "%b %-d, %Y %-I:%M %p"),
+            utc,
+            "{minutes} minutes east: the UTC time"
+        );
+    }
+}
+
 // ---- The trim. ----
 
 #[test]
@@ -497,4 +565,79 @@ fn share_asks_for_channels_of_the_picked_community_or_dms(cx: &mut TestAppContex
     rig.clear();
     rig.click(cx, "share-cancel");
     assert_eq!(rig.events(), [ShareEvent::Close]);
+}
+
+// ---- The trim, under any presses. ----
+
+mod properties {
+    use super::super::model::*;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngSeed};
+    use std::prelude::rust_2024::test;
+
+    fn config() -> Config {
+        Config {
+            cases: 512,
+            rng_seed: RngSeed::Fixed(0x7c1a_0001),
+            ..Config::default()
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    enum Press {
+        Set(bool, u32),
+        Nudge(bool, i64),
+        Drag(f32),
+        Refresh(u32),
+    }
+
+    fn press() -> impl Strategy<Value = Press> {
+        prop_oneof![
+            (any::<bool>(), 0u32..2000).prop_map(|(start, at)| Press::Set(start, at)),
+            (any::<bool>(), -700i64..700).prop_map(|(start, by)| Press::Nudge(start, by)),
+            prop_oneof![-1f32..2., Just(f32::NAN)].prop_map(Press::Drag),
+            (0u32..1500).prop_map(Press::Refresh),
+        ]
+    }
+
+    fn handle(start: bool) -> Handle {
+        if start { Handle::Start } else { Handle::End }
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        #[test]
+        fn the_handles_stay_inside_the_buffer_and_apart(
+            max in 1u32..1500,
+            presses in prop::collection::vec(press(), 0..30),
+        ) {
+            let mut trim = TrimRange::new(max).unwrap();
+            for press in presses {
+                match press {
+                    Press::Set(start, at) => trim.set(handle(start), at),
+                    Press::Nudge(start, by) => trim.nudge(handle(start), by),
+                    Press::Drag(fraction) => {
+                        let at = trim.seconds_at(fraction);
+                        prop_assert!(at <= trim.max);
+                        trim.set(trim.nearest(fraction), at);
+                    }
+                    Press::Refresh(max) => trim.refresh(max),
+                }
+                prop_assert!(trim.start + MIN_TRIM <= trim.end, "{trim:?}");
+                prop_assert!(trim.end <= trim.max, "{trim:?}");
+                prop_assert!(trim.duration() >= MIN_TRIM);
+                let (start, end) = (trim.fraction(Handle::Start), trim.fraction(Handle::End));
+                prop_assert!((0.0..=1.0).contains(&start) && (0.0..=1.0).contains(&end));
+            }
+        }
+
+        #[test]
+        fn ruler_marks_rise_from_zero_within_the_buffer(max in 0u32..20_000, most in 0usize..40) {
+            let marks = ruler_marks(max, most);
+            prop_assert_eq!(marks.first(), Some(&0));
+            prop_assert!(marks.windows(2).all(|pair| pair[0] < pair[1]));
+            prop_assert!(marks.iter().all(|mark| *mark <= max));
+        }
+    }
 }

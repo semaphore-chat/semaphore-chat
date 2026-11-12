@@ -9,7 +9,7 @@
 
 use crate::cache::{QueryKey, keys};
 use crate::client::{Core, Effect, State, window_key};
-use crate::model::Conversation;
+use crate::model::{Conversation, ViewKey};
 use crate::platform::CoreError;
 use crate::store::{MAX_ROWS, PAGE_SIZE, ResyncOutcome, THREAD_PAGE_SIZE};
 use semaphore_wire::enums::MessagePageDirection;
@@ -29,6 +29,10 @@ pub const RECONNECT_INVALIDATES: &[&str] = &[
 /// What the web keeps fresh some other way, and this client caches: both miss events during a gap.
 const NATIVE_RECONNECT_INVALIDATES: &[&str] = &[keys::MEMBERS, keys::PRESENCE];
 
+/// Fetched again at once on reconnect, used or not: no view's read asks for these (the call bar
+/// and an incoming ring read DM call presence straight from the cache), so a stale one would stay.
+const RECONNECT_FETCHES_NOW: &[&str] = &[keys::DM_VOICE_PRESENCE];
+
 /// The most pages a resync reads looking for where the loaded rows begin: the web's page cap.
 const MAX_RESYNC_PAGES: usize = MAX_ROWS / PAGE_SIZE as usize;
 
@@ -36,9 +40,20 @@ impl State {
     /// A connection came back after a gap. Returns what it marked.
     pub fn start_resync(&mut self) -> Vec<QueryKey> {
         let mut marked = Vec::new();
+        // As TanStack Query's `invalidateQueries` does for queries with no active observer: they
+        // go stale and are fetched when next read. Every view that reads one is told to read
+        // again, so what is on screen is fetched now, and nothing else is.
         for op in RECONNECT_INVALIDATES
             .iter()
             .chain(NATIVE_RECONNECT_INVALIDATES)
+            .filter(|op| !RECONNECT_FETCHES_NOW.contains(op))
+        {
+            marked.extend(self.mark_stale(&keys::op(op)));
+        }
+        for op in RECONNECT_FETCHES_NOW
+            .iter()
+            // W5-A's views without socket events, as that lane asked.
+            .chain(crate::commands::community_admin::admin_keys::RECONNECT)
         {
             marked.extend(self.invalidate(&keys::op(op)));
         }
@@ -49,6 +64,79 @@ impl State {
         }
         self.note_invalidated(marked.clone());
         marked
+    }
+
+    /// Marks matching queries stale without fetching them, and tells the views that read them.
+    /// A fetch already on its way is marked dirty, so it is fetched again when it lands.
+    fn mark_stale(&mut self, prefix: &QueryKey) -> Vec<QueryKey> {
+        let marked = self.cache.invalidate_prefix(prefix);
+        for key in &marked {
+            if let Some(dirty) = self.fetching.get_mut(key) {
+                *dirty = true;
+            }
+            for view in self.views_reading(key) {
+                self.view_changed(view);
+            }
+        }
+        marked
+    }
+
+    /// The views whose reads ask for the reconnect table's queries.
+    fn views_reading(&self, key: &QueryKey) -> Vec<ViewKey> {
+        let community_views = || {
+            self.cache
+                .keys_with_op(keys::CHANNELS)
+                .into_iter()
+                .filter_map(|key| key.segments.get(1).cloned())
+                .map(|community_id| ViewKey::Channels { community_id })
+        };
+        match key.op() {
+            keys::VOICE_PRESENCE => {
+                let channel_id = key.segments.get(1).map(String::as_str).unwrap_or_default();
+                let community = self
+                    .cache
+                    .keys_with_op(keys::CHANNELS)
+                    .into_iter()
+                    .find(|key| {
+                        self.cache
+                            .channels(key)
+                            .is_some_and(|channels| channels.iter().any(|c| c.id == channel_id))
+                    });
+                let mut views = vec![ViewKey::Voice];
+                views.extend(
+                    community
+                        .and_then(|key| key.segments.get(1).cloned())
+                        .map(|community_id| ViewKey::Channels { community_id }),
+                );
+                views
+            }
+            keys::UNREAD => {
+                let mut views = vec![ViewKey::Communities, ViewKey::Rail, ViewKey::DirectMessages];
+                views.extend(community_views());
+                views
+            }
+            keys::NOTIFICATION_COUNT => vec![ViewKey::Badge, ViewKey::Rail],
+            keys::NOTIFICATIONS => vec![ViewKey::Notifications],
+            keys::MEMBERS => key
+                .segments
+                .get(1)
+                .cloned()
+                .map(|community_id| ViewKey::Members { community_id })
+                .into_iter()
+                .collect(),
+            keys::PRESENCE => {
+                let mut views = vec![ViewKey::DirectMessages, ViewKey::Friends];
+                views.extend(
+                    self.cache
+                        .keys_with_op(keys::MEMBERS)
+                        .into_iter()
+                        .filter_map(|key| key.segments.get(1).cloned())
+                        .map(|community_id| ViewKey::Members { community_id }),
+                );
+                views
+            }
+            _ => Vec::new(),
+        }
     }
 
     /// A window that may have missed events. A window detached from the live edge can't be recovered

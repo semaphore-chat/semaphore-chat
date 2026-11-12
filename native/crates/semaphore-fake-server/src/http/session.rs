@@ -9,7 +9,9 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::Response;
 use axum::routing::{get, post};
-use semaphore_wire::types::{DesktopLoginTokenRequestDto, LoginRequestDto, RefreshRequestDto};
+use semaphore_wire::types::{
+    DesktopLoginTokenRequestDto, LoginRequestDto, LogoutRequestDto, RefreshRequestDto,
+};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -70,7 +72,9 @@ async fn login(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: Bytes)
         Some(credential) if credential.password == dto.password => credential.user_id.clone(),
         Some(_) => return denied(),
         None if dto.password == "wrong" => return denied(),
-        None => inner.scenario.me.id.clone(),
+        // W5: a test's second session can sign in as another scenario user (`sign_in_as`).
+        None => crate::rbac::login_as(&inner, &dto.username)
+            .unwrap_or_else(|| inner.scenario.me.id.clone()),
     };
     let index = accounts.start_session(
         &user_id,
@@ -188,7 +192,33 @@ async fn redeem_desktop_login(
     json_response(StatusCode::OK, response)
 }
 
-async fn logout(State(_inner): State<Arc<Inner>>) -> Response {
+/// `POST /auth/logout`: the backend deletes the session's refresh token family and blacklists the
+/// access token (`AuthController.logout`), so both are refused from here on. The session is the
+/// body's refresh token's, the bearer's, or both (they are the same session in a real client).
+async fn logout(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: Bytes) -> Response {
+    let presented_refresh = if body.is_empty() {
+        None
+    } else {
+        serde_json::from_slice::<LogoutRequestDto>(&body)
+            .ok()
+            .and_then(|dto| dto.refresh_token)
+    };
+    let now = inner.now();
+    let me = inner.scenario.me.id.clone();
+    let mut accounts = lock(&inner.accounts);
+    if let Some(refresh) = presented_refresh.as_deref()
+        && let Some(index) = accounts
+            .sessions
+            .iter()
+            .position(|session| session.refresh == refresh)
+    {
+        accounts.revoke(index);
+    }
+    if let Some(access) = bearer_token(&headers) {
+        let index = accounts.resolve_or_adopt(access, &me, now);
+        accounts.revoke(index);
+    }
+    drop(accounts);
     json_response(StatusCode::CREATED, json!({ "message": "Logged out" }))
 }
 

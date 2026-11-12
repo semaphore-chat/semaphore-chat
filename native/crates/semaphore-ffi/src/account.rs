@@ -30,6 +30,8 @@ pub struct SessionsView {
 pub struct InstancePermissionsView {
     pub state: LoadState,
     pub can_create_community: bool,
+    pub can_create_invite: bool,
+    pub can_delete_invite: bool,
 }
 
 #[uniffi::remote(Enum)]

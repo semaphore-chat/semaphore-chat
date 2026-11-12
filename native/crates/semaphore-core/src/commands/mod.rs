@@ -10,15 +10,22 @@ pub(crate) mod actions;
 pub mod browser_sign_in;
 pub mod calls;
 mod communities;
+pub(crate) mod community_admin;
+mod community_assets;
 mod diagnostics;
 mod dms;
 mod messages;
+pub(crate) mod moderation;
 pub(crate) mod notify;
 pub mod onboarding;
+mod permissions;
 mod profile;
 mod queries;
 pub(crate) mod reading;
 mod replay;
+mod roles;
+/// W5-B: the channel preset port (`shared/src/permissions/channel-presets.ts`).
+pub use roles::presets;
 mod session;
 pub mod social;
 mod soundboard;
@@ -38,6 +45,8 @@ const REAUTHENTICATE_TIMEOUT_MS: u64 = 10_000;
 /// A page of members, and the most rows read. `MemberList::truncated` says when that wasn't all.
 const MEMBER_PAGE_SIZE: i64 = 100;
 const MAX_MEMBERS: usize = 1000;
+/// How many mention searches stay cached, most recently used first.
+const MEMBER_SEARCHES_KEPT: usize = 32;
 /// How many messages to ask for around an anchor: half on each side.
 const AROUND_LIMIT: i64 = 50;
 
@@ -93,7 +102,8 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::USER_CLIPS => Some(ViewKey::UserClips { user_id: id() }),
         keys::REPLAY_SESSION => Some(ViewKey::ReplaySession),
         keys::USER => Some(ViewKey::Profile { user_id: id() }),
-        _ => None,
+        // W5: each lane maps its own queries.
+        _ => community_admin::view_for(key).or_else(|| moderation::view_for(key)),
     }
 }
 
@@ -121,7 +131,8 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         ViewKey::Clips => Some(keys::op(keys::CLIPS)),
         ViewKey::UserClips { user_id } => Some(keys::scoped(keys::USER_CLIPS, user_id)),
         ViewKey::ReplaySession => Some(keys::op(keys::REPLAY_SESSION)),
-        _ => None,
+        // W5: each lane maps its own views.
+        _ => community_admin::key_for(view).or_else(|| moderation::key_for(view)),
     }
 }
 
@@ -159,6 +170,8 @@ impl State {
         self.w2 = Default::default();
         self.w3 = Default::default();
         self.w4 = Default::default();
+        self.w5a = Default::default();
+        self.w5b = Default::default();
         self.session_epoch += 1;
         // The sleep inhibitor isn't the session's: a change to it queued just now still runs.
         self.effects
@@ -343,7 +356,12 @@ impl State {
             keys::MEMBER_SEARCH | keys::MENTIONABLE | keys::EMOJIS => {
                 self.view_changed(ViewKey::Mentionables { community_id: id });
             }
-            _ => {}
+            // W5: each lane says what its own queries change.
+            _ => {
+                if !self.w5a_query_changed(key) {
+                    self.w5b_query_changed(key);
+                }
+            }
         }
     }
 

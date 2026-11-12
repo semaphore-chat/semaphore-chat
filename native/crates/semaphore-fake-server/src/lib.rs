@@ -7,11 +7,13 @@
 
 mod accounts;
 mod actions;
+mod admin;
 mod calls;
 mod http;
 pub mod livekit;
 mod messages;
 mod png;
+mod rbac;
 pub mod scenario;
 mod social;
 mod socket;
@@ -140,6 +142,13 @@ pub(crate) struct Inner {
     /// DM calls, server mutes, kicks, the replay buffer, clips and join failures (W4). Never held
     /// with `data`.
     pub calls: Mutex<calls::Calls>,
+    /// W5-A: channels made, moved and changed, private members, mention groups, emoji, sounds,
+    /// webhooks and invites. Never held with `data` or `rbac`.
+    #[allow(dead_code)]
+    pub admin: Mutex<admin::Admin>,
+    /// W5-B: roles, assignments, overrides, bans, timeouts and the moderation log. Never held with
+    /// `data` or `admin`.
+    pub rbac: Mutex<rbac::Rbac>,
     pub faults: Mutex<Faults>,
     next_sid: std::sync::atomic::AtomicU64,
     next_message: std::sync::atomic::AtomicU64,
@@ -492,6 +501,8 @@ impl FakeServer {
             socket_tokens: Mutex::new(HashMap::new()),
             accounts: Mutex::new(accounts::Accounts::new()),
             calls: Mutex::new(calls::Calls::default()),
+            admin: Mutex::new(admin::Admin::default()),
+            rbac: Mutex::new(rbac::Rbac::default()),
             faults: Mutex::new(Faults::default()),
             next_sid: std::sync::atomic::AtomicU64::new(0),
             next_message: std::sync::atomic::AtomicU64::new(0),
@@ -648,6 +659,20 @@ impl FakeServer {
             disabled: invite.disabled,
             created_by: invite.created_by,
         });
+    }
+
+    /// W5: the user (`None`: the scenario's `me`) holds exactly these roles in the community from
+    /// now on (the `act_as` control). Panics on an unknown community or role, as a test's typo.
+    pub fn act_as(&self, community_id: &str, user_id: Option<&str>, role_ids: &[&str]) {
+        let user_id = user_id.unwrap_or(&self.inner.scenario.me.id).to_owned();
+        let role_ids: Vec<String> = role_ids.iter().map(|id| (*id).to_owned()).collect();
+        rbac::set_roles(&self.inner, community_id, &user_id, &role_ids).expect("act_as");
+    }
+
+    /// W5: a login as `username` (any password) becomes the scenario user `user_id` (the
+    /// `sign_in_as` control), so a test's second session can be another member.
+    pub fn sign_in_as(&self, username: &str, user_id: &str) {
+        rbac::allow_sign_in_as(&self.inner, username, user_id);
     }
 
     /// Add a session of the signed-in fake user, as another device's sign-in would. Its tokens

@@ -128,6 +128,11 @@ pub enum CacheValue {
     Clips(Vec<wire::ClipResponseDto>),
     /// W4: my replay buffer.
     ReplaySession(wire::SessionInfoResponseDto),
+    /// W5-A's queries (`commands::community_admin::W5aValue`): its own variants, so the lane adds
+    /// none here.
+    W5a(crate::commands::community_admin::W5aValue),
+    /// W5-B's queries (`commands::moderation::W5bValue`).
+    W5b(crate::commands::moderation::W5bValue),
 }
 
 /// Friends and pending requests, from two calls read as one.
@@ -159,11 +164,16 @@ pub struct CacheEntry {
     pub value: CacheValue,
     pub fetched_at_ms: u64,
     pub stale: bool,
+    /// When it was last set or read through [`QueryCache::touch`], in the cache's own ticks.
+    used: u64,
 }
 
 #[derive(Debug, Default)]
 pub struct QueryCache {
     entries: BTreeMap<QueryKey, CacheEntry>,
+    /// A counter, not a clock: recency only needs an order, and two reads in one millisecond
+    /// still have one.
+    tick: u64,
 }
 
 /// One typed read, for one variant.
@@ -306,16 +316,55 @@ impl QueryCache {
     );
 
     pub fn set(&mut self, key: QueryKey, value: CacheValue, fetched_at_ms: u64) {
+        self.tick += 1;
         let entry = CacheEntry {
             value,
             fetched_at_ms,
             stale: false,
+            used: self.tick,
         };
         self.entries.insert(key, entry);
     }
 
+    /// Notes a read of `key`, for [`evict_least_used`](Self::evict_least_used).
+    pub fn touch(&mut self, key: &QueryKey) {
+        self.tick += 1;
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.used = self.tick;
+        }
+    }
+
+    /// Keeps the `keep` entries of `op` used most recently and drops the rest. Returns the dropped
+    /// keys. For keys made per keystroke, which would otherwise pile up for the whole session.
+    pub fn evict_least_used(&mut self, op: &str, keep: usize) -> Vec<QueryKey> {
+        let mut of_op: Vec<(u64, QueryKey)> = self
+            .entries
+            .iter()
+            .filter(|(key, _)| key.op() == op)
+            .map(|(key, entry)| (entry.used, key.clone()))
+            .collect();
+        if of_op.len() <= keep {
+            return Vec::new();
+        }
+        of_op.sort_unstable_by_key(|(used, _)| std::cmp::Reverse(*used));
+        let dropped: Vec<QueryKey> = of_op
+            .split_off(keep)
+            .into_iter()
+            .map(|(_, key)| key)
+            .collect();
+        for key in &dropped {
+            self.entries.remove(key);
+        }
+        dropped
+    }
+
     pub fn get(&self, key: &QueryKey) -> Option<&CacheEntry> {
         self.entries.get(key)
+    }
+
+    /// W5: a direct update to an entry whose variant the lanes own (`CacheValue::W5a`/`W5b`).
+    pub fn get_mut(&mut self, key: &QueryKey) -> Option<&mut CacheEntry> {
+        self.entries.get_mut(key)
     }
 
     /// Marks matching entries stale, keeping their data so a UI can show it while a
@@ -407,6 +456,50 @@ mod tests {
         assert_eq!(cache.invalidate_all(), vec![key.clone()]);
         cache.set(key.clone(), unread(2), 2);
         assert!(cache.stale_keys().is_empty());
+    }
+
+    #[test]
+    fn eviction_keeps_the_most_recently_used_of_one_op_only() {
+        let mut cache = QueryCache::default();
+        let search = |needle: &str| QueryKey::new(&["search", "c", needle]);
+        for needle in ["a", "b", "c", "d"] {
+            cache.set(search(needle), unread(1), 1);
+        }
+        cache.set(QueryKey::new(&["other"]), unread(1), 1);
+        cache.touch(&search("a"));
+
+        let mut dropped = cache.evict_least_used("search", 2);
+        dropped.sort();
+
+        assert_eq!(dropped, vec![search("b"), search("c")]);
+        assert!(cache.get(&search("a")).is_some(), "used lately");
+        assert!(cache.get(&search("d")).is_some(), "set last");
+        assert!(
+            cache.get(&QueryKey::new(&["other"])).is_some(),
+            "another op"
+        );
+        assert!(cache.evict_least_used("search", 2).is_empty());
+        // A touch of a key not cached does nothing.
+        cache.touch(&search("zzz"));
+        assert!(cache.get(&search("zzz")).is_none());
+    }
+
+    #[test]
+    fn invalidating_nothing_marks_nothing_and_clear_forgets_everything() {
+        let mut cache = QueryCache::default();
+        cache.set(QueryKey::new(&["a", "1"]), unread(1), 1);
+        assert!(cache.invalidate_prefix(&QueryKey::new(&["b"])).is_empty());
+        assert!(
+            cache
+                .invalidate_prefix(&QueryKey::new(&["a", "1", "deeper"]))
+                .is_empty()
+        );
+        cache.remove_prefix(&QueryKey::new(&["a"]));
+        assert!(cache.get(&QueryKey::new(&["a", "1"])).is_none());
+        cache.set(QueryKey::new(&["a", "1"]), unread(1), 1);
+        cache.clear();
+        assert!(cache.keys_with_op("a").is_empty());
+        assert_eq!(QueryKey::new(&[]).op(), "");
     }
 
     #[test]

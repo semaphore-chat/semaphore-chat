@@ -511,6 +511,15 @@ impl AppRoot {
     /// unlike the shared temp directory, where another local user could plant the path) and hands
     /// it to the OS's default app: an attachment the inline player can't play.
     fn open_externally(&mut self, attachment: AttachmentView, cx: &mut Context<Self>) {
+        // A program, script, installer or shortcut would run, not show: it's saved instead.
+        if !files::may_open_with_the_os(&attachment.filename) {
+            log::info!(
+                "saving {:?} instead of opening it: the OS would run that kind of file",
+                files::safe_file_name(&attachment.filename)
+            );
+            self.save_attachment(attachment, cx);
+            return;
+        }
         let Some(services) = &self.services else {
             return;
         };

@@ -8265,6 +8265,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -8276,12 +8277,14 @@ dependencies = [
  "getrandom 0.4.3",
  "jiff",
  "log",
+ "proptest",
  "semaphore-wire",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.21",
  "tokio",
+ "unicode-segmentation",
  "uuid",
 ]
 
@@ -8378,6 +8381,7 @@ dependencies = [
  "libc",
  "log",
  "png 0.18.1",
+ "proptest",
  "semaphore-core",
  "serde",
  "serde_json",
@@ -8424,6 +8428,7 @@ dependencies = [
  "gpui-kit",
  "image",
  "libc",
+ "proptest",
  "semaphore-core",
  "semaphore-design",
  "serde_json",

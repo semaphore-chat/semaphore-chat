@@ -6,8 +6,8 @@
 use crate::cache::QueryKey;
 use crate::lifecycle::ConnectionState;
 use crate::model::{
-    Conversation, ListOp, MediaDiagnostics, OsNotification, ScreenShareRequest, SoundCue,
-    VideoDemand, ViewKey,
+    Conversation, ListOp, MediaDiagnostics, OsNotification, RemovalCause, ScreenShareRequest,
+    SoundCue, VideoDemand, ViewKey,
 };
 use async_trait::async_trait;
 
@@ -57,6 +57,22 @@ pub enum CoreEvent {
     /// W4: play this sound. `IncomingRingStart` loops until `IncomingRingStop`.
     Sound {
         cue: SoundCue,
+    },
+    /// W5: this user lost a community: kicked, banned, or it was deleted. Sent once per loss; core
+    /// has already dropped it and left its call. Show "You were removed from {name}" / "You were
+    /// banned from {name}" once, with the reason (and, for a temporary ban, until when), then go
+    /// home.
+    CommunityRemoved {
+        community_id: String,
+        /// Its name as last known, or empty.
+        name: String,
+        cause: RemovalCause,
+    },
+    /// W5: a channel went away for this user (deleted, or they can no longer see it). Leave it if
+    /// it's open.
+    ChannelRemoved {
+        community_id: String,
+        channel_id: String,
     },
 }
 

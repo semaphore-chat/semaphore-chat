@@ -7,6 +7,8 @@ mod reading;
 pub mod w2;
 pub mod w3;
 pub mod w4;
+pub mod w5a;
+pub mod w5b;
 #[allow(unused_imports)]
 pub use actions::refusal;
 
@@ -191,6 +193,8 @@ pub struct FakeBackend {
     pub w3: w2::W2Fakes,
     /// W4's scripted DM calls, moderator voice actions, replay and soundboard: `common/w4.rs`.
     pub w4: w2::W2Fakes,
+    /// W5-B's scripted roles, overrides and moderation: `common/w5b.rs`.
+    pub w5b: w5b::W5bFakes,
     /// File bytes by id, for `file_controller_get_file`; each read is counted in `w4` as `file <id>`.
     pub files: Mutex<HashMap<String, Vec<u8>>>,
     /// W4: the next channel presence join waits for this.
@@ -214,6 +218,9 @@ pub struct FakeBackend {
     /// Every member, in order. Served a page at a time, with a token while more remain.
     pub members: Mutex<Vec<Value>>,
     pub member_page_requests: AtomicU64,
+    /// A broken server: every member page is empty and says more follow.
+    pub endless_member_pages: Mutex<bool>,
+    pub member_search_requests: AtomicU64,
     pub bulk_presence: Mutex<HashMap<String, bool>>,
     pub notification_count: Mutex<i64>,
     pub notification_requests: AtomicU64,
@@ -469,6 +476,12 @@ impl CommunitiesBackend for FakeBackend {
         token: Option<String>,
     ) -> BackendResult<wire::PaginatedMembershipsResponseDto> {
         self.member_page_requests.fetch_add(1, Ordering::SeqCst);
+        if *self.endless_member_pages.lock().unwrap() {
+            // A real server takes time to answer; without a yield a client that loops on this
+            // would never let a test's timeout run.
+            tokio::task::yield_now().await;
+            return decoded(json!({ "members": [], "continuationToken": "again" }));
+        }
         let members = self.members.lock().unwrap().clone();
         let start = token.map_or(0, |token| {
             members
@@ -508,6 +521,7 @@ impl CommunitiesBackend for FakeBackend {
         _: String,
         _: Option<i64>,
     ) -> BackendResult<Vec<wire::MembershipResponseDto>> {
+        self.member_search_requests.fetch_add(1, Ordering::SeqCst);
         decoded(json!([{
             "id": "m1", "userId": "ava", "communityId": "comm", "joinedAt": "2026-09-22T18:00:00.000Z",
             "roles": [], "user": user_json("ava"),

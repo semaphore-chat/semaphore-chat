@@ -1,0 +1,321 @@
+# W5 roles: the role list (owner, admin, moderator, member; loading, failed, no access, empty, many; moving, deleting, resetting, overlapping changes; who holds a role),
+# the role editor, the assignment dialog and a channel's presets, each on a desktop (dark) and a phone (light), then a few in another theme.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w5-roles.steps
+story roles-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-loading-desktop
+story roles-loading 390 844 light-blue-balanced
+wait idle
+shot w5-roles-loading-phone
+story roles-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-failed-desktop
+story roles-failed 390 844 light-blue-balanced
+wait idle
+shot w5-roles-failed-phone
+story roles-no-read 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-no-read-desktop
+story roles-no-read 390 844 light-blue-balanced
+wait idle
+shot w5-roles-no-read-phone
+story roles-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-empty-desktop
+story roles-empty 390 844 light-blue-balanced
+wait idle
+shot w5-roles-empty-phone
+story roles-owner 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-owner-desktop
+story roles-owner 390 844 light-blue-balanced
+wait idle
+shot w5-roles-owner-phone
+story roles-many 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-many-desktop
+story roles-many 390 844 light-blue-balanced
+wait idle
+shot w5-roles-many-phone
+story roles-admin 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-admin-desktop
+story roles-admin 390 844 light-blue-balanced
+wait idle
+shot w5-roles-admin-phone
+story roles-moderator 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-moderator-desktop
+story roles-moderator 390 844 light-blue-balanced
+wait idle
+shot w5-roles-moderator-phone
+story roles-member 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-member-desktop
+story roles-member 390 844 light-blue-balanced
+wait idle
+shot w5-roles-member-phone
+story roles-reorder-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-reorder-busy-desktop
+story roles-reorder-busy 390 844 light-blue-balanced
+wait idle
+shot w5-roles-reorder-busy-phone
+story roles-reorder-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-reorder-error-desktop
+story roles-reorder-error 390 844 light-blue-balanced
+wait idle
+shot w5-roles-reorder-error-phone
+story roles-delete-confirm 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-delete-confirm-desktop
+story roles-delete-confirm 390 844 light-blue-balanced
+wait idle
+shot w5-roles-delete-confirm-phone
+story roles-delete-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-delete-busy-desktop
+story roles-delete-busy 390 844 light-blue-balanced
+wait idle
+shot w5-roles-delete-busy-phone
+story roles-delete-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-delete-error-desktop
+story roles-delete-error 390 844 light-blue-balanced
+wait idle
+shot w5-roles-delete-error-phone
+story roles-overlapping 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-overlapping-desktop
+story roles-overlapping 390 844 light-blue-balanced
+wait idle
+shot w5-roles-overlapping-phone
+story roles-reset-confirm 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-reset-confirm-desktop
+story roles-reset-confirm 390 844 light-blue-balanced
+wait idle
+shot w5-roles-reset-confirm-phone
+story role-members 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-members-desktop
+story role-members 390 844 light-blue-balanced
+wait idle
+shot w5-role-members-phone
+story role-members-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-members-loading-desktop
+story role-members-loading 390 844 light-blue-balanced
+wait idle
+shot w5-role-members-loading-phone
+story role-members-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-members-empty-desktop
+story role-members-empty 390 844 light-blue-balanced
+wait idle
+shot w5-role-members-empty-phone
+story role-members-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-members-failed-desktop
+story role-members-failed 390 844 light-blue-balanced
+wait idle
+shot w5-role-members-failed-phone
+story role-editor-create 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-create-desktop
+story role-editor-create 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-create-phone
+story role-editor-create-invalid 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-create-invalid-desktop
+story role-editor-create-invalid 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-create-invalid-phone
+story role-editor-duplicate 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-duplicate-desktop
+story role-editor-duplicate 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-duplicate-phone
+story role-editor-too-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-too-long-desktop
+story role-editor-too-long 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-too-long-phone
+story role-editor-default 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-default-desktop
+story role-editor-default 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-default-phone
+story role-editor-top 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-top-desktop
+story role-editor-top 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-top-phone
+story role-editor-readonly 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-readonly-desktop
+story role-editor-readonly 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-readonly-phone
+story role-editor-ungrantable 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-ungrantable-desktop
+story role-editor-ungrantable 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-ungrantable-phone
+story role-editor-unknown 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-unknown-desktop
+story role-editor-unknown 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-unknown-phone
+story role-editor-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-busy-desktop
+story role-editor-busy 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-busy-phone
+story role-editor-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-editor-error-desktop
+story role-editor-error 390 844 light-blue-balanced
+wait idle
+shot w5-role-editor-error-phone
+story role-assign 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-assign-desktop
+story role-assign 390 844 light-blue-balanced
+wait idle
+shot w5-role-assign-phone
+story role-assign-rank 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-assign-rank-desktop
+story role-assign-rank 390 844 light-blue-balanced
+wait idle
+shot w5-role-assign-rank-phone
+story role-assign-some-locked 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-assign-some-locked-desktop
+story role-assign-some-locked 390 844 light-blue-balanced
+wait idle
+shot w5-role-assign-some-locked-phone
+story role-assign-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-assign-loading-desktop
+story role-assign-loading 390 844 light-blue-balanced
+wait idle
+shot w5-role-assign-loading-phone
+story role-assign-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-assign-failed-desktop
+story role-assign-failed 390 844 light-blue-balanced
+wait idle
+shot w5-role-assign-failed-phone
+story role-assign-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-assign-busy-desktop
+story role-assign-busy 390 844 light-blue-balanced
+wait idle
+shot w5-role-assign-busy-phone
+story role-assign-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-role-assign-error-desktop
+story role-assign-error 390 844 light-blue-balanced
+wait idle
+shot w5-role-assign-error-phone
+story overrides-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-loading-desktop
+story overrides-loading 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-loading-phone
+story overrides-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-failed-desktop
+story overrides-failed 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-failed-phone
+story overrides-normal 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-normal-desktop
+story overrides-normal 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-normal-phone
+story overrides-no-attach 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-no-attach-desktop
+story overrides-no-attach 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-no-attach-phone
+story overrides-read-only 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-read-only-desktop
+story overrides-read-only 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-read-only-phone
+story overrides-announcement-kept 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-announcement-kept-desktop
+story overrides-announcement-kept 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-announcement-kept-phone
+story overrides-dirty 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-dirty-desktop
+story overrides-dirty 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-dirty-phone
+story overrides-missing 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-missing-desktop
+story overrides-missing 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-missing-phone
+story overrides-custom 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-custom-desktop
+story overrides-custom 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-custom-phone
+story overrides-deleted-role 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-deleted-role-desktop
+story overrides-deleted-role 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-deleted-role-phone
+story overrides-not-editable 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-not-editable-desktop
+story overrides-not-editable 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-not-editable-phone
+story overrides-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-busy-desktop
+story overrides-busy 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-busy-phone
+story overrides-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-overrides-error-desktop
+story overrides-error 390 844 light-blue-balanced
+wait idle
+shot w5-overrides-error-phone
+story roles-owner 1280 800 light-teal-minimal
+wait idle
+shot w5-roles-owner-teal
+story role-editor-default 1280 800 light-teal-minimal
+wait idle
+shot w5-role-editor-default-teal
+story overrides-read-only 1280 800 light-teal-minimal
+wait idle
+shot w5-overrides-read-only-teal
+story role-assign 1280 800 light-teal-minimal
+wait idle
+shot w5-role-assign-teal

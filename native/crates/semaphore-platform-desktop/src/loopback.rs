@@ -668,4 +668,97 @@ mod tests {
         let response = with_timeout(client).await.unwrap();
         assert_eq!(status(&response), "HTTP/1.1 400 Bad Request");
     }
+
+    #[test]
+    fn a_head_that_is_not_a_plain_http_1_request_does_not_parse() {
+        for head in [
+            "",
+            "GET",
+            "GET /callback",
+            "GET /callback HTTP/2",
+            "GET /callback HTTP/1.11",
+            "GET /callback HTTP/1.1 extra",
+            "GET  /callback HTTP/1.1",
+            "GET callback HTTP/1.1",
+            "GET http://127.0.0.1/callback HTTP/1.1",
+            "G(T /callback HTTP/1.1",
+            "GET /call\x01back HTTP/1.1",
+            "GET /callback HTTP/1.1\r\nHost",
+            "GET /callback HTTP/1.1\r\n Host: 127.0.0.1:1",
+            "GET /callback HTTP/1.1\r\nHo st: 127.0.0.1:1",
+            "GET /callback HTTP/1.1\r\nHost: a\x00b",
+            "GET /callback HTTP/1.1\r\nHost: caf\u{e9}",
+        ] {
+            assert!(parse_head(head.as_bytes()).is_none(), "{head:?}");
+        }
+    }
+
+    #[test]
+    fn a_plain_head_parses_with_its_one_host() {
+        let head = parse_head(b"get /callback?x=1 HTTP/1.0\r\nhOsT:  127.0.0.1:9 \r\nX-Tab: a\tb")
+            .expect("parses");
+        assert_eq!(head.method, "get");
+        assert_eq!(head.target, "/callback?x=1");
+        assert_eq!(head.host.as_deref(), Some("127.0.0.1:9"));
+        // Two Hosts, even equal ones, are none.
+        let twice = parse_head(b"GET / HTTP/1.1\r\nHost: a\r\nhost: a").unwrap();
+        assert_eq!(twice.host, None);
+        let none = parse_head(b"GET / HTTP/1.1").unwrap();
+        assert_eq!(none.host, None);
+    }
+
+    #[test]
+    fn the_end_of_a_head_is_found_wherever_a_read_split_it() {
+        let bytes = b"GET / HTTP/1.1\r\nHost: a\r\n\r\nbody";
+        let end = bytes.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+        for from in 0..=end {
+            assert_eq!(find_head_end(bytes, from), Some(end), "from {from}");
+        }
+        assert_eq!(find_head_end(bytes, end + 1), None);
+        assert_eq!(find_head_end(b"\r\n\r", 0), None);
+        assert_eq!(find_head_end(b"", 0), None);
+    }
+
+    mod properties {
+        use super::super::*;
+        use proptest::prelude::*;
+        use proptest::test_runner::{Config, RngSeed};
+
+        fn config() -> Config {
+            Config {
+                cases: 512,
+                rng_seed: RngSeed::Fixed(0x1005_bac4),
+                ..Config::default()
+            }
+        }
+
+        proptest! {
+            #![proptest_config(config())]
+
+            #[test]
+            fn no_bytes_panic_the_head_parser(bytes in prop::collection::vec(any::<u8>(), 0..200)) {
+                let _ = parse_head(&bytes);
+                for from in 0..bytes.len().min(8) {
+                    let _ = find_head_end(&bytes, from);
+                }
+            }
+
+            #[test]
+            fn a_parsed_head_holds_no_control_characters(
+                method in "[A-Za-z]{1,8}",
+                target in "/[ -~]{0,30}",
+                host in proptest::option::of("[ -~]{0,20}"),
+            ) {
+                let mut head = format!("{method} {target} HTTP/1.1");
+                if let Some(host) = &host {
+                    head.push_str(&format!("\r\nHost: {host}"));
+                }
+                if let Some(parsed) = parse_head(head.as_bytes()) {
+                    prop_assert!(!has_control(&parsed.target, false));
+                    prop_assert!(parsed.target.starts_with('/'));
+                    prop_assert!(parsed.host.as_deref().is_none_or(|host| !has_control(host, true)));
+                }
+            }
+        }
+    }
 }
