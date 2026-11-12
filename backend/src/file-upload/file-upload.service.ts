@@ -24,11 +24,18 @@ import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { ThumbnailService } from '@/file/thumbnail.service';
 import { MediaDimensionsService } from '@/file/media-dimensions.service';
+import type { MediaDimensions } from '@/file/media-dimensions.service';
 import { ResourceTypeFileValidator } from './validators';
 import { SOUNDBOARD_SOUND_MAX_DURATION_SECONDS } from './validators/strategies/soundboard-sound-validation.strategy';
 import { FfmpegProvider } from '@/livekit/providers/ffmpeg.provider';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { FileUploadResponseDto } from './dto/file-upload-response.dto';
+
+/** Uploads of these types get a generated thumbnail, best-effort. */
+const THUMBNAIL_FILE_TYPES: Partial<Record<FileType, true>> = {
+  [FileType.VIDEO]: true,
+  [FileType.IMAGE]: true,
+};
 
 /** What uploading each community-owned file needs, as using it does. */
 const COMMUNITY_UPLOAD_ACTIONS: Partial<Record<ResourceType, RbacActions>> = {
@@ -225,17 +232,20 @@ export class FileUploadService {
         // Increment user's storage usage
         await this.storageQuotaService.incrementUserStorage(user.id, file.size);
 
-        // Generate thumbnail for video files before responding, so the
-        // attachment metadata clients receive carries hasThumbnail: true.
-        // Failure is non-fatal — the upload succeeds without a thumbnail.
-        const finalRecord =
-          fileType === FileType.VIDEO
-            ? ((await this.generateThumbnail(
-                file.path,
-                fileRecord.id,
-                storageType,
-              )) ?? fileRecord)
-            : fileRecord;
+        // Generate a thumbnail for videos and raster images before
+        // responding, so the metadata clients receive carries
+        // hasThumbnail: true. Failure (including an image that needs no
+        // thumbnail) is non-fatal — the upload succeeds without one.
+        const finalRecord = THUMBNAIL_FILE_TYPES[fileType]
+          ? ((await this.generateThumbnail(
+              file.path,
+              fileRecord.id,
+              storageType,
+              fileType,
+              file.mimetype,
+              dimensions,
+            )) ?? fileRecord)
+          : fileRecord;
 
         // The local tmp copy is only scratch space for S3 uploads (ffmpeg
         // thumbnailing needed it above) — safe to remove now. For LOCAL,
@@ -309,8 +319,10 @@ export class FileUploadService {
   }
 
   /**
-   * Generate a thumbnail for a video upload and persist its path.
-   * Errors are logged but never propagate to the upload response.
+   * Generate a thumbnail for a video or image upload and persist its path.
+   * Errors are logged but never propagate to the upload response; an image
+   * that needs no thumbnail (SVG, or already within the bound) simply
+   * leaves `thumbnailPath` null.
    *
    * @returns The updated file record, or null if generation failed
    */
@@ -318,13 +330,25 @@ export class FileUploadService {
     filePath: string,
     fileId: string,
     storageType: StorageType,
+    fileType: FileType,
+    mimeType: string,
+    dimensions: MediaDimensions | null,
   ) {
     try {
-      const thumbnailPath = await this.thumbnailService.generateVideoThumbnail(
-        filePath,
-        fileId,
-        storageType,
-      );
+      const thumbnailPath =
+        fileType === FileType.VIDEO
+          ? await this.thumbnailService.generateVideoThumbnail(
+              filePath,
+              fileId,
+              storageType,
+            )
+          : await this.thumbnailService.generateImageThumbnail(
+              filePath,
+              fileId,
+              storageType,
+              mimeType,
+              dimensions,
+            );
       if (!thumbnailPath) {
         return null;
       }

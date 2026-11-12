@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
 - An invite link now works for someone who already has an account: a signed-in visitor to the join page adds their account to the invite's communities instead of registering again, and the API reports which communities were joined or skipped. (#589)
 - Image and video attachments now report their display `width` and `height` in pixels, so clients can reserve space before the file loads. (#715)
+- Image attachments now get a JPEG thumbnail (longest side at most 480 px, EXIF orientation applied, metadata stripped) generated at upload and served from the same `/api/file/:id/thumbnail` route as video thumbnails, with the same access checks and cache headers. The web client shows the thumbnail in message lists and keeps the original for the lightbox. Animated GIF, APNG and WebP thumbnails are their first frame. Images already within 480 px and SVGs get no thumbnail, so clients use the original; generation is best-effort and existing images are not backfilled. Upload responses now report `hasThumbnail`. (#715)
 
 ### Changed
 
