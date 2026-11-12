@@ -19,17 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
 - Declining an incoming direct-message call. In a 1:1 conversation the caller's call ends and says it was declined; in a group conversation only the person who declined stops ringing. (#638)
 
-### Fixed
-
-- The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
-- A moderator can now remove someone from a voice call without kicking them from the community, and the voice presence response tells clients which participants the caller may moderate. (#663)
-
 ### Changed
 
 - Soundboard sounds now have a 30-second length limit at upload, so a small low-bitrate file can no longer play for minutes. (#677)
 
 ### Fixed
 
+- The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
+- A moderator can now remove someone from a voice call without kicking them from the community, and the voice presence response tells clients which participants the caller may moderate. (#663)
 - Lifting a server mute no longer fails against a stock LiveKit server: it gives the participant their microphone permission back and lets them unmute themselves. (#676)
 - The API now explains that the per-channel role lookup returns community roles without the channel's permission overwrites, and points clients at the channel capabilities endpoint for per-channel decisions. (#644)
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
