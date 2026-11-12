@@ -6,11 +6,12 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiCreatedResponse, ApiQuery } from '@nestjs/swagger';
 import { InviteService } from './invite.service';
 import { RbacActions } from '@prisma/client';
 import { CreateInviteDto } from './dto/create-invite.dto';
@@ -27,10 +28,10 @@ import { AuthenticatedRequest } from '@/types';
 export class InviteController {
   constructor(private readonly inviteService: InviteService) {}
 
+  // The service decides: the community's own CREATE_INVITE in every community
+  // the invite names, or instance invite authority (#685).
   @Post()
-  @UseGuards(JwtAuthGuard, RbacGuard)
-  @RequiredActions(RbacActions.CREATE_INSTANCE_INVITE)
-  @RbacResource({ type: RbacResourceType.INSTANCE })
+  @UseGuards(JwtAuthGuard)
   @ApiCreatedResponse({ type: InviteResponseDto })
   async createInvite(
     @Req() req: AuthenticatedRequest,
@@ -45,14 +46,18 @@ export class InviteController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RbacGuard)
-  @RequiredActions(RbacActions.READ_INSTANCE_INVITE)
-  @RbacResource({ type: RbacResourceType.INSTANCE })
+  @UseGuards(JwtAuthGuard)
+  @ApiQuery({
+    name: 'communityId',
+    required: false,
+    description: 'Only the invites that include this community',
+  })
   @ApiOkResponse({ type: [InviteResponseDto] })
   async getInvites(
     @Req() req: AuthenticatedRequest,
+    @Query('communityId') communityId?: string,
   ): Promise<InviteResponseDto[]> {
-    return this.inviteService.getInvites(req.user);
+    return this.inviteService.getInvites(req.user, communityId);
   }
 
   @Get('public/:code')
@@ -78,9 +83,7 @@ export class InviteController {
 
   @Delete(':code')
   @HttpCode(204)
-  @UseGuards(JwtAuthGuard, RbacGuard)
-  @RequiredActions(RbacActions.DELETE_INSTANCE_INVITE)
-  @RbacResource({ type: RbacResourceType.INSTANCE })
+  @UseGuards(JwtAuthGuard)
   async deleteInvite(
     @Req() req: AuthenticatedRequest,
     @Param('code') code: string,

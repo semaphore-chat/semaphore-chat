@@ -251,6 +251,7 @@ export const DEFAULT_ADMIN_ROLE: DefaultRoleConfig = {
     RbacActions.CAPTURE_REPLAY,
 
     // Community moderation (full)
+    RbacActions.BAN_USER,
     RbacActions.KICK_USER,
     RbacActions.TIMEOUT_USER,
     RbacActions.UNBAN_USER,
