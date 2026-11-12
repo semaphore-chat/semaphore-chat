@@ -42,6 +42,39 @@ describe('File resource ownership (e2e)', () => {
     'base64',
   );
 
+  /** A mono 8-bit PCM WAV of `seconds`, small enough for the 1 MiB size cap. */
+  function wav(seconds: number): Buffer {
+    const sampleRate = 8000;
+    const dataSize = sampleRate * seconds;
+    const buffer = Buffer.alloc(44 + dataSize);
+    buffer.write('RIFF', 0);
+    buffer.writeUInt32LE(36 + dataSize, 4);
+    buffer.write('WAVE', 8);
+    buffer.write('fmt ', 12);
+    buffer.writeUInt32LE(16, 16); // fmt chunk size
+    buffer.writeUInt16LE(1, 20); // PCM
+    buffer.writeUInt16LE(1, 22); // mono
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(sampleRate, 28); // byte rate
+    buffer.writeUInt16LE(1, 32); // block align
+    buffer.writeUInt16LE(8, 34); // bits per sample
+    buffer.write('data', 36);
+    buffer.writeUInt32LE(dataSize, 40);
+    buffer.fill(0x80, 44); // 8-bit PCM silence
+    return buffer;
+  }
+
+  const soundboardUpload = (who: Who, resourceId: string, seconds: number) =>
+    http()
+      .post('/api/file-upload')
+      .set('Authorization', auth(who))
+      .field('resourceType', 'SOUNDBOARD_SOUND')
+      .field('resourceId', resourceId)
+      .attach('file', wav(seconds), {
+        filename: `${randomUUID()}.wav`,
+        contentType: 'audio/wav',
+      });
+
   function upload(who: Who, resourceType: string, resourceId?: string) {
     const req = http()
       .post('/api/file-upload')
@@ -241,8 +274,27 @@ describe('File resource ownership (e2e)', () => {
       await upload('manager', 'COMMUNITY_AVATAR', managed).expect(201);
       await upload('manager', 'COMMUNITY_BANNER', managed).expect(201);
       await upload('manager', 'CUSTOM_EMOJI', managed).expect(201);
-      await upload('manager', 'SOUNDBOARD_SOUND', managed).expect(201);
+      await soundboardUpload('manager', managed, 5).expect(201);
       await upload('owner', 'COMMUNITY_AVATAR', outside).expect(201);
+    });
+
+    it('rejects a soundboard sound longer than 30 seconds', async () => {
+      const before = await fileCount({
+        uploadedById: id.manager,
+        resourceType: 'SOUNDBOARD_SOUND',
+      });
+
+      const res = await soundboardUpload('manager', managed, 31);
+
+      expect(res.status).toBe(400);
+      const body = res.body as { message: string };
+      expect(body.message).toContain('30 seconds');
+      expect(
+        await fileCount({
+          uploadedById: id.manager,
+          resourceType: 'SOUNDBOARD_SOUND',
+        }),
+      ).toBe(before);
     });
   });
 
