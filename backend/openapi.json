@@ -1350,7 +1350,17 @@
       },
       "get": {
         "operationId": "InviteController_getInvites",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "communityId",
+            "required": false,
+            "in": "query",
+            "description": "Only the invites that include this community",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",

@@ -235,11 +235,6 @@ describe('Removing members and lifting timeouts (e2e)', () => {
             },
           })
         ).active;
-      /** Community Admin can't ban by default: a role above it that can. */
-      const banners = async (communityId: string, ...who: Who[]) => {
-        const role = await f.customRole(communityId, 5, [RbacActions.BAN_USER]);
-        for (const w of who) await f.give(communityId, w, role);
-      };
       /** A custom role below the moderators, that may only lift bans. */
       const lowUnbanner = async (communityId: string) => {
         const role = await f.customRole(communityId, 200, [
@@ -248,9 +243,16 @@ describe('Removing members and lifting timeouts (e2e)', () => {
         await f.give(communityId, 'low', role);
       };
 
+      it('the default Community Admin can ban and unban (#692)', async () => {
+        const c = await scene();
+        await banBy(c.id, 'admin');
+        expect(await banActive(c.id)).toBe(true);
+        await unbanBy(c.id, 'admin').expect(200);
+        expect(await banActive(c.id)).toBe(false);
+      });
+
       it('cannot lift a ban set by a higher rank', async () => {
         const c = await scene();
-        await banners(c.id, 'admin');
         await lowUnbanner(c.id);
         await banBy(c.id, 'admin');
         await unbanBy(c.id, 'low').expect(403);
@@ -259,7 +261,6 @@ describe('Removing members and lifting timeouts (e2e)', () => {
 
       it('a peer or a higher rank can lift it', async () => {
         const c = await scene();
-        await banners(c.id, 'admin', 'peer');
         await banBy(c.id, 'admin');
         await unbanBy(c.id, 'peer').expect(200);
         expect(await banActive(c.id)).toBe(false);
@@ -267,7 +268,6 @@ describe('Removing members and lifting timeouts (e2e)', () => {
 
       it('a ban whose moderator is gone can be lifted', async () => {
         const c = await scene();
-        await banners(c.id, 'admin');
         await lowUnbanner(c.id);
         await banBy(c.id, 'admin');
         await f.db.communityBan.update({
@@ -281,9 +281,54 @@ describe('Removing members and lifting timeouts (e2e)', () => {
 
       it('an instance owner can lift any of them', async () => {
         const c = await scene();
-        await banners(c.id, 'admin');
         await banBy(c.id, 'admin');
         await unbanBy(c.id, 'owner').expect(200);
+      });
+    });
+
+    describe('viewing the timeout list (#688)', () => {
+      const list = (communityId: string, who: Who) =>
+        f
+          .http()
+          .get(`/api/moderation/timeouts/${communityId}`)
+          .set('Authorization', f.bearer(who));
+
+      it('a role that can only set timeouts sees it', async () => {
+        const c = await scene();
+        await timeOut(c.id, 'admin', 'member');
+        await f.give(
+          c.id,
+          'low',
+          await f.customRole(c.id, 50, [RbacActions.TIMEOUT_USER]),
+        );
+
+        const res = await list(c.id, 'low').expect(200);
+        expect((res.body as { userId: string }[]).map((t) => t.userId)).toEqual(
+          [f.id.member],
+        );
+      });
+
+      it('a ban-list viewer sees it, as before', async () => {
+        const c = await scene();
+        await timeOut(c.id, 'admin', 'member');
+        await f.give(
+          c.id,
+          'low',
+          await f.customRole(c.id, 50, [RbacActions.VIEW_BAN_LIST]),
+        );
+
+        await list(c.id, 'low').expect(200);
+      });
+
+      it('holds neither permission: refused', async () => {
+        const c = await scene();
+        await f.give(
+          c.id,
+          'low',
+          await f.customRole(c.id, 50, [RbacActions.KICK_USER]),
+        );
+
+        await list(c.id, 'low').expect(403);
       });
     });
 
@@ -305,6 +350,81 @@ describe('Removing members and lifting timeouts (e2e)', () => {
         .send({})
         .expect(200);
     });
+  });
+
+  describe('instance owner moderation (#679)', () => {
+    /** A community the owner moderates without any community role. */
+    async function ownerScene() {
+      const c = await f.community();
+      await f.join(c.id, 'admin', 'member');
+      await f.give(c.id, 'admin', c.adminRole);
+      // Creating a community makes you its Community Admin; drop that so the
+      // owner holds no role there.
+      await f.db.userRoles.deleteMany({
+        where: { communityId: c.id, userId: f.id.owner },
+      });
+      return c;
+    }
+
+    it('bans an admin, although the owner has no community role', async () => {
+      const c = await ownerScene();
+      await f
+        .http()
+        .post(`/api/moderation/ban/${c.id}/${f.id.admin}`)
+        .set('Authorization', f.bearer('owner'))
+        .send({ reason: 'owner decision' })
+        .expect(200);
+      expect(await isMember(f.id.admin, c.id)).toBe(0);
+      expect(
+        (
+          await f.db.communityBan.findUniqueOrThrow({
+            where: {
+              communityId_userId: { communityId: c.id, userId: f.id.admin },
+            },
+          })
+        ).active,
+      ).toBe(true);
+    });
+
+    it('kicks an admin, although the owner has no community role', async () => {
+      const c = await ownerScene();
+      await f
+        .http()
+        .post(`/api/moderation/kick/${c.id}/${f.id.admin}`)
+        .set('Authorization', f.bearer('owner'))
+        .send({ reason: 'owner decision' })
+        .expect(200);
+      expect(await isMember(f.id.admin, c.id)).toBe(0);
+    });
+
+    it('times an admin out, although the owner has no community role', async () => {
+      const c = await ownerScene();
+      await f
+        .http()
+        .post(`/api/moderation/timeout/${c.id}/${f.id.admin}`)
+        .set('Authorization', f.bearer('owner'))
+        .send({ durationSeconds: 600, reason: 'owner decision' })
+        .expect(200);
+      expect(
+        await f.db.communityTimeout.count({
+          where: { communityId: c.id, userId: f.id.admin },
+        }),
+      ).toBe(1);
+    });
+
+    it.each(['ban', 'kick', 'timeout'])(
+      'still cannot %s themselves',
+      async (action) => {
+        const c = await ownerScene();
+        await f
+          .http()
+          .post(`/api/moderation/${action}/${c.id}/${f.id.owner}`)
+          .set('Authorization', f.bearer('owner'))
+          .send(action === 'timeout' ? { durationSeconds: 600 } : {})
+          .expect(403);
+        expect(await isMember(f.id.owner, c.id)).toBe(1);
+      },
+    );
   });
 
   describe('leaving a community by any route', () => {
