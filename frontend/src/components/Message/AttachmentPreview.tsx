@@ -48,7 +48,7 @@ const PREVIEW_MAX_HEIGHT = 400;
 function previewBoxSx(
   width?: number | null,
   height?: number | null,
-): { width: string; aspectRatio: string } | undefined {
+): { width: string; height: string; aspectRatio: string } | undefined {
   if (!width || !height || width <= 0 || height <= 0) return undefined;
   const widthAtMaxHeight = Math.max(
     1,
@@ -56,6 +56,10 @@ function previewBoxSx(
   );
   return {
     width: `min(100%, ${width}px, ${widthAtMaxHeight}px)`,
+    // The img also carries HTML width/height (so the browser knows the ratio
+    // before CSS loads); without `auto` that height attribute would fix the
+    // height in pixels and letterbox a wide image inside a tall box.
+    height: 'auto',
     aspectRatio: `${width} / ${height}`,
   };
 }
