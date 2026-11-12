@@ -16,6 +16,7 @@ import {
   ModerationUserBannedEvent,
   ModerationUserKickedEvent,
   ModerationTimeoutChangedEvent,
+  ModerationTimeoutExpiredEvent,
   ChannelCreatedEvent,
   ChannelDeletedEvent,
   ChannelVisibilityChangedEvent,
@@ -25,10 +26,14 @@ import {
   DmGroupMemberAddedEvent,
   DmGroupMemberLeftEvent,
   AliasGroupCreatedEvent,
+  AliasGroupUpdatedEvent,
   AliasGroupMemberAddedEvent,
   AliasGroupMemberRemovedEvent,
   AliasGroupDeletedEvent,
   AliasGroupMembersUpdatedEvent,
+  CustomEmojiChangedEvent,
+  SoundboardSoundChangedEvent,
+  WebhookChangedEvent,
   CommunityUpdatedEvent,
   CommunityDeletedEvent,
   RoleCreatedEvent,
@@ -185,6 +190,26 @@ export class RoomSubscriptionHandler {
         error,
       );
     }
+  }
+
+  /**
+   * A timeout ran out by itself: send the same event a moderator lifting it
+   * early sends, marked `expired` so clients can tell the two apart.
+   */
+  @OnEvent(RoomEvents.MODERATION_TIMEOUT_EXPIRED)
+  onTimeoutExpired({
+    userId,
+    communityId,
+    moderatorId,
+  }: ModerationTimeoutExpiredEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.TIMEOUT_REMOVED,
+      { communityId, userId, moderatorId, expired: true },
+    );
+    this.logger.debug(
+      `Timeout of ${userId} in community ${communityId} expired`,
+    );
   }
 
   /**
@@ -366,10 +391,17 @@ export class RoomSubscriptionHandler {
   onChannelMembershipCreated({
     userId,
     channelId,
+    communityId,
   }: ChannelMembershipCreatedEvent): void {
     this.websocketService.joinSocketsToRoom(
       RoomName.user(userId),
       RoomName.channel(channelId),
+    );
+    // Tell the user's own sessions: the channel was not in their list before.
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.PRIVATE_CHANNEL_ADDED,
+      { communityId, channelId },
     );
     this.logger.debug(
       `User ${userId} joined private channel room ${channelId}`,
@@ -380,10 +412,16 @@ export class RoomSubscriptionHandler {
   async onChannelMembershipRemoved({
     userId,
     channelId,
+    communityId,
   }: ChannelMembershipRemovedEvent): Promise<void> {
     this.websocketService.removeSocketsFromRoom(
       RoomName.user(userId),
       RoomName.channel(channelId),
+    );
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.PRIVATE_CHANNEL_REMOVED,
+      { communityId, channelId },
     );
     this.logger.debug(`User ${userId} left private channel room ${channelId}`);
     // Off the list doesn't always mean out of sight (e.g. a role allow of
@@ -459,6 +497,7 @@ export class RoomSubscriptionHandler {
   onAliasGroupCreated({
     aliasGroupId,
     memberIds,
+    communityId,
   }: AliasGroupCreatedEvent): void {
     for (const userId of memberIds) {
       this.websocketService.joinSocketsToRoom(
@@ -466,19 +505,43 @@ export class RoomSubscriptionHandler {
         RoomName.aliasGroup(aliasGroupId),
       );
     }
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.ALIAS_GROUP_CREATED,
+      { communityId, groupId: aliasGroupId },
+    );
     this.logger.debug(
       `${memberIds.length} members joined alias group room ${aliasGroupId}`,
     );
+  }
+
+  @OnEvent(RoomEvents.ALIAS_GROUP_UPDATED)
+  onAliasGroupUpdated({
+    aliasGroupId,
+    communityId,
+  }: AliasGroupUpdatedEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.ALIAS_GROUP_UPDATED,
+      { communityId, groupId: aliasGroupId },
+    );
+    this.logger.debug(`Alias group ${aliasGroupId} updated`);
   }
 
   @OnEvent(RoomEvents.ALIAS_GROUP_MEMBER_ADDED)
   onAliasGroupMemberAdded({
     aliasGroupId,
     userId,
+    communityId,
   }: AliasGroupMemberAddedEvent): void {
     this.websocketService.joinSocketsToRoom(
       RoomName.user(userId),
       RoomName.aliasGroup(aliasGroupId),
+    );
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+      { communityId, groupId: aliasGroupId },
     );
     this.logger.debug(`User ${userId} joined alias group room ${aliasGroupId}`);
   }
@@ -487,10 +550,16 @@ export class RoomSubscriptionHandler {
   onAliasGroupMemberRemoved({
     aliasGroupId,
     userId,
+    communityId,
   }: AliasGroupMemberRemovedEvent): void {
     this.websocketService.removeSocketsFromRoom(
       RoomName.user(userId),
       RoomName.aliasGroup(aliasGroupId),
+    );
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+      { communityId, groupId: aliasGroupId },
     );
     this.logger.debug(`User ${userId} left alias group room ${aliasGroupId}`);
   }
@@ -499,6 +568,7 @@ export class RoomSubscriptionHandler {
   onAliasGroupDeleted({
     aliasGroupId,
     memberIds,
+    communityId,
   }: AliasGroupDeletedEvent): void {
     for (const userId of memberIds) {
       this.websocketService.removeSocketsFromRoom(
@@ -506,6 +576,11 @@ export class RoomSubscriptionHandler {
         RoomName.aliasGroup(aliasGroupId),
       );
     }
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.ALIAS_GROUP_DELETED,
+      { communityId, groupId: aliasGroupId },
+    );
     this.logger.debug(
       `${memberIds.length} members removed from deleted alias group room ${aliasGroupId}`,
     );
@@ -516,6 +591,7 @@ export class RoomSubscriptionHandler {
     aliasGroupId,
     addedUserIds,
     removedUserIds,
+    communityId,
   }: AliasGroupMembersUpdatedEvent): void {
     for (const userId of addedUserIds) {
       this.websocketService.joinSocketsToRoom(
@@ -529,8 +605,92 @@ export class RoomSubscriptionHandler {
         RoomName.aliasGroup(aliasGroupId),
       );
     }
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+      { communityId, groupId: aliasGroupId },
+    );
     this.logger.debug(
       `Alias group ${aliasGroupId} updated: +${addedUserIds.length} -${removedUserIds.length} members`,
+    );
+  }
+
+  // =========================================================================
+  // Community Assets (custom emoji, soundboard, webhooks)
+  // =========================================================================
+
+  @OnEvent(RoomEvents.CUSTOM_EMOJI_CREATED)
+  onCustomEmojiCreated({
+    communityId,
+    emojiId,
+  }: CustomEmojiChangedEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.CUSTOM_EMOJI_CREATED,
+      { communityId, emojiId },
+    );
+  }
+
+  @OnEvent(RoomEvents.CUSTOM_EMOJI_DELETED)
+  onCustomEmojiDeleted({
+    communityId,
+    emojiId,
+  }: CustomEmojiChangedEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.CUSTOM_EMOJI_DELETED,
+      { communityId, emojiId },
+    );
+  }
+
+  @OnEvent(RoomEvents.SOUNDBOARD_SOUND_CREATED)
+  onSoundboardSoundCreated({
+    communityId,
+    soundId,
+  }: SoundboardSoundChangedEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.SOUNDBOARD_SOUND_CREATED,
+      { communityId, soundId },
+    );
+  }
+
+  @OnEvent(RoomEvents.SOUNDBOARD_SOUND_DELETED)
+  onSoundboardSoundDeleted({
+    communityId,
+    soundId,
+  }: SoundboardSoundChangedEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.SOUNDBOARD_SOUND_DELETED,
+      { communityId, soundId },
+    );
+  }
+
+  /** Webhooks carry no secret here: ids only, never the token or URL. */
+  @OnEvent(RoomEvents.WEBHOOK_CREATED)
+  onWebhookCreated({
+    communityId,
+    channelId,
+    webhookId,
+  }: WebhookChangedEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.WEBHOOK_CREATED,
+      { communityId, channelId, webhookId },
+    );
+  }
+
+  @OnEvent(RoomEvents.WEBHOOK_DELETED)
+  onWebhookDeleted({
+    communityId,
+    channelId,
+    webhookId,
+  }: WebhookChangedEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.WEBHOOK_DELETED,
+      { communityId, channelId, webhookId },
     );
   }
 

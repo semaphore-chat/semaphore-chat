@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
 
+### Added
+
+- The web client now refreshes the ban list and the moderation log when a ban is lifted. (#683)
+- Clients now learn when a timeout ends on its own, so posting and voice controls come back without a reload. (#684)
+- A user added to or removed from a private channel now sees it appear or disappear in every client without a reload. (#681)
+- Creating or deleting a custom emoji, soundboard sound, alias group or webhook now refreshes the matching lists in every client without a reload. (#682)
+
 ### Fixed
 
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import {
   handleUserBanned,
+  handleUserUnbanned,
   handleUserKicked,
   handleUserTimedOut,
   handleTimeoutRemoved,
@@ -39,6 +40,30 @@ describe('moderationHandlers', () => {
 
     it('invalidates exactly 2 query types', () => {
       handleUserBanned({} as never, queryClient);
+      expect(invalidateSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('handleUserUnbanned', () => {
+    it('invalidates the ban list and the moderation log', () => {
+      handleUserUnbanned(
+        { communityId: 'c1', userId: 'u1', moderatorId: 'm1' },
+        queryClient,
+      );
+
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'moderationControllerGetBanList' }],
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'moderationControllerGetModerationLogs' }],
+      });
+    });
+
+    it('invalidates exactly those 2 queries', () => {
+      handleUserUnbanned(
+        { communityId: 'c1', userId: 'u1', moderatorId: 'm1' },
+        queryClient,
+      );
       expect(invalidateSpy).toHaveBeenCalledTimes(2);
     });
   });
@@ -120,9 +145,40 @@ describe('moderationHandlers', () => {
       );
     });
 
+    it('invalidates the timeout list so moderators see it is gone', () => {
+      handleTimeoutRemoved({} as never, queryClient);
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: [{ _id: 'moderationControllerGetTimeoutList' }],
+        }),
+      );
+    });
+
+    it('does the same when the timeout ran out on its own', () => {
+      handleTimeoutRemoved(
+        {
+          communityId: 'c1',
+          userId: 'u1',
+          moderatorId: 'm1',
+          expired: true,
+        },
+        queryClient,
+      );
+
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }],
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'moderationControllerGetTimeoutList' }],
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'channelPermissionsControllerGetMyChannelPermissions' }],
+      });
+    });
+
     it('does NOT invalidate communities', () => {
       handleTimeoutRemoved({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(6);
+      expect(invalidateSpy).toHaveBeenCalledTimes(7);
       expect(invalidateSpy).not.toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: [{ _id: 'communityControllerFindAllMine' }] }),
       );

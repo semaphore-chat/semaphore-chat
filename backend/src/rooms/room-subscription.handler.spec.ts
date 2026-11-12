@@ -616,6 +616,28 @@ describe('RoomSubscriptionHandler', () => {
     });
   });
 
+  describe('onTimeoutExpired', () => {
+    it('sends TIMEOUT_REMOVED marked expired to the community room', () => {
+      handler.onTimeoutExpired({
+        userId: 'user-1',
+        communityId: 'community-456',
+        moderatorId: 'mod-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.TIMEOUT_REMOVED,
+        {
+          communityId: 'community-456',
+          userId: 'user-1',
+          moderatorId: 'mod-1',
+          expired: true,
+        },
+      );
+    });
+  });
+
   describe('onChannelDeleted', () => {
     it('should remove all sockets from the deleted channel room', () => {
       const channelId = 'channel-123';
@@ -638,11 +660,27 @@ describe('RoomSubscriptionHandler', () => {
       handler.onChannelMembershipCreated({
         userId: 'user-123',
         channelId: 'channel-456',
+        communityId: 'community-789',
       });
 
       expect(websocketService.joinSocketsToRoom).toHaveBeenCalledWith(
         'user:user-123',
         'channel-456',
+      );
+    });
+
+    it('tells only that user their channel list changed', () => {
+      handler.onChannelMembershipCreated({
+        userId: 'user-123',
+        channelId: 'channel-456',
+        communityId: 'community-789',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-123',
+        ServerEvents.PRIVATE_CHANNEL_ADDED,
+        { communityId: 'community-789', channelId: 'channel-456' },
       );
     });
   });
@@ -655,11 +693,29 @@ describe('RoomSubscriptionHandler', () => {
       await handler.onChannelMembershipRemoved({
         userId: 'user-123',
         channelId: 'channel-456',
+        communityId: 'community-789',
       });
 
       expect(websocketService.removeSocketsFromRoom).toHaveBeenCalledWith(
         'user:user-123',
         'channel-456',
+      );
+    });
+
+    it('tells only that user their channel list changed', async () => {
+      channelAccessService.canViewChannel.mockResolvedValue(true);
+
+      await handler.onChannelMembershipRemoved({
+        userId: 'user-123',
+        channelId: 'channel-456',
+        communityId: 'community-789',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-123',
+        ServerEvents.PRIVATE_CHANNEL_REMOVED,
+        { communityId: 'community-789', channelId: 'channel-456' },
       );
     });
 
@@ -675,6 +731,7 @@ describe('RoomSubscriptionHandler', () => {
       await handler.onChannelMembershipRemoved({
         userId: 'user-123',
         channelId: 'channel-456',
+        communityId: 'community-789',
       });
 
       expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
@@ -698,6 +755,7 @@ describe('RoomSubscriptionHandler', () => {
       await handler.onChannelMembershipRemoved({
         userId: 'user-123',
         channelId: 'channel-456',
+        communityId: 'community-789',
       });
 
       expect(livekitService.removeParticipant).not.toHaveBeenCalled();
@@ -713,6 +771,7 @@ describe('RoomSubscriptionHandler', () => {
       await handler.onChannelMembershipRemoved({
         userId: 'user-123',
         channelId: 'channel-456',
+        communityId: 'community-789',
       });
 
       expect(livekitService.removeParticipant).not.toHaveBeenCalled();
@@ -725,6 +784,7 @@ describe('RoomSubscriptionHandler', () => {
         handler.onChannelMembershipRemoved({
           userId: 'user-123',
           channelId: 'channel-456',
+          communityId: 'community-789',
         }),
       ).resolves.toBeUndefined();
       expect(livekitService.removeParticipant).not.toHaveBeenCalled();
@@ -806,7 +866,11 @@ describe('RoomSubscriptionHandler', () => {
     it('should join all members to the alias group room', () => {
       const memberIds = ['user-1', 'user-2'];
 
-      handler.onAliasGroupCreated({ aliasGroupId: 'alias-123', memberIds });
+      handler.onAliasGroupCreated({
+        aliasGroupId: 'alias-123',
+        memberIds,
+        communityId: 'community-456',
+      });
 
       expect(websocketService.joinSocketsToRoom).toHaveBeenCalledTimes(2);
       expect(websocketService.joinSocketsToRoom).toHaveBeenCalledWith(
@@ -818,6 +882,36 @@ describe('RoomSubscriptionHandler', () => {
         'alias-123',
       );
     });
+
+    it('tells the community the list gained a group', () => {
+      handler.onAliasGroupCreated({
+        aliasGroupId: 'alias-123',
+        memberIds: [],
+        communityId: 'community-456',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.ALIAS_GROUP_CREATED,
+        { communityId: 'community-456', groupId: 'alias-123' },
+      );
+    });
+  });
+
+  describe('onAliasGroupUpdated', () => {
+    it('tells the community a group changed', () => {
+      handler.onAliasGroupUpdated({
+        aliasGroupId: 'alias-123',
+        communityId: 'community-456',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.ALIAS_GROUP_UPDATED,
+        { communityId: 'community-456', groupId: 'alias-123' },
+      );
+    });
   });
 
   describe('onAliasGroupMemberAdded', () => {
@@ -825,11 +919,26 @@ describe('RoomSubscriptionHandler', () => {
       handler.onAliasGroupMemberAdded({
         aliasGroupId: 'alias-123',
         userId: 'user-456',
+        communityId: 'community-789',
       });
 
       expect(websocketService.joinSocketsToRoom).toHaveBeenCalledWith(
         'user:user-456',
         'alias-123',
+      );
+    });
+
+    it("tells the community the group's members changed", () => {
+      handler.onAliasGroupMemberAdded({
+        aliasGroupId: 'alias-123',
+        userId: 'user-456',
+        communityId: 'community-789',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-789',
+        ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+        { communityId: 'community-789', groupId: 'alias-123' },
       );
     });
   });
@@ -839,11 +948,26 @@ describe('RoomSubscriptionHandler', () => {
       handler.onAliasGroupMemberRemoved({
         aliasGroupId: 'alias-123',
         userId: 'user-456',
+        communityId: 'community-789',
       });
 
       expect(websocketService.removeSocketsFromRoom).toHaveBeenCalledWith(
         'user:user-456',
         'alias-123',
+      );
+    });
+
+    it("tells the community the group's members changed", () => {
+      handler.onAliasGroupMemberRemoved({
+        aliasGroupId: 'alias-123',
+        userId: 'user-456',
+        communityId: 'community-789',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-789',
+        ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+        { communityId: 'community-789', groupId: 'alias-123' },
       );
     });
   });
@@ -852,7 +976,11 @@ describe('RoomSubscriptionHandler', () => {
     it('should remove all members from the alias group room', () => {
       const memberIds = ['user-1', 'user-2'];
 
-      handler.onAliasGroupDeleted({ aliasGroupId: 'alias-123', memberIds });
+      handler.onAliasGroupDeleted({
+        aliasGroupId: 'alias-123',
+        memberIds,
+        communityId: 'community-456',
+      });
 
       expect(websocketService.removeSocketsFromRoom).toHaveBeenCalledTimes(2);
       expect(websocketService.removeSocketsFromRoom).toHaveBeenCalledWith(
@@ -864,6 +992,20 @@ describe('RoomSubscriptionHandler', () => {
         'alias-123',
       );
     });
+
+    it('tells the community the list lost a group', () => {
+      handler.onAliasGroupDeleted({
+        aliasGroupId: 'alias-123',
+        memberIds: [],
+        communityId: 'community-456',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.ALIAS_GROUP_DELETED,
+        { communityId: 'community-456', groupId: 'alias-123' },
+      );
+    });
   });
 
   describe('onAliasGroupMembersUpdated', () => {
@@ -872,6 +1014,7 @@ describe('RoomSubscriptionHandler', () => {
         aliasGroupId: 'alias-123',
         addedUserIds: ['user-new'],
         removedUserIds: ['user-old'],
+        communityId: 'community-456',
       });
 
       expect(websocketService.joinSocketsToRoom).toHaveBeenCalledWith(
@@ -884,15 +1027,129 @@ describe('RoomSubscriptionHandler', () => {
       );
     });
 
+    it("tells the community the group's members changed", () => {
+      handler.onAliasGroupMembersUpdated({
+        aliasGroupId: 'alias-123',
+        addedUserIds: ['user-new'],
+        removedUserIds: [],
+        communityId: 'community-456',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.ALIAS_GROUP_MEMBERS_UPDATED,
+        { communityId: 'community-456', groupId: 'alias-123' },
+      );
+    });
+
     it('should handle empty added/removed arrays', () => {
       handler.onAliasGroupMembersUpdated({
         aliasGroupId: 'alias-123',
         addedUserIds: [],
         removedUserIds: [],
+        communityId: 'community-456',
       });
 
       expect(websocketService.joinSocketsToRoom).not.toHaveBeenCalled();
       expect(websocketService.removeSocketsFromRoom).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // Community Assets
+  // =========================================================================
+
+  describe('custom emoji', () => {
+    it('announces a created emoji to the community', () => {
+      handler.onCustomEmojiCreated({
+        communityId: 'community-456',
+        emojiId: 'emoji-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.CUSTOM_EMOJI_CREATED,
+        { communityId: 'community-456', emojiId: 'emoji-1' },
+      );
+    });
+
+    it('announces a deleted emoji to the community', () => {
+      handler.onCustomEmojiDeleted({
+        communityId: 'community-456',
+        emojiId: 'emoji-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.CUSTOM_EMOJI_DELETED,
+        { communityId: 'community-456', emojiId: 'emoji-1' },
+      );
+    });
+  });
+
+  describe('soundboard', () => {
+    it('announces a created sound to the community', () => {
+      handler.onSoundboardSoundCreated({
+        communityId: 'community-456',
+        soundId: 'sound-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.SOUNDBOARD_SOUND_CREATED,
+        { communityId: 'community-456', soundId: 'sound-1' },
+      );
+    });
+
+    it('announces a deleted sound to the community', () => {
+      handler.onSoundboardSoundDeleted({
+        communityId: 'community-456',
+        soundId: 'sound-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.SOUNDBOARD_SOUND_DELETED,
+        { communityId: 'community-456', soundId: 'sound-1' },
+      );
+    });
+  });
+
+  describe('webhooks', () => {
+    it('announces a created webhook without the token or URL', () => {
+      handler.onWebhookCreated({
+        communityId: 'community-456',
+        channelId: 'channel-1',
+        webhookId: 'webhook-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.WEBHOOK_CREATED,
+        {
+          communityId: 'community-456',
+          channelId: 'channel-1',
+          webhookId: 'webhook-1',
+        },
+      );
+    });
+
+    it('announces a deleted webhook', () => {
+      handler.onWebhookDeleted({
+        communityId: 'community-456',
+        channelId: 'channel-1',
+        webhookId: 'webhook-1',
+      });
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'community:community-456',
+        ServerEvents.WEBHOOK_DELETED,
+        {
+          communityId: 'community-456',
+          channelId: 'channel-1',
+          webhookId: 'webhook-1',
+        },
+      );
     });
   });
 });

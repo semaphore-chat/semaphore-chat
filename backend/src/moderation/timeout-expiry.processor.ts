@@ -23,10 +23,12 @@ const CONCURRENCY = resolveJobWorkerConcurrency();
  *   timeout's own job handles it;
  * - otherwise (expired, or its row already gone): emit
  *   MODERATION_TIMEOUT_CHANGED, whose handler recomputes the user's grants
- *   in every voice room of the community they're in. A missing row can be
- *   a timeout that expired and was cleaned up lazily, so it isn't skipped;
- *   for one lifted early (whose job removeTimeout cancels anyway) the
- *   recompute yields the grant already in place.
+ *   in every voice room of the community they're in, and
+ *   MODERATION_TIMEOUT_EXPIRED, which sends the client the same
+ *   TIMEOUT_REMOVED event an early lift does, with `expired: true`. A
+ *   missing row can be a timeout that expired and was cleaned up lazily, so
+ *   it isn't skipped; for one lifted early (whose job removeTimeout cancels
+ *   anyway) the recompute yields the grant already in place.
  */
 @Processor(TIMEOUT_EXPIRY_QUEUE, { concurrency: CONCURRENCY })
 export class TimeoutExpiryProcessor extends WorkerHost {
@@ -44,7 +46,7 @@ export class TimeoutExpiryProcessor extends WorkerHost {
 
     const timeout = await this.databaseService.communityTimeout.findUnique({
       where: { communityId_userId: { communityId, userId } },
-      select: { expiresAt: true },
+      select: { expiresAt: true, moderatorId: true },
     });
     if (timeout && timeout.expiresAt > new Date()) {
       this.logger.debug(
@@ -57,6 +59,19 @@ export class TimeoutExpiryProcessor extends WorkerHost {
       userId,
       communityId,
     });
+
+    // Same client event as an early lift, marked expired. The moderator is
+    // whoever set it; a job queued before this field existed has none, and
+    // the event is then skipped (voice is still resynced above).
+    const moderatorId = timeout?.moderatorId ?? job.data.moderatorId;
+    if (moderatorId) {
+      await this.eventEmitter.emitAsync(RoomEvents.MODERATION_TIMEOUT_EXPIRED, {
+        userId,
+        communityId,
+        moderatorId,
+      });
+    }
+
     this.logger.log(
       `Timeout of ${userId} in community ${communityId} ended: voice grants recomputed`,
     );
