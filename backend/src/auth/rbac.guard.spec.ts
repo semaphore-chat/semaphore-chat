@@ -401,6 +401,102 @@ describe('RbacGuard', () => {
     });
   });
 
+  describe('Any-of actions (RequiredAnyActions)', () => {
+    const community = {
+      type: RbacResourceType.COMMUNITY,
+      idKey: 'communityId',
+      source: ResourceIdSource.PARAM,
+    };
+
+    it('allows access when the user holds one of them', async () => {
+      const user = UserFactory.build();
+      const context = createMockHttpExecutionContext({
+        user,
+        params: { communityId: 'community-1' },
+      });
+
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValueOnce([]) // No all-of actions
+        .mockReturnValueOnce(community)
+        .mockReturnValueOnce([
+          RbacActions.VIEW_BAN_LIST,
+          RbacActions.TIMEOUT_USER,
+        ]);
+
+      jest
+        .spyOn(permissionsService, 'verifyActionsForUserAndResource')
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).toHaveBeenNthCalledWith(
+        1,
+        user.id,
+        'community-1',
+        RbacResourceType.COMMUNITY,
+        [RbacActions.VIEW_BAN_LIST],
+      );
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).toHaveBeenNthCalledWith(
+        2,
+        user.id,
+        'community-1',
+        RbacResourceType.COMMUNITY,
+        [RbacActions.TIMEOUT_USER],
+      );
+    });
+
+    it('denies access when the user holds none of them', async () => {
+      const user = UserFactory.build();
+      const context = createMockHttpExecutionContext({
+        user,
+        params: { communityId: 'community-1' },
+      });
+
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce(community)
+        .mockReturnValueOnce([
+          RbacActions.VIEW_BAN_LIST,
+          RbacActions.TIMEOUT_USER,
+        ]);
+
+      jest
+        .spyOn(permissionsService, 'verifyActionsForUserAndResource')
+        .mockResolvedValue(false);
+
+      await expect(guard.canActivate(context)).resolves.toBe(false);
+    });
+
+    it('still bypasses for the instance owner', async () => {
+      const owner = UserFactory.buildOwner();
+      const context = createMockHttpExecutionContext({
+        user: owner,
+        params: { communityId: 'community-1' },
+      });
+
+      jest
+        .spyOn(reflector, 'getAllAndOverride')
+        .mockReturnValueOnce([])
+        .mockReturnValueOnce(community)
+        .mockReturnValueOnce([
+          RbacActions.VIEW_BAN_LIST,
+          RbacActions.TIMEOUT_USER,
+        ]);
+      permissionsService.isDirectMessageResource.mockResolvedValue(false);
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Permission denial', () => {
     it('should deny access when user lacks required permissions', async () => {
       const user = UserFactory.build();

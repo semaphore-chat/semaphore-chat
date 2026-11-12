@@ -11,8 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
 
+### Changed
+
+- The default Community Admin role (new communities, and "reset defaults") now includes banning members. Existing communities keep their current Community Admin role until someone resets the defaults, and since a reset now grants banning, only someone who already holds ban rights there (or the instance owner) can run it: a Community Admin of an existing community gets a 403 from "reset defaults". (#692)
+
 ### Fixed
 
+- Banning, kicking and timing out a member now work for the instance owner moderating a community they hold no role in, as unbanning, lifting a timeout and removing a member already did; the owner still can't moderate themselves. (#679)
+- Community administrators can create, list and delete invites for the community they run without an instance role; an invite naming another community, or none, still needs instance invite authority. (#685)
+- A moderator who can set timeouts but not see the ban list can now see the timeout list. (#688)
+- Saving a role now checks only the permissions the edit adds, so a role that holds a permission you lack can still be renamed or have permissions removed. (#690)
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
 - `GET /notifications` now reports the total number of matching notifications instead of the size of the page. (#658)
 - Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)
