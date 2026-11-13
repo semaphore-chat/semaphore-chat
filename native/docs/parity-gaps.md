@@ -27,19 +27,6 @@ story. "Depends" names the thing that must happen first.
 
 ## B. Partial features (behaviours missing)
 
-### B4. Voice diagnostics upload
-
-- **Web:** `frontend/src/features/voice/joinFailureReport.ts` posts a classified join failure to
-  `POST /voice-diagnostics` with `platform: 'web' | 'electron'`.
-- **Native:** join failures are classified and kept for the debug panel
-  (`native/crates/semaphore-ui/src/voice/debug.rs`, `Core::refresh_voice_diagnostics`,
-  `semaphore-core/src/commands/diagnostics.rs:79`), and "Copy report" copies the text
-  (`voice/debug.rs:250`). There is no upload path in core or net (no `report_join_failure` anywhere).
-- **Missing:** the upload, which is intentionally held until the backend accepts a native platform
-  value (`VOICE_CLIENT_PLATFORMS` is web and electron only, "Backend asks W4").
-- **Size:** S once the backend allows it.
-- **Depends:** backend change (a native value in `ReportJoinFailureDto.platform`).
-
 ### B5. Camera test and preview in settings
 
 - **Web:** `frontend/src/hooks/useDeviceTest.ts` tests the camera (`testVideoInput`) and
@@ -105,18 +92,6 @@ story. "Depends" names the thing that must happen first.
   version bumping the Electron release lane does.
 - **Size:** M.
 - **Depends:** release/product decision; C1 and C2 for a trustworthy first release.
-
-### C7. Which app owns `semaphore://`
-
-- **Web/Electron:** electron-builder declares the protocol and `electron/main.ts` registers it on
-  launch; whichever app registered last wins, exactly as here.
-- **Native:** both apps register the scheme; whichever registered last wins. The native installer
-  writes `HKCU\Software\Classes\semaphore` and its uninstaller only removes the key when it points
-  at the native exe, so an Electron registration survives (`native/packaging/windows/installer.nsi`,
-  `semaphore-platform-desktop/src/links.rs`). Linux `.desktop` registration is last-writer-wins.
-- **Missing:** a shared "which app opens links" setting or an install-time question.
-- **Size:** S.
-- **Depends:** product decision (and C4 if the answer is "the packaged native app asks").
 
 ### C9. macOS
 
@@ -212,18 +187,19 @@ Not listed: "Copy message link" from W1's defaults is not a gap — the web has 
 | Group | Items |
 |---|---|
 | A. Missing features | 1 |
-| B. Partial features | 2 |
-| C. Platform and distribution | 6 |
+| B. Partial features | 1 |
+| C. Platform and distribution | 5 |
 | D. Only a person can check | 10 |
 | E. Decided not to build | 10 |
 
-Closed on 2026-11-13: B1 (reset password), B2 (Home's invite card), B3 (push-to-talk), B6 (Check
-for Updates in the tray and menu), B7 and C5 (log files, the voice event log, crash reports), C6
-(Electron's close-to-tray setting imported on first run; its server URL lives in browser storage
-and cannot be) and C8 (the end-to-end suite as a nightly CI job). What each builds is spelled out
-in `docs/parity-plan.md`'s rows.
+Closed on 2026-11-13: B1 (reset password), B2 (Home's invite card), B3 (push-to-talk), B4 (the
+voice join-failure upload), B6 (Check for Updates in the tray and menu), B7 and C5 (log files, the
+voice event log, crash reports), C6 (Electron's close-to-tray setting imported on first run; its
+server URL lives in browser storage and cannot be), C7 (the "Open semaphore:// links with this app"
+setting) and C8 (the end-to-end suite as a nightly CI job). What each builds is spelled out in
+`docs/parity-plan.md`'s rows.
 
-The inventory itself (128 rows, 11 tables) now reads: 120 done, 3 partial, 2 not started, 3 n/a.
+The inventory itself (128 rows, 11 tables) now reads: 121 done, 2 partial, 2 not started, 3 n/a.
 
 ## The gaps that matter most for a first usable release
 
@@ -233,11 +209,7 @@ The inventory itself (128 rows, 11 tables) now reads: 120 done, 3 partial, 2 not
    the app ever runs, and it is the cheapest of the distribution items to fix.
 3. **Real Wayland and Windows capture checks (D1, D2).** Screen share is the feature that sells a
    voice client over a browser; it has never run on a real Wayland or Windows desktop.
-4. **Voice diagnostics upload (B4).** The panel classifies failures but can't tell anyone; it needs
-   the backend's native platform value and then a one-line upload.
-5. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
+4. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
    blocker for any accessibility claim; scope the kit question before promising it.
-6. **Camera test and preview in settings (B5).** The microphone has a test and a meter; the camera
+5. **Camera test and preview in settings (B5).** The microphone has a test and a meter; the camera
    has neither, so a broken camera is only found in a call.
-7. **Which app opens `semaphore://` (C7).** With both apps installed, the last registration wins
-   silently; a link that opens the wrong client looks like the app is broken.

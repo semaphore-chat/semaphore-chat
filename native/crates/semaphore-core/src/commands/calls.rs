@@ -133,6 +133,10 @@ pub(crate) enum ReplayOp {
     Stop,
 }
 
+/// At most one join-failure report a minute, as the web's `JOIN_FAILURE_REPORT_INTERVAL_MS`: a
+/// rejoin backoff storm sends one.
+pub(crate) const JOIN_FAILURE_REPORT_INTERVAL_MS: u64 = 60_000;
+
 /// What the voice debug panel shows.
 #[derive(Default)]
 pub(crate) struct Diagnostics {

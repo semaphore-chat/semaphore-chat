@@ -217,6 +217,10 @@ pub struct Settings {
     /// Home's "Invite people" card was dismissed: the web keeps this per browser, here per
     /// install.
     pub home_invite_dismissed: bool,
+    /// "Open semaphore:// links with this app": register on every start, or never and take this
+    /// app's registration away. `None` is today's behaviour by build: a packaged build registers
+    /// (`SEMAPHORE_PACKAGED=1`), a development build doesn't.
+    pub open_links: Option<bool>,
 }
 
 impl Default for Settings {
@@ -236,6 +240,7 @@ impl Default for Settings {
             dm_stage_ratio: None,
             dismissed_update: None,
             home_invite_dismissed: false,
+            open_links: None,
         }
     }
 }

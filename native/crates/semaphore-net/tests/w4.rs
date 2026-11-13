@@ -712,3 +712,33 @@ async fn a_trim_counts_from_the_buffers_start_and_download_only_keeps_nothing() 
     assert_eq!(clip.mime_type, "video/mp4");
     assert!(!clip.has_thumbnail);
 }
+
+// --- Join-failure reports ---
+
+/// The web's upload, over the real client: a failed join reaches the server once, with the
+/// contract's fields and `platform: native`, and the server's own answer is all it takes.
+#[tokio::test]
+async fn a_failed_join_reaches_the_server_as_a_native_join_failure_report() {
+    let server = server().await;
+    let client = signed_in(&server).await;
+    let core = &client.core;
+    core.set_app_version("0.9.0".into());
+    server.fail_route("LivekitController_generateToken", 403, "FORBIDDEN");
+    let channel = id("vc-squad");
+    assert!(core.join_voice(channel.clone()).await.is_err());
+    until("the report", || !server.join_failures().is_empty()).await;
+    let reports = server.join_failures();
+    assert_eq!(reports.len(), 1);
+    let report = &reports[0];
+    assert_eq!(report["platform"], "native");
+    assert_eq!(report["errorClass"], "permission");
+    assert_eq!(report["channelId"], channel);
+    assert_eq!(report["isDm"], false);
+    assert_eq!(report["appVersion"], "0.9.0");
+    assert!(report["os"].is_string(), "{report}");
+    assert!(report["message"].is_string(), "{report}");
+    assert_eq!(
+        statuses(&server, "VoiceDiagnosticsController_reportJoinFailure"),
+        [204]
+    );
+}

@@ -15,7 +15,8 @@ use crate::backend::Backend;
 use crate::cache::{QueryCache, QueryKey, keys};
 use crate::lifecycle::{ConnectionState, NetworkState, ResyncPlan};
 use crate::model::{
-    Conversation, ErrorView, SessionState, SignOutReason, UserView, ViewKey, VoiceView,
+    Conversation, ErrorView, JoinFailureClass, SessionState, SignOutReason, UserView, ViewKey,
+    VoiceView,
 };
 use crate::platform::{Clock, CoreEvent, EventSink, MediaEngine};
 use crate::realtime::Realtime;
@@ -24,7 +25,8 @@ use crate::store::{Window, project};
 use std::collections::{HashMap, VecDeque};
 use std::future::{Future, poll_fn};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Poll, Waker};
 
 /// The server sends `tokenExpiring` this long before expiry. While suspended we can miss
@@ -87,6 +89,25 @@ pub(crate) enum Effect {
         dm_group_id: String,
         epoch: u64,
     },
+    /// W4: one failed join, for the server's log (`POST /voice/diagnostics/join-failure`).
+    /// Best-effort: a failed send changes nothing the user sees.
+    ReportJoinFailure(JoinFailureReport),
+}
+
+/// A failed join on its way to the server's log: what the web's `reportJoinFailure` sends, with
+/// nothing else (no token, no URL, no DM group id). Built when the failure is recorded, so the
+/// `epoch` and the redacted message are the ones the debug panel keeps.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct JoinFailureReport {
+    pub(crate) class: JoinFailureClass,
+    /// Already through [`crate::redact`] and capped to the backend's 500 characters.
+    pub(crate) message: String,
+    pub(crate) duration_ms: u64,
+    /// The channel for a channel join; a DM call sends none.
+    pub(crate) channel_id: Option<String>,
+    pub(crate) is_dm: bool,
+    /// The session that failed the join: a report from before a sign-out is dropped.
+    pub(crate) epoch: u64,
 }
 
 pub(crate) struct State {
@@ -426,6 +447,11 @@ struct Inner {
     clock: Arc<dyn Clock>,
     events: Arc<dyn EventSink>,
     services: Option<Services>,
+    /// This build's version, for diagnostics (`semaphore-app` sets `SEMAPHORE_VERSION`).
+    app_version: OnceLock<String>,
+    /// When the last join-failure report was booked, in Unix ms; 0 for never. The web's one a
+    /// minute, kept outside the session so a sign-out doesn't reset it.
+    last_join_failure_report_ms: AtomicU64,
 }
 
 /// Cheap to clone: clones share one core.
@@ -461,8 +487,41 @@ impl Core {
                 clock,
                 events,
                 services,
+                app_version: OnceLock::new(),
+                last_join_failure_report_ms: AtomicU64::new(0),
             }),
         }
+    }
+
+    /// This build's version, as the app reports it (`semaphore-app`'s `SEMAPHORE_VERSION`), for
+    /// diagnostics. Set once at start; core's crate version stands in until then.
+    pub fn set_app_version(&self, version: String) {
+        let _ = self.inner.app_version.set(version);
+    }
+
+    pub(crate) fn app_version(&self) -> &str {
+        self.inner
+            .app_version
+            .get()
+            .map_or(env!("CARGO_PKG_VERSION"), String::as_str)
+    }
+
+    /// Books one join-failure report for `now`, if the last was a minute ago or more, as the web's
+    /// `reportJoinFailure` does: a rejoin backoff sends one. Booked whether the request then
+    /// succeeds or not.
+    pub(crate) fn claim_join_failure_report(&self, now: u64) -> bool {
+        const INTERVAL_MS: u64 = crate::commands::calls::JOIN_FAILURE_REPORT_INTERVAL_MS;
+        let last = self
+            .inner
+            .last_join_failure_report_ms
+            .load(Ordering::Relaxed);
+        if last != 0 && now.saturating_sub(last) < INTERVAL_MS {
+            return false;
+        }
+        self.inner
+            .last_join_failure_report_ms
+            .store(now, Ordering::Relaxed);
+        true
     }
 
     pub(crate) fn services(&self) -> Option<&Services> {
@@ -600,6 +659,7 @@ impl Core {
             Effect::DeclineDmCall { dm_group_id, epoch } => {
                 self.decline_dm_call(dm_group_id, epoch).await
             }
+            Effect::ReportJoinFailure(report) => self.send_join_failure_report(report).await,
         }
     }
 

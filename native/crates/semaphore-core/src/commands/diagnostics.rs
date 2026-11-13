@@ -1,11 +1,19 @@
-//! The voice debug panel. Unit W4-core.
+//! The voice debug panel and the join-failure upload. Unit W4-core.
 //!
-//! Join failures are classified (`commands/voice.rs`) and kept here only: the server's
-//! `voice/diagnostics/join-failure` accepts `web` and `electron` alone (#661), so nothing is sent
-//! until it accepts a native platform.
+//! Join failures are classified (`commands/voice.rs`), kept for the panel, and sent to
+//! `POST /voice/diagnostics/join-failure` as the web's `reportJoinFailure` sends them: at most one
+//! a minute, `platform: native`, best effort. The backend logs the report and never stores it.
 
-use crate::client::Core;
-use crate::model::{ViewKey, VoiceDiagnosticsView};
+use crate::client::{Core, JoinFailureReport};
+use crate::model::{JoinFailureClass, ViewKey, VoiceDiagnosticsView};
+use semaphore_wire::{enums, types as wire};
+
+/// The backend's `JOIN_FAILURE_MESSAGE_MAX`.
+const MESSAGE_MAX: usize = 500;
+/// The backend's `@MaxLength(64)` on `os`, `appVersion` and `channelId`.
+const TEXT_MAX: usize = 64;
+/// The backend's `@Max(10 * 60 * 1000)` on `durationMs`.
+const DURATION_MAX_MS: i64 = 10 * 60 * 1000;
 
 impl Core {
     /// What the panel shows (`ViewKey::VoiceDiagnostics`). The engine's measurements are those of
@@ -90,4 +98,75 @@ impl Core {
             state.view_changed(ViewKey::VoiceDiagnostics);
         });
     }
+
+    /// One failed join, for the server's log. Best effort, as the web's `reportJoinFailure`: an
+    /// error is logged at debug and changes nothing the user sees, and a report from a session
+    /// that has ended since is dropped.
+    ///
+    /// There is no write after the request, so a sign-out while it is out leaves nothing behind.
+    pub(crate) async fn send_join_failure_report(&self, report: JoinFailureReport) {
+        let Some(services) = self.services() else {
+            return;
+        };
+        if self.read(|state| state.session_epoch) != report.epoch {
+            return;
+        }
+        let Some(body) = report.body(self.app_version()) else {
+            log::debug!("join-failure report not sent: a field was out of the contract's bounds");
+            return;
+        };
+        if let Err(error) = services
+            .backend
+            .voice_diagnostics_controller_report_join_failure(body)
+            .await
+        {
+            log::debug!("join-failure report not sent: {error}");
+        }
+    }
+}
+
+impl JoinFailureReport {
+    /// The web's body, field for field: no token, no URL, no DM group id, and no ICE candidate
+    /// types (the web only knows those after a *successful* connect, so a report never has them).
+    /// `None` only when a capped field is still outside the contract, which the caps prevent.
+    fn body(&self, app_version: &str) -> Option<wire::ReportJoinFailureDto> {
+        let channel_id = match (&self.channel_id, self.is_dm) {
+            (Some(id), false) => Some(capped(id, TEXT_MAX).parse().ok()?),
+            _ => None,
+        };
+        Some(wire::ReportJoinFailureDto {
+            app_version: capped(app_version, TEXT_MAX).parse().ok()?,
+            candidate_types: Vec::new(),
+            channel_id,
+            duration_ms: i64::try_from(self.duration_ms)
+                .unwrap_or(i64::MAX)
+                .min(DURATION_MAX_MS),
+            error_class: wire_class(self.class),
+            is_dm: self.is_dm,
+            message: capped(&self.message, MESSAGE_MAX).parse().ok()?,
+            os: Some(capped(std::env::consts::OS, TEXT_MAX).parse().ok()?),
+            platform: enums::VoiceClientPlatform::Native,
+        })
+    }
+}
+
+/// The backend's own classes, as the wire spells them. `errorClass: "unknown"` is a value the
+/// pinned contract doesn't list (the backend added it after), so it travels as the tolerant enum's
+/// unknown string.
+fn wire_class(class: JoinFailureClass) -> enums::VoiceJoinErrorClass {
+    use enums::VoiceJoinErrorClass as W;
+    match class {
+        JoinFailureClass::MediaUnreachable => W::MediaUnreachable,
+        JoinFailureClass::ServerUnreachable => W::ServerUnreachable,
+        JoinFailureClass::Permission => W::Permission,
+        JoinFailureClass::NotFound => W::NotFound,
+        JoinFailureClass::Session => W::Session,
+        JoinFailureClass::ServerError => W::ServerError,
+        JoinFailureClass::Unknown => W::Unknown("unknown".to_owned()),
+    }
+}
+
+/// `text` at most `max` characters, as every string field the backend takes is capped.
+fn capped(text: &str, max: usize) -> String {
+    text.chars().take(max).collect()
 }

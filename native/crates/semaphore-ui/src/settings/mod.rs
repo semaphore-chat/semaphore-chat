@@ -394,15 +394,32 @@ pub enum LinkHandler {
     Registered,
     /// The installed package (.deb, .rpm, the installer) owns the registration.
     PackageOwned,
+    /// Another program is the default handler for the scheme.
+    AnotherApp,
     NotRegistered,
     /// It couldn't be told.
     #[default]
     Unknown,
 }
 
+impl LinkHandler {
+    /// The owner, for the settings row: "Opens semaphore:// links: …".
+    pub fn owner(self) -> &'static str {
+        match self {
+            Self::Registered | Self::PackageOwned => "This app",
+            Self::AnotherApp => "Another app",
+            Self::NotRegistered => "Not registered",
+            Self::Unknown => "Couldn't tell",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DesktopAppState {
     pub close_to_tray: bool,
+    /// "Open semaphore:// links with this app": what the user chose, or, until they choose, what
+    /// this build does (a packaged build registers on start; a development build doesn't).
+    pub open_links: bool,
     pub links: LinkHandler,
     pub link_preview_images: bool,
     pub server_url: String,
@@ -427,8 +444,8 @@ pub struct DesktopAppState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesktopAppEvent {
     SetCloseToTray(bool),
-    /// "Make Semaphore open semaphore:// links".
-    RegisterLinkHandler,
+    /// "Open semaphore:// links with this app": register on start, or take the registration away.
+    SetOpenLinks(bool),
     SetLinkPreviewImages(bool),
     /// "Change server": the owner shows its server picker.
     ChangeServer,

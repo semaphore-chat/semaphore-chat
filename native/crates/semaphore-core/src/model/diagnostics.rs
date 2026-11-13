@@ -14,8 +14,8 @@ pub enum JoinFailureClass {
     Unknown,
 }
 
-/// The last failed join. Kept for the debug panel only: the server's report endpoint accepts no
-/// native platform yet, so nothing is sent.
+/// The last failed join. The debug panel shows it, and it is what `POST
+/// /voice/diagnostics/join-failure` is sent for (`platform: native`, one a minute).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinFailure {
     pub class: JoinFailureClass,

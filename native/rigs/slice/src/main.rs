@@ -52,6 +52,7 @@
 //! expect opened-url "desktop-login"   # the last URL the app opened contains this
 //! expect settings /voice/mic_quality "music"   # settings.json at that JSON pointer (JSON value)
 //! expect link-registrations 1         # the fake link handler was asked to register this often
+//! expect link-unregistrations 1       # and to take the registration away this often
 //! ```
 //!
 //! W3-player-wire (built with `--features player`): `player toggle NAME` plays or pauses the
@@ -593,6 +594,8 @@ enum Step {
         value: String,
     },
     ExpectLinkRegistrations(usize),
+    /// `expect link-unregistrations 1`: the fake link handler was asked to unregister this often.
+    ExpectLinkUnregistrations(usize),
     /// W4: `mic tone on|off`.
     MicTone(bool),
     /// W4: `voice share-volume IDENTITY N`: sets that participant's screen-share volume through
@@ -909,6 +912,9 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["expect", "link-registrations", count] => {
                 Step::ExpectLinkRegistrations(count.parse().map_err(|_| at(anyhow!("count")))?)
             }
+            ["expect", "link-unregistrations", count] => {
+                Step::ExpectLinkUnregistrations(count.parse().map_err(|_| at(anyhow!("count")))?)
+            }
             ["window", "activate"] => Step::ActivateWindow,
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
@@ -1116,12 +1122,14 @@ struct Rig {
 /// The link handler in the rig: not registered until asked, then registered. Touches nothing.
 #[derive(Default)]
 struct RigLinks {
-    registered: std::sync::atomic::AtomicUsize,
+    registrations: std::sync::atomic::AtomicUsize,
+    unregistrations: std::sync::atomic::AtomicUsize,
+    owner: std::sync::atomic::AtomicBool,
 }
 
 impl semaphore_app::desktop::LinkRegistrar for RigLinks {
     fn status(&self) -> semaphore_ui::settings::LinkHandler {
-        if self.registered.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+        if self.owner.load(std::sync::atomic::Ordering::Relaxed) {
             semaphore_ui::settings::LinkHandler::Registered
         } else {
             semaphore_ui::settings::LinkHandler::NotRegistered
@@ -1129,8 +1137,17 @@ impl semaphore_app::desktop::LinkRegistrar for RigLinks {
     }
 
     fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
-        self.registered
+        self.registrations
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.owner.store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(self.status())
+    }
+
+    fn unregister(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
+        self.unregistrations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.owner
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(self.status())
     }
 
@@ -1140,6 +1157,10 @@ impl semaphore_app::desktop::LinkRegistrar for RigLinks {
 
     fn note(&self) -> Option<String> {
         Some("This is a development build: registering takes semaphore:// links away from an installed Semaphore app until it registers again.".into())
+    }
+
+    fn default_open_links(&self) -> bool {
+        false
     }
 }
 
@@ -2725,12 +2746,23 @@ impl Rig {
                 Step::ExpectLinkRegistrations(count) => {
                     let done = self
                         .links
-                        .registered
+                        .registrations
                         .load(std::sync::atomic::Ordering::Relaxed);
                     if done == *count {
                         Ok(())
                     } else {
                         Err(anyhow!("{done} link registrations, not {count}"))
+                    }
+                }
+                Step::ExpectLinkUnregistrations(count) => {
+                    let done = self
+                        .links
+                        .unregistrations
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    if done == *count {
+                        Ok(())
+                    } else {
+                        Err(anyhow!("{done} link unregistrations, not {count}"))
                     }
                 }
                 Step::ForgetSounds => {

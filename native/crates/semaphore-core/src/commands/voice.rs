@@ -2,7 +2,7 @@
 
 use crate::backend::BackendError;
 use crate::cache::keys;
-use crate::client::{Core, Effect, State};
+use crate::client::{Core, Effect, JoinFailureReport, State};
 use crate::model::{
     JoinFailure, JoinFailureClass, LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest,
     UserView, VideoDemand, ViewKey, VoiceJoinMode, VoiceJoinOptions, VoiceModerationCaps,
@@ -389,10 +389,15 @@ impl Core {
                     return (Err(error), false);
                 }
                 Err((class, error)) => {
+                    let duration_ms = now.saturating_sub(started);
+                    let message = error.to_string();
+                    // Secrets out, capped at 500, for the log and the report; the panel keeps the
+                    // message as it was.
+                    let redacted = log_message(&message);
                     state.w4.diagnostics.last_failure = Some(JoinFailure {
                         class,
-                        message: error.to_string(),
-                        duration_ms: now.saturating_sub(started),
+                        message,
+                        duration_ms,
                         at_ms: now,
                     });
                     state.w4_log(now, format!("join failed ({class:?}): {error}"));
@@ -401,9 +406,25 @@ impl Core {
                         "join-failed target={} error_class={} duration_ms={} message=\"{}\"",
                         room_kind(&room),
                         class_name(class),
-                        now.saturating_sub(started),
-                        log_message(&error.to_string())
+                        duration_ms,
+                        redacted
                     );
+                    // The server's log hears of it, as the web's does: one a minute, and only for
+                    // the failure the panel keeps (a superseded join's isn't).
+                    let epoch = state.session_epoch;
+                    if self.claim_join_failure_report(now) {
+                        state.push_effect(Effect::ReportJoinFailure(JoinFailureReport {
+                            class,
+                            message: redacted,
+                            duration_ms,
+                            channel_id: match &room {
+                                VoiceRoom::Channel { channel_id, .. } => Some(channel_id.clone()),
+                                VoiceRoom::Dm { .. } => None,
+                            },
+                            is_dm: matches!(room, VoiceRoom::Dm { .. }),
+                            epoch,
+                        }));
+                    }
                     state.voice = VoiceView::default();
                     state.media = None;
                     state.view_changed(ViewKey::Voice);

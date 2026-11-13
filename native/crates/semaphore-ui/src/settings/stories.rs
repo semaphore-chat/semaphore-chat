@@ -188,6 +188,7 @@ fn sessions_story(view: SessionsView, notice: Option<(Severity, String)>, cx: &m
 pub(crate) fn sample_desktop(links: LinkHandler) -> DesktopAppState {
     DesktopAppState {
         close_to_tray: true,
+        open_links: true,
         links,
         link_preview_images: false,
         server_url: "https://chat.example.org".into(),
@@ -462,6 +463,18 @@ pub fn stories() -> Vec<Story> {
         }),
         Story::new("settings-desktop-not-registered", |_, _, cx| {
             desktop_story(sample_desktop(LinkHandler::NotRegistered), cx)
+        }),
+        Story::new("settings-desktop-links-another-app", |_, _, cx| {
+            desktop_story(sample_desktop(LinkHandler::AnotherApp), cx)
+        }),
+        Story::new("settings-desktop-links-off", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    open_links: false,
+                    ..sample_desktop(LinkHandler::NotRegistered)
+                },
+                cx,
+            )
         }),
         Story::new("settings-desktop-package-owned", |_, _, cx| {
             desktop_story(sample_desktop(LinkHandler::PackageOwned), cx)

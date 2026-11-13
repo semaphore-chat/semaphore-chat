@@ -253,6 +253,12 @@ pub struct FakeBackend {
     pub attaches: Mutex<Vec<(String, Option<String>)>>,
     /// W1 part A's calls: `actions.rs`.
     pub actions: actions::ActionsFake,
+    /// W4: each join-failure report, as it was sent.
+    pub join_failure_reports: Mutex<Vec<wire::ReportJoinFailureDto>>,
+    /// The next join-failure report waits for this (a sign-out before the answer).
+    pub join_failure_gate: Mutex<Option<oneshot::Receiver<()>>>,
+    /// The next join-failure report fails with this (the server refusing it).
+    pub join_failure_error: Mutex<Option<BackendError>>,
 }
 
 impl FakeBackend {
@@ -852,6 +858,21 @@ impl VoiceBackend for FakeBackend {
         self.w4
             .run("mute", &[&channel_id, &body.participant_identity, &mute])
             .await
+    }
+
+    async fn voice_diagnostics_controller_report_join_failure(
+        &self,
+        body: wire::ReportJoinFailureDto,
+    ) -> BackendResult<()> {
+        self.join_failure_reports.lock().unwrap().push(body);
+        let gate = self.join_failure_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        match self.join_failure_error.lock().unwrap().take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 }
 

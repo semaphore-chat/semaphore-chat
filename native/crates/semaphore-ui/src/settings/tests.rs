@@ -1,7 +1,7 @@
 //! The pure parts first (key capture, the theme mapping, device rows, session lines, the link
 //! status), then every tab and the shell in a window: the event each control sends.
 
-use super::desktop::link_status;
+use super::desktop::link_note;
 use super::voice::{device_rows, transmitting};
 use super::*;
 use crate::dms::rig::{Rig, rig};
@@ -265,11 +265,23 @@ fn session_dates_are_written_in_the_users_zone() {
 }
 
 #[test]
-fn the_register_button_is_offered_only_when_links_need_it() {
-    assert!(!link_status(LinkHandler::Registered).1);
-    assert!(!link_status(LinkHandler::PackageOwned).1);
-    assert!(link_status(LinkHandler::NotRegistered).1);
-    assert!(link_status(LinkHandler::Unknown).1);
+fn each_link_owner_reads_as_the_settings_row_says_it() {
+    assert_eq!(LinkHandler::Registered.owner(), "This app");
+    assert_eq!(LinkHandler::PackageOwned.owner(), "This app");
+    assert_eq!(LinkHandler::AnotherApp.owner(), "Another app");
+    assert_eq!(LinkHandler::NotRegistered.owner(), "Not registered");
+    assert_eq!(LinkHandler::Unknown.owner(), "Couldn't tell");
+    // The line under the switch says something only when there is more to say than the owner.
+    assert_eq!(link_note(LinkHandler::Registered, true), None);
+    assert!(link_note(LinkHandler::PackageOwned, true).is_some());
+    assert!(
+        link_note(LinkHandler::AnotherApp, true)
+            .unwrap()
+            .contains("takes them back")
+    );
+    assert!(link_note(LinkHandler::AnotherApp, false).is_some());
+    assert!(link_note(LinkHandler::NotRegistered, true).is_some());
+    assert!(link_note(LinkHandler::Unknown, false).is_some());
 }
 
 // ---- Voice and video in a window. ----
@@ -698,29 +710,38 @@ fn failed_sessions_offer_a_retry(cx: &mut TestAppContext) {
 
 // ---- Desktop app in a window. ----
 
+fn desktop_state(links: LinkHandler, open_links: bool) -> DesktopAppState {
+    DesktopAppState {
+        close_to_tray: true,
+        open_links,
+        links,
+        link_preview_images: false,
+        server_url: "https://chat.example.org".into(),
+        server_name: None,
+        app_version: "0.9.0".into(),
+        server_version: None,
+        links_note: None,
+        links_blocked: None,
+        update_enabled: true,
+        log_folder: true,
+        ..DesktopAppState::default()
+    }
+}
+
 fn desktop(
     cx: &mut TestAppContext,
     links: LinkHandler,
 ) -> Rig<DesktopAppSettings, DesktopAppEvent> {
+    desktop_with(cx, desktop_state(links, true))
+}
+
+fn desktop_with(
+    cx: &mut TestAppContext,
+    state: DesktopAppState,
+) -> Rig<DesktopAppSettings, DesktopAppEvent> {
     rig(cx, 900., move |_, cx| {
         let mut settings = DesktopAppSettings::new(cx);
-        settings.set_state(
-            DesktopAppState {
-                close_to_tray: true,
-                links,
-                link_preview_images: false,
-                server_url: "https://chat.example.org".into(),
-                server_name: None,
-                app_version: "0.9.0".into(),
-                server_version: None,
-                links_note: None,
-                links_blocked: None,
-                update_enabled: true,
-                log_folder: true,
-                ..DesktopAppState::default()
-            },
-            cx,
-        );
+        settings.set_state(state, cx);
         settings
     })
 }
@@ -729,8 +750,8 @@ fn desktop(
 fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
     let rig = desktop(cx, LinkHandler::NotRegistered);
     rig.click(cx, "desktop-close-to-tray");
+    rig.click(cx, "desktop-open-links");
     rig.click(cx, "desktop-link-preview-images");
-    rig.click(cx, "desktop-register-links");
     rig.click(cx, "desktop-change-server");
     rig.click(cx, "desktop-check-updates");
     rig.click(cx, "desktop-open-logs");
@@ -738,8 +759,8 @@ fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
         rig.events(),
         [
             DesktopAppEvent::SetCloseToTray(false),
+            DesktopAppEvent::SetOpenLinks(false),
             DesktopAppEvent::SetLinkPreviewImages(true),
-            DesktopAppEvent::RegisterLinkHandler,
             DesktopAppEvent::ChangeServer,
             DesktopAppEvent::CheckForUpdates,
             DesktopAppEvent::OpenLogFolder,
@@ -748,12 +769,33 @@ fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_registered_handler_hides_the_button(cx: &mut TestAppContext) {
-    for links in [LinkHandler::Registered, LinkHandler::PackageOwned] {
-        let rig = desktop(cx, links);
-        assert!(rig.has(cx, "desktop-link-status"));
-        assert!(!rig.has(cx, "desktop-register-links"), "{links:?}");
+fn the_links_switch_shows_the_owner_for_each_state(cx: &mut TestAppContext) {
+    for (links, open_links, owner) in [
+        (LinkHandler::Registered, true, "This app"),
+        (LinkHandler::PackageOwned, true, "This app"),
+        (LinkHandler::AnotherApp, true, "Another app"),
+        (LinkHandler::NotRegistered, false, "Not registered"),
+        (LinkHandler::Unknown, false, "Couldn't tell"),
+    ] {
+        use gpui_kit::test::TestQueryExt as _;
+        let rig = desktop_with(cx, desktop_state(links, open_links));
+        assert!(rig.has(cx, "desktop-open-links"), "{links:?}");
+        assert!(rig.has(cx, "desktop-link-owner"), "{links:?}");
+        let label = format!("Opens semaphore:// links: {owner}");
+        let found = rig.with(cx, |_, window, _| {
+            !window.find_all_by_label(&label).is_empty()
+        });
+        assert!(found, "{links:?}: {label}");
     }
+}
+
+#[gpui_kit::test]
+fn a_blocked_machine_has_the_switch_off_and_clicking_it_does_nothing(cx: &mut TestAppContext) {
+    let mut state = desktop_state(LinkHandler::NotRegistered, false);
+    state.links_blocked = Some("Turned off on this computer".into());
+    let rig = desktop_with(cx, state);
+    rig.click(cx, "desktop-open-links");
+    assert!(rig.events().is_empty(), "{:?}", rig.events());
 }
 
 // ---- The shell. ----
