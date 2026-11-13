@@ -1,2 +1,105 @@
-# UA2 admin dashboard. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# UA2 admin dashboard: every state, each on a desktop (dark) and a phone (light).
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/ua2-admin-dashboard.steps
+story admin-dashboard-loading 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-loading-desktop
+story admin-dashboard-loading 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-loading-phone
+story admin-dashboard-ready 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-ready-desktop
+story admin-dashboard-ready 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-ready-phone
+story admin-dashboard-attention 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-attention-desktop
+story admin-dashboard-attention 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-attention-phone
+story admin-dashboard-disk-warning 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-disk-warning-desktop
+story admin-dashboard-disk-warning 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-disk-warning-phone
+story admin-dashboard-healthy 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-healthy-desktop
+story admin-dashboard-healthy 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-healthy-phone
+story admin-dashboard-storage-loading 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-storage-loading-desktop
+story admin-dashboard-storage-loading 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-storage-loading-phone
+story admin-dashboard-storage-failed 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-storage-failed-desktop
+story admin-dashboard-storage-failed 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-storage-failed-phone
+story admin-dashboard-failed 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-failed-desktop
+story admin-dashboard-failed 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-failed-phone
+story admin-dashboard-limited 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-limited-desktop
+story admin-dashboard-limited 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-limited-phone
+story admin-dashboard-denied 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-denied-desktop
+story admin-dashboard-denied 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-denied-phone
+story admin-dashboard-long 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-long-desktop
+story admin-dashboard-long 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-long-phone
+story admin-dashboard-no-disk 1280 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-no-disk-desktop
+story admin-dashboard-no-disk 390 844 light-blue-balanced
+wait idle
+shot ua2-dashboard-no-disk-phone
+# The rig can't scroll: the same stories in tall windows, to review the storage card and long rows below the fold.
+story admin-dashboard-attention 1280 1700 dark-blue-balanced
+wait idle
+shot ua2-dashboard-attention-desktop-full
+story admin-dashboard-attention 390 2600 light-blue-balanced
+wait idle
+shot ua2-dashboard-attention-phone-full
+story admin-dashboard-limited 1280 1700 dark-blue-balanced
+wait idle
+shot ua2-dashboard-limited-desktop-full
+story admin-dashboard-limited 390 2600 light-blue-balanced
+wait idle
+shot ua2-dashboard-limited-phone-full
+story admin-dashboard-long 1280 1700 dark-blue-balanced
+wait idle
+shot ua2-dashboard-long-desktop-full
+story admin-dashboard-long 390 2600 light-blue-balanced
+wait idle
+shot ua2-dashboard-long-phone-full
+story admin-dashboard-no-disk 1280 1700 dark-blue-balanced
+wait idle
+shot ua2-dashboard-no-disk-desktop-full
+story admin-dashboard-no-disk 390 2600 light-blue-balanced
+wait idle
+shot ua2-dashboard-no-disk-phone-full
+story admin-dashboard-storage-failed 1280 1700 dark-blue-balanced
+wait idle
+shot ua2-dashboard-storage-failed-desktop-full
+story admin-dashboard-storage-failed 390 2600 light-blue-balanced
+wait idle
+shot ua2-dashboard-storage-failed-phone-full
