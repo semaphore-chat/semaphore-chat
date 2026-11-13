@@ -1,2 +1,14 @@
-# UK the keyboard shortcut sheet. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# UK the keyboard shortcut sheet (Mod+/), at 1280x800 dark and 390x844 light.
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/uk-shortcut-sheet.steps
+story shortcut-sheet 1280 800 dark-blue-balanced
+wait idle
+shot shortcut-sheet-desktop
+story shortcut-sheet 390 844 light-blue-balanced
+wait idle
+shot shortcut-sheet-phone
+story shortcut-sheet-phone 1280 800 dark-blue-balanced
+wait idle
+shot shortcut-sheet-phone-desktop
+story shortcut-sheet-phone 390 844 light-blue-balanced
+wait idle
+shot shortcut-sheet-phone-phone
