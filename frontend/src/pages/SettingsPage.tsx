@@ -34,6 +34,8 @@ import { useTheme, type ThemeIntensity } from '../contexts/ThemeContext';
 import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
+import { clearTokens } from '../utils/tokenService';
+import { normalizeUrlForComparison } from '../config/env';
 import { FormPageShell, type FormPageSection } from '../components/Common/PageShell';
 import { useScrollSpy } from '../hooks/useScrollSpy';
 import { useResponsive } from '../hooks/useResponsive';
@@ -298,6 +300,21 @@ const SettingsPage: React.FC = () => {
     setIsValidating(false);
 
     if (isValid) {
+      // A session (refresh token) belongs to the server it came from: sign
+      // out before pointing the app at a different one, or the reloaded app
+      // would send this server's refresh token to the new server.
+      if (
+        normalizeUrlForComparison(cleanUrl) !==
+        normalizeUrlForComparison(currentBackendUrl ?? '')
+      ) {
+        clearTokens();
+        try {
+          await getElectronAPI()?.deleteRefreshToken?.();
+        } catch {
+          // clearTokens already asked; nothing more to do
+        }
+      }
+
       // Update the active server in serverStorage
       if (activeServerId) {
         updateServer(activeServerId, { url: cleanUrl });

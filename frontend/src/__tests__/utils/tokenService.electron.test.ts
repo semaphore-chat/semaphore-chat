@@ -17,6 +17,11 @@ import { logger } from '../../utils/logger';
 import { setElectronAPIOverride } from '../../utils/electronBridge';
 import { createFakeElectronAPI } from '../test-utils/fakeElectronAPI';
 
+/** The token in a stored value (stored bound to its server, as JSON). */
+function tokenIn(stored: string | null): string | undefined {
+  return stored ? (JSON.parse(stored) as { token: string }).token : undefined;
+}
+
 describe('tokenService — Electron secure storage', () => {
   beforeEach(() => {
     clearTokens();
@@ -96,7 +101,7 @@ describe('tokenService — Electron secure storage', () => {
 
       await storeElectronRefreshToken('new-token');
 
-      expect(mockStore).toHaveBeenCalledWith('new-token');
+      expect(tokenIn(mockStore.mock.calls[0][0])).toBe('new-token');
     });
 
     it('should remove localStorage entry after storing in secure storage', async () => {
@@ -117,7 +122,7 @@ describe('tokenService — Electron secure storage', () => {
 
       await storeElectronRefreshToken('fallback-token');
 
-      expect(localStorage.getItem('refreshToken')).toBe('fallback-token');
+      expect(tokenIn(localStorage.getItem('refreshToken'))).toBe('fallback-token');
     });
 
     it('should fall back to localStorage when the write fails despite encryption being available', async () => {
@@ -127,7 +132,7 @@ describe('tokenService — Electron secure storage', () => {
 
       await storeElectronRefreshToken('fallback-token');
 
-      expect(localStorage.getItem('refreshToken')).toBe('fallback-token');
+      expect(tokenIn(localStorage.getItem('refreshToken'))).toBe('fallback-token');
     });
 
     it('should fall back to localStorage when storeRefreshToken rejects', async () => {
@@ -137,7 +142,7 @@ describe('tokenService — Electron secure storage', () => {
 
       await storeElectronRefreshToken('fallback-token');
 
-      expect(localStorage.getItem('refreshToken')).toBe('fallback-token');
+      expect(tokenIn(localStorage.getItem('refreshToken'))).toBe('fallback-token');
     });
 
     it('should fall back to localStorage when storeRefreshToken is not available', async () => {
@@ -145,7 +150,7 @@ describe('tokenService — Electron secure storage', () => {
 
       await storeElectronRefreshToken('fallback-token');
 
-      expect(localStorage.getItem('refreshToken')).toBe('fallback-token');
+      expect(tokenIn(localStorage.getItem('refreshToken'))).toBe('fallback-token');
     });
 
     it('should fall back to localStorage when electronAPI is undefined', async () => {
@@ -153,7 +158,7 @@ describe('tokenService — Electron secure storage', () => {
 
       await storeElectronRefreshToken('fallback-token');
 
-      expect(localStorage.getItem('refreshToken')).toBe('fallback-token');
+      expect(tokenIn(localStorage.getItem('refreshToken'))).toBe('fallback-token');
     });
   });
 
