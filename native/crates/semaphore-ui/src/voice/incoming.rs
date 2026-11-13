@@ -7,8 +7,9 @@
 
 use crate::dms::face::user_face;
 use crate::dms::names::user_name;
-use crate::kit::{Action, Icon, Spinner, Variant, reduced_motion, text, with_tip};
+use crate::kit::{Action, Icon, LiveElement, Spinner, Variant, reduced_motion, text, with_tip};
 use crate::theme::SemTheme;
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -99,10 +100,12 @@ pub fn incoming_call_banner(
     let size = if props.touch { 44. } else { 40. };
     let name = user_name(&call.caller);
     let busy = props.accepting;
+    // The web's `IncomingCallBanner` is `role="alert"`: assertive.
     let banner = div()
         .id("incoming-call")
         .test_support()
         .role(Role::Alert)
+        .aria_live(Live::Assertive)
         .aria_label(format!(
             "{name}: {}",
             incoming_subtitle(call, props.is_group)

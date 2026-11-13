@@ -10,20 +10,7 @@ story. "Depends" names the thing that must happen first.
 
 ## A. Missing features
 
-### A1. Screen-reader announcements of new messages
-
-- **Web:** `frontend/src/hooks/useMessageListAnnouncer.ts` keeps an `aria-live` region and announces
-  qualifying new messages, coalescing arrivals within 2 s and cutting the preview to 80 characters.
-- **Native:** rows have accessible labels (`native/crates/semaphore-ui/src/messages/row.rs:2002`,
-  `accessible_label`) and the list is a `Role::List` with the name "Messages"
-  (`native/crates/semaphore-ui/src/messages/view.rs:1321`). Nothing announces an arrival, and no
-  live region is used anywhere in `semaphore-ui` or `semaphore-app`.
-- **Missing:** the announcement itself: a live region, the decision of which messages qualify, the
-  batch window and the preview text. Whether the pinned GPUI (the external `gpui-kit` 0.9 crate, not
-  vendored here) exposes a live region is unverified; that is the first question, then the announcer
-  on top.
-- **Size:** M.
-- **Depends:** gpui-kit/GPUI accessibility work (platform); otherwise this cannot be built at all.
+None: A1 closed on 2026-11-13 (see the closing list below).
 
 ## B. Partial features (behaviours missing)
 
@@ -162,8 +149,11 @@ These are proofs, not code. Each is a release checklist item.
 7. **Link handling with both apps installed.** Which app wins, whether a forwarded link focuses the
    first instance, and whether the installer/desktop registration survives the other app's
    uninstall.
-8. **Accessibility with Orca and Windows Narrator.** No live region exists (A1), so this will fail
-   the announcer check until A1 lands; labels, focus order and the shortcut sheet still need ears.
+8. **Accessibility with Orca and Windows Narrator.** Live regions now exist (A1: message arrivals,
+   shortcut feedback, alerts/status), and the AT-SPI `Announcement` was proved headless in
+   `scripts/desktop-probe.sh`; whether Orca reads each once, politely, and nothing for your own
+   message still needs ears. Windows Narrator's `LiveRegionChanged` path is untested, and labels,
+   focus order and the shortcut sheet still need ears too.
 9. **CPU and memory under a real call.** The design's figures for software VP8 are estimates
    (`docs/av-publish.md`), and the image budget figures come from the T2 fling, not from a real
    conversation with video.
@@ -211,19 +201,20 @@ Not listed: "Copy message link" from W1's defaults is not a gap — the web has 
 
 | Group | Items |
 |---|---|
-| A. Missing features | 1 |
+| A. Missing features | 0 |
 | B. Partial features | 2 |
 | C. Platform and distribution | 6 |
 | D. Only a person can check | 10 |
 | E. Decided not to build | 10 |
 
-Closed on 2026-11-13: B1 (reset password), B2 (Home's invite card), B3 (push-to-talk), B6 (Check
-for Updates in the tray and menu), B7 and C5 (log files, the voice event log, crash reports), C6
-(Electron's close-to-tray setting imported on first run; its server URL lives in browser storage
-and cannot be) and C8 (the end-to-end suite as a nightly CI job). What each builds is spelled out
-in `docs/parity-plan.md`'s rows.
+Closed on 2026-11-13: A1 (screen-reader announcements: a live region for new messages off the live
+edge, shortcut feedback, and the existing status/alert nodes), B1 (reset password), B2 (Home's
+invite card), B3 (push-to-talk), B6 (Check for Updates in the tray and menu), B7 and C5 (log files,
+the voice event log, crash reports), C6 (Electron's close-to-tray setting imported on first run; its
+server URL lives in browser storage and cannot be) and C8 (the end-to-end suite as a nightly CI
+job). What each builds is spelled out in `docs/parity-plan.md`'s rows.
 
-The inventory itself (128 rows, 11 tables) now reads: 120 done, 3 partial, 2 not started, 3 n/a.
+The inventory itself (128 rows, 11 tables) now reads: 121 done, 3 partial, 1 not started, 3 n/a.
 
 ## The gaps that matter most for a first usable release
 
@@ -235,9 +226,7 @@ The inventory itself (128 rows, 11 tables) now reads: 120 done, 3 partial, 2 not
    voice client over a browser; it has never run on a real Wayland or Windows desktop.
 4. **Voice diagnostics upload (B4).** The panel classifies failures but can't tell anyone; it needs
    the backend's native platform value and then a one-line upload.
-5. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
-   blocker for any accessibility claim; scope the kit question before promising it.
-6. **Camera test and preview in settings (B5).** The microphone has a test and a meter; the camera
+5. **Camera test and preview in settings (B5).** The microphone has a test and a meter; the camera
    has neither, so a broken camera is only found in a call.
-7. **Which app opens `semaphore://` (C7).** With both apps installed, the last registration wins
+6. **Which app opens `semaphore://` (C7).** With both apps installed, the last registration wins
    silently; a link that opens the wrong client looks like the app is broken.

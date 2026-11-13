@@ -16,6 +16,7 @@ mod side;
 
 use crate::files::AppMedia;
 use crate::runtime::Exec;
+use gpui_kit::accesskit::Live;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{AttachmentView, DraftFile};
@@ -25,7 +26,7 @@ use semaphore_core::model::{
 };
 use semaphore_core::{Core, CoreEvent};
 use semaphore_ui::composer::{Availability, Composer, ComposerConfig, DraftStore, MentionSource};
-use semaphore_ui::kit::on_core_event;
+use semaphore_ui::kit::{Speaker, on_core_event};
 use semaphore_ui::messages::{
     ListData, ListOptions, ListPermissions, ListStatus, MessageList, ReplyPreview, TimeFormat,
 };
@@ -165,6 +166,9 @@ pub struct ConversationPane {
     flash: Option<(Conversation, String)>,
     /// Takes the tint away again.
     flash_timer: Option<Task<()>>,
+    /// What a screen reader hears about the shortcuts (`Marked as read`), as the web's
+    /// `ShortcutsProvider` says it.
+    announce: Speaker,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -228,6 +232,7 @@ impl ConversationPane {
             notice: None,
             flash: None,
             flash_timer: None,
+            announce: Speaker::default(),
             _subscriptions: Vec::new(),
         }
     }
@@ -787,9 +792,20 @@ impl ConversationPane {
             return;
         };
         let core = self.core.clone();
-        self.command("marking the conversation read", window, cx, async move {
-            core.mark_conversation_read(conversation).await.map(|_| ())
-        });
+        // The web announces "Marked as read", and only when something was unread (`Ok(true)`).
+        self.exec.run(
+            window,
+            cx,
+            async move { core.mark_conversation_read(conversation).await },
+            |this, result, _, cx| match result {
+                Ok(true) => {
+                    this.announce.say("Marked as read");
+                    cx.notify();
+                }
+                Ok(false) => {}
+                Err(error) => this.report("marking the conversation read", &error, cx),
+            },
+        );
     }
 
     fn typing_line(&self) -> Option<String> {
@@ -928,6 +944,7 @@ impl Render for ConversationPane {
             .id("conversation")
             .key_context("ConversationPane")
             .on_action(cx.listener(|pane, _: &EscapePane, window, cx| pane.escape(window, cx)))
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -952,6 +969,7 @@ impl Render for ConversationPane {
                 this.child(div().flex_shrink_0().child(composer))
             })
             .children(picker)
+            .children(self.announce.node("pane-announcer", Live::Polite))
     }
 }
 

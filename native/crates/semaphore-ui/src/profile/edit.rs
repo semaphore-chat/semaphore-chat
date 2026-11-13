@@ -4,11 +4,12 @@
 use super::header::{banner, ringed_avatar};
 use super::{ImageSlot, Picked, ProfileEditEvent, ProfileEditForm};
 use crate::kit::{
-    Alert, Button, ButtonSize, LinearProgress, Paper, Severity, Spinner, TextField, Variant,
-    floating_label, notched, spacing, text, text_state,
+    Alert, Button, ButtonSize, LinearProgress, LiveElement, Paper, Severity, Spinner, TextField,
+    Variant, floating_label, notched, spacing, text, text_state,
 };
 use crate::panel::common::{design_icon, error_block, is_phone};
 use crate::theme::{FONT_FAMILY, SemTheme};
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Textarea, TextareaState};
@@ -349,10 +350,13 @@ impl ProfileEditForm {
         };
         let error_line = |message: Option<String>, id: &'static str| {
             message.map(|message| {
+                // `ProfileEditPage`'s failure is an MUI `Alert` (`role="alert"`).
                 div()
                     .id(id)
                     .test_support()
                     .role(Role::Alert)
+                    .aria_label(message.clone())
+                    .aria_live(Live::Assertive)
                     .text_color(sem.error)
                     .child(text(Variant::Caption, message))
             })

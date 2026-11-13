@@ -1450,3 +1450,142 @@ fn escape_with_nothing_to_do_propagates(cx: &mut TestAppContext) {
     assert_eq!(selected(&list, cx), "", "the selection is gone");
     assert_eq!(seen.get(), 1, "clearing the selection took the Escape");
 }
+
+// ---- Screen-reader announcements (`announce.rs`), through the list. ----
+
+use gpui_kit::test::TestWindowExt as _;
+
+fn message(seq: i64, author: semaphore_core::model::UserView, text: &str) -> MessageRow {
+    fixture::message(seq, author, NOW_MS, Body::default().text(text))
+}
+
+/// One of this reader's own rows, as core marks it.
+fn own(seq: i64, text: &str) -> MessageRow {
+    let mut row = message(seq, fixture::me(), text);
+    row.mine = true;
+    row
+}
+
+fn insert_at_end(view: &Entity<MessageList>, cx: &mut VisualTestContext, rows: Vec<MessageRow>) {
+    let len = view.read_with(cx, |view, _| view.row_count());
+    view.update(cx, |view, cx| {
+        view.apply(
+            ListOp::Insert {
+                index: len as u32,
+                rows,
+            },
+            cx,
+        );
+    });
+    draw(cx);
+}
+
+#[gpui_kit::test]
+fn a_message_away_from_the_bottom_is_announced_after_the_window(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx, 1, 40);
+    scroll_to(&view, 2, 0., cx);
+    assert!(!view.read_with(cx, |view, _| view.is_following_tail()));
+
+    insert_at_end(
+        &view,
+        cx,
+        vec![message(
+            41,
+            fixture::user("u-ava", "ava", Some("Ava Chen")),
+            "hello",
+        )],
+    );
+    assert!(
+        view.read_with(cx, |view, _| view.announcement().cloned())
+            .is_none(),
+        "nothing before the window closes"
+    );
+
+    cx.executor().advance_clock(Duration::from_millis(2_000));
+    draw(cx);
+    let said = view
+        .read_with(cx, |view, _| view.announcement().cloned())
+        .expect("an announcement");
+    assert_eq!(said.text, "Ava Chen: hello");
+
+    let (role, label) = cx.update(|window, _| {
+        let node = window.find(("message-announcement", said.seq));
+        (node.role(), node.label().map(str::to_owned))
+    });
+    assert_eq!(role, Some(Role::Status));
+    assert_eq!(label.as_deref(), Some("Ava Chen: hello"));
+}
+
+#[gpui_kit::test]
+fn nothing_is_announced_while_following_the_bottom_or_for_ones_own_message(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = setup(cx, 1, 40);
+    insert_at_end(&view, cx, vec![own(41, "mine")]);
+    cx.executor().advance_clock(Duration::from_millis(2_000));
+    draw(cx);
+    assert!(
+        view.read_with(cx, |view, _| view.announcement().cloned())
+            .is_none()
+    );
+
+    // Away from the bottom, but only this user's own row: still nothing.
+    scroll_to(&view, 2, 0., cx);
+    insert_at_end(&view, cx, vec![own(42, "also mine")]);
+    cx.executor().advance_clock(Duration::from_millis(2_000));
+    draw(cx);
+    assert!(
+        view.read_with(cx, |view, _| view.announcement().cloned())
+            .is_none()
+    );
+}
+
+#[gpui_kit::test]
+fn several_messages_in_one_window_are_counted_once(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx, 1, 40);
+    scroll_to(&view, 2, 0., cx);
+    let ava = fixture::user("u-ava", "ava", Some("Ava Chen"));
+    insert_at_end(&view, cx, vec![message(41, ava.clone(), "one")]);
+    insert_at_end(&view, cx, vec![message(42, ava.clone(), "two")]);
+    insert_at_end(&view, cx, vec![message(43, ava, "three")]);
+    cx.executor().advance_clock(Duration::from_millis(2_000));
+    draw(cx);
+    assert_eq!(
+        view.read_with(cx, |view, _| view
+            .announcement()
+            .map(|said| said.text.clone())),
+        Some("3 new messages".to_owned())
+    );
+}
+
+#[gpui_kit::test]
+fn a_channel_switch_drops_the_pending_batch(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx, 1, 40);
+    scroll_to(&view, 2, 0., cx);
+    insert_at_end(
+        &view,
+        cx,
+        vec![message(
+            41,
+            fixture::user("u-ava", "ava", Some("Ava Chen")),
+            "hello",
+        )],
+    );
+    view.update(cx, |view, cx| {
+        view.apply(
+            ListOp::Reset {
+                rows: (1..=40)
+                    .map(|seq| message(seq, fixture::user("u-ben", "ben", None), "elsewhere"))
+                    .collect(),
+            },
+            cx,
+        );
+    });
+    draw(cx);
+    cx.executor().advance_clock(Duration::from_millis(2_000));
+    draw(cx);
+    assert!(
+        view.read_with(cx, |view, _| view.announcement().cloned())
+            .is_none()
+    );
+}

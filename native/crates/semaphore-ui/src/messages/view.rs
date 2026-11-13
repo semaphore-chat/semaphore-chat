@@ -3,6 +3,7 @@
 use super::actions::{
     ListPermissions, MessageAction, UnreadDivider, delete_is_removal, render_menu, render_sheet,
 };
+use super::announce;
 use super::format::TimeFormat;
 use super::media::{Media, MediaSource};
 use super::palette::{Fonts, Palette};
@@ -11,7 +12,8 @@ use super::seen;
 use super::selection::{self, Motion, Pos, Selection, Unit, UnitDrag};
 use super::store::{RowChange, RowStore};
 use super::text;
-use crate::kit::{Button as KitButton, Dialog, TextField, text_state};
+use crate::kit::{Button as KitButton, Dialog, TextField, live_node, text_state};
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::AutoScroll;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::input::InputState;
@@ -260,6 +262,10 @@ pub struct MessageList {
     detached: bool,
     asked_newer: bool,
     animation_timer: Option<Task<()>>,
+    /// What a screen reader hears about messages that arrive off the live edge (`announce`).
+    announce: announce::Announcer,
+    /// The batch window's timer, while one is open.
+    announce_timer: Option<Task<()>>,
     /// The right-click menu (or the phone sheet): the row and where it was asked for.
     menu: Option<(i64, Point<Pixels>)>,
     /// A moderator removing someone else's message: its seq, and the optional reason.
@@ -429,6 +435,8 @@ impl MessageList {
             detached: false,
             asked_newer: false,
             animation_timer: None,
+            announce: announce::Announcer::default(),
+            announce_timer: None,
             menu: None,
             remove: None,
         }
@@ -754,6 +762,12 @@ impl MessageList {
     /// Takes one change from core. The list keeps its anchor through it, and follows the tail if
     /// it was at the end.
     pub fn apply(&mut self, op: ListOp, cx: &mut Context<Self>) {
+        // Before the change: the web's "scrolled away" rule is the state the reader was in when
+        // the message arrived, and a detached window's newer pages are history, not arrivals.
+        let len_before = self.shared.rows.borrow().len();
+        let away = !self.detached && !self.list.is_following_tail();
+        let loading = self.status == ListStatus::Loading;
+        let announce = self.announce.observe(&op, len_before, away, loading);
         let own_send_at_end = match &op {
             ListOp::Insert { index, rows } => {
                 *index as usize >= self.shared.rows.borrow().len()
@@ -819,7 +833,32 @@ impl MessageList {
             self.scroll_to_latest();
         }
         self.retarget_seen();
+        if announce {
+            self.arm_announcement(cx);
+        }
         cx.notify();
+    }
+
+    /// Opens the announcement batch's window: two seconds after the first message that arrived off
+    /// the live edge, the batch is read out.
+    fn arm_announcement(&mut self, cx: &mut Context<Self>) {
+        let epoch = self.announce.epoch();
+        let timer = cx.background_executor().timer(announce::BATCH_WINDOW);
+        self.announce_timer = Some(cx.spawn(async move |this, cx| {
+            timer.await;
+            this.update(cx, |list, cx| {
+                if list.announce.flush(epoch).is_some() {
+                    cx.notify();
+                }
+            })
+            .ok();
+        }));
+    }
+
+    /// What the announcement region last said (`None` before the first announcement), for tests
+    /// and rigs.
+    pub fn announcement(&self) -> Option<&crate::kit::Said> {
+        self.announce.last()
     }
 
     /// When rows change above index `following`, and that row is the one the list is anchored on,
@@ -1429,6 +1468,15 @@ impl Render for MessageList {
             })
             .children(menu)
             .children(remove_dialog)
+            // The polite region new messages are read from. A fresh node per announcement (the
+            // sequence number), so the same words twice are read twice.
+            .children(self.announce.last().map(|said| {
+                live_node(
+                    ("message-announcement", said.seq),
+                    said.text.clone(),
+                    Live::Polite,
+                )
+            }))
     }
 }
 

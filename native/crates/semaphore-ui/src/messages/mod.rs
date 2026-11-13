@@ -7,7 +7,7 @@
 //! - `third_party`: the only way to a GIF's or a link preview's picture, closed while the setting
 //!   is off. `seen`: which row "Seen by" goes under and how it reads.
 //! - `view`: the list itself. The app makes one with `ListData`, feeds it `ListOp`s, and answers
-//!   its `MessageListEvent`s.
+//!   its `MessageListEvent`s. `announce` decides what a screen reader hears about new messages.
 //!
 //! The app must call [`init`] once at startup and pass every window that shows a list through
 //! [`with_list_frame_policy`].
@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod action_tests;
 mod actions;
+mod announce;
 mod format;
 mod icons;
 mod media;

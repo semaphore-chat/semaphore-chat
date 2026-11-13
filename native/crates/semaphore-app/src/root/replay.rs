@@ -26,6 +26,7 @@ use semaphore_core::model::{
 };
 use semaphore_core::platform::CoreError;
 use semaphore_core::{Core, CoreEvent};
+use semaphore_ui::kit::LiveElement;
 use semaphore_ui::kit::Snackbar;
 use semaphore_ui::profile::ProfilePage;
 use semaphore_ui::replay::{
@@ -264,6 +265,7 @@ impl AppRoot {
                             .id("replay-toast")
                             .test_support()
                             .role(Role::Status)
+                            .aria_live(gpui_kit::accesskit::Live::Assertive)
                             .aria_label(SharedString::from(toast.message.clone()))
                             .child(Snackbar::new(toast.message.clone())),
                     )

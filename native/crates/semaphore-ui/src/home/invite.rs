@@ -9,10 +9,13 @@
 //! instance-only invite.
 
 use super::{HomeEvent, HomeScreen};
-use crate::kit::{Button, ButtonSize, IconButton, Paper, Snackbar, Variant, spacing, text};
+use crate::kit::{
+    Button, ButtonSize, IconButton, LiveElement, Paper, Snackbar, Variant, spacing, text,
+};
 use crate::messages::palette::Fonts;
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -239,11 +242,14 @@ impl HomeScreen {
                         )
                         .child(controls)
                         .children(model.notice.clone().map(|notice| {
+                            // A toast on the web (`showNotification`): its `Alert` is
+                            // `role="alert"`, assertive.
                             div()
                                 .id("home-invite-notice")
                                 .test_support()
                                 .role(Role::Status)
                                 .aria_label(notice.text.clone())
+                                .aria_live(Live::Assertive)
                                 .w_full()
                                 .flex()
                                 .justify_center()
