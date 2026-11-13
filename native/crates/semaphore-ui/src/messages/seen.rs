@@ -108,10 +108,13 @@ impl SeenState {
         true
     }
 
-    /// Core's answer for the current target. With no target it is dropped.
+    /// Core's answer for the current target. With no target it is dropped, and so is an answer
+    /// that names another message (`SeenByView::message_id`, empty when it names none).
     pub fn answer(&mut self, view: Option<SeenByView>) {
         self.view = match (view, &self.target) {
-            (Some(view), Some((_, id))) => Some((id.clone(), view)),
+            (Some(view), Some((_, id))) if view.message_id.is_empty() || view.message_id == *id => {
+                Some((id.clone(), view))
+            }
             _ => None,
         };
     }

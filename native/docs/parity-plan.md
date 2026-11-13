@@ -244,7 +244,15 @@ contract or engine gaps, with workarounds).
 | Seen by (DMs and channels) | `Core::dm_peer_reads` (`DmPeerReadsView`), `Core::seen_by` (`SeenByView`, 15 names + `more`); `readReceiptUpdated` naming a peer moves their watermark directly | `HttpBackend::read_receipts_controller_get_{dm_peer_reads,message_readers}` | `GET /api/read-receipts/dm-peer-reads/{id}` (403 for a non-member), `GET /api/read-receipts/message/{id}/readers`, control `read_receipt` (also emits the DM event) |
 | Third-party media setting | `Core::third_party_media`/`set_third_party_media`; `GifResultsView.needs_permission`; `LinkPreviewView.image_host`; `GifEmbed.host` (W7) | — (local setting, the host stores it) | — |
 | Notification auto-mark on view | `State::w2_auto_read` on opening a channel or DM, when the centre's list arrives, and for a notification that arrives in the open conversation; one mark per notification, a failed one retried on the next visit | uses `notificationsControllerMarkAsRead` | — |
-| Voice pre-join and join options | `Core::voice_prejoin` (`VoicePreJoinView`, `VoiceJoinMode`), `Core::join_voice_with` (`VoiceJoinOptions`); the engine is told before `connect` | uses the existing presence and capability reads | — |
+| Voice pre-join and join options | `Core::voice_prejoin` (`VoicePreJoinView`, `VoiceJoinMode`), `Core::join_voice_with` (`VoiceJoinOptions`); the engine is told before `connect`; a deafened join is a muted one (WP) | uses the existing presence and capability reads | controls `voice_join_as`/`voice_leave_as` (another user's presence, WP); a timeout takes `speak`, `video` and `share` from the capabilities, as the backend's `TIMEOUT_BLOCKED_ACTIONS` |
+
+WP (app wiring) notes:
+- A channel's "Seen by" line is read once per message (`GET /read-receipts/message/{id}/readers`,
+  when that message becomes my latest) and only refreshes on a new connection, because the
+  backend emits no event for channel receipts (the existing ask in "Backend asks W9"). A DM's line
+  moves live on `readReceiptUpdated`.
+- `SeenByView.message_id` names the message an answer is for; the message list drops an answer
+  for another one, and the app also checks the list's `seen_by_target()` before handing it over.
 
 ### UI status, verified against the code (2026-11-12)
 
@@ -258,8 +266,8 @@ still missing; everything else in the inventory that has a core command is drawn
 | Instance admin, 8 pages | stubs only (`ui/src/admin/*`) | `/admin/*` routed to placeholders since the UI freeze |
 | GIF picker | stub (`ui/src/gifs`) | `gifs`, `load_more_gifs` never called |
 | GIF embeds, "Load" cards for GIFs and link-preview images | `MessageRow::gif`, `GifEmbed`, `GifResultsView.needs_permission` unread | the merged setting exists in the store (v3); no GIF fetch |
-| Seen by | none | `seen_by`, `dm_peer_reads` never called |
-| Voice pre-join | none | `voice_prejoin`, `join_voice_with` never called |
+| Seen by | done (UM) | WP: `seen_by` fed to the main list; `dm_peer_reads` unread by the UI, so not fed |
+| Voice pre-join | done (UV) | WP: every voice channel choice shows it; Join runs `join_voice_with` |
 | Joining an invite as a signed-in account | preview only (`auth/invite.rs`) | `accept_invite` never called |
 | Register form's mode | the form exists | `register_requirements` never called |
 | Connect screen's "set it up in a browser" | none | `needs_setup` unread |

@@ -190,6 +190,28 @@ async fn join_deafened_starts_deafened_and_the_view_says_so() {
 }
 
 #[tokio::test]
+async fn join_deafened_implies_muted() {
+    let rig = prejoin_rig(true, true, None).await;
+    rig.core
+        .join_voice_with(
+            VOICE.into(),
+            VoiceJoinOptions {
+                muted: false,
+                deafened: true,
+            },
+        )
+        .await
+        .unwrap();
+    rig.core.run_until_idle().await;
+    assert!(rig.core.voice().deafened);
+    assert!(rig.core.voice().muted, "a deafened join is a muted one");
+    let calls = media_calls(&rig);
+    let muted = calls.iter().position(|call| call == "muted true");
+    let connected = calls.iter().position(|call| call.starts_with("connect "));
+    assert!(muted.is_some() && muted < connected, "{calls:?}");
+}
+
+#[tokio::test]
 async fn the_plain_join_is_unmuted_and_undeafened() {
     let rig = prejoin_rig(true, true, None).await;
     rig.core.join_voice(VOICE.into()).await.unwrap();

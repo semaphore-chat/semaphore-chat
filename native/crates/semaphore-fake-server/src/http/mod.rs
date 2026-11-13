@@ -378,6 +378,23 @@ async fn control(
             let message = crate::messages::post_as(&inner, target, author, text, broadcast, extras);
             return json_response(StatusCode::OK, json!({ "id": message.id }));
         }
+        // W9: another user joins or leaves a voice channel's presence, as their own client's
+        // join and leave would (the same presence row, event and audience).
+        "voice_join_as" | "voice_leave_as" => {
+            let field = |key: &str| request.get(key).and_then(Value::as_str);
+            let (Some(channel), Some(user_id)) = (field("channelId"), field("userId")) else {
+                return invalid("channelId and userId are required");
+            };
+            let Some(user) = inner.user_entity(user_id) else {
+                return invalid("userId is not a user");
+            };
+            let result = if name == "voice_join_as" {
+                crate::messages::voice_join_as(&inner, channel, &user)
+            } else {
+                crate::messages::voice_leave_as(&inner, channel, &user.id)
+            };
+            return json_response(StatusCode::OK, result);
+        }
         "friend_request_as" => {
             let Some(from) = request.get("fromId").and_then(Value::as_str) else {
                 return invalid("fromId is required");

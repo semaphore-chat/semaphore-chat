@@ -896,8 +896,17 @@ pub(crate) fn voice_presence(inner: &Inner, channel_id: &str) -> Value {
 }
 
 pub(crate) fn voice_join(inner: &Inner, channel_id: &str) -> Value {
+    voice_join_as(inner, channel_id, &inner.scenario.me.clone())
+}
+
+/// W9 (`voice_join_as`): `me`'s join into a channel's presence, with the same events to the same
+/// people as the signed-in user's own join. A test's second client.
+pub(crate) fn voice_join_as(
+    inner: &Inner,
+    channel_id: &str,
+    me: &semaphore_wire::types::UserEntity,
+) -> Value {
     let now = inner.now();
-    let me = &inner.scenario.me;
     // A server mute outlives the call: the next join lists them muted (W4).
     let server_muted = crate::calls::is_server_muted(inner, channel_id, &me.id);
     let joined = {
@@ -945,14 +954,17 @@ pub(crate) fn voice_join(inner: &Inner, channel_id: &str) -> Value {
 }
 
 pub(crate) fn voice_leave(inner: &Inner, channel_id: &str) -> Value {
+    voice_leave_as(inner, channel_id, &inner.scenario.me.id.clone())
+}
+
+/// W9 (`voice_leave_as`): `user_id`'s leave, as the signed-in user's own.
+pub(crate) fn voice_leave_as(inner: &Inner, channel_id: &str, user_id: &str) -> Value {
     // `VoicePresenceService.leaveVoiceChannel`: a user not listed left silently; one listed is
     // removed and `voiceChannelUserLeft` goes to the channel.
     let left = {
         let mut data = lock(&inner.data);
         data.voice.get_mut(channel_id).and_then(|users| {
-            let index = users
-                .iter()
-                .position(|user| user.id == inner.scenario.me.id)?;
+            let index = users.iter().position(|user| user.id == user_id)?;
             Some(users.remove(index))
         })
     };
@@ -962,7 +974,7 @@ pub(crate) fn voice_leave(inner: &Inner, channel_id: &str) -> Value {
             "voiceChannelUserLeft",
             serde_json::json!({
                 "channelId": channel_id,
-                "userId": inner.scenario.me.id,
+                "userId": user_id,
                 "user": user,
             }),
         );

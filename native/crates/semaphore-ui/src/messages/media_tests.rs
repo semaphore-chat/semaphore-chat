@@ -396,6 +396,27 @@ fn seen_state_keeps_an_answer_only_for_its_own_message() {
     assert_eq!(state.view, None);
 }
 
+#[test]
+fn an_answer_for_another_message_is_dropped() {
+    let mut state = SeenState::default();
+    assert!(state.retarget(Some((4, "m-4".into()))));
+    // A late answer, for the message that was the target before: never drawn under this one.
+    let late = SeenByView {
+        message_id: "m-2".into(),
+        ..seen(readers(1), 1)
+    };
+    state.answer(Some(late));
+    assert_eq!(state.view, None);
+    assert!(state.for_row(4).is_none());
+    // Its own answer is kept.
+    let own = SeenByView {
+        message_id: "m-4".into(),
+        ..seen(readers(1), 1)
+    };
+    state.answer(Some(own));
+    assert!(state.for_row(4).is_some());
+}
+
 // ---- In a window ----
 
 fn draw(cx: &mut VisualTestContext) {

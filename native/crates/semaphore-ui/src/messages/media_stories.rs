@@ -207,6 +207,7 @@ pub(crate) fn seen(readers: Vec<UserView>, count: u32) -> SeenByView {
     let more = count - readers.len() as u32;
     SeenByView {
         state: LoadState::Ready,
+        message_id: String::new(),
         readers,
         count,
         more,

@@ -64,8 +64,10 @@ wait core float hidden
 server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
 
 # 3. Squad Up: the soundboard. Rimshot (Ogg Opus, decoded built in) goes out on the published
-# `soundboard` track LiveKit lists, and we hear it too.
+# `soundboard` track LiveKit lists, and we hear it too. The row shows the pre-join (WP).
 click channel-$ID(vc-squad)
+wait core element voice-prejoin-join
+click voice-prejoin-join
 wait core voice connected within 30
 wait core voice participant demo-peer within 30
 wait core keep-awake on

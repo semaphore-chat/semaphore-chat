@@ -1052,6 +1052,17 @@ impl AppRoot {
                 if stage_shown {
                     return element;
                 }
+                // WP: no float card over another voice channel's pre-join, whose joins sit where
+                // the card goes; the bar under the columns still shows the call.
+                let prejoin_shown = props.channel.as_ref().is_some_and(|channel| {
+                    channel.kind == ChannelKind::Voice
+                        && root
+                            .upgrade()
+                            .is_some_and(|root| root.read(cx).prejoin_shows(&channel.id))
+                });
+                if prejoin_shown {
+                    return element;
+                }
                 // W4: the call over the column while its stage isn't shown (wide windows).
                 let float = root
                     .upgrade()
@@ -1198,7 +1209,9 @@ impl AppRoot {
             ShellEvent::CreateCommunity => self.open_create_community(window, cx),
             ShellEvent::OpenProfile { user_id } => self.open_profile(user_id.clone(), window, cx),
             ShellEvent::OpenNotifications => self.toggle_centre(cx),
-            ShellEvent::JoinVoice { channel_id } => self.join_voice(channel_id.clone(), cx),
+            // WP: a voice row only selects its channel; the route shows the pre-join, whose Join
+            // joins (`prejoin.rs`), as the web's row does.
+            ShellEvent::JoinVoice { .. } => {}
             ShellEvent::OpenPins => {
                 if let Some(pane) = &self.pane {
                     pane.update(cx, |pane, cx| pane.toggle_pins(window, cx));

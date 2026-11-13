@@ -1,0 +1,60 @@
+# WP: "Seen by" under my latest message, in the real app against semaphore-fake-server (showcase).
+# - A DM: Priya's client reads my message (the `read_receipt` control, which announces it to the
+#   group as the backend's `markReadAndAnnounce` does) and the line names her, with no hover.
+# - A newer message of mine moves the line: it never shows the older message's answer, and names
+#   her again once she has read the new one.
+# - A channel: the readers route answers when my message becomes the latest (channels send no
+#   receipt events, so a channel's line is read once per message).
+
+app 1280 800
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core connection connected
+window activate
+
+# 1. The DM with Priya: my message, then her read.
+click rail-dm
+wait core element dm-sidebar
+click dm-row-$ID(dm-priya)
+wait core dm $ID(dm-priya)
+wait core element dm-header
+type "seen check one"
+press enter
+wait core sent "seen check one"
+wait core w9v seen none
+server read_receipt "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core w9v seen "seen check one" "Seen by pri"
+wait idle
+shot 01-dm-seen
+
+# 2. A newer message: the line leaves the old one and nothing is drawn until she reads this one.
+# The fake server's clock only moves when told: a minute on, so her read is older than it.
+server advance_clock "{\"ms\": 60000}"
+type "seen check two"
+press enter
+wait core sent "seen check two"
+wait core w9v seen none
+expect core w9v seen none
+server read_receipt "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core w9v seen "seen check two" "Seen by pri"
+wait idle
+shot 02-dm-moved
+
+# 3. A channel: Priya's watermark is past what I send, so the readers route names her.
+server read_receipt "{\"channelId\": \"$ID(cc-general)\", \"userId\": \"$ID(u-priya)\", \"at\": \"2030-01-01T00:00:00Z\"}"
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+type "seen check channel"
+press enter
+wait core sent "seen check channel"
+wait core w9v seen "seen check channel" "Seen by pri"
+expect core requests ReadReceiptsController_getMessageReaders >= 1
+wait idle
+shot 03-channel-seen
