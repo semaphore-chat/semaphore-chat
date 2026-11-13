@@ -105,6 +105,16 @@ impl ThreadPane {
         summary(&self.info, self.clock.now_ms())
     }
 
+    /// Escape that nothing inside the pane took first: the replies list clears its own menu,
+    /// staged delete or selection, and the composer its dropdown, edit or reply, all before this.
+    /// With nothing of theirs to do, the key closes the thread, as its close button does.
+    fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if event.keystroke.key == "escape" {
+            cx.emit(ThreadPaneEvent::Close);
+            cx.stop_propagation();
+        }
+    }
+
     fn header(&self, touch: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let sem = cx.sem();
         let subscribed = self.info.subscribed;
@@ -345,6 +355,7 @@ impl Render for ThreadPane {
             .flex_col()
             .overflow_hidden()
             .bg(canvas)
+            .on_key_down(cx.listener(Self::on_key_down))
             .child(header)
             .children(parent)
             .child(div().id("thread-scroll").flex_1().min_h_0().child(body))

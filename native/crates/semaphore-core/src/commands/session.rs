@@ -215,12 +215,18 @@ impl Core {
     }
 
     /// Asks a server about itself before signing in: whether it answers at all, and its name. Points
-    /// the backend at `server_url`, as `sign_in` does.
+    /// the backend at `server_url`, as `sign_in` does. An answer that changes what core knows of
+    /// the server ([`Self::server_info`], [`Self::register_requirements`]) announces
+    /// `ViewKey::Session`. An answer for a session that has ended since, or for a server no longer
+    /// in use, is returned but writes and announces nothing.
     pub async fn probe_server(&self, server_url: String) -> Result<ServerInfo, CoreError> {
         let services = self.services().ok_or_else(|| unavailable("the backend"))?;
         let url = server_url.trim().trim_end_matches('/').to_owned();
         services.backend.set_server_url(url.clone());
-        self.write(|state, _| state.use_server(&url));
+        let epoch = self.write(|state, _| {
+            state.use_server(&url);
+            state.session_epoch
+        });
         let settings = services
             .backend
             .instance_controller_get_public_settings()
@@ -253,8 +259,21 @@ impl Core {
             gif_search: settings.gif_search_enabled,
             needs_setup,
         };
-        self.write(|state, _| state.server_probed(&info));
+        self.write(|state, _| {
+            if state.session_epoch != epoch || state.auth.server_url.as_deref() != Some(&info.url) {
+                return;
+            }
+            if state.auth.server_info.as_ref() != Some(&info) {
+                state.server_probed(&info);
+                state.view_changed(ViewKey::Session);
+            }
+        });
         Ok(info)
+    }
+
+    /// What the last probe of the server in use said, if it has been probed.
+    pub fn server_info(&self) -> Option<ServerInfo> {
+        self.read(|state| state.auth.server_info.clone())
     }
 
     pub fn session(&self) -> SessionState {

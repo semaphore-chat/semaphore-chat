@@ -1380,3 +1380,73 @@ fn clicking_a_quote_opens_the_message_it_answers(cx: &mut TestAppContext) {
         }]
     );
 }
+
+/// A view around the list that counts the Escape keys that reach it: what a pane's own Escape
+/// would see, under the list's focus and key context.
+struct EscapeWatcher {
+    list: Entity<MessageList>,
+    seen: Rc<std::cell::Cell<usize>>,
+}
+
+impl Render for EscapeWatcher {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let seen = self.seen.clone();
+        div()
+            .size_full()
+            .on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, _| {
+                if event.keystroke.key == "escape" {
+                    seen.set(seen.get() + 1);
+                }
+            }))
+            .child(self.list.clone())
+    }
+}
+
+#[gpui_kit::test]
+fn escape_with_nothing_to_do_propagates(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        init(cx);
+    });
+    let seen = Rc::new(std::cell::Cell::new(0usize));
+    let watcher = {
+        let seen = seen.clone();
+        cx.add_window_view(move |_, cx| {
+            let list = cx.new(|cx| {
+                MessageList::new(
+                    ListData {
+                        me_id: "me".into(),
+                        rows: two_paragraphs(),
+                        replies: HashMap::new(),
+                        status: ListStatus::Ready,
+                    },
+                    Rc::new(NoMedia),
+                    ListOptions {
+                        time: TimeFormat::fixed(NOW_MS),
+                        scrollbar: false,
+                        ..ListOptions::default()
+                    },
+                    cx,
+                )
+            });
+            EscapeWatcher { list, seen }
+        })
+    };
+    let (watcher, cx) = watcher;
+    let list = watcher.read_with(cx, |watcher, _| watcher.list.clone());
+    focus_list(&list, cx);
+
+    // Nothing open, nothing staged, nothing selected: the list leaves the key to its owner.
+    cx.simulate_keystrokes("escape");
+    draw(cx);
+    assert_eq!(seen.get(), 1, "the key went on");
+
+    // A selection is the list's to clear, and the key stops there.
+    cx.simulate_keystrokes("ctrl-a");
+    draw(cx);
+    assert!(!selected(&list, cx).is_empty());
+    cx.simulate_keystrokes("escape");
+    draw(cx);
+    assert_eq!(selected(&list, cx), "", "the selection is gone");
+    assert_eq!(seen.get(), 1, "clearing the selection took the Escape");
+}

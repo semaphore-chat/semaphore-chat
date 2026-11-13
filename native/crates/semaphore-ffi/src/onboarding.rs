@@ -9,7 +9,7 @@ use semaphore_core::CoreError;
 use semaphore_core::model::{
     BrowserSignInFailure, BrowserSignInView, CreatedCommunity, ErrorView, InviteJoin,
     InvitePreview, InvitePreviewView, InviteSkipReason, JoinedCommunity, LoadState, NewCommunity,
-    RegisterForm, RegisterRequirements, RegistrationMode, SkippedInviteCommunity,
+    RegisterForm, RegisterRequirements, RegistrationMode, ServerInfo, SkippedInviteCommunity,
 };
 
 #[uniffi::remote(Enum)]
@@ -17,6 +17,19 @@ pub enum RegistrationMode {
     Open,
     InviteOnly,
     Closed,
+}
+
+/// What the last probe said: `Core::server_info`.
+#[uniffi::remote(Record)]
+pub struct ServerInfo {
+    pub url: String,
+    pub name: Option<String>,
+    pub max_file_bytes: Option<u64>,
+    pub password_reset: bool,
+    pub registration: RegistrationMode,
+    pub browser_sign_in: bool,
+    pub gif_search: bool,
+    pub needs_setup: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -114,6 +127,10 @@ pub fn browser_sign_in_timeout_ms() -> u64 {
 impl SemaphoreCore {
     pub fn register_requirements(&self) -> RegisterRequirements {
         self.core.register_requirements()
+    }
+
+    pub fn server_info(&self) -> Option<ServerInfo> {
+        self.core.server_info()
     }
 
     pub async fn register(&self, form: RegisterForm) -> Result<(), CoreError> {

@@ -12,21 +12,24 @@
 //!   panel open (once the pane shows the channel, so the panel searches the right conversation).
 //!   `/friends` is its own page, as the web's `FriendsPage` is: the DM sidebar's Friends tab has
 //!   no public way in from here (`DmSidebar::set_tab` is, but the sidebar entity is the inbox's).
-//! - **The connect notice and the register modes** are read from what the last probe said
-//!   (`AppRoot::server_info`) and from `Core::register_requirements`, and applied to the auth
-//!   screen on each core event. Both setters are idempotent. A probe answers without an event of
-//!   its own, so the screen takes its answer on the next one; the hook belongs in the probe's
-//!   reply, which is `root.rs`'s.
+//! - **The connect notice and the register modes** are read from what the last probe said in core
+//!   (`Core::server_info`) and from `Core::register_requirements`, and applied to the auth screen
+//!   on each core event. Both setters are idempotent. The probe announces `ViewChanged
+//!   { Session }` itself when its answer changes something, so the screen takes the answer of the
+//!   event that announced it; it reads core rather than the app's own copy, which the probe's
+//!   reply callback fills in a moment later.
 //! - **The shortcut sheet** is rebuilt each time it opens: it takes the focus on its first draw,
 //!   which is what closes it on Escape.
 //! - **The web's global shortcuts** are key bindings onto actions this file answers: Alt+Up/Down
 //!   walk the sidebar's channels or conversations as the web's `findNavTarget` does, Alt+Shift the
-//!   unread ones, and Mod+/ (Ctrl+/) shows the sheet. Escape is left to whoever has it: every
-//!   panel and dialog closes on it already, and the pane marks what it shows read as it arrives.
+//!   unread ones, and Mod+/ (Ctrl+/) shows the sheet. Escape is the pane's, bound in the pane's own
+//!   key context: it closes the side panel or marks the conversation read, after every dialog,
+//!   menu, the search field, the composer and the message list have had their say.
 //!
 //! Signing out drops everything here: the pages, the dialogs and the sheet belong to a session.
 
 use super::AppRoot;
+use crate::conversation::EscapePane;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{ChannelKind, DmRow, ErrorView, SessionState, ViewKey};
@@ -349,17 +352,20 @@ impl AppRoot {
     // ---- The auth screen. ----
 
     /// The connect screen's notice and what the sign-in card offers for registering, from what the
-    /// last probe said and from core. Both are idempotent: the screen keeps the last answer.
+    /// last probe said and from core. Both are idempotent: the screen keeps the last answer. The
+    /// probe's answer is core's, not the app's copy: its `ViewChanged { Session }` arrives before
+    /// the probe's reply callback runs, so the app's copy can still be the one before it.
     fn u9_sync_auth(&mut self, cx: &mut Context<Self>) {
         let Some(auth) = self.auth.clone() else {
             return;
         };
-        let notice = self
-            .server_info
+        let core = self.core();
+        let notice = core
             .as_ref()
+            .and_then(|core| core.server_info())
             .filter(|info| info.needs_setup)
             .map(|info| info.url.clone());
-        let requirements = self.core().map(|core| core.register_requirements());
+        let requirements = core.map(|core| core.register_requirements());
         auth.update(cx, |auth, cx| {
             auth.set_setup_needed(notice, cx);
             if let Some(requirements) = requirements {
@@ -730,10 +736,14 @@ impl AppRoot {
             // need it to type "/".
             KeyBinding::new("ctrl-/", ToggleShortcutSheet, None),
             KeyBinding::new("ctrl-shift-/", ToggleShortcutSheet, None),
-            // Escape is not bound here: a binding with no context outranks every focused view's
-            // own (the keymap gives it the deepest precedence), so the dialogs', the search
-            // panel's and the message list's Escape would stop working. Each of those closes
-            // itself, and the pane marks what it shows read as it arrives.
+            // Escape belongs to the pane, in the context its root carries
+            // (`ConversationPane`, `conversation.rs`), never to a context-free binding: one of
+            // those outranks every focused view's own, so the dialogs', the menus', the search
+            // field's, the composer's and the message list's Escape would stop working. Inside
+            // the pane the deepest context takes the key first and the event only travels
+            // outward while it is still propagating, so the pane's Escape runs after all of
+            // those: it closes the side panel, or marks the conversation read.
+            KeyBinding::new("escape", EscapePane, Some("ConversationPane")),
         ]);
         let listener = root.clone();
         gpui_kit::App::on_action::<PrevChannel>(cx, move |_: &PrevChannel, cx| {

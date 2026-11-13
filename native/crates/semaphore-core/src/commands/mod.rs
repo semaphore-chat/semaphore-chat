@@ -342,7 +342,11 @@ impl State {
             keys::REPLAY_SESSION => self.view_changed(ViewKey::ReplaySession),
             keys::THREAD_META => self.reading_meta_arrived(id),
             keys::DM_PEER_READS => self.seen_by_changed(&id),
-            keys::MESSAGE_READERS => {
+            // A search's first page lands as later pages do: on its own `ViewKey::Search`.
+            keys::MESSAGE_READERS
+            | keys::SEARCH_CHANNEL
+            | keys::SEARCH_DM
+            | keys::SEARCH_COMMUNITY => {
                 if let Some(view) = view_for(key) {
                     self.view_changed(view);
                 }

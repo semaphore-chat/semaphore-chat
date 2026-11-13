@@ -6,7 +6,9 @@ use common::*;
 use semaphore_core::links::parse_message_link;
 use semaphore_core::model::{Conversation, LoadState, MessageLink, SearchScope, ViewKey};
 use semaphore_core::platform::{CoreError, CoreEvent};
+use semaphore_wire::events::MARK_AS_READ;
 use serde_json::json;
+use std::sync::atomic::Ordering;
 use tokio::sync::oneshot;
 
 const PARENT: &str = "p-1";
@@ -1026,4 +1028,220 @@ async fn my_own_reply_brings_the_rows_count_up_with_the_header() {
         3,
         "the row agrees with the header"
     );
+}
+
+// --- W10: a search's first page announces itself ---
+
+/// The search views `events` announced, by query.
+fn searched(events: &[CoreEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            CoreEvent::ViewChanged {
+                view: ViewKey::Search { query, .. },
+            } => Some(query.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn search_first_page_announces_search_view() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.reading.search_results.lock().unwrap() = search_rows(3);
+    let scope = channel_scope();
+    rig.core.search_results(scope.clone(), "needle".into());
+    rig.events.take();
+    rig.core.run_until_idle().await;
+    assert_eq!(searched(&rig.events.take()), vec!["needle".to_owned()]);
+    let view = rig.core.search_results(scope, "needle".into());
+    assert_eq!(view.state, LoadState::Ready);
+    assert_eq!(view.hits.len(), 3);
+}
+
+#[tokio::test]
+async fn search_first_page_failure_announces_search_view_failed() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.reading.search_error.lock().unwrap() =
+        Some(semaphore_core::backend::BackendError {
+            status: 500,
+            code: semaphore_wire::enums::ErrorCode::Unknown("INTERNAL".into()),
+            message: "the search index is down".into(),
+            retryable: true,
+            retry_after_ms: None,
+        });
+    let scope = channel_scope();
+    rig.core.search_results(scope.clone(), "needle".into());
+    rig.events.take();
+    rig.core.run_until_idle().await;
+    assert_eq!(searched(&rig.events.take()), vec!["needle".to_owned()]);
+    assert!(matches!(
+        rig.core.search_results(scope, "needle".into()).state,
+        LoadState::Failed { .. }
+    ));
+}
+
+#[tokio::test]
+async fn search_replaced_query_old_answer_announces_only_its_own_key() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.reading.search_results.lock().unwrap() = search_rows(3);
+    let scope = channel_scope();
+    // Both first pages are held at the server, so the old one can answer while the new one waits.
+    let (release_old, hold_old) = oneshot::channel();
+    *rig.backend.reading.search_gate.lock().unwrap() = Some(hold_old);
+    rig.core.search_results(scope.clone(), "needle".into());
+    let (release_new, hold_new) = oneshot::channel();
+    tokio::join!(rig.core.run_until_idle(), async {
+        // The first query is at the server (a call is recorded in the same step that takes the
+        // gate): the user types another, which is held too.
+        for _ in 0..1000 {
+            if !rig.backend.reading.search_calls.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        *rig.backend.reading.search_gate.lock().unwrap() = Some(hold_new);
+        rig.core.search_results(scope.clone(), "haystack".into());
+        for _ in 0..1000 {
+            if rig.backend.reading.search_calls.lock().unwrap().len() >= 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            rig.core
+                .search_results(scope.clone(), "haystack".into())
+                .state,
+            LoadState::Loading,
+            "the new query is on its way"
+        );
+        // The old answer lands first: its own view only, and the new one still waits.
+        release_old.send(()).unwrap();
+        for _ in 0..1000 {
+            if rig
+                .core
+                .search_results(scope.clone(), "needle".into())
+                .state
+                == LoadState::Ready
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(searched(&rig.events.take()), vec!["needle".to_owned()]);
+        let waiting = rig.core.search_results(scope.clone(), "haystack".into());
+        assert_eq!(waiting.state, LoadState::Loading);
+        assert!(waiting.hits.is_empty(), "none of the old page landed here");
+        release_new.send(()).unwrap();
+    });
+    rig.core.run_until_idle().await;
+    assert_eq!(searched(&rig.events.take()), vec!["haystack".to_owned()]);
+    let view = rig.core.search_results(scope, "haystack".into());
+    assert_eq!(view.state, LoadState::Ready);
+    assert_eq!(view.hits.len(), 3);
+}
+
+// --- W10: Escape marks the conversation read, whatever is on screen ---
+
+/// The read marks the socket was given, as (conversation field, message id).
+fn read_marks(rig: &Rig) -> Vec<(String, String)> {
+    rig.realtime
+        .emitted
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(name, _)| name.as_str() == MARK_AS_READ)
+        .map(|(_, payload)| {
+            let context = ["channelId", "directMessageGroupId"]
+                .iter()
+                .find_map(|field| payload.get(*field)?.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            let id = payload["lastReadMessageId"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned();
+            (context, id)
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn mark_conversation_read_attached_uses_newest_row() {
+    let rig = Rig::new();
+    *rig.backend.unread.lock().unwrap() = counts("m-3", 2, 0);
+    let rig = rig.signed_in().await.open_channel(history("m", 5)).await;
+    let before = rig.backend.page_requests.load(Ordering::SeqCst);
+    assert!(rig.core.mark_conversation_read(channel()).await.unwrap());
+    assert_eq!(
+        rig.backend.page_requests.load(Ordering::SeqCst),
+        before,
+        "the loaded window reaches the live edge: nothing to fetch"
+    );
+    // `history` serves m-4 first: the newest.
+    assert_eq!(
+        read_marks(&rig).last(),
+        Some(&(CHANNEL.to_owned(), "m-4".to_owned()))
+    );
+}
+
+#[tokio::test]
+async fn mark_conversation_read_detached_fetches_newest() {
+    let rig = Rig::new();
+    *rig.backend.unread.lock().unwrap() = counts("m-50", 2, 0);
+    let rig = rig.signed_in().await;
+    rig.backend.set_messages(history("m", 60));
+    // A jump to the oldest message: more than a page of newer rows, so the window is detached.
+    rig.core
+        .open_conversation_at(channel(), "m-0".into())
+        .await
+        .unwrap();
+    assert!(!rig.core.at_live_edge(channel()));
+    let before = rig.backend.page_requests.load(Ordering::SeqCst);
+    assert!(rig.core.mark_conversation_read(channel()).await.unwrap());
+    assert_eq!(
+        rig.backend.page_requests.load(Ordering::SeqCst),
+        before + 1,
+        "the detached window doesn't hold the newest, so one message was read"
+    );
+    assert_eq!(
+        read_marks(&rig).last(),
+        Some(&(CHANNEL.to_owned(), "m-59".to_owned()))
+    );
+}
+
+#[tokio::test]
+async fn mark_conversation_read_with_zero_unread_does_nothing() {
+    let rig = Rig::new();
+    *rig.backend.unread.lock().unwrap() = counts("m-4", 0, 0);
+    let rig = rig.signed_in().await.open_channel(history("m", 5)).await;
+    assert!(!rig.core.mark_conversation_read(channel()).await.unwrap());
+    assert!(read_marks(&rig).is_empty());
+}
+
+#[tokio::test]
+async fn mark_conversation_read_answering_after_sign_out_marks_nothing() {
+    let rig = Rig::new();
+    *rig.backend.unread.lock().unwrap() = counts("m-50", 2, 0);
+    let rig = rig.signed_in().await;
+    rig.backend.set_messages(history("m", 60));
+    rig.core
+        .open_conversation_at(channel(), "m-0".into())
+        .await
+        .unwrap();
+    let before = rig.backend.page_requests.load(Ordering::SeqCst);
+    let (release, gate) = oneshot::channel();
+    *rig.backend.gate.lock().unwrap() = Some(gate);
+    let read = rig.core.mark_conversation_read(channel());
+    let (result, ()) = tokio::join!(read, async {
+        for _ in 0..1000 {
+            if rig.backend.page_requests.load(Ordering::SeqCst) > before {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        rig.core.sign_out().await.unwrap();
+        release.send(()).unwrap();
+    });
+    assert!(!result.unwrap(), "an answer for an ended session");
+    assert!(read_marks(&rig).is_empty(), "no read mark was sent");
 }
