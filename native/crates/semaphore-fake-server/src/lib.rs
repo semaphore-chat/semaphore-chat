@@ -12,6 +12,7 @@ mod calls;
 mod gifs;
 mod http;
 pub mod livekit;
+mod media;
 mod messages;
 mod png;
 mod rbac;
@@ -83,6 +84,8 @@ pub(crate) struct Faults {
     pub drop_acks: bool,
     pub fail_next_send: Option<SendFault>,
     pub fail_routes: HashMap<String, RouteFault>,
+    /// How long a named operation's handler waits after its request arrives.
+    pub delay_routes: HashMap<String, Duration>,
     /// Set by `expire_access_token`: the only access token the server still accepts.
     pub required_token: Option<String>,
     pub token_generation: u64,
@@ -130,6 +133,20 @@ pub(crate) struct StoredFile {
     pub filename: String,
     pub mime_type: String,
     pub bytes: Vec<u8>,
+    /// Display dimensions of a raster image, or null when it has none (the backend's
+    /// `File.width`/`height`).
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    /// The encoded thumbnail bytes (PNG here), when one was generated (`File.thumbnailPath`
+    /// exists).
+    pub thumbnail: Option<Vec<u8>>,
+}
+
+impl StoredFile {
+    /// `File.thumbnailPath` exists exactly when a thumbnail does.
+    pub(crate) fn has_thumbnail(&self) -> bool {
+        self.thumbnail.is_some()
+    }
 }
 
 pub(crate) struct Inner {
@@ -346,6 +363,18 @@ impl Inner {
     pub fn take_route_fault(&self, operation: Option<&str>) -> Option<RouteFault> {
         let operation = operation?;
         lock(&self.faults).fail_routes.remove(operation)
+    }
+
+    /// How long this operation's next requests wait before the handler runs.
+    pub fn route_delay(&self, operation: Option<&str>) -> Option<Duration> {
+        let operation = operation?;
+        lock(&self.faults).delay_routes.get(operation).copied()
+    }
+
+    pub fn delay_route(&self, operation: &str, delay: Duration) {
+        lock(&self.faults)
+            .delay_routes
+            .insert(operation.to_owned(), delay);
     }
 
     pub fn acks_delayed(&self) -> Option<Duration> {

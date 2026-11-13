@@ -93,6 +93,7 @@
 //! `notice S`, `no-notice`, `pinned-count N` (the header's badge), `composer-text S`,
 //! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
+mod thumbs;
 mod w5;
 mod w6;
 mod w7;
@@ -354,6 +355,8 @@ enum Condition {
     /// UI freeze hubs: WA's, WM's, WU's and WP's.
     W6(w6::W6),
     W7(w7::W7),
+    /// W7's per-file thumbnail and box checks (`thumbs.rs`).
+    W7T(thumbs::Thumbs),
     W9(w9::W9),
     W9v(w9v::W9V),
 }
@@ -666,6 +669,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["w5", rest @ ..] => Condition::W5(w5::parse(rest)?),
         ["w6", rest @ ..] => Condition::W6(w6::parse(rest)?),
         ["w7", rest @ ..] => Condition::W7(w7::parse(rest)?),
+        ["w7t", rest @ ..] => Condition::W7T(thumbs::parse(rest)?),
         ["w9", rest @ ..] => Condition::W9(w9::parse(rest)?),
         ["w9v", rest @ ..] => Condition::W9v(w9v::parse(rest)?),
         ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
@@ -1630,6 +1634,7 @@ impl Rig {
         match condition {
             Condition::W6(w6) => return self.w6_holds(w6),
             Condition::W7(w7) => return self.w7_holds(w7),
+            Condition::W7T(thumbs) => return self.w7t_holds(thumbs),
             Condition::W9(w9) => return self.w9_holds(w9),
             Condition::W9v(w9v) => return self.w9v_holds(w9v),
             _ => {}
@@ -1736,6 +1741,7 @@ impl Rig {
             | Condition::W5(_)
             | Condition::W6(_)
             | Condition::W7(_)
+            | Condition::W7T(_)
             | Condition::W9(_)
             | Condition::W9v(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
