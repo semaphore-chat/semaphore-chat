@@ -103,9 +103,10 @@ fn quality_view(quality: ConnectionQuality) -> ConnectionQualityView {
 /// crate's rigs, and for settings that don't pass through core.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MediaSnapshot {
-    /// Which `connect` this report belongs to: core's number for the call. Goes with `voice` to
-    /// `Core::ingest_media`, so a report from an earlier call, or one core never saw begin, can't
-    /// be mistaken for this one's.
+    /// Which `connect` this report belongs to: core's number for the call. Written together with
+    /// `voice.status`, so it always names the call that status was produced for. Goes with `voice`
+    /// to `Core::ingest_media`, so a report from an earlier call, or one core never saw begin,
+    /// can't be mistaken for this one's.
     pub call: u64,
     pub voice: VoiceView,
     /// By identity. Absent until the server has said.
@@ -950,14 +951,17 @@ impl Inner {
         if let Some(test) = test.and_then(|test| test.upgrade()) {
             test.stop();
         }
-        // Whatever the last call reports on its way out is still stamped with its own number.
-        self.clone().leave().await;
-        self.update_snapshot(|snapshot| snapshot.call = call);
-        self.set_status(VoiceStatus::Connecting, None);
+        // The call this one replaces ends first, and everything it reports on its way out carries
+        // its own number: its teardown is never stamped with the call that replaced it.
+        let replaced = self.snapshot.borrow().call;
+        self.clone().leave_call(replaced).await;
+        // Only now does a report say this call: `set_status` writes the number with the status, so
+        // no report pairs `call` with what the replaced call left behind.
+        self.set_status(call, VoiceStatus::Connecting, None);
         let (room, events) = match Room::connect(&url, &token, room_options()).await {
             Ok(connected) => connected,
             Err(error) => {
-                self.set_status(VoiceStatus::Disconnected, Some(error.to_string()));
+                self.set_status(call, VoiceStatus::Disconnected, Some(error.to_string()));
                 return Err(failed(error));
             }
         };
@@ -981,13 +985,16 @@ impl Inner {
             self.set_room(None);
             self.stop_audio();
             mic_pump.abort();
-            self.set_status(VoiceStatus::Disconnected, Some(error.clone()));
+            self.set_status(call, VoiceStatus::Disconnected, Some(error.clone()));
             return Err(failed(error));
         }
-        self.set_status(VoiceStatus::Connected, None);
+        self.set_status(call, VoiceStatus::Connected, None);
 
         let (leave, leave_rx) = watch::channel(false);
-        let task = tokio::spawn(self.clone().supervise(room, events, url, token, leave_rx));
+        let task = tokio::spawn(
+            self.clone()
+                .supervise(room, events, url, token, call, leave_rx),
+        );
         let device_task = tokio::spawn(self.clone().watch_devices());
         *self.session.lock().await = Some(Session {
             leave,
@@ -999,6 +1006,13 @@ impl Inner {
     }
 
     async fn leave(self: Arc<Self>) {
+        let call = self.snapshot.borrow().call;
+        self.leave_call(call).await;
+    }
+
+    /// Ends `call`: whatever it reports on its way out is stamped with its number, never with the
+    /// number of a call that took its place.
+    async fn leave_call(self: Arc<Self>, call: u64) {
         let Some(session) = self.session.lock().await.take() else {
             return;
         };
@@ -1018,7 +1032,7 @@ impl Inner {
         self.stop_audio();
         lock(&self.applied_quality).clear();
         lock(&self.speaking).clear();
-        self.set_status(VoiceStatus::Disconnected, None);
+        self.set_status(call, VoiceStatus::Disconnected, None);
     }
 
     /// Publishes our mic and subscribes to what's there. Run for each new `Room`.
@@ -1088,13 +1102,15 @@ impl Inner {
         Ok(())
     }
 
-    /// Runs until `disconnect`, rejoining across any disconnect we didn't ask for.
+    /// Runs until `disconnect`, rejoining across any disconnect we didn't ask for. Every report it
+    /// makes is stamped with `call`, the number of the `connect` it serves.
     async fn supervise(
         self: Arc<Self>,
         room: Arc<Room>,
         events: mpsc::UnboundedReceiver<RoomEvent>,
         url: String,
         token: String,
+        call: u64,
         mut leave: watch::Receiver<bool>,
     ) {
         let mut room = room;
@@ -1102,7 +1118,7 @@ impl Inner {
         let mut token = token;
         loop {
             match self
-                .run_room(&room, &mut events, &mut token, &mut leave)
+                .run_room(&room, &mut events, &mut token, &mut leave, call)
                 .await
             {
                 RoomEnd::Left => {
@@ -1111,7 +1127,7 @@ impl Inner {
                     return;
                 }
                 RoomEnd::Ended(reason) => {
-                    self.end_call(reason);
+                    self.end_call(call, reason);
                     return;
                 }
                 RoomEnd::Lost => {}
@@ -1119,11 +1135,11 @@ impl Inner {
             // The room is dead, so everything hanging off it is. Its tasks would only ever wait.
             self.clear_media();
             self.set_room(None);
-            self.set_status(VoiceStatus::Reconnecting, None);
+            self.set_status(call, VoiceStatus::Reconnecting, None);
             let Some((next_room, next_events)) = self.rejoin(&url, &mut token, &mut leave).await
             else {
                 if !*leave.borrow() {
-                    self.end_call("the server kept refusing us".to_owned());
+                    self.end_call(call, "the server kept refusing us".to_owned());
                 }
                 return;
             };
@@ -1133,12 +1149,12 @@ impl Inner {
                 snapshot.rejoins += 1;
                 snapshot.rejoin_attempt = None;
             });
-            self.set_status(VoiceStatus::Connected, None);
+            self.set_status(call, VoiceStatus::Connected, None);
         }
     }
 
     /// The call is over and no one here asked for that.
-    fn end_call(&self, reason: String) {
+    fn end_call(&self, call: u64, reason: String) {
         if let Some(share) = lock(&self.system_audio).take() {
             share.pump.abort();
         }
@@ -1149,7 +1165,7 @@ impl Inner {
         self.clear_media();
         self.set_room(None);
         self.stop_audio();
-        self.set_status(VoiceStatus::Disconnected, Some(reason));
+        self.set_status(call, VoiceStatus::Disconnected, Some(reason));
     }
 
     /// `None` means the user left meanwhile, or the server has refused us for too long.
@@ -1220,6 +1236,7 @@ impl Inner {
         events: &mut mpsc::UnboundedReceiver<RoomEvent>,
         token: &mut String,
         leave: &mut watch::Receiver<bool>,
+        call: u64,
     ) -> RoomEnd {
         self.publish_snapshot();
         loop {
@@ -1301,9 +1318,9 @@ impl Inner {
                     self.on_local_mic_mute(publication.is_muted());
                 }
                 RoomEvent::TokenRefreshed { token: fresh } => *token = fresh,
-                RoomEvent::Reconnecting => self.set_status(VoiceStatus::Reconnecting, None),
+                RoomEvent::Reconnecting => self.set_status(call, VoiceStatus::Reconnecting, None),
                 RoomEvent::Reconnected => {
-                    self.set_status(VoiceStatus::Connected, None);
+                    self.set_status(call, VoiceStatus::Connected, None);
                     // The SDK's full reconnect doesn't tell the new server session about tracks we
                     // subscribed to by hand, and every layer choice went with the old one.
                     lock(&self.applied_quality).clear();
@@ -1699,8 +1716,11 @@ impl Inner {
         }
     }
 
-    fn set_status(&self, status: VoiceStatus, error: Option<String>) {
+    /// Says what `call` is doing, with its number written in the same report: a reader can never
+    /// see this call's number on a status the call it replaced left behind.
+    fn set_status(&self, call: u64, status: VoiceStatus, error: Option<String>) {
         self.update_snapshot(|snapshot| {
+            snapshot.call = call;
             snapshot.voice.status = status;
             if status == VoiceStatus::Connected {
                 snapshot.last_error = None;
@@ -2464,5 +2484,131 @@ async fn unpublish_source(room: &Room, source: TrackSource) {
         if let Err(error) = local.unpublish_track(&sid).await {
             log::warn!("unpublishing {source:?} failed: {error}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The report stream as the app hands it to core: the whole snapshot as one `(call, voice)`
+    /// report, read at every `ViewChanged { Voice }`. That is exactly every point a reader can wake
+    /// up between two writes, so a pairing the reader could ever see is recorded here.
+    #[derive(Default)]
+    struct Reports {
+        stream: Mutex<Option<watch::Receiver<MediaSnapshot>>>,
+        seen: Mutex<Vec<(u64, VoiceStatus, Option<String>)>>,
+    }
+
+    impl Reports {
+        fn new(engine: &LiveKitEngine) -> Arc<Self> {
+            Arc::new(Self {
+                stream: Mutex::new(Some(engine.subscribe())),
+                seen: Mutex::new(Vec::new()),
+            })
+        }
+
+        fn seen(&self) -> Vec<(u64, VoiceStatus, Option<String>)> {
+            lock(&self.seen).clone()
+        }
+    }
+
+    impl EventSink for Reports {
+        fn on_event(&self, event: CoreEvent) {
+            let CoreEvent::ViewChanged {
+                view: ViewKey::Voice,
+            } = event
+            else {
+                return;
+            };
+            let mut stream = lock(&self.stream);
+            let Some(stream) = stream.as_mut() else {
+                return;
+            };
+            let snapshot = stream.borrow_and_update().clone();
+            lock(&self.seen).push((snapshot.call, snapshot.voice.status, snapshot.voice.error));
+        }
+    }
+
+    /// An engine on a virtual sound card, so a test never opens the machine's own.
+    fn engine() -> (LiveKitEngine, Arc<Reports>) {
+        let engine = LiveKitEngine::new(EngineOptions {
+            audio_io: Arc::new(crate::audio::virtual_io::VirtualIo::new()),
+            ..EngineOptions::default()
+        });
+        let reports = Reports::new(&engine);
+        engine.set_event_sink(reports.clone());
+        (engine, reports)
+    }
+
+    /// A live call has a session; the next `connect` ends it before it joins.
+    async fn call_1_connected(engine: &LiveKitEngine) {
+        engine.inner.update_snapshot(|snapshot| {
+            snapshot.call = 1;
+            snapshot.voice.status = VoiceStatus::Connected;
+        });
+        // No task listens here: `leave_call` only sends, and ignores whether anyone heard.
+        let (leave, _) = watch::channel(false);
+        *engine.inner.session.lock().await = Some(Session {
+            leave,
+            device_task: tokio::spawn(async {}),
+            task: tokio::spawn(async {}),
+            mic_pump: tokio::spawn(async {}),
+        });
+    }
+
+    /// Nothing answers there, so call 2's own connect fails; how the reports on the way there are
+    /// stamped is the point of these tests.
+    async fn join_2(engine: &LiveKitEngine) -> Result<(), CoreError> {
+        engine
+            .inner
+            .clone()
+            .join("ws://127.0.0.1:1".into(), "token".into(), 2)
+            .await
+    }
+
+    /// The teardown of the call a move replaces must carry that call's number. Stamped with the
+    /// new call's instead, it reaches core as "the new call connected and dropped at once" while
+    /// it is still connecting, and the join fails ("the call ended as it started").
+    #[tokio::test]
+    async fn a_move_tears_the_old_call_down_under_its_own_number() {
+        let (engine, reports) = engine();
+        call_1_connected(&engine).await;
+        assert!(join_2(&engine).await.is_err(), "no server listens there");
+
+        let seen = reports.seen();
+        // Call 1's room went, and the report says it was call 1.
+        assert!(
+            seen.iter()
+                .any(|(call, status, _)| *call == 1 && *status == VoiceStatus::Disconnected),
+            "{seen:?}"
+        );
+        // The first report to bear call 2's number is call 2's own connecting.
+        let first = seen
+            .iter()
+            .find(|(call, ..)| *call == 2)
+            .unwrap_or_else(|| panic!("no report for call 2: {seen:?}"));
+        assert_eq!(first.1, VoiceStatus::Connecting, "{seen:?}");
+    }
+
+    /// A first join has nothing to tear down, but the engine's last word is still a `Disconnected`
+    /// from before it. That must not be reported as the new call's.
+    #[tokio::test]
+    async fn a_first_join_never_inherits_the_disconnected_it_starts_from() {
+        let (engine, reports) = engine();
+        assert!(join_2(&engine).await.is_err(), "no server listens there");
+
+        let seen = reports.seen();
+        let first = seen
+            .iter()
+            .find(|(call, ..)| *call == 2)
+            .unwrap_or_else(|| panic!("no report for call 2: {seen:?}"));
+        assert_eq!(first.1, VoiceStatus::Connecting, "{seen:?}");
+        assert!(
+            !seen.iter().any(|(call, status, error)| *call == 2
+                && *status == VoiceStatus::Disconnected
+                && error.is_none()),
+            "{seen:?}"
+        );
     }
 }
