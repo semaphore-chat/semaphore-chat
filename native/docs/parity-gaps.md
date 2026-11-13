@@ -196,13 +196,3 @@ The inventory itself (128 rows, 11 tables) now reads: 122 done, 1 partial, 2 not
    voice client over a browser; it has never run on a real Wayland or Windows desktop.
 4. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
    blocker for any accessibility claim; scope the kit question before promising it.
-| C. Platform and distribution | 5 |
-| D. Only a person can check | 10 |
-| E. Decided not to build | 10 |
-
-Closed on 2026-11-13: B1 (reset password), B2 (Home's invite card), B3 (push-to-talk), B4 (the
-voice join-failure upload), B5 (the camera test and its preview in settings), B6 (Check for
-Updates in the tray and menu), B7 and C5 (log files, the voice event log, crash reports), C6
-(Electron's close-to-tray setting imported on first run; its server URL lives in browser storage
-and cannot be), C7 (the "Open semaphore:// links with this app" setting) and C8 (the end-to-end
-suite as a nightly CI job). What each builds is spelled out in `docs/parity-plan.md`'s rows.
