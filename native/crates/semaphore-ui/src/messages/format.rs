@@ -63,21 +63,6 @@ impl TimeFormat {
     }
 }
 
-/// "1.4 MB", as `formatFileSize` writes it.
-pub fn file_size(bytes: u64) -> String {
-    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    let mut value = bytes as f64 / 1024.0;
-    let mut unit = 0;
-    while value >= 1024.0 && unit + 1 < UNITS.len() {
-        value /= 1024.0;
-        unit += 1;
-    }
-    format!("{value:.1} {}", UNITS[unit])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,12 +152,5 @@ mod tests {
             "11/6/2026"
         );
         assert_eq!(east.format_at(i64::MAX, "%Y"), "");
-    }
-
-    #[test]
-    fn sizes_read_like_the_web_client() {
-        assert_eq!(file_size(512), "512 B");
-        assert_eq!(file_size(2048), "2.0 KB");
-        assert_eq!(file_size(5 * 1024 * 1024 + 300_000), "5.3 MB");
     }
 }

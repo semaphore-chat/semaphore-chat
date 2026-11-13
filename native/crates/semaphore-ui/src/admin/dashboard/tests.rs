@@ -1,5 +1,6 @@
-//! The formatting the web does (counts, uptime, sizes), then the page in a window: what each tile
-//! and attention action sends, what a missing permission turns off, and which sections show.
+//! The formatting the web does (counts, uptime; sizes are `crate::format::file_size`), then the
+//! page in a window: what each tile and attention action sends, what a missing permission turns
+//! off, and which sections show.
 
 use super::fixtures::*;
 use super::*;
@@ -66,16 +67,6 @@ fn counts_and_uptime_format_like_the_web() {
     assert_eq!(uptime_label(7 * 60), "7m");
     assert_eq!(uptime_label(4 * 3_600 + 5 * 60), "4h 5m");
     assert_eq!(uptime_label(2 * 86_400 + 3 * 3_600 + 59), "2d 3h");
-
-    assert_eq!(bytes_label(0), "0 Bytes");
-    assert_eq!(bytes_label(1), "1 Bytes");
-    assert_eq!(bytes_label(1_023), "1023 Bytes");
-    assert_eq!(bytes_label(1_024), "1 KB");
-    assert_eq!(bytes_label(1_536), "1.5 KB");
-    assert_eq!(bytes_label(500 * 1024 * 1024), "500 MB");
-    assert_eq!(bytes_label(10 * 1024 * 1024 * 1024), "10 GB");
-    assert_eq!(bytes_label(1024u64.pow(5) * 3), "3 PB");
-    assert_eq!(bytes_label(1024u64.pow(6)), "1024 PB");
 
     assert_eq!(grouped(1_234_567), "1,234,567");
     assert_eq!(grouped(100), "100");

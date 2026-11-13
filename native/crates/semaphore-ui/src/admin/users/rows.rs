@@ -10,8 +10,9 @@ use crate::community_settings::common::{
     card, empty_line, list, loading_rows, locked_note, page, phone, row, server_error, tone_chip,
     who,
 };
-use crate::community_settings::rules::{act, date_label, failure, needs, running, size_label};
+use crate::community_settings::rules::{act, date_label, failure, needs, running};
 use crate::dms::face::user_face;
+use crate::format::file_size;
 use crate::kit::{Button, IconButton, Menu, MenuItem, SecondaryTone, Variant, spacing, text};
 use crate::theme::SemTheme;
 use gpui_kit::prelude::*;
@@ -545,7 +546,7 @@ fn not_allowed(reason: AdminNotAllowed) -> &'static str {
 fn storage_text(row: &AdminUserRow) -> String {
     format!(
         "{} of {}",
-        size_label(row.storage_used_bytes),
-        size_label(row.storage_quota_bytes)
+        file_size(row.storage_used_bytes),
+        file_size(row.storage_quota_bytes)
     )
 }

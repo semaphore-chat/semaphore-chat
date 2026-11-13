@@ -658,7 +658,10 @@ pub(crate) fn add_attachment(
     let mut data = lock(&inner.data);
     let attachment = match file_id {
         Some(file_id) => {
-            let file = data.files.get(file_id)?;
+            // `MessagesService.addAttachment` points the file at the message, which is how the
+            // file routes decide who may download it.
+            let file = data.files.get_mut(file_id)?;
+            file.message_id = Some(message_id.to_owned());
             Some(AttachmentDto {
                 file_type: file_type_for(&file.mime_type),
                 filename: file.filename.clone(),

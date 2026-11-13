@@ -502,10 +502,21 @@ impl Shell {
                         .gap(px(6.))
                         .min_w_0()
                         .flex_1()
+                        .when(channel.kind == ChannelKind::Voice, |row| {
+                            // A voice channel's header, as the web's pre-join: the voice
+                            // icon, not the text channel's hash.
+                            row.child(Icon::new(IconName::VolumeUp).size(18.).color(secondary))
+                        })
                         .child(
-                            text(Variant::H6, format!("# {}", channel.name))
-                                .font_weight(FontWeight(600.))
-                                .truncate(),
+                            text(
+                                Variant::H6,
+                                match channel.kind {
+                                    ChannelKind::Voice => channel.name.clone(),
+                                    _ => format!("# {}", channel.name),
+                                },
+                            )
+                            .font_weight(FontWeight(600.))
+                            .truncate(),
                         )
                         .when(channel.is_private, |row| {
                             row.child(Icon::new(IconName::Lock).size(18.).color(secondary))
@@ -843,4 +854,33 @@ pub(crate) fn error_state(
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
     stories_impl::stories()
+}
+
+/// A channel's header label: a text channel's hash and name, or a voice channel's name alone,
+/// drawn after the voice icon (the web's pre-join), as the channel list draws it.
+fn header_title(kind: ChannelKind, name: &str) -> String {
+    match kind {
+        ChannelKind::Voice => name.to_owned(),
+        _ => format!("# {name}"),
+    }
+}
+
+#[cfg(test)]
+mod header_tests {
+    // Not `super::*`: its `gpui_kit::*` glob brings a `test` attribute of its own.
+    use super::header_title;
+    use semaphore_core::model::ChannelKind;
+
+    #[test]
+    fn a_voice_channels_header_has_a_voice_icon_not_a_hash() {
+        assert_eq!(header_title(ChannelKind::Voice, "AFK"), "AFK");
+        assert_eq!(header_title(ChannelKind::Voice, "Squad Up"), "Squad Up");
+    }
+
+    #[test]
+    fn a_text_channels_header_keeps_its_hash() {
+        assert_eq!(header_title(ChannelKind::Text, "general"), "# general");
+        // A kind this build doesn't know is drawn as a text channel, as the channel list does.
+        assert_eq!(header_title(ChannelKind::Unknown, "x"), "# x");
+    }
 }

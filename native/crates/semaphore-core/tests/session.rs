@@ -4,9 +4,13 @@
 mod common;
 
 use common::*;
+use semaphore_core::CoreEvent;
 use semaphore_core::backend::BackendError;
-use semaphore_core::model::{LoadState, RestoreOutcome, SessionState, SignOutReason, ViewKey};
+use semaphore_core::model::{
+    LoadState, RegistrationMode, RestoreOutcome, SessionState, SignOutReason, ViewKey,
+};
 use semaphore_wire::enums::ErrorCode;
+use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 
 fn error(status: u16, code: &str) -> BackendError {
@@ -248,4 +252,144 @@ async fn an_unreachable_server_keeps_the_session_for_a_retry() {
 
 fn error_503() -> BackendError {
     error(503, "SERVICE_UNAVAILABLE")
+}
+
+/// What a probe reads: every field the app cares about.
+fn public_settings(name: &str, registration: &str) -> Value {
+    json!({
+        "name": name,
+        "maxFileSizeBytes": 1024,
+        "passwordResetEnabled": false,
+        "registrationMode": registration,
+        "desktopBrowserLogin": true,
+        "gifSearchEnabled": false,
+    })
+}
+
+fn session_views(events: &[CoreEvent]) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                CoreEvent::ViewChanged {
+                    view: ViewKey::Session
+                }
+            )
+        })
+        .count()
+}
+
+#[tokio::test]
+async fn a_restored_session_probes_the_server_for_its_settings() {
+    let rig = Rig::new();
+    rig.backend
+        .w3
+        .answer("public_settings", public_settings("Couch Co-op", "OPEN"));
+    *rig.backend.stored_session.lock().unwrap() = true;
+    rig.events.take();
+    // Held, so the restore's own announcements can be told apart from its probe's answer.
+    let release = rig.backend.w3.hold("public_settings");
+    let restore = rig.core.restore_session("http://server".into());
+    let (outcome, signed_in) = tokio::join!(restore, async {
+        for _ in 0..1000 {
+            if rig.backend.w3.count("public_settings") > 0 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        let signed_in = rig.events.take();
+        release.send(()).unwrap();
+        signed_in
+    });
+    assert_eq!(outcome.unwrap(), RestoreOutcome::SignedIn);
+    assert_eq!(
+        session_views(&rig.events.take()),
+        1,
+        "the probe's answer announced the session once"
+    );
+    // The whole session has the server's settings, not an empty record: capabilities, version and
+    // the register screen read them.
+    let info = rig
+        .core
+        .server_info()
+        .expect("the restored server was probed");
+    assert_eq!(info.url, "http://server");
+    assert_eq!(info.name.as_deref(), Some("Couch Co-op"));
+    assert_eq!(
+        rig.core.register_requirements().mode,
+        RegistrationMode::Open
+    );
+    assert!(rig.core.register_requirements().can_register);
+    assert!(matches!(rig.core.session(), SessionState::SignedIn { .. }));
+    // The restore itself announced its own transitions before the probe was asked.
+    assert!(!signed_in.is_empty());
+}
+
+#[tokio::test]
+async fn a_closed_restored_server_closes_registration() {
+    let rig = Rig::new();
+    rig.backend
+        .w3
+        .answer("public_settings", public_settings("Closed Shop", "CLOSED"));
+    *rig.backend.stored_session.lock().unwrap() = true;
+    rig.core
+        .restore_session("http://server".into())
+        .await
+        .unwrap();
+    assert_eq!(
+        rig.core.register_requirements().mode,
+        RegistrationMode::Closed
+    );
+    assert!(!rig.core.register_requirements().can_register);
+}
+
+#[tokio::test]
+async fn a_probe_that_fails_leaves_the_restored_session_signed_in() {
+    let rig = Rig::new();
+    *rig.backend.stored_session.lock().unwrap() = true;
+    rig.backend
+        .w3
+        .fail_next("public_settings", error(500, "INTERNAL"));
+    let outcome = rig
+        .core
+        .restore_session("http://server".into())
+        .await
+        .unwrap();
+    assert_eq!(outcome, RestoreOutcome::SignedIn);
+    assert!(matches!(rig.core.session(), SessionState::SignedIn { .. }));
+    assert_eq!(rig.core.server_info(), None);
+    assert!(rig.realtime.calls().contains(&"connect".to_owned()));
+}
+
+#[tokio::test]
+async fn a_restore_probe_answering_after_sign_out_writes_nothing() {
+    let rig = Rig::new();
+    rig.backend
+        .w3
+        .answer("public_settings", public_settings("Couch Co-op", "OPEN"));
+    *rig.backend.stored_session.lock().unwrap() = true;
+    let release = rig.backend.w3.hold("public_settings");
+    rig.events.take();
+    let restore = rig.core.restore_session("http://server".into());
+    let (outcome, ()) = tokio::join!(restore, async {
+        for _ in 0..1000 {
+            if rig.backend.w3.count("public_settings") > 0 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        rig.core.sign_out().await.unwrap();
+        // Whatever the sign-out itself announced is not this probe's.
+        rig.events.take();
+        release.send(()).unwrap();
+    });
+    assert_eq!(
+        outcome.unwrap(),
+        RestoreOutcome::SignedIn,
+        "the restore's own outcome is unchanged by the sign-out"
+    );
+    assert_eq!(rig.core.server_info(), None);
+    assert_eq!(rig.core.session(), SessionState::SignedOut);
+    assert_eq!(session_views(&rig.events.take()), 0);
 }
