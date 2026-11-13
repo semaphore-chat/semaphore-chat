@@ -1,4 +1,10 @@
-import { Injectable, ConflictException, Logger, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  Logger,
+  Inject,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import Redis from 'ioredis';
@@ -10,7 +16,7 @@ import {
 } from '@/roles/permissions-cache.service';
 import { InstanceRole, Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import { SetupInstanceDto } from './dto/setup-instance.dto';
 
 /**
@@ -19,11 +25,30 @@ import { SetupInstanceDto } from './dto/setup-instance.dto';
  */
 const SETUP_ADVISORY_LOCK_KEY = 73_150_001;
 
+/**
+ * REQUIRE_SETUP_TOKEN (default on): the setup token is never returned by the
+ * public status endpoint. The backend logs it and the operator pastes it into
+ * the setup wizard. `false` keeps the old flow, where the wizard receives it.
+ */
+function isSetupTokenRequired(): boolean {
+  return process.env.REQUIRE_SETUP_TOKEN?.trim().toLowerCase() !== 'false';
+}
+
+/** SETUP_TOKEN: an operator-chosen token for unattended installs. */
+function configuredSetupToken(): string | undefined {
+  return process.env.SETUP_TOKEN?.trim() || undefined;
+}
+
+/** Constant-time string comparison (hashing first equalises the lengths). */
+function tokensMatch(a: string, b: string): boolean {
+  const hash = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(hash(a), hash(b));
+}
+
 @Injectable()
-export class OnboardingService {
+export class OnboardingService implements OnApplicationBootstrap {
   private readonly logger = new Logger(OnboardingService.name);
   private readonly SETUP_TOKEN_KEY = 'onboarding:setup-token';
-  private readonly SETUP_TOKEN_TTL = 900; // 15 minutes
 
   constructor(
     private readonly databaseService: DatabaseService,
@@ -66,52 +91,115 @@ export class OnboardingService {
   }
 
   /**
-   * Get existing setup token from Redis if it exists
+   * While the instance needs setup, print the setup token on every boot (from
+   * every replica: they share one token in Redis), so a restart never leaves
+   * the operator without it. Nothing is logged once setup is done.
    */
-  private async getExistingSetupToken(): Promise<string | null> {
-    return this.redis.get(this.SETUP_TOKEN_KEY);
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      if (!isSetupTokenRequired() || !(await this.needsSetup())) {
+        return;
+      }
+      if (configuredSetupToken()) {
+        this.logger.warn(
+          'Instance needs setup. Enter the SETUP_TOKEN you configured in the setup wizard.',
+        );
+        return;
+      }
+      const { token } = await this.ensureSetupToken();
+      this.logSetupToken(token);
+    } catch (error) {
+      this.logger.warn(
+        `Could not check whether the instance needs setup: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /** One greppable line; the wizard hint tells operators to grep for it. */
+  private logSetupToken(token: string): void {
+    this.logger.warn(
+      `Instance needs setup; paste this into the setup wizard. Setup token: ${token}`,
+    );
   }
 
   /**
-   * Generate a temporary setup token for the onboarding process
-   * Returns existing token if one is already present in Redis
+   * The token the setup must present: SETUP_TOKEN if set, else the one in
+   * Redis (null if none was made yet).
+   */
+  private async getActiveSetupToken(): Promise<string | null> {
+    return (
+      configuredSetupToken() ?? (await this.redis.get(this.SETUP_TOKEN_KEY))
+    );
+  }
+
+  /**
+   * Return the setup token, creating it in Redis if absent. Stored without
+   * expiry (the operator may read the log hours later) and with NX, so
+   * replicas racing on first boot all end up with the same token.
+   */
+  private async ensureSetupToken(): Promise<{
+    token: string;
+    created: boolean;
+  }> {
+    const configured = configuredSetupToken();
+    if (configured) {
+      return { token: configured, created: false };
+    }
+
+    const existing = await this.redis.get(this.SETUP_TOKEN_KEY);
+    if (existing) {
+      // Drop a TTL left by older versions, which expired tokens after 15 min
+      await this.redis.persist(this.SETUP_TOKEN_KEY);
+      return { token: existing, created: false };
+    }
+
+    const candidate = randomUUID();
+    const created =
+      (await this.redis.set(this.SETUP_TOKEN_KEY, candidate, 'NX')) === 'OK';
+    if (created) {
+      return { token: candidate, created: true };
+    }
+    // Another replica stored one first
+    const winner = await this.redis.get(this.SETUP_TOKEN_KEY);
+    return { token: winner ?? candidate, created: false };
+  }
+
+  /**
+   * Get the setup token, creating it if needed. A newly created token is
+   * logged (e.g. after Redis lost the old one), so the latest log line always
+   * holds the live token.
    */
   async generateSetupToken(): Promise<string> {
     if (!(await this.needsSetup())) {
       throw new ConflictException('Instance setup is not needed');
     }
 
-    // Check if token already exists
-    const existingToken = await this.getExistingSetupToken();
-    if (existingToken) {
-      this.logger.log('Returning existing setup token from Redis');
-      return existingToken;
+    const { token, created } = await this.ensureSetupToken();
+    if (created) {
+      if (isSetupTokenRequired()) {
+        this.logSetupToken(token);
+      } else {
+        this.logger.log('Generated new setup token for onboarding');
+      }
     }
-
-    // Generate new token only if none exists
-    const setupToken = randomUUID();
-    await this.redis.set(
-      this.SETUP_TOKEN_KEY,
-      setupToken,
-      'EX',
-      this.SETUP_TOKEN_TTL,
-    );
-    this.logger.log(
-      'Generated new setup token for onboarding (stored in Redis)',
-    );
-    return setupToken;
+    return token;
   }
 
   /**
-   * Validate the setup token
+   * Validate the setup token (surrounding whitespace from a paste is ignored)
    */
   async validateSetupToken(token: string): Promise<boolean> {
-    const storedToken = await this.redis.get(this.SETUP_TOKEN_KEY);
-    if (!storedToken) {
+    const presented = token?.trim();
+    if (!presented) {
       return false;
     }
-
-    return storedToken === token;
+    const expected = await this.getActiveSetupToken();
+    if (!expected) {
+      return false;
+    }
+    return tokensMatch(presented, expected);
   }
 
   /**
@@ -347,20 +435,26 @@ export class OnboardingService {
   async getStatus(): Promise<{
     needsSetup: boolean;
     hasUsers: boolean;
+    setupTokenRequired: boolean;
     setupToken?: string;
   }> {
     const needsSetup = await this.needsSetup();
     const userCount = await this.databaseService.user.count();
+    const setupTokenRequired = isSetupTokenRequired();
 
     const result = {
       needsSetup,
       hasUsers: userCount > 0,
+      setupTokenRequired,
     };
 
-    // Generate setup token if needed
     if (needsSetup) {
+      // Make sure a token exists (and is logged) for the wizard to check
       const setupToken = await this.generateSetupToken();
-      return { ...result, setupToken };
+      // Only the opt-out (REQUIRE_SETUP_TOKEN=false) hands it to the caller
+      if (!setupTokenRequired) {
+        return { ...result, setupToken };
+      }
     }
 
     return result;

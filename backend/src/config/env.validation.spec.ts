@@ -322,4 +322,30 @@ describe('validateEnv', () => {
       expect(error!.message).toMatch(/LIVEKIT_API_SECRET/);
     });
   });
+
+  describe('First-run setup token settings', () => {
+    it('rejects a REQUIRE_SETUP_TOKEN that is neither true nor false', () => {
+      expect(() =>
+        validateEnv({ ...BASE_CONFIG, REQUIRE_SETUP_TOKEN: 'no' }),
+      ).toThrow(/REQUIRE_SETUP_TOKEN/);
+    });
+
+    it('accepts REQUIRE_SETUP_TOKEN=false', () => {
+      expect(() =>
+        validateEnv({ ...BASE_CONFIG, REQUIRE_SETUP_TOKEN: 'false' }),
+      ).not.toThrow();
+    });
+
+    it('rejects a short SETUP_TOKEN', () => {
+      expect(() =>
+        validateEnv({ ...BASE_CONFIG, SETUP_TOKEN: 'short' }),
+      ).toThrow(/SETUP_TOKEN must be at least 16 characters/);
+    });
+
+    it('treats an empty SETUP_TOKEN as unset', () => {
+      expect(() =>
+        validateEnv({ ...BASE_CONFIG, SETUP_TOKEN: '' }),
+      ).not.toThrow();
+    });
+  });
 });
