@@ -220,12 +220,14 @@ const LoginPage: React.FC = () => {
             </Link>
           </Typography>
         )}
-        <Typography variant="body2" color="textSecondary">
-          Don't have an account?{" "}
-          <Link component={RouterLink} underline="hover" to="/register" aria-label="Register for an account">
-            Register here
-          </Link>
-        </Typography>
+        {publicSettings?.registrationMode !== "CLOSED" && (
+          <Typography variant="body2" color="textSecondary">
+            Don't have an account?{" "}
+            <Link component={RouterLink} underline="hover" to="/register" aria-label="Register for an account">
+              Register here
+            </Link>
+          </Typography>
+        )}
       </Box>
       {changingServer && (
         <ConnectionWizard

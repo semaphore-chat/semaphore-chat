@@ -43,6 +43,25 @@ describe('LoginPage', () => {
     expect(screen.getByRole('link', { name: /register/i })).toHaveAttribute('href', '/register');
   });
 
+  it('hides the register link when registration is closed', async () => {
+    server.use(
+      http.get('http://localhost:3000/api/instance/settings/public', () =>
+        HttpResponse.json({
+          name: 'Test',
+          registrationMode: 'CLOSED',
+          maxFileSizeBytes: 1,
+          gifSearchEnabled: false,
+          passwordResetEnabled: false,
+        }),
+      ),
+    );
+    renderWithProviders(<LoginPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: /register/i })).not.toBeInTheDocument();
+    });
+  });
+
   it('stores tokens and navigates on successful login', async () => {
     const { user } = renderWithProviders(<LoginPage />);
 
