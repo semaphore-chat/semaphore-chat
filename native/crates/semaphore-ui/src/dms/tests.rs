@@ -359,6 +359,64 @@ fn the_header_back_arrow_and_buttons_emit_only_when_offered(cx: &mut TestAppCont
 }
 
 #[gpui_kit::test]
+fn group_actions_only_for_groups(cx: &mut TestAppContext) {
+    let grouped = group_header(cx, group(&["ava", "ben"]), true);
+    assert!(
+        grouped.has(cx, "dm-header-more"),
+        "a group offers its actions"
+    );
+    let one_to_one = group_header(cx, one("ava", None), false);
+    assert!(
+        !one_to_one.has(cx, "dm-header-more"),
+        "a one-to-one shows neither"
+    );
+}
+
+#[gpui_kit::test]
+fn add_people_emits_it(cx: &mut TestAppContext) {
+    let rig = group_header(cx, group(&["ava", "ben"]), true);
+    assert!(
+        !rig.has(cx, "dm-add-people"),
+        "nothing until the menu opens"
+    );
+    rig.click(cx, "dm-header-more");
+    assert!(rig.has(cx, "dm-add-people") && rig.has(cx, "dm-leave"));
+    rig.click(cx, "dm-add-people");
+    assert_eq!(rig.events(), [DmHeaderEvent::AddPeople]);
+    assert!(!rig.has(cx, "dm-add-people"), "choosing closes the menu");
+}
+
+#[gpui_kit::test]
+fn leave_needs_the_confirm(cx: &mut TestAppContext) {
+    let rig = group_header(cx, group(&["ava", "ben"]), true);
+    rig.click(cx, "dm-header-more");
+    rig.click(cx, "dm-leave");
+    assert!(rig.events().is_empty(), "nothing until it's confirmed");
+    assert!(rig.has(cx, "dm-leave-confirm"));
+    rig.click(cx, "dm-leave-cancel");
+    assert!(rig.events().is_empty(), "cancel sends nothing");
+    assert!(!rig.has(cx, "dm-leave-confirm"), "and closes the dialog");
+    rig.click(cx, "dm-header-more");
+    rig.click(cx, "dm-leave");
+    rig.click(cx, "dm-leave-confirm");
+    assert_eq!(rig.events(), [DmHeaderEvent::Leave]);
+    assert!(!rig.has(cx, "dm-leave-confirm"), "confirming closes it");
+}
+
+fn group_header(
+    cx: &mut TestAppContext,
+    row: DmRow,
+    group: bool,
+) -> crate::dms::rig::Rig<DmHeader, DmHeaderEvent> {
+    rig(cx, 800., move |_, cx| {
+        let mut header = DmHeader::new(cx);
+        header.set_state(DmHeaderState::Ready(row), cx);
+        header.set_group_actions(group, cx);
+        header
+    })
+}
+
+#[gpui_kit::test]
 fn the_dialog_searches_after_the_debounce_and_creates_a_named_group(cx: &mut TestAppContext) {
     let rig = rig(cx, 800., CreateDmDialog::new);
     let picker = rig.with(cx, |dialog, _, cx| dialog.read(cx).picker().clone());

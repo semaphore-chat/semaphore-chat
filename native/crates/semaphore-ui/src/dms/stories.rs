@@ -336,6 +336,31 @@ fn header_story(
     cx.new(|_| HeaderFrame { header }).into()
 }
 
+/// A header with US2's group actions: the overflow menu, or the confirm it opens.
+fn group_header_story(
+    row: DmRow,
+    group: bool,
+    menu_open: bool,
+    leave_open: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
+    let phone = f32::from(window.viewport_size().width) < PHONE;
+    let header = cx.new(|cx| {
+        let mut header = DmHeader::new(cx);
+        header.set_state(DmHeaderState::Ready(row), cx);
+        header.set_back(phone, cx);
+        header.set_members_button(true, cx);
+        header.set_call_state(Some(crate::voice::DmCallState::Idle), cx);
+        header.set_search(true, cx);
+        header.set_group_actions(group, cx);
+        header.menu_open = menu_open;
+        header.leave_open = leave_open;
+        header
+    });
+    cx.new(|_| HeaderFrame { header }).into()
+}
+
 fn create_story(
     query: &str,
     found: Found,
@@ -482,6 +507,18 @@ pub fn stories() -> Vec<Story> {
                 window,
                 cx,
             )
+        }),
+        Story::new("dm-header-group-actions", |_, window, cx| {
+            group_header_story(mixed_rows()[1].clone(), true, false, false, window, cx)
+        }),
+        Story::new("dm-header-group-menu-open", |_, window, cx| {
+            group_header_story(mixed_rows()[1].clone(), true, true, false, window, cx)
+        }),
+        Story::new("dm-header-leave-confirm", |_, window, cx| {
+            group_header_story(mixed_rows()[1].clone(), true, false, true, window, cx)
+        }),
+        Story::new("dm-header-one-to-one", |_, window, cx| {
+            group_header_story(mixed_rows()[0].clone(), false, false, false, window, cx)
         }),
         Story::new("dms-create-empty", |_, window, cx| {
             create_story("", Found::Idle, Vec::new(), false, "", window, cx)

@@ -271,6 +271,27 @@ impl SearchPanel {
     }
 }
 
+/// Results with paging: US2's "More results", or a page on its way.
+fn search_more_story(more: bool, loading_more: bool, window: &mut Window, cx: &mut App) -> AnyView {
+    let panel = cx.new(|cx| {
+        let mut panel = SearchPanel::new(true, window, cx);
+        panel.set_clock(PanelClock::fixed(NOW_MS), cx);
+        panel.show_for_story(SearchScopeChoice::Community, "deploy", window, cx);
+        panel.set_results(
+            SearchScopeChoice::Community,
+            "deploy".into(),
+            SearchResults::Ready {
+                hits: some_hits(),
+                at_limit: true,
+            },
+            cx,
+        );
+        panel.set_more(more, loading_more, cx);
+        panel
+    });
+    framed(panel.into(), cx)
+}
+
 pub fn stories() -> Vec<Story> {
     vec![
         Story::new("pins-loading", |_, _, cx| {
@@ -374,6 +395,12 @@ pub fn stories() -> Vec<Story> {
                 window,
                 cx,
             )
+        }),
+        Story::new("search-panel-more", |_, window, cx| {
+            search_more_story(true, false, window, cx)
+        }),
+        Story::new("search-panel-loading-more", |_, window, cx| {
+            search_more_story(true, true, window, cx)
         }),
     ]
 }

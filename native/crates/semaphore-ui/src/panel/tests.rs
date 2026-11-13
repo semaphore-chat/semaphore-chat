@@ -362,6 +362,75 @@ fn clicking_a_hit_jumps_to_it(cx: &mut TestAppContext) {
     assert_eq!(cx.update(|cx| rig.panel.read(cx).model().hits().len()), 2);
 }
 
+#[gpui_kit::test]
+fn more_results_only_when_more(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(
+                Here,
+                "deploy".into(),
+                SearchResults::Ready {
+                    hits: vec![hit(1), hit(2)],
+                    at_limit: true,
+                },
+                cx,
+            );
+        })
+    });
+    let has = |cx: &mut TestAppContext, id: &'static str| {
+        rig.with(cx, |_, window, _| window.try_find(id).is_some())
+    };
+    assert!(has(cx, "search-at-limit"), "the line until core says");
+    assert!(!has(cx, "search-more"), "no paging until core says");
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| panel.set_more(false, false, cx))
+    });
+    assert!(!has(cx, "search-at-limit"), "a known end drops the line");
+    assert!(!has(cx, "search-more"));
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| panel.set_more(true, false, cx))
+    });
+    assert!(has(cx, "search-more"));
+    assert!(!has(cx, "search-more-loading"), "not while it rests");
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| panel.set_more(true, true, cx))
+    });
+    assert!(!has(cx, "search-more"), "a page on its way replaces it");
+    assert!(has(cx, "search-more-loading"));
+}
+
+#[gpui_kit::test]
+fn more_results_emits_more(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(
+                Here,
+                "deploy".into(),
+                SearchResults::Ready {
+                    hits: vec![hit(1)],
+                    at_limit: true,
+                },
+                cx,
+            );
+            panel.set_more(true, false, cx);
+        })
+    });
+    rig.with(cx, |_, window, cx| window.click("search-more", cx));
+    assert_eq!(
+        rig.events.borrow().last(),
+        Some(&SearchPanelEvent::More),
+        "More results asks for the next page"
+    );
+}
+
 struct PinsRig {
     window: AnyWindowHandle,
     events: std::rc::Rc<RefCell<Vec<PinsPanelEvent>>>,

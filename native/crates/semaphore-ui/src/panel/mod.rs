@@ -133,14 +133,23 @@ pub struct SearchPanel {
     scroll: ScrollHandle,
     clock: PanelClock,
     focus: FocusHandle,
+    /// US2: `SearchResultsView::more` and `loading_more`; `more` is known only once core answered.
+    more: bool,
+    more_known: bool,
+    loading_more: bool,
     _subscriptions: Vec<Subscription>,
 }
 
 impl SearchPanel {
     /// U-freeze (US2): whether the results have more (`SearchResultsView::more`) and a page is
     /// on its way (`loading_more`). Drawn by US2; until then nothing shows.
-    pub fn set_more(&mut self, _more: bool, _loading_more: bool, cx: &mut Context<Self>) {
-        cx.notify();
+    pub fn set_more(&mut self, more: bool, loading_more: bool, cx: &mut Context<Self>) {
+        if !self.more_known || self.more != more || self.loading_more != loading_more {
+            self.more = more;
+            self.more_known = true;
+            self.loading_more = loading_more;
+            cx.notify();
+        }
     }
 
     /// `community_scope`: offer "All channels" (false in a DM).
@@ -156,6 +165,9 @@ impl SearchPanel {
             scroll: ScrollHandle::new(),
             clock: PanelClock::default(),
             focus: cx.focus_handle(),
+            more: false,
+            more_known: false,
+            loading_more: false,
             _subscriptions: subscriptions,
         }
     }
