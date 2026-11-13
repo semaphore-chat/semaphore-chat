@@ -152,7 +152,7 @@ async fn an_open_instance_takes_an_account_without_a_code() {
             .w3
             .calls()
             .iter()
-            .any(|call| call == "register newcomer ")
+            .any(|call| call == "register newcomer <no code>")
     );
 }
 

@@ -135,7 +135,7 @@ impl Core {
         })?;
         let invite = form.invite_code.trim().to_owned();
         // As the server would answer, before asking it: a closed instance takes nobody, and an
-        // invite-only one needs a usable code. An open one takes an empty code.
+        // invite-only one needs a usable code. An open one registers without a code.
         match (requirements.mode, invite.is_empty()) {
             (RegistrationMode::Closed, _) => {
                 return Err(CoreError::Failed {
@@ -151,7 +151,9 @@ impl Core {
         }
         let username = form.username.trim().to_owned();
         let body = wire::CreateUserDto {
-            code: invite,
+            // `code` is optional in the contract (`UserService.createUser`): an open registration
+            // sends none, rather than the empty string the old required field forced.
+            code: (!invite.is_empty()).then_some(invite),
             email: form
                 .email
                 .map(|email| email.trim().to_owned())

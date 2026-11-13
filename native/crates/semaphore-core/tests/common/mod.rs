@@ -877,7 +877,8 @@ impl FilesBackend for FakeBackend {
             "id": id, "checksum": "c", "deletedAt": null, "fileCommunityId": null,
             "fileMessageId": file.resource_id, "fileType": "DOCUMENT", "fileUserId": null,
             "filename": file.filename, "mimeType": file.mime_type, "resourceType": "MESSAGE_ATTACHMENT",
-            "size": size, "storagePath": "s", "storageType": "LOCAL", "thumbnailPath": null,
+            "size": size, "hasThumbnail": false, "storagePath": "s", "storageType": "LOCAL",
+            "thumbnailPath": null,
             "uploadedAt": "2026-09-22T18:00:00.000Z", "uploadedById": null,
         }))
     }

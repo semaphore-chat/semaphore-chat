@@ -82,8 +82,10 @@ impl OnboardingBackend for FakeBackend {
         &self,
         body: wire::CreateUserDto,
     ) -> BackendResult<wire::UserEntity> {
+        // `code` is optional: `<no code>` keeps its absence visible in `calls`.
+        let code = body.code.clone().unwrap_or_else(|| "<no code>".into());
         self.w3
-            .run("register", &[body.username.as_str(), &body.code])
+            .run("register", &[body.username.as_str(), &code])
             .await
     }
     async fn auth_controller_forgot_password(
