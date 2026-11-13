@@ -184,8 +184,7 @@ export class RoomSubscriptionHandler {
     communityId,
   }: ModerationTimeoutChangedEvent): Promise<void> {
     try {
-      const connected =
-        await this.voicePresenceService.getUserVoiceChannels(userId);
+      const connected = await this.connectedVoiceRooms(userId);
       if (connected.length === 0) return;
       const channels = await this.databaseService.channel.findMany({
         where: { communityId, id: { in: connected } },
@@ -236,6 +235,23 @@ export class RoomSubscriptionHandler {
   }
 
   /**
+   * The rooms the user is connected to: the voice presence index merged with
+   * LiveKit's own participant lists. A user can clear their presence (the
+   * REST leave) while staying connected, so presence alone can't be trusted
+   * to find them; LiveKit can't always be listed, so it's not alone either.
+   * May include DM rooms: callers intersect with the community's channels.
+   */
+  private async connectedVoiceRooms(userId: string): Promise<string[]> {
+    const [presence, livekitRooms] = await Promise.all([
+      this.voicePresenceService.getUserVoiceChannels(userId),
+      this.livekitService.listParticipantRooms(userId),
+    ]);
+    return [
+      ...new Set([...presence, ...livekitRooms.map(({ roomName }) => roomName)]),
+    ];
+  }
+
+  /**
    * Remove a user from all voice channels in a community.
    * Handles both LiveKit session ejection and Redis voice presence cleanup.
    * Errors are logged but never thrown — moderation actions must not fail
@@ -246,8 +262,7 @@ export class RoomSubscriptionHandler {
     communityId: string,
   ): Promise<void> {
     try {
-      const userVoiceChannels =
-        await this.voicePresenceService.getUserVoiceChannels(userId);
+      const userVoiceChannels = await this.connectedVoiceRooms(userId);
 
       if (userVoiceChannels.length === 0) {
         return;

@@ -34,6 +34,8 @@ describe('RoomSubscriptionHandler', () => {
 
     // Default: user not in any voice channel
     voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+    // Default: LiveKit reports the user in no room
+    livekitService.listParticipantRooms.mockResolvedValue([]);
     // Default: community has no alias groups
     mockDatabase.aliasGroup.findMany.mockResolvedValue([]);
   });
@@ -229,6 +231,38 @@ describe('RoomSubscriptionHandler', () => {
       // Should not query for community voice channels
       expect(mockDatabase.channel.findMany).toHaveBeenCalledTimes(1);
       expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+    });
+
+    it('removes a user still connected to LiveKit after clearing their presence', async () => {
+      const userId = 'user-123';
+      const communityId = 'community-456';
+
+      mockDatabase.channel.findMany
+        .mockResolvedValueOnce([{ id: 'channel-1' }, { id: 'voice-1' }])
+        .mockResolvedValueOnce([{ id: 'voice-1' }]);
+      // They called the REST leave: the presence index is empty...
+      voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+      // ...but LiveKit still has them in the call
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'voice-1', attributes: {} },
+        { roomName: 'dm-call', attributes: {} },
+      ]);
+
+      await handler.onUserBanned({ userId, communityId });
+
+      expect(mockDatabase.channel.findMany).toHaveBeenLastCalledWith({
+        where: {
+          communityId,
+          type: 'VOICE',
+          id: { in: ['voice-1', 'dm-call'] },
+        },
+        select: { id: true },
+      });
+      expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+        'voice-1',
+        userId,
+      );
+      expect(livekitService.removeParticipant).toHaveBeenCalledTimes(1);
     });
 
     it('should not throw when voice cleanup fails', async () => {
@@ -604,6 +638,26 @@ describe('RoomSubscriptionHandler', () => {
         'voice-1',
         'user-1',
         { canPublish: true },
+      );
+    });
+
+    it('clamps a user still connected to LiveKit after clearing their presence', async () => {
+      voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'voice-1', attributes: {} },
+      ]);
+      mockDatabase.channel.findMany.mockResolvedValue([{ id: 'voice-1' }]);
+      channelAccessService.channelCapabilities.mockResolvedValue(caps);
+
+      await handler.onTimeoutChanged({
+        userId: 'user-1',
+        communityId: 'community-456',
+      });
+
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        { canPublish: false },
       );
     });
 
