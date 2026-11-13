@@ -80,14 +80,14 @@ is_windows() {
 }
 
 # Absolute path in the form makensis on this host understands. Git Bash's /c/... is not a
-# Windows path; cygpath -m gives C:/..., which NSIS accepts on Windows and which survives being
+# Windows path; cygpath -w gives C:\... (NSIS's File finds nothing through forward slashes), and it survives being
 # passed in a -D define.
 absolute() { # <path>
   local path="$1" dir
   [ -e "$path" ] || die "no such file: $path"
   dir="$(cd "$(dirname "$path")" && pwd)"
   if is_windows; then
-    cygpath -m "$dir/$(basename "$path")"
+    cygpath -w "$dir/$(basename "$path")"
   else
     printf '%s/%s\n' "$dir" "$(basename "$path")"
   fi
@@ -159,6 +159,10 @@ else
   OUT_FILE="$OUT_DIR_ABS/$NAME"
 fi
 
+# makensis gets the backslash form on Windows; bash keeps using $OUT_FILE.
+NSIS_OUT_FILE="$OUT_FILE"
+if is_windows; then NSIS_OUT_FILE="$(cygpath -w "$OUT_FILE")"; fi
+
 MAKENSIS="$(command -v makensis || true)"
 if [ -z "$MAKENSIS" ] && is_windows; then
   pf86="$(printenv 'ProgramFiles(x86)' 2>/dev/null || true)"
@@ -176,7 +180,7 @@ echo "package-windows: semaphore-app $VERSION ($VERSION_QUAD) -> $OUT_FILE"
   -DAPP_EXE="$APP_EXE_ABS" \
   -DLICENCES="$LICENCES_ABS" \
   -DICON="$ICON_ABS" \
-  -DOUT_FILE="$OUT_FILE" \
+  -DOUT_FILE="$NSIS_OUT_FILE" \
   "$NATIVE_DIR/packaging/windows/installer.nsi"
 
 [ -s "$OUT_FILE" ] || die "makensis reported success but $OUT_FILE is missing or empty"
