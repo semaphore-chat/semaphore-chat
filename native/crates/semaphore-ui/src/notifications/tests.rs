@@ -368,6 +368,77 @@ fn a_failed_or_empty_centre_asks_again(cx: &mut TestAppContext) {
     );
 }
 
+// ---- The page. ----
+
+fn page_rig(
+    cx: &mut TestAppContext,
+    list: NotificationList,
+) -> crate::dms::rig::Rig<page::NotificationsPage, page::NotificationsPageEvent> {
+    rig(cx, 900., move |window, cx| {
+        let mut page = page::NotificationsPage::new(window, cx);
+        page.set_clock(PanelClock::fixed(0), cx);
+        page.set_list(list, cx);
+        page
+    })
+}
+
+#[gpui_kit::test]
+fn page_emits_the_centres_events(cx: &mut TestAppContext) {
+    let rig = page_rig(
+        cx,
+        list(
+            vec![
+                row("a", NotificationKind::Mention, false),
+                row("b", NotificationKind::Mention, true),
+            ],
+            true,
+        ),
+    );
+    rig.click(cx, "notification-a");
+    rig.click(cx, "notification-read-a");
+    rig.click(cx, "notification-dismiss-b");
+    rig.click(cx, "notifications-mark-all");
+    rig.click(cx, "notifications-more");
+    let notification = page::NotificationsPageEvent::Notification;
+    assert_eq!(
+        rig.events(),
+        [
+            notification(NotificationEvent::MarkRead { id: "a".into() }),
+            notification(NotificationEvent::Open {
+                notification_id: "a".into(),
+                link: link(),
+                parent_message_id: None,
+            }),
+            notification(NotificationEvent::MarkRead { id: "a".into() }),
+            notification(NotificationEvent::Dismiss { id: "b".into() }),
+            notification(NotificationEvent::MarkAllRead),
+            notification(NotificationEvent::LoadMore),
+        ]
+    );
+}
+
+#[gpui_kit::test]
+fn unread_tab_filters_rows(cx: &mut TestAppContext) {
+    let rig = page_rig(
+        cx,
+        list(
+            vec![
+                row("a", NotificationKind::Mention, false),
+                row("b", NotificationKind::Mention, true),
+            ],
+            false,
+        ),
+    );
+    assert!(rig.has(cx, "notification-a") && rig.has(cx, "notification-b"));
+    rig.click(cx, "notifications-tabs-1");
+    assert!(rig.has(cx, "notification-a"), "the unread row stays");
+    assert!(!rig.has(cx, "notification-b"), "the read row is left out");
+    assert!(!rig.has(cx, "notification-read-b"));
+    rig.click(cx, "notifications-tabs-0");
+    assert!(rig.has(cx, "notification-b"), "All brings it back");
+    assert!(rig.events().is_empty(), "the filter changes nothing");
+}
+
 // ---- The level menu. ----
 
 #[gpui_kit::test]

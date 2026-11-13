@@ -1,9 +1,11 @@
 //! The notification stories: the centre where the shell's side panel puts it, the level menu
 //! open in a stand-in header and in the real shell's channel header, and the settings section.
 
+use super::page::NotificationsPage;
 use super::{ChannelNotifyMenu, NotificationCenter, NotificationSettingsSection};
 use crate::dms::stories::{DAY, HOUR, MINUTE, ava, ben, cleo, dev, emma, failed, long_user};
 use crate::kit::{Variant, text};
+use crate::messages::TimeFormat;
 use crate::messages::fixture::NOW_MS;
 use crate::panel::PanelClock;
 use crate::panel::stories::framed;
@@ -292,6 +294,89 @@ fn schedule() -> NotificationSettings {
         default_level: NotifyLevel::All,
         ..NotificationSettings::default()
     }
+}
+
+/// The page's long list: 50+ rows, long names and a long channel that has to truncate.
+fn page_long() -> Vec<NotificationRow> {
+    const LONG_CHANNEL: &str =
+        "a-channel-name-that-keeps-on-going-long-past-the-right-edge-of-the-page";
+    const LONG_PREVIEW: &str = "A preview long enough that it has to stop at the end of its line \
+                                with an ellipsis instead of wrapping, however wide the page \
+                                happens to be today";
+    (0..52)
+        .map(|index| {
+            let kind = match index % 4 {
+                0 => NotificationKind::ThreadReply,
+                1 => NotificationKind::DirectMessage,
+                2 => NotificationKind::ChannelMessage,
+                _ => NotificationKind::Mention,
+            };
+            note(
+                &format!("pg{index}"),
+                kind,
+                if index % 5 == 0 { long_user() } else { ava() },
+                match kind {
+                    NotificationKind::DirectMessage => None,
+                    _ => Some(LONG_CHANNEL),
+                },
+                if index % 3 == 0 {
+                    LONG_PREVIEW
+                } else {
+                    "Filler so the list scrolls"
+                },
+                (index as i64 + 1) * 7 * MINUTE,
+                index % 3 == 0,
+            )
+        })
+        .collect()
+}
+
+fn page_story(
+    list: NotificationList,
+    unread_tab: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
+    let page = cx.new(|cx| {
+        let mut page = NotificationsPage::new(window, cx);
+        page.set_clock(PanelClock::fixed(NOW_MS), cx);
+        page.set_time(TimeFormat::fixed(NOW_MS), cx);
+        page.set_list(list, cx);
+        page.show_tab(unread_tab, cx);
+        page
+    });
+    page.into()
+}
+
+/// The notifications page's stories: the centre's states, drawn full width, plus its filters.
+pub(crate) fn page_stories() -> Vec<Story> {
+    vec![
+        Story::new("notifications-page-loading", |_, window, cx| {
+            page_story(NotificationList::default(), false, window, cx)
+        }),
+        Story::new("notifications-page-empty", |_, window, cx| {
+            page_story(ready(Vec::new(), false), false, window, cx)
+        }),
+        Story::new("notifications-page-failed", |_, window, cx| {
+            let list = NotificationList {
+                state: failed(),
+                ..NotificationList::default()
+            };
+            page_story(list, false, window, cx)
+        }),
+        Story::new("notifications-page-mixed", |_, window, cx| {
+            page_story(ready(mixed(), false), false, window, cx)
+        }),
+        Story::new("notifications-page-unread-tab", |_, window, cx| {
+            page_story(ready(mixed(), false), true, window, cx)
+        }),
+        Story::new("notifications-page-long", |_, window, cx| {
+            page_story(ready(page_long(), true), false, window, cx)
+        }),
+        Story::new("notifications-page-phone", |_, window, cx| {
+            page_story(ready(mixed(), false), false, window, cx)
+        }),
+    ]
 }
 
 pub fn stories() -> Vec<Story> {
