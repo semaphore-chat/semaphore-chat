@@ -198,6 +198,11 @@ pub(crate) struct Playback {
     pub duration: Option<Duration>,
     pub buffered: Vec<Range<f32>>,
     pub has_video: bool,
+    /// What the opened media has a sound track the player decodes (the preview's AAC needs the
+    /// `aac` feature). True until the metadata says.
+    pub has_audio: bool,
+    /// Play once opened (attachments: the first play opens). The trim preview opens paused.
+    pub autoplay: bool,
     /// The decoder's frame size, once opened.
     pub natural: Option<(u32, u32)>,
     pub volume: f32,
@@ -214,6 +219,8 @@ impl Playback {
             source,
             opener,
             has_video: frames.is_some(),
+            has_audio: true,
+            autoplay: true,
             frames,
             player: None,
             inbox: Arc::default(),
@@ -242,8 +249,14 @@ impl Playback {
         self.frames.as_ref()
     }
 
-    /// Opens (again), dropping any earlier player, and plays once the headers are read.
-    fn open(&mut self) {
+    /// Plays `source` from the next open on (the trim preview's Refresh and Retry).
+    pub fn set_source(&mut self, source: PlaybackSource) {
+        self.source = source;
+    }
+
+    /// Opens (again), dropping any earlier player, and plays once the headers are read unless
+    /// [`Self::autoplay`] is off. Starts at the replay buffer's `start`, else at 0.
+    pub fn open(&mut self) {
         self.player = None;
         self.generation += 1;
         let generation = self.generation;
@@ -252,7 +265,10 @@ impl Playback {
             frames.end(&self.key());
         }
         self.phase = Phase::Loading;
-        self.position = Duration::ZERO;
+        self.position = match &self.source {
+            PlaybackSource::ReplayBuffer { start, .. } => *start,
+            PlaybackSource::Attachment(_) => Duration::ZERO,
+        };
         self.buffered.clear();
         let inbox = self.inbox.clone();
         let events: PlayerEvents = Arc::new(move |event| inbox.push(generation, event));
@@ -269,7 +285,9 @@ impl Playback {
         if self.muted {
             player.set_muted(true);
         }
-        player.play();
+        if self.autoplay {
+            player.play();
+        }
         self.player = Some(player);
     }
 
@@ -338,6 +356,14 @@ impl Playback {
         self.command(|p| p.set_muted(muted));
     }
 
+    pub fn play(&mut self) {
+        self.command(|p| p.play());
+    }
+
+    pub fn pause(&mut self) {
+        self.command(|p| p.pause());
+    }
+
     fn command(&self, f: impl FnOnce(&dyn MediaPlayer)) {
         if let Some(player) = &self.player {
             f(player.as_ref());
@@ -370,6 +396,7 @@ impl Playback {
             PlayerEvent::Metadata(meta) => {
                 self.duration = meta.duration;
                 self.has_video = meta.has_video;
+                self.has_audio = meta.has_audio;
                 if meta.width > 0 && meta.height > 0 {
                     self.natural = Some((meta.width, meta.height));
                 }

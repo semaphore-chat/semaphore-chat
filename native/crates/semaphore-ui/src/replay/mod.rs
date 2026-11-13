@@ -6,7 +6,7 @@
 //!   (my library, a channel, a DM, or a download only), with the buffer's state (not recording,
 //!   starting, warming up, recording, failed). It holds a [`TrimTimeline`].
 //! - [`TrimTimeline`]: start and end handles over the buffer, in seconds from the buffer's start
-//!   (what the server reads). No preview yet: [`TrimTimeline::preview`] is where it goes.
+//!   (what the server reads), under the [`TrimPreview`] when the window has a player.
 //! - [`ClipLibrary`]: my clips or another user's public ones, each in the W3 video player.
 //! - [`ShareClipDialog`]: a library clip to a channel or a DM.
 //!
@@ -17,6 +17,7 @@ mod capture;
 mod library;
 pub mod model;
 mod picker;
+mod preview;
 mod share;
 #[cfg(feature = "stories")]
 pub(crate) mod stories;
@@ -27,6 +28,7 @@ mod trim;
 pub use capture::CaptureReplayDialog;
 pub use library::ClipLibrary;
 pub use model::{Choices, PickOption};
+pub use preview::{PREVIEW_ERROR, PreviewEvent, TrimPreview, VIDEO_ONLY};
 pub use share::ShareClipDialog;
 pub use trim::{TrimEvent, TrimTimeline};
 

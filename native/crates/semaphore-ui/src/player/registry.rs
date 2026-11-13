@@ -11,15 +11,18 @@
 //!   one pauses the other, whose view hears it as a state.
 
 use super::model::Phase;
-use super::{AudioPlayer, PlayerOpener, VideoPlayer};
+use super::{AudioPlayer, PlayerOpener, PlayerSurface, VideoPlayer};
 use crate::voice::VideoFrames;
 use gpui_kit::*;
 use semaphore_core::model::{AttachmentKind, AttachmentView, MessageRow};
-use semaphore_core::player::{AttachmentSource, playable};
+use semaphore_core::player::{
+    AttachmentSource, MediaPlayer, PlaybackSource, PlayerEvents, playable,
+};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// An idle player not drawn for this many of its list's frames may go, once the list holds more
 /// than [`KEEP_IDLE`]. A playing or paused one stays while its message is in the list.
@@ -110,8 +113,76 @@ impl WeakPlayer {
 /// A video attachment's poster (its server thumbnail), or `None` for the plain dark box.
 pub type PosterResolver = Rc<dyn Fn(&AttachmentView) -> Option<ImageSource>>;
 
+/// The owner's opener, counting the players it opened that are still alive.
+struct Counting {
+    opener: Rc<dyn PlayerOpener>,
+    live: Arc<AtomicUsize>,
+    previews: Arc<AtomicUsize>,
+}
+
+/// A player that leaves its counts when dropped.
+struct Counted {
+    player: Box<dyn MediaPlayer>,
+    counts: Vec<Arc<AtomicUsize>>,
+}
+
+impl PlayerOpener for Counting {
+    fn open(
+        &self,
+        source: PlaybackSource,
+        events: PlayerEvents,
+        surface: Option<PlayerSurface>,
+    ) -> Box<dyn MediaPlayer> {
+        let mut counts = vec![self.live.clone()];
+        if matches!(source, PlaybackSource::ReplayBuffer { .. }) {
+            counts.push(self.previews.clone());
+        }
+        let player = self.opener.open(source, events, surface);
+        for count in &counts {
+            count.fetch_add(1, Ordering::SeqCst);
+        }
+        Box::new(Counted { player, counts })
+    }
+
+    fn set_output_device(&self, device: Option<String>) {
+        self.opener.set_output_device(device);
+    }
+}
+
+impl MediaPlayer for Counted {
+    fn play(&self) {
+        self.player.play();
+    }
+
+    fn pause(&self) {
+        self.player.pause();
+    }
+
+    fn seek(&self, to: std::time::Duration) {
+        self.player.seek(to);
+    }
+
+    fn set_volume(&self, volume: f32) {
+        self.player.set_volume(volume);
+    }
+
+    fn set_muted(&self, muted: bool) {
+        self.player.set_muted(muted);
+    }
+}
+
+impl Drop for Counted {
+    fn drop(&mut self) {
+        for count in &self.counts {
+            count.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+}
+
 struct Inner {
     opener: Rc<dyn PlayerOpener>,
+    live: Arc<AtomicUsize>,
+    previews: Arc<AtomicUsize>,
     frames: Arc<VideoFrames>,
     made: RefCell<Vec<WeakPlayer>>,
     posters: RefCell<Option<PosterResolver>>,
@@ -126,9 +197,18 @@ pub struct Players {
 
 impl Players {
     pub fn new(opener: Rc<dyn PlayerOpener>, frames: Arc<VideoFrames>) -> Self {
+        let live = Arc::new(AtomicUsize::new(0));
+        let previews = Arc::new(AtomicUsize::new(0));
+        let opener = Rc::new(Counting {
+            opener,
+            live: live.clone(),
+            previews: previews.clone(),
+        });
         Self {
             inner: Rc::new(Inner {
                 opener,
+                live,
+                previews,
                 frames,
                 made: RefCell::default(),
                 posters: RefCell::default(),
@@ -207,6 +287,26 @@ impl Players {
             .iter()
             .filter(|player| player.phase(cx) != Phase::Idle)
             .count()
+    }
+
+    /// Engine players opened through this and not yet dropped, the trim preview's included.
+    pub fn live(&self) -> usize {
+        self.inner.live.load(Ordering::SeqCst)
+    }
+
+    /// Of [`Self::live`], those playing the replay buffer (the trim preview's).
+    pub fn live_previews(&self) -> usize {
+        self.inner.previews.load(Ordering::SeqCst)
+    }
+
+    /// The opener players are made with (the trim preview opens through it too).
+    pub(crate) fn opener(&self) -> Rc<dyn PlayerOpener> {
+        self.inner.opener.clone()
+    }
+
+    /// The window's frames, where video players draw.
+    pub(crate) fn frames(&self) -> Arc<VideoFrames> {
+        self.inner.frames.clone()
     }
 
     /// Stops and closes every player: a sign-out. Nothing of the session's files stays open.

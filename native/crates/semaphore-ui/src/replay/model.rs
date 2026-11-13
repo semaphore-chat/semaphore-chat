@@ -110,6 +110,9 @@ pub enum Handle {
     End,
 }
 
+/// Pixels either side of a handle's centre that still grab it when a press elsewhere seeks.
+pub const HANDLE_REACH: f32 = 10.;
+
 /// A trim over the buffer, in whole seconds from the buffer's start, which is what the server
 /// reads (`startSeconds`/`endSeconds`). `max` is the buffer's length when the timeline last
 /// loaded: like the web, it doesn't move as the buffer grows until Refresh.
@@ -191,6 +194,23 @@ impl TrimRange {
         } else {
             Handle::End
         }
+    }
+
+    /// With the preview, a press grabs a handle only on it (within [`HANDLE_REACH`] px of its
+    /// centre, the nearer one); elsewhere it seeks. `x` is from the track's left, `width` its own.
+    pub fn handle_at(&self, x: f32, width: f32) -> Option<Handle> {
+        if width <= 0. {
+            return None;
+        }
+        let distance = |handle| (self.fraction(handle) * width - x).abs();
+        let (start, end) = (distance(Handle::Start), distance(Handle::End));
+        let (handle, near) =
+            if start < end || (start == end && x <= self.fraction(Handle::Start) * width) {
+                (Handle::Start, start)
+            } else {
+                (Handle::End, end)
+            };
+        (near <= HANDLE_REACH).then_some(handle)
     }
 
     /// The buffer is now `max` long (Refresh). An end at the old edge follows the new edge, as on

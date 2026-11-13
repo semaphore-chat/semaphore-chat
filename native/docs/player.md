@@ -200,6 +200,17 @@ demuxer, so:
   player: `Cancelled`). `semaphore_core::player::selection_step` is the web's end-of-selection
   rule (within 0.1 s of the end: loop to the start, or pause). The fake server serves these
   fixtures as the preview's segments (`fixtures/replay/`, segment `i` is fixture `i % 3`).
+- **The trim preview (lane 3):** `semaphore_ui::replay::TrimPreview` above the capture dialog's
+  trim timeline, only while the trim is shown and the window has `Players` (the app's `player`
+  feature). It opens paused at the selection's start; the web's controls (jump to start,
+  play/pause, play selection from start, jump to end less 1 s, Loop off at first, Refresh
+  segments); `selection_step` on every position while playing. The timeline draws the playhead; a
+  press on a handle drags it, anywhere else seeks; a start dragged past the playhead takes it
+  along; Refresh reopens the preview at the playhead with the newest playlist. States: loading,
+  "Could not load the video preview. Please try again." with Retry, and "Video only" when no
+  sound track is decoded (no `aac`). Stories `replay-preview-*` (`rigs/shot/scripts/
+  w14-trim-preview.steps`); `rigs/slice/scripts/voice-w4.steps` plays it against the fake
+  server's segments (video only: the `--voice` build has no AAC).
 - **Not verified yet** against a segment LiveKit egress wrote (raw and remuxed), nor which audio
   codec egress uses when it falls back to its `H264_1080P_30` preset.
 

@@ -59,6 +59,11 @@
 //! `player NAME idle|loading|playing|paused|buffering|ended|failed`, `player-frames NAME` (its video
 //! reached the window) and `players-open N` (players holding an open file).
 //!
+//! W14 (the trim preview, same build): `preview idle|loading|playing|paused|ended|stopped|failed|none` (the
+//! capture dialog's preview), `preview-frames` (its video reached the window), `preview-at above|below
+//! SECONDS` (its playhead), `preview-sound yes|no` (it decodes a sound track) and `preview-players N`
+//! (engine players of the replay buffer not yet dropped).
+//!
 //! W4's conditions: `replay off|starting|recording|failed`, `clips N` (the open profile page's
 //! library), `dialog capture|share|participant-menu|kick|debug open|closed`, `ringing yes|no|DM_ID`,
 //! `ring looping|stopped` (the ring's sound), `cue NAME N` (core asked for the cue at least N
@@ -357,6 +362,14 @@ enum Condition {
     PlayerFrames(String),
     /// This many players hold an open file.
     PlayersOpen(usize),
+    /// W14: the trim preview's phase, or `none` for no preview.
+    Preview(String),
+    PreviewFrames,
+    /// The preview's playhead is above (`true`) or below this many seconds.
+    PreviewAt(bool, f64),
+    PreviewSound(bool),
+    /// Engine players of the replay buffer alive, through the window's `Players`.
+    PlayersLive(usize),
     /// W4's (`w4_holds`).
     W4(W4),
     /// W5's (`w5.rs`, `w5_holds`).
@@ -692,6 +705,16 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["player", name, phase] => Condition::Player((*name).into(), (*phase).into()),
         ["player-frames", name] => Condition::PlayerFrames((*name).into()),
         ["players-open", count] => Condition::PlayersOpen(number(count)?),
+        ["preview", phase] => Condition::Preview((*phase).into()),
+        ["preview-frames"] => Condition::PreviewFrames,
+        ["preview-at", side @ ("above" | "below"), seconds] => Condition::PreviewAt(
+            *side == "above",
+            seconds
+                .parse()
+                .map_err(|_| anyhow!("preview-at wants seconds, got {seconds}"))?,
+        ),
+        ["preview-sound", yes @ ("yes" | "no")] => Condition::PreviewSound(*yes == "yes"),
+        ["preview-players", count] => Condition::PlayersLive(number(count)?),
         [
             "replay",
             state @ ("off" | "starting" | "recording" | "failed"),
@@ -1563,10 +1586,16 @@ impl Rig {
 
     /// W3-player-wire's conditions.
     fn player_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
-        use semaphore_ui::player::Phase;
         if !matches!(
             condition,
-            Condition::Player(..) | Condition::PlayerFrames(_) | Condition::PlayersOpen(_)
+            Condition::Player(..)
+                | Condition::PlayerFrames(_)
+                | Condition::PlayersOpen(_)
+                | Condition::Preview(_)
+                | Condition::PreviewFrames
+                | Condition::PreviewAt(..)
+                | Condition::PreviewSound(_)
+                | Condition::PlayersLive(_)
         ) {
             return Ok(None);
         }
@@ -1577,6 +1606,34 @@ impl Rig {
                     .read(cx)
                     .players()
                     .is_some_and(|players| players.open_count(cx) == *count),
+                Condition::PlayersLive(count) => app
+                    .read(cx)
+                    .players()
+                    .is_some_and(|players| players.live_previews() == *count),
+                Condition::Preview(phase) => {
+                    let preview = app.read(cx).trim_preview(cx);
+                    match (preview, phase.as_str()) {
+                        (None, wanted) => wanted == "none",
+                        (Some(_), "none") => false,
+                        (Some(preview), wanted) => {
+                            Self::phase_is(preview.read(cx).phase(), wanted)?
+                        }
+                    }
+                }
+                Condition::PreviewFrames => app
+                    .read(cx)
+                    .trim_preview(cx)
+                    .is_some_and(|preview| preview.read(cx).has_frame()),
+                Condition::PreviewAt(above, seconds) => {
+                    app.read(cx).trim_preview(cx).is_some_and(|preview| {
+                        let at = preview.read(cx).position().as_secs_f64();
+                        if *above { at > *seconds } else { at < *seconds }
+                    })
+                }
+                Condition::PreviewSound(yes) => app
+                    .read(cx)
+                    .trim_preview(cx)
+                    .is_some_and(|preview| preview.read(cx).has_audio() == *yes),
                 Condition::PlayerFrames(name) => {
                     Self::player_named(&app, name, cx)?.is_some_and(|player| player.has_frame(cx))
                 }
@@ -1584,20 +1641,27 @@ impl Rig {
                     let Some(player) = Self::player_named(&app, name, cx)? else {
                         return Ok(Some(false));
                     };
-                    let now = player.phase(cx);
-                    match phase.as_str() {
-                        "idle" => now == Phase::Idle,
-                        "loading" => now == Phase::Loading,
-                        "playing" => now == Phase::Playing,
-                        "paused" => now == Phase::Paused,
-                        "buffering" => now == Phase::Buffering,
-                        "ended" => now == Phase::Ended,
-                        "failed" => matches!(now, Phase::Failed(_)),
-                        _ => bail!("unknown player phase {phase}"),
-                    }
+                    Self::phase_is(&player.phase(cx), phase)?
                 }
                 _ => unreachable!("matched above"),
             }))
+        })
+    }
+
+    /// Whether a player's phase is the one a step names.
+    fn phase_is(now: &semaphore_ui::player::Phase, phase: &str) -> Result<bool> {
+        use semaphore_ui::player::Phase;
+        Ok(match phase {
+            "idle" => *now == Phase::Idle,
+            "loading" => *now == Phase::Loading,
+            "playing" => *now == Phase::Playing,
+            "paused" => *now == Phase::Paused,
+            "buffering" => *now == Phase::Buffering,
+            "ended" => *now == Phase::Ended,
+            // Paused, or stopped at the media's end.
+            "stopped" => matches!(now, Phase::Paused | Phase::Ended),
+            "failed" => matches!(now, Phase::Failed(_)),
+            _ => bail!("unknown player phase {phase}"),
         })
     }
 
@@ -1807,6 +1871,11 @@ impl Rig {
             | Condition::Player(..)
             | Condition::PlayerFrames(_)
             | Condition::PlayersOpen(_)
+            | Condition::Preview(_)
+            | Condition::PreviewFrames
+            | Condition::PreviewAt(..)
+            | Condition::PreviewSound(_)
+            | Condition::PlayersLive(_)
             | Condition::W4(_)
             | Condition::W5(_)
             | Condition::W6(_)
