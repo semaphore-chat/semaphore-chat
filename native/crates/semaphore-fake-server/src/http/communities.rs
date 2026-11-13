@@ -160,6 +160,9 @@ async fn channel_permissions(
     // The three flags the backend derives from the caller's roles (`toCapabilities`):
     // `seeRemoved` is the same action as `canSeeRemovedMessages`.
     let allows = |action: &str| crate::rbac::allows(&inner, &user, &community_id, action);
+    // As the backend's `TIMEOUT_BLOCKED_ACTIONS`: a timeout keeps connecting and listening, but
+    // takes speaking, the camera and screen sharing (WP: the pre-join's listen-only join).
+    let voice_out = timed_out_until.is_none();
     let pin = allows("PIN_MESSAGE");
     let delete_any = allows("DELETE_ANY_MESSAGE");
     let channels: Vec<ChannelCapabilitiesDto> = community
@@ -176,11 +179,11 @@ async fn channel_permissions(
             posting_role_names: Vec::new(),
             react: true,
             see_removed: delete_any,
-            share: true,
-            speak: true,
+            share: voice_out,
+            speak: voice_out,
             thread_reply: true,
             timed_out_until,
-            video: true,
+            video: voice_out,
             view: true,
         })
         .collect();

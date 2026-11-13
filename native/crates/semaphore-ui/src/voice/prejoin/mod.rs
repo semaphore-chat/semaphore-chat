@@ -46,6 +46,9 @@ pub enum PreJoinEvent {
     Join(VoiceJoinOptions),
     /// The read failed and the user asked again: `Core::retry_failed`.
     Retry,
+    /// WP (additive, with the coordinator): a person in the grid was clicked: their profile, as
+    /// the web's `VoiceParticipantGrid` opens it.
+    OpenProfile { user_id: String },
 }
 
 pub struct PreJoinPanel {
@@ -272,10 +275,20 @@ impl PreJoinPanel {
             .enumerate()
             .map(|(ix, user)| {
                 let name = user_name(user);
+                let user_id = user.id.clone();
+                let hover = sem.action_hover;
                 div()
                     .id(SharedString::from(format!("voice-prejoin-user-{ix}")))
                     .test_support()
+                    .role(Role::Button)
                     .aria_label(name.clone())
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(hover))
+                    .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
+                        cx.emit(PreJoinEvent::OpenProfile {
+                            user_id: user_id.clone(),
+                        })
+                    }))
                     .w(px(TILE))
                     .min_w_0()
                     .flex()

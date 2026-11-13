@@ -11,7 +11,7 @@
 #     rigs/slice/scripts/w3-player-wire.steps. The default run skips that file: it needs the feature.
 #
 # --voice starts lk-stack's LiveKit and two publishers (`demo-peer`, video, in Squad Up; priya in her
-# DM's room), then runs rigs/slice/scripts/voice.steps and voice-w4.steps the same way, with the
+# DM's room), then runs rigs/slice/scripts/voice.steps, voice-w4.steps and voice-w9.steps the same way, with the
 # fake server minting real tokens for it, the app built with its player (soundboard decoding).
 #
 # Each run starts a fresh fake server (scenario showcase) on 127.0.0.1 inside this container and
@@ -83,7 +83,7 @@ out_dir="${1:-results/slice/e2e}"
 # Each entry is "steps-file|run-dir". text.steps keeps the original <out-dir>/run-N layout.
 suites=()
 if $voice; then
-  suites=("rigs/slice/scripts/voice.steps|$out_dir" "rigs/slice/scripts/voice-w4.steps|$out_dir/voice-w4")
+  suites=("rigs/slice/scripts/voice.steps|$out_dir" "rigs/slice/scripts/voice-w4.steps|$out_dir/voice-w4" "rigs/slice/scripts/voice-w9.steps|$out_dir/voice-w9")
 elif $player; then
   suites=("rigs/slice/scripts/w3-player-wire.steps|$out_dir/w3-player-wire")
 elif [ -n "${2:-}" ]; then
@@ -93,7 +93,7 @@ else
     name="$(basename "$f" .steps)"
     # voice.steps needs --voice; real.steps a real backend (scripts/slice-real.sh); w3-player-wire
     # the player feature (--player).
-    case "$name" in voice | voice-w4 | real | w3-player-wire) continue ;; esac
+    case "$name" in voice | voice-w4 | voice-w9 | real | w3-player-wire) continue ;; esac
     if [ "$name" = text ]; then suites+=("$f|$out_dir"); else suites+=("$f|$out_dir/$name"); fi
   done
 fi

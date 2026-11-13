@@ -145,6 +145,8 @@ pub struct ConversationPane {
     pub(crate) side: Option<side::Side>,
     pub(crate) editing: Option<actions::Editing>,
     pub(crate) picker: Option<actions::OpenPicker>,
+    /// WP: what "Seen by" last asked core for (`seen.rs`).
+    pub(crate) seen: seen::SeenAsk,
     /// The reaction whose tooltip shows: its list, message and emoji.
     hovered_reaction: Option<(Which, String, String)>,
     /// The last thing the server refused, in its words, until dismissed.
@@ -209,6 +211,7 @@ impl ConversationPane {
             side: None,
             editing: None,
             picker: None,
+            seen: seen::SeenAsk::default(),
             hovered_reaction: None,
             notice: None,
             flash: None,
@@ -657,6 +660,7 @@ impl ConversationPane {
             }
             _ => {}
         }
+        self.seen_on_core(event, cx);
     }
 
     /// Re-reads the composer's suggestions and availability, in a frame of its own.

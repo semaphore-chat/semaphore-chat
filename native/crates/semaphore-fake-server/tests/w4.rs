@@ -1509,3 +1509,85 @@ async fn download_only_streams_the_last_minutes_as_an_mp4_and_keeps_nothing() {
     let (_, clips) = get(&client, &base, "/api/livekit/clips").await;
     assert_eq!(clips, json!([]), "saved nowhere");
 }
+
+// ----- W9: another user's channel presence (`voice_join_as`, `voice_leave_as`) ----------------
+
+#[tokio::test]
+async fn voice_join_as_lists_another_user_and_tells_the_channel_as_their_join_would() {
+    let (server, client, base) = showcase().await;
+    let squad = id("vc-squad");
+    // Grace isn't in Squad Up (dropbear and pri are, in the showcase).
+    let grace = id("u-grace");
+    let mut me = connect_as(&base, &id("me")).await;
+
+    let (status, body) = control(
+        &client,
+        &base,
+        "voice_join_as",
+        json!({ "channelId": squad, "userId": grace }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (_, presence) = get(
+        &client,
+        &base,
+        &format!("/api/channels/{squad}/voice-presence"),
+    )
+    .await;
+    let users = presence["users"].as_array().expect("users");
+    let listed = users
+        .iter()
+        .find(|user| user["id"] == grace.as_str())
+        .expect("grace is listed");
+    assert_eq!(listed["username"], "gracie");
+    let heard = settle(&server, &mut [&mut me]).await.remove(0);
+    assert_eq!(names(&heard), ["voiceChannelUserJoined"]);
+    assert_eq!(heard[0].1["channelId"], squad.as_str());
+    assert_eq!(heard[0].1["user"]["id"], grace.as_str());
+
+    // Joining again only refreshes: no second announcement.
+    control(
+        &client,
+        &base,
+        "voice_join_as",
+        json!({ "channelId": squad, "userId": grace }),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut me]).await.remove(0);
+    assert!(heard.is_empty(), "{heard:?}");
+
+    let (status, _) = control(
+        &client,
+        &base,
+        "voice_leave_as",
+        json!({ "channelId": squad, "userId": grace }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (_, presence) = get(
+        &client,
+        &base,
+        &format!("/api/channels/{squad}/voice-presence"),
+    )
+    .await;
+    assert!(
+        presence["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|user| user["id"] != grace.as_str())
+    );
+    let heard = settle(&server, &mut [&mut me]).await.remove(0);
+    assert_eq!(names(&heard), ["voiceChannelUserLeft"]);
+    assert_eq!(heard[0].1["userId"], grace.as_str());
+
+    // Someone the server doesn't know is refused.
+    let (status, _) = control(
+        &client,
+        &base,
+        "voice_join_as",
+        json!({ "channelId": squad, "userId": "nobody" }),
+    )
+    .await;
+    assert_eq!(status, 400);
+}

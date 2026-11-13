@@ -181,3 +181,24 @@ fn a_crowd_keeps_the_joins_on_a_phone(cx: &mut TestAppContext) {
     rig.click(cx, "voice-prejoin-join");
     assert_eq!(rig.events(), [join(false, false)]);
 }
+
+#[gpui_kit::test]
+fn clicking_a_person_opens_their_profile(cx: &mut TestAppContext) {
+    let rig = panel_rig(cx, 1200., ready(VoiceJoinMode::Full, few()));
+    rig.click(cx, "voice-prejoin-user-1");
+    assert_eq!(
+        rig.events(),
+        [PreJoinEvent::OpenProfile {
+            user_id: "u-bo".into()
+        }]
+    );
+    // A blocked channel still shows who's here, and they still open.
+    let rig = panel_rig(cx, 390., ready(VoiceJoinMode::None, few()));
+    rig.click(cx, "voice-prejoin-user-0");
+    assert_eq!(
+        rig.events(),
+        [PreJoinEvent::OpenProfile {
+            user_id: "u-ana".into()
+        }]
+    );
+}
