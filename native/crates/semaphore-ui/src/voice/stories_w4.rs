@@ -293,6 +293,7 @@ fn menu_story(
             ParticipantMenuModel {
                 participant: target,
                 volume_percent,
+                screen_share_volume_percent: 100,
                 caps,
                 in_channel,
             },
@@ -362,6 +363,14 @@ fn menu_loud(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
 
 fn menu_dm(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
     menu_story(person(1), 100, MODERATOR, false, None, window, cx)
+}
+
+/// Their screen share carries audio: the menu offers the share's own slider under the mic's.
+fn menu_screen_share(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
+    let mut target = person(2);
+    target.screen_share = camera(2);
+    target.screen_share_audio = true;
+    menu_story(target, 100, MEMBER, true, None, window, cx)
 }
 
 fn kick_confirm(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
@@ -867,6 +876,7 @@ pub fn stories() -> Vec<Story> {
         Story::new("voice-menu-silenced", menu_silenced),
         Story::new("voice-menu-loud", menu_loud),
         Story::new("voice-menu-dm", menu_dm),
+        Story::new("voice-menu-screen-share", menu_screen_share),
         Story::new("voice-kick-confirm", kick_confirm),
         Story::new("voice-kick-reason", kick_reason),
         Story::new("voice-kick-busy", kick_busy),

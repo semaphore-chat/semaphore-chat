@@ -449,6 +449,13 @@ async fn participant_volume_goes_to_the_engine_capped() {
     assert!(media_calls(&rig).contains(&"volume bob 200".to_owned()));
 }
 
+#[tokio::test]
+async fn screen_share_volume_goes_to_the_engine_capped() {
+    let rig = signed_in().await;
+    rig.core.set_screen_share_volume("bob".into(), 350);
+    assert!(media_calls(&rig).contains(&"share-volume bob 200".to_owned()));
+}
+
 // --- Soundboard ---
 
 #[tokio::test]
@@ -1336,6 +1343,37 @@ async fn a_participants_volume_shows_on_them_until_sign_out() {
     rig.core.join_voice(VOICE.into()).await.unwrap();
     rig.settle().await;
     assert_eq!(volume(&rig, "bob"), Some(100));
+}
+
+#[tokio::test]
+async fn a_participants_screen_share_volume_shows_apart_from_their_mic_until_sign_out() {
+    let mut rig = in_channel_call(&[ME, "bob"]).await;
+    rig.core.set_participant_volume("bob".into(), 150);
+    rig.core.set_screen_share_volume("bob".into(), 60);
+    let volumes = |rig: &Rig, id: &str| {
+        rig.core
+            .voice()
+            .participants
+            .iter()
+            .find(|participant| participant.identity == id)
+            .map(|participant| {
+                (
+                    participant.volume_percent,
+                    participant.screen_share_volume_percent,
+                )
+            })
+    };
+    assert_eq!(volumes(&rig, "bob"), Some((150, 60)));
+    assert_eq!(volumes(&rig, ME), Some((100, 100)));
+    rig.core.sign_out().await.unwrap();
+    rig.core
+        .sign_in("http://server".into(), "me".into(), "pw".into())
+        .await
+        .unwrap();
+    rig.settle().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    rig.settle().await;
+    assert_eq!(volumes(&rig, "bob"), Some((100, 100)));
 }
 
 #[tokio::test]

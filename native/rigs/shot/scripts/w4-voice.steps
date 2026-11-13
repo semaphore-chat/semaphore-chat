@@ -101,6 +101,12 @@ shot w4-menu-dm-desktop
 story voice-menu-dm 390 844 light-blue-balanced
 wait idle
 shot w4-menu-dm-phone
+story voice-menu-screen-share 1280 800 dark-blue-balanced
+wait idle
+shot w4-menu-screen-share-desktop
+story voice-menu-screen-share 390 844 light-blue-balanced
+wait idle
+shot w4-menu-screen-share-phone
 story voice-kick-confirm 1280 800 dark-blue-balanced
 wait idle
 shot w4-kick-confirm-desktop

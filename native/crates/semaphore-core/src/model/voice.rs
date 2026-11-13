@@ -122,6 +122,9 @@ pub struct ParticipantView {
     pub deafened: bool,
     pub camera: Option<VideoTrackView>,
     pub screen_share: Option<VideoTrackView>,
+    /// Whether they're sending the audio that goes with their screen, so the menu offers its
+    /// volume slider. False in a screen share without audio.
+    pub screen_share_audio: bool,
     pub quality: ConnectionQuality,
     /// W4: a moderator's server mute (from voice presence), which outlives the call. A moderator's
     /// menu offers to lift it.
@@ -129,6 +132,9 @@ pub struct ParticipantView {
     /// W4: how loud they play here, 0 to 200 percent (100 is as sent), as set with
     /// `Core::set_participant_volume` this session.
     pub volume_percent: u32,
+    /// W4: the same for the audio of their screen share, independent of the mic's, as set with
+    /// `Core::set_screen_share_volume`.
+    pub screen_share_volume_percent: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -140,6 +140,7 @@ async fn names_come_from_presence_and_tracks_from_the_engine() {
     ava.speaking = true;
     ava.camera = Some(track("cam"));
     ava.screen_share = Some(track("screen"));
+    ava.screen_share_audio = true;
     ava.quality = ConnectionQuality::Poor;
     rig.core
         .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me"), ava]));
@@ -155,6 +156,7 @@ async fn names_come_from_presence_and_tracks_from_the_engine() {
     assert!(row.speaking);
     assert_eq!(row.camera, Some(track("cam")));
     assert_eq!(row.screen_share, Some(track("screen")));
+    assert!(row.screen_share_audio);
     assert_eq!(row.quality, ConnectionQuality::Poor);
     let me = voice
         .participants

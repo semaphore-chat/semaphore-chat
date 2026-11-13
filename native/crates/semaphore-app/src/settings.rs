@@ -194,6 +194,8 @@ pub struct Settings {
     pub voice: VoiceSettings,
     /// Per-user playback volume in percent (0..=200), by user id.
     pub user_volumes: BTreeMap<String, u8>,
+    /// The same for the audio of a user's screen share, which the web keeps apart from the mic.
+    pub screen_share_volumes: BTreeMap<String, u8>,
     pub close_to_tray: bool,
     pub window: Option<WindowState>,
     pub last_channel: Option<String>,
@@ -217,6 +219,7 @@ impl Default for Settings {
             version: CURRENT_VERSION,
             voice: VoiceSettings::default(),
             user_volumes: BTreeMap::new(),
+            screen_share_volumes: BTreeMap::new(),
             // On, like Electron. Closing only hides while a tray host shows our icon.
             close_to_tray: true,
             window: None,
@@ -334,6 +337,9 @@ impl SettingsStore {
                 for percent in settings.user_volumes.values_mut() {
                     *percent = (*percent).min(MAX_USER_VOLUME);
                 }
+                for percent in settings.screen_share_volumes.values_mut() {
+                    *percent = (*percent).min(MAX_USER_VOLUME);
+                }
                 // Keys are GPUI's lowercase names; an older build stored "F13".
                 if let Some(key) = &mut settings.voice.push_to_talk_key {
                     *key = key.to_lowercase();
@@ -374,6 +380,9 @@ impl SettingsStore {
         for percent in self.settings.user_volumes.values_mut() {
             *percent = (*percent).min(MAX_USER_VOLUME);
         }
+        for percent in self.settings.screen_share_volumes.values_mut() {
+            *percent = (*percent).min(MAX_USER_VOLUME);
+        }
         self.save()
     }
 
@@ -383,6 +392,19 @@ impl SettingsStore {
             u8::try_from(percent.min(u32::from(MAX_USER_VOLUME))).unwrap_or(MAX_USER_VOLUME);
         self.update(|s| {
             s.user_volumes.insert(user_id.to_owned(), clamped);
+        })
+    }
+
+    /// Sets the volume of one user's screen-share audio, clamped to 0..=200, and saves.
+    pub fn set_screen_share_volume(
+        &mut self,
+        user_id: &str,
+        percent: u32,
+    ) -> Result<(), SaveError> {
+        let clamped =
+            u8::try_from(percent.min(u32::from(MAX_USER_VOLUME))).unwrap_or(MAX_USER_VOLUME);
+        self.update(|s| {
+            s.screen_share_volumes.insert(user_id.to_owned(), clamped);
         })
     }
 
@@ -598,9 +620,11 @@ mod tests {
             })
             .unwrap();
         store.set_user_volume("u1", 150).unwrap();
+        store.set_screen_share_volume("u1", 40).unwrap();
         let loaded = SettingsStore::load(&dir.0);
         assert_eq!(loaded.get(), store.get());
         assert_eq!(loaded.get().user_volumes["u1"], 150);
+        assert_eq!(loaded.get().screen_share_volumes["u1"], 40);
     }
 
     #[test]
@@ -667,16 +691,22 @@ mod tests {
         let mut store = SettingsStore::load(&dir.0);
         store.set_user_volume("loud", 9000).unwrap();
         store.set_user_volume("zero", 0).unwrap();
+        store.set_screen_share_volume("loud", 9000).unwrap();
+        store.set_screen_share_volume("zero", 0).unwrap();
         assert_eq!(store.get().user_volumes["loud"], 200);
         assert_eq!(store.get().user_volumes["zero"], 0);
+        assert_eq!(store.get().screen_share_volumes["loud"], 200);
+        assert_eq!(store.get().screen_share_volumes["zero"], 0);
         std::fs::write(
             dir.file(),
-            r#"{"version":1,"user_volumes":{"a":250,"b":100}}"#,
+            r#"{"version":1,"user_volumes":{"a":250,"b":100},"screen_share_volumes":{"c":250,"d":100}}"#,
         )
         .unwrap();
         let loaded = SettingsStore::load(&dir.0);
         assert_eq!(loaded.get().user_volumes["a"], 200);
         assert_eq!(loaded.get().user_volumes["b"], 100);
+        assert_eq!(loaded.get().screen_share_volumes["c"], 200);
+        assert_eq!(loaded.get().screen_share_volumes["d"], 100);
     }
 
     #[test]

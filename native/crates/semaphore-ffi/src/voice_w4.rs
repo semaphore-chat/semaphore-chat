@@ -321,6 +321,10 @@ impl SemaphoreCore {
         self.core.set_participant_volume(identity, percent);
     }
 
+    pub fn set_screen_share_volume(&self, identity: String, percent: u32) {
+        self.core.set_screen_share_volume(identity, percent);
+    }
+
     pub fn soundboard(&self, community_id: String) -> SoundboardView {
         self.core.soundboard(community_id)
     }

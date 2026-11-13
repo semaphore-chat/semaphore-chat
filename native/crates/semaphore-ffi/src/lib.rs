@@ -381,9 +381,11 @@ pub struct ParticipantView {
     pub deafened: bool,
     pub camera: Option<VideoTrackView>,
     pub screen_share: Option<VideoTrackView>,
+    pub screen_share_audio: bool,
     pub quality: ConnectionQuality,
     pub server_muted: bool,
     pub volume_percent: u32,
+    pub screen_share_volume_percent: u32,
 }
 
 #[uniffi::remote(Record)]
