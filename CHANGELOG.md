@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The web register page now follows the server's registration mode: closed shows a "registration is closed" message with a link back to sign in (and the sign-in page hides its register link), open makes the invite code optional, and invite-only still requires it. (#733)
 - The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
 - Banning, kicking and timing out a member now work for the instance owner moderating a community they hold no role in, as unbanning, lifting a timeout and removing a member already did; the owner still can't moderate themselves. (#679)
 - Community administrators can create, list and delete invites for the community they run without an instance role; an invite naming another community, or none, still needs instance invite authority. (#685)
