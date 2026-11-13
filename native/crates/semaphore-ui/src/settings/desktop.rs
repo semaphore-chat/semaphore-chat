@@ -12,25 +12,22 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_design::Icon as DesignIcon;
 
-/// The status line for each link handler state, and whether to offer the register button.
-pub(crate) fn link_status(links: LinkHandler) -> (&'static str, bool) {
+/// The line under the links switch: what the owner means for this app, when there is more to say
+/// than who it is.
+pub(crate) fn link_note(links: LinkHandler, open_links: bool) -> Option<&'static str> {
     match links {
-        LinkHandler::Registered => (
-            "Semaphore opens semaphore:// links on this computer.",
-            false,
-        ),
-        LinkHandler::PackageOwned => (
-            "Your installed package opens semaphore:// links with Semaphore.",
-            false,
-        ),
-        LinkHandler::NotRegistered => (
-            "semaphore:// links (invites, shared messages) don't open Semaphore yet.",
-            true,
-        ),
-        LinkHandler::Unknown => (
-            "Couldn't tell which app opens semaphore:// links on this computer.",
-            true,
-        ),
+        LinkHandler::Registered => None,
+        LinkHandler::PackageOwned => {
+            Some("Your installed package opens semaphore:// links with Semaphore.")
+        }
+        LinkHandler::AnotherApp if open_links => {
+            Some("Another app owns semaphore:// links now; turning this on takes them back.")
+        }
+        LinkHandler::AnotherApp => Some("Another app opens semaphore:// links on this computer."),
+        LinkHandler::NotRegistered => Some("No app opens semaphore:// links on this computer yet."),
+        LinkHandler::Unknown => {
+            Some("Couldn't tell which app opens semaphore:// links on this computer.")
+        }
     }
 }
 
@@ -52,64 +49,62 @@ impl Render for DesktopAppSettings {
             Some("Closing the window keeps Semaphore running in the tray, so calls and notifications carry on".into()),
             cx,
         ));
-        let (status, offer) = link_status(state.links);
-        let ok = !offer;
+        let blocked = state.links_blocked.clone();
+        let open_links_view = view.clone();
         let links = section("Links", cx)
+            .child(switch_row(
+                Switch::new(
+                    "desktop-open-links",
+                    "Open semaphore:// links with this app",
+                    state.open_links,
+                )
+                .disabled(blocked.is_some())
+                .on_change(move |on, _, cx| {
+                    open_links_view
+                        .update(cx, |_, cx| cx.emit(DesktopAppEvent::SetOpenLinks(on)))
+                        .ok();
+                }),
+                "Open semaphore:// links with this app",
+                Some(
+                    "Register Semaphore for semaphore:// links (invites, shared messages) and open \
+                     them here. Turning it off takes the registration away when this app made it."
+                        .into(),
+                ),
+                cx,
+            ))
+            // Who opens the scheme now, from the app's own status check.
             .child(
                 div()
-                    .id("desktop-link-status")
+                    .id("desktop-link-owner")
                     .test_support()
                     .role(Role::Status)
-                    .aria_label(status)
-                    .flex()
-                    .items_start()
-                    .gap(spacing(1.))
-                    .child(design_icon(
-                        if ok {
-                            DesignIcon::CheckCircleOutline
-                        } else {
-                            DesignIcon::InfoOutlined
-                        },
-                        20.,
-                        if ok { sem.success } else { sem.info },
-                    ))
-                    .child(
-                        text(Variant::Body2, status)
-                            .flex_1()
-                            .min_w_0()
-                            .text_color(sem.text_primary),
-                    ),
+                    .aria_label(SharedString::from(format!(
+                        "Opens semaphore:// links: {}",
+                        state.links.owner()
+                    )))
+                    .child(info_row(
+                        "Opens semaphore:// links:",
+                        state.links.owner(),
+                        cx,
+                    )),
             )
-            .children(offer.then(|| {
-                let blocked = state.links_blocked.clone();
-                let note = blocked.clone().or(state.links_note.clone());
+            .children(
+                link_note(state.links, state.open_links).map(|note| {
+                    div()
+                        .id("desktop-link-status")
+                        .test_support()
+                        .role(Role::Status)
+                        .aria_label(SharedString::from(note))
+                        .child(text(Variant::Caption, note).text_color(sem.text_secondary))
+                }),
+            )
+            .children(blocked.clone().or(state.links_note.clone()).map(|note| {
                 div()
-                    .flex()
-                    .flex_col()
-                    .gap(spacing(0.5))
-                    .child(
-                        div().flex().child(
-                            Button::new(
-                                "desktop-register-links",
-                                "Make Semaphore open semaphore:// links",
-                            )
-                            .outlined()
-                            .size(ButtonSize::Small)
-                            .start_icon(DesignIcon::Link)
-                            .disabled(blocked.is_some())
-                            .on_click(cx.listener(|_, _, _, cx| {
-                                cx.emit(DesktopAppEvent::RegisterLinkHandler)
-                            })),
-                        ),
-                    )
-                    .children(note.map(|note| {
-                        div()
-                            .id("desktop-links-note")
-                            .test_support()
-                            .role(Role::Note)
-                            .aria_label(SharedString::from(note.clone()))
-                            .child(text(Variant::Caption, note).text_color(sem.text_secondary))
-                    }))
+                    .id("desktop-links-note")
+                    .test_support()
+                    .role(Role::Note)
+                    .aria_label(SharedString::from(note.clone()))
+                    .child(text(Variant::Caption, note).text_color(sem.text_secondary))
             }));
         let previews_view = view.clone();
         let previews = section("Link previews", cx).child(switch_row(

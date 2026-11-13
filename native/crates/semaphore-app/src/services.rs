@@ -186,6 +186,8 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
                 },
             ));
             realtime.attach((*core).clone());
+            // Diagnostics reports (`ReportJoinFailureDto.appVersion`) carry what `--version` says.
+            core.set_app_version(crate::version().to_owned());
             let frames = voice::wire(&engine, &core, &runtime, heartbeat, activity.clone());
             let driver = core.clone();
             runtime.spawn(async move { driver.drive().await });

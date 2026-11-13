@@ -110,7 +110,7 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Camera publish | `hooks/useLocalMediaState.ts`, `hooks/useVoicePublishPermissions.ts` | done (docs/av-publish.md units C/F/H: `LiveKitEngine::set_camera` and the bar's camera button) |
 | Screen share publish, quality settings, source picker | `hooks/useScreenShare.ts`, `features/voice/screenSharePublish.ts`, `components/Voice/ScreenSourcePicker.tsx`, `utils/screenShare*.ts` | done (`start_screen_share`/`stop_screen_share`; `ui/src/voice/picker.rs`; size, fps and audio in `ui/src/settings/voice.rs`) |
 | Replay buffer, capture, trim, clip library, share clip | `hooks/useReplayBuffer.ts`, `components/Voice/CaptureReplayModal.tsx`, `TrimTimeline.tsx`, `components/Profile/ClipLibrary.tsx`, `ShareClipDialog.tsx`, `docs-site/docs/architecture/replay-buffer.md` | done (`ui/src/replay`: capture, trim with a played preview, library, share; `root/replay.rs`) |
-| Voice debug panel, join-failure diagnostics upload | `components/Voice/VoiceDebugPanel.tsx`, `features/voice/voiceDiagnostics.ts`, `backend/src/voice-diagnostics` | partial: the panel (Ctrl+Shift+D), classified join failures and Copy report are built (`ui/src/voice/debug.rs`); the upload isn't offered — `ReportJoinFailureDto.platform` has no native value |
+| Voice debug panel, join-failure diagnostics upload | `components/Voice/VoiceDebugPanel.tsx`, `features/voice/voiceDiagnostics.ts`, `backend/src/voice-diagnostics` | done: the panel (Ctrl+Shift+D), classified join failures, Copy report (`ui/src/voice/debug.rs`) and the upload (`Core::send_join_failure_report`, `POST /voice/diagnostics/join-failure` with `platform: native`, one a minute, redacted, best effort, dropped after a sign-out) |
 | Keep awake during a call | `hooks/useWakeLock.ts`, `electron/main.ts` power-save blocker | done (W4: logind inhibitor / `SetThreadExecutionState`, toggled by core) |
 
 ### Presence
@@ -139,10 +139,10 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Profile view and modal | `pages/ProfilePage.tsx`, `components/Profile/UserProfileModal.tsx` | done (`ui/src/profile`; the modal and `/profile/:id` in `root/account.rs`) |
 | Edit profile: display name, avatar, banner | `pages/ProfileEditPage.tsx`, `components/Profile/UserAvatarUpload.tsx`, `UserBannerUpload.tsx` | done (`ui/src/profile/edit.rs`; avatar and banner pick, replace and remove through `update_profile`) |
 | Settings: Notifications tab | `pages/SettingsPage.tsx` | done (`ui/src/settings/shell.rs` tab → the notifications section) |
-| Settings: Voice and video tab | `components/Settings/AudioVideoSettingsPanel.tsx`, `VoiceSettings.tsx` | partial: devices, mic test and meter, processing, mic quality, PTT key, camera list, share size/fps/audio (`ui/src/settings/voice.rs`); no voice isolation (no counterpart) and no camera test or preview |
+| Settings: Voice and video tab | `components/Settings/AudioVideoSettingsPanel.tsx`, `VoiceSettings.tsx` | done: devices, mic test and meter, processing, mic quality, PTT key, the camera test and its preview (`LiveKitEngine::start_camera_test`, `ui/src/settings/voice.rs`; preview frames through the same `VideoFrames` a call's own tile draws), share size/fps/audio; voice isolation has no counterpart (section 4) |
 | Settings: Appearance (theme, synced) | `hooks/useThemeSync.ts`, `backend/src/appearance-settings` | done (`ui/src/settings/appearance.rs`; the root draws core's appearance when it arrives, `root/account.rs`) |
 | Settings: Sessions (list, revoke, revoke others) | `components/Settings/SessionsSettings.tsx` | done (`ui/src/settings/sessions.rs`; `sessions`/`revoke_session`/`revoke_other_sessions`) |
-| Settings: Desktop app (close to tray, backend URL, the merged media switch) | `pages/SettingsPage.tsx` | done in the app (`SettingsStore` v4, `ui/src/settings/desktop.rs`); the switch reads "Load images from other sites (link previews, GIFs)" |
+| Settings: Desktop app (close to tray, backend URL, the merged media switch) | `pages/SettingsPage.tsx` | done in the app (`SettingsStore` v4, `ui/src/settings/desktop.rs`); the switch reads "Load images from other sites (link previews, GIFs)", and "Open semaphore:// links with this app" registers on start or takes this app's registration away, with the current owner shown |
 | Keyboard shortcuts (Alt+arrows, Esc marks read, Mod+/ sheet) | `hooks/useGlobalShortcuts.ts`, `components/Shortcuts/`, `docs-site/docs/keyboard-shortcuts.md` | done (`root/u9.rs` binds Alt+arrows, Alt+Shift+arrows, Ctrl+/ and Esc; `ui/src/shortcuts` sheet; edit-last is the composer's ArrowUp) |
 
 ### Community settings, roles, moderation, invites
@@ -226,21 +226,22 @@ PWA install prompt and settings (`components/PWA/`, `hooks/useInstallPrompt.ts`,
 | Communities and channels | 10 | 0 | 0 | 0 |
 | Messaging | 26 | 0 | 1 | 0 |
 | DMs, groups, friends | 5 | 0 | 0 | 0 |
-| Voice, video, replay | 21 | 2 | 0 | 0 |
+| Voice, video, replay | 22 | 1 | 0 | 0 |
 | Presence | 3 | 0 | 0 | 0 |
 | Notifications | 5 | 0 | 0 | 0 |
-| Profile and settings | 7 | 1 | 0 | 0 |
+| Profile and settings | 8 | 0 | 0 | 0 |
 | Community settings, roles, moderation | 14 | 0 | 0 | 0 |
 | Instance admin | 7 | 0 | 1 | 0 |
 | Electron-only | 13 | 0 | 0 | 0 |
-| **Total** | **120** | **3** | **2** | **0** |
+| **Total** | **122** | **1** | **2** | **0** |
 
 (n/a rows are left out: the first-run wizard, Web Push and auto-start at login, three rows.) These
 counts were taken on 2026-11-13 by re-reading every row against the code, after the UA/UG/UM/UV/
-US/UK/WA/WM/WU/WP/WT and W13 lanes; the four partials, the two unbuilt rows and the n/a decisions
+US/UK/WA/WM/WU/WP/WT and W13 lanes, and after the voice join-failure upload closed; the two
+partials, the two unbuilt rows and the n/a decisions
 are spelled out in `docs/parity-gaps.md`. The 2026-11-13 gaps work closed reset password, Home's
-invite card, the push-to-talk key and Check for Updates in the tray and menu, which is the four
-rows moved from partial to done here.
+invite card, the push-to-talk key, Check for Updates in the tray and menu, and the voice
+join-failure upload, which is the five rows moved from partial to done here.
 
 ### W9: the UI-free gaps (done 2026-11-12)
 
@@ -695,7 +696,7 @@ invite preview's `reason`). Another repin follows when the open backend PRs land
 | Telemetry | none found (backend `metrics` is server-side; voice diagnostics upload is a feature, W4) | none | n/a |
 | CI on main | `native-spike.yml` runs `verify.sh`, the core mobile checks and the Windows build/link on PRs touching `native/**` and on `main` | `native-package.yml` builds and verifies the Linux packages, the Windows portable zip and the Windows NSIS installer on PRs touching packaging and on dispatch; artifacts only, never a release. `native-e2e.yml` runs the default `slice-e2e.sh` suite nightly and on dispatch, uploading the run directories when it fails; PRs keep the faster gates | S |
 | Settings migration from Electron | `userData/settings.json` (`closeToTray`), window state file, safeStorage-encrypted refresh token, renderer `localStorage` (voice settings, volumes, device ids, server URL, drafts) | **Built** for what `settings.json` holds: on a first run only (no native `settings.json`), `closeToTray` becomes `close_to_tray`; Electron's file is only read. The token is encrypted and the server URL, volumes, devices and drafts are in Chromium's LevelDB, so they are not imported: the server URL stays unset until the first sign-in | S |
-| Coexistence with Electron | n/a | Both register `semaphore://`; whichever installed (or registered) last wins. Windows: the native installer writes the app's own `HKCU\Software\Classes\semaphore` values, and its uninstaller deletes the key only when it points at the native exe, so an Electron registration survives. Different app ids, so both install side by side; a shared "which app opens links" setting is still to decide | S |
+| Coexistence with Electron | n/a | **Built**: both apps register `semaphore://`, and the Desktop App tab's "Open semaphore:// links with this app" decides for this one, with the owner shown ("This app", "Another app", "Not registered", `links::status`). On: registered on every start, as before; off: never, and the registration is taken away when this app made it (Linux: the `mimeapps.list` default, the generated desktop entry and its icon; a package's entry and per-desktop lists are not ours to edit. Windows: `HKCU\Software\Classes\semaphore`, only when its command starts this exe). No install-time dialog. The native installer writes the app's own registry values, and its uninstaller deletes the key only when it points at the native exe, so an Electron registration survives; different app ids, so both install side by side | S |
 
 ## 4. Web-client paths the backend contract doesn't serve to a non-web client
 
@@ -764,7 +765,7 @@ Found while designing W4 (2026-11-11). None blocks W4; each has a workaround or 
 |---|---|---|
 | Put `TrackSource.UNKNOWN` (the soundboard's source) in `publishGrantFor`'s `canPublishSources` | Whenever the grant lists sources (no VIDEO or SCREEN_SHARE permission, server-muted, timed out), the `soundboard` track is refused. The web has the same failure | Shows the engine's refusal as the play's error |
 | A permission (and a rate limit) for playing soundboard sounds | `READ_SOUNDBOARD_SOUND` gates the list only; anyone who may publish can play, as often as they like | none (server gap) |
-| A native value in `ReportJoinFailureDto.platform` | `VOICE_CLIENT_PLATFORMS` is `web` and `electron` only | Join failures stay local, in the debug panel |
+| A native value in `ReportJoinFailureDto.platform` | `VOICE_CLIENT_PLATFORMS` is `web` and `electron` only | Closed 2026-11-13: the backend takes `native`, and the upload is built |
 | Decline, missed-call or cancel events for DM calls, and a REST leave for DM voice presence | `dmVoiceCallDeclined`/`dmVoiceCallEnded` and `POST /voice-presence/decline` exist since the 2026-11-12 repin; there are still no missed-call or cancel events, and DM presence leaves only by LiveKit's webhook or the 90 s TTL | Decline goes through the REST route (best-effort); a 1:1 caller's call ends on `dmVoiceCallDeclined`; ringing also stops when the call's presence empties |
 | Make the "first user" check in `handleWebhookDmParticipantJoined` atomic | `smembers` then a pipeline: two members joining at once can both emit `dmVoiceCallStarted` | A ring for a DM whose call we're in or joining is ignored |
 | A "remove from call" endpoint, and whether I outrank someone | The web's voice "remove" is a community kick; server mute needs outranking, which a client can't see | Kick behind a confirm; the menu offers mute by role and shows the server's 403 |

@@ -401,24 +401,63 @@ impl AppRoot {
 
 // ---- semaphore:// links: who opens them, and registering for them from the settings. ----
 
+/// What the "Open semaphore:// links with this app" setting asks for, given who owns the scheme
+/// now. Pure, so the whole table is a test: a start and the switch both go through it.
+///
+/// - On, and another app (or nothing) owns the scheme: register, as a start always did.
+/// - On, and it is already ours (or the installed package's): nothing to do.
+/// - Off, and it is ours: take the registration away.
+/// - Off otherwise: nothing — another app's or a package's registration isn't ours to remove.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkAction {
+    Nothing,
+    Register,
+    Unregister,
+}
+
+pub fn link_action(open_links: bool, current: semaphore_ui::settings::LinkHandler) -> LinkAction {
+    use semaphore_ui::settings::LinkHandler;
+    match (open_links, current) {
+        (true, LinkHandler::Registered | LinkHandler::PackageOwned) => LinkAction::Nothing,
+        (true, _) => LinkAction::Register,
+        (false, LinkHandler::Registered) => LinkAction::Unregister,
+        (false, _) => LinkAction::Nothing,
+    }
+}
+
 /// Who opens `semaphore://` links, and making it this app. Both touch the OS (files under the
 /// user's XDG directories, or the registry), so they run off the UI thread; the rig fakes them.
 pub trait LinkRegistrar: Send + Sync {
     fn status(&self) -> semaphore_ui::settings::LinkHandler;
     /// Registers this app for the links. `Err` says why not, in the user's words.
     fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String>;
-    /// Why registering is turned off here, if it is.
+    /// Takes this app's registration away, when it is this app's to take.
+    fn unregister(&self) -> Result<semaphore_ui::settings::LinkHandler, String>;
+    /// Why changing the registration is turned off here, if it is.
     fn blocked(&self) -> Option<String>;
     /// What registering would do that the user should know first.
     fn note(&self) -> Option<String>;
+    /// What a start does when the user never chose: a packaged build registers, as it always
+    /// has; a development build doesn't, so it can't take links from an installed app.
+    fn default_open_links(&self) -> bool;
+
+    /// Does what the setting asks for the current owner, then says who owns the scheme now.
+    fn apply(&self, open_links: bool) -> Result<semaphore_ui::settings::LinkHandler, String> {
+        let current = self.status();
+        match link_action(open_links, current) {
+            LinkAction::Nothing => Ok(current),
+            LinkAction::Register => self.register(),
+            LinkAction::Unregister => self.unregister(),
+        }
+    }
 }
 
 /// The OS's registration, for this executable (`links::RegisterTarget::from_env`).
 pub struct DesktopLinks {
     target: Option<semaphore_platform_desktop::links::RegisterTarget>,
-    /// Built with `SEMAPHORE_PACKAGED=1`: registers itself on every start.
+    /// Built with `SEMAPHORE_PACKAGED=1`: registers itself on every start unless told not to.
     packaged: bool,
-    /// `SEMAPHORE_REGISTER_SCHEME=0`: never register.
+    /// `SEMAPHORE_REGISTER_SCHEME=0`: never register or unregister.
     forbidden: bool,
 }
 
@@ -444,7 +483,8 @@ pub fn link_handler(
     match status {
         Ok(LinkStatus::Ours) => LinkHandler::Registered,
         Ok(LinkStatus::Packaged(_)) => LinkHandler::PackageOwned,
-        Ok(LinkStatus::NotOurs) => LinkHandler::NotRegistered,
+        Ok(LinkStatus::Another(_)) => LinkHandler::AnotherApp,
+        Ok(LinkStatus::NotRegistered) => LinkHandler::NotRegistered,
         Err(error) => {
             log::info!("who opens semaphore:// links: {error}");
             LinkHandler::Unknown
@@ -472,6 +512,18 @@ impl LinkRegistrar for DesktopLinks {
         Ok(self.status())
     }
 
+    fn unregister(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
+        if let Some(why) = self.blocked() {
+            return Err(why);
+        }
+        let target = self
+            .target
+            .as_ref()
+            .ok_or_else(|| "Couldn't find this program to unregister it.".to_owned())?;
+        semaphore_platform_desktop::links::unregister(target).map_err(|error| error.to_string())?;
+        Ok(self.status())
+    }
+
     fn blocked(&self) -> Option<String> {
         self.forbidden
             .then(|| "Turned off on this computer (SEMAPHORE_REGISTER_SCHEME=0).".to_owned())
@@ -483,6 +535,10 @@ impl LinkRegistrar for DesktopLinks {
              installed Semaphore app until it registers again."
                 .to_owned()
         })
+    }
+
+    fn default_open_links(&self) -> bool {
+        self.packaged
     }
 }
 
@@ -599,5 +655,97 @@ mod tests {
         assert!(!hides_on_close(false, true, true));
         assert!(!hides_on_close(true, false, true));
         assert!(!hides_on_close(true, true, false));
+    }
+
+    // ---- semaphore:// links: the setting's decision table, through the seam ----
+
+    mod links {
+        use super::super::{LinkAction, LinkRegistrar, link_action};
+        use semaphore_ui::settings::LinkHandler;
+        use std::sync::Mutex;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        #[test]
+        fn the_action_is_the_setting_and_who_owns_the_scheme_now() {
+            use LinkAction::{Nothing, Register, Unregister};
+            use LinkHandler::{AnotherApp, NotRegistered, PackageOwned, Registered, Unknown};
+            let cases = [
+                (true, Registered, Nothing),
+                (true, PackageOwned, Nothing),
+                (true, AnotherApp, Register),
+                (true, NotRegistered, Register),
+                (true, Unknown, Register),
+                (false, Registered, Unregister),
+                (false, PackageOwned, Nothing),
+                (false, AnotherApp, Nothing),
+                (false, NotRegistered, Nothing),
+                (false, Unknown, Nothing),
+            ];
+            for (open_links, current, expected) in cases {
+                assert_eq!(
+                    link_action(open_links, current),
+                    expected,
+                    "open_links={open_links}, owner={current:?}"
+                );
+            }
+        }
+
+        /// The rig's kind of fake: no registry, no mimeapps, just the calls.
+        #[derive(Default)]
+        struct FakeLinks {
+            registered: AtomicBool,
+            calls: Mutex<Vec<&'static str>>,
+        }
+
+        impl FakeLinks {
+            fn calls(&self) -> Vec<&'static str> {
+                self.calls.lock().unwrap().clone()
+            }
+        }
+
+        impl LinkRegistrar for FakeLinks {
+            fn status(&self) -> LinkHandler {
+                if self.registered.load(Ordering::Relaxed) {
+                    LinkHandler::Registered
+                } else {
+                    LinkHandler::NotRegistered
+                }
+            }
+            fn register(&self) -> Result<LinkHandler, String> {
+                self.calls.lock().unwrap().push("register");
+                self.registered.store(true, Ordering::Relaxed);
+                Ok(self.status())
+            }
+            fn unregister(&self) -> Result<LinkHandler, String> {
+                self.calls.lock().unwrap().push("unregister");
+                self.registered.store(false, Ordering::Relaxed);
+                Ok(self.status())
+            }
+            fn blocked(&self) -> Option<String> {
+                None
+            }
+            fn note(&self) -> Option<String> {
+                None
+            }
+            fn default_open_links(&self) -> bool {
+                false
+            }
+        }
+
+        #[test]
+        fn the_setting_registers_and_takes_the_registration_back_through_the_seam() {
+            let links = FakeLinks::default();
+            let owner = links.apply(true).unwrap();
+            assert_eq!(owner, LinkHandler::Registered);
+            assert_eq!(links.calls(), ["register"]);
+            // Already ours: turning it on again writes nothing.
+            assert_eq!(links.apply(true).unwrap(), LinkHandler::Registered);
+            assert_eq!(links.calls(), ["register"]);
+            assert_eq!(links.apply(false).unwrap(), LinkHandler::NotRegistered);
+            assert_eq!(links.calls(), ["register", "unregister"]);
+            // Nothing of ours to take away.
+            assert_eq!(links.apply(false).unwrap(), LinkHandler::NotRegistered);
+            assert_eq!(links.calls(), ["register", "unregister"]);
+        }
     }
 }

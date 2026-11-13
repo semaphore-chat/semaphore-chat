@@ -1,9 +1,9 @@
 //! The pure parts first (key capture, the theme mapping, device rows, session lines, the link
 //! status), then every tab and the shell in a window: the event each control sends.
 
-use super::desktop::link_status;
+use super::desktop::link_note;
 use super::voice::{device_rows, transmitting};
-use super::*;
+use super::{camera_test, *};
 use crate::dms::rig::{Rig, rig};
 use crate::theme::ThemeChoice;
 use core::prelude::v1::test;
@@ -177,6 +177,97 @@ fn the_gate_opens_above_the_threshold() {
     assert!(!transmitting(1.0, 100));
 }
 
+// ---- The camera test's states, the pure part. ----
+
+fn camera_state(name: &str) -> CameraTestState {
+    match name {
+        "idle" => CameraTestState::Idle,
+        "starting" => CameraTestState::Starting,
+        "running" => CameraTestState::Running,
+        "failed" => CameraTestState::Failed {
+            reason: "the camera is in use by another application".into(),
+        },
+        other => panic!("no state {other}"),
+    }
+}
+
+fn camera_event(name: &str) -> CameraTestEvent {
+    match name {
+        "start" => CameraTestEvent::Start,
+        "frame" => CameraTestEvent::Frame,
+        "stop" => CameraTestEvent::Stop,
+        "failed" => CameraTestEvent::Failed {
+            reason: "the camera is in use by another application".into(),
+        },
+        other => panic!("no event {other}"),
+    }
+}
+
+/// Every state against every event: Test starts, a frame only turns the spinner into a picture,
+/// Stop always empties it, and a refusal is shown only for a test that was started.
+#[test]
+fn the_camera_test_transitions_by_table() {
+    let table = [
+        ("idle", "start", "starting", "Test camera"),
+        ("idle", "frame", "idle", "a stray frame draws nothing"),
+        ("idle", "stop", "idle", "Stop with nothing running"),
+        (
+            "idle",
+            "failed",
+            "idle",
+            "a refusal after a stop isn't shown",
+        ),
+        (
+            "starting",
+            "start",
+            "starting",
+            "pressed again before a frame",
+        ),
+        ("starting", "frame", "running", "the first frame"),
+        ("starting", "stop", "idle", "cancelled while opening"),
+        ("starting", "failed", "failed", "the camera wouldn't open"),
+        (
+            "running",
+            "start",
+            "starting",
+            "a changed camera restarts it",
+        ),
+        ("running", "frame", "running", "every frame after the first"),
+        ("running", "stop", "idle", "Stopped"),
+        ("running", "failed", "failed", "the camera was unplugged"),
+        ("failed", "start", "starting", "Try again"),
+        (
+            "failed",
+            "frame",
+            "failed",
+            "a late frame doesn't revive it",
+        ),
+        ("failed", "stop", "idle", "dismissed"),
+        ("failed", "failed", "failed", "a second reason replaces it"),
+    ];
+    for (from, on, to, why) in table {
+        assert_eq!(
+            camera_test::next(&camera_state(from), &camera_event(on)),
+            camera_state(to),
+            "{from} + {on}: {why}"
+        );
+    }
+}
+
+#[test]
+fn the_camera_button_says_stop_only_while_a_test_is_in_flight() {
+    assert!(!CameraTestState::Idle.is_active());
+    assert!(CameraTestState::Starting.is_active());
+    assert!(CameraTestState::Running.is_active());
+    assert!(
+        !CameraTestState::Failed {
+            reason: "no camera".into()
+        }
+        .is_active(),
+        "a failed test can be retried"
+    );
+}
+
 // ---- Sessions, the pure parts. ----
 
 fn row(id: &str) -> SessionRow {
@@ -265,11 +356,23 @@ fn session_dates_are_written_in_the_users_zone() {
 }
 
 #[test]
-fn the_register_button_is_offered_only_when_links_need_it() {
-    assert!(!link_status(LinkHandler::Registered).1);
-    assert!(!link_status(LinkHandler::PackageOwned).1);
-    assert!(link_status(LinkHandler::NotRegistered).1);
-    assert!(link_status(LinkHandler::Unknown).1);
+fn each_link_owner_reads_as_the_settings_row_says_it() {
+    assert_eq!(LinkHandler::Registered.owner(), "This app");
+    assert_eq!(LinkHandler::PackageOwned.owner(), "This app");
+    assert_eq!(LinkHandler::AnotherApp.owner(), "Another app");
+    assert_eq!(LinkHandler::NotRegistered.owner(), "Not registered");
+    assert_eq!(LinkHandler::Unknown.owner(), "Couldn't tell");
+    // The line under the switch says something only when there is more to say than the owner.
+    assert_eq!(link_note(LinkHandler::Registered, true), None);
+    assert!(link_note(LinkHandler::PackageOwned, true).is_some());
+    assert!(
+        link_note(LinkHandler::AnotherApp, true)
+            .unwrap()
+            .contains("takes them back")
+    );
+    assert!(link_note(LinkHandler::AnotherApp, false).is_some());
+    assert!(link_note(LinkHandler::NotRegistered, true).is_some());
+    assert!(link_note(LinkHandler::Unknown, false).is_some());
 }
 
 // ---- Voice and video in a window. ----
@@ -294,7 +397,7 @@ where
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: Point::default(),
-            size: size(px(900.), px(2400.)),
+            size: size(px(900.), px(3000.)),
         })),
         ..Default::default()
     };
@@ -471,6 +574,132 @@ fn the_buttons_ask_the_owner(cx: &mut TestAppContext) {
             VoiceSettingsEvent::StopMicTest,
         ]
     );
+}
+
+/// The voice tab with a window's frames and the given devices, for the camera test's states.
+fn camera_voice(
+    cx: &mut TestAppContext,
+    devices: DeviceLists,
+) -> Rig<VoiceVideoSettings, VoiceSettingsEvent> {
+    tall_rig(cx, move |window, cx| {
+        let mut voice = VoiceVideoSettings::new(window, cx);
+        voice.set_devices(devices, window, cx);
+        voice.set_state(VoiceVideoState::default(), window, cx);
+        voice.set_frames(crate::voice::VideoFrames::for_window(window), cx);
+        voice
+    })
+}
+
+fn camera_test_state(
+    rig: &Rig<VoiceVideoSettings, VoiceSettingsEvent>,
+    cx: &mut TestAppContext,
+) -> CameraTestState {
+    rig.with(cx, |view, _, cx| view.read(cx).camera_test_state().clone())
+}
+
+#[gpui_kit::test]
+fn the_camera_test_shows_each_state(cx: &mut TestAppContext) {
+    let rig = camera_voice(cx, devices());
+    assert!(rig.has(cx, "voice-camera-test-idle"));
+    assert!(!rig.has(cx, "voice-camera-preview"));
+
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(
+        rig.events(),
+        [VoiceSettingsEvent::StartCameraTest],
+        "Test camera"
+    );
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Start, cx)
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-test-starting"), "opening");
+    assert!(!rig.has(cx, "voice-camera-test-idle"));
+
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Frame, cx)
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-preview"), "the picture");
+    assert!(!rig.has(cx, "voice-camera-test-starting"));
+    assert_eq!(camera_test_state(&rig, cx), CameraTestState::Running);
+
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(
+        rig.events().last(),
+        Some(&VoiceSettingsEvent::StopCameraTest),
+        "the button says Stop"
+    );
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Stop, cx)
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-test-idle"));
+    assert!(!rig.has(cx, "voice-camera-preview"), "the picture empties");
+}
+
+#[gpui_kit::test]
+fn a_camera_that_wont_open_shows_why_and_offers_a_retry(cx: &mut TestAppContext) {
+    let rig = camera_voice(cx, devices());
+    let reason = "the camera is in use by another application";
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Start, cx);
+            voice.camera_test_event(
+                CameraTestEvent::Failed {
+                    reason: reason.into(),
+                },
+                cx,
+            );
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-test-failed-block"), "the reason");
+    assert_eq!(
+        camera_test_state(&rig, cx),
+        CameraTestState::Failed {
+            reason: reason.into()
+        }
+    );
+    rig.click(cx, "voice-camera-test-failed");
+    assert_eq!(
+        rig.events(),
+        [VoiceSettingsEvent::StartCameraTest],
+        "Try again"
+    );
+}
+
+#[gpui_kit::test]
+fn no_camera_disables_the_test_and_says_so(cx: &mut TestAppContext) {
+    let rig = camera_voice(
+        cx,
+        DeviceLists {
+            state: LoadState::Ready,
+            inputs: vec![device("mic-a", "Mic A", true)],
+            outputs: vec![device("out-a", "Speakers", true)],
+            cameras: Vec::new(),
+        },
+    );
+    assert!(rig.has(cx, "voice-camera-test-no-camera"));
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(rig.events(), [], "a disabled button sends nothing");
+}
+
+#[gpui_kit::test]
+fn a_published_camera_blocks_the_test(cx: &mut TestAppContext) {
+    let rig = camera_voice(cx, devices());
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| voice.set_camera_published(true, cx))
+    });
+    assert!(rig.has(cx, "voice-camera-test-blocked"), "why it can't");
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(rig.events(), [], "a disabled button sends nothing");
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| voice.set_camera_published(false, cx))
+    });
+    assert!(rig.has(cx, "voice-camera-test-idle"));
 }
 
 #[gpui_kit::test]
@@ -698,29 +927,38 @@ fn failed_sessions_offer_a_retry(cx: &mut TestAppContext) {
 
 // ---- Desktop app in a window. ----
 
+fn desktop_state(links: LinkHandler, open_links: bool) -> DesktopAppState {
+    DesktopAppState {
+        close_to_tray: true,
+        open_links,
+        links,
+        link_preview_images: false,
+        server_url: "https://chat.example.org".into(),
+        server_name: None,
+        app_version: "0.9.0".into(),
+        server_version: None,
+        links_note: None,
+        links_blocked: None,
+        update_enabled: true,
+        log_folder: true,
+        ..DesktopAppState::default()
+    }
+}
+
 fn desktop(
     cx: &mut TestAppContext,
     links: LinkHandler,
 ) -> Rig<DesktopAppSettings, DesktopAppEvent> {
+    desktop_with(cx, desktop_state(links, true))
+}
+
+fn desktop_with(
+    cx: &mut TestAppContext,
+    state: DesktopAppState,
+) -> Rig<DesktopAppSettings, DesktopAppEvent> {
     rig(cx, 900., move |_, cx| {
         let mut settings = DesktopAppSettings::new(cx);
-        settings.set_state(
-            DesktopAppState {
-                close_to_tray: true,
-                links,
-                link_preview_images: false,
-                server_url: "https://chat.example.org".into(),
-                server_name: None,
-                app_version: "0.9.0".into(),
-                server_version: None,
-                links_note: None,
-                links_blocked: None,
-                update_enabled: true,
-                log_folder: true,
-                ..DesktopAppState::default()
-            },
-            cx,
-        );
+        settings.set_state(state, cx);
         settings
     })
 }
@@ -729,8 +967,8 @@ fn desktop(
 fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
     let rig = desktop(cx, LinkHandler::NotRegistered);
     rig.click(cx, "desktop-close-to-tray");
+    rig.click(cx, "desktop-open-links");
     rig.click(cx, "desktop-link-preview-images");
-    rig.click(cx, "desktop-register-links");
     rig.click(cx, "desktop-change-server");
     rig.click(cx, "desktop-check-updates");
     rig.click(cx, "desktop-open-logs");
@@ -738,8 +976,8 @@ fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
         rig.events(),
         [
             DesktopAppEvent::SetCloseToTray(false),
+            DesktopAppEvent::SetOpenLinks(false),
             DesktopAppEvent::SetLinkPreviewImages(true),
-            DesktopAppEvent::RegisterLinkHandler,
             DesktopAppEvent::ChangeServer,
             DesktopAppEvent::CheckForUpdates,
             DesktopAppEvent::OpenLogFolder,
@@ -748,12 +986,33 @@ fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_registered_handler_hides_the_button(cx: &mut TestAppContext) {
-    for links in [LinkHandler::Registered, LinkHandler::PackageOwned] {
-        let rig = desktop(cx, links);
-        assert!(rig.has(cx, "desktop-link-status"));
-        assert!(!rig.has(cx, "desktop-register-links"), "{links:?}");
+fn the_links_switch_shows_the_owner_for_each_state(cx: &mut TestAppContext) {
+    for (links, open_links, owner) in [
+        (LinkHandler::Registered, true, "This app"),
+        (LinkHandler::PackageOwned, true, "This app"),
+        (LinkHandler::AnotherApp, true, "Another app"),
+        (LinkHandler::NotRegistered, false, "Not registered"),
+        (LinkHandler::Unknown, false, "Couldn't tell"),
+    ] {
+        use gpui_kit::test::TestQueryExt as _;
+        let rig = desktop_with(cx, desktop_state(links, open_links));
+        assert!(rig.has(cx, "desktop-open-links"), "{links:?}");
+        assert!(rig.has(cx, "desktop-link-owner"), "{links:?}");
+        let label = format!("Opens semaphore:// links: {owner}");
+        let found = rig.with(cx, |_, window, _| {
+            !window.find_all_by_label(&label).is_empty()
+        });
+        assert!(found, "{links:?}: {label}");
     }
+}
+
+#[gpui_kit::test]
+fn a_blocked_machine_has_the_switch_off_and_clicking_it_does_nothing(cx: &mut TestAppContext) {
+    let mut state = desktop_state(LinkHandler::NotRegistered, false);
+    state.links_blocked = Some("Turned off on this computer".into());
+    let rig = desktop_with(cx, state);
+    rig.click(cx, "desktop-open-links");
+    assert!(rig.events().is_empty(), "{:?}", rig.events());
 }
 
 // ---- The shell. ----

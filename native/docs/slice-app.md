@@ -140,15 +140,17 @@ participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, 
   file dialog (the portal on Wayland, the common dialog on Windows); Save, and the new picture is on
   your messages and the rail.
 - [ ] The account menu's Settings: each tab. Voice & video: switch input mode, the processing
-  switches, mic quality, microphone, speakers and camera; join a call and check they took. The tab
-  says the mic test and the push-to-talk key aren't there yet; the voice bar's Push to Talk button
+  switches, mic quality, microphone, speakers and camera; join a call and check they took. Test the
+  microphone (the meter moves) and the camera (the preview shows you, as the web's does, and stops
+  when Settings closes or the call turns the camera on); the voice bar's Push to Talk button
   transmits.
 - [ ] Appearance: light, another accent, each intensity. The whole window follows at once (the
   message list and composer included), and the next start opens in it.
 - [ ] Sessions: sign in on the web too, then revoke that session here; "Sign out all other devices".
-- [ ] Desktop app: close to tray (the tray menu's check follows), "Make Semaphore open
-  semaphore:// links" (a development build says it takes them from an installed app;
-  `SEMAPHORE_REGISTER_SCHEME=0` disables it), link preview images on and off without a restart.
+- [ ] Desktop app: close to tray (the tray menu's check follows), "Open semaphore:// links with
+  this app" (the owner beside it follows: This app, Another app, Not registered; turning it off
+  takes the registration away when this app made it), link preview images on and off without a
+  restart. `SEMAPHORE_REGISTER_SCHEME=0` turns both changes off.
 - [ ] Sign out, then: Forgot password? (with a server that has password reset), Register here, an
   invite link (`xdg-open 'semaphore://join/CODE'`) that registers, and Sign in with browser: the
   browser opens the instance's page; approving there signs the app in.
@@ -170,13 +172,19 @@ bus, and the notifier on a private bus with a fake `org.freedesktop.Notification
 click with its activation token, closed cleanup, withdraw); everything below needs a real panel,
 compositor, notification daemon or Windows.
 
-A packaged build (built with `SEMAPHORE_PACKAGED=1`) registers `semaphore://` for itself on every
-start (Linux: a desktop entry and icon under `~/.local/share` and the default in
-`~/.config/mimeapps.list`; Windows: `HKCU\Software\Classes\semaphore`), unless a package installed
-`app.semaphorechat.semaphore.desktop`. A development build does not: until the native app replaces
-the Electron one it must not take links away from the installed app. To test links with a
+"Open semaphore:// links with this app" (Desktop App tab) is whether this app registers itself for
+`semaphore://` on every start (Linux: a desktop entry and icon under `~/.local/share` and the
+default in `~/.config/mimeapps.list`; Windows: `HKCU\Software\Classes\semaphore`), and turning it
+off takes the registration away when this app made it: on Linux the user's `mimeapps.list` default
+goes, then the generated desktop entry and its icon (a package's entry and per-desktop
+`$XDG_CURRENT_DESKTOP-mimeapps.list` files are not ours to edit); on Windows the registry key is deleted only when its
+command starts this exe. With the setting never touched it behaves as before: a packaged build
+(built with `SEMAPHORE_PACKAGED=1`) registers on every start, unless a package installed
+`app.semaphorechat.semaphore.desktop`, and a development build does not — until the native app
+replaces the Electron one it must not take links away from the installed app. To test links with a
 development build, start it with `SEMAPHORE_REGISTER_SCHEME=1`, and afterwards open the installed
-app once so it registers itself again. `SEMAPHORE_REGISTER_SCHEME=0` forbids it in any build.
+app once so it registers itself again. `SEMAPHORE_REGISTER_SCHEME=0` forbids both registering and
+unregistering in any build.
 
 | Where | What | How | Expected |
 |---|---|---|---|
@@ -206,8 +214,9 @@ native/scripts/slice-e2e.sh --voice                       # on the host: LiveKit
 
 `--voice` brings up `lk-stack.sh`'s LiveKit and a `lk room join --publish-demo` publisher, then runs
 `rigs/slice/scripts/voice.steps` twice: join, the publisher's video reaching a tile, the heartbeat,
-mute and deafen, the camera on (our own preview reaching our tile) and off, a camera that fails and
-is retried, a screen share through our picker (the engine's fake screens, the rig's list) shown on
+mute and deafen, the camera on (our own preview reaching our tile) and off, the settings page's
+camera test (its preview frames arriving, a changed camera restarting the capture, Stop releasing
+it), a camera that fails and is retried, a screen share through our picker (the engine's fake screens, the rig's list) shown on
 our own stage with its audio failing cleanly (no PipeWire in a container), a cancelled picker, the
 bar elsewhere, a moderator removing us with the camera on (the call ends here and on the server, and
 the camera goes off), a second call, and leaving. The second call waits for LiveKit to list the

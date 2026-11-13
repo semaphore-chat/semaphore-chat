@@ -81,8 +81,9 @@ pub(super) fn model(people: Vec<ParticipantView>) -> VoiceStageModel {
 }
 
 /// A camera's worth of test card: a hue per person and a brightness ramp, so stretching, colour and
-/// rounded corners can all be judged by eye.
-fn test_card(frames: &VideoFrames, sid: &str, seed: usize, width: u32, height: u32) {
+/// rounded corners can all be judged by eye. The settings page's camera test uses it too, as a
+/// stand-in for a live camera.
+pub(crate) fn test_card(frames: &VideoFrames, sid: &str, seed: usize, width: u32, height: u32) {
     let (w, h) = (width as usize, height as usize);
     let mut y = vec![0u8; w * h];
     for row in 0..h {

@@ -2,19 +2,21 @@
 //! states it can be in. `rigs/shot/scripts/w3-settings.steps` renders them all.
 
 use super::{
-    AppearanceSettings, DesktopAppSettings, DesktopAppState, DeviceLists, DeviceOption, InputMode,
-    LinkHandler, SessionsSettings, SettingsScreen, SettingsTab, VoiceLimits, VoiceVideoSettings,
-    VoiceVideoState,
+    AppearanceSettings, CameraTestEvent, CameraTestState, DesktopAppSettings, DesktopAppState,
+    DeviceLists, DeviceOption, InputMode, LinkHandler, SessionsSettings, SettingsScreen,
+    SettingsTab, VoiceLimits, VoiceVideoSettings, VoiceVideoState,
 };
 use crate::dms::stories::failed;
 use crate::kit::Severity;
 use crate::messages::fixture::NOW_MS;
 use crate::panel::PanelClock;
 use crate::stories::Story;
+use crate::voice::{VideoFrames, test_card};
 use gpui_kit::*;
 use semaphore_core::model::{
-    AccentColor, Appearance, AppearanceView, LoadState, NotificationSettings,
-    NotificationSettingsView, SessionRow, SessionsView, ThemeIntensity, ThemeMode,
+    AccentColor, Appearance, AppearanceView, CAMERA_TEST_TRACK_SID, LoadState,
+    NotificationSettings, NotificationSettingsView, SessionRow, SessionsView, ThemeIntensity,
+    ThemeMode,
 };
 
 const MIN: i64 = 60 * 1000;
@@ -81,6 +83,45 @@ fn voice_story(
         voice.set_devices(devices, window, cx);
         voice.set_state(state, window, cx);
         voice.set_mic_level(level, cx);
+        voice
+    })
+    .into()
+}
+
+/// The voice tab with the camera test in `state`; a running one paints the same test card a call's
+/// own camera tile shows, since nothing opens a real camera here.
+fn camera_story(
+    state: CameraTestState,
+    published: bool,
+    devices: DeviceLists,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
+    cx.new(|cx| {
+        let mut voice = VoiceVideoSettings::new(window, cx);
+        voice.set_devices(devices, window, cx);
+        voice.set_state(sample_voice(), window, cx);
+        let frames = VideoFrames::for_window(window);
+        voice.set_frames(frames.clone(), cx);
+        voice.set_camera_published(published, cx);
+        match &state {
+            CameraTestState::Idle => {}
+            CameraTestState::Starting => voice.camera_test_event(CameraTestEvent::Start, cx),
+            CameraTestState::Running => {
+                test_card(&frames, CAMERA_TEST_TRACK_SID, 4, 640, 360);
+                voice.camera_test_event(CameraTestEvent::Start, cx);
+                voice.camera_test_event(CameraTestEvent::Frame, cx);
+            }
+            CameraTestState::Failed { reason } => {
+                voice.camera_test_event(CameraTestEvent::Start, cx);
+                voice.camera_test_event(
+                    CameraTestEvent::Failed {
+                        reason: reason.clone(),
+                    },
+                    cx,
+                );
+            }
+        }
         voice
     })
     .into()
@@ -188,6 +229,7 @@ fn sessions_story(view: SessionsView, notice: Option<(Severity, String)>, cx: &m
 pub(crate) fn sample_desktop(links: LinkHandler) -> DesktopAppState {
     DesktopAppState {
         close_to_tray: true,
+        open_links: true,
         links,
         link_preview_images: false,
         server_url: "https://chat.example.org".into(),
@@ -345,6 +387,52 @@ pub fn stories() -> Vec<Story> {
             };
             voice_story(state, long_devices(), None, window, cx)
         }),
+        // The camera test's states; a running one draws a test card.
+        Story::new("settings-voice-camera-idle", |_, window, cx| {
+            camera_story(CameraTestState::Idle, false, sample_devices(), window, cx)
+        }),
+        Story::new("settings-voice-camera-starting", |_, window, cx| {
+            camera_story(
+                CameraTestState::Starting,
+                false,
+                sample_devices(),
+                window,
+                cx,
+            )
+        }),
+        Story::new("settings-voice-camera-running", |_, window, cx| {
+            camera_story(
+                CameraTestState::Running,
+                false,
+                sample_devices(),
+                window,
+                cx,
+            )
+        }),
+        Story::new("settings-voice-camera-failed", |_, window, cx| {
+            camera_story(
+                CameraTestState::Failed {
+                    reason: "the camera is in use by another application".into(),
+                },
+                false,
+                sample_devices(),
+                window,
+                cx,
+            )
+        }),
+        Story::new("settings-voice-camera-no-camera", |_, window, cx| {
+            let devices = DeviceLists {
+                state: LoadState::Ready,
+                inputs: sample_devices().inputs,
+                outputs: sample_devices().outputs,
+                cameras: Vec::new(),
+            };
+            camera_story(CameraTestState::Idle, false, devices, window, cx)
+        }),
+        // In a call that is sending the camera: the test can't hold it, and says why.
+        Story::new("settings-voice-camera-in-use", |_, window, cx| {
+            camera_story(CameraTestState::Idle, true, sample_devices(), window, cx)
+        }),
         // Appearance.
         Story::new("settings-appearance-dark", |_, _, cx| {
             appearance_story(
@@ -462,6 +550,18 @@ pub fn stories() -> Vec<Story> {
         }),
         Story::new("settings-desktop-not-registered", |_, _, cx| {
             desktop_story(sample_desktop(LinkHandler::NotRegistered), cx)
+        }),
+        Story::new("settings-desktop-links-another-app", |_, _, cx| {
+            desktop_story(sample_desktop(LinkHandler::AnotherApp), cx)
+        }),
+        Story::new("settings-desktop-links-off", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    open_links: false,
+                    ..sample_desktop(LinkHandler::NotRegistered)
+                },
+                cx,
+            )
         }),
         Story::new("settings-desktop-package-owned", |_, _, cx| {
             desktop_story(sample_desktop(LinkHandler::PackageOwned), cx)

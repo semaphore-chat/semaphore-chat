@@ -2,7 +2,8 @@
 # scenario (alexk). Nothing reaches the desktop: the rig answers file pickers, records the URLs
 # the app opens (and plays the browser for them), and fakes the link handler.
 
-app 1280 800
+# Tall enough for the desktop tab, whose "Open log folder" is last.
+app 1280 900
 window activate
 wait idle
 click auth-connect
@@ -126,9 +127,14 @@ wait core route settings/desktop
 wait core element desktop-links-note
 wait idle
 shot 11-settings-desktop
-click desktop-register-links
-wait core label "Semaphore opens semaphore:// links on this computer."
+# The switch (off in a development build, as it always was) registers this app and takes the
+# registration away again; the owner row follows each time.
+click desktop-open-links
+wait core label "Opens semaphore:// links: This app"
 expect link-registrations 1
+click desktop-open-links
+wait core label "Opens semaphore:// links: Not registered"
+expect link-unregistrations 1
 click desktop-link-preview-images
 expect settings /third_party_media true
 click desktop-link-preview-images

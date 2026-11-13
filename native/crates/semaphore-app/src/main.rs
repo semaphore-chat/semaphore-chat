@@ -55,35 +55,47 @@ fn usage() -> ExitCode {
     ExitCode::from(2)
 }
 
-/// Registers `semaphore://` for this executable, off the main thread: it writes a few small files
-/// (Linux) or registry values (Windows), and a failure only means links don't open the app.
+/// Makes this app the handler for `semaphore://`, or takes its registration away, as the Desktop
+/// App tab's "Open semaphore:// links with this app" asks. Off the main thread: it writes a few
+/// small files (Linux) or registry values (Windows), and a failure only means links don't open
+/// this app.
 ///
-/// Only a packaged build does this on its own (`SEMAPHORE_PACKAGED=1` in the build environment):
-/// until the native app replaces the Electron one, a development build run from a checkout must
-/// not take `semaphore://` links away from the installed app. `SEMAPHORE_REGISTER_SCHEME=1` asks
-/// for it at run time (to test links), and `=0` forbids it even in a packaged build.
-fn register_scheme() {
+/// With the setting never touched, today's behaviour by build: a packaged build
+/// (`SEMAPHORE_PACKAGED=1` in the build environment) registers, and a development build doesn't,
+/// so a checkout can't take `semaphore://` links away from the installed app.
+/// `SEMAPHORE_REGISTER_SCHEME=1` asks for it at run time (to test links), and `=0` forbids any
+/// change, whatever the setting says.
+fn register_scheme(data_dir: &std::path::Path) {
     let asked = std::env::var("SEMAPHORE_REGISTER_SCHEME").ok();
-    let register = match asked.as_deref() {
-        Some("1") => true,
-        Some("0") => false,
-        _ => option_env!("SEMAPHORE_PACKAGED") == Some("1"),
-    };
-    if !register {
+    if asked.as_deref() == Some("0") {
         return;
     }
+    let settings = semaphore_app::settings::SettingsStore::load(data_dir);
+    let open_links = match asked.as_deref() {
+        Some("1") => true,
+        _ => settings
+            .get()
+            .open_links
+            .unwrap_or_else(|| option_env!("SEMAPHORE_PACKAGED") == Some("1")),
+    };
     let _ = std::thread::Builder::new()
         .name("register-scheme".into())
-        .spawn(|| {
-            let Some(target) = links::RegisterTarget::from_env() else {
-                return;
-            };
-            match links::register(&target) {
-                Ok(links::Registered::Ours) => {}
-                Ok(links::Registered::Packaged(entry)) => {
-                    log::info!("semaphore:// is registered by {}", entry.display());
+        .spawn(move || {
+            // The same table the settings switch goes through, so a start and a click agree.
+            use semaphore_app::desktop::{DesktopLinks, LinkAction, LinkRegistrar as _};
+            let links = DesktopLinks::from_env();
+            match semaphore_app::desktop::link_action(open_links, links.status()) {
+                LinkAction::Nothing => {}
+                LinkAction::Register => {
+                    if let Err(error) = links.register() {
+                        log::warn!("registering semaphore:// links: {error}");
+                    }
                 }
-                Err(error) => log::warn!("{error}"),
+                LinkAction::Unregister => {
+                    if let Err(error) = links.unregister() {
+                        log::warn!("unregistering semaphore:// links: {error}");
+                    }
+                }
             }
         });
 }
@@ -181,7 +193,7 @@ fn main() -> ExitCode {
             None
         }
     };
-    register_scheme();
+    register_scheme(&data_dir);
 
     // The answering primary: released explicitly once the event loop has ended (after shutdown),
     // which is the moment an updated build waiting on the lock takes over.

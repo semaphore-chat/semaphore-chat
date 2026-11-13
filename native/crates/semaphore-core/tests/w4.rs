@@ -6,12 +6,14 @@ mod common;
 
 use common::w4::{clip_json, sound_json};
 use common::*;
+use semaphore_core::backend::BackendError;
 use semaphore_core::model::{
     AttachmentKind, CaptureRequest, ClipDestination, JoinFailureClass, LoadState, LocalMediaView,
     LocalShare, RING_MS, ReplayMinutes, ReplayState, ReplayTrim, ScreenShareRequest, ShareTracks,
     SoundCue, VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
 };
 use semaphore_core::platform::{CoreError, CoreEvent};
+use semaphore_wire::enums::{ErrorCode, VoiceClientPlatform, VoiceJoinErrorClass};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -1420,6 +1422,187 @@ fn the_unknown_join_failure_class_round_trips_as_the_backend_spells_it() {
     use semaphore_wire::enums::VoiceJoinErrorClass;
     let unknown: VoiceJoinErrorClass = serde_json::from_value(json!("unknown")).unwrap();
     assert_eq!(serde_json::to_value(&unknown).unwrap(), json!("unknown"));
+}
+
+// --- Join-failure reports (the upload the web's `reportJoinFailure` makes) ---
+
+fn reports(rig: &Rig) -> Vec<semaphore_wire::types::ReportJoinFailureDto> {
+    rig.backend.join_failure_reports.lock().unwrap().clone()
+}
+
+#[tokio::test]
+async fn a_failed_join_is_reported_once_with_its_class_and_platform_native() {
+    let mut rig = signed_in().await;
+    rig.core.set_app_version("0.9.0".into());
+    rig.backend
+        .w4
+        .fail_next("dm_token", refusal(403, "FORBIDDEN"));
+    assert!(rig.core.join_dm_call(DM.into()).await.is_err());
+    rig.settle().await;
+    let sent = reports(&rig);
+    assert_eq!(sent.len(), 1);
+    let report = &sent[0];
+    assert_eq!(report.platform, VoiceClientPlatform::Native);
+    assert_eq!(report.error_class, VoiceJoinErrorClass::Permission);
+    assert_eq!(
+        report.message.as_str(),
+        "FORBIDDEN (403): refused: FORBIDDEN"
+    );
+    assert_eq!(report.duration_ms, 0);
+    assert!(report.is_dm);
+    assert_eq!(report.channel_id, None, "a DM group id is never sent");
+    assert_eq!(report.app_version.as_str(), "0.9.0");
+    assert_eq!(
+        report.os.as_ref().map(|os| os.as_str()),
+        Some(std::env::consts::OS)
+    );
+    assert!(report.candidate_types.is_empty());
+}
+
+#[tokio::test]
+async fn a_channel_failure_reports_the_channel_and_no_media_address() {
+    let mut rig = signed_in().await;
+    *rig.media.connect_fails.lock().unwrap() = true;
+    assert!(rig.core.join_voice(VOICE.into()).await.is_err());
+    rig.settle().await;
+    let sent = reports(&rig);
+    assert_eq!(sent.len(), 1);
+    let report = &sent[0];
+    assert_eq!(report.error_class, VoiceJoinErrorClass::MediaUnreachable);
+    assert_eq!(
+        report.channel_id.as_ref().map(|id| id.as_str()),
+        Some(VOICE)
+    );
+    assert!(!report.is_dm);
+    let body = serde_json::to_string(report).unwrap();
+    assert!(!body.contains("livekit"), "{body}");
+}
+
+#[tokio::test]
+async fn a_join_that_succeeds_is_not_reported() {
+    let rig = in_channel_call(&[ME]).await;
+    assert_eq!(rig.core.voice().status, VoiceStatus::Connected);
+    assert!(reports(&rig).is_empty());
+}
+
+#[tokio::test]
+async fn a_superseded_join_and_a_cancelled_one_are_not_reported() {
+    // Replaced while it ran: the web records the attempt but reports nothing, because only a
+    // `failed` attempt is reported and a superseded one never becomes the failure shown.
+    let mut rig = signed_in().await;
+    let hold = rig.backend.w4.hold("dm_token");
+    rig.backend
+        .w4
+        .fail_next("dm_token", refusal(403, "FORBIDDEN"));
+    let core = rig.core.clone();
+    let dm = tokio::spawn(async move { core.join_dm_call(DM.into()).await });
+    yields().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    hold.send(()).unwrap();
+    assert!(dm.await.unwrap().is_err());
+    rig.settle().await;
+    assert!(reports(&rig).is_empty(), "{:?}", reports(&rig));
+    // A join the user leaves while it connects is the web's `cancelled` attempt: no report either.
+    let mut rig = signed_in().await;
+    *rig.media.leave_during_connect.lock().unwrap() = true;
+    rig.core.join_voice(VOICE.into()).await.unwrap_err();
+    rig.settle().await;
+    assert!(reports(&rig).is_empty());
+}
+
+#[tokio::test]
+async fn a_sign_out_while_the_report_is_out_drops_the_answer() {
+    let mut rig = signed_in().await;
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *rig.backend.join_failure_gate.lock().unwrap() = Some(gate);
+    *rig.media.connect_fails.lock().unwrap() = true;
+    rig.core.join_voice(VOICE.into()).await.unwrap_err();
+    let core = rig.core.clone();
+    let driver = tokio::spawn(async move { core.run_until_idle().await });
+    yields().await;
+    rig.core.sign_out().await.unwrap();
+    release.send(()).unwrap();
+    driver.await.unwrap();
+    rig.settle().await;
+    assert_eq!(reports(&rig).len(), 1, "it was already on its way");
+    let diagnostics = rig.core.voice_diagnostics();
+    assert_eq!(diagnostics.last_failure, None, "the session took it away");
+    assert!(diagnostics.events.is_empty());
+}
+
+#[tokio::test]
+async fn a_sign_out_before_the_report_is_queued_sends_nothing() {
+    let mut rig = signed_in().await;
+    *rig.media.connect_fails.lock().unwrap() = true;
+    rig.core.join_voice(VOICE.into()).await.unwrap_err();
+    // The report is queued, not sent: the sign-out drops it with the session.
+    rig.core.sign_out().await.unwrap();
+    rig.settle().await;
+    assert!(reports(&rig).is_empty());
+}
+
+#[tokio::test]
+async fn a_refused_report_changes_nothing_the_user_sees() {
+    let mut rig = signed_in().await;
+    *rig.backend.join_failure_error.lock().unwrap() = Some(refusal(500, "INTERNAL"));
+    *rig.media.connect_fails.lock().unwrap() = true;
+    let error = rig.core.join_voice(VOICE.into()).await.unwrap_err();
+    assert!(matches!(error, CoreError::Failed { .. }));
+    let events = rig.settle().await;
+    assert_eq!(reports(&rig).len(), 1, "the attempt was made");
+    assert_eq!(
+        rig.core.voice_diagnostics().last_failure.unwrap().class,
+        JoinFailureClass::MediaUnreachable
+    );
+    assert!(rig.core.voice().error.is_none());
+    assert!(
+        !events
+            .iter()
+            .any(|event| format!("{event:?}").contains("report")),
+        "{events:?}"
+    );
+}
+
+#[tokio::test]
+async fn reports_are_limited_to_one_a_minute_as_the_web_limits_them() {
+    let mut rig = signed_in().await;
+    *rig.media.connect_fails.lock().unwrap() = true;
+    for _ in 0..3 {
+        rig.core.join_voice(VOICE.into()).await.unwrap_err();
+        rig.settle().await;
+        rig.clock.advance(1_000);
+    }
+    assert_eq!(reports(&rig).len(), 1, "a rejoin storm sends one");
+    rig.clock.advance(60_000);
+    rig.core.join_voice(VOICE.into()).await.unwrap_err();
+    rig.settle().await;
+    assert_eq!(reports(&rig).len(), 2);
+}
+
+#[tokio::test]
+async fn a_report_carries_no_token_a_url_query_or_the_servers_address() {
+    let mut rig = signed_in().await;
+    rig.backend.w4.fail_next(
+        "dm_token",
+        BackendError {
+            status: 403,
+            code: ErrorCode::Forbidden,
+            message: "GET https://livekit.example.org/rtc?access_token=at-secret failed".into(),
+            retryable: false,
+            retry_after_ms: None,
+        },
+    );
+    assert!(rig.core.join_dm_call(DM.into()).await.is_err());
+    rig.settle().await;
+    let sent = reports(&rig);
+    assert_eq!(sent.len(), 1);
+    assert_eq!(
+        sent[0].message.as_str(),
+        "FORBIDDEN (403): GET https://livekit.example.org/rtc?<redacted> failed"
+    );
+    let body = serde_json::to_string(&sent[0]).unwrap();
+    assert!(!body.contains("at-secret"), "{body}");
+    assert!(!body.contains(DM), "{body}");
 }
 
 // --- Trims from the buffer's start, download only, clip types ---

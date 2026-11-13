@@ -45,6 +45,8 @@
 //! forget sounds                       # what the speaker heard so far no longer counts
 //! window activate                     # the window comes to the front, as a user's click would:
 //!                                     # the pane marks what it shows read only then
+//! scroll ID DX DY                     # a wheel event over that element, in pixels; positive Y
+//!                                     # scrolls up, negative down (long settings tabs)
 //! core revoke-other-sessions          # W3: Core::revoke_other_sessions; fails if refused
 //! pick-file rigs/slice/fixtures/a.png   # the next file picker answers with this file
 //! browser approve                     # plays the browser for the last desktop-login URL opened:
@@ -52,6 +54,7 @@
 //! expect opened-url "desktop-login"   # the last URL the app opened contains this
 //! expect settings /voice/mic_quality "music"   # settings.json at that JSON pointer (JSON value)
 //! expect link-registrations 1         # the fake link handler was asked to register this often
+//! expect link-unregistrations 1       # and to take the registration away this often
 //! ```
 //!
 //! W3-player-wire (built with `--features player`): `player toggle NAME` plays or pauses the
@@ -69,7 +72,9 @@
 //! `ring looping|stopped` (the ring's sound), `cue NAME N` (core asked for the cue at least N
 //! times: joined, left, connected, disconnected, ring-start, ring-stop, call-ended), `voice room
 //! none|dm ID|channel ID`, `voice server-muted yes|no`, `keep-awake on|off` (the rig's inhibitor),
-//! `mic-test running|stopped`, `mic-level heard`, `engine vad N`, `soundboard playing ID|none`,
+//! `mic-test running|stopped`, `mic-level heard`, `camera-test running|stopped`, and its
+//! `frames N`, `device ID|default` and `released` (no test runs and every fake camera closed),
+//! `engine vad N`, `soundboard playing ID|none`,
 //! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `livekit participant ROOM
 //! IDENTITY present|gone` (LiveKit's server lists them in the room at all), `float shown|hidden`, `saved NAME` (a download reached the
 //! run's `saved/NAME`). `save-as NAME` answers the next save dialog with `saved/NAME`. The step
@@ -413,6 +418,14 @@ enum W4 {
     /// `mic-test running|stopped`, and `mic-level heard`: the test's meter is above silence.
     MicTest(bool),
     MicLevelHeard,
+    /// `camera-test running|stopped`: the settings page's camera test.
+    CameraTest(bool),
+    /// `camera-test frames N`: its preview has drawn at least N frames.
+    CameraTestFrames(usize),
+    /// `camera-test device ID|default`: the camera it opened.
+    CameraTestDevice(Option<String>),
+    /// `camera-test released`: no test runs and every fake camera the rig started has closed.
+    CameraTestReleased,
     /// `engine vad N`: the voice-activity threshold the app gave the engine.
     EngineVad(u8),
     /// `engine share-volume IDENTITY N`: the gain the engine holds for that participant's screen
@@ -574,6 +587,12 @@ enum Step {
     /// W5: `click-label LABEL`: clicks the element whose accessible label is exactly this (for
     /// rows whose ids carry a server-made id, like a new sound's preview button).
     ClickLabel(String),
+    /// `scroll ID DX DY`: a wheel event over that element, in pixels; positive Y scrolls up.
+    Scroll {
+        id: String,
+        dx: f32,
+        dy: f32,
+    },
     ForgetSounds,
     ActivateWindow,
     VideoFailNext {
@@ -593,6 +612,8 @@ enum Step {
         value: String,
     },
     ExpectLinkRegistrations(usize),
+    /// `expect link-unregistrations 1`: the fake link handler was asked to unregister this often.
+    ExpectLinkUnregistrations(usize),
     /// W4: `mic tone on|off`.
     MicTone(bool),
     /// W4: `voice share-volume IDENTITY N`: sets that participant's screen-share volume through
@@ -751,6 +772,13 @@ fn condition(words: &[&str]) -> Result<Condition> {
             Condition::W4(W4::MicTest(*state == "running"))
         }
         ["mic-level", "heard"] => Condition::W4(W4::MicLevelHeard),
+        ["camera-test", state @ ("running" | "stopped")] => {
+            Condition::W4(W4::CameraTest(*state == "running"))
+        }
+        ["camera-test", "frames", count] => Condition::W4(W4::CameraTestFrames(number(count)?)),
+        ["camera-test", "device", "default"] => Condition::W4(W4::CameraTestDevice(None)),
+        ["camera-test", "device", id] => Condition::W4(W4::CameraTestDevice(Some((*id).into()))),
+        ["camera-test", "released"] => Condition::W4(W4::CameraTestReleased),
         ["engine", "vad", threshold] => Condition::W4(W4::EngineVad(
             threshold
                 .parse()
@@ -888,6 +916,11 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["link", url] => Step::Link((*url).into()),
             ["navigate", path] => Step::Navigate(message_ids(path)),
             ["click-label", label] => Step::ClickLabel((*label).into()),
+            ["scroll", id, dx, dy] => Step::Scroll {
+                id: (*id).into(),
+                dx: dx.parse().map_err(|_| at(anyhow!("dx")))?,
+                dy: dy.parse().map_err(|_| at(anyhow!("dy")))?,
+            },
             ["forget", "sounds"] => Step::ForgetSounds,
             ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
             ["voice", "share-volume", identity, percent] => Step::VoiceShareVolume {
@@ -908,6 +941,9 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             },
             ["expect", "link-registrations", count] => {
                 Step::ExpectLinkRegistrations(count.parse().map_err(|_| at(anyhow!("count")))?)
+            }
+            ["expect", "link-unregistrations", count] => {
+                Step::ExpectLinkUnregistrations(count.parse().map_err(|_| at(anyhow!("count")))?)
             }
             ["window", "activate"] => Step::ActivateWindow,
             ["click-text", text, needle] => Step::ClickText {
@@ -1116,12 +1152,14 @@ struct Rig {
 /// The link handler in the rig: not registered until asked, then registered. Touches nothing.
 #[derive(Default)]
 struct RigLinks {
-    registered: std::sync::atomic::AtomicUsize,
+    registrations: std::sync::atomic::AtomicUsize,
+    unregistrations: std::sync::atomic::AtomicUsize,
+    owner: std::sync::atomic::AtomicBool,
 }
 
 impl semaphore_app::desktop::LinkRegistrar for RigLinks {
     fn status(&self) -> semaphore_ui::settings::LinkHandler {
-        if self.registered.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+        if self.owner.load(std::sync::atomic::Ordering::Relaxed) {
             semaphore_ui::settings::LinkHandler::Registered
         } else {
             semaphore_ui::settings::LinkHandler::NotRegistered
@@ -1129,8 +1167,17 @@ impl semaphore_app::desktop::LinkRegistrar for RigLinks {
     }
 
     fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
-        self.registered
+        self.registrations
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.owner.store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(self.status())
+    }
+
+    fn unregister(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
+        self.unregistrations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.owner
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(self.status())
     }
 
@@ -1140,6 +1187,10 @@ impl semaphore_app::desktop::LinkRegistrar for RigLinks {
 
     fn note(&self) -> Option<String> {
         Some("This is a development build: registering takes semaphore:// links away from an installed Semaphore app until it registers again.".into())
+    }
+
+    fn default_open_links(&self) -> bool {
+        false
     }
 }
 
@@ -1523,6 +1574,14 @@ impl Rig {
             return Ok(found == *shown);
         }
         let app = self.app()?.clone();
+        // Every fake camera the rig started has let go, for `camera-test released`.
+        let cameras_stopped = self
+            .video
+            .cameras
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|camera| camera.stopped());
         self.driver.cx.update(|cx| {
             let root = app.read(cx);
             let Some(core) = root.core() else {
@@ -1549,6 +1608,12 @@ impl Rig {
                 W4::ServerMuted(yes) => core.voice().server_muted == *yes,
                 W4::MicTest(running) => root.mic_test_level().is_some() == *running,
                 W4::MicLevelHeard => root.mic_test_level().is_some_and(|level| level > 0.),
+                W4::CameraTest(running) => root.camera_test_frames().is_some() == *running,
+                W4::CameraTestFrames(count) => root
+                    .camera_test_frames()
+                    .is_some_and(|frames| frames >= *count as u64),
+                W4::CameraTestDevice(device) => root.camera_test_device() == *device,
+                W4::CameraTestReleased => root.camera_test_frames().is_none() && cameras_stopped,
                 W4::EngineVad(threshold) => root.app_voice().is_some_and(|voice| {
                     voice.vad_applied.load(std::sync::atomic::Ordering::Relaxed) == *threshold
                 }),
@@ -2686,6 +2751,13 @@ impl Rig {
                         .ok_or_else(|| anyhow!("nothing is labelled {label:?}"))?;
                     self.driver.update(|window, cx| window.click(id, cx))
                 }
+                Step::Scroll { id, dx, dy } => {
+                    self.driver.settle()?;
+                    let target = ElementId::Name(id.clone().into());
+                    let delta = ScrollDelta::Pixels(point(px(*dx), px(*dy)));
+                    self.driver
+                        .update(|window, cx| window.scroll(target, delta, cx))
+                }
                 Step::ActivateWindow => self
                     .driver
                     .update(|window, _| window.activate_window())
@@ -2725,12 +2797,23 @@ impl Rig {
                 Step::ExpectLinkRegistrations(count) => {
                     let done = self
                         .links
-                        .registered
+                        .registrations
                         .load(std::sync::atomic::Ordering::Relaxed);
                     if done == *count {
                         Ok(())
                     } else {
                         Err(anyhow!("{done} link registrations, not {count}"))
+                    }
+                }
+                Step::ExpectLinkUnregistrations(count) => {
+                    let done = self
+                        .links
+                        .unregistrations
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    if done == *count {
+                        Ok(())
+                    } else {
+                        Err(anyhow!("{done} link unregistrations, not {count}"))
                     }
                 }
                 Step::ForgetSounds => {

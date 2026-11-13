@@ -1176,7 +1176,7 @@ pub(crate) fn parse_join_failure(body: &Value) -> Result<Value, String> {
         "unknown",
     ];
     const CANDIDATES: &[&str] = &["host", "srflx", "prflx", "relay"];
-    const PLATFORMS: &[&str] = &["web", "electron"];
+    const PLATFORMS: &[&str] = &["web", "electron", "native"];
     let one_of = |name: &str, allowed: &[&str]| -> Result<String, String> {
         body.get(name)
             .and_then(Value::as_str)

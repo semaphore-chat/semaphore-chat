@@ -68,13 +68,15 @@ opens it at Voice & video, replacing today's dialog in `semaphore-app/src/root.r
   spinner; "Sign out all other devices" confirms first and shows busy from `revoking_others`; hidden
   when only the current session exists.
 - **`DesktopAppSettings`**. In: `set_state(DesktopAppState)` with `DesktopAppState { close_to_tray:
-  bool, links: LinkHandler { Registered, PackageOwned, NotRegistered, Unknown }, link_preview_images:
-  bool, server_url: String, server_name: Option<String>, app_version: String, server_version:
-  Option<String> }`. Events `DesktopAppEvent::{ SetCloseToTray(bool), RegisterLinkHandler,
-  SetLinkPreviewImages(bool), ChangeServer }`. Link handling is a status line plus a "Make
-  Semaphore open semaphore:// links" button (hidden for `PackageOwned`/`Registered`). The link
-  preview images switch (off by default) has a line saying the images load from third-party sites.
-  No start-up behaviour.
+  bool, open_links: bool, links: LinkHandler { Registered, PackageOwned, AnotherApp, NotRegistered,
+  Unknown }, link_preview_images: bool, server_url: String, server_name: Option<String>,
+  app_version: String, server_version: Option<String> }`. Events `DesktopAppEvent::{
+  SetCloseToTray(bool), SetOpenLinks(bool), SetLinkPreviewImages(bool), ChangeServer }`. Link
+  handling is "Open semaphore:// links with this app" (on: registered on every start; off: never,
+  and this app's registration is removed), with the owner shown beside it ("This app", "Another
+  app", "Not registered") and a line saying what the state means. The link preview images switch
+  (off by default) has a line saying the images load from third-party sites. No start-up
+  behaviour.
 
 ## State ownership (what the UI needs from each)
 

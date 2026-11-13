@@ -37,14 +37,16 @@ use semaphore_ui::profile::{
     ProfilePage,
 };
 use semaphore_ui::settings::{
-    AppearanceEvent, AppearanceSettings, DesktopAppEvent, DesktopAppSettings, DesktopAppState,
-    DeviceLists, DeviceOption, LinkHandler, Processing, SessionsEvent, SessionsSettings,
-    SettingsScreen, SettingsShellEvent, SettingsTab, ShareQuality, VoiceLimits, VoiceSettingsEvent,
-    VoiceVideoSettings, VoiceVideoState,
+    AppearanceEvent, AppearanceSettings, CameraTestEvent, DesktopAppEvent, DesktopAppSettings,
+    DesktopAppState, DeviceLists, DeviceOption, LinkHandler, Processing, SessionsEvent,
+    SessionsSettings, SettingsScreen, SettingsShellEvent, SettingsTab, ShareQuality, VoiceLimits,
+    VoiceSettingsEvent, VoiceVideoSettings, VoiceVideoState,
 };
 
 /// How often the mic test's meter is fed while a test runs.
 const MIC_TEST_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+/// How often the camera test looks for preview frames while a test runs.
+const CAMERA_TEST_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// A desktop app signed in to this account: where from, and when.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +72,9 @@ pub(super) struct Account {
     /// W4: the settings page's mic test while it runs, and the task feeding its meter. Dropping it
     /// closes the mic.
     mic_test: Option<(semaphore_media_livekit::InputTest, Task<()>)>,
+    /// W15: the settings page's camera test while it runs, and the task feeding its preview.
+    /// Dropping it closes the camera.
+    camera_test: Option<(semaphore_media_livekit::CameraTest, Task<()>)>,
     subscriptions: Vec<Subscription>,
 }
 
@@ -112,6 +117,10 @@ impl AppRoot {
         };
         // W2's notification settings section, now the settings page's first tab.
         self.adopt_notification_settings(notifications, window, cx);
+        // The voice tab's camera test draws on this window's frames, made before sign-in.
+        if let Some(frames) = self.frames.clone() {
+            self.attach_voice_frames(frames, cx);
+        }
         self.refresh_voice_tab(window, cx);
         self.refresh_appearance(cx);
         self.refresh_desktop_tab(cx);
@@ -164,7 +173,7 @@ impl AppRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // The mic test is the voice tab's: leaving it closes the mic.
+        // The mic test is the voice tab's: leaving it closes the mic. So is the camera test.
         if !matches!(
             route,
             Route::Settings {
@@ -172,6 +181,7 @@ impl AppRoot {
             }
         ) {
             self.stop_mic_test(cx);
+            self.stop_camera_test(cx);
         }
         match route {
             Route::Settings { tab } => {
@@ -529,7 +539,7 @@ impl AppRoot {
         }
     }
 
-    fn voice_tab(&self, cx: &App) -> Option<Entity<VoiceVideoSettings>> {
+    pub(super) fn voice_tab(&self, cx: &App) -> Option<Entity<VoiceVideoSettings>> {
         self.account
             .settings
             .as_ref()
@@ -586,6 +596,7 @@ impl AppRoot {
         match event {
             VoiceSettingsEvent::Changed(state) => {
                 let state = state.clone();
+                let camera_before = self.settings.get().voice.camera_device.clone();
                 self.update_settings(|settings| apply_voice_state(&mut settings.voice, &state));
                 if let Some(voice) = &self.voice {
                     voice.apply_settings(&self.settings.get().voice);
@@ -597,6 +608,12 @@ impl AppRoot {
                 // Push to talk's key and mode changed: the bar follows now, and a key held under
                 // the old setting is released (`refresh_stage`).
                 self.refresh_stage(cx);
+                // A camera test follows the selection: the new camera opens without a press.
+                if self.settings.get().voice.camera_device != camera_before
+                    && self.account.camera_test.is_some()
+                {
+                    self.start_camera_test(cx);
+                }
             }
             VoiceSettingsEvent::PlayTestSound => {
                 self.play_test_sound();
@@ -604,6 +621,8 @@ impl AppRoot {
             VoiceSettingsEvent::RefreshDevices => self.refresh_voice_tab(window, cx),
             VoiceSettingsEvent::StartMicTest => self.start_mic_test(cx),
             VoiceSettingsEvent::StopMicTest => self.stop_mic_test(cx),
+            VoiceSettingsEvent::StartCameraTest => self.start_camera_test(cx),
+            VoiceSettingsEvent::StopCameraTest => self.stop_camera_test(cx),
         }
     }
 
@@ -670,6 +689,125 @@ impl AppRoot {
             .as_ref()
             .filter(|(test, _)| test.is_running())
             .map(|(test, _)| test.level())
+    }
+
+    // ---- The camera test. ----
+
+    /// W15: the camera test: the selected camera's picture in the tab's preview, nothing sent.
+    /// The engine opens it and hands frames to this window's `VideoFrames`; the loop here tells the
+    /// tab when the first one arrives and why a capture ends.
+    fn start_camera_test(&mut self, cx: &mut Context<Self>) {
+        let Some(voice) = self.voice.clone() else {
+            return;
+        };
+        // "Try again", or a changed camera while one runs: the old capture lets the camera go first.
+        self.stop_camera_test(cx);
+        let test = match voice.engine.start_camera_test() {
+            Ok(test) => test,
+            Err(reason) => {
+                log::warn!("camera test: {reason}");
+                if let Some(tab) = self.voice_tab(cx) {
+                    tab.update(cx, |tab, cx| {
+                        tab.camera_test_event(
+                            CameraTestEvent::Failed {
+                                reason: reason.into(),
+                            },
+                            cx,
+                        )
+                    });
+                }
+                return;
+            }
+        };
+        let feed = cx.spawn(async move |this, cx| {
+            loop {
+                let fed = this.update(cx, |this, cx| {
+                    let Some((test, _)) = this.account.camera_test.as_ref() else {
+                        return false;
+                    };
+                    let (running, failed, frames) =
+                        (test.is_running(), test.failed(), test.frames());
+                    if !running {
+                        // A call took the camera, or it ended on its own.
+                        this.stop_camera_test(cx);
+                        if let Some(reason) = failed
+                            && let Some(tab) = this.voice_tab(cx)
+                        {
+                            tab.update(cx, |tab, cx| {
+                                tab.camera_test_event(
+                                    CameraTestEvent::Failed {
+                                        reason: reason.into(),
+                                    },
+                                    cx,
+                                )
+                            });
+                        }
+                        return false;
+                    }
+                    let Some(tab) = this.voice_tab(cx) else {
+                        return false;
+                    };
+                    if frames > 0 {
+                        tab.update(cx, |tab, cx| {
+                            tab.camera_test_event(CameraTestEvent::Frame, cx)
+                        });
+                    } else {
+                        // Nothing yet: the spinner still has to be drawn again.
+                        tab.update(cx, |_, cx| cx.notify());
+                    }
+                    true
+                });
+                if !matches!(fed, Ok(true)) {
+                    return;
+                }
+                cx.background_executor().timer(CAMERA_TEST_POLL).await;
+            }
+        });
+        self.account.camera_test = Some((test, feed));
+        if let Some(tab) = self.voice_tab(cx) {
+            tab.update(cx, |tab, cx| {
+                tab.camera_test_event(CameraTestEvent::Start, cx)
+            });
+        }
+    }
+
+    /// Stops the camera test, if one runs: the camera closes, and the tab's preview empties.
+    pub(super) fn stop_camera_test(&mut self, cx: &mut Context<Self>) {
+        if self.account.camera_test.take().is_some()
+            && let Some(tab) = self.voice_tab(cx)
+        {
+            tab.update(cx, |tab, cx| {
+                tab.camera_test_event(CameraTestEvent::Stop, cx)
+            });
+        }
+    }
+
+    /// The camera test's frame count now, for the rig: `None` while none runs.
+    pub fn camera_test_frames(&self) -> Option<u64> {
+        self.account
+            .camera_test
+            .as_ref()
+            .filter(|(test, _)| test.is_running())
+            .map(|(test, _)| test.frames())
+    }
+
+    /// The camera the test opened, for the rig: the id the engine's sources were asked for.
+    pub fn camera_test_device(&self) -> Option<String> {
+        self.account
+            .camera_test
+            .as_ref()
+            .and_then(|(test, _)| test.device())
+    }
+
+    /// The window's video frames for the camera test's preview, once the window has them.
+    pub(super) fn attach_voice_frames(
+        &mut self,
+        frames: std::sync::Arc<semaphore_ui::voice::VideoFrames>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(tab) = self.voice_tab(cx) {
+            tab.update(cx, |tab, cx| tab.set_frames(frames, cx));
+        }
     }
 
     // ---- Appearance. ----
@@ -837,6 +975,12 @@ impl AppRoot {
         let (update, update_enabled, update_note) = self.desktop_update_row();
         let state = DesktopAppState {
             close_to_tray: settings.close_to_tray,
+            // What the user chose, or what this build does when they never chose.
+            open_links: settings.open_links.unwrap_or_else(|| {
+                registrar
+                    .as_ref()
+                    .is_some_and(|links| links.default_open_links())
+            }),
             links: self.account.links,
             link_preview_images: settings.third_party_media,
             server_url,
@@ -889,6 +1033,34 @@ impl AppRoot {
         self.refresh_desktop_tab(cx);
     }
 
+    /// "Open semaphore:// links with this app": saved, then carried out on the OS off the UI
+    /// thread — registered when on, taken away when off and it was this app's.
+    pub(crate) fn set_open_links(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.update_settings(|settings| settings.open_links = Some(on));
+        let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services) else {
+            self.refresh_desktop_tab(cx);
+            return;
+        };
+        let asked = services
+            .exec
+            .handle()
+            .spawn_blocking(move || registrar.apply(on));
+        cx.spawn(async move |this, cx| {
+            let Ok(result) = asked.await else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(links) => this.account.links = links,
+                    Err(error) => log::warn!("opening semaphore:// links with this app: {error}"),
+                }
+                this.refresh_desktop_tab(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn on_desktop_settings(
         &mut self,
         _: &Entity<DesktopAppSettings>,
@@ -898,6 +1070,7 @@ impl AppRoot {
     ) {
         match *event {
             DesktopAppEvent::SetCloseToTray(on) => self.set_close_to_tray(on, cx),
+            DesktopAppEvent::SetOpenLinks(on) => self.set_open_links(on, cx),
             DesktopAppEvent::SetLinkPreviewImages(on) => {
                 // The one third-party media switch (`root/media.rs`).
                 self.media_set_third_party(on, cx);
@@ -908,30 +1081,6 @@ impl AppRoot {
                 let dir = crate::logging::logs_dir(&self.config.data_dir);
                 let _ = std::fs::create_dir_all(&dir);
                 crate::open_url(&dir.to_string_lossy(), cx);
-            }
-            DesktopAppEvent::RegisterLinkHandler => {
-                let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services)
-                else {
-                    return;
-                };
-                let asked = services
-                    .exec
-                    .handle()
-                    .spawn_blocking(move || registrar.register());
-                cx.spawn(async move |this, cx| {
-                    let Ok(result) = asked.await else {
-                        return;
-                    };
-                    this.update(cx, |this, cx| {
-                        match result {
-                            Ok(links) => this.account.links = links,
-                            Err(error) => log::warn!("registering semaphore:// links: {error}"),
-                        }
-                        this.refresh_desktop_tab(cx);
-                    })
-                    .ok();
-                })
-                .detach();
             }
             // Another server: sign out here, then the server step.
             DesktopAppEvent::ChangeServer => {

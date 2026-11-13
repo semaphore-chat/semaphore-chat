@@ -258,6 +258,8 @@ pub struct FakeVideoSources {
     pub cameras: Mutex<Vec<Arc<FakeVideoControl>>>,
     pub screens: Mutex<Vec<Arc<FakeVideoControl>>>,
     pub screen_requests: Mutex<Vec<semaphore_core::model::ScreenShareRequest>>,
+    /// The device each camera start asked for, in order (`None` = the first camera).
+    camera_requests: Mutex<Vec<Option<String>>>,
 }
 
 impl Default for FakeVideoSources {
@@ -270,6 +272,7 @@ impl Default for FakeVideoSources {
             cameras: Mutex::default(),
             screens: Mutex::default(),
             screen_requests: Mutex::default(),
+            camera_requests: Mutex::default(),
         }
     }
 }
@@ -282,13 +285,19 @@ impl FakeVideoSources {
     pub fn last_screen(&self) -> Option<Arc<FakeVideoControl>> {
         lock(&self.screens).last().cloned()
     }
+
+    /// The device each camera start asked for, in order.
+    pub fn camera_requests(&self) -> Vec<Option<String>> {
+        lock(&self.camera_requests).clone()
+    }
 }
 
 impl crate::video::local::VideoSources for FakeVideoSources {
     fn camera(
         &self,
-        _device: Option<&str>,
+        device: Option<&str>,
     ) -> Result<Box<dyn crate::video::local::VideoCaptureSource>, String> {
+        lock(&self.camera_requests).push(device.map(str::to_owned));
         if let Some(why) = lock(&self.fail_next_camera).take() {
             return Err(why);
         }
@@ -296,6 +305,15 @@ impl crate::video::local::VideoSources for FakeVideoSources {
         let (source, control) = FakeVideoSource::camera(width, height, 30);
         lock(&self.cameras).push(control);
         Ok(Box::new(source))
+    }
+
+    /// Two cameras for the settings page's list and the end-to-end run; either start gives the
+    /// same picture.
+    fn cameras(&self) -> Vec<(String, String)> {
+        vec![
+            ("rig-camera".into(), "Rig camera".into()),
+            ("rig-camera-2".into(), "Rig camera 2".into()),
+        ]
     }
 
     fn screen(

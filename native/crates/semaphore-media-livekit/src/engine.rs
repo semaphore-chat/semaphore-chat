@@ -16,6 +16,7 @@ use crate::audio::vad::{VadGate, VoiceLevel};
 use crate::audio::{
     AudioDevices, AudioIo, AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES, SAMPLE_RATE,
 };
+use crate::camera_test::{CameraTestSetup, CameraTestShared};
 use crate::diagnostics::{self, Totals};
 use crate::input_test::TestShared;
 use crate::soundboard::{self, SoundCache, SoundDecoder};
@@ -299,6 +300,8 @@ struct Inner {
     server_muted: AtomicBool,
     /// The settings page's mic test while it runs: a call stops it.
     input_test: Mutex<Option<std::sync::Weak<TestShared>>>,
+    /// The settings page's camera test while it runs: a call sending the camera stops it.
+    camera_test: Mutex<Option<std::sync::Weak<CameraTestShared>>>,
     /// What we last asked of the mic's publication: muted or not.
     mic_asked_muted: AtomicBool,
 }
@@ -434,6 +437,7 @@ impl LiveKitEngine {
                 last_totals: Mutex::new(None),
                 server_muted: AtomicBool::new(false),
                 input_test: Mutex::new(None),
+                camera_test: Mutex::new(None),
                 mic_asked_muted: AtomicBool::new(false),
             }),
             runtime: Some(runtime),
@@ -666,6 +670,38 @@ impl LiveKitEngine {
         if let Some(older) = older.and_then(|older| older.upgrade()) {
             older.stop();
         }
+    }
+
+    /// For `start_camera_test`: this window's video surface, the chosen camera and a capture
+    /// source for it. Stops a test already running first, so its camera is free before the next
+    /// opens. Fails while the call sends the camera, or when there is no surface to draw on.
+    pub(crate) fn camera_test_setup(&self) -> Result<CameraTestSetup, String> {
+        if lock(&self.inner.camera).is_some() {
+            return Err("the camera is in use by the call".into());
+        }
+        let older = lock(&self.inner.camera_test).take();
+        if let Some(older) = older.and_then(|older| older.upgrade()) {
+            older.stop();
+        }
+        let sink = self
+            .inner
+            .video_sink
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+            .ok_or("this window has no video surface")?;
+        let device = lock(&self.inner.wanted).camera_device.clone();
+        let source = self.inner.video_sources.camera(device.as_deref())?;
+        Ok(CameraTestSetup {
+            sink,
+            device,
+            source,
+        })
+    }
+
+    /// Remembers the camera test now running, for a call sending the camera to stop.
+    pub(crate) fn track_camera_test(&self, test: &Arc<CameraTestShared>) {
+        *lock(&self.inner.camera_test) = Some(Arc::downgrade(test));
     }
 
     pub fn output_latency_ms(&self) -> u32 {
@@ -2211,6 +2247,13 @@ impl Inner {
 impl Inner {
     async fn set_camera(self: Arc<Self>, on: bool) -> Result<(), String> {
         let _one_at_a_time = self.local_ops.lock().await;
+        if on {
+            // A settings-page test lets the camera go before the call opens it.
+            let test = lock(&self.camera_test).take();
+            if let Some(test) = test.and_then(|test| test.upgrade()) {
+                test.stop();
+            }
+        }
         if !on {
             self.stop_video(TrackSource::Camera).await;
             return Ok(());

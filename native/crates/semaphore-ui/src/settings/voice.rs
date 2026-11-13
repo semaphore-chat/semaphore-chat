@@ -1,25 +1,31 @@
 //! The voice and video tab, after `Settings/AudioVideoSettingsPanel.tsx`: input mode and the
-//! push-to-talk key, processing, mic quality, devices, the mic test, camera and screen share. No
-//! "Voice isolation" and no camera preview. Each change goes out at once as the whole new state.
+//! push-to-talk key, processing, mic quality, devices, the mic test, the camera test with its
+//! preview, and camera and screen share. No "Voice isolation". Each change goes out at once as the
+//! whole new state.
 
+use super::camera_test::{self, CameraTestEvent, CameraTestState};
 use super::key_capture::{Capture, ptt_key_from, ptt_key_label};
 use super::shell::{caption, section, segmented, switch_row, tab_page};
 use super::{
     DeviceLists, DeviceOption, InputMode, MicQuality, VoiceLimits, VoiceSettingsEvent,
     VoiceVideoSettings, VoiceVideoState,
 };
-use crate::kit::{Button, ButtonSize, Radio, SelectField, Skeleton, Slider, Switch, Variant};
+use crate::kit::{
+    Button, ButtonSize, Radio, SelectField, Skeleton, Slider, Spinner, Switch, Variant,
+};
 use crate::kit::{select_state, spacing, text};
 use crate::panel::common::{design_icon, error_block, icon_button};
 use crate::theme::SemTheme;
+use crate::voice::{Fit, VideoFrames};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::select::SelectEvent;
 use gpui_kit::component::slider::{SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{LoadState, ShareResolution};
+use semaphore_core::model::{CAMERA_TEST_TRACK_SID, LoadState, ShareResolution};
 use semaphore_design::Icon as DesignIcon;
+use std::sync::Arc;
 
 /// A device select's row: what it says, and the device it picks (`None` = the system default).
 pub(crate) type DeviceRow = (SharedString, Option<String>);
@@ -204,6 +210,9 @@ impl VoiceVideoSettings {
             limits: VoiceLimits::default(),
             devices: DeviceLists::default(),
             mic_level: None,
+            camera_test: CameraTestState::default(),
+            camera_published: false,
+            frames: None,
             last_threshold: 0,
             capturing: false,
             capture_focus,
@@ -258,6 +267,39 @@ impl VoiceVideoSettings {
     pub fn set_mic_level(&mut self, level: Option<f32>, cx: &mut Context<Self>) {
         self.mic_level = level.map(|level| level.clamp(0., 1.));
         cx.notify();
+    }
+
+    /// The window's frames, so the camera test's preview draws on the same surfaces a call's own
+    /// camera tile does.
+    pub fn set_frames(&mut self, frames: Arc<VideoFrames>, cx: &mut Context<Self>) {
+        self.frames = Some(frames);
+        cx.notify();
+    }
+
+    /// Whether the call is sending the camera. It can't be tested then: the test says so and its
+    /// button is off.
+    pub fn set_camera_published(&mut self, published: bool, cx: &mut Context<Self>) {
+        if self.camera_published != published {
+            self.camera_published = published;
+            cx.notify();
+        }
+    }
+
+    /// What the camera test did: it started, a frame reached the preview, it failed, or it stopped.
+    pub fn camera_test_event(&mut self, event: CameraTestEvent, cx: &mut Context<Self>) {
+        let next = camera_test::next(&self.camera_test, &event);
+        if next != self.camera_test {
+            self.camera_test = next;
+            cx.notify();
+        } else if matches!(event, CameraTestEvent::Frame) {
+            // A new picture in the same state: draw it again.
+            cx.notify();
+        }
+    }
+
+    /// What the camera test is doing now, for the owner and the rigs.
+    pub fn camera_test_state(&self) -> &CameraTestState {
+        &self.camera_test
     }
 
     pub fn state(&self) -> &VoiceVideoState {
@@ -650,12 +692,199 @@ impl VoiceVideoSettings {
                     ))
                     .child(div().flex().child(test_sound)),
             )
-            .child(section("Camera", cx).child(self.device_select(
-                "voice-camera",
-                &self.camera,
-                "Camera",
-                self.devices.cameras.is_empty(),
-            )))
+            .child(
+                section("Camera", cx)
+                    .child(self.device_select(
+                        "voice-camera-device",
+                        &self.camera,
+                        "Camera",
+                        self.devices.cameras.is_empty(),
+                    ))
+                    .child(self.camera_test_section(cx)),
+            )
+    }
+
+    /// The web's "Test Camera" paper: the button, then the preview surface under it, drawn from
+    /// the same frames a call's own camera tile takes. Nothing is published; the owner opens the
+    /// selected camera and feeds `camera_test_event`.
+    fn camera_test_section(&self, cx: &mut Context<Self>) -> Div {
+        let sem = cx.sem().clone();
+        let loading = matches!(self.devices.state, LoadState::Loading);
+        let no_camera =
+            matches!(self.devices.state, LoadState::Ready) && self.devices.cameras.is_empty();
+        let active = self.camera_test.is_active();
+        let blocked = self.camera_published;
+        let button = Button::new(
+            "voice-camera-test",
+            if active { "Stop" } else { "Test camera" },
+        )
+        .outlined()
+        .size(ButtonSize::Small)
+        .start_icon(if active {
+            DesignIcon::VideocamOff
+        } else {
+            DesignIcon::Videocam
+        })
+        .disabled(!active && (loading || no_camera || blocked))
+        .on_click(cx.listener(move |_, _, _, cx| {
+            cx.emit(if active {
+                VoiceSettingsEvent::StopCameraTest
+            } else {
+                VoiceSettingsEvent::StartCameraTest
+            })
+        }));
+        let surface = if blocked {
+            self.camera_test_note(
+                "voice-camera-test-blocked",
+                DesignIcon::VideocamOff,
+                "The call is using your camera.",
+                Some("Turn your camera off in the call to test it here."),
+                cx,
+            )
+        } else if loading {
+            div()
+                .id("voice-camera-test-loading")
+                .test_support()
+                .role(Role::ProgressIndicator)
+                .aria_label("Loading cameras")
+                .absolute()
+                .inset_0()
+                .child(Skeleton::rect(
+                    "voice-camera-test-skeleton",
+                    relative(1.),
+                    200.,
+                ))
+                .into_any_element()
+        } else if no_camera {
+            self.camera_test_note(
+                "voice-camera-test-no-camera",
+                DesignIcon::VideocamOff,
+                "No camera found.",
+                Some("Connect a camera, then refresh the list."),
+                cx,
+            )
+        } else {
+            match &self.camera_test {
+                CameraTestState::Idle => self.camera_test_note(
+                    "voice-camera-test-idle",
+                    DesignIcon::Videocam,
+                    "Click \"Test camera\" to preview your camera",
+                    None,
+                    cx,
+                ),
+                CameraTestState::Starting => div()
+                    .id("voice-camera-test-starting")
+                    .test_support()
+                    .role(Role::ProgressIndicator)
+                    .aria_label("Opening the camera")
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap(spacing(1.))
+                    .child(Spinner::new("voice-camera-test-spinner").size(32.))
+                    .child(caption("Opening the camera…", cx))
+                    .into_any_element(),
+                CameraTestState::Running => self.camera_preview(cx),
+                CameraTestState::Failed { reason } => error_block(
+                    "voice-camera-test-failed",
+                    "Couldn't start the camera",
+                    reason.clone(),
+                    cx.listener(|_, _, _, cx| cx.emit(VoiceSettingsEvent::StartCameraTest)),
+                    cx,
+                ),
+            }
+        };
+        section("Test Camera", cx)
+            .child(div().flex().child(button))
+            .child(
+                div()
+                    .id("voice-camera-test-surface")
+                    .test_support()
+                    .relative()
+                    .h(px(200.))
+                    .w_full()
+                    .overflow_hidden()
+                    .rounded(px(8.))
+                    .bg(sem.action_selected)
+                    .child(surface),
+            )
+    }
+
+    /// A note in place of the picture: what to do, or why there can't be one.
+    fn camera_test_note(
+        &self,
+        id: &'static str,
+        icon: DesignIcon,
+        title: impl Into<SharedString>,
+        hint: Option<&'static str>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let sem = cx.sem().clone();
+        let title = title.into();
+        div()
+            .id(id)
+            .test_support()
+            .role(Role::Note)
+            .aria_label(title.clone())
+            .absolute()
+            .inset_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(spacing(1.))
+            .px(spacing(2.))
+            .child(design_icon(icon, 40., sem.text_secondary))
+            .child(
+                text(Variant::Body2, title)
+                    .text_color(sem.text_secondary)
+                    .text_center(),
+            )
+            .children(hint.map(|hint| caption(hint, cx)))
+            .into_any_element()
+    }
+
+    /// The camera's picture, through the window's `VideoFrames` and under the test's track id, as
+    /// a call's own camera tile draws under its publication's sid.
+    fn camera_preview(&self, cx: &mut Context<Self>) -> AnyElement {
+        let background = cx.sem().action_selected;
+        let Some(frames) = self.frames.clone() else {
+            return self.camera_test_note(
+                "voice-camera-test-no-surface",
+                DesignIcon::VideocamOff,
+                "This window can't show the camera preview.",
+                None,
+                cx,
+            );
+        };
+        div()
+            .id("voice-camera-preview")
+            .test_support()
+            .absolute()
+            .size_full()
+            .child(
+                canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, cx| {
+                        frames.paint(
+                            CAMERA_TEST_TRACK_SID,
+                            bounds,
+                            px(0.),
+                            Fit::Cover {
+                                corners: background,
+                            },
+                            window,
+                            cx,
+                        );
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+            .into_any_element()
     }
 
     fn mic_test(&self, cx: &mut Context<Self>) -> Div {
