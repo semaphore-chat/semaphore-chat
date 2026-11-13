@@ -161,9 +161,18 @@ export class CommunityRolesService {
       throw new BadRequestException('User is banned from this community');
     }
 
-    const st = await this.standing(actor, communityId);
+    const [st, overwrites] = await Promise.all([
+      this.standing(actor, communityId),
+      // The role's channel-overwrite allows are granted with it too
+      this.databaseService.channelPermissionOverwrite.findMany({
+        where: { roleId },
+        select: { allow: true },
+      }),
+    ]);
     this.assertRoleBelowActor(st, role.position);
-    this.assertHolds(st, role.actions);
+    this.assertHolds(st, [
+      ...new Set([...role.actions, ...overwrites.flatMap((o) => o.allow)]),
+    ]);
     await this.assertCanChangeRolesOf(actor, st, userId, communityId);
 
     await this.assignUserToCommunityRole(userId, communityId, roleId);
@@ -184,6 +193,20 @@ export class CommunityRolesService {
       const st = await this.standing(actor, communityId);
       this.assertRoleBelowActor(st, role.position);
       await this.assertCanChangeRolesOf(actor, st, userId, communityId);
+      if (userId === actor.id && !st.isTop) {
+        // A role that denies something in a channel is a restriction: the
+        // restricted member can't lift it themselves.
+        const overwrites =
+          await this.databaseService.channelPermissionOverwrite.findMany({
+            where: { roleId },
+            select: { deny: true },
+          });
+        if (overwrites.some((o) => o.deny.length > 0)) {
+          throw new ForbiddenException(
+            'You cannot remove a role that restricts you in a channel',
+          );
+        }
+      }
     }
     await this.removeUserFromCommunityRole(userId, communityId, roleId);
   }
