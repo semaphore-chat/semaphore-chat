@@ -3,9 +3,10 @@
 # invite to a community alexk isn't in (joined with his account, and one he can't use), the
 # notifications page (all read), the friends, profile and create-community routes, a channel's
 # search route with a page of results and the next one, a group DM's "Add people" and "Leave
-# group", and the web's shortcuts: Ctrl+/ for the sheet, Escape to close it, Alt+Down for the
-# next channel. Then Escape in a conversation, one thing per press: the side panel closes, and
-# with the list detached from the live edge the conversation is marked read.
+# group", the web's shortcuts: Ctrl+/ for the sheet, Escape to close it, Alt+Down for the next
+# channel, and About from the account menu: the version this build reports, and Escape closes it.
+# Then Escape in a conversation, one thing per press: the side panel closes, and with the list
+# detached from the live edge the conversation is marked read.
 #
 # Two windows: the signed-out screens at the size the other lanes use, then (signed out, so no
 # session is lost) a tall one, because the search panel's "More results" sits below fifty hits
@@ -232,6 +233,18 @@ press alt-down
 wait core route channel/$ID(cc-clips)
 press alt-shift-down
 wait core route channel/$ID(cc-lfg)
+
+# About, from the account menu (the app menu's Help item is drawn only on platforms with a native
+# menu bar): it names the version this build reports, and Escape closes it, leaving the
+# conversation where it was.
+click rail-account
+wait core element account-about
+click account-about
+wait core element about
+wait core label "Version $VERSION"
+press escape
+wait core no-element about
+wait core channel $ID(cc-lfg)
 
 # 8. Escape in the pane, as the shortcut sheet says: one thing per press. With the focus in the
 # composer the pane's own binding has the key, after the composer's (nothing open) and the list's

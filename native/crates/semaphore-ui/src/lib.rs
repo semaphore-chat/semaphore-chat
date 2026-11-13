@@ -2,6 +2,7 @@
 //! them as a story with no server behind it. One directory per feature, each owned by one unit,
 //! so parallel work doesn't collide.
 
+pub mod about;
 pub mod admin;
 pub mod auth;
 pub mod community_settings;

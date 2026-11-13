@@ -36,6 +36,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+pub mod about;
 pub mod account;
 pub mod admin;
 pub mod calls;
@@ -87,6 +88,9 @@ pub struct AppRoot {
     /// Signed-in sessions go to their first community once, as the web's last route would.
     landed: bool,
     account_open: bool,
+    /// About Semaphore Chat, while it is open (the menu's item or the account menu).
+    about: Option<Entity<semaphore_ui::about::AboutDialog>>,
+    about_subscription: Option<Subscription>,
     restore: Restore,
     /// The server the last-server file names, once written for this session.
     remembered: Option<String>,
@@ -205,6 +209,9 @@ impl AppRoot {
                 .clone()
                 .unwrap_or_else(|| Rc::new(|url: &str, cx: &mut App| cx.open_url(url))),
         });
+        // The app menu's actions act on this root, and its Close to Tray item starts checked.
+        crate::menu::target(cx);
+        crate::menu::install(cx, settings.get().close_to_tray);
         // The theme this app last showed, until the server's appearance arrives.
         if let Some(choice) = settings
             .get()
@@ -231,6 +238,8 @@ impl AppRoot {
             shown: None,
             landed: false,
             account_open: false,
+            about: None,
+            about_subscription: None,
             restore: Restore::Idle,
             remembered: None,
             os_watcher: None,
@@ -1258,6 +1267,7 @@ impl AppRoot {
         let sign_out = close.clone();
         let profile = close.clone();
         let settings = close.clone();
+        let about = close.clone();
         let dialog = Dialog::new(format!("Signed in as {name}"))
             .body(text(
                 Variant::Body2,
@@ -1296,6 +1306,19 @@ impl AppRoot {
             None => dialog,
         };
         dialog
+            .action(
+                Button::new("account-about", "About Semaphore Chat").on_click(
+                    move |_, window, cx| {
+                        about
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                this.open_about(window, cx);
+                                cx.notify();
+                            })
+                            .ok();
+                    },
+                ),
+            )
             .action(
                 Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
                     cancel
@@ -1715,14 +1738,17 @@ impl Render for AppRoot {
             .bg(sem.background_default)
             .text_color(sem.text_primary);
         if let Restore::Unreachable { url, error } = self.restore.clone() {
-            return root.child(self.unreachable(url, error, cx));
+            return root
+                .child(self.unreachable(url, error, cx))
+                .when_some(self.about.clone(), |root, about| root.child(about));
         }
         if self.restore == Restore::Running {
             return root
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(Spinner::new("app-restoring"));
+                .child(Spinner::new("app-restoring"))
+                .when_some(self.about.clone(), |root, about| root.child(about));
         }
         // Input anywhere in the window, for idle.
         let root = root
@@ -1751,17 +1777,23 @@ impl Render for AppRoot {
                 .when_some(self.picker.clone(), |root, picker| {
                     root.child(self.picker_dialog(&picker, cx))
                 })
-                .children(self.viewer_overlay(cx));
+                .children(self.viewer_overlay(cx))
+                .when_some(self.about.clone(), |root, about| root.child(about));
         }
         if let Some(page) = self.onboarding_page() {
-            return root.child(page);
+            return root
+                .child(page)
+                .when_some(self.about.clone(), |root, about| root.child(about));
         }
         if let Some(auth) = &self.auth {
-            return root.child(auth.clone());
+            return root
+                .child(auth.clone())
+                .when_some(self.about.clone(), |root, about| root.child(about));
         }
         root.flex()
             .items_center()
             .justify_center()
             .child(Spinner::new("app-starting"))
+            .when_some(self.about.clone(), |root, about| root.child(about))
     }
 }
