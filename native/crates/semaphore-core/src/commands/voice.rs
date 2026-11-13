@@ -52,6 +52,42 @@ fn room_label(room: &VoiceRoom) -> String {
     }
 }
 
+/// The voice event log's name for a room. Never its id: the log is attached to reports.
+fn room_kind(room: &VoiceRoom) -> &'static str {
+    match room {
+        VoiceRoom::Channel { .. } => "channel",
+        VoiceRoom::Dm { .. } => "dm",
+    }
+}
+
+/// The log's name for a call status.
+fn status_name(status: VoiceStatus) -> &'static str {
+    match status {
+        VoiceStatus::Disconnected => "disconnected",
+        VoiceStatus::Connecting => "connecting",
+        VoiceStatus::Connected => "connected",
+        VoiceStatus::Reconnecting => "reconnecting",
+    }
+}
+
+/// The log's name for a join failure, snake case like the backend's class.
+fn class_name(class: JoinFailureClass) -> &'static str {
+    match class {
+        JoinFailureClass::MediaUnreachable => "media_unreachable",
+        JoinFailureClass::ServerUnreachable => "server_unreachable",
+        JoinFailureClass::Permission => "permission",
+        JoinFailureClass::NotFound => "not_found",
+        JoinFailureClass::Session => "session",
+        JoinFailureClass::ServerError => "server_error",
+        JoinFailureClass::Unknown => "unknown",
+    }
+}
+
+/// A failure's message, safe for the log: secrets removed and capped as Electron caps its 500.
+fn log_message(message: &str) -> String {
+    crate::redact::redact(message).chars().take(500).collect()
+}
+
 fn voice_token_request(me: &UserView, channel_id: &str) -> wire::CreateTokenDto {
     wire::CreateTokenDto {
         identity: me.id.clone(),
@@ -229,6 +265,13 @@ impl Core {
             state.w4_log(now, format!("joining {}", room_label(&room)));
             (state.voice.muted, state.voice.deafened, state.call, room)
         });
+        log::info!(
+            target: "voice",
+            "join target={} muted={} deafened={}",
+            room_kind(&room),
+            muted,
+            deafened
+        );
         // The engine remembers these across calls, and what this call starts with is what's shown.
         // Deafen first: undeafening restores a mute this then overrides.
         media.set_deafened(deafened);
@@ -336,7 +379,13 @@ impl Core {
             let joined = match joined {
                 Err((class, error)) if !is_current => {
                     // Replaced while it ran: its failure is nobody's.
-                    log::info!("a replaced join failed ({class:?}): {error}");
+                    log::info!(
+                        target: "voice",
+                        "join-superseded target={} error_class={} message=\"{}\"",
+                        room_kind(&room),
+                        class_name(class),
+                        log_message(&error.to_string())
+                    );
                     return (Err(error), false);
                 }
                 Err((class, error)) => {
@@ -347,6 +396,14 @@ impl Core {
                         at_ms: now,
                     });
                     state.w4_log(now, format!("join failed ({class:?}): {error}"));
+                    log::warn!(
+                        target: "voice",
+                        "join-failed target={} error_class={} duration_ms={} message=\"{}\"",
+                        room_kind(&room),
+                        class_name(class),
+                        now.saturating_sub(started),
+                        log_message(&error.to_string())
+                    );
                     state.voice = VoiceView::default();
                     state.media = None;
                     state.view_changed(ViewKey::Voice);
@@ -383,6 +440,12 @@ impl Core {
                     state.voice.status = VoiceStatus::Connected;
                     state.view_changed(ViewKey::Voice);
                     state.w4_log(now, "connected");
+                    log::info!(
+                        target: "voice",
+                        "joined target={} duration_ms={}",
+                        room_kind(&room),
+                        now.saturating_sub(started)
+                    );
                     // As the web does after a join (`voiceActions.ts`): the roster read at the
                     // start may predate us, and our own join event may not come.
                     state.invalidate(&State::room_presence_key(&room));
@@ -399,6 +462,13 @@ impl Core {
                     leave_presence(state);
                     state.view_changed(ViewKey::Voice);
                     let message = error.unwrap_or_else(|| "the call ended as it started".into());
+                    log::warn!(
+                        target: "voice",
+                        "join-failed target={} error_class=call_ended duration_ms={} message=\"{}\"",
+                        room_kind(&room),
+                        now.saturating_sub(started),
+                        log_message(&message)
+                    );
                     (Err(CoreError::Failed { message }), false)
                 }
             }
@@ -411,13 +481,17 @@ impl Core {
 
     pub async fn leave_voice(&self) -> Result<(), CoreError> {
         let services = self.services().ok_or_else(|| unavailable("voice"))?.clone();
-        let channel_id = self.write(|state, _| {
+        let (channel_id, room) = self.write(|state, _| {
             let channel_id = state.voice.channel_id.take();
+            let room = state.voice.room.take();
             state.voice = VoiceView::default();
             state.media = None;
             state.view_changed(ViewKey::Voice);
-            channel_id
+            (channel_id, room)
         });
+        if let Some(room) = &room {
+            log::info!(target: "voice", "leave target={}", room_kind(room));
+        }
         if let Some(media) = &services.media {
             media.disconnect().await;
         }
@@ -673,8 +747,11 @@ impl Core {
                 }
                 (VoiceStatus::Disconnected, _) => {
                     let channel_id = state.voice.channel_id.take();
+                    let room = state.voice.room.take();
+                    let was = state.voice.status;
+                    let status = status_name(was);
                     state.voice = VoiceView {
-                        error: media.error,
+                        error: media.error.clone(),
                         ..VoiceView::default()
                     };
                     state.media = None;
@@ -682,12 +759,38 @@ impl Core {
                         state.push_effect(Effect::LeavePresence(channel_id));
                     }
                     state.view_changed(ViewKey::Voice);
+                    if let Some(room) = &room {
+                        log::warn!(
+                            target: "voice",
+                            "call-ended target={} from={} message=\"{}\"",
+                            room_kind(room),
+                            status,
+                            log_message(media.error.as_deref().unwrap_or(""))
+                        );
+                    }
                     return;
                 }
                 (
                     VoiceStatus::Connected | VoiceStatus::Reconnecting,
                     VoiceStatus::Connected | VoiceStatus::Reconnecting,
                 ) => {
+                    if let Some(room) = &state.voice.room {
+                        match (state.voice.status, media.status) {
+                            (VoiceStatus::Connected, VoiceStatus::Reconnecting) => log::warn!(
+                                target: "voice",
+                                "reconnecting target={} attempt={}",
+                                room_kind(room),
+                                media.reconnect_attempt.unwrap_or(1)
+                            ),
+                            (VoiceStatus::Reconnecting, VoiceStatus::Connected) => log::info!(
+                                target: "voice",
+                                "reconnected target={} attempts={}",
+                                room_kind(room),
+                                state.voice.reconnect_attempt.unwrap_or(0)
+                            ),
+                            _ => {}
+                        }
+                    }
                     state.voice.status = media.status;
                 }
                 _ => {}

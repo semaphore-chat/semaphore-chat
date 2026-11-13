@@ -103,6 +103,98 @@ and `Comment` values match the Electron entry. There is no `postinst`/`post` scr
 writes to the network or to a user's home during installation. The app writes `settings.json`
 and its single-instance lock under the user's data directory at run time, as before.
 
+## Logs, voice events and crash reports
+
+Everything is written under the log folder inside the app's data directory
+(`semaphore-app/src/logging.rs`):
+
+| Platform | Log folder |
+|---|---|
+| Linux | `~/.local/share/semaphore/logs` (`$XDG_DATA_HOME/semaphore/logs`) |
+| Windows | `%APPDATA%\semaphorechat\semaphore\data\logs` |
+
+The data directory is the one `settings.json` and `last-server` already live in
+(`DesktopPaths`, `directories`'s `ProjectDirs`). The settings' Desktop App tab has an "Open log
+folder" button in its About section.
+
+| File | What |
+|---|---|
+| `semaphore.log` | the app's log, at `SEMAPHORE_LOG` |
+| `semaphore.1.log` … `semaphore.4.log` | the four previous files, newest first |
+| `voice.log` | voice events (`target: "voice"`), the counterpart of Electron's `voiceLog.ts` |
+| `voice.1.log`, `voice.2.log` | the two previous voice files |
+| `crash-<YYYYMMDD>-<HHMMSS>-<ms>-<pid>.txt` | panic reports, the newest 10 kept |
+
+`SEMAPHORE_LOG` takes `error`, `warn`, `info`, `debug` or `trace`. A packaged build defaults to
+`info`; a build from a checkout defaults to `warn`, as before. stderr gets exactly the same lines
+in the same format it always had; the files add a UTC timestamp and a level, one line per record.
+Rotation is by hand and by size: an app file is capped at 2 MiB (five kept, 10 MiB in all) and a
+voice file at 512 KiB (three kept). A line is never split; a line larger than a whole file goes in
+alone and the next write rotates. Writers in one process share a lock, so two threads' lines never
+interleave.
+
+Nothing secret reaches a file. Every line goes through `semaphore_core::redact`: an access or
+refresh token (`token=`, `"access_token":"…"`, `Bearer …`), a password, a `secret`, an invite code
+in `semaphore://join/<code>`, and any URL query string are replaced by `<redacted>` (the whole
+query, because a report never needs it). The app never logs message text, a token or a server
+address with a query in the first place; the redaction is the second line of defence, and the test
+`seeded_secrets_never_reach_a_file` writes representative lines through the real sink and greps the
+files for them. A directory that can't be written (read-only, a full disk, a missing permission)
+turns the files off, says so once on stderr and leaves the app running.
+
+Voice events are the native equivalent of Electron's `voiceLog.ts` (which validates a renderer
+entry and writes it with `electron-log`). They go to `voice.log` and stderr, not to
+`semaphore.log`, and carry no channel, DM or user ids:
+
+| Event | Fields |
+|---|---|
+| `join` | `target` (`channel` or `dm`), `muted`, `deafened` |
+| `joined` | `target`, `duration_ms` |
+| `join-failed` | `target`, `error_class` (`media_unreachable`, `server_unreachable`, `permission`, `not_found`, `session`, `server_error`, `unknown`, or `call_ended`), `duration_ms`, `message` (redacted, 500 characters) |
+| `join-superseded` | `target`, `error_class`, `message` |
+| `leave` | `target` |
+| `call-ended` | `target`, `from` (the status it left), `message` |
+| `reconnecting` | `target`, `attempt` |
+| `reconnected` | `target`, `attempts` |
+| `device-changed` | `which` (`input`, `output` or `camera`), `device` (`system-default` or the id) |
+| `system-resume` | none: the OS woke the machine, as Electron's `system-resume` |
+
+A panic writes a report next to the logs and keeps the default hook's stderr output: the hook runs
+the previous hook first, then the report inside `catch_unwind`, so it never panics itself. The
+report is plain text:
+
+```text
+Semaphore Chat crash report
+time: 2026-11-13T12:34:56.789Z
+version: 0.10.0
+platform: linux x86_64
+thread: tokio-runtime-worker
+panic: called `Option::unwrap()` on a `None` value
+location: crates/semaphore-app/src/voice.rs:123:45
+backtrace:
+   0: ...
+```
+
+No environment dump and no user data; the panic message goes through the same redaction. The
+oldest reports are removed so ten stay, and the next start only logs that a report exists (no
+dialog, nothing is sent anywhere). Remote reporting is not built: the Electron app has no
+`crashReporter` either.
+
+## Importing the Electron app's settings
+
+On a first run only (no native `settings.json` yet), the app reads the Electron app's
+`userData/settings.json` (`frontend/electron/main.ts:39-59`) and imports what has an exact native
+equivalent: `closeToTray` becomes `close_to_tray`. The Electron folder is
+`~/.config/Semaphore Chat` on Linux, `%APPDATA%\Semaphore Chat` on Windows and
+`~/Library/Application Support/Semaphore Chat` on macOS. The file is only read; nothing there is
+ever written, and an existing native `settings.json` is never touched. A file with a wrong type, an
+unknown `version` or no JSON object imports nothing (`semaphore-app/src/electron_import.rs`).
+
+That file holds only `closeToTray` today. The server URL and the renderer settings (volumes,
+devices, drafts) are in Chromium's `localStorage` (LevelDB), the refresh token is encrypted in
+`userData/secure-tokens`: none is read, so the server URL stays unset until the first sign-in and
+devices are picked again. Electron has no start-minimised or notification toggles in a file either.
+
 ## Auto-update
 
 The native client has its own updater. It reads one JSON document from the release host, compares

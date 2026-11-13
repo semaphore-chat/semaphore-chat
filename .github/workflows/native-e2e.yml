@@ -1,0 +1,42 @@
+name: Native end to end
+
+# The headless end-to-end suite (`native/scripts/slice-e2e.sh`: the real app on lavapipe twice
+# against the fake server, every run compared shot for shot). It takes about 13 minutes locally,
+# which is too slow for every pull request, so it runs nightly and on dispatch only. The pull
+# request gates stay in native-spike.yml (build, policy, headless render).
+on:
+  schedule:
+    # 03:00 UTC, before the working day in Europe; the schedule only exists on the default branch.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: native-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  slice-e2e:
+    name: Headless end to end (fake server, lavapipe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Same runner, same pinned image and the same script a local run uses: `slice-e2e.sh` calls
+    # `scripts/in-image.sh`, which builds or reuses the image on `semaphore-test`. There is no
+    # separate cache: the per-checkout target volume lives inside the container.
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the default suite
+        run: scripts/slice-e2e.sh
+      # The rig's own log, the steps, the fake server's log and the shots: what a failing run
+      # needs, including the first of the two runs' images.
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: native-e2e-results
+          path: native/results/slice/
+          if-no-files-found: ignore

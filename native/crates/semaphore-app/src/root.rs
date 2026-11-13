@@ -1582,6 +1582,8 @@ fn apply_os_event(core: &Core, event: OsEvent) {
     match event {
         OsEvent::Suspending => core.suspend(),
         OsEvent::Resumed => {
+            // Electron's voice log records wake events too (`system-resume`).
+            log::info!(target: "voice", "system-resume");
             core.resume();
         }
         OsEvent::Network(network) => {

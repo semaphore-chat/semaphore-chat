@@ -135,6 +135,11 @@ expect settings /third_party_media true
 click desktop-link-preview-images
 expect settings /third_party_media false
 
+# "Open log folder" goes through the app's open seam; the rig records the path instead of opening
+# a file manager.
+click desktop-open-logs
+expect opened-url "app-data/logs"
+
 # 7. Appearance: light, at once, everywhere: the settings, the shell and a conversation, a dialog.
 click settings-tab-appearance
 wait core route settings/appearance

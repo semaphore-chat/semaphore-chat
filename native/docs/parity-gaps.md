@@ -112,15 +112,6 @@ story. "Depends" names the thing that must happen first.
 - **Size:** S.
 - **Depends:** none.
 
-### B7. Voice event log file
-
-- **Web/Electron:** `frontend/electron/voiceLog.ts` writes voice events to a log file.
-- **Native:** `SEMAPHORE_LOG` sets a stderr level only (`native/crates/semaphore-app/src/main.rs:42`,
-  `init_logging`); there is no log file (the plan's row says the same).
-- **Missing:** the file sink. The same work covers C5 (application logging), so do both together.
-- **Size:** S.
-- **Depends:** none.
-
 ## C. Platform and distribution
 
 ### C1. Windows code signing
@@ -170,30 +161,6 @@ story. "Depends" names the thing that must happen first.
 - **Size:** M.
 - **Depends:** release/product decision; C1 and C2 for a trustworthy first release.
 
-### C5. Logging and crash reports
-
-- **Web/Electron:** console otherwise; a voice log file only (`electron/voiceLog.ts`); no
-  `crashReporter`, so native crash reports are not a parity gap but a robustness gap.
-- **Native:** stderr at `SEMAPHORE_LOG` (`native/crates/semaphore-app/src/main.rs:42`); no file, no
-  rotation, no panic hook, and no "open log folder" action.
-- **Missing:** a rotating log file under the data dir, a panic hook writing a report beside it, and
-  a settings action to open the folder. Remote reporting only if the owner wants it.
-- **Size:** S-M.
-- **Depends:** none (product decision on remote reporting).
-
-### C6. Importing Electron's settings
-
-- **Web/Electron:** `userData/settings.json` (close to tray), its window-state file, the
-  safeStorage refresh token and renderer `localStorage` (voice settings, volumes, device ids, server
-  URL, drafts).
-- **Native:** has its own `SettingsStore` v4 (`native/crates/semaphore-app/src/settings.rs`) with no
-  Electron importer; nothing reads `userData` or Chromium's storage.
-- **Missing:** reading Electron's `settings.json` and server URL once on first run. The token and
-  `localStorage` are in Chromium's encrypted store and LevelDB: re-sign-in and re-picking devices is
-  the realistic path (the plan's cross-cutting row says "decide").
-- **Size:** S-M.
-- **Depends:** product decision on how much to import; no backend work.
-
 ### C7. Which app owns `semaphore://`
 
 - **Web/Electron:** electron-builder declares the protocol and `electron/main.ts` registers it on
@@ -205,17 +172,6 @@ story. "Depends" names the thing that must happen first.
 - **Missing:** a shared "which app opens links" setting or an install-time question.
 - **Size:** S.
 - **Depends:** product decision (and C4 if the answer is "the packaged native app asks").
-
-### C8. `slice-e2e.sh` in CI
-
-- **Web/Electron:** n/a: the reference client has no comparable end-to-end suite.
-- **Native:** `native-spike.yml` runs `verify.sh`, the Android/iOS core checks and the Windows
-  build/link on PRs touching `native/**` and on `main`. Neither `slice-e2e.sh` run is in CI, so the
-  end-to-end steps (the main behavioural gate) only run locally.
-- **Missing:** the two identical headless runs in the workflow (or a nightly), with the artifact
-  comparison.
-- **Size:** S.
-- **Depends:** a runner with the same image as `scripts/in-image.sh`.
 
 ### C9. macOS
 
@@ -229,7 +185,11 @@ story. "Depends" names the thing that must happen first.
 **Checked and already built** (not gaps): window position/size and maximised state
 (`native/crates/semaphore-app/src/desktop.rs`, `WindowState`), close to tray and the tray icon on
 Linux (StatusNotifier) and Windows, the unread badge on both, single instance with link forwarding,
-`semaphore://` registration, and keep-awake during calls.
+`semaphore://` registration, and keep-awake during calls. Logging, the voice event log and crash
+reports are built (`semaphore-app/src/{logging,crash}.rs`, documented in `packaging.md`), the
+Electron settings import runs on first run (`semaphore-app/src/electron_import.rs`; only
+`closeToTray` exists in its `settings.json`), and `slice-e2e.sh` runs nightly in
+`.github/workflows/native-e2e.yml`.
 
 ## D. Things only a person can check
 
@@ -307,12 +267,12 @@ Not listed: "Copy message link" from W1's defaults is not a gap — the web has 
 | Group | Items |
 |---|---|
 | A. Missing features | 1 |
-| B. Partial features | 7 |
-| C. Platform and distribution | 9 |
+| B. Partial features | 6 |
+| C. Platform and distribution | 6 |
 | D. Only a person can check | 10 |
 | E. Decided not to build | 10 |
 
-The inventory itself (128 rows, 11 tables) now reads: 115 done, 8 partial, 2 not started, 3 n/a.
+The inventory itself (128 rows, 11 tables) now reads: 116 done, 7 partial, 2 not started, 3 n/a.
 
 ## The ten gaps that matter most for a first usable release
 
@@ -328,11 +288,11 @@ The inventory itself (128 rows, 11 tables) now reads: 115 done, 8 partial, 2 not
    silently can't talk.
 6. **Home's invite card (B2).** It is the only in-app path from "I made a community" to "other people
    can join", and the core work is already done.
-7. **File logging plus a panic hook (C5/B7).** Without a log file, every report from an installed app
-   is unactionable; this is small and makes all of D cheaper.
-8. **Voice diagnostics upload (B4).** The panel classifies failures but can't tell anyone; it needs
+7. **Voice diagnostics upload (B4).** The panel classifies failures but can't tell anyone; it needs
    the backend's native platform value and then a one-line upload.
-9. **"Check for Updates" in the tray and menu (B6).** Users look for it there, not in Settings; the
+8. **"Check for Updates" in the tray and menu (B6).** Users look for it there, not in Settings; the
    tray module's own comment shows it was only waiting for the updater.
-10. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
-    blocker for any accessibility claim; scope the kit question before promising it.
+9. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
+   blocker for any accessibility claim; scope the kit question before promising it.
+10. **Which app opens `semaphore://` (C7).** With both apps installed, the last registration wins
+    silently; a link that opens the wrong client looks like the app is broken.

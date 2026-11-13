@@ -39,33 +39,6 @@ fn run_media_probe(args: &[String]) -> Option<ExitCode> {
     }
 }
 
-/// Log lines to stderr, at `SEMAPHORE_LOG` (error, warn, info, debug, trace; warn by default).
-struct StderrLog(log::LevelFilter);
-
-impl log::Log for StderrLog {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= self.0
-    }
-
-    fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            eprintln!("{} {}: {}", record.level(), record.target(), record.args());
-        }
-    }
-
-    fn flush(&self) {}
-}
-
-fn init_logging() {
-    let level = std::env::var("SEMAPHORE_LOG")
-        .ok()
-        .and_then(|level| level.parse().ok())
-        .unwrap_or(log::LevelFilter::Warn);
-    if log::set_boxed_logger(Box::new(StderrLog(level))).is_ok() {
-        log::set_max_level(level);
-    }
-}
-
 /// The binary's name in `--version` and `--help`.
 const NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -147,13 +120,29 @@ fn main() -> ExitCode {
         [flag, url] if flag == "--server" => Some(url.clone()),
         _ => return usage(),
     };
-    init_logging();
     let Some(data_dir) =
         DesktopPaths::new().map(|paths| std::path::PathBuf::from(paths.data_dir()))
     else {
         eprintln!("semaphore-app: the OS reports no home directory");
         return ExitCode::FAILURE;
     };
+    // `SEMAPHORE_LOG` as before, now also into size-capped files under the data directory.
+    let level = semaphore_app::logging::init(&data_dir);
+    let log_dir = semaphore_app::logging::logs_dir(&data_dir);
+    log::info!(
+        "Semaphore Chat {} starting on {} {} ({level} logging)",
+        semaphore_app::version(),
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    // A panic in a previous run left a report: say so here and do nothing else with it.
+    if let Some(report) = semaphore_app::crash::newest_report(&log_dir) {
+        log::warn!(
+            "a crash report from a previous run is at {}",
+            report.display()
+        );
+    }
+    semaphore_app::crash::install(&log_dir);
 
     // One app per user: a second launch hands its links to the first and exits, before it opens
     // anything. If the check itself fails, run anyway rather than not at all.
@@ -205,6 +194,18 @@ fn main() -> ExitCode {
             semaphore_app::init(cx);
             // Before any window or notification: Windows' toasts need the AppUserModelID.
             cx.set_app_identity(links::APP_ID, "Semaphore");
+            // First run only: the Electron app's non-secret settings, when it has a file.
+            match semaphore_app::electron_import::import_once(&data_dir) {
+                semaphore_app::electron_import::Import::Imported { close_to_tray } => {
+                    log::info!(
+                        "imported the Electron app's settings: close to tray = {close_to_tray}"
+                    );
+                }
+                semaphore_app::electron_import::Import::Failed(error) => {
+                    log::warn!("importing the Electron app's settings failed: {error}");
+                }
+                semaphore_app::electron_import::Import::Nothing(_) => {}
+            }
             let settings = semaphore_app::settings::SettingsStore::load(&data_dir);
             // W13: the updater runs only if this build has a feed and this install can update;
             // `update` also carries why not, for the settings row.

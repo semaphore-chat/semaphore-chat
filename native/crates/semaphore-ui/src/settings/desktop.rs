@@ -199,6 +199,7 @@ impl Render for DesktopAppSettings {
                     .aria_label(SharedString::from(note.clone()))
                     .child(text(Variant::Caption, note).text_color(sem.text_secondary))
             }));
+        let logs = state.log_folder;
         let about = section("About", cx)
             .child(info_row("App Version:", state.app_version.clone(), cx))
             .child(info_row(
@@ -208,7 +209,28 @@ impl Render for DesktopAppSettings {
                     .clone()
                     .unwrap_or_else(|| "Unknown".into()),
                 cx,
-            ));
+            ))
+            .children(logs.then(|| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(spacing(1.5))
+                    .child(
+                        Button::new("desktop-open-logs", "Open log folder")
+                            .outlined()
+                            .size(ButtonSize::Small)
+                            .on_click(
+                                cx.listener(|_, _, _, cx| cx.emit(DesktopAppEvent::OpenLogFolder)),
+                            ),
+                    )
+                    .child(
+                        text(
+                            Variant::Caption,
+                            "Logs and crash reports live in the app's data folder.",
+                        )
+                        .text_color(sem.text_secondary),
+                    )
+            }));
         tab_page(
             "desktop-settings",
             DesignIcon::DesktopWindows,
