@@ -181,6 +181,9 @@ importers:
       swagger-ui-express:
         specifier: ^5.0.1
         version: 5.0.1(express@5.3.0)
+      undici:
+        specifier: ^7.30.1
+        version: 7.30.1
       uuid:
         specifier: ^14.0.3
         version: 14.0.3
@@ -20385,8 +20388,7 @@ snapshots:
 
   undici@6.29.1: {}
 
-  undici@7.30.1:
-    optional: true
+  undici@7.30.1: {}
 
   undici@8.12.3: {}
 
