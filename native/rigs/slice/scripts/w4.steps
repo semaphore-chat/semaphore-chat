@@ -78,6 +78,8 @@ wait core route dm/$ID(dm-priya)
 wait core requests LivekitController_generateDmToken >= 1
 wait core voice disconnected within 30
 expect core keep-awake off
+# The panel's last failure was also uploaded: the server's log has it, as platform native.
+wait core requests VoiceDiagnosticsController_reportJoinFailure >= 1
 server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
 server dm_call_leave "{\"dmGroupId\": \"$ID(dm-launch)\", \"userId\": \"$ID(u-samira)\"}"
 

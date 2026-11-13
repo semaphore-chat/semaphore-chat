@@ -1140,9 +1140,8 @@ async fn join_failures_are_kept_as_the_backend_validates_and_throttles_them() {
     let path = "/api/voice/diagnostics/join-failure";
     let (status, body) = post(&client, &base, path, join_failure("electron")).await;
     assert_eq!(status, 204, "{body}");
-    // A native platform isn't one the backend takes yet.
     let (status, body) = post(&client, &base, path, join_failure("native")).await;
-    assert_eq!(status, 400, "{body}");
+    assert_eq!(status, 204, "{body}");
     let (status, _) = post(&client, &base, path, join_failure("web")).await;
     assert_eq!(status, 204);
     // The fourth in a minute, invalid ones counted.
@@ -1154,8 +1153,9 @@ async fn join_failures_are_kept_as_the_backend_validates_and_throttles_them() {
     assert_eq!(status, 204);
 
     let reports = server.join_failures();
-    assert_eq!(reports.len(), 3);
+    assert_eq!(reports.len(), 4);
     assert_eq!(reports[0]["platform"], "electron");
+    assert_eq!(reports[1]["platform"], "native");
     assert_eq!(
         reports[0]["message"].as_str().unwrap().len(),
         500,
@@ -1167,7 +1167,7 @@ async fn join_failures_are_kept_as_the_backend_validates_and_throttles_them() {
         "a DM's channel isn't logged"
     );
     let (_, listed) = control(&client, &base, "join_failures", json!({})).await;
-    assert_eq!(listed["reports"].as_array().unwrap().len(), 3);
+    assert_eq!(listed["reports"].as_array().unwrap().len(), 4);
 }
 
 #[tokio::test]

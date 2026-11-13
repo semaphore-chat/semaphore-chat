@@ -97,6 +97,14 @@ impl VoiceBackend for HttpBackend {
         rpc!(self, c => c.dm_voice_presence_controller_decline_dm_voice_call(dm_group_id))
     }
 
+    async fn voice_diagnostics_controller_report_join_failure(
+        &self,
+        body: wire::ReportJoinFailureDto,
+    ) -> BackendResult<()> {
+        let body = &body;
+        rpc!(self, c => c.voice_diagnostics_controller_report_join_failure(body))
+    }
+
     async fn livekit_controller_mute_participant(
         &self,
         channel_id: String,

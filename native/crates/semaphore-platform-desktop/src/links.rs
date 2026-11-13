@@ -103,8 +103,10 @@ pub enum LinkStatus {
     Ours,
     /// A package installed an entry with our id; it owns the registration.
     Packaged(PathBuf),
-    /// Another program, or nothing.
-    NotOurs,
+    /// Another program is the default handler: its desktop id (Linux) or open command (Windows).
+    Another(String),
+    /// Nothing handles the scheme.
+    NotRegistered,
 }
 
 /// Reads who opens `semaphore://` links for `target`, writing nothing.
@@ -113,6 +115,35 @@ pub fn status(target: &RegisterTarget) -> Result<LinkStatus, CoreError> {
     return windows::status(target);
     #[cfg(not(windows))]
     return linux::status(target);
+}
+
+/// What an unregistration did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unregistered {
+    /// This app's registration is gone.
+    Removed,
+    /// A package installed it; only the package can remove it.
+    Packaged(PathBuf),
+    /// Another program owns the scheme, or nothing does: left alone.
+    NotOurs,
+}
+
+/// Removes this app's registration, and only ever the parts this user can undo: no `sudo`, no
+/// package files. Left alone when another program owns the scheme.
+///
+/// **Linux:** the `x-scheme-handler/semaphore` default in the user's `mimeapps.list` goes (when it
+/// names our entry), then the entry itself, if it is the generated one, and the icon. Other
+/// handler lists (`~/.config/<desktop>-mimeapps.list`, `[Added Associations]`, `/usr/share`) are
+/// not ours to edit: a desktop environment that reads a per-desktop list may still offer the
+/// scheme until it is told again.
+///
+/// **Windows:** `HKCU\Software\Classes\semaphore` is deleted, when its open command starts this
+/// executable (the same test the installer's uninstaller makes).
+pub fn unregister(target: &RegisterTarget) -> Result<Unregistered, CoreError> {
+    #[cfg(windows)]
+    return windows::unregister(target);
+    #[cfg(not(windows))]
+    return linux::unregister(target);
 }
 
 /// The default handler `mimeapps.list` names for `mime`, if any.
@@ -130,7 +161,12 @@ pub fn default_handler(mimeapps: &str, mime: &str) -> Option<String> {
         if let Some((key, value)) = line.split_once('=')
             && key.trim() == mime
         {
-            return value.split(';').next().map(|id| id.trim().to_owned());
+            return value
+                .split(';')
+                .next()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned);
         }
     }
     None
@@ -227,6 +263,30 @@ pub fn with_default_handler(existing: &str, mime: &str, desktop_id: &str) -> Opt
     Some(out)
 }
 
+/// `mimeapps.list` with its default for `mime` taken out, when that default is `desktop_id`:
+/// every other line as it was. `None` when it names anything else, or nothing.
+pub fn without_default_handler(existing: &str, mime: &str, desktop_id: &str) -> Option<String> {
+    if default_handler(existing, mime).as_deref() != Some(desktop_id) {
+        return None;
+    }
+    const SECTION: &str = "[Default Applications]";
+    let mut lines: Vec<String> = existing.lines().map(str::to_owned).collect();
+    let start = lines.iter().position(|line| line.trim() == SECTION)?;
+    let end = lines[start + 1..]
+        .iter()
+        .position(|line| line.trim_start().starts_with('['))
+        .map_or(lines.len(), |offset| start + 1 + offset);
+    let key = (start + 1..end).find(|&index| {
+        lines[index]
+            .split_once('=')
+            .is_some_and(|(key, _)| key.trim() == mime)
+    })?;
+    lines.remove(key);
+    let mut out = lines.join("\n");
+    out.push('\n');
+    Some(out)
+}
+
 /// Writes `contents` to `path` through a temp file in the same directory, unless it's already
 /// there.
 #[cfg(not(windows))]
@@ -277,10 +337,12 @@ mod linux {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(error) => return Err(failed("mimeapps.list", error)),
         };
-        if default_handler(&mimeapps, &format!("x-scheme-handler/{SCHEME}")).as_deref()
-            != Some(file_name.as_str())
-        {
-            return Ok(LinkStatus::NotOurs);
+        let Some(handler) = default_handler(&mimeapps, &format!("x-scheme-handler/{SCHEME}"))
+        else {
+            return Ok(LinkStatus::NotRegistered);
+        };
+        if handler != file_name {
+            return Ok(LinkStatus::Another(handler));
         }
         // Our id is the default: ours if the entry starts this executable.
         let entry = std::fs::read_to_string(target.data_home.join("applications").join(&file_name))
@@ -294,8 +356,51 @@ mod linux {
         Ok(if exec(&entry).is_some() && exec(&entry) == exec(&wanted) {
             LinkStatus::Ours
         } else {
-            LinkStatus::NotOurs
+            LinkStatus::Another(file_name)
         })
+    }
+
+    /// Takes the default and our own files away; a package's entry (which `status` reports as
+    /// `Packaged`) and anything the user wrote are left alone.
+    pub fn unregister(target: &RegisterTarget) -> Result<Unregistered, CoreError> {
+        let file_name = format!("{APP_ID}.desktop");
+        match status(target)? {
+            LinkStatus::Ours => {}
+            LinkStatus::Packaged(entry) => return Ok(Unregistered::Packaged(entry)),
+            LinkStatus::Another(_) | LinkStatus::NotRegistered => {
+                return Ok(Unregistered::NotOurs);
+            }
+        }
+        // The default first: between the two writes the entry may point at a file that's gone,
+        // which no desktop environment minds, while the other order would leave it pointing here.
+        let mimeapps = target.config_home.join("mimeapps.list");
+        let existing = match std::fs::read_to_string(&mimeapps) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(failed("mimeapps.list", error)),
+        };
+        if let Some(updated) =
+            without_default_handler(&existing, &format!("x-scheme-handler/{SCHEME}"), &file_name)
+        {
+            write_if_changed(&mimeapps, updated.as_bytes())
+                .map_err(|error| failed("mimeapps.list", error))?;
+        }
+        // Only the entry we wrote is ours: one the user made with our id stays theirs.
+        let entry_path = target.data_home.join("applications").join(&file_name);
+        if std::fs::read_to_string(&entry_path)
+            .is_ok_and(|text| text.contains(&format!("{GENERATED_KEY}=true")))
+        {
+            std::fs::remove_file(&entry_path)
+                .map_err(|error| failed("the desktop entry", error))?;
+        }
+        let icon = target
+            .data_home
+            .join("icons/hicolor/512x512/apps")
+            .join(format!("{APP_ID}.png"));
+        if icon.is_file() {
+            std::fs::remove_file(&icon).map_err(|error| failed("the icon", error))?;
+        }
+        Ok(Unregistered::Removed)
     }
 
     pub fn register(target: &RegisterTarget) -> Result<Registered, CoreError> {
@@ -367,7 +472,8 @@ mod windows {
     use windows_sys::Win32::Foundation::ERROR_SUCCESS;
     use windows_sys::Win32::System::Registry::{
         HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ,
-        RegCloseKey, RegCreateKeyExW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+        RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegOpenKeyExW, RegQueryValueExW,
+        RegSetValueExW,
     };
 
     fn wide(text: &str) -> Vec<u16> {
@@ -406,38 +512,73 @@ mod windows {
         (status == ERROR_SUCCESS).then_some(buffer)
     }
 
-    /// Ours when every value `register` writes is there with its data.
+    /// One value, as text.
+    fn value(subkey: &str, name: &str) -> Option<String> {
+        let subkey_w = wide(subkey);
+        let mut key: HKEY = std::ptr::null_mut();
+        // SAFETY: a valid string, and `key` is closed below.
+        let status = unsafe {
+            RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                subkey_w.as_ptr(),
+                0,
+                KEY_QUERY_VALUE,
+                &mut key,
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return None;
+        }
+        let text = read(key, &wide(name)).map(|data| {
+            let end = data.iter().position(|&c| c == 0).unwrap_or(data.len());
+            String::from_utf16_lossy(&data[..end])
+        });
+        // SAFETY: opened above.
+        unsafe { RegCloseKey(key) };
+        text
+    }
+
+    /// Ours when the open command starts this executable and every other value `register`
+    /// writes is there too; another program's command names it.
     pub fn status(target: &RegisterTarget) -> Result<LinkStatus, CoreError> {
+        let base = format!(r"Software\Classes\{SCHEME}");
+        let command_key = format!(r"{base}\shell\open\command");
+        let Some(command) = value(&command_key, "") else {
+            return Ok(LinkStatus::NotRegistered);
+        };
+        if command != format!("\"{}\" \"%1\"", target.exe.display()) {
+            return Ok(LinkStatus::Another(command));
+        }
         for (subkey, name, data) in registry_values(&target.exe) {
-            let subkey_w = wide(&subkey);
-            let mut key: HKEY = std::ptr::null_mut();
-            // SAFETY: a valid string, and `key` is closed below.
-            let status = unsafe {
-                RegOpenKeyExW(
-                    HKEY_CURRENT_USER,
-                    subkey_w.as_ptr(),
-                    0,
-                    KEY_QUERY_VALUE,
-                    &mut key,
-                )
-            };
-            if status != ERROR_SUCCESS {
-                return Ok(LinkStatus::NotOurs);
-            }
-            let data_w = wide(&data);
-            let same = read(key, &wide(&name)).is_some_and(|current| {
-                current
-                    .iter()
-                    .take_while(|&&c| c != 0)
-                    .eq(data_w.iter().take_while(|&&c| c != 0))
-            });
-            // SAFETY: opened above.
-            unsafe { RegCloseKey(key) };
-            if !same {
-                return Ok(LinkStatus::NotOurs);
+            if value(&subkey, &name).as_deref() != Some(data.as_str()) {
+                return Ok(LinkStatus::Another(format!("HKCU\\{subkey}")));
             }
         }
         Ok(LinkStatus::Ours)
+    }
+
+    /// Deletes the scheme's key, when it starts this executable. The installer's uninstaller makes
+    /// the same test before it deletes the same key.
+    pub fn unregister(target: &RegisterTarget) -> Result<Unregistered, CoreError> {
+        match status(target)? {
+            LinkStatus::Ours => {}
+            LinkStatus::Another(command) => {
+                log::info!("semaphore:// is registered by {command}; leaving it");
+                return Ok(Unregistered::NotOurs);
+            }
+            LinkStatus::Packaged(entry) => return Ok(Unregistered::Packaged(entry)),
+            LinkStatus::NotRegistered => return Ok(Unregistered::NotOurs),
+        }
+        let base = wide(&format!(r"Software\Classes\{SCHEME}"));
+        // SAFETY: a valid string; the key is the one `status` just read.
+        let status = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, base.as_ptr()) };
+        if status != ERROR_SUCCESS {
+            return Err(failed(
+                "the scheme's registry key",
+                format!("RegDeleteTreeW {status}"),
+            ));
+        }
+        Ok(Unregistered::Removed)
     }
 
     pub fn register(target: &RegisterTarget) -> Result<Registered, CoreError> {
@@ -520,7 +661,7 @@ mod tests {
             config_home: dir.join("config"),
             data_dirs: vec![dir.join("system")],
         };
-        assert_eq!(status(&target).unwrap(), LinkStatus::NotOurs);
+        assert_eq!(status(&target).unwrap(), LinkStatus::NotRegistered);
         assert!(!dir.exists(), "status wrote nothing");
         assert_eq!(register(&target).unwrap(), Registered::Ours);
         assert_eq!(status(&target).unwrap(), LinkStatus::Ours);
@@ -529,7 +670,10 @@ mod tests {
             exe: dir.join("elsewhere/semaphore-app"),
             ..target.clone()
         };
-        assert_eq!(status(&moved).unwrap(), LinkStatus::NotOurs);
+        assert_eq!(
+            status(&moved).unwrap(),
+            LinkStatus::Another(format!("{APP_ID}.desktop"))
+        );
         // A package's entry owns it.
         let packaged = dir
             .join("system/applications")
@@ -648,6 +792,32 @@ mod tests {
     }
 
     #[test]
+    fn removing_the_default_takes_only_our_line_and_only_when_it_is_ours() {
+        let existing = "[Default Applications]\ntext/html=firefox.desktop\n\
+                        x-scheme-handler/semaphore=app.semaphorechat.semaphore.desktop\n\n\
+                        [Added Associations]\nimage/png=a.desktop;\n";
+        assert_eq!(
+            without_default_handler(existing, MIME, ID).unwrap(),
+            "[Default Applications]\ntext/html=firefox.desktop\n\n\
+             [Added Associations]\nimage/png=a.desktop;\n"
+        );
+        // Someone else's default isn't ours to take away, and an absent one is nothing to undo.
+        assert_eq!(
+            without_default_handler(
+                "[Default Applications]\nx-scheme-handler/semaphore=other.desktop\n",
+                MIME,
+                ID
+            ),
+            None
+        );
+        assert_eq!(
+            without_default_handler("[Default Applications]\ntext/html=x\n", MIME, ID),
+            None
+        );
+        assert_eq!(default_handler("x-scheme-handler/semaphore=\n", MIME), None);
+    }
+
+    #[test]
     fn the_registry_values_open_the_exe_with_the_link() {
         let values = registry_values(Path::new(r"C:\Program Files\Semaphore\semaphore-app.exe"));
         assert!(values.contains(&(
@@ -752,6 +922,89 @@ mod tests {
                     .unwrap()
                     .contains("semaphore")
             );
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+
+        #[test]
+        fn unregistering_takes_our_entry_icon_and_default_away_and_nothing_else() {
+            let root = temp_root("unregister");
+            let target = target(&root);
+            register(&target).unwrap();
+            let mimeapps_path = root.join("config/mimeapps.list");
+            std::fs::write(
+                &mimeapps_path,
+                "[Default Applications]\ntext/html=firefox.desktop\n\
+                 x-scheme-handler/semaphore=app.semaphorechat.semaphore.desktop\n",
+            )
+            .unwrap();
+            assert_eq!(unregister(&target).unwrap(), Unregistered::Removed);
+            assert_eq!(status(&target).unwrap(), LinkStatus::NotRegistered);
+            assert_eq!(
+                std::fs::read_to_string(&mimeapps_path).unwrap(),
+                "[Default Applications]\ntext/html=firefox.desktop\n"
+            );
+            assert!(
+                !root
+                    .join("data/applications/app.semaphorechat.semaphore.desktop")
+                    .exists()
+            );
+            assert!(
+                !root
+                    .join("data/icons/hicolor/512x512/apps/app.semaphorechat.semaphore.png")
+                    .exists()
+            );
+            // Nothing left to undo, twice over.
+            assert_eq!(unregister(&target).unwrap(), Unregistered::NotOurs);
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+
+        #[test]
+        fn another_apps_registration_is_left_alone() {
+            let root = temp_root("not-ours");
+            let target = target(&root);
+            let mimeapps = root.join("config/mimeapps.list");
+            std::fs::create_dir_all(mimeapps.parent().unwrap()).unwrap();
+            let other = "[Default Applications]\nx-scheme-handler/semaphore=electron.desktop\n";
+            std::fs::write(&mimeapps, other).unwrap();
+            assert_eq!(
+                status(&target).unwrap(),
+                LinkStatus::Another("electron.desktop".into())
+            );
+            assert_eq!(unregister(&target).unwrap(), Unregistered::NotOurs);
+            assert_eq!(std::fs::read_to_string(&mimeapps).unwrap(), other);
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+
+        #[test]
+        fn a_packages_registration_is_not_removed_and_a_users_entry_stays() {
+            let root = temp_root("package-remove");
+            let links = target(&root);
+            let packaged = root.join("system/applications/app.semaphorechat.semaphore.desktop");
+            std::fs::create_dir_all(packaged.parent().unwrap()).unwrap();
+            std::fs::write(&packaged, "[Desktop Entry]\n").unwrap();
+            assert_eq!(
+                unregister(&links).unwrap(),
+                Unregistered::Packaged(packaged.clone())
+            );
+            assert!(packaged.is_file());
+            std::fs::remove_dir_all(&root).unwrap();
+
+            // Our id, but written by the user: their entry stays, and `status` doesn't call the
+            // registration ours, so unregistering touches nothing.
+            let root = temp_root("foreign-remove");
+            let links = target(&root);
+            let entry = root.join("data/applications/app.semaphorechat.semaphore.desktop");
+            std::fs::create_dir_all(entry.parent().unwrap()).unwrap();
+            std::fs::write(&entry, "[Desktop Entry]\nExec=mine %u\n").unwrap();
+            std::fs::create_dir_all(root.join("config")).unwrap();
+            std::fs::write(
+                root.join("config/mimeapps.list"),
+                "[Default Applications]\nx-scheme-handler/semaphore=app.semaphorechat.semaphore.desktop\n",
+            )
+            .unwrap();
+            assert!(matches!(status(&links).unwrap(), LinkStatus::Another(_)));
+            assert_eq!(unregister(&links).unwrap(), Unregistered::NotOurs);
+            assert!(entry.is_file());
             std::fs::remove_dir_all(&root).unwrap();
         }
     }

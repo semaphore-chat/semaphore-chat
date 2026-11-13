@@ -75,4 +75,12 @@ pub trait VoiceBackend: Send + Sync {
     ) -> BackendResult<wire::SuccessResponseDto> {
         Err(unsupported("server mute"))
     }
+    /// One failed join, for the server's log (`ReportJoinFailureDto`, `platform: native`).
+    /// Diagnostic only: nothing about the user's screen or the join's outcome depends on it.
+    async fn voice_diagnostics_controller_report_join_failure(
+        &self,
+        _body: wire::ReportJoinFailureDto,
+    ) -> BackendResult<()> {
+        Err(unsupported("join-failure reports"))
+    }
 }

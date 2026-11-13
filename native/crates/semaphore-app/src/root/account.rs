@@ -837,6 +837,12 @@ impl AppRoot {
         let (update, update_enabled, update_note) = self.desktop_update_row();
         let state = DesktopAppState {
             close_to_tray: settings.close_to_tray,
+            // What the user chose, or what this build does when they never chose.
+            open_links: settings.open_links.unwrap_or_else(|| {
+                registrar
+                    .as_ref()
+                    .is_some_and(|links| links.default_open_links())
+            }),
             links: self.account.links,
             link_preview_images: settings.third_party_media,
             server_url,
@@ -889,6 +895,34 @@ impl AppRoot {
         self.refresh_desktop_tab(cx);
     }
 
+    /// "Open semaphore:// links with this app": saved, then carried out on the OS off the UI
+    /// thread — registered when on, taken away when off and it was this app's.
+    pub(crate) fn set_open_links(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.update_settings(|settings| settings.open_links = Some(on));
+        let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services) else {
+            self.refresh_desktop_tab(cx);
+            return;
+        };
+        let asked = services
+            .exec
+            .handle()
+            .spawn_blocking(move || registrar.apply(on));
+        cx.spawn(async move |this, cx| {
+            let Ok(result) = asked.await else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(links) => this.account.links = links,
+                    Err(error) => log::warn!("opening semaphore:// links with this app: {error}"),
+                }
+                this.refresh_desktop_tab(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn on_desktop_settings(
         &mut self,
         _: &Entity<DesktopAppSettings>,
@@ -898,6 +932,7 @@ impl AppRoot {
     ) {
         match *event {
             DesktopAppEvent::SetCloseToTray(on) => self.set_close_to_tray(on, cx),
+            DesktopAppEvent::SetOpenLinks(on) => self.set_open_links(on, cx),
             DesktopAppEvent::SetLinkPreviewImages(on) => {
                 // The one third-party media switch (`root/media.rs`).
                 self.media_set_third_party(on, cx);
@@ -908,30 +943,6 @@ impl AppRoot {
                 let dir = crate::logging::logs_dir(&self.config.data_dir);
                 let _ = std::fs::create_dir_all(&dir);
                 crate::open_url(&dir.to_string_lossy(), cx);
-            }
-            DesktopAppEvent::RegisterLinkHandler => {
-                let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services)
-                else {
-                    return;
-                };
-                let asked = services
-                    .exec
-                    .handle()
-                    .spawn_blocking(move || registrar.register());
-                cx.spawn(async move |this, cx| {
-                    let Ok(result) = asked.await else {
-                        return;
-                    };
-                    this.update(cx, |this, cx| {
-                        match result {
-                            Ok(links) => this.account.links = links,
-                            Err(error) => log::warn!("registering semaphore:// links: {error}"),
-                        }
-                        this.refresh_desktop_tab(cx);
-                    })
-                    .ok();
-                })
-                .detach();
             }
             // Another server: sign out here, then the server step.
             DesktopAppEvent::ChangeServer => {
