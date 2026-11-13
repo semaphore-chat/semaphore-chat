@@ -848,6 +848,7 @@ impl AppRoot {
             update,
             update_enabled,
             update_note,
+            log_folder: true,
         };
         tab.update(cx, |tab, cx| tab.set_state(state, cx));
     }
@@ -902,6 +903,12 @@ impl AppRoot {
                 self.media_set_third_party(on, cx);
             }
             DesktopAppEvent::CheckForUpdates => self.check_for_updates(cx),
+            DesktopAppEvent::OpenLogFolder => {
+                // The app's open seam, so tests and rigs record it instead of opening anything.
+                let dir = crate::logging::logs_dir(&self.config.data_dir);
+                let _ = std::fs::create_dir_all(&dir);
+                crate::open_url(&dir.to_string_lossy(), cx);
+            }
             DesktopAppEvent::RegisterLinkHandler => {
                 let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services)
                 else {

@@ -199,6 +199,7 @@ pub(crate) fn sample_desktop(links: LinkHandler) -> DesktopAppState {
         update: crate::update::UpdateStatus::UpToDate,
         update_enabled: true,
         update_note: None,
+        log_folder: true,
     }
 }
 
@@ -572,6 +573,9 @@ pub fn stories() -> Vec<Story> {
                 },
                 cx,
             )
+        }),
+        Story::new("settings-desktop-log-folder", |_, _, cx| {
+            desktop_story(sample_desktop(LinkHandler::Registered), cx)
         }),
         Story::new("settings-desktop-unknown", |_, _, cx| {
             let state = DesktopAppState {

@@ -18,6 +18,7 @@ mod pkce;
 pub mod platform;
 pub mod player;
 pub mod realtime;
+pub mod redact;
 pub mod resync;
 #[cfg(feature = "fixtures")]
 pub mod scenario;
