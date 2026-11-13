@@ -8,7 +8,7 @@ import {
   CustomEmojiValidationStrategy,
   SoundboardSoundValidationStrategy,
 } from './strategies';
-import { matchesDeclaredImageType, readFileHeader } from './magic-bytes.util';
+import { matchesDeclaredMediaType, readFileHeader } from './magic-bytes.util';
 
 interface ResourceTypeFileValidatorOptions {
   resourceType: ResourceType;
@@ -22,7 +22,7 @@ export class ResourceTypeFileValidator extends FileValidator<ResourceTypeFileVal
   private readonly strategies: Map<ResourceType, IFileValidationStrategy>;
 
   /**
-   * Set by isValid() when the file content does not match its declared image
+   * Set by isValid() when the file content does not match its declared media
    * MIME type, so buildErrorMessage() can report the right reason. Safe
    * because a validator instance is created per upload request.
    */
@@ -72,12 +72,13 @@ export class ResourceTypeFileValidator extends FileValidator<ResourceTypeFileVal
       return false;
     }
 
-    // For image MIME claims, verify the content's magic bytes match the
-    // declared format (blocks e.g. renamed executables claiming image/png).
-    // Non-image MIME types pass through unchanged.
-    if (file.mimetype.startsWith('image/')) {
+    // For image, video and audio MIME claims, verify the content's magic
+    // bytes match the declared format (blocks e.g. renamed executables
+    // claiming image/png or video/x-msvideo). Documents and archives pass
+    // through unchanged.
+    if (/^(image|video|audio)\//.test(file.mimetype)) {
       const header = await readFileHeader(file);
-      if (!matchesDeclaredImageType(header, file.mimetype)) {
+      if (!matchesDeclaredMediaType(header, file.mimetype)) {
         this.contentTypeMismatch = true;
         return false;
       }
