@@ -9,10 +9,17 @@
 //! - **Untrusted images are checked before anyone decodes them**: past [`MAX_IMAGE_BYTES`] or
 //!   [`MAX_IMAGE_PIXELS`] (less for animated formats, whose frames multiply) they're refused, and
 //!   the UI draws the file row or the initials instead.
+//! - **Pictures from other sites** (link-preview images, GIFs and the GIF picker's previews) go
+//!   through one entry point, [`third_party`], which refuses while the "Load images from other
+//!   sites" setting is off before it looks anywhere: no request, nothing served from the store.
+//!   Turning the setting off drops what was kept ([`set_third_party`]) and any fetch still on its
+//!   way. Animated ones pass the frame budget ([`budget`]) before they're kept.
 //! - **Video posters** are the server's thumbnails, through the same store ([`poster_resolver`]).
 //! - **Saving** a download asks where with the system's save dialog ([`ask_save_path`]), then
 //!   writes off the UI thread ([`write_file`]). The rigs' headless platform never answers that
 //!   dialog, so nothing is saved, or shown, on the machine running them.
+
+pub mod budget;
 
 use crate::runtime::Exec;
 use gpui_kit::{AssetSource, Resource, SharedString};
@@ -202,6 +209,31 @@ impl FileStore {
             .count()
     }
 
+    /// Forgets one path, whatever state it's in: a fetch whose answer is no longer wanted.
+    pub fn forget(&self, path: &str) {
+        let mut inner = self.lock();
+        if let Some(Slot::Ready { bytes, .. }) = inner.slots.remove(path) {
+            inner.bytes -= bytes.len();
+        }
+    }
+
+    /// Drops every third-party picture kept or refused, leaving fetches on their way to drop
+    /// themselves when they land (see [`third_party`]).
+    pub fn purge_third_party(&self) {
+        let mut inner = self.lock();
+        let gone: Vec<String> = inner
+            .slots
+            .iter()
+            .filter(|(path, slot)| is_third_party_path(path) && !matches!(slot, Slot::Fetching))
+            .map(|(path, _)| path.clone())
+            .collect();
+        for path in gone {
+            if let Some(Slot::Ready { bytes, .. }) = inner.slots.remove(&path) {
+                inner.bytes -= bytes.len();
+            }
+        }
+    }
+
     /// Everything goes: a sign-out must not leave the last session's files in memory.
     pub fn clear(&self) {
         let mut inner = self.lock();
@@ -244,11 +276,129 @@ fn file_path(file_id: &str, thumbnail: bool) -> String {
     )
 }
 
-fn link_path(url: &str) -> String {
+/// A picture from another site: which cap it fetches under and where the store keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThirdPartyKind {
+    /// A link preview's picture.
+    LinkImage,
+    /// A GIF from the GIF service: a GIF message's picture or a picker preview.
+    Gif,
+}
+
+impl ThirdPartyKind {
+    fn folder(self) -> &'static str {
+        match self {
+            Self::LinkImage => "link",
+            Self::Gif => "gif",
+        }
+    }
+
+    fn max_bytes(self) -> usize {
+        match self {
+            Self::LinkImage => PREVIEW_MAX_BYTES,
+            Self::Gif => GIF_MAX_BYTES,
+        }
+    }
+}
+
+fn third_party_path(kind: ThirdPartyKind, url: &str) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     url.hash(&mut hasher);
-    format!("{ASSET_PREFIX}link/{:016x}", hasher.finish())
+    format!("{ASSET_PREFIX}{}/{:016x}", kind.folder(), hasher.finish())
+}
+
+fn is_third_party_path(path: &str) -> bool {
+    [ThirdPartyKind::LinkImage, ThirdPartyKind::Gif]
+        .iter()
+        .any(|kind| {
+            path.strip_prefix(ASSET_PREFIX)
+                .and_then(|rest| rest.strip_prefix(kind.folder()))
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+}
+
+/// Top-level names that can never resolve (RFC 2606 / 6761): asking for one would only send a
+/// DNS query out for nothing (the showcase scenario's GIFs live on `media.gifs.example`).
+const NEVER_RESOLVES: [&str; 3] = ["example", "invalid", "test"];
+
+/// Whether `url` is one a third-party fetch may ask for at all: http or https, to a host that
+/// can exist.
+fn fetchable_url(url: &reqwest::Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    // `domain` is `None` for an IP address, which is fine as it is.
+    match url.domain() {
+        Some(domain) => {
+            let last = domain
+                .trim_end_matches('.')
+                .rsplit('.')
+                .next()
+                .unwrap_or("");
+            !NEVER_RESOLVES
+                .iter()
+                .any(|reserved| last.eq_ignore_ascii_case(reserved))
+        }
+        None => url.host_str().is_some(),
+    }
+}
+
+fn fetchable(url: &str) -> bool {
+    reqwest::Url::parse(url).is_ok_and(|url| fetchable_url(&url))
+}
+
+/// THE entry point for pictures from other sites. While the setting is off it answers `Missing`
+/// before looking anywhere: no request, and nothing kept from before is served. While it is on,
+/// only http(s) URLs are fetched, once, under the kind's byte cap; animated ones pass the frame
+/// budget; an answer that lands after the setting went off is dropped, not kept.
+pub fn third_party(
+    previews: &Arc<PreviewFetcher>,
+    store: &Arc<FileStore>,
+    exec: &Exec,
+    arrived: &async_channel::Sender<()>,
+    kind: ThirdPartyKind,
+    url: &str,
+) -> MediaRef {
+    if !previews.allowed() || !fetchable(url) {
+        return MediaRef::Missing;
+    }
+    let path = third_party_path(kind, url);
+    match store.have(&path) {
+        Have::Ready => return resource(path),
+        Have::Unavailable => return MediaRef::Missing,
+        Have::Fetching => return MediaRef::Pending,
+        Have::Nothing => {}
+    }
+    if store.begin(&path) {
+        let (previews, store, arrived) = (previews.clone(), store.clone(), arrived.clone());
+        let handle = exec.handle().clone();
+        let url = url.to_owned();
+        exec.fire(async move {
+            let fetched = previews.fetch_limited(&url, kind.max_bytes()).await;
+            let _ = handle
+                .spawn_blocking(move || {
+                    if previews.allowed() {
+                        // The budget reads the header, and may decode one frame: off the workers.
+                        store.finish(&path, fetched.and_then(budget::within_budget));
+                    } else {
+                        store.forget(&path);
+                    }
+                })
+                .await;
+            let _ = arrived.try_send(());
+        });
+    }
+    MediaRef::Pending
+}
+
+/// The switch changed: the fetcher follows it, and turning it off drops every picture from another
+/// site kept so far.
+pub fn set_third_party(previews: &PreviewFetcher, store: &FileStore, on: bool) {
+    previews.set_allowed(on);
+    if !on {
+        store.purge_third_party();
+    }
 }
 
 fn resource(path: String) -> MediaRef {
@@ -267,6 +417,15 @@ pub struct PreviewFetcher {
 
 /// What a preview fetch may take.
 pub const PREVIEW_MAX_BYTES: usize = 5 * 1024 * 1024;
+/// What a GIF fetch may take: 16 MiB, the most the store decodes at all ([`MAX_IMAGE_BYTES`]).
+/// GIF files are far bigger than link-preview pictures for what they show, and the GIF service's
+/// full-size renditions often pass 5 MiB; past 16 MiB the frame budget would show only the first
+/// frame of almost any of them anyway.
+pub const GIF_MAX_BYTES: usize = 16 * 1024 * 1024;
+const _: () = assert!(
+    GIF_MAX_BYTES <= MAX_IMAGE_BYTES,
+    "a GIF fetched must be decodable"
+);
 pub const PREVIEW_TIMEOUT: Duration = Duration::from_secs(10);
 pub const PREVIEW_MAX_REDIRECTS: usize = 3;
 
@@ -296,9 +455,8 @@ impl PreviewFetcher {
                     .tls_backend_preconfigured(rustls::ClientConfig::clone(&tls))
                     .user_agent("Mozilla/5.0 (compatible; link preview)")
                     .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                        let scheme_ok = matches!(attempt.url().scheme(), "http" | "https");
-                        if !scheme_ok {
-                            attempt.error("a redirect left http and https")
+                        if !fetchable_url(attempt.url()) {
+                            attempt.error("a redirect left http(s) or went nowhere")
                         } else if attempt.previous().len() > PREVIEW_MAX_REDIRECTS {
                             attempt.error("too many redirects")
                         } else {
@@ -313,14 +471,20 @@ impl PreviewFetcher {
             .clone()
     }
 
-    /// The image at `url`, or why not. Makes no request unless allowed and the URL is http(s).
+    /// A link preview's image at `url`, under [`PREVIEW_MAX_BYTES`].
     pub async fn fetch(&self, url: &str) -> Result<Vec<u8>, String> {
+        self.fetch_limited(url, PREVIEW_MAX_BYTES).await
+    }
+
+    /// The image at `url`, at most `max_bytes` (from Content-Length and while it streams), or why
+    /// not. Makes no request unless allowed and the URL is http(s).
+    pub async fn fetch_limited(&self, url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
         if !self.allowed() {
             return Err("link preview images are off".into());
         }
         let parsed = reqwest::Url::parse(url).map_err(|error| error.to_string())?;
-        if !matches!(parsed.scheme(), "http" | "https") {
-            return Err(format!("not fetching a {} URL", parsed.scheme()));
+        if !fetchable_url(&parsed) {
+            return Err(format!("not fetching {parsed}"));
         }
         let client = self.client().ok_or("no HTTP client")?;
         self.requests.fetch_add(1, Ordering::SeqCst);
@@ -342,7 +506,7 @@ impl PreviewFetcher {
         }
         if response
             .content_length()
-            .is_some_and(|length| length > PREVIEW_MAX_BYTES as u64)
+            .is_some_and(|length| length > max_bytes as u64)
         {
             return Err("too big".into());
         }
@@ -351,7 +515,7 @@ impl PreviewFetcher {
         use futures_util::StreamExt as _;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|error| error.to_string())?;
-            if body.len() + chunk.len() > PREVIEW_MAX_BYTES {
+            if body.len() + chunk.len() > max_bytes {
                 return Err("too big".into());
             }
             body.extend_from_slice(&chunk);
@@ -409,6 +573,22 @@ impl AppMedia {
         )
     }
 
+    /// The "Load images from other sites" switch: see [`set_third_party`].
+    pub fn set_third_party(&self, on: bool) {
+        set_third_party(&self.previews, &self.store, on);
+    }
+
+    fn third_party(&self, kind: ThirdPartyKind, url: &str) -> MediaRef {
+        third_party(
+            &self.previews,
+            &self.store,
+            &self.exec,
+            &self.arrived,
+            kind,
+            url,
+        )
+    }
+
     /// For avatars drawn outside the list: a resource once the bytes are here, fetching them if not.
     pub fn avatar_resource(&self, file_id: &str) -> Option<Resource> {
         match self.avatar(file_id) {
@@ -452,33 +632,11 @@ impl MediaSource for AppMedia {
     }
 
     fn link_image(&self, url: &str) -> MediaRef {
-        if !self.previews.allowed() {
-            return MediaRef::Missing;
-        }
-        let path = link_path(url);
-        match self.store.have(&path) {
-            Have::Ready => return resource(path),
-            Have::Unavailable => return MediaRef::Missing,
-            Have::Fetching => return MediaRef::Pending,
-            Have::Nothing => {}
-        }
-        if self.store.begin(&path) {
-            let (previews, store, arrived) = (
-                self.previews.clone(),
-                self.store.clone(),
-                self.arrived.clone(),
-            );
-            let handle = self.exec.handle().clone();
-            let url = url.to_owned();
-            self.exec.fire(async move {
-                let fetched = previews.fetch(&url).await;
-                let _ = handle
-                    .spawn_blocking(move || store.finish(&path, fetched))
-                    .await;
-                let _ = arrived.try_send(());
-            });
-        }
-        MediaRef::Pending
+        self.third_party(ThirdPartyKind::LinkImage, url)
+    }
+
+    fn gif(&self, url: &str) -> MediaRef {
+        self.third_party(ThirdPartyKind::Gif, url)
     }
 }
 
@@ -839,6 +997,10 @@ mod tests {
 
     /// One canned HTTP answer per connection, for the fetcher's limits.
     async fn serve(answers: Vec<String>) -> (String, Arc<AtomicUsize>) {
+        serve_bytes(answers.into_iter().map(String::into_bytes).collect()).await
+    }
+
+    async fn serve_bytes(answers: Vec<Vec<u8>>) -> (String, Arc<AtomicUsize>) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -852,7 +1014,7 @@ mod tests {
                 counted.fetch_add(1, Ordering::SeqCst);
                 let mut buffer = [0u8; 4096];
                 let _ = stream.read(&mut buffer).await;
-                let _ = stream.write_all(answer.as_bytes()).await;
+                let _ = stream.write_all(&answer).await;
             }
         });
         (format!("http://{address}"), hits)
@@ -933,5 +1095,388 @@ mod tests {
         let fetcher = PreviewFetcher::new(true);
         assert!(fetcher.fetch(&format!("{base}/start")).await.is_err());
         assert_eq!(hops.load(Ordering::SeqCst), PREVIEW_MAX_REDIRECTS + 1);
+    }
+
+    // ---- WM: the third-party entry point. ----
+
+    fn binary_answer(content_type: &str, body: &[u8]) -> Vec<u8> {
+        let mut answer = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        answer.extend_from_slice(body);
+        answer
+    }
+
+    fn animated_gif(width: u32, height: u32, frames: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(&mut bytes);
+            encoder
+                .encode_frames((0..frames).map(|index| {
+                    image::Frame::new(image::RgbaImage::from_pixel(
+                        width,
+                        height,
+                        image::Rgba([(index * 50 % 256) as u8, 0, 0, 255]),
+                    ))
+                }))
+                .unwrap();
+        }
+        bytes
+    }
+
+    /// The entry point's parts: its own store, so tests don't share the process's.
+    struct Parts {
+        previews: Arc<PreviewFetcher>,
+        store: Arc<FileStore>,
+        exec: Exec,
+        arrived: async_channel::Sender<()>,
+        landed: async_channel::Receiver<()>,
+    }
+
+    impl Parts {
+        fn new(on: bool) -> Self {
+            semaphore_net::install_crypto_provider();
+            let (arrived, landed) = async_channel::unbounded();
+            Self {
+                previews: Arc::new(PreviewFetcher::new(on)),
+                store: Arc::default(),
+                exec: Exec::new(tokio::runtime::Handle::current(), Arc::default()),
+                arrived,
+                landed,
+            }
+        }
+
+        fn get(&self, kind: ThirdPartyKind, url: &str) -> MediaRef {
+            third_party(
+                &self.previews,
+                &self.store,
+                &self.exec,
+                &self.arrived,
+                kind,
+                url,
+            )
+        }
+
+        /// Asks, waits for the fetch to land, and asks again.
+        async fn fetched(&self, kind: ThirdPartyKind, url: &str) -> MediaRef {
+            assert!(matches!(self.get(kind, url), MediaRef::Pending));
+            self.landed.recv().await.unwrap();
+            self.get(kind, url)
+        }
+
+        fn set(&self, on: bool) {
+            set_third_party(&self.previews, &self.store, on);
+        }
+
+        fn requests(&self) -> usize {
+            self.previews.requests.load(Ordering::SeqCst)
+        }
+    }
+
+    const KINDS: [ThirdPartyKind; 2] = [ThirdPartyKind::LinkImage, ThirdPartyKind::Gif];
+
+    fn is_missing(media: &MediaRef) -> bool {
+        matches!(media, MediaRef::Missing)
+    }
+
+    fn is_resource(media: &MediaRef) -> bool {
+        matches!(media, MediaRef::Resource(_))
+    }
+
+    #[tokio::test]
+    async fn third_party_off_makes_no_request_for_any_kind() {
+        let (base, hits) = serve_bytes(vec![]).await;
+        let parts = Parts::new(false);
+        let urls = [
+            format!("{base}/gif-1.gif"),
+            format!("{base}/gif-1-preview.gif"),
+            format!("{base}/preview.png"),
+            "https://media.gifs.example/a.gif".to_owned(),
+            "data:image/gif;base64,R0lGODlhAQABAAAAACw=".to_owned(),
+            "file:///etc/passwd".to_owned(),
+            "javascript:alert(1)".to_owned(),
+            "ftp://example.invalid/a.gif".to_owned(),
+            "not a url".to_owned(),
+            String::new(),
+        ];
+        for kind in KINDS {
+            for url in &urls {
+                assert!(is_missing(&parts.get(kind, url)), "{kind:?} {url}");
+            }
+        }
+        tokio::task::yield_now().await;
+        assert_eq!(parts.requests(), 0);
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+        assert_eq!(parts.store.fetching(), 0, "nothing was even begun");
+        assert_eq!(parts.store.bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn third_party_on_fetches_once_then_serves_from_the_store() {
+        let gif = animated_gif(4, 4, 3);
+        let (base, hits) = serve_bytes(vec![
+            binary_answer("image/gif", &gif),
+            binary_answer("image/png", &png_header(2, 2)),
+        ])
+        .await;
+        let parts = Parts::new(true);
+        let gif_url = format!("{base}/gif-1.gif");
+        assert!(is_resource(
+            &parts.fetched(ThirdPartyKind::Gif, &gif_url).await
+        ));
+        let link_url = format!("{base}/preview.png");
+        assert!(is_resource(
+            &parts.fetched(ThirdPartyKind::LinkImage, &link_url).await
+        ));
+        for _ in 0..5 {
+            assert!(is_resource(&parts.get(ThirdPartyKind::Gif, &gif_url)));
+            assert!(is_resource(
+                &parts.get(ThirdPartyKind::LinkImage, &link_url)
+            ));
+        }
+        assert_eq!(hits.load(Ordering::SeqCst), 2, "each asked once");
+        assert_eq!(parts.requests(), 2);
+        // The same URL as the other kind is kept apart.
+        assert_ne!(
+            third_party_path(ThirdPartyKind::Gif, &gif_url),
+            third_party_path(ThirdPartyKind::LinkImage, &gif_url)
+        );
+    }
+
+    #[tokio::test]
+    async fn turning_off_serves_nothing_and_requests_nothing() {
+        let gif = animated_gif(4, 4, 2);
+        let (base, hits) = serve_bytes(vec![
+            binary_answer("image/gif", &gif),
+            binary_answer("image/gif", &gif),
+        ])
+        .await;
+        let parts = Parts::new(true);
+        let url = format!("{base}/gif-2.gif");
+        assert!(is_resource(&parts.fetched(ThirdPartyKind::Gif, &url).await));
+        let path = third_party_path(ThirdPartyKind::Gif, &url);
+
+        parts.set(false);
+        for _ in 0..5 {
+            assert!(is_missing(&parts.get(ThirdPartyKind::Gif, &url)));
+        }
+        assert_eq!(parts.store.have(&path), Have::Nothing, "purged");
+        assert!(
+            parts.store.get(&path).is_none(),
+            "the asset source has nothing to serve"
+        );
+        assert_eq!(parts.store.bytes(), 0);
+        tokio::task::yield_now().await;
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+
+        // On again: fetched afresh, since nothing was kept.
+        parts.set(true);
+        assert!(is_resource(&parts.fetched(ThirdPartyKind::Gif, &url).await));
+        assert_eq!(hits.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn turning_off_purges_third_party_pictures_but_keeps_files() {
+        let store = FileStore::default();
+        let previews = PreviewFetcher::new(true);
+        let file = file_path("abc", false);
+        let gif = third_party_path(ThirdPartyKind::Gif, "http://a/x.gif");
+        let link = third_party_path(ThirdPartyKind::LinkImage, "http://a/x.png");
+        let refused = third_party_path(ThirdPartyKind::Gif, "http://a/bad.gif");
+        let fetching = third_party_path(ThirdPartyKind::Gif, "http://a/slow.gif");
+        for path in [&file, &gif, &link] {
+            assert!(store.begin(path));
+            store.finish(path, Ok(png_header(2, 2)));
+        }
+        assert!(store.begin(&refused));
+        store.finish(&refused, Err("no".into()));
+        assert!(store.begin(&fetching));
+
+        set_third_party(&previews, &store, false);
+        assert!(!previews.allowed());
+        assert_eq!(store.have(&file), Have::Ready, "the server's files stay");
+        assert_eq!(store.have(&gif), Have::Nothing);
+        assert_eq!(store.have(&link), Have::Nothing);
+        assert_eq!(store.have(&refused), Have::Nothing, "asked again when on");
+        assert_eq!(
+            store.have(&fetching),
+            Have::Fetching,
+            "drops itself on landing"
+        );
+        assert_eq!(store.bytes(), png_header(2, 2).len());
+
+        // Turning it on keeps everything.
+        set_third_party(&previews, &store, true);
+        assert_eq!(store.have(&file), Have::Ready);
+        assert!(is_third_party_path(&gif) && is_third_party_path(&link));
+        assert!(!is_third_party_path(&file));
+        assert!(!is_third_party_path(&format!("{ASSET_PREFIX}gifs/x")));
+    }
+
+    #[tokio::test]
+    async fn a_fetch_landing_after_turning_off_is_not_kept() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let asked = Arc::new(tokio::sync::Notify::new());
+        let (release_server, asked_server) = (release.clone(), asked.clone());
+        let gif = animated_gif(4, 4, 2);
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0u8; 4096];
+            let _ = stream.read(&mut buffer).await;
+            asked_server.notify_one();
+            release_server.notified().await;
+            let _ = stream.write_all(&binary_answer("image/gif", &gif)).await;
+        });
+        let parts = Parts::new(true);
+        let url = format!("{base}/slow.gif");
+        assert!(matches!(
+            parts.get(ThirdPartyKind::Gif, &url),
+            MediaRef::Pending
+        ));
+        asked.notified().await;
+        parts.set(false);
+        release.notify_one();
+        parts.landed.recv().await.unwrap();
+        let path = third_party_path(ThirdPartyKind::Gif, &url);
+        assert_eq!(parts.store.have(&path), Have::Nothing);
+        assert_eq!(parts.store.bytes(), 0);
+        assert!(is_missing(&parts.get(ThirdPartyKind::Gif, &url)));
+    }
+
+    #[tokio::test]
+    async fn only_http_urls_are_fetched_while_on() {
+        let parts = Parts::new(true);
+        for kind in KINDS {
+            for url in [
+                "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+                "file:///etc/passwd",
+                "javascript:alert(1)",
+                "ftp://example.invalid/a.gif",
+                "semaphore-file/gif/0000",
+                "//example.invalid/a.gif",
+                "https://media.gifs.example/a.gif",
+                "http://site.invalid/a.png",
+                "http://a.TEST./a.png",
+                "",
+            ] {
+                assert!(is_missing(&parts.get(kind, url)), "{kind:?} {url}");
+            }
+        }
+        assert_eq!(parts.requests(), 0);
+        assert_eq!(parts.store.fetching(), 0);
+    }
+
+    #[test]
+    fn names_that_can_never_resolve_are_not_asked_for() {
+        for url in [
+            "https://media.gifs.example/a.gif",
+            "https://EXAMPLE/a.gif",
+            "http://x.invalid/",
+            "http://x.test./a",
+        ] {
+            assert!(!fetchable(url), "{url}");
+        }
+        for url in [
+            "https://media.giphy.com/media/x/giphy.gif",
+            "http://127.0.0.1:3999/__fixtures/gif-1.gif",
+            "http://[::1]/a.gif",
+            "https://example.com/a.png",
+            "https://testing.org/a.png",
+        ] {
+            assert!(fetchable(url), "{url}");
+        }
+    }
+
+    #[tokio::test]
+    async fn wrong_type_oversized_or_junk_gifs_are_missing() {
+        let six_mib = vec![b'x'; 6 * 1024 * 1024];
+        let (base, _) = serve_bytes(vec![
+            binary_answer("text/html", &animated_gif(2, 2, 2)),
+            binary_answer("image/gif", &vec![0u8; GIF_MAX_BYTES + 1]),
+            binary_answer("image/gif", b"<html>a page, not a gif</html>"),
+            binary_answer("image/png", &six_mib),
+        ])
+        .await;
+        let parts = Parts::new(true);
+        for name in ["typed.gif", "huge.gif", "junk.gif"] {
+            let url = format!("{base}/{name}");
+            assert!(
+                is_missing(&parts.fetched(ThirdPartyKind::Gif, &url).await),
+                "{name}"
+            );
+        }
+        // A link preview's cap is 5 MiB.
+        let url = format!("{base}/six.png");
+        assert!(is_missing(
+            &parts.fetched(ThirdPartyKind::LinkImage, &url).await
+        ));
+        assert_eq!(parts.requests(), 4);
+    }
+
+    #[tokio::test]
+    async fn gifs_have_their_own_byte_cap() {
+        semaphore_net::install_crypto_provider();
+        let six_mib = vec![b'x'; 6 * 1024 * 1024];
+        let (base, _) = serve_bytes(vec![
+            binary_answer("image/gif", &six_mib),
+            binary_answer("image/gif", &six_mib),
+        ])
+        .await;
+        let fetcher = PreviewFetcher::new(true);
+        let url = format!("{base}/big.gif");
+        assert!(
+            fetcher.fetch(&url).await.is_err(),
+            "over a link preview's cap"
+        );
+        assert_eq!(
+            fetcher
+                .fetch_limited(&url, GIF_MAX_BYTES)
+                .await
+                .unwrap()
+                .len(),
+            six_mib.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn webp_is_accepted_and_big_animations_keep_one_frame() {
+        let mut webp = Vec::new();
+        image::codecs::webp::WebPEncoder::new_lossless(&mut webp)
+            .encode(&[200u8; 4 * 4 * 4], 4, 4, image::ExtendedColorType::Rgba8)
+            .unwrap();
+        // 600x600 x 30 frames is 43 MB decoded: over the animation budget.
+        let big = animated_gif(600, 600, 30);
+        let (base, _) = serve_bytes(vec![
+            binary_answer("image/webp", &webp),
+            binary_answer("image/gif", &big),
+        ])
+        .await;
+        let parts = Parts::new(true);
+        let webp_url = format!("{base}/a.webp");
+        assert!(is_resource(
+            &parts.fetched(ThirdPartyKind::Gif, &webp_url).await
+        ));
+        let big_url = format!("{base}/big.gif");
+        assert!(is_resource(
+            &parts.fetched(ThirdPartyKind::Gif, &big_url).await
+        ));
+        let kept = parts
+            .store
+            .get(&third_party_path(ThirdPartyKind::Gif, &big_url))
+            .unwrap();
+        assert!(
+            kept.starts_with(&[0x89, b'P', b'N', b'G']),
+            "frame 0 as a PNG"
+        );
+        assert_eq!(
+            budget::animation_cost(&kept).unwrap().frames,
+            1,
+            "a single frame"
+        );
     }
 }

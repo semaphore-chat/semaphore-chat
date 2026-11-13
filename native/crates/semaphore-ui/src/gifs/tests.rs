@@ -120,6 +120,68 @@ fn escape_closes(cx: &mut TestAppContext) {
     assert_eq!(rig.events(), [GifPickerEvent::Close]);
 }
 
+fn focused_in_picker(rig: &Rig<GifPicker, GifPickerEvent>, cx: &mut TestAppContext) -> bool {
+    rig.with(cx, |view, window, cx| {
+        view.read(cx).focus.contains_focused(window, cx)
+    })
+}
+
+#[gpui_kit::test]
+fn escape_closes_after_clicking_load_more(cx: &mut TestAppContext) {
+    let rig = gif_rig(cx, ready(6, true, false));
+    rig.click(cx, "gif-more");
+    assert!(focused_in_picker(&rig, cx), "focus stays in the picker");
+    rig.with(cx, |_, window, cx| window.press("escape", cx));
+    assert_eq!(
+        rig.events(),
+        [GifPickerEvent::LoadMore, GifPickerEvent::Close]
+    );
+}
+
+#[gpui_kit::test]
+fn escape_closes_after_clearing_the_search(cx: &mut TestAppContext) {
+    let rig = gif_rig(cx, ready(6, false, false));
+    rig.with(cx, |_, window, cx| window.input("cat", cx));
+    rig.click(cx, "gif-search-clear");
+    assert!(focused_in_picker(&rig, cx), "focus stays in the picker");
+    rig.with(cx, |_, window, cx| window.press("escape", cx));
+    assert_eq!(rig.events().last(), Some(&GifPickerEvent::Close));
+}
+
+#[gpui_kit::test]
+fn escape_closes_after_allow(cx: &mut TestAppContext) {
+    let off = GifResultsView {
+        state: LoadState::Ready,
+        enabled: true,
+        needs_permission: true,
+        ..GifResultsView::default()
+    };
+    let rig = gif_rig(cx, off);
+    rig.click(cx, "gif-allow");
+    assert!(focused_in_picker(&rig, cx), "focus stays in the picker");
+    rig.with(cx, |_, window, cx| window.press("escape", cx));
+    assert_eq!(rig.events(), [GifPickerEvent::Allow, GifPickerEvent::Close]);
+}
+
+#[gpui_kit::test]
+fn focus_search_focuses_the_field(cx: &mut TestAppContext) {
+    let rig = gif_rig(cx, ready(3, false, false));
+    rig.with(cx, |view, window, cx| {
+        view.update(cx, |picker, cx| picker.focus.focus(window, cx));
+    });
+    let in_field = |rig: &Rig<GifPicker, GifPickerEvent>, cx: &mut TestAppContext| {
+        rig.with(cx, |view, window, cx| {
+            let field = view.read(cx).field.read(cx).focus_handle(cx);
+            field.is_focused(window)
+        })
+    };
+    assert!(!in_field(&rig, cx), "the root has focus, not the field");
+    rig.with(cx, |view, window, cx| {
+        view.update(cx, |picker, cx| picker.focus_search(window, cx));
+    });
+    assert!(in_field(&rig, cx));
+}
+
 #[gpui_kit::test]
 fn load_more_only_when_more(cx: &mut TestAppContext) {
     let rig = gif_rig(cx, ready(6, false, false));

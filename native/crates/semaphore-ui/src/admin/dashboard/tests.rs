@@ -29,6 +29,24 @@ fn open(page: AdminPage, storage_min_percent: Option<u32>) -> DashboardEvent {
 }
 
 #[test]
+fn tiles_per_row_follows_the_width_the_totals_get() {
+    // Six need 6 tiles of TILE_MIN and 5 gaps; three need 3 and 2; below that, two.
+    let six = TILE_MIN * 6. + TILE_GAP * 5.;
+    let three = TILE_MIN * 3. + TILE_GAP * 2.;
+    assert_eq!(tiles_per_row(six), 6);
+    assert_eq!(tiles_per_row(six - 0.5), 3);
+    assert_eq!(tiles_per_row(three), 3);
+    assert_eq!(tiles_per_row(three - 0.5), 2);
+    assert_eq!(tiles_per_row(0.), 2);
+    assert_eq!(tiles_per_row(5000.), 6);
+    // The shell's widest content column (1100 px) never gets six; a window over about 1650 px
+    // wide, with the page list beside it, still doesn't, because the column stops at 1100.
+    assert_eq!(tiles_per_row(estimated_width(1280.)), 3);
+    assert_eq!(tiles_per_row(estimated_width(2000.)), 3);
+    assert_eq!(tiles_per_row(estimated_width(700.)), 2);
+}
+
+#[test]
 fn counts_and_uptime_format_like_the_web() {
     assert_eq!(count_label(0), "0");
     assert_eq!(count_label(999), "999");

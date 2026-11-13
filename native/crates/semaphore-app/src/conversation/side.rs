@@ -371,6 +371,7 @@ impl ConversationPane {
         let composer = cx.new(|cx| {
             let mut composer = Composer::new(config, window, cx);
             composer.follow_theme(cx);
+            composer.set_gifs_enabled(self.media_gifs_enabled(), cx);
             composer
         });
         let info = self.core.thread_info(parent_id.clone());
