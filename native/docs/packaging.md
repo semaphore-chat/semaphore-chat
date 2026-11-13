@@ -25,7 +25,8 @@ This writes, under `native/dist-packages/` (gitignored; `SEMAPHORE_PACKAGES_DIR`
 | `Semaphore-Chat-Native-<version>-x86_64.AppImage` | AppImage with `AppRun`, the same tree as the packages, and a top-level `.desktop` and icon |
 | `semaphore-chat-native_<version>_amd64.deb` | Debian package |
 | `semaphore-chat-native-<version>-1.x86_64.rpm` | RPM package |
-| `SHA256SUMS` | Checksums of the three |
+| `latest.json` | The release manifest the updater reads (below) |
+| `SHA256SUMS` | Checksums of the three and the manifest |
 
 The version is the `semaphore-app` crate's version in `native/crates/semaphore-app/Cargo.toml`
 (today `0.0.0`), or `SEMAPHORE_VERSION` for CI. It must use digits, letters and dots only, so the
@@ -101,6 +102,161 @@ The `.desktop` entry has `MimeType=x-scheme-handler/semaphore;` and
 and `Comment` values match the Electron entry. There is no `postinst`/`post` script: nothing
 writes to the network or to a user's home during installation. The app writes `settings.json`
 and its single-instance lock under the user's data directory at run time, as before.
+
+## Auto-update
+
+The native client has its own updater. It reads one JSON document from the release host, compares
+its version with the one this build reports (`semaphore-app --version`), downloads the artifact for
+the way this copy was installed, checks its SHA-256, and installs it where that is possible. The
+Electron app's electron-updater is the reference for the states, the wording and the schedule; see
+"Per format" below for where native deliberately stops short of what Electron does.
+
+### The release manifest
+
+`scripts/package-linux.sh` writes it next to the packages it built:
+
+```json
+{
+  "version": "1.4.0",
+  "notes_url": "https://github.com/semaphore-chat/semaphore-chat/releases/tag/v1.4.0",
+  "artifacts": [
+    { "kind": "appimage", "arch": "x86_64",
+      "url": "https://github.com/semaphore-chat/semaphore-chat/releases/download/v1.4.0/Semaphore-Chat-Native-1.4.0-x86_64.AppImage",
+      "sha256": "0369a40525e0beb9e9a2aa81a9470a1e4aac203da286b7cefabf2f7c5df1d8a6",
+      "size": 30345720 }
+  ]
+}
+```
+
+- `version` is a bare semantic version (`1.4.0`, `2.0.0-rc.1`): no `v`, and pre-releases order
+  before their release. Newer means semver precedence: build metadata (`+ci.5`) never makes a
+  version newer. **A stable build ignores pre-release versions** in the feed; a pre-release build
+  (`2.0.0-beta.1`) accepts them.
+- `notes_url` is optional; the update card links it when it is there.
+- `kind` is `appimage`, `deb`, `rpm` or `windows-zip`. A kind this build doesn't know, or another
+  `arch` (`x86_64`, `aarch64`), is ignored, so a future macOS artifact doesn't stop today's
+  client. Two artifacts for the same kind and architecture are refused.
+- Every artifact must have `url`, `sha256` (64 hex digits) and `size` (1 byte to 512 MiB).
+- `url` and `notes_url` must be `https`; plain `http` is accepted only for a loopback address,
+  which is how the end-to-end rig serves a feed. A URL with a user name or password is refused.
+
+The URLs are where the artifacts *will* be published, not where they are built: `SEMAPHORE_UPDATE_BASE_URL`
+sets that prefix (default: the tagged GitHub release download URL), and `SEMAPHORE_RELEASE_NOTES_URL`
+overrides the notes link. The build writes it right after `SHA256SUMS` (`finish_artifacts` in the
+script) and refuses a `version` that isn't a semantic version the updater would accept.
+`scripts/test-packages.sh` checks the generated manifest against the built files without building
+them again, with `scripts/check-manifest.py`: semver version, kinds, https URLs, and each artifact's
+SHA-256 and size against the file on disk. To test just that step on any three files:
+`SEMAPHORE_PACKAGES_DIR=<dir> scripts/package-linux.sh --finish-artifacts <deb> <rpm> <AppImage> <version>`
+then `scripts/check-manifest.py <dir>/latest.json <deb> <rpm> <AppImage>` (no build, no image).
+
+### Trust, and the signature seam
+
+For now the updater trusts the transport and the hash, the same model as electron-updater with the
+GitHub provider: the manifest and the artifact are fetched over HTTPS (or loopback in a test), and
+the artifact must hash to the SHA-256 the manifest names.
+
+**Redirects.** The updater has its own HTTP client (the app's TLS trust, its own rules): every
+redirect hop is checked before it is followed, and must be `https` without a user name or password.
+Plain `http` is followed only to a loopback address *and* only when the request itself started at
+a loopback address (the rig, the tests); an https release host can never send the client to
+`http://127.0.0.1:…`. At most 10 hops. Where the response finally came from is checked again by
+the same rule. A refused redirect is a refusal (not retried as a network fault).
+
+A signed manifest is a later decision, and no key is invented here. The seam is
+`semaphore_platform_desktop::update::verify_signature(body, manifest_url)`
+(`crates/semaphore-platform-desktop/src/update/manifest.rs`): it runs on the manifest's bytes as
+received, before the parser trusts a single field. A signature (minisign, or a detached OpenPGP
+one published next to `latest.json`) would be checked there, and the key would have to ship in the
+binary and be rotated with a release.
+
+### Where the feed comes from
+
+The app checks only when it was built with a feed and this copy can update:
+
+- the build-time constant `SEMAPHORE_UPDATE_MANIFEST_URL`, which is **empty today**: nothing is
+  published yet, so a shipped app has nothing to check and its settings say so;
+- `SEMAPHORE_UPDATE_URL` overrides it at run time and is held to the same rule (HTTPS, or loopback
+  for a test), so an override cannot point the app at a plain-HTTP feed;
+- if this build's version isn't a semantic version, or its architecture isn't `x86_64`/`aarch64`,
+  the updater stays off.
+
+`InstallEnv::current()` (`crates/semaphore-platform-desktop/src/update/install.rs`) decides what
+this copy is, without writing anything:
+
+| Copy | Detected by | An update |
+|---|---|---|
+| AppImage | `$APPIMAGE` names a regular file, the running executable is inside `$APPDIR` (the image's mount: so this process runs from that image), and the file's folder is the user's own (owned by them, not writable by group or others, so not `/tmp`) and writable | replaces that file, then restarts |
+| `.deb` | the executable is under `/usr` or `/opt`, is not writable, and `/etc/os-release` is Debian-like | downloads the package; the app shows how to install it |
+| `.rpm` | the same, on a Fedora-like (`dnf`) or SUSE-like (`zypper`) distribution | the same, with that manager's command |
+| Windows portable zip | a Windows build | announces the release; opens the release page, downloads nothing |
+| anything else | a checkout, a sandbox, a package in a directory the user owns, a distribution it doesn't recognise, an AppImage in a shared folder | never updates |
+
+`APPIMAGE`/`APPDIR` alone prove nothing: an AppImage runtime exports them to everything it starts,
+so a `.deb` build or a checkout started from an AppImage-packaged terminal inherits the terminal's.
+Without the executable inside `$APPDIR` they are ignored and the copy is judged like any other
+executable. An AppImage whose folder others can write is not updated at all: the temporary and
+backup names beside it couldn't be trusted.
+
+Checks run three seconds after the app starts and then hourly, as Electron's do
+(`electron/main.ts`'s `setupAutoUpdater`), and "Check for updates" in Settings > Desktop app runs
+one at once. **One check or download runs at a time**: a check started while another (or a
+download) is running does nothing. A newer release found while an update is downloaded replaces
+it; a failed check, a feed with the same or an older version, or a newer release whose download
+fails leaves the downloaded update "Ready". A release whose artifact didn't match its hash (or
+was larger than it said) isn't fetched again by the hourly check, only by "Check for updates" or
+Retry. The manifest fetch must finish within 30 s; a download that moves less than 64 KiB in a
+minute is given up.
+
+### Per format
+
+| Format | Native | Electron (electron-updater 6.8.3) |
+|---|---|---|
+| AppImage | downloads beside the running file (`<file>.part`, created new, 0600, no symlink followed), reads it back and checks its size and SHA-256, gives it the replaced file's permission bits, keeps the old file as `<file>.old`, renames the new one into place, and offers "Restart to update" (see "Restarting" below) | `AppImageUpdater.doInstall` deletes the running file (`unlinkSync`) and moves the download into its place, then starts it |
+| `.deb` | downloads to `<cache>/updates/`, then shows the folder and `sudo apt install '<path>'` (apt, not `dpkg -i`, so a release with a new dependency installs). It does not elevate or install | `DebUpdater` runs `dpkg -i` (and `apt-get -f -y` on failure) through `pkexec`/`sudo` |
+| `.rpm` | the same, with `sudo dnf install '<path>'` or `sudo zypper install '<path>'` | `RpmUpdater` runs `dnf`/`zypper` through `pkexec`/`sudo` |
+| Windows zip | announces the version and opens the release page; nothing is downloaded | n/a (electron-builder ships NSIS/MSI) |
+
+Native never asks for elevated rights: installing a package is left to the user's package manager.
+That is a deliberate difference from Electron, which installs `.deb`/`.rpm` under `pkexec` (see
+`frontend/src/__tests__/electron/linuxUpdaterInstall.node.test.ts` and `patches/README.md`).
+
+The old AppImage's `.old` copy is removed on the next start, which proves the new file runs. An
+update that fails (a dropped transfer, a wrong hash, a full disk), or an app that quits mid-download,
+leaves the running file alone and the partial download deleted; a `.part` left by a killed process
+is removed at the next start. A completed package download removes older packages from
+`<cache>/updates/`. A package path that isn't UTF-8 gets no command (a lossy one would name another
+file); the card points at the folder instead.
+
+**No automatic rollback.** If the new AppImage doesn't start, nothing switches back on its own:
+until the next successful start removes it, the previous build is `<file>.old` beside it, and the
+user can rename it back.
+
+### Restarting
+
+"Restart to update" is refused during a call (restarting would end it): the card says to leave
+the call first, and Retry brings the restart back. Otherwise the app starts the new AppImage
+*before* quitting, with `--after-update`, the launch's `--server` if it had one, and the
+environment without the old image's traces (`APPIMAGE`, `APPDIR`, `ARGV0`, `OWD` dropped, entries
+inside the old mount removed from `PATH`-like lists), in the folder the user launched from. If it
+can't be started, the app keeps running and the card says why. If it starts, the app quits; after
+its shutdown it stops the single-instance listener, removes the socket and unlocks, in that order
+(`ServingInstance::release`). The new build, meanwhile, waits on the lock itself
+(`instance::acquire_after_update`) instead of handing its launch to the running app as a second
+launch would, so it becomes the primary exactly when the old one lets go, however long shutting
+down takes (if the old process dies instead, the kernel frees the lock with the same result). A
+new build that waited 60 s without getting the lock exits and leaves the old app running.
+
+### What the user sees
+
+A card in the shell's bottom-left notice corner, above the connection chip, with Electron's
+states and wording: "Version 1.4.0 is available." (with Release notes), "Downloading update...
+40%" and a progress bar, "Update downloaded! Version 1.4.0 is ready to install." with "Restart to
+update", the download's install command for a package, and a failure with "Retry" when asking
+again could work. The card can be dismissed per version (saved in `settings.json` as
+`dismissed_update`), and a dismissed failure stays away until the next attempt. Settings > Desktop
+app carries the same status and the manual check, the running version in its About section, and,
+when updates are off, why (no feed, or an install that can't update).
 
 ## Sizes
 
@@ -374,10 +530,14 @@ commit SHAs (`actions/checkout` v7 and `actions/upload-artifact` v7).
 
 - **Code signing.** Linux packages and the AppImage are unsigned; there is no apt/rpm repository
   or signed AppImage. The Windows exe and the NSIS installer are unsigned, so SmartScreen will
-  warn; the RPM test installs with `--nogpgcheck` for the same reason. A release needs a signing key and a signed update manifest
-  before auto-update can be safe.
-- **Auto-update.** Not implemented. The Electron app uses electron-updater against GitHub
-  Releases; the native client would need a signed manifest plus per-format installation.
+  warn; the RPM test installs with `--nogpgcheck` for the same reason. Auto-update today trusts
+  HTTPS and the manifest's SHA-256 only; a signing key and a signed manifest are what
+  `verify_signature` waits for.
+- **Auto-update.** Implemented against `latest.json` (above): AppImage replaces itself and
+  restarts; `.deb`/`.rpm` are downloaded and the user installs them; Windows is announced only.
+  Missing before a release can rely on it: a published feed (`SEMAPHORE_UPDATE_MANIFEST_URL`
+  is empty), a **signed** manifest (the seam is `verify_signature`; no key exists), and running
+  the NSIS installer (`/S`) for the Windows case.
 - **macOS.** Not built. GPUI's macOS support exists, but our vendored video-surface patches are
   Linux and Windows only.
 - **Flatpak.** Not built. It would need a manifest, the PipeWire and screen-capture portal

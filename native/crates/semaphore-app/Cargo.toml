@@ -26,6 +26,8 @@ reqwest = { workspace = true, features = ["stream"] }
 serde.workspace = true
 serde_json.workspace = true
 rustls = { version = "0.23", default-features = false }
+# The running version, compared with a release's (`src/update.rs`). Already in Cargo.lock.
+semver = "1"
 gpui-kit.workspace = true
 log.workspace = true
 semaphore-core.workspace = true

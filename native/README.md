@@ -26,8 +26,10 @@ feature of the Electron app and where its native counterpart stands.
 Linux packages (AppImage, .deb and .rpm) are built by `scripts/package-linux.sh` and verified in
 clean Debian, Ubuntu and Fedora containers by `scripts/test-packages.sh`. CI builds them, plus a
 Windows portable zip, as artifacts only (`.github/workflows/native-package.yml`); nothing is
-released or published, and there is no Windows installer yet. See
-[docs/packaging.md](docs/packaging.md). Backend and web-client problems found along the way are
+released or published, and there is no Windows installer yet. Alongside them the packaging script
+writes `latest.json`, the manifest the app's updater reads (AppImage replaces itself, a `.deb` or
+`.rpm` is downloaded for the user to install, a Windows build is told about the release). No feed
+is published yet, so a shipped build checks nothing. See [docs/packaging.md](docs/packaging.md). Backend and web-client problems found along the way are
 filed as GitHub issues and linked from the plan.
 
 ## How it is built

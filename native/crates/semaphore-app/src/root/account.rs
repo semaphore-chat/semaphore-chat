@@ -836,6 +836,7 @@ impl AppRoot {
             .as_ref()
             .and_then(|services| services.backend.server_url())
             .unwrap_or_default();
+        let (update, update_enabled, update_note) = self.desktop_update_row();
         let state = DesktopAppState {
             close_to_tray: settings.close_to_tray,
             links: self.account.links,
@@ -846,6 +847,9 @@ impl AppRoot {
             server_version: None,
             links_note: registrar.as_ref().and_then(|links| links.note()),
             links_blocked: registrar.as_ref().and_then(|links| links.blocked()),
+            update,
+            update_enabled,
+            update_note,
         };
         tab.update(cx, |tab, cx| tab.set_state(state, cx));
     }
@@ -899,6 +903,7 @@ impl AppRoot {
                 // The one third-party media switch (`root/media.rs`).
                 self.media_set_third_party(on, cx);
             }
+            DesktopAppEvent::CheckForUpdates => self.check_for_updates(cx),
             DesktopAppEvent::RegisterLinkHandler => {
                 let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services)
                 else {

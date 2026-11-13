@@ -415,6 +415,13 @@ pub struct DesktopAppState {
     pub links_note: Option<String>,
     /// Why registering is turned off; the button shows disabled with this under it.
     pub links_blocked: Option<String>,
+    /// W13: what the updater is doing.
+    pub update: crate::update::UpdateStatus,
+    /// Whether "Check for updates" does anything (a feed is configured and this install kind can
+    /// update at all).
+    pub update_enabled: bool,
+    /// Why updates aren't offered, when they aren't.
+    pub update_note: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -425,6 +432,8 @@ pub enum DesktopAppEvent {
     SetLinkPreviewImages(bool),
     /// "Change server": the owner shows its server picker.
     ChangeServer,
+    /// W13: "Check for updates".
+    CheckForUpdates,
 }
 
 pub struct DesktopAppSettings {

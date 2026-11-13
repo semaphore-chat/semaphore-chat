@@ -30,6 +30,7 @@ pub mod shortcuts;
 pub mod stories;
 pub mod theme;
 pub mod thread;
+pub mod update;
 pub mod voice;
 
 pub use shell::Shell;

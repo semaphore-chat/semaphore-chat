@@ -69,6 +69,12 @@ for path in "$deb" "$rpm" "$appimage"; do
   printf '%10s  %s\n' "$(du -h "$path" | cut -f1)" "$(basename "$path")"
 done
 
+# The release manifest the updater reads: the same files, the same hashes and sizes, and
+# nothing the updater would refuse. No package is built again for this.
+echo "== latest.json"
+command -v python3 >/dev/null 2>&1 || die "the manifest check needs python3 on this host"
+python3 "$NATIVE_DIR/scripts/check-manifest.py" "$OUT_DIR/latest.json" "$deb" "$rpm" "$appimage"
+
 # The shell that runs inside the .deb/.rpm container. It gets PKG, PM and the names in the
 # environment; nothing is interpolated into the script text.
 install_and_check() { # <image> <package-manager> <package path> <label>

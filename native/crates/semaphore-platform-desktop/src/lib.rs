@@ -1,6 +1,7 @@
 //! Desktop OS services: the clock, app directories, the system keyring, notifications
 //! ([`notify`]), the OS's sleep and network events ([`lifecycle`]), `semaphore://` links
-//! ([`links`]), one running app per user ([`instance`]) and the tray ([`tray`]).
+//! ([`links`]), one running app per user ([`instance`]), the tray ([`tray`]) and auto-update
+//! ([`update`]).
 
 pub mod icon;
 pub mod instance;
@@ -10,6 +11,7 @@ pub mod links;
 pub mod loopback;
 pub mod notify;
 pub mod tray;
+pub mod update;
 
 /// What the desktop asks of the app: from the tray, a second launch, or a notification. Sent on
 /// whatever thread noticed it; a [`DesktopEventSink`] must only queue it for the UI thread.

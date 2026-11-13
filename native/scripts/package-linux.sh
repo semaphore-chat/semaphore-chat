@@ -16,6 +16,11 @@
 #
 # Version: the semaphore-app crate's Cargo.toml version (0.0.0 today), or SEMAPHORE_VERSION.
 # CI passes the release version, e.g. SEMAPHORE_VERSION=0.10.0 native/scripts/package-linux.sh.
+#
+# Alongside the packages it writes latest.json, the release manifest the native updater reads
+# (docs/packaging.md, "Auto-update"): the version, the release's notes URL and each artifact's
+# URL, SHA-256 and size. SEMAPHORE_UPDATE_BASE_URL is the URL the artifacts will be published
+# under; SEMAPHORE_RELEASE_NOTES_URL overrides the notes link.
 set -euo pipefail
 
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,6 +44,11 @@ Usage: scripts/package-linux.sh
 Environment:
   SEMAPHORE_VERSION     Package version; defaults to the semaphore-app crate's version.
   SEMAPHORE_PACKAGES_DIR Output directory; defaults to native/dist-packages.
+  SEMAPHORE_UPDATE_BASE_URL
+                        Where latest.json says the artifacts are published. Defaults to
+                        https://github.com/semaphore-chat/semaphore-chat/releases/download/v<version>
+  SEMAPHORE_RELEASE_NOTES_URL
+                        The release's notes page. Defaults to the matching GitHub release tag.
 
 The build runs in native/docker/Dockerfile.package (Debian 12, clang 22, rustup) and writes
 into the named volumes semaphore-native-package-cargo and
@@ -49,6 +59,7 @@ Artifacts:
   Semaphore-Chat-Native-<version>-x86_64.AppImage
   semaphore-chat-native_<version>_amd64.deb
   semaphore-chat-native-<version>-1.x86_64.rpm
+  latest.json            The release manifest the updater reads
   SHA256SUMS
 EOF
 }
@@ -179,7 +190,7 @@ EOF
   local deb="$OUT_DIR/${PACKAGE}_${version}_amd64.deb"
   local rpm="$OUT_DIR/${PACKAGE}-${version}-1.x86_64.rpm"
   local appimage="$OUT_DIR/Semaphore-Chat-Native-${version}-x86_64.AppImage"
-  rm -f "$deb" "$rpm" "$appimage" "$OUT_DIR/SHA256SUMS"
+  rm -f "$deb" "$rpm" "$appimage" "$OUT_DIR/latest.json" "$OUT_DIR/SHA256SUMS"
 
   echo "== .deb"
   build_deb "$stage" "$deb" "$version"
@@ -188,15 +199,85 @@ EOF
   echo "== AppImage"
   build_appimage "$stage" "$appimage" "$version" "$work"
 
-  ( cd "$OUT_DIR" && sha256sum "$(basename "$deb")" "$(basename "$rpm")" \
-      "$(basename "$appimage")" > SHA256SUMS )
+  finish_artifacts "$deb" "$rpm" "$appimage" "$version"
 
   echo
   echo "== artifacts in $OUT_DIR"
-  ls -lh "$deb" "$rpm" "$appimage" "$OUT_DIR/SHA256SUMS" | awk '{print $5"\t"$9}'
+  ls -lh "$deb" "$rpm" "$appimage" "$OUT_DIR/latest.json" "$OUT_DIR/SHA256SUMS" \
+    | awk '{print $5"\t"$9}'
   echo
   echo "== installed tree (the same files are in all three packages)"
   du -ah "$stage" | sort -k2 | sed "s#$stage#/#"
+}
+
+# What the build flow does once the three packages exist: SHA256SUMS and latest.json, both in
+# OUT_DIR. `--finish-artifacts` runs exactly this on existing files (no build, no image), which is
+# how the manifest step is tested.
+finish_artifacts() { # <deb> <rpm> <appimage> <version>
+  local deb="$1" rpm="$2" appimage="$3" version="$4"
+  ( cd "$OUT_DIR" && sha256sum "$(basename "$deb")" "$(basename "$rpm")" \
+      "$(basename "$appimage")" > SHA256SUMS )
+  echo "== latest.json"
+  write_manifest "$deb" "$rpm" "$appimage" "$version"
+}
+
+# A semantic version as the updater parses it (semver.org's grammar: no leading zeros, no "v").
+SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
+
+# The release manifest the updater reads. Its URLs are the names the artifacts will be published
+# under, not where they are now; the hashes and sizes are of the files just built. Nothing is
+# signed yet: the trust model is HTTPS plus these hashes (docs/packaging.md, "Auto-update").
+write_manifest() { # <deb> <rpm> <appimage> <version>
+  local deb="$1" rpm="$2" appimage="$3" version="$4"
+  # Every client would reject anything else (a "v0.10.0" from a tag, say) and never update.
+  [[ "$version" =~ $SEMVER_RE ]] \
+    || die "latest.json: version '$version' is not a semantic version the updater accepts"
+  local base="${SEMAPHORE_UPDATE_BASE_URL:-https://github.com/semaphore-chat/semaphore-chat/releases/download/v$version}"
+  base="${base%/}"
+  local notes="${SEMAPHORE_RELEASE_NOTES_URL:-https://github.com/semaphore-chat/semaphore-chat/releases/tag/v$version}"
+  local deb_sha rpm_sha appimage_sha
+  deb_sha="$(sha256sum "$deb" | cut -d' ' -f1)"
+  rpm_sha="$(sha256sum "$rpm" | cut -d' ' -f1)"
+  appimage_sha="$(sha256sum "$appimage" | cut -d' ' -f1)"
+  local manifest="$OUT_DIR/latest.json"
+  jq -n \
+    --arg version "$version" \
+    --arg notes "$notes" \
+    --arg deb_url "$base/$(basename "$deb")" \
+    --arg deb_sha "$deb_sha" \
+    --argjson deb_size "$(stat -c %s "$deb")" \
+    --arg rpm_url "$base/$(basename "$rpm")" \
+    --arg rpm_sha "$rpm_sha" \
+    --argjson rpm_size "$(stat -c %s "$rpm")" \
+    --arg appimage_url "$base/$(basename "$appimage")" \
+    --arg appimage_sha "$appimage_sha" \
+    --argjson appimage_size "$(stat -c %s "$appimage")" \
+    '{
+      version: $version,
+      notes_url: $notes,
+      artifacts: [
+        {kind: "appimage", arch: "x86_64", url: $appimage_url, sha256: $appimage_sha, size: $appimage_size},
+        {kind: "deb", arch: "x86_64", url: $deb_url, sha256: $deb_sha, size: $deb_size},
+        {kind: "rpm", arch: "x86_64", url: $rpm_url, sha256: $rpm_sha, size: $rpm_size}
+      ]
+    }' >"$manifest"
+  # The updater is strict about this document; refuse to publish one it would reject.
+  jq -e --arg semver "$SEMVER_RE" '
+    (.version | type == "string") and (.version | test($semver)) and
+    (.notes_url | startswith("https://")) and
+    (.artifacts | length == 3) and
+    (all(.artifacts[];
+      (.kind | type == "string") and (.arch == "x86_64") and
+      (.url | startswith("https://")) and
+      (.sha256 | test("^[0-9a-f]{64}$")) and
+      (.size > 0)))
+  ' "$manifest" >/dev/null || die "latest.json is not a manifest the updater would accept"
+  local kind
+  for kind in appimage deb rpm; do
+    local listed
+    listed="$(jq -r --arg kind "$kind" '.artifacts[] | select(.kind == $kind) | "\(.sha256) \(.size)"' "$manifest")"
+    echo "  $kind  $listed"
+  done
 }
 
 generate_licences() { # <output> <version> <work>
@@ -420,6 +501,16 @@ EOF
 if [ "${1:-}" = "--in-image" ]; then
   shift
   in_image "$@"
+  exit 0
+fi
+
+# Testing the manifest step on existing files: SEMAPHORE_PACKAGES_DIR=<dir> package-linux.sh
+# --finish-artifacts <deb> <rpm> <appimage> <version>, the packages being in <dir>. Needs jq and
+# sha256sum; builds nothing.
+if [ "${1:-}" = "--finish-artifacts" ]; then
+  shift
+  [ "$#" = 4 ] || die "--finish-artifacts <deb> <rpm> <appimage> <version>"
+  finish_artifacts "$@"
   exit 0
 fi
 
