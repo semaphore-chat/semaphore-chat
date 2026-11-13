@@ -45,9 +45,7 @@ describe('LivekitAccessService', () => {
       .compile();
 
     service = unit;
-    channelAccessService = unitRef.get(
-      ChannelAccessService,
-    ) as unknown as typeof channelAccessService;
+    channelAccessService = unitRef.get(ChannelAccessService);
   });
 
   describe('checkRoomAccess (DM rooms)', () => {

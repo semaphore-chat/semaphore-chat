@@ -864,7 +864,7 @@ describe('VoicePresenceService', () => {
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
 
-    it("sets the LiveKit deafen metadata, even when the presence entry is gone", async () => {
+    it('sets the LiveKit deafen metadata, even when the presence entry is gone', async () => {
       mockRedis.get.mockResolvedValue(null);
 
       await service.updateDeafenState('channel-123', 'user-123', true);

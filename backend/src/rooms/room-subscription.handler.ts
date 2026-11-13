@@ -247,7 +247,10 @@ export class RoomSubscriptionHandler {
       this.livekitService.listParticipantRooms(userId),
     ]);
     return [
-      ...new Set([...presence, ...livekitRooms.map(({ roomName }) => roomName)]),
+      ...new Set([
+        ...presence,
+        ...livekitRooms.map(({ roomName }) => roomName),
+      ]),
     ];
   }
 
@@ -456,9 +459,7 @@ export class RoomSubscriptionHandler {
           select: { userId: true },
         });
         await Promise.allSettled(
-          members.map(({ userId }) =>
-            this.resyncVoiceGrant(channelId, userId),
-          ),
+          members.map(({ userId }) => this.resyncVoiceGrant(channelId, userId)),
         );
       }
     } catch (error) {

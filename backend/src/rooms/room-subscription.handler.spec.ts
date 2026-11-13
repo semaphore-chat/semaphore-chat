@@ -1535,11 +1535,9 @@ describe('RoomSubscriptionHandler', () => {
         expect(livekitService.updatePublishPermissions).toHaveBeenCalledTimes(
           2,
         );
-        expect(livekitService.updatePublishPermissions).not.toHaveBeenCalledWith(
-          'voice-1',
-          'EG_replay',
-          expect.anything(),
-        );
+        expect(
+          livekitService.updatePublishPermissions,
+        ).not.toHaveBeenCalledWith('voice-1', 'EG_replay', expect.anything());
         expect(livekitService.removeParticipant).not.toHaveBeenCalled();
       },
     );
