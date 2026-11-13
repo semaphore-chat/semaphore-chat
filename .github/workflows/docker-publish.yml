@@ -154,14 +154,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract metadata for Backend
         id: meta
         uses: docker/metadata-action@v6
@@ -176,31 +168,12 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      # Push on main branch, release tags, and manual dispatch. Skipped on PRs,
-      # which build exactly once (the load-only step below) and scan that.
-      - name: Build and push Backend image
-        id: push-backend
-        if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./backend/Dockerfile.prod
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha,scope=backend-prod
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=backend-prod,mode=max,ignore-error=true' || '' }}
-          no-cache-filters: production
-          build-args: |
-            GITHUB_REPOSITORY=${{ github.repository }}
-            BUILD_DATE=${{ steps.meta.outputs.created }}
-
-      # Local single-platform image for the Trivy scan. On PRs this is the only
-      # build (reads main's cache, exports nothing). After a publish the
-      # builder stage is a local cache hit and the production stage is rebuilt
-      # fresh the same way as the push step (same no-cache-filters), seconds
-      # later, so the scan never checks staler Alpine packages than were pushed.
+      # The Trivy gate runs BEFORE the GHCR login and the push: nothing is
+      # published unless this scan passes. Local single-platform image; on PRs
+      # this is the only build (reads main's cache, exports nothing). The push
+      # build below rebuilds the production stage the same way (same
+      # no-cache-filters) right after, so the scan never checks staler Alpine
+      # packages than are pushed.
       - name: Build Backend image for scan
         uses: docker/build-push-action@v7
         with:
@@ -226,6 +199,34 @@ jobs:
           ignore-unfixed: true
           # Pre-existing baseline is grandfathered; new findings still fail.
           trivyignores: .trivyignore
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push on main branch, release tags, and manual dispatch, only after the
+      # scan above passed. Skipped on PRs, which build once (the scan build).
+      - name: Build and push Backend image
+        id: push-backend
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=backend-prod
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=backend-prod,mode=max,ignore-error=true' || '' }}
+          no-cache-filters: production
+          build-args: |
+            GITHUB_REPOSITORY=${{ github.repository }}
+            BUILD_DATE=${{ steps.meta.outputs.created }}
 
   build-frontend:
     name: Build Frontend Image
@@ -271,14 +272,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract metadata for Frontend
         id: meta
         uses: docker/metadata-action@v6
@@ -293,33 +286,12 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      # Push on main branch, release tags, and manual dispatch. Skipped on PRs,
-      # which build exactly once (the load-only step below) and scan that.
-      - name: Build and push Frontend image
-        id: push-frontend
-        if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./frontend/Dockerfile.prod
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha,scope=frontend-prod
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=frontend-prod,mode=max,ignore-error=true' || '' }}
-          no-cache-filters: production
-          build-args: |
-            GITHUB_REPOSITORY=${{ github.repository }}
-            BUILD_DATE=${{ steps.meta.outputs.created }}
-            VITE_API_URL=/api
-            VITE_WS_URL=
-
-      # Local single-platform image for the Trivy scan. On PRs this is the only
-      # build (reads main's cache, exports nothing). After a publish the
-      # builder stage is a local cache hit and the production stage is rebuilt
-      # fresh the same way as the push step (same no-cache-filters), seconds
-      # later, so the scan never checks staler Alpine packages than were pushed.
+      # The Trivy gate runs BEFORE the GHCR login and the push: nothing is
+      # published unless this scan passes. Local single-platform image; on PRs
+      # this is the only build (reads main's cache, exports nothing). The push
+      # build below rebuilds the production stage the same way (same
+      # no-cache-filters) right after, so the scan never checks staler Alpine
+      # packages than are pushed.
       - name: Build Frontend image for scan
         uses: docker/build-push-action@v7
         with:
@@ -347,6 +319,36 @@ jobs:
           ignore-unfixed: true
           # Pre-existing baseline is grandfathered; new findings still fail.
           trivyignores: .trivyignore
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push on main branch, release tags, and manual dispatch, only after the
+      # scan above passed. Skipped on PRs, which build once (the scan build).
+      - name: Build and push Frontend image
+        id: push-frontend
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./frontend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=frontend-prod
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=frontend-prod,mode=max,ignore-error=true' || '' }}
+          no-cache-filters: production
+          build-args: |
+            GITHUB_REPOSITORY=${{ github.repository }}
+            BUILD_DATE=${{ steps.meta.outputs.created }}
+            VITE_API_URL=/api
+            VITE_WS_URL=
 
   summary:
     name: Build Summary
