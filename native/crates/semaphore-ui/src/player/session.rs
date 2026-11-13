@@ -229,7 +229,7 @@ impl Playback {
     }
 
     pub fn key(&self) -> String {
-        model::surface_key(&self.source.file_id)
+        model::surface_key(&self.source.id())
     }
 
     pub fn has_frame(&self) -> bool {

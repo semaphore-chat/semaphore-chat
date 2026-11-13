@@ -757,6 +757,8 @@ async fn segments_ready_fills_the_session_playlist_and_segments() {
     assert_eq!(response.headers()["content-type"], "video/mp2t");
     let bytes = response.bytes().await.unwrap();
     assert!(bytes.len() >= 10_000 && bytes[0] == 0x47 && bytes.len() % 188 == 0);
+    // Real media: the player's fixtures, segment i serving fixture i % 3.
+    assert_eq!(&bytes[..], include_bytes!("../fixtures/replay/seg1.ts"));
 
     let (status, _) = get(
         &client,

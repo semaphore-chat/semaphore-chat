@@ -10,14 +10,70 @@
 //!   it, shows, or drops a frame that is more than one frame late. Video with no audio track
 //!   runs on the wall clock.
 //! - [`Exclusive`]: one player plays at a time, app-wide; starting another pauses it.
+//! - [`selection_step`]: the trim preview's rule at the selection's end (loop or pause).
 
+use crate::model::PreviewSegment;
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// What a player plays: an attachment, or the replay buffer's preview (the trim dialog's).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlaybackSource {
+    Attachment(AttachmentSource),
+    /// The replay buffer's HLS segments (`Core::replay_preview`), opened at `start` on their
+    /// timeline (0 is the buffer's first segment). An empty `segments` asks the opener to list
+    /// them itself, so a Retry or Refresh picks up the buffer's newest playlist.
+    ReplayBuffer {
+        session_id: String,
+        segments: Vec<PreviewSegment>,
+        start: Duration,
+    },
+}
+
+impl PlaybackSource {
+    /// The replay buffer of session `session_id`, at `start`, its segments listed by the opener.
+    pub fn replay_buffer(session_id: impl Into<String>, start: Duration) -> Self {
+        Self::ReplayBuffer {
+            session_id: session_id.into(),
+            segments: Vec::new(),
+            start,
+        }
+    }
+
+    /// What it is: an attachment by its type, the replay buffer is video.
+    pub fn kind(&self) -> MediaKind {
+        match self {
+            Self::Attachment(attachment) => attachment.kind(),
+            Self::ReplayBuffer { .. } => MediaKind::Video,
+        }
+    }
+
+    /// A key unique among what plays: the file's id, or `replay:<session>`.
+    pub fn id(&self) -> String {
+        match self {
+            Self::Attachment(attachment) => attachment.file_id.clone(),
+            Self::ReplayBuffer { session_id, .. } => format!("replay:{session_id}"),
+        }
+    }
+
+    pub fn attachment(&self) -> Option<&AttachmentSource> {
+        match self {
+            Self::Attachment(attachment) => Some(attachment),
+            Self::ReplayBuffer { .. } => None,
+        }
+    }
+}
+
+impl From<AttachmentSource> for PlaybackSource {
+    fn from(attachment: AttachmentSource) -> Self {
+        Self::Attachment(attachment)
+    }
+}
+
 /// An attachment to play, as the message's file metadata describes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlaybackSource {
+pub struct AttachmentSource {
     pub file_id: String,
     pub filename: String,
     pub mime_type: String,
@@ -34,7 +90,7 @@ pub enum MediaKind {
     Other,
 }
 
-impl PlaybackSource {
+impl AttachmentSource {
     pub fn kind(&self) -> MediaKind {
         let mime = self.mime_type.to_ascii_lowercase();
         if mime.starts_with("video/") {
@@ -424,6 +480,35 @@ impl Exclusive {
     }
 }
 
+/// What the trim preview does at a position report: the web's `TrimPreview` rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionAction {
+    /// Loop: back to the selection's start.
+    SeekTo(Duration),
+    Pause,
+}
+
+/// Within this of the selection's end counts as the end (the web's 0.1 s, so a report just short
+/// of it still stops there).
+pub const SELECTION_END_SLACK: Duration = Duration::from_millis(100);
+
+/// While playing the selection `start..end`: at `end - 0.1 s` or later, loop back to `start` or
+/// pause; before that, nothing.
+pub fn selection_step(
+    position: Duration,
+    start: Duration,
+    end: Duration,
+    looping: bool,
+) -> Option<SelectionAction> {
+    if position < end.saturating_sub(SELECTION_END_SLACK) {
+        None
+    } else if looping {
+        Some(SelectionAction::SeekTo(start))
+    } else {
+        Some(SelectionAction::Pause)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -689,7 +774,7 @@ mod tests {
 
     #[test]
     fn sources_know_their_kind_and_route() {
-        let source = PlaybackSource {
+        let source = AttachmentSource {
             file_id: "f1".into(),
             filename: "clip.webm".into(),
             mime_type: "Video/WebM".into(),
@@ -698,10 +783,45 @@ mod tests {
         };
         assert_eq!(source.kind(), MediaKind::Video);
         assert_eq!(source.path(), "/file/f1");
-        let audio = PlaybackSource {
+        let audio = AttachmentSource {
             mime_type: "audio/ogg".into(),
-            ..source
+            ..source.clone()
         };
         assert_eq!(audio.kind(), MediaKind::Audio);
+        let played = PlaybackSource::from(source);
+        assert_eq!(
+            (played.kind(), played.id()),
+            (MediaKind::Video, "f1".into())
+        );
+        let replay = PlaybackSource::replay_buffer("s1", Duration::from_secs(40));
+        assert_eq!(replay.kind(), MediaKind::Video);
+        assert_eq!(replay.id(), "replay:s1");
+        assert!(replay.attachment().is_none());
+    }
+
+    #[test]
+    fn the_selection_loops_or_pauses_at_its_end() {
+        let s = Duration::from_secs;
+        let ms = Duration::from_millis;
+        use SelectionAction::*;
+        // (position, start, end, looping) -> action
+        let table = [
+            (s(40), s(40), s(100), false, None),
+            (ms(99_899), s(40), s(100), false, None),
+            (ms(99_900), s(40), s(100), false, Some(Pause)),
+            (ms(99_900), s(40), s(100), true, Some(SeekTo(s(40)))),
+            (s(100), s(40), s(100), true, Some(SeekTo(s(40)))),
+            (s(130), s(40), s(100), false, Some(Pause)),
+            (s(10), s(40), s(100), true, None),
+            (ms(50), s(0), ms(100), false, Some(Pause)),
+            (s(0), s(0), s(0), true, Some(SeekTo(s(0)))),
+        ];
+        for (position, start, end, looping, want) in table {
+            assert_eq!(
+                selection_step(position, start, end, looping),
+                want,
+                "{position:?} in {start:?}..{end:?} looping {looping}"
+            );
+        }
     }
 }

@@ -15,7 +15,7 @@ use super::{AudioPlayer, PlayerOpener, VideoPlayer};
 use crate::voice::VideoFrames;
 use gpui_kit::*;
 use semaphore_core::model::{AttachmentKind, AttachmentView, MessageRow};
-use semaphore_core::player::{PlaybackSource, playable};
+use semaphore_core::player::{AttachmentSource, playable};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -157,7 +157,7 @@ impl Players {
 
     /// A new player for the attachment (not yet opened: that is the first play).
     pub fn create(&self, attachment: &AttachmentView, cx: &mut App) -> AttachmentPlayer {
-        let source = PlaybackSource {
+        let source = AttachmentSource {
             file_id: attachment.file_id.clone(),
             filename: attachment.filename.clone(),
             mime_type: attachment.mime_type.clone(),

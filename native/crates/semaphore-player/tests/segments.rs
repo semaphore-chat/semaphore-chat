@@ -462,13 +462,7 @@ impl VideoSink for Surface {
 }
 
 fn source() -> PlaybackSource {
-    PlaybackSource {
-        file_id: "replay".into(),
-        filename: "replay.m3u8".into(),
-        mime_type: "application/vnd.apple.mpegurl".into(),
-        size: 0,
-        has_thumbnail: false,
-    }
+    PlaybackSource::replay_buffer("s1", Duration::ZERO)
 }
 
 fn players(fetch: Arc<Segments>, start: Duration) -> (DesktopPlayers, Arc<Mutex<Vec<i16>>>) {

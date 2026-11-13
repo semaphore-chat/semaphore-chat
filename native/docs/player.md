@@ -192,6 +192,14 @@ demuxer, so:
   doesn't fetch the buffer's beginning.
 - **Fixtures**: `fixtures/ts/` (gen.sh): three 10 s segments cut by ffmpeg's HLS muxer (red, green,
   blue; 440, 660, 880 Hz; a keyframe every 2 s), segment 1 again as M2TS, and H.264 with Opus.
+- **Core and the app (lane 2):** `PlaybackSource` is an enum, `Attachment(AttachmentSource)` (the
+  old struct, renamed) or `ReplayBuffer { session_id, segments, start }`. The app's opener plays
+  the latter as `Opened::Segments`: an empty `segments` is listed on the player's thread
+  (`Core::replay_preview`), each segment fetched by `CoreSegments` through
+  `Core::fetch_replay_segment` (no answer, 5xx, 429: `Transient`; a refusal: `Failed`; a cancelled
+  player: `Cancelled`). `semaphore_core::player::selection_step` is the web's end-of-selection
+  rule (within 0.1 s of the end: loop to the start, or pause). The fake server serves these
+  fixtures as the preview's segments (`fixtures/replay/`, segment `i` is fixture `i % 3`).
 - **Not verified yet** against a segment LiveKit egress wrote (raw and remuxed), nor which audio
   codec egress uses when it falls back to its `H264_1080P_30` preset.
 

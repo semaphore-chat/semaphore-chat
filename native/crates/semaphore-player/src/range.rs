@@ -577,6 +577,10 @@ impl Drop for RangeSource {
 pub fn http_opener(backend: HttpBackend, cache: Arc<BlockCache>, runtime: Handle) -> Opener {
     Arc::new(
         move |source: &PlaybackSource, cancel: &Cancel, buffered: &BufferedReport| {
+            let Some(source) = source.attachment() else {
+                log::warn!("player: {} isn't an attachment", source.id());
+                return Err(PlayerError::Unsupported);
+            };
             let fetch = Arc::new(HttpFile::new(backend.clone(), source.file_id.clone()));
             let size = (source.size > 0).then_some(source.size);
             RangeSource::open(

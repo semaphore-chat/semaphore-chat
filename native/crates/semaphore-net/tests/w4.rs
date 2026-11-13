@@ -547,8 +547,25 @@ async fn the_buffer_records_previews_captures_everywhere_and_stops_with_the_shar
     let segments = core.replay_preview().await.unwrap();
     assert_eq!(segments.len(), 3);
     assert!(segments[0].url.starts_with(&server.base_url()));
+    assert_eq!(
+        segments.iter().map(|s| s.duration_ms).collect::<Vec<_>>(),
+        [10_000; 3]
+    );
     let bytes = core.replay_segment(segments[0].clone()).await.unwrap();
     assert!(!bytes.is_empty());
+    // MPEG-TS the player reads: sync bytes every 188.
+    assert!(bytes.len() > 10_000 && bytes.len() % 188 == 0);
+    assert!(bytes.iter().step_by(188).all(|byte| *byte == 0x47));
+    // A segment that isn't there is refused for good: the player doesn't retry it.
+    let gone = semaphore_core::model::PreviewSegment {
+        url: format!(
+            "{}/api/livekit/replay/preview/segment/missing-segment_00009.ts",
+            server.base_url()
+        ),
+        duration_ms: 10_000,
+    };
+    let failure = core.fetch_replay_segment(gone).await.unwrap_err();
+    assert!(!failure.transient, "{failure:?}");
 
     let library = core
         .capture_replay(CaptureRequest {
