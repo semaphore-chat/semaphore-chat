@@ -103,3 +103,20 @@ shot ua2-dashboard-storage-failed-desktop-full
 story admin-dashboard-storage-failed 390 2600 light-blue-balanced
 wait idle
 shot ua2-dashboard-storage-failed-phone-full
+# The admin shell's column (260 px page list, content at most 1100 px): the totals must never split a word.
+story admin-dashboard-in-shell 1600 1000 dark-blue-balanced
+wait idle
+shot ua2-dashboard-in-shell-1600
+story admin-dashboard-in-shell 2000 1200 dark-blue-balanced
+wait idle
+shot ua2-dashboard-in-shell-2000
+story admin-dashboard-in-shell 1000 800 dark-blue-balanced
+wait idle
+shot ua2-dashboard-in-shell-1000
+story admin-dashboard-in-shell-long 2000 1200 dark-blue-balanced
+wait idle
+shot ua2-dashboard-in-shell-long-2000
+# The dashboard alone in a very wide window, where six to a row do fit.
+story admin-dashboard-ready 2000 1200 dark-blue-balanced
+wait idle
+shot ua2-dashboard-ready-2000
