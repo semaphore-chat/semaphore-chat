@@ -1,0 +1,56 @@
+# WT: the image path in the real app against the fake server, as alexk in Couch Co-op's #general.
+# Two PNGs sent as one message, drawn at the box their attachment measures; the list fetches each
+# image's file; one opens in the viewer at full size.
+#
+# The fake server reports every attachment with hasThumbnail false and no width or height
+# (crates/semaphore-fake-server/src/messages.rs, `add_attachment`), so the list asks for
+# /file/{id} and never /thumbnail, and every box is the 320 x 200 a server with no measurement
+# gets. The box shapes the server would give it are the stories' (rigs/shot/scripts/wt-thumbnails.steps);
+# what this proves is the fetch and the viewer, and that the thumbnail branch is not taken when the
+# server says there is no thumbnail.
+
+app 1280 800
+wait idle
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait core file-ready sc-img-pit within 10
+wait idle
+
+# 1. Two images in one message: uploaded, attached, and drawn.
+attach rigs/slice/fixtures/sketch.png
+attach rigs/slice/fixtures/sketch.png
+type "two pictures"
+press enter
+wait core sent "two pictures"
+wait core attachments "two pictures" 2 within 15
+wait core uploads "two pictures" 0
+wait core pending-files "two pictures" 0
+expect requests FileUploadController_uploadFile >= 2
+expect requests MessagesController_addAttachment >= 2
+# The fake server seeds the scenario's soundboard files (four communities, three sounds each)
+# and numbers uploads from there: one message's first two are the 13th and 14th.
+wait core file-ready 0000f11e-0000-4000-8000-00000000000d within 15
+wait core file-ready 0000f11e-0000-4000-8000-00000000000e within 15
+wait idle
+shot 01-uploaded
+
+# 2. The list fetched each image at full size, and asked for no thumbnail.
+expect requests FileController_getFile >= 2
+expect core requests FileController_getFileThumbnail == 0
+
+# 3. The viewer, at full size; Escape closes it.
+click-row image "two pictures" 0
+wait core viewer open
+wait idle
+shot 02-viewer
+press escape
+wait core viewer closed
