@@ -21,6 +21,9 @@ env:
   REGISTRY: ghcr.io
   CHART_NAME: semaphore-chat
 
+permissions:
+  contents: read
+
 jobs:
   publish-helm-chart:
     name: Publish Helm Chart to GHCR
@@ -32,6 +35,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Extract version from tag
         id: version

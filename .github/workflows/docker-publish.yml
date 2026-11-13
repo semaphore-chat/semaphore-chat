@@ -61,6 +61,9 @@ env:
 #   layers changed) is paid on main pushes only, off the PR critical path.
 # - ignore-error=true: a cache-service hiccup must never fail a publish.
 
+permissions:
+  contents: read
+
 jobs:
   # PRs only. Pushes to main, release tags and manual dispatch are unfiltered:
   # `changes` is skipped, its outputs are empty, and both images build, scan
@@ -122,6 +125,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Extract version from tag
         id: version
@@ -237,6 +242,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Extract version from tag
         id: version

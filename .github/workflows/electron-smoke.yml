@@ -59,6 +59,8 @@ jobs:
       # keep in sync with electron-build.yml
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # keep in sync with electron-build.yml
       - name: Setup pnpm

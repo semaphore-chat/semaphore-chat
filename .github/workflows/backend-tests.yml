@@ -24,6 +24,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 jobs:
   # PRs only. On pushes it is skipped, its output is empty, and every job below
   # runs. Keep the filter in sync with the push `paths` above.
@@ -65,6 +68,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -127,8 +132,7 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
 
     services:
       postgres:
@@ -158,6 +162,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -195,11 +201,39 @@ jobs:
             cat coverage/coverage-summary.json
           fi
 
-      - name: Generate coverage badge
+      - name: Upload coverage summary for the badge
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        working-directory: ./backend
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-coverage-summary
+          path: backend/coverage/coverage-summary.json
+          if-no-files-found: error
+          retention-days: 1
+
+  # Pushes the coverage badge on main. It is the only job with a write token,
+  # and it never runs on PRs (the tests run with a read-only token, so code
+  # from a dependency update cannot push or edit releases).
+  badge:
+    name: Coverage Badge
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Download coverage summary
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-coverage-summary
+          path: ${{ runner.temp }}/coverage
+
+      - name: Generate coverage badge
         run: |
-          COVERAGE=$(jq '.total.lines.pct' coverage/coverage-summary.json)
+          COVERAGE=$(jq '.total.lines.pct' "$RUNNER_TEMP/coverage/coverage-summary.json")
           if (( $(echo "$COVERAGE < 50" | bc -l) )); then COLOR=red
           elif (( $(echo "$COVERAGE < 70" | bc -l) )); then COLOR=yellow
           elif (( $(echo "$COVERAGE < 80" | bc -l) )); then COLOR=orange
@@ -208,7 +242,6 @@ jobs:
           curl -sf "https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}" > /tmp/backend-coverage.svg
 
       - name: Push badge to badges branch
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
@@ -294,6 +327,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
