@@ -362,6 +362,15 @@ fn each_link_owner_reads_as_the_settings_row_says_it() {
     assert_eq!(LinkHandler::AnotherApp.owner(), "Another app");
     assert_eq!(LinkHandler::NotRegistered.owner(), "Not registered");
     assert_eq!(LinkHandler::Unknown.owner(), "Couldn't tell");
+    assert_eq!(
+        LinkHandler::ManagedElsewhere.owner(),
+        "Managed outside the app"
+    );
+    assert!(
+        link_note(LinkHandler::ManagedElsewhere, true)
+            .unwrap()
+            .contains("can't change")
+    );
     // The line under the switch says something only when there is more to say than the owner.
     assert_eq!(link_note(LinkHandler::Registered, true), None);
     assert!(link_note(LinkHandler::PackageOwned, true).is_some());

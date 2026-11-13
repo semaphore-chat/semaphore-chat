@@ -9,6 +9,11 @@
 //! - Every line is one line, with a UTC timestamp, and goes through [`semaphore_core::redact`]:
 //!   tokens, passwords, invite codes and URL query strings never reach the file. Message text is
 //!   never logged anywhere to begin with.
+//! - The logs folder is private to the user (0700) and its files 0600, on Unix.
+//! - Files start only once this process is the app ([`attach_files`] after the single-instance
+//!   lock): a launch that hands a link to the running app logs to stderr only.
+//! - With `SEMAPHORE_LOG=debug` or `trace`, the files keep dependencies' lines at info and above;
+//!   `SEMAPHORE_LOG_DEPENDENCIES=1` keeps all of them. stderr always gets everything enabled.
 //! - Voice events (`target: "voice"`) are the native counterpart of Electron's `voiceLog.ts`;
 //!   they go to `voice.log` and to stderr, and not to `semaphore.log`.
 
@@ -16,7 +21,7 @@ use log::{LevelFilter, Log, Metadata, Record};
 use std::fs::{File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The folder under the data directory that holds the logs and crash reports.
@@ -61,20 +66,52 @@ fn level_for(asked: Option<&str>) -> LevelFilter {
         .unwrap_or_else(default_level)
 }
 
-/// Installs the logger. `SEMAPHORE_LOG` stays as it was: stderr gets the same lines in the same
-/// format, and the files get them too when the directory allows it.
-pub fn init(data_dir: &Path) -> LevelFilter {
+/// The variable that keeps every dependency's debug and trace lines in the files too.
+pub const LOG_DEPENDENCIES_VAR: &str = "SEMAPHORE_LOG_DEPENDENCIES";
+
+/// The installed sink, so the files can be attached once this process knows it is the app.
+static SINK: OnceLock<Sink> = OnceLock::new();
+
+/// Installs the logger, writing to stderr only. `SEMAPHORE_LOG` stays as it was: stderr gets the
+/// same lines in the same format. The files join with [`attach_files`], once this process holds
+/// the single-instance lock: a second launch that only hands its link over must not write into,
+/// or rotate, the running app's files.
+pub fn init() -> LevelFilter {
     let level = level_from_env();
-    let sink = Sink::new(&logs_dir(data_dir), level);
-    if log::set_boxed_logger(Box::new(sink)).is_ok() {
+    let dependencies = std::env::var(LOG_DEPENDENCIES_VAR).is_ok_and(|value| value == "1");
+    let sink = SINK.get_or_init(|| Sink::stderr_only(level, dependencies));
+    if log::set_logger(sink).is_ok() {
         log::set_max_level(level);
     }
     level
 }
 
+/// Starts writing the files under `<data_dir>/logs`, when the directory allows it. Once only.
+pub fn attach_files(data_dir: &Path) {
+    if let Some(sink) = SINK.get() {
+        sink.attach(&logs_dir(data_dir), DEFAULT_SIZES);
+    }
+}
+
+/// One line on stderr. Never panics: `eprintln!` does on a closed stderr (EPIPE), and a logger
+/// must not take the app down.
+pub fn stderr_line(line: std::fmt::Arguments<'_>) {
+    let mut stderr = std::io::stderr().lock();
+    let _ = stderr.write_fmt(line);
+    let _ = stderr.write_all(b"\n");
+}
+
 /// The stderr and file sink.
 struct Sink {
     level: LevelFilter,
+    /// `SEMAPHORE_LOG_DEPENDENCIES=1`: dependencies' debug and trace lines go to the files too.
+    /// Otherwise the files keep them at info and above, whatever `SEMAPHORE_LOG` says: a debug
+    /// run would fill the capped files with HTTP and TLS internals in minutes.
+    dependencies: bool,
+    files: OnceLock<Files>,
+}
+
+struct Files {
     app: Mutex<RotatingFile>,
     voice: Mutex<RotatingFile>,
 }
@@ -102,26 +139,51 @@ const DEFAULT_SIZES: Sizes = Sizes {
 };
 
 impl Sink {
-    fn new(dir: &Path, level: LevelFilter) -> Self {
-        Self::with_sizes(dir, level, DEFAULT_SIZES)
-    }
-
-    fn with_sizes(dir: &Path, level: LevelFilter, sizes: Sizes) -> Self {
-        let app = RotatingFile::open(dir, APP_LOG, sizes.app.0, sizes.app.1);
-        let voice = RotatingFile::open(dir, VOICE_LOG, sizes.voice.0, sizes.voice.1);
+    fn stderr_only(level: LevelFilter, dependencies: bool) -> Self {
         Self {
             level,
-            app: Mutex::new(app),
-            voice: Mutex::new(voice),
+            dependencies,
+            files: OnceLock::new(),
         }
     }
 
     #[cfg(test)]
+    fn with_sizes(dir: &Path, level: LevelFilter, sizes: Sizes) -> Self {
+        let sink = Self::stderr_only(level, false);
+        sink.attach(dir, sizes);
+        sink
+    }
+
+    fn attach(&self, dir: &Path, sizes: Sizes) {
+        self.files.get_or_init(|| Files {
+            app: Mutex::new(RotatingFile::open(dir, APP_LOG, sizes.app.0, sizes.app.1)),
+            voice: Mutex::new(RotatingFile::open(
+                dir,
+                VOICE_LOG,
+                sizes.voice.0,
+                sizes.voice.1,
+            )),
+        });
+    }
+
+    #[cfg(test)]
     fn writing_files(&self) -> (bool, bool) {
-        (
-            self.app.lock().unwrap().file.is_some(),
-            self.voice.lock().unwrap().file.is_some(),
-        )
+        match self.files.get() {
+            Some(files) => (
+                files.app.lock().unwrap().file.is_some(),
+                files.voice.lock().unwrap().file.is_some(),
+            ),
+            None => (false, false),
+        }
+    }
+
+    /// Whether a line goes to the files: ours at any enabled level, a dependency's at info and
+    /// above unless asked.
+    fn to_file(&self, record: &Record) -> bool {
+        let target = record.target();
+        let ours =
+            target == VOICE_TARGET || target.starts_with("semaphore") || target.starts_with("rig_");
+        ours || self.dependencies || record.level() <= log::Level::Info
     }
 }
 
@@ -136,7 +198,18 @@ impl Log for Sink {
         }
         // stderr keeps the format it had before there were files.
         let message = one_line(&semaphore_core::redact::redact(&record.args().to_string()));
-        eprintln!("{} {}: {}", record.level(), record.target(), message);
+        stderr_line(format_args!(
+            "{} {}: {}",
+            record.level(),
+            record.target(),
+            message
+        ));
+        let Some(files) = self.files.get() else {
+            return;
+        };
+        if !self.to_file(record) {
+            return;
+        }
         let line = format!(
             "{} {:<5} {}: {}",
             timestamp(SystemTime::now()),
@@ -145,9 +218,9 @@ impl Log for Sink {
             message
         );
         let file = if record.target() == VOICE_TARGET {
-            &self.voice
+            &files.voice
         } else {
-            &self.app
+            &files.app
         };
         file.lock()
             .unwrap_or_else(|poison| poison.into_inner())
@@ -155,6 +228,53 @@ impl Log for Sink {
     }
 
     fn flush(&self) {}
+}
+
+/// Creates the logs folder (and its parents) private to this user: logs and crash reports say
+/// which servers and channels were used. An existing folder is made private too.
+pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)?;
+        let mode = std::fs::metadata(dir)?.permissions().mode() & 0o777;
+        if mode != 0o700 {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    std::fs::create_dir_all(dir)
+}
+
+/// Options for a file only this user may read (0600 on Unix), created if missing.
+pub(crate) fn private_file_options() -> OpenOptions {
+    let mut options = OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    options
+}
+
+/// A file from an older build may still be world-readable: made private.
+fn make_private(file: &File) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        if file
+            .metadata()
+            .is_ok_and(|meta| meta.permissions().mode() & 0o077 != 0)
+        {
+            let _ = file.set_permissions(std::fs::Permissions::from_mode(0o600));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = file;
 }
 
 /// A message or panic text as one log line: embedded newlines are escaped.
@@ -177,16 +297,19 @@ impl RotatingFile {
             file: None,
             len: 0,
         };
-        if let Err(error) = std::fs::create_dir_all(dir) {
-            eprintln!("semaphore-app: not writing the {stem} log: {error}; logging to stderr only");
+        if let Err(error) = create_private_dir(dir) {
+            stderr_line(format_args!(
+                "semaphore-app: not writing the {stem} log: {error}; logging to stderr only"
+            ));
             return file;
         }
-        let opened = OpenOptions::new()
+        let opened = private_file_options()
             .create(true)
             .append(true)
             .open(file.current());
         match opened {
             Ok(handle) => {
+                make_private(&handle);
                 file.len = handle.metadata().map(|meta| meta.len()).unwrap_or(0);
                 file.file = Some(handle);
                 if file.len >= file.cap {
@@ -195,11 +318,11 @@ impl RotatingFile {
                 file
             }
             Err(error) => {
-                eprintln!(
+                stderr_line(format_args!(
                     "semaphore-app: not writing the {} log at {}: {error}; logging to stderr only",
                     file.stem,
                     file.current().display()
-                );
+                ));
                 file
             }
         }
@@ -230,10 +353,10 @@ impl RotatingFile {
             .write_all(line.as_bytes())
             .and_then(|()| handle.write_all(b"\n"))
         {
-            eprintln!(
+            stderr_line(format_args!(
                 "semaphore-app: writing the {} log failed: {error}; logging to stderr only",
                 self.stem
-            );
+            ));
             self.file = None;
             return;
         }
@@ -241,8 +364,13 @@ impl RotatingFile {
     }
 
     /// `semaphore.log` becomes `semaphore.1.log`, the older copies shift down, the oldest goes.
+    ///
+    /// If the current file can't be renamed (another process has it open on Windows, say), it is
+    /// kept and appended to: never truncated, which would lose its lines. The size count starts
+    /// over, so the next try comes after another file's worth rather than on every line.
     fn rotate(&mut self) {
         self.file = None;
+        let mut truncate = true;
         if self.keep > 1 {
             let _ = std::fs::remove_file(self.archive(self.keep - 1));
             for index in (1..self.keep - 1).rev() {
@@ -251,23 +379,34 @@ impl RotatingFile {
                     let _ = std::fs::rename(from, self.archive(index + 1));
                 }
             }
-            let _ = std::fs::rename(self.current(), self.archive(1));
+            if let Err(error) = std::fs::rename(self.current(), self.archive(1))
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                stderr_line(format_args!(
+                    "semaphore-app: rotating the {} log failed: {error}; appending to it",
+                    self.stem
+                ));
+                truncate = false;
+            }
         }
-        match OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(self.current())
-        {
+        let mut options = private_file_options();
+        options.create(true);
+        if truncate {
+            options.write(true).truncate(true);
+        } else {
+            options.append(true);
+        }
+        match options.open(self.current()) {
             Ok(handle) => {
+                make_private(&handle);
                 self.file = Some(handle);
                 self.len = 0;
             }
             Err(error) => {
-                eprintln!(
+                stderr_line(format_args!(
                     "semaphore-app: rotating the {} log failed: {error}; logging to stderr only",
                     self.stem
-                );
+                ));
             }
         }
     }
@@ -597,6 +736,116 @@ mod tests {
                 "{secret} was written:\n{written}"
             );
         }
+    }
+
+    #[test]
+    fn a_failed_rename_keeps_the_current_file_and_appends() {
+        let dir = TempDir::new();
+        // `semaphore.1.log` is a directory with something in it: renaming the current file onto
+        // it fails, as a file another process holds open does on Windows.
+        fs::create_dir_all(dir.0.join("semaphore.1.log/held")).unwrap();
+        let mut file = RotatingFile::open(&dir.0, APP_LOG, 2, 20);
+        file.write_line("012345678");
+        file.write_line("abcdefghi");
+        file.write_line("klmnopqrs");
+        let current = fs::read_to_string(dir.0.join("semaphore.log")).unwrap();
+        assert_eq!(
+            current, "012345678\nabcdefghi\nklmnopqrs\n",
+            "nothing was lost"
+        );
+        assert!(file.file.is_some(), "still writing");
+    }
+
+    #[test]
+    fn files_wait_until_attached() {
+        let dir = TempDir::new();
+        let sink = Sink::stderr_only(LevelFilter::Trace, false);
+        log_line(&sink, Level::Info, "semaphore_app", "before the lock");
+        assert!(!dir.0.join("semaphore.log").exists(), "stderr only");
+        sink.attach(&dir.0, tiny(3, 400));
+        log_line(&sink, Level::Info, "semaphore_app", "after the lock");
+        let text = fs::read_to_string(dir.0.join("semaphore.log")).unwrap();
+        assert!(!text.contains("before the lock"), "{text}");
+        assert!(text.contains("after the lock"), "{text}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_logs_folder_and_files_are_private() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = TempDir::new();
+        let logs = dir.0.join("data/logs");
+        // A file left world-readable by an older build is made private too.
+        fs::create_dir_all(&logs).unwrap();
+        chmod(&logs, 0o755);
+        fs::write(logs.join("voice.log"), "old\n").unwrap();
+        chmod(&logs.join("voice.log"), 0o644);
+        let sink = Sink::with_sizes(&logs, LevelFilter::Trace, tiny(3, 400));
+        log_line(&sink, Level::Info, "semaphore_app", "a line");
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&logs), 0o700);
+        assert_eq!(mode(&logs.join("semaphore.log")), 0o600);
+        assert_eq!(mode(&logs.join("voice.log")), 0o600);
+        // A fresh folder is created private, with rotated files private too.
+        let fresh = dir.0.join("fresh/logs");
+        let mut file = RotatingFile::open(&fresh, APP_LOG, 3, 20);
+        file.write_line("012345678");
+        file.write_line("abcdefghi");
+        file.write_line("klmnopqrs");
+        assert_eq!(mode(&fresh), 0o700);
+        assert_eq!(mode(&fresh.join("semaphore.log")), 0o600);
+        assert_eq!(mode(&fresh.join("semaphore.1.log")), 0o600);
+    }
+
+    #[test]
+    fn dependency_debug_lines_stay_out_of_the_files_unless_asked() {
+        let dir = TempDir::new();
+        let sink = Sink::with_sizes(&dir.0, LevelFilter::Trace, tiny(3, 4096));
+        log_line(&sink, Level::Debug, "hyper::client", "dependency debug");
+        log_line(&sink, Level::Info, "hyper::client", "dependency info");
+        log_line(&sink, Level::Debug, "semaphore_net::http", "our debug");
+        log_line(&sink, Level::Trace, VOICE_TARGET, "voice trace");
+        let app = fs::read_to_string(dir.0.join("semaphore.log")).unwrap();
+        assert!(!app.contains("dependency debug"), "{app}");
+        assert!(app.contains("dependency info"), "{app}");
+        assert!(app.contains("our debug"), "{app}");
+        let voice = fs::read_to_string(dir.0.join("voice.log")).unwrap();
+        assert!(voice.contains("voice trace"), "{voice}");
+        let all = TempDir::new();
+        let sink = Sink::stderr_only(LevelFilter::Trace, true);
+        sink.attach(&all.0, tiny(3, 4096));
+        log_line(&sink, Level::Debug, "hyper::client", "dependency debug");
+        let app = fs::read_to_string(all.0.join("semaphore.log")).unwrap();
+        assert!(app.contains("dependency debug"), "{app}");
+    }
+
+    /// `eprintln!` panics when stderr is a closed pipe; the sink must not. Run in a child whose
+    /// stderr is a pipe with no reader, so every write fails with EPIPE.
+    #[cfg(unix)]
+    #[test]
+    fn a_closed_stderr_never_panics_the_logger() {
+        const CHILD: &str = "SEMAPHORE_LOG_TEST_CLOSED_STDERR";
+        if std::env::var_os(CHILD).is_some() {
+            let sink = Sink::stderr_only(LevelFilter::Trace, false);
+            log_line(&sink, Level::Error, "semaphore_app", "into a closed pipe");
+            log_line(&sink, Level::Warn, "semaphore_app", "and again");
+            return;
+        }
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "logging::tests::a_closed_stderr_never_panics_the_logger",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .stdout(std::process::Stdio::null())
+            .stderr(writer)
+            .status()
+            .unwrap();
+        assert!(status.success(), "the child panicked: {status}");
     }
 
     fn tiny(keep: usize, cap: u64) -> Sizes {

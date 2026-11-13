@@ -488,7 +488,7 @@ build/icon.ico`) and electron-builder's NSIS templates; its behaviour is summari
 | Install directory | `%LOCALAPPDATA%\Programs\Semaphore Chat`, changeable on the directory page | the same |
 | Shortcuts | Start menu (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Semaphore Chat.lnk`) and desktop (`%USERPROFILE%\Desktop\Semaphore Chat.lnk`) | the same names and targets |
 | Add/Remove Programs | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<GUID>`: DisplayName `Semaphore Chat <version>`, DisplayVersion, Publisher, DisplayIcon, UninstallString, QuietUninstallString, EstimatedSize, NoModify/NoRepair | `HKCU\...\Uninstall\app.semaphorechat.semaphore` with the same value set |
-| `semaphore://` | `HKCU\Software\Classes\semaphore`: `URL Protocol`, `DefaultIcon`, `shell\open\command` = `"<exe>" "%1"` | the same values the app writes itself (`semaphore-platform-desktop/src/links.rs::registry_values`), so its own status check recognises the registration |
+| `semaphore://` | `HKCU\Software\Classes\semaphore`: `URL Protocol`, `DefaultIcon`, `shell\open\command` = `"<exe>" -- "%1"` (the `--` ends the app's options, so a link can't add one) | the same values the app writes itself (`semaphore-platform-desktop/src/links.rs::registry_values`), so its own status check recognises the registration. The uninstaller also removes the older `"<exe>" "%1"` form, which the app rewrites on its next start |
 | Run after finish | finish-page "Run" checkbox | the same |
 | Upgrade | closes the running app, runs the previous version's uninstaller silently, then installs | the same (`/S _?=<old dir>`) |
 | Compression | electron-builder's default (7z/LZMA) | solid LZMA (`SetCompressor /SOLID lzma`) |
@@ -561,7 +561,7 @@ stock NSIS 3.08, `7z`) with no network:
 - from the script text: every registry key written by the install section is deleted by the
   uninstall section (directly or through a parent key), every `CreateShortCut` has a matching
   `Delete`, each installed file has its own `Delete` and the directory is removed only if empty, `%APPDATA%` is never touched,
-  `semaphore://` has `"%1"`, and the Add/Remove Programs values exist.
+  `semaphore://` has `-- "%1"`, and the Add/Remove Programs values exist.
 
 This proves the installer compiles and describes what it will do; it cannot install, start or
 uninstall it. That needs Windows.
@@ -576,7 +576,7 @@ disposable VM) with the artifact from the *next* `native-package` run:
    app; both shortcuts exist.
 2. Sign in, then open `semaphore://join/<code>` from `Start > Run`: the running app (or a fresh
    one) receives the link. `reg query HKCU\Software\Classes\semaphore\shell\open\command`
-   shows `"<install dir>\semaphore-app.exe" "%1"`.
+   shows `"<install dir>\semaphore-app.exe" -- "%1"`.
 3. Settings > Apps lists `Semaphore Chat <version>` with the icon, publisher and a non-zero
    estimated size.
 4. Upgrade: install an older build, start it, then run the newer installer. The app closes
