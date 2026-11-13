@@ -1,2 +1,81 @@
-# UV the voice pre-join panel. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# UV the voice pre-join panel: every state, each on a desktop (dark) and a phone (light).
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/uv-voice-prejoin.steps
+story voice-prejoin-loading 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-loading-desktop
+story voice-prejoin-loading 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-loading-phone
+story voice-prejoin-failed 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-failed-desktop
+story voice-prejoin-failed 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-failed-phone
+story voice-prejoin-empty 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-empty-desktop
+story voice-prejoin-empty 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-empty-phone
+story voice-prejoin-few 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-few-desktop
+story voice-prejoin-few 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-few-phone
+story voice-prejoin-initials 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-initials-desktop
+story voice-prejoin-initials 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-initials-phone
+story voice-prejoin-many 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-many-desktop
+story voice-prejoin-many 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-many-phone
+story voice-prejoin-listen-timeout 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-listen-timeout-desktop
+story voice-prejoin-listen-timeout 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-listen-timeout-phone
+story voice-prejoin-listen-timeout-tomorrow 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-listen-timeout-tomorrow-desktop
+story voice-prejoin-listen-timeout-tomorrow 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-listen-timeout-tomorrow-phone
+story voice-prejoin-listen-only 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-listen-only-desktop
+story voice-prejoin-listen-only 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-listen-only-phone
+story voice-prejoin-not-allowed 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-not-allowed-desktop
+story voice-prejoin-not-allowed 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-not-allowed-phone
+story voice-prejoin-elsewhere 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-elsewhere-desktop
+story voice-prejoin-elsewhere 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-elsewhere-phone
+story voice-prejoin-deafened 1280 800 dark-blue-balanced
+wait idle
+shot uv-prejoin-deafened-desktop
+story voice-prejoin-deafened 390 844 light-blue-balanced
+wait idle
+shot uv-prejoin-deafened-phone
+# The rig can't scroll: the crowd in tall windows, to review every tile below the fold.
+story voice-prejoin-many 1280 1100 dark-blue-balanced
+wait idle
+shot uv-prejoin-many-desktop-full
+story voice-prejoin-many 390 2400 light-blue-balanced
+wait idle
+shot uv-prejoin-many-phone-full
