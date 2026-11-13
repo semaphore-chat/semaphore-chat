@@ -7,6 +7,7 @@ use super::format::TimeFormat;
 use super::media::{Media, MediaSource};
 use super::palette::{Fonts, Palette};
 use super::row::{Decor, ReplyPreview, Shared, render_empty, render_row, render_skeleton};
+use super::seen;
 use super::selection::{self, Motion, Pos, Selection, Unit, UnitDrag};
 use super::store::{RowChange, RowStore};
 use super::text;
@@ -271,29 +272,88 @@ const PHONE_WIDTH: f32 = 600.;
 impl EventEmitter<MessageListEvent> for MessageList {}
 
 impl MessageList {
-    /// U-freeze (UM): whether third-party pictures (GIFs, link-preview images) may load
-    /// (`Core::third_party_media()`); off draws the "Load" cards. Drawn by UM.
-    pub fn set_third_party_media(&mut self, _on: bool, cx: &mut Context<Self>) {
+    /// Whether third-party pictures (GIFs, link-preview images) may load
+    /// (`Core::third_party_media()`). Off (the default) draws "Load" cards and never asks the
+    /// media source for such a picture.
+    pub fn set_third_party_media(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.shared.third_party.replace(on) != on {
+            // Cards and pictures differ in height, in rows on screen and off it.
+            let count = self.list.item_count();
+            self.list.remeasure_items(0..count);
+        }
         cx.notify();
     }
 
-    /// U-freeze (UM): "Seen by" for the hovered message (`Core::seen_by`). Drawn by UM.
+    /// "Seen by" for the user's own latest message (`Core::seen_by`). The app feeds it when that
+    /// message appears or changes and on `SeenByHovered`. It is kept for the message that was the
+    /// own latest when it came, and dropped when another message takes that place.
     pub fn set_seen_by(
         &mut self,
-        _seen: Option<semaphore_core::model::SeenByView>,
+        seen: Option<semaphore_core::model::SeenByView>,
         cx: &mut Context<Self>,
     ) {
+        let changed = {
+            let mut state = self.shared.seen.borrow_mut();
+            let before = state.view.clone();
+            state.answer(seen);
+            before != state.view
+        };
+        if changed {
+            self.remeasure_seen_target();
+        }
         cx.notify();
     }
 
-    /// U-freeze (UM): a DM's read watermarks (`Core::dm_peer_reads`), for "Seen" on my latest
-    /// message. Drawn by UM.
+    /// A DM's read watermarks (`Core::dm_peer_reads`). Kept, but the list draws "Seen by" from
+    /// `set_seen_by` alone: core decides who has seen a message.
     pub fn set_dm_peer_reads(
         &mut self,
-        _reads: Option<semaphore_core::model::DmPeerReadsView>,
+        reads: Option<semaphore_core::model::DmPeerReadsView>,
         cx: &mut Context<Self>,
     ) {
+        *self.shared.dm_peer_reads.borrow_mut() = reads;
         cx.notify();
+    }
+
+    /// The message "Seen by" would go under (the own latest sent one), for the app and tests.
+    pub fn seen_by_target(&self) -> Option<String> {
+        self.shared
+            .seen
+            .borrow()
+            .target
+            .as_ref()
+            .map(|(_, id)| id.clone())
+    }
+
+    fn remeasure_seen_target(&self) {
+        let seq = self
+            .shared
+            .seen
+            .borrow()
+            .target
+            .as_ref()
+            .map(|(seq, _)| *seq);
+        if let Some(seq) = seq {
+            self.remeasure_seq(seq);
+        }
+    }
+
+    /// The rows changed: the own latest message may be another one now.
+    fn retarget_seen(&mut self) {
+        let target = seen::own_latest(self.shared.rows.borrow().iter().map(|row| row.as_ref()));
+        let old = self
+            .shared
+            .seen
+            .borrow()
+            .target
+            .as_ref()
+            .map(|(seq, _)| *seq);
+        if self.shared.seen.borrow_mut().retarget(target) {
+            if let Some(old) = old {
+                self.remeasure_seq(old);
+            }
+            self.remeasure_seen_target();
+        }
     }
 
     pub fn new(
@@ -331,7 +391,13 @@ impl MessageList {
             phone: Cell::new(false),
             players: options.players,
             list_players: crate::player::ListPlayers::default(),
+            third_party: Cell::new(false),
+            seen: RefCell::default(),
+            seen_hovered: Cell::new(false),
+            dm_peer_reads: RefCell::new(None),
         });
+        let target = seen::own_latest(shared.rows.borrow().iter().map(|row| row.as_ref()));
+        shared.seen.borrow_mut().retarget(target);
         let count = shared.rows.borrow().len();
         let list = ListState::new(count, ListAlignment::Top, OVERDRAW);
         list.set_follow_mode(FollowMode::Tail);
@@ -748,6 +814,7 @@ impl MessageList {
         if own_send_at_end {
             self.scroll_to_latest();
         }
+        self.retarget_seen();
         cx.notify();
     }
 

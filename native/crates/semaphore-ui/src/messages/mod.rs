@@ -4,6 +4,8 @@
 //! - `text`, `selection`: what the display string means. Plain Rust, with no GPUI.
 //! - `row`, `text_element`: drawing one row, after the web client's `components/Message/`.
 //! - `media`: where images come from, the bounded cache, animation timing, the allocator setting.
+//! - `third_party`: the only way to a GIF's or a link preview's picture, closed while the setting
+//!   is off. `seen`: which row "Seen by" goes under and how it reads.
 //! - `view`: the list itself. The app makes one with `ListData`, feeds it `ListOp`s, and answers
 //!   its `MessageListEvent`s.
 //!
@@ -20,10 +22,12 @@ pub mod palette;
 #[cfg(test)]
 mod player_tests;
 mod row;
+mod seen;
 mod selection;
 mod store;
 mod text;
 mod text_element;
+mod third_party;
 mod view;
 
 #[cfg(any(test, feature = "stories"))]
@@ -31,6 +35,10 @@ pub mod fixture;
 #[cfg(any(test, feature = "stories"))]
 pub mod synth;
 
+#[cfg(any(test, feature = "stories"))]
+mod media_stories;
+#[cfg(test)]
+mod media_tests;
 #[cfg(feature = "stories")]
 mod stories;
 #[cfg(test)]
