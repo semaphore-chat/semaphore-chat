@@ -1,0 +1,187 @@
+# W7: GIFs and pictures from other sites in the real app (WM), against the showcase scenario, as
+# alexk in Couch Co-op's #general. The fake server's own /__fixtures/ stands in for the GIF
+# service's media host and for a link preview's site; every fetch from it is a Fixture_image request,
+# so "nothing was asked" is a count.
+# - No GIF service: no GIF button. With one: the button.
+# - "Load images from other sites" off: the picker offers Allow and nothing is fetched; Allow turns
+#   the one switch on, the featured grid loads and its previews are fetched.
+# - Search, load more, Escape; a pick sends the GIF's URL as the message: the list shows the GIF,
+#   and after a restart (read again from the server) it still does.
+# - The switch off in Settings: the same message is a "GIF from 127.0.0.1: Load" card and nothing is
+#   fetched; Load turns it on again. A link preview's picture: off, then on, without a restart.
+
+app 1280 800
+window activate
+wait idle
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+
+# 1. The server has no GIF service: no button.
+wait core no-element composer-gif
+shot 01-no-gif-button
+
+# 2. It has one: after a restart (the server's settings are read again), the button.
+server public_settings "{\"gifSearchEnabled\": true}"
+restart
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core element composer-gif within 10
+wait core w7 third-party off
+wait idle
+shot 02-gif-button
+
+# 3. The picker while third-party pictures are off: the Allow notice, and nothing fetched.
+w7 mark
+click composer-gif
+wait core w7 picker open
+wait core w7 picker notice
+wait idle
+shot 03-picker-allow
+expect core w7 new-requests Fixture_image == 0
+expect core w7 new-requests GifsController_featured == 0
+
+# 4. Allow: the one switch goes on (core and the settings store), the featured grid loads and its
+# previews are fetched.
+click gif-allow
+wait core w7 third-party on
+expect settings /third_party_media true
+wait core w7 picker results >= 20 within 10
+wait core w7 new-requests Fixture_image >= 1 within 10
+wait idle
+shot 04-featured
+
+# 5. Search: after Allow the caret is in the search field again; the picker waits out its
+# debounce (the rig's clock moves by `tick`), then core reads the query.
+type "Fixture GIF 2"
+tick 300
+wait core w7 picker query "Fixture GIF 2" within 5
+wait core w7 picker results >= 11 within 10
+wait idle
+shot 05-search
+
+# 6. The featured list again, and its next page.
+click gif-search-clear
+tick 300
+wait core w7 picker query "" within 5
+wait core w7 picker results >= 20 within 10
+click gif-more
+wait core w7 picker results >= 30 within 10
+expect requests GifsController_featured >= 2
+
+# 7. Its close button closes it; opened again, Escape does, and the typing goes back to the
+# composer.
+click gif-close
+wait core w7 picker closed
+click composer-gif
+wait core w7 picker open
+press escape
+wait core w7 picker closed
+type "x"
+wait core composer-text "x"
+press backspace
+
+# 8. Open again and pick the third GIF: its URL alone is the message, and the list draws the GIF.
+click composer-gif
+wait core w7 picker results >= 20 within 10
+click gif-gif-3
+wait core w7 picker closed
+wait core w7 sent-gif "/__fixtures/gif-3.gif" within 10
+wait core requests sendMessage >= 1
+wait core w7 gif shown within 10
+wait idle
+shot 08-sent
+
+# 9. Read again from the server after a restart: still the GIF.
+link-images on
+restart
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core w7 sent-gif "/__fixtures/gif-3.gif" within 10
+wait core w7 gif shown within 10
+wait idle
+shot 09-sent-reloaded
+
+# 10. The switch off in Settings: the GIF is a Load card, and nothing is fetched.
+click rail-account
+wait core label "Settings"
+click account-settings
+wait core route settings/notifications
+click settings-tab-desktop
+wait core route settings/desktop
+click desktop-link-preview-images
+wait core w7 third-party off
+expect settings /third_party_media false
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+w7 mark
+wait core w7 gif blocked within 10
+expect label "GIF from 127.0.0.1"
+wait idle
+shot 10-blocked
+expect core w7 new-requests Fixture_image == 0
+
+# 11. Load: on again for everything, and the GIF is fetched and drawn.
+w7 click-gif-load
+wait core w7 third-party on
+expect settings /third_party_media true
+wait core w7 gif shown within 10
+wait idle
+shot 11-loaded
+
+# 12. A link preview's picture, at runtime: drawn while on; off, a Load card and no request; on, drawn
+# again (fetched afresh: turning off dropped what was kept).
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"a picture elsewhere \", \"linkPreview\": {\"url\": \"https://example.invalid/w7\", \"title\": \"A W7 article\", \"description\": \"Its picture is on another site.\", \"siteName\": \"Example\", \"imageUrl\": \"http://127.0.0.1:3999/__fixtures/w7-preview.png\"}}"
+wait core text "a picture elsewhere"
+w7 mark
+click rail-account
+wait core label "Settings"
+click account-settings
+wait core route settings/notifications
+click settings-tab-desktop
+wait core route settings/desktop
+click desktop-link-preview-images
+wait core w7 third-party off
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core text "a picture elsewhere"
+expect label "Image from 127.0.0.1"
+wait idle
+shot 12-preview-off
+expect core w7 new-requests Fixture_image == 0
+click rail-account
+wait core label "Settings"
+click account-settings
+wait core route settings/notifications
+click settings-tab-desktop
+wait core route settings/desktop
+click desktop-link-preview-images
+wait core w7 third-party on
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core w7 new-requests Fixture_image >= 2 within 10
+wait idle
+shot 13-preview-on
+
+# 14. At phone width the composer's "+" sheet offers GIF, and the picker is a bottom sheet.
+app 390 844
+wait core session signed-in
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+click composer-actions
+wait core element composer-gif
+click composer-gif
+wait core w7 picker open
+wait core w7 picker results >= 20 within 10
+wait idle
+shot 14-phone-sheet
