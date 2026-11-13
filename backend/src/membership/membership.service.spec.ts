@@ -940,6 +940,74 @@ describe('MembershipService', () => {
       );
     });
 
+    // AUTHZ-4: the last holder of the top role can't leave
+    describe('last top-role holder', () => {
+      const removalTx = () => ({
+        threadSubscriber: { deleteMany: jest.fn() },
+        channelMembership: { deleteMany: jest.fn() },
+        aliasGroupMember: { deleteMany: jest.fn() },
+        userRoles: { deleteMany: jest.fn() },
+        membership: { delete: jest.fn() },
+      });
+
+      it('refuses leaving, inside the removal transaction', async () => {
+        const tx = removalTx();
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(tx));
+        communityRolesService.assertKeepsTopHolder.mockRejectedValue(
+          new ForbiddenException('last'),
+        );
+
+        await expect(service.remove('admin-1', 'community-1')).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(communityRolesService.assertKeepsTopHolder).toHaveBeenCalledWith(
+          tx,
+          'admin-1',
+          'community-1',
+        );
+        expect(tx.membership.delete).not.toHaveBeenCalled();
+        expect(tx.userRoles.deleteMany).not.toHaveBeenCalled();
+      });
+
+      it('applies to removing yourself through DELETE_MEMBER', async () => {
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(removalTx()));
+        communityRolesService.assertKeepsTopHolder.mockRejectedValue(
+          new ForbiddenException('last'),
+        );
+
+        await expect(
+          service.removeByActor(
+            { id: 'admin-1', role: 'USER' },
+            'admin-1',
+            'community-1',
+          ),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('does not apply to the instance owner removing someone else', async () => {
+        const tx = removalTx();
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(tx));
+        mockDatabase.moderationLog.create.mockResolvedValue({});
+        communityRolesService.assertKeepsTopHolder.mockRejectedValue(
+          new ForbiddenException('last'),
+        );
+
+        await service.removeByActor(
+          { id: 'owner-1', role: 'OWNER' },
+          'admin-1',
+          'community-1',
+        );
+
+        expect(
+          communityRolesService.assertKeepsTopHolder,
+        ).not.toHaveBeenCalled();
+        expect(tx.membership.delete).toHaveBeenCalled();
+      });
+    });
+
     it('should throw NotFoundException when membership not found', async () => {
       const user = UserFactory.build();
       const community = CommunityFactory.build();

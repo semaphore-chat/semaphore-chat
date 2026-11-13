@@ -183,6 +183,38 @@ export class CommunityRolesService {
     await this.assignUserToCommunityRole(userId, communityId, roleId);
   }
 
+  /**
+   * The community must keep a holder of its top-ranked role: refuse when
+   * `userId` would lose their last top-ranked role (all of their roles, or
+   * just `roleIds`) and nobody else holds one. The holders' rows are locked,
+   * so two co-admins leaving or demoting each other at once go one at a time
+   * and the second sees it would leave nobody. Call it inside the transaction
+   * that does the removal.
+   */
+  async assertKeepsTopHolder(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    communityId: string,
+    roleIds?: string[],
+  ): Promise<void> {
+    const holders = await tx.$queryRaw<{ userId: string; roleId: string }[]>`
+      SELECT ur."userId", ur."roleId"
+      FROM "UserRoles" ur
+      JOIN "Role" r ON r."id" = ur."roleId"
+      WHERE r."communityId" = ${communityId}
+        AND ur."isInstanceRole" = false
+        AND r."position" = (
+          SELECT MIN("position") FROM "Role" WHERE "communityId" = ${communityId}
+        )
+      FOR UPDATE OF ur`;
+    const removed = (h: { userId: string; roleId: string }) =>
+      h.userId === userId && (!roleIds || roleIds.includes(h.roleId));
+    if (!holders.some(removed) || holders.some((h) => !removed(h))) return;
+    throw new ForbiddenException(
+      "This would leave the community without anyone holding its top role. Give that role to another member first, or delete the community.",
+    );
+  }
+
   /** Removal on behalf of a user, with the rank rules. */
   async removeRoleAsActor(
     actor: RoleActor,
@@ -213,7 +245,29 @@ export class CommunityRolesService {
         }
       }
     }
-    await this.removeUserFromCommunityRole(userId, communityId, roleId);
+    // The instance owner acting on someone else may leave the community
+    // without a top-role holder; anyone else may not.
+    const ownerOnOther =
+      actor.role === InstanceRole.OWNER && userId !== actor.id;
+    const pendingBumps: EpochBump[] = [];
+    await this.databaseService.$transaction(async (tx) => {
+      if (!ownerOnOther) {
+        await this.assertKeepsTopHolder(tx, userId, communityId, [roleId]);
+      }
+      await this.removeUserFromCommunityRole(
+        userId,
+        communityId,
+        roleId,
+        tx,
+        pendingBumps,
+      );
+    });
+    await this.permissionsCacheService.executeBumps(pendingBumps);
+    this.eventEmitter.emit(RoomEvents.ROLE_UNASSIGNED, {
+      communityId,
+      userId,
+      roleId,
+    });
   }
 
   /** Deletion on behalf of a user, with the rank rule. */

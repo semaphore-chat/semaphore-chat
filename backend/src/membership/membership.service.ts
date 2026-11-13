@@ -387,7 +387,15 @@ export class MembershipService {
     return new MembershipResponseDto(membership);
   }
 
-  async remove(userId: string, communityId: string): Promise<void> {
+  /**
+   * Leaving (or being removed). The last holder of the community's top role
+   * can't go, unless `allowLastTopHolder` (the instance owner removing them).
+   */
+  async remove(
+    userId: string,
+    communityId: string,
+    allowLastTopHolder = false,
+  ): Promise<void> {
     try {
       // Check if membership exists
       await this.databaseService.membership.findUniqueOrThrow({
@@ -400,6 +408,14 @@ export class MembershipService {
       });
 
       await this.databaseService.$transaction(async (tx) => {
+        if (!allowLastTopHolder) {
+          await this.communityRolesService.assertKeepsTopHolder(
+            tx,
+            userId,
+            communityId,
+          );
+        }
+
         // Remove user from all channels in the community
         await tx.channelMembership.deleteMany({
           where: {
@@ -488,7 +504,7 @@ export class MembershipService {
       );
     }
 
-    await this.remove(userId, communityId);
+    await this.remove(userId, communityId, actor.role === InstanceRole.OWNER);
 
     await this.databaseService.moderationLog.create({
       data: {

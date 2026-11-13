@@ -942,6 +942,83 @@ describe('CommunityRolesService', () => {
       expect(mockDatabase.userRoles.delete).not.toHaveBeenCalled();
     });
 
+    // AUTHZ-4: the community keeps at least one holder of its top role
+    describe('last top-role holder', () => {
+      beforeEach(() => {
+        permissionsService.getRank.mockResolvedValue({ best: 10, isTop: true });
+        mockDatabase.userRoles.findMany.mockResolvedValue([]);
+        mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([]);
+      });
+
+      it('refuses removing the top role from its last holder', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: actor.id, roleId: 'role-top' },
+        ]);
+
+        await expect(
+          service.removeRoleAsActor(actor, actor.id, communityId, 'role-top'),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.userRoles.delete).not.toHaveBeenCalled();
+      });
+
+      it('refuses a co-admin stripping the last other holder', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: 'admin-2', roleId: 'role-top' },
+        ]);
+
+        await expect(
+          service.removeRoleAsActor(actor, 'admin-2', communityId, 'role-top'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows it while another member holds the top role', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: actor.id, roleId: 'role-top' },
+          { userId: 'admin-2', roleId: 'role-top' },
+        ]);
+
+        await service.removeRoleAsActor(
+          actor,
+          actor.id,
+          communityId,
+          'role-top',
+        );
+
+        expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+      });
+
+      it('allows it when the member keeps another top-ranked role', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: actor.id, roleId: 'role-top' },
+          { userId: actor.id, roleId: 'role-top-2' },
+        ]);
+
+        await service.removeRoleAsActor(
+          actor,
+          actor.id,
+          communityId,
+          'role-top',
+        );
+
+        expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+      });
+
+      it('lets the instance owner strip the last holder', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: 'admin-2', roleId: 'role-top' },
+        ]);
+
+        await service.removeRoleAsActor(
+          { id: 'owner-1', role: 'OWNER' },
+          'admin-2',
+          communityId,
+          'role-top',
+        );
+
+        expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+      });
+    });
+
     it('lets a top-role holder remove a deny role from themselves', async () => {
       permissionsService.getRank.mockResolvedValue({ best: 10, isTop: true });
       mockDatabase.userRoles.findMany.mockResolvedValue([]);
