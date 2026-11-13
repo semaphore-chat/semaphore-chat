@@ -65,9 +65,6 @@ fn init_logging() {
 
 /// The binary's name in `--version` and `--help`.
 const NAME: &str = env!("CARGO_PKG_NAME");
-/// The version this build reports: the app crate's `Cargo.toml` version, or `SEMAPHORE_VERSION`
-/// when packaging/CI set it (see `build.rs`).
-const VERSION: &str = env!("SEMAPHORE_VERSION");
 
 const USAGE: &str =
     "usage: semaphore-app [--server <url>] [semaphore://...] | --probe-media <url> <token>";
@@ -117,7 +114,7 @@ fn main() -> ExitCode {
     if let [flag] = args.as_slice() {
         match flag.as_str() {
             "--version" | "-V" => {
-                println!("{NAME} {VERSION}");
+                println!("{NAME} {}", semaphore_app::version());
                 return ExitCode::SUCCESS;
             }
             "--help" | "-h" => {

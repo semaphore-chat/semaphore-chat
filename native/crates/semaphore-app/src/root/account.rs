@@ -872,6 +872,20 @@ impl AppRoot {
         .detach();
     }
 
+    /// The Close to Tray setting, from the settings screen, the tray's check box or the menu: save
+    /// it, keep the tray's box and the app menu's in step, and redraw the settings screen.
+    pub(crate) fn set_close_to_tray(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.update_settings(|settings| settings.close_to_tray = on);
+        if let Some(tray) = cx
+            .try_global::<crate::desktop::DesktopShell>()
+            .and_then(|shell| shell.tray())
+        {
+            tray.set_close_to_tray(on);
+        }
+        crate::menu::install(cx, on);
+        self.refresh_desktop_tab(cx);
+    }
+
     fn on_desktop_settings(
         &mut self,
         _: &Entity<DesktopAppSettings>,
@@ -880,16 +894,7 @@ impl AppRoot {
         cx: &mut Context<Self>,
     ) {
         match *event {
-            DesktopAppEvent::SetCloseToTray(on) => {
-                self.update_settings(|settings| settings.close_to_tray = on);
-                if let Some(tray) = cx
-                    .try_global::<crate::desktop::DesktopShell>()
-                    .and_then(|shell| shell.tray())
-                {
-                    tray.set_close_to_tray(on);
-                }
-                self.refresh_desktop_tab(cx);
-            }
+            DesktopAppEvent::SetCloseToTray(on) => self.set_close_to_tray(on, cx),
             DesktopAppEvent::SetLinkPreviewImages(on) => {
                 // The one third-party media switch (`root/media.rs`).
                 self.media_set_third_party(on, cx);

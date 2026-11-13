@@ -189,7 +189,7 @@ All live under `pages/EditCommunityPage.tsx` tabs and `components/Community/`, `
 | Deep links `semaphore://` (community, channel, DM, invite) | `electron/deep-link-parser.ts`, `hooks/useDeepLinks.ts`, `utils/deepLinkStash.ts` | partial: `DeepLink` to `Route` mapping in `ui/src/nav`; no OS scheme registration, no argv/IPC intake (`main.rs` takes `--server` only) |
 | Single instance (second launch focuses the first, forwards links) | `electron/main.ts` `requestSingleInstanceLock` | not started |
 | System tray: show/hide, close to tray, check updates, quit | `electron/main.ts` `setupTray`, `buildTrayContextMenu` | not started (trait only) |
-| Application menu | `electron/main.ts` `setupApplicationMenu` | not started |
+| Application menu | `electron/main.ts` `setupApplicationMenu` | done (W13: the full tree below, About included; reload, dev tools, zoom and check-for-updates left out) |
 | Auto-update (check, progress, install) | `electron/main.ts` electron-updater, `components/Electron/AutoUpdater.tsx` | not started |
 | Window position/size remembered | `electron/main.ts` window state | not started (`main.rs` opens centred) |
 | Native notifications with click | `electron/main.ts` `notification:*` | partial (see Notifications) |
@@ -197,6 +197,20 @@ All live under `pages/EditCommunityPage.tsx` tabs and `components/Community/`, `
 | Voice event log file | `electron/voiceLog.ts` | partial: `SEMAPHORE_LOG` to stderr; no log file |
 | App version shown | `electron/preload.ts` `getAppVersion` | unknown |
 | Auto-start at login | claimed in `docs-site/docs/installation/desktop-app.md`; no `setLoginItemSettings` in `electron/main.ts` | n/a (Electron doesn't have it either) |
+
+**The application menu (W13, 2026-11-13)** is `crates/semaphore-app/src/menu.rs`, with the
+dialog in `crates/semaphore-ui/src/about`. It mirrors `setupApplicationMenu`: File (Linux and
+Windows) or the app menu (macOS) with Close Window, a checked Close to Tray and Quit; Edit with
+undo, redo, cut, copy, paste and select all (the text inputs' own actions); View with toggle full
+screen; and Help with About Semaphore Chat, which shows the app's name, `version()`, the platform
+and renderer, links to the project site and docs, the package's `THIRD-PARTY-LICENCES.txt` when it
+shipped one, and Copy version. The tree goes to `cx.set_menus`, which the pinned GPUI draws only
+on macOS (its Linux and Windows platforms store the menus and never show them), so on those
+platforms the same actions are on key bindings (Ctrl+Q quit, Ctrl+W close or hide to tray, F11
+full screen) and About is also in the account menu. Left out on purpose: reload, force reload and
+the developer tools (there is no webview), zoom (the kit draws in px, so a window-level rem scale
+would need kit changes), Check for Updates (the auto-updater lane), and macOS's hide, hide others
+and unhide (GPUI has no menu item for those roles).
 
 ### Web/PWA-only (not counted)
 
@@ -352,8 +366,7 @@ screen) and a diff review against its brief; a lane that fails once is redone by
 - An unknown `INVITE_*` reason shows the server's message.
 - The quota dialog takes GiB and sends bytes.
 
-**Later platform lanes** (outside these waves): the application menu with About (Electron has
-one: `electron/main.ts` `setupApplicationMenu`), the app version shown, the replay trim preview
+**Later platform lanes** (outside these waves): the app version shown, the replay trim preview
 (the player reading HLS / MPEG-TS), voice isolation (no libwebrtc counterpart). Packaging,
 auto-update and installers are the packaging lane's.
 

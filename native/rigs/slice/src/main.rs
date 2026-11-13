@@ -84,8 +84,9 @@
 //! requests to me), `friend ID`, `dms N`.
 //!
 //! `$SERVER` anywhere in a script is the fake server's URL, for links to it, `$MSG(sc-msg-24)`
-//! the UUID the fake server serves that showcase message as (`message_uuid`), and `$ID(u-priya)`
-//! the UUID it serves that showcase user, community or custom emoji as (`entity_uuid`).
+//! the UUID the fake server serves that showcase message as (`message_uuid`), `$ID(u-priya)`
+//! the UUID it serves that showcase user, community or custom emoji as (`entity_uuid`), and
+//! `$VERSION` the version this build reports (`semaphore_app::version`).
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
 //! `rows >= N`, `text S`, `no-text S`, `sent S` (acked), `pending S`, `failed S`, `count S N`,
@@ -2736,7 +2737,8 @@ fn main() -> Result<()> {
     let source = message_ids(
         &std::fs::read_to_string(&script_path)
             .with_context(|| script_path.clone())?
-            .replace("$SERVER", server.trim_end_matches('/')),
+            .replace("$SERVER", server.trim_end_matches('/'))
+            .replace("$VERSION", semaphore_app::version()),
     );
     let steps = parse(&source).with_context(|| script_path.clone())?;
     let now_ms = match &scenario {
