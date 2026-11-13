@@ -22,6 +22,7 @@ import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { CreateThreadReplyDto } from './dto/create-thread-reply.dto';
+import { MessagesService } from '@/messages/messages.service';
 import { MESSAGE_INCLUDE, toMessageDto } from '@/messages/message.mapper';
 import { Message, $Enums } from '@prisma/client';
 
@@ -40,6 +41,7 @@ export class ThreadsService {
     private readonly websocketService: WebsocketService,
     private readonly notificationsService: NotificationsService,
     private readonly linkPreviewsService: LinkPreviewsService,
+    private readonly messagesService: MessagesService,
   ) {}
 
   /**
@@ -244,6 +246,12 @@ export class ThreadsService {
         authorId,
         parent.directMessageGroupId,
       );
+    }
+
+    // A reply is a message in the parent's channel: the same slow-mode rule
+    // applies. DM threads have no channel and no slow mode.
+    if (parent.channelId) {
+      await this.messagesService.checkSlowmode(parent.channelId, authorId);
     }
 
     // Attaching files in a channel thread needs ATTACH_FILES

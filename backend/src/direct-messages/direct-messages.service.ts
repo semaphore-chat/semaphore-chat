@@ -1,5 +1,6 @@
 import { SpanColumns, toSpanDto } from '@/messages/message.mapper';
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -16,6 +17,7 @@ import {
 } from './dto/dm-group-response.dto';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { isBlockedWithAny } from '@/common/utils/user-block.utils';
+import { MAX_DM_GROUP_MEMBERS } from './direct-messages.constants';
 
 function toDmMember(member: DmGroupMemberDto): DmGroupMemberDto {
   return {
@@ -288,17 +290,32 @@ export class DirectMessagesService {
       where: { id: groupId },
       include: {
         members: {
-          where: { userId },
+          select: { userId: true },
         },
       },
     });
 
-    if (!dmGroup || dmGroup.members.length === 0) {
+    if (
+      !dmGroup ||
+      !dmGroup.members.some((member) => member.userId === userId)
+    ) {
       throw new ForbiddenException('You are not a member of this DM group');
     }
 
     if (!dmGroup.isGroup) {
       throw new ForbiddenException('Cannot add members to a 1:1 DM');
+    }
+
+    // The total includes the caller and anyone already in the group; repeats
+    // of existing members do not grow it.
+    const memberIds = new Set(dmGroup.members.map((member) => member.userId));
+    const newMemberIds = new Set(
+      addMembersDto.userIds.filter((id) => !memberIds.has(id)),
+    );
+    if (memberIds.size + newMemberIds.size > MAX_DM_GROUP_MEMBERS) {
+      throw new BadRequestException(
+        `A group chat can have at most ${MAX_DM_GROUP_MEMBERS} members`,
+      );
     }
 
     // Nobody adds someone who blocked them, or whom they blocked

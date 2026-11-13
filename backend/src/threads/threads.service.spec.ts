@@ -9,6 +9,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { ThreadsService } from './threads.service';
+import { MessagesService } from '@/messages/messages.service';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import type { Mocked } from '@suites/doubles.jest';
@@ -21,6 +22,7 @@ describe('ThreadsService', () => {
   let notificationsService: Mocked<NotificationsService>;
   let linkPreviewsService: Mocked<LinkPreviewsService>;
   let channelAccessService: Mocked<ChannelAccessService>;
+  let messagesService: Mocked<MessagesService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -35,6 +37,7 @@ describe('ThreadsService', () => {
 
     service = unit;
     channelAccessService = unitRef.get(ChannelAccessService);
+    messagesService = unitRef.get(MessagesService);
     websocketService = unitRef.get(WebsocketService);
     notificationsService = unitRef.get(NotificationsService);
     linkPreviewsService = unitRef.get(LinkPreviewsService);
@@ -406,6 +409,53 @@ describe('ThreadsService', () => {
         service.createThreadReply({ ...dto, parentMessageId }, authorId),
       ).rejects.toThrow(ForbiddenException);
       expect(mockDatabase.message.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a channel thread reply inside the slow-mode window', async () => {
+      const parent = MessageFactory.build({
+        id: parentMessageId,
+        channelId,
+        directMessageGroupId: null,
+        parentMessageId: null,
+      });
+      mockDatabase.message.findUnique.mockResolvedValue(parent);
+      messagesService.checkSlowmode.mockRejectedValue(
+        new ForbiddenException('Slowmode is enabled'),
+      );
+
+      await expect(
+        service.createThreadReply({ ...dto, parentMessageId }, authorId),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(messagesService.checkSlowmode).toHaveBeenCalledWith(
+        channelId,
+        authorId,
+      );
+      expect(mockDatabase.message.create).not.toHaveBeenCalled();
+    });
+
+    it('does not apply slow mode to a DM thread reply', async () => {
+      const dmGroupId = 'dm-group-123';
+      const parent = MessageFactory.build({
+        id: parentMessageId,
+        channelId: null,
+        directMessageGroupId: dmGroupId,
+        parentMessageId: null,
+      });
+      const reply = MessageFactory.build({
+        authorId,
+        directMessageGroupId: dmGroupId,
+        parentMessageId,
+      });
+
+      mockDatabase.message.findUnique.mockResolvedValue(parent);
+      mockDatabase.message.create.mockResolvedValue(reply);
+      mockDatabase.message.update.mockResolvedValue(parent);
+      mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
+
+      await service.createThreadReply({ ...dto, parentMessageId }, authorId);
+
+      expect(messagesService.checkSlowmode).not.toHaveBeenCalled();
     });
 
     it('should auto-subscribe the replier to the thread', async () => {

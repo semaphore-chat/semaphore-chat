@@ -7,7 +7,14 @@ import { StorageService } from '@/storage/storage.service';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { RbacActions } from '@prisma/client';
 import { PermissionsService } from '@/roles/permissions.service';
-import { CLIP_MESSAGE_CREATE } from '@/common/events/clip-message.events';
+import {
+  CLIP_MESSAGE_CREATE,
+  ClipMessageCreateEvent,
+} from '@/common/events/clip-message.events';
+import { ClipMessageListener } from '@/messages/clip-message.listener';
+import { MessagesService } from '@/messages/messages.service';
+import { MessageSendService } from '@/messages/message-send.service';
+import { WebsocketService } from '@/websocket/websocket.service';
 
 describe('ClipLibraryService', () => {
   let service: ClipLibraryService;
@@ -308,6 +315,52 @@ describe('ClipLibraryService', () => {
         }),
       ).rejects.toThrow(ForbiddenException);
       expect(eventEmitter.emitAsync).not.toHaveBeenCalled();
+    });
+
+    it('refuses to share to a slow-mode channel before creating the clip message', async () => {
+      mockDatabaseService.replayClip.findFirst.mockResolvedValue({
+        id: 'clip-1',
+        fileId: 'file-1',
+        userId: 'user-123',
+        durationSeconds: 60,
+        file: { id: 'file-1', size: 1024 },
+      });
+      mockDatabaseService.channel.findUnique.mockResolvedValue({
+        id: 'channel-1',
+        communityId: 'community-1',
+      });
+      permissionsService.userHasChannelActions.mockResolvedValue(true);
+
+      // The real listener backs the emitter, so this exercises the same
+      // timeout/slow-mode gate the capture-to-channel path goes through.
+      const listenerMessages = {
+        checkSlowmode: jest
+          .fn()
+          .mockRejectedValue(new ForbiddenException('Slowmode is enabled')),
+        create: jest.fn(),
+      };
+      const listenerMessageSend = {
+        assertNotTimedOut: jest.fn().mockResolvedValue(undefined),
+      };
+      const listener = new ClipMessageListener(
+        listenerMessages as unknown as MessagesService,
+        listenerMessageSend as unknown as MessageSendService,
+        { sendToRoom: jest.fn() } as unknown as WebsocketService,
+      );
+      eventEmitter.emitAsync.mockImplementation((_event, payload) =>
+        listener
+          .handleClipMessageCreate(payload as ClipMessageCreateEvent)
+          .then((result) => [result]),
+      );
+
+      await expect(
+        service.shareClip('user-123', 'clip-1', {
+          destination: 'channel',
+          targetChannelId: 'channel-1',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(listenerMessages.create).not.toHaveBeenCalled();
     });
 
     it('should share clip to DM', async () => {

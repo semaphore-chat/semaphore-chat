@@ -18,6 +18,9 @@ type MessageWithReactions = Message & { reactions: MessageReaction[] };
  */
 const CUSTOM_REACTION_PREFIX = 'custom:';
 
+/** Maximum distinct emoji a single message can collect. */
+const MAX_DISTINCT_REACTIONS = 50;
+
 /**
  * Service for managing message reactions
  *
@@ -62,6 +65,24 @@ export class ReactionsService {
 
       if (emoji.startsWith(CUSTOM_REACTION_PREFIX)) {
         await this.validateCustomReaction(message, emoji, userId);
+      }
+
+      // Distinct reactions are capped per message; reacting with an emoji
+      // that is already on the message stays allowed.
+      const existingEmoji = await this.databaseService.messageReaction.findMany(
+        {
+          where: { messageId },
+          select: { emoji: true },
+          distinct: ['emoji'],
+        },
+      );
+      if (
+        existingEmoji.length >= MAX_DISTINCT_REACTIONS &&
+        !existingEmoji.some((reaction) => reaction.emoji === emoji)
+      ) {
+        throw new BadRequestException(
+          `A message can have at most ${MAX_DISTINCT_REACTIONS} distinct reactions`,
+        );
       }
 
       await this.databaseService.messageReaction.upsert({

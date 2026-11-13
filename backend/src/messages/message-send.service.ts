@@ -161,9 +161,10 @@ export class MessageSendService {
 
   /**
    * RBAC already masks posting for a timed-out user, except an instance owner,
-   * who skips RBAC. This also gives the sender the time remaining.
+   * who skips RBAC. This also gives the sender the time remaining. Shared with
+   * other transports that post a user's message (clips).
    */
-  private async assertNotTimedOut(channelId: string, userId: string) {
+  async assertNotTimedOut(channelId: string, userId: string) {
     const communityId =
       await this.moderationService.getCommunityIdFromChannel(channelId);
     const { isTimedOut, expiresAt } =
