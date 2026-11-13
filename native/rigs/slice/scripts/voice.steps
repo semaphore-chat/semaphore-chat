@@ -78,6 +78,12 @@ expect core voice camera off
 click voice-camera-test
 wait core camera-test stopped
 wait core camera-test released
+# W19: hidden to the tray (or closing), the test lets the camera go as well.
+click voice-camera-test
+wait core camera-test running
+window hide
+wait core camera-test stopped
+wait core camera-test released
 click settings-close
 wait core label "Turn on camera"
 

@@ -40,6 +40,34 @@ pub(super) struct Updates {
     pub(super) off: Option<WhyNoUpdates>,
     /// Ends the schedule when the app quits.
     stop: Option<tokio::sync::watch::Sender<bool>>,
+    /// What the app menu and the tray were last given.
+    pub(super) synced: SyncedActions,
+}
+
+/// The app menu's two stateful items (Close to Tray, Check for Updates) as last installed, and
+/// the tray's Check for Updates as last sent: a download's progress changes the update state many
+/// times a second, and neither the menu bar nor the tray is rebuilt unless one of them changed.
+#[derive(Debug, Default)]
+pub(super) struct SyncedActions {
+    menu: Option<(bool, bool)>,
+    tray: Option<bool>,
+}
+
+impl SyncedActions {
+    /// Whether the menu needs installing for this state; remembers it.
+    pub(super) fn menu_changed(&mut self, close_to_tray: bool, updates_enabled: bool) -> bool {
+        let next = Some((close_to_tray, updates_enabled));
+        let changed = self.menu != next;
+        self.menu = next;
+        changed
+    }
+
+    /// Whether the tray's item needs sending for this state; remembers it.
+    pub(super) fn tray_changed(&mut self, updates_enabled: bool) -> bool {
+        let changed = self.tray != Some(updates_enabled);
+        self.tray = Some(updates_enabled);
+        changed
+    }
 }
 
 impl Default for Updates {
@@ -53,6 +81,7 @@ impl Default for Updates {
             dismissed_failure: None,
             off: None,
             stop: None,
+            synced: SyncedActions::default(),
         }
     }
 }
@@ -166,16 +195,24 @@ impl AppRoot {
         self.updates.updater.is_some() && !crate::update::status_of(&self.updates.state).busy()
     }
 
-    /// Puts that state on the app menu's and the tray's Check for Updates.
+    /// Puts that state on the app menu's and the tray's Check for Updates, when it changed.
     pub(crate) fn sync_update_actions(&mut self, cx: &mut Context<Self>) {
         let enabled = self.can_check_for_updates();
         let close_to_tray = self.settings.get().close_to_tray;
-        crate::menu::install(cx, close_to_tray, enabled);
+        self.install_menu(close_to_tray, enabled, cx);
         if let Some(tray) = cx
             .try_global::<crate::desktop::DesktopShell>()
             .and_then(|shell| shell.tray())
+            && self.updates.synced.tray_changed(enabled)
         {
             tray.set_updates_enabled(enabled);
+        }
+    }
+
+    /// Installs the app menu with these two items' states, unless it already has them.
+    pub(crate) fn install_menu(&mut self, close_to_tray: bool, enabled: bool, cx: &mut App) {
+        if self.updates.synced.menu_changed(close_to_tray, enabled) {
+            crate::menu::install(cx, close_to_tray, enabled);
         }
     }
 
@@ -367,7 +404,28 @@ fn card_is_hidden(
 
 #[cfg(test)]
 mod tests {
+    use super::SyncedActions;
     use super::card_is_hidden;
+
+    /// A download reports progress many times a second; each report re-runs the sync, and only a
+    /// changed item rebuilds the menu bar or messages the tray.
+    #[test]
+    fn the_menu_and_tray_are_rebuilt_only_when_an_item_changes() {
+        let mut synced = SyncedActions::default();
+        assert!(synced.menu_changed(true, true), "the first install");
+        assert!(synced.tray_changed(true), "the first send");
+        for _percent in 0..100 {
+            assert!(!synced.menu_changed(true, true));
+            assert!(!synced.tray_changed(true));
+        }
+        assert!(synced.menu_changed(true, false), "the updater got busy");
+        assert!(synced.tray_changed(false));
+        assert!(
+            synced.menu_changed(false, false),
+            "close to tray turned off"
+        );
+        assert!(!synced.tray_changed(false), "the tray's item didn't change");
+    }
     use semaphore_ui::update::{ReadyHow, UpdateStatus};
 
     fn available(version: &str) -> UpdateStatus {

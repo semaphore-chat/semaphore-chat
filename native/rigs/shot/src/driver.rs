@@ -147,7 +147,9 @@ impl Driver {
                 })?;
             }
             Step::Press { key } => self.update(|window, cx| window.press(key, cx))?,
-            Step::KeyDown { key } => self.update(|window, cx| window.key_down(key, false, cx))?,
+            Step::KeyDown { key, repeat } => {
+                self.update(|window, cx| window.key_down(key, *repeat, cx))?
+            }
             Step::KeyUp { key } => self.update(|window, cx| window.key_up(key, cx))?,
             Step::Type { text } => {
                 self.settle()?;

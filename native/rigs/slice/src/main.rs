@@ -34,6 +34,7 @@
 //! exec "python3 scripts/real-api.py …"  # a shell command (slice-real.sh only)
 //! hover-row message "text"            # the pointer over a row's element, as click-row finds it
 //! right-click-row message "text"      # a right press on it: the actions menu
+//! click-row image "text" 0 at 8 8     # at an offset from its top left, not its centre
 //! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
 //! drag-text "row" "from" "row" "to"   # a drag from the start of `from` in the first row to the
 //!                                     # end of `to` in the second: a selection that follows the
@@ -45,6 +46,7 @@
 //! forget sounds                       # what the speaker heard so far no longer counts
 //! window activate                     # the window comes to the front, as a user's click would:
 //!                                     # the pane marks what it shows read only then
+//! window hide                         # what hiding it to the tray (or closing it) tells the app
 //! scroll ID DX DY                     # a wheel event over that element, in pixels; positive Y
 //!                                     # scrolls up, negative down (long settings tabs)
 //! core revoke-other-sessions          # W3: Core::revoke_other_sessions; fails if refused
@@ -536,6 +538,9 @@ enum Step {
         text: String,
         index: Option<u64>,
         gesture: RowGesture,
+        /// `at X Y`: at that offset from the control's top left instead of its centre (one
+        /// partly covered, by the call's float say).
+        at: Option<(f32, f32)>,
     },
     /// A click on the glyphs of `needle` in the newest row containing `text`.
     ClickText {
@@ -595,6 +600,9 @@ enum Step {
     },
     ForgetSounds,
     ActivateWindow,
+    /// What hiding the window to the tray (or closing it) tells the app: `desktop` calls
+    /// `AppRoot::window_hidden` on both, and this rig has no tray to hide to.
+    HideWindow,
     VideoFailNext {
         screen: bool,
         why: String,
@@ -946,6 +954,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
                 Step::ExpectLinkUnregistrations(count.parse().map_err(|_| at(anyhow!("count")))?)
             }
             ["window", "activate"] => Step::ActivateWindow,
+            ["window", "hide"] => Step::HideWindow,
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
                 needle: (*needle).into(),
@@ -959,11 +968,18 @@ fn parse(source: &str) -> Result<Vec<Step>> {
                 name,
                 text,
                 rest @ ..,
-            ] if rest.len() <= 1 => Step::ClickRow {
+            ] if rest.len() <= 1 || matches!(rest, [_, "at", _, _]) => Step::ClickRow {
                 name: (*name).into(),
                 text: (*text).into(),
                 index: match rest {
-                    [index] => Some(index.parse().map_err(|_| at(anyhow!("index")))?),
+                    [index, ..] => Some(index.parse().map_err(|_| at(anyhow!("index")))?),
+                    _ => None,
+                },
+                at: match rest {
+                    [_, "at", x, y] => Some((
+                        x.parse().map_err(|_| at(anyhow!("x")))?,
+                        y.parse().map_err(|_| at(anyhow!("y")))?,
+                    )),
                     _ => None,
                 },
                 gesture: match *verb {
@@ -2510,6 +2526,7 @@ impl Rig {
         text: &str,
         index: Option<u64>,
         gesture: RowGesture,
+        offset: Option<(f32, f32)>,
     ) -> Result<()> {
         self.driver.settle()?;
         let (rows, _, _) = self.rows()?;
@@ -2526,10 +2543,11 @@ impl Rig {
                 None => seq as u64,
             },
         );
-        self.driver.update(|window, cx| match gesture {
-            RowGesture::Click => window.click(id, cx),
-            RowGesture::Hover => window.hover(id, cx),
-            RowGesture::RightClick => window.right_click(id, cx),
+        self.driver.update(|window, cx| match (gesture, offset) {
+            (RowGesture::Click, Some((x, y))) => window.click_at(id, point(px(x), px(y)), cx),
+            (RowGesture::Click, None) => window.click(id, cx),
+            (RowGesture::Hover, _) => window.hover(id, cx),
+            (RowGesture::RightClick, _) => window.right_click(id, cx),
         })
     }
 
@@ -2634,7 +2652,8 @@ impl Rig {
                     text,
                     index,
                     gesture,
-                } => self.click_row(name, text, *index, *gesture),
+                    at,
+                } => self.click_row(name, text, *index, *gesture, *at),
                 Step::Os(event) => {
                     let app = self.app()?.clone();
                     self.driver.cx.update(|cx| app.read(cx).os_event(*event));
@@ -2762,6 +2781,13 @@ impl Rig {
                     .driver
                     .update(|window, _| window.activate_window())
                     .and_then(|()| self.driver.settle()),
+                Step::HideWindow => {
+                    let app = self.app()?.clone();
+                    self.driver
+                        .cx
+                        .update(|cx| app.update(cx, |root, cx| root.window_hidden(cx)));
+                    self.driver.settle()
+                }
                 Step::RevokeOtherSessions => self.revoke_other_sessions(),
                 Step::PickFile(path) => {
                     let path = std::fs::canonicalize(path)

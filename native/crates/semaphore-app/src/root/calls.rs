@@ -350,23 +350,29 @@ impl AppRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(core) = self.core() else {
+        let Some(model) = self.participant_menu_model(&identity) else {
             return;
         };
+        let menu = cx.new(|cx| ParticipantMenu::new(model, position, window, cx));
+        let subscription = cx.subscribe_in(&menu, window, Self::on_participant_menu);
+        self.calls.menu = Some((menu, subscription));
+        cx.notify();
+    }
+
+    /// What the menu shows for `identity` now; `None` once they're not in the call.
+    fn participant_menu_model(&self, identity: &str) -> Option<ParticipantMenuModel> {
+        let core = self.core()?;
         let voice = core.voice();
-        let Some(participant) = voice
+        let participant = voice
             .participants
             .iter()
             .find(|p| p.identity == identity)
-            .cloned()
-        else {
-            return;
-        };
+            .cloned()?;
         let channel = match &voice.room {
             Some(VoiceRoom::Channel { channel_id, .. }) => Some(channel_id.clone()),
             _ => None,
         };
-        let model = ParticipantMenuModel {
+        Some(ParticipantMenuModel {
             volume_percent: participant.volume_percent,
             screen_share_volume_percent: participant.screen_share_volume_percent,
             participant,
@@ -375,11 +381,24 @@ impl AppRoot {
                 .map(|channel| core.voice_moderation_caps(channel))
                 .unwrap_or_default(),
             in_channel: channel.is_some(),
+        })
+    }
+
+    /// The call changed while the menu is open: it follows (their share's volume slider comes and
+    /// goes with the share), and it closes once they left.
+    pub(super) fn refresh_participant_menu(&mut self, cx: &mut Context<Self>) {
+        let Some((menu, _)) = &self.calls.menu else {
+            return;
         };
-        let menu = cx.new(|cx| ParticipantMenu::new(model, position, window, cx));
-        let subscription = cx.subscribe_in(&menu, window, Self::on_participant_menu);
-        self.calls.menu = Some((menu, subscription));
-        cx.notify();
+        let identity = menu.read(cx).model().participant.identity.clone();
+        match self.participant_menu_model(&identity) {
+            Some(model) => {
+                if *menu.read(cx).model() != model {
+                    menu.update(cx, |menu, cx| menu.set_model(model, cx));
+                }
+            }
+            None => self.calls.menu = None,
+        }
     }
 
     fn on_participant_menu(

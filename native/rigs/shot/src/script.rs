@@ -11,6 +11,7 @@
 //! type "hello there"                                # text to whatever has focus
 //! press enter
 //! key-down f13                                      # hold a key until key-up (push to talk)
+//! key-down f13 repeat                               # its auto-repeat while held
 //! key-up f13
 //! emit connection offline                           # the CoreEvent core would send
 //! emit unread help-desk 9 2                         # changes the fixture, then ViewChanged
@@ -75,9 +76,11 @@ pub enum Step {
     Press {
         key: String,
     },
-    /// A key held down until `key-up`: push-to-talk needs the press and release apart.
+    /// A key held down until `key-up`: push-to-talk needs the press and release apart. `repeat`
+    /// is the platform's auto-repeat of a key already down (`key-down KEY repeat`).
     KeyDown {
         key: String,
+        repeat: bool,
     },
     KeyUp {
         key: String,
@@ -172,7 +175,14 @@ pub fn step(words: &[&str]) -> Result<Step, String> {
             text: (*text).into(),
         },
         ["press", key] => Step::Press { key: (*key).into() },
-        ["key-down", key] => Step::KeyDown { key: (*key).into() },
+        ["key-down", key] => Step::KeyDown {
+            key: (*key).into(),
+            repeat: false,
+        },
+        ["key-down", key, "repeat"] => Step::KeyDown {
+            key: (*key).into(),
+            repeat: true,
+        },
         ["key-up", key] => Step::KeyUp { key: (*key).into() },
         ["emit", "connection", state] => Step::Emit(Emit::Connection {
             state: (*state).into(),
@@ -261,7 +271,20 @@ mod tests {
                 text: "hello # there".into()
             }
         );
-        assert_eq!(steps[7], Step::KeyDown { key: "f13".into() });
+        assert_eq!(
+            steps[7],
+            Step::KeyDown {
+                key: "f13".into(),
+                repeat: false
+            }
+        );
+        assert_eq!(
+            step(&["key-down", "space", "repeat"]).unwrap(),
+            Step::KeyDown {
+                key: "space".into(),
+                repeat: true
+            }
+        );
         assert_eq!(steps[8], Step::KeyUp { key: "f13".into() });
         assert_eq!(
             steps[11],

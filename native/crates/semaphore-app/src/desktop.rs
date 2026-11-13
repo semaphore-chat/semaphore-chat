@@ -259,6 +259,8 @@ pub fn close_or_hide(
         })
         .unwrap_or(false);
     let available = tray.is_some_and(|tray| tray.available());
+    // Hidden or closing, nothing of a settings-page test may stay open behind it.
+    app.update(cx, |root, cx| root.window_hidden(cx)).ok();
     if hides_on_close(setting, available, window.can_hide_window())
         && window.set_window_visible(false)
     {
@@ -335,12 +337,13 @@ fn handle(event: DesktopEvent, cx: &mut App) {
     match event {
         DesktopEvent::ToggleWindow => {
             // As Electron: a visible window hides (when it can come back), a hidden one shows.
-            let _ = window.update(cx, |_, window, _| {
+            let _ = window.update(cx, |_, window, cx| {
                 let can_hide =
                     tray.as_ref().is_some_and(|tray| tray.available()) && window.can_hide_window();
                 if !hidden.get() && can_hide {
                     if window.set_window_visible(false) {
                         hidden.set(true);
+                        let _ = app.update(cx, |root, cx| root.window_hidden(cx));
                     }
                 } else {
                     show(window, &hidden, None);
