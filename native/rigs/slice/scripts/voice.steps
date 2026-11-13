@@ -66,7 +66,8 @@ wait core route settings/voice
 # A wheel over the page (not the call's float card, which takes the wheel where it covers the
 # page) scrolls it down to the camera test.
 scroll voice-mic-test 0 -700
-wait idle
+# Not `wait idle`: in a call the page never holds still (the mic meter and speaking rings move).
+wait core element voice-camera-test
 click voice-camera-test
 wait core camera-test running
 wait core camera-test device default
