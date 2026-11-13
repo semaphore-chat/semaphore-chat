@@ -22,6 +22,7 @@
 
 use crate::buffered::BufferedReport;
 use crate::resample::Resampler;
+use crate::segments::SegmentFetch;
 use crate::{Error, Frame, Kind, Media, Nv12Image, Source};
 use rtrb::{Consumer, Producer, RingBuffer};
 use semaphore_core::player::{
@@ -57,18 +58,31 @@ pub trait VideoSink: Send + Sync {
     fn remove(&self);
 }
 
-/// Opens the bytes of an attachment: [`crate::range::http_opener`] in the app, bytes in tests.
-/// Runs on the player's thread, so it may block; the [`Cancel`] is set when the player goes away,
-/// and a source should give up its reads then.
+/// Opens what a player plays: an attachment's bytes ([`crate::range::http_opener`] in the app,
+/// bytes in tests), or the replay buffer's segments. Runs on the player's thread, so it may
+/// block; the [`Cancel`] is set when the player goes away, and a source should give up its reads
+/// then.
 ///
-/// The [`BufferedReport`] is where the source says which parts of the file it holds: a range
+/// The [`BufferedReport`] is where a byte source says which parts of the file it holds: a range
 /// source after each block lands or is evicted ([`crate::range::RangeSource::with_buffered`]),
-/// a source in memory once with [`BufferedReport::full`].
+/// a source in memory once with [`BufferedReport::full`]. Segments report themselves.
 pub type Opener = Arc<
-    dyn Fn(&PlaybackSource, &Cancel, &BufferedReport) -> Result<Box<dyn Source>, PlayerError>
-        + Send
-        + Sync,
+    dyn Fn(&PlaybackSource, &Cancel, &BufferedReport) -> Result<Opened, PlayerError> + Send + Sync,
 >;
+
+/// What an [`Opener`] opened.
+pub enum Opened {
+    /// A file's bytes, demuxed by FFmpeg.
+    Bytes(Box<dyn Source>),
+    /// The replay buffer's HLS: one MPEG-TS segment per entry of `durations` (the playlist's
+    /// `#EXTINF` lengths, in order), fetched through `fetch` by index, opened at `start` on that
+    /// timeline (the first segment fetched is the one holding it). See [`crate::segments`].
+    Segments {
+        fetch: Arc<dyn SegmentFetch>,
+        durations: Vec<Duration>,
+        start: Duration,
+    },
+}
 
 /// Set when a player is dropped: its source stops waiting for the network.
 #[derive(Debug, Clone, Default)]
@@ -305,8 +319,24 @@ fn player_error(error: Error) -> PlayerError {
 fn run(context: Context, commands: mpsc::Receiver<Command>) {
     let sink = context.sink.clone();
     let buffered = BufferedReport::new(context.events.clone());
-    let opened = (context.shared.opener)(&context.source, &context.cancel, &buffered)
-        .and_then(|source| Media::open(source).map_err(player_error));
+    let opened =
+        (context.shared.opener)(&context.source, &context.cancel, &buffered).and_then(|opened| {
+            match opened {
+                Opened::Bytes(source) => Media::open(source),
+                Opened::Segments {
+                    fetch,
+                    durations,
+                    start,
+                } => Media::open_segments(
+                    fetch,
+                    durations,
+                    start,
+                    context.cancel.clone(),
+                    Some(buffered.clone()),
+                ),
+            }
+            .map_err(player_error)
+        });
     match opened {
         Ok(media) => Engine::new(context, media).run(&commands),
         Err(error) => {
@@ -405,6 +435,8 @@ impl Engine {
             }
         }
         let duration = media.duration();
+        // Zero for a file; segments open where they were asked to.
+        let initial = media.initial_position();
         let mut engine = Self {
             context,
             media,
@@ -422,8 +454,8 @@ impl Engine {
             frame_duration: DEFAULT_FRAME,
             frame_measured: false,
             last_video_pts: None,
-            base: Duration::ZERO,
-            wall: WallClock::new(Duration::ZERO),
+            base: initial,
+            wall: WallClock::new(initial),
             playing: false,
             eof: false,
             seek: None,
@@ -442,12 +474,12 @@ impl Engine {
                 height: size.1,
             })
         };
-        // Show the first frame as the poster once opened, as a paused seek to zero would.
+        // Show the first frame as the poster once opened, as a paused seek to the start would.
         let opened = matches!(input, Input::Opened(_));
         engine.input(input);
         if opened && video.is_some() {
             engine.seek = Some(SeekPending {
-                target: Duration::ZERO,
+                target: initial,
                 generation: 0,
                 landed: false,
             });

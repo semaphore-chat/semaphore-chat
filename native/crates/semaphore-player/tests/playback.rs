@@ -86,8 +86,9 @@ impl Rig {
                     return Err(PlayerError::Network);
                 }
                 buffered.full();
-                Ok(Box::new(Cursor::new(fixture(&source.file_id)))
-                    as Box<dyn semaphore_player::Source>)
+                Ok(semaphore_player::Opened::Bytes(Box::new(Cursor::new(
+                    fixture(&source.file_id),
+                ))))
             },
         );
         Self {

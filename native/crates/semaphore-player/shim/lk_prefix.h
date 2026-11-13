@@ -10,6 +10,7 @@
 #define av_frame_free LK_av_frame_free
 #define av_frame_unref LK_av_frame_unref
 #define av_malloc LK_av_malloc
+#define av_new_packet LK_av_new_packet
 #define av_packet_alloc LK_av_packet_alloc
 #define av_packet_free LK_av_packet_free
 #define av_packet_unref LK_av_packet_unref

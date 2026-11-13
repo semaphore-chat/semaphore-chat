@@ -6,6 +6,7 @@ use std::ffi::{c_char, c_int, c_void};
 
 pub const SP_OK: c_int = 0;
 pub const SP_EOF: c_int = 1;
+pub const SP_AGAIN: c_int = 2;
 pub const SP_E_UNSUPPORTED_CONTAINER: c_int = -1;
 pub const SP_E_INVALID: c_int = -2;
 pub const SP_E_UNSUPPORTED_CODEC: c_int = -3;
@@ -87,6 +88,11 @@ pub struct sp_media {
     _private: [u8; 0],
 }
 
+#[repr(C)]
+pub struct sp_decoder {
+    _private: [u8; 0],
+}
+
 unsafe extern "C" {
     pub fn sp_open(
         read: sp_read_fn,
@@ -107,6 +113,18 @@ unsafe extern "C" {
     pub fn sp_next_frame(media: *mut sp_media, out: *mut sp_frame) -> c_int;
     pub fn sp_skipped_packets(media: *const sp_media) -> u64;
     pub fn sp_seek(media: *mut sp_media, us: i64) -> c_int;
+    pub fn sp_decoder_open(codec: c_int, error: *mut c_int) -> *mut sp_decoder;
+    pub fn sp_decoder_close(decoder: *mut sp_decoder);
+    pub fn sp_decoder_send(
+        decoder: *mut sp_decoder,
+        data: *const u8,
+        size: c_int,
+        pts_us: i64,
+        dts_us: i64,
+    ) -> c_int;
+    pub fn sp_decoder_receive(decoder: *mut sp_decoder, out: *mut sp_frame) -> c_int;
+    pub fn sp_decoder_flush(decoder: *mut sp_decoder);
+    pub fn sp_decoder_skipped(decoder: *const sp_decoder) -> u64;
     pub fn sp_i420_to_nv12(
         frame: *const sp_frame,
         y: *mut u8,

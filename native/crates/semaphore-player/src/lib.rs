@@ -18,6 +18,8 @@
 //!   [`Error::UnsupportedContainer`]; a known container that won't parse is [`Error::Invalid`];
 //!   a stream with no decoder here (HEVC, Theora, AAC without the `aac` feature) is
 //!   [`Error::UnsupportedCodec`] from [`Media::enable`], and the other streams still play.
+//! - **The replay preview** ([`Media::open_segments`]): HLS segments of MPEG-TS fetched one at a
+//!   time, demuxed here ([`ts`]) and decoded by the same FFmpeg ([`segments`]).
 //! - **Short sounds** decode whole with [`decode_audio`] (the soundboard's MP3, AAC and Vorbis):
 //!   mono 48 kHz, length-capped.
 //! - **Desktop only.** `build.rs` refuses a target or a libwebrtc without this FFmpeg.
@@ -26,13 +28,16 @@ mod decode;
 mod engine;
 mod ffi;
 pub mod resample;
+pub mod segments;
 
 pub mod buffered;
 pub mod range;
+pub mod ts;
 pub use buffered::BufferedReport;
 
 pub use decode::{DECODED_RATE, DecodeAudioError, decode_audio};
-pub use engine::{Cancel, DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
+pub use engine::{Cancel, DesktopPlayers, Nv12Frame, Opened, Opener, Player, VideoSink};
+pub use segments::{FetchError, SegmentFetch};
 
 // Links libwebrtc.a, where every symbol the shim calls lives. None of webrtc-sys's Rust is used.
 use webrtc_sys as _;
@@ -42,6 +47,7 @@ use std::fmt;
 use std::io::{Cursor, ErrorKind, Read, Seek, SeekFrom};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,8 +251,107 @@ pub enum Frame<'a> {
 pub trait Source: Read + Seek + Send {}
 impl<T: Read + Seek + Send> Source for T {}
 
-/// One open file. Not shareable between threads, but can move to one (the decode thread).
-pub struct Media {
+/// One open file, or one replay buffer's segments. Not shareable between threads, but can move
+/// to one (the decode thread).
+pub struct Media(Inner);
+
+enum Inner {
+    Ffmpeg(FfmpegMedia),
+    Segments(Box<segments::SegmentedMedia>),
+}
+
+impl Media {
+    pub fn open(source: impl Source + 'static) -> Result<Self, Error> {
+        FfmpegMedia::open(source).map(|m| Self(Inner::Ffmpeg(m)))
+    }
+
+    /// Bytes in memory, such as a fixture or a small cached attachment.
+    pub fn open_bytes(bytes: impl AsRef<[u8]> + Send + 'static) -> Result<Self, Error> {
+        Self::open(Cursor::new(bytes))
+    }
+
+    /// The replay buffer's HLS: segments of MPEG-TS, `durations` long each (the playlist's
+    /// `#EXTINF`), fetched through `fetch`. Opens at `start`: that segment is fetched (and its
+    /// streams read) first. See [`segments`].
+    pub fn open_segments(
+        fetch: Arc<dyn SegmentFetch>,
+        durations: Vec<Duration>,
+        start: Duration,
+        cancel: Cancel,
+        buffered: Option<BufferedReport>,
+    ) -> Result<Self, Error> {
+        segments::SegmentedMedia::open(fetch, durations, start, cancel, buffered)
+            .map(|m| Self(Inner::Segments(Box::new(m))))
+    }
+
+    /// FFmpeg's name for the demuxer, such as `matroska,webm`; `mpegts` for segments.
+    pub fn container(&self) -> String {
+        match &self.0 {
+            Inner::Ffmpeg(m) => m.container(),
+            Inner::Segments(_) => "mpegts".to_owned(),
+        }
+    }
+
+    pub fn duration(&self) -> Option<Duration> {
+        match &self.0 {
+            Inner::Ffmpeg(m) => m.duration(),
+            Inner::Segments(m) => Some(m.duration()),
+        }
+    }
+
+    pub fn streams(&self) -> Vec<StreamInfo> {
+        match &self.0 {
+            Inner::Ffmpeg(m) => m.streams(),
+            Inner::Segments(m) => m.streams(),
+        }
+    }
+
+    /// Opens the stream's decoder; [`Self::next_frame`] yields frames of enabled streams only.
+    pub fn enable(&mut self, stream: usize) -> Result<(), Error> {
+        match &mut self.0 {
+            Inner::Ffmpeg(m) => m.enable(stream),
+            Inner::Segments(m) => m.enable(stream),
+        }
+    }
+
+    /// To the keyframe at or before `to`, decoders flushed. Frames before `to` still come out:
+    /// the caller drops them (an accurate seek).
+    pub fn seek(&mut self, to: Duration) -> Result<(), Error> {
+        match &mut self.0 {
+            Inner::Ffmpeg(m) => m.seek(to),
+            Inner::Segments(m) => m.seek(to),
+        }
+    }
+
+    /// Packets the decoders rejected as corrupt and skipped (and, for segments, packets the
+    /// demuxer dropped as broken).
+    pub fn skipped_packets(&self) -> u64 {
+        match &self.0 {
+            Inner::Ffmpeg(m) => m.skipped_packets(),
+            Inner::Segments(m) => m.skipped_packets(),
+        }
+    }
+
+    /// Where the media starts out: zero for a file, the `start` it was opened at for segments.
+    pub fn initial_position(&self) -> Duration {
+        match &self.0 {
+            Inner::Ffmpeg(_) => Duration::ZERO,
+            Inner::Segments(m) => m.initial_position(),
+        }
+    }
+
+    /// The next frame of any enabled stream in file order, or `None` once all are drained. The
+    /// frame borrows decoder memory until the next call.
+    pub fn next_frame(&mut self) -> Result<Option<Frame<'_>>, Error> {
+        match &mut self.0 {
+            Inner::Ffmpeg(m) => m.next_frame(),
+            Inner::Segments(m) => m.next_frame(),
+        }
+    }
+}
+
+/// A file FFmpeg demuxes.
+struct FfmpegMedia {
     raw: NonNull<ffi::sp_media>,
     /// Owned through a raw pointer because C holds it as `opaque` for the media's lifetime.
     source: *mut Box<dyn Source>,
@@ -256,10 +361,10 @@ pub struct Media {
 // SAFETY: the shim's state and the source are only reached through `&mut self` or `&self`
 // methods of this one value, never shared; FFmpeg, libvpx and dav1d contexts may move between
 // threads as long as one thread uses them at a time.
-unsafe impl Send for Media {}
+unsafe impl Send for FfmpegMedia {}
 
-impl Media {
-    pub fn open(source: impl Source + 'static) -> Result<Self, Error> {
+impl FfmpegMedia {
+    fn open(source: impl Source + 'static) -> Result<Self, Error> {
         let boxed: Box<Box<dyn Source>> = Box::new(Box::new(source));
         let source = Box::into_raw(boxed);
         let mut code: c_int = 0;
@@ -280,26 +385,20 @@ impl Media {
         }
     }
 
-    /// Bytes in memory, such as a fixture or a small cached attachment.
-    pub fn open_bytes(bytes: impl AsRef<[u8]> + Send + 'static) -> Result<Self, Error> {
-        Self::open(Cursor::new(bytes))
-    }
-
-    /// FFmpeg's name for the demuxer, such as `matroska,webm`.
-    pub fn container(&self) -> String {
+    fn container(&self) -> String {
         // SAFETY: a static string owned by FFmpeg's demuxer table.
         unsafe { CStr::from_ptr(ffi::sp_container(self.raw.as_ptr())) }
             .to_string_lossy()
             .into_owned()
     }
 
-    pub fn duration(&self) -> Option<Duration> {
+    fn duration(&self) -> Option<Duration> {
         // SAFETY: an open media.
         let us = unsafe { ffi::sp_duration_us(self.raw.as_ptr()) };
         u64::try_from(us).ok().map(Duration::from_micros)
     }
 
-    pub fn streams(&self) -> Vec<StreamInfo> {
+    fn streams(&self) -> Vec<StreamInfo> {
         // SAFETY: an open media.
         let count = unsafe { ffi::sp_stream_count(self.raw.as_ptr()) };
         (0..count)
@@ -326,8 +425,7 @@ impl Media {
             .collect()
     }
 
-    /// Opens the stream's decoder; [`Self::next_frame`] yields frames of enabled streams only.
-    pub fn enable(&mut self, stream: usize) -> Result<(), Error> {
+    fn enable(&mut self, stream: usize) -> Result<(), Error> {
         let index = c_int::try_from(stream).map_err(|_| Error::BadStream)?;
         // SAFETY: an open media; the shim checks the index.
         match unsafe { ffi::sp_enable(self.raw.as_ptr(), index) } {
@@ -336,9 +434,7 @@ impl Media {
         }
     }
 
-    /// To the keyframe at or before `to`, decoders flushed. Frames before `to` still come out:
-    /// the caller drops them (an accurate seek).
-    pub fn seek(&mut self, to: Duration) -> Result<(), Error> {
+    fn seek(&mut self, to: Duration) -> Result<(), Error> {
         let us = i64::try_from(to.as_micros()).map_err(|_| Error::Invalid)?;
         // SAFETY: an open media.
         match unsafe { ffi::sp_seek(self.raw.as_ptr(), us) } {
@@ -347,15 +443,12 @@ impl Media {
         }
     }
 
-    /// Packets the decoders rejected as corrupt and skipped.
-    pub fn skipped_packets(&self) -> u64 {
+    fn skipped_packets(&self) -> u64 {
         // SAFETY: an open media.
         unsafe { ffi::sp_skipped_packets(self.raw.as_ptr()) }
     }
 
-    /// The next frame of any enabled stream in file order, or `None` once all are drained. The
-    /// frame borrows decoder memory until the next call.
-    pub fn next_frame(&mut self) -> Result<Option<Frame<'_>>, Error> {
+    fn next_frame(&mut self) -> Result<Option<Frame<'_>>, Error> {
         // SAFETY: an open media and a valid out pointer.
         let code = unsafe { ffi::sp_next_frame(self.raw.as_ptr(), &mut self.frame) };
         match code {
@@ -363,56 +456,60 @@ impl Media {
             ffi::SP_EOF => return Ok(None),
             code => return Err(Error::from_code(code)),
         }
-        let f = &self.frame;
-        let stream = usize::try_from(f.stream).map_err(|_| Error::Decode)?;
-        let pts_us = (f.pts_us != i64::MIN).then_some(f.pts_us);
-        if f.kind == ffi::SP_KIND_VIDEO {
-            let width = u32::try_from(f.width).map_err(|_| Error::Decode)?;
-            let height = u32::try_from(f.height).map_err(|_| Error::Decode)?;
-            let chroma_rows = height.div_ceil(2) as usize;
-            let rows = [height as usize, chroma_rows, chroma_rows];
-            let mut planes = [Plane {
-                data: &[],
-                stride: 0,
-            }; 3];
-            for (i, plane) in planes.iter_mut().enumerate() {
-                let stride = usize::try_from(f.strides[i]).map_err(|_| Error::PixelFormat)?;
-                if f.planes[i].is_null() {
-                    return Err(Error::Decode);
-                }
-                // SAFETY: the decoder's plane holds `rows` rows of `stride` bytes and stays
-                // alive until the next call, which the borrow of `self` prevents.
-                let data = unsafe { std::slice::from_raw_parts(f.planes[i], stride * rows[i]) };
-                *plane = Plane { data, stride };
-            }
-            return Ok(Some(Frame::Video(VideoFrame {
-                stream,
-                pts_us,
-                width,
-                height,
-                planes,
-            })));
-        }
-        let channels = u32::try_from(f.channels).map_err(|_| Error::Decode)?;
-        let count = usize::try_from(f.samples).map_err(|_| Error::Decode)? * channels as usize;
-        let samples = if count == 0 || f.pcm.is_null() {
-            &[][..]
-        } else {
-            // SAFETY: the shim's float buffer holds `samples * channels` values until the
-            // next call.
-            unsafe { std::slice::from_raw_parts(f.pcm, count) }
-        };
-        Ok(Some(Frame::Audio(AudioFrame {
-            stream,
-            pts_us,
-            sample_rate: u32::try_from(f.sample_rate).map_err(|_| Error::Decode)?,
-            channels,
-            samples,
-        })))
+        frame_from_raw(&self.frame).map(Some)
     }
 }
 
-impl Drop for Media {
+/// A frame the shim filled in, borrowed as long as `f` (the decoder keeps its memory until the
+/// next call).
+fn frame_from_raw(f: &ffi::sp_frame) -> Result<Frame<'_>, Error> {
+    let stream = usize::try_from(f.stream).map_err(|_| Error::Decode)?;
+    let pts_us = (f.pts_us != i64::MIN).then_some(f.pts_us);
+    if f.kind == ffi::SP_KIND_VIDEO {
+        let width = u32::try_from(f.width).map_err(|_| Error::Decode)?;
+        let height = u32::try_from(f.height).map_err(|_| Error::Decode)?;
+        let chroma_rows = height.div_ceil(2) as usize;
+        let rows = [height as usize, chroma_rows, chroma_rows];
+        let mut planes = [Plane {
+            data: &[],
+            stride: 0,
+        }; 3];
+        for (i, plane) in planes.iter_mut().enumerate() {
+            let stride = usize::try_from(f.strides[i]).map_err(|_| Error::PixelFormat)?;
+            if f.planes[i].is_null() {
+                return Err(Error::Decode);
+            }
+            // SAFETY: the decoder's plane holds `rows` rows of `stride` bytes and stays alive
+            // until the next call, which the borrow of the owner prevents.
+            let data = unsafe { std::slice::from_raw_parts(f.planes[i], stride * rows[i]) };
+            *plane = Plane { data, stride };
+        }
+        return Ok(Frame::Video(VideoFrame {
+            stream,
+            pts_us,
+            width,
+            height,
+            planes,
+        }));
+    }
+    let channels = u32::try_from(f.channels).map_err(|_| Error::Decode)?;
+    let count = usize::try_from(f.samples).map_err(|_| Error::Decode)? * channels as usize;
+    let samples = if count == 0 || f.pcm.is_null() {
+        &[][..]
+    } else {
+        // SAFETY: the shim's float buffer holds `samples * channels` values until the next call.
+        unsafe { std::slice::from_raw_parts(f.pcm, count) }
+    };
+    Ok(Frame::Audio(AudioFrame {
+        stream,
+        pts_us,
+        sample_rate: u32::try_from(f.sample_rate).map_err(|_| Error::Decode)?,
+        channels,
+        samples,
+    }))
+}
+
+impl Drop for FfmpegMedia {
     fn drop(&mut self) {
         // SAFETY: closing first ends every use of `source` by the shim; then it is freed once.
         unsafe {
@@ -423,7 +520,7 @@ impl Drop for Media {
 }
 
 fn source_at<'a>(opaque: *mut c_void) -> &'a mut Box<dyn Source> {
-    // SAFETY: `opaque` is the `*mut Box<dyn Source>` from `Media::open`, used by one thread.
+    // SAFETY: `opaque` is the `*mut Box<dyn Source>` from `FfmpegMedia::open`, used by one thread.
     unsafe { &mut *opaque.cast::<Box<dyn Source>>() }
 }
 

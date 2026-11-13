@@ -290,7 +290,7 @@ still missing; everything else in the inventory that has a core command is drawn
 | Search paging | no "More" | one-shot `search_messages`; `search_results`/`load_more_search` unused |
 | DM group: add people, leave | not offered | `add_dm_members`, `leave_dm` never called |
 | The web's global shortcuts and the Mod+/ sheet | no sheet | only selection keys and Esc are bound |
-| Replay trim preview | `TrimTimeline::preview` is a slot | the web plays the selection in `components/Voice/TrimPreview.tsx` (hls.js over `GET /livekit/replay/preview/playlist.m3u8`); native's player can't read the buffer's MPEG-TS segments yet: a later player lane (Claude) |
+| Replay trim preview | `TrimTimeline::preview` is a slot | the web plays the selection in `components/Voice/TrimPreview.tsx` (hls.js over `GET /livekit/replay/preview/playlist.m3u8`); the player reads them now (`Media::open_segments`, `Opened::Segments`, docs/player.md); the app's `SegmentFetch` and the UI slot are lanes 2 and 3 |
 | Thumbnails (W7-T) | rows are sized from `width`/`height` | `files.rs` already fetches `/thumbnail` when `has_thumbnail` and the viewer `full_image`: only the proof is left (WT) |
 
 The profile's friend button is already built (`FriendAction` Add / Pending / Friends, as the web).

@@ -168,7 +168,32 @@ crate isn't linked at all. Bytes, MB = 10^6:
 - **The fake server** answers `Range` on `GET /api/file/{id}` as the backend does (206 with
   `Content-Range`, 416 with `bytes */size`).
 
-Not in this round: HLS (the replay preview's MPEG-TS) and the feature on by default.
+Not in this round: the feature on by default.
+
+## The replay preview's segments (W14, lane 1)
+
+The trim preview plays the replay buffer's HLS (`GET /livekit/replay/preview/playlist.m3u8`,
+segments of MPEG-TS with H.264 and AAC, `#EXTINF:10.0` each). The FFmpeg here has no MPEG-TS
+demuxer, so:
+
+- **`src/ts.rs`** demuxes by hand: 188- or 192-byte (M2TS, LiveKit egress's "HDMV-style")
+  packets found by sync spacing, PAT and PMT with CRC-32, PES with 33-bit PTS/DTS, ADTS frames
+  split and timed. H.264 (0x1B) and AAC (0x0F) are read; Opus in TS (0x06 with an `Opus`
+  registration) and anything else is listed and refused. A continuity gap drops the PES it broke.
+- **The shim's `sp_decoder`** decodes those units with the same FFmpeg decoders (Annex B H.264,
+  ADTS AAC, parameters in band). AAC stays behind the `aac` feature: without it the preview is
+  video only.
+- **`src/segments.rs`** (`Media::open_segments`, or `Opened::Segments` from an `Opener`): segment
+  `i` starts at the sum of the `#EXTINF` lengths before it and time inside it counts from its
+  first video PTS, the model the backend captures with. A seek decodes from the segment's last
+  keyframe at or before the target. Segments come through `SegmentFetch` (the app's will call
+  `Core::replay_segment`), retried 3 times for transient failures, the next one prefetched, kept
+  in a 64 MiB cache; the opened segment is fetched first, so opening at the selection's start
+  doesn't fetch the buffer's beginning.
+- **Fixtures**: `fixtures/ts/` (gen.sh): three 10 s segments cut by ffmpeg's HLS muxer (red, green,
+  blue; 440, 660, 880 Hz; a keyframe every 2 s), segment 1 again as M2TS, and H.264 with Opus.
+- **Not verified yet** against a segment LiveKit egress wrote (raw and remuxed), nor which audio
+  codec egress uses when it falls back to its `H264_1080P_30` preset.
 
 ## In the app (W3-player-wire)
 
