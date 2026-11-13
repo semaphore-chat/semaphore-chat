@@ -1,12 +1,14 @@
 name: Native packages
 
-# Builds the native desktop client's Linux packages (AppImage, .deb, .rpm) and the Windows
-# portable zip. Artifacts only: this workflow never creates a release, pushes a tag, publishes
-# an image or writes to a registry, and it does not run on tag pushes.
+# Builds the native desktop client's Linux packages (AppImage, .deb, .rpm), the Windows portable
+# zip and the Windows NSIS installer. Artifacts only: this workflow never creates a release,
+# pushes a tag, publishes an image or writes to a registry, and it does not run on tag pushes.
 #
 # Linux packages are linked on Debian 12 (glibc 2.36) by native/docker/Dockerfile.package, then
 # installed and started in Debian 13, Ubuntu 24.04, Fedora 45 and a FUSE-less AppImage container
-# by native/scripts/test-packages.sh.
+# by native/scripts/test-packages.sh. The installer is compiled by native/scripts/package-windows.sh
+# with the Windows runner image's NSIS (3.10, on PATH); Linux can compile and inspect it but not
+# install it (native/scripts/test-package-windows.sh).
 
 on:
   workflow_dispatch:
@@ -19,7 +21,12 @@ on:
     paths:
       - 'native/scripts/package-linux.sh'
       - 'native/scripts/test-packages.sh'
+      - 'native/scripts/package-windows.sh'
+      - 'native/scripts/test-package-windows.sh'
+      - 'native/packaging/windows/**'
       - 'native/docker/Dockerfile.package'
+      - 'native/docker/Dockerfile.nsis'
+      - 'native/crates/semaphore-platform-desktop/src/links.rs'
       - 'native/docs/packaging.md'
       - 'native/crates/semaphore-app/**'
       - 'native/Cargo.toml'
@@ -55,7 +62,7 @@ jobs:
           retention-days: 14
 
   windows-portable:
-    name: Build Windows portable zip
+    name: Build Windows zip and installer
     runs-on: windows-latest
     timeout-minutes: 120
     defaults:
@@ -165,9 +172,37 @@ jobs:
           Compress-Archive -Path "$out/semaphore-app.exe", "$out/LICENSE.md", "$out/LICENSE_COM.md", `
             "$out/THIRD-PARTY-LICENCES.txt", "$out/README.txt" -DestinationPath $zip
           Get-Item $zip | Format-List Name, Length
+      - name: Check NSIS is available
+        shell: bash
+        # The runner image installs NSIS 3.10 with Chocolatey and puts
+        # C:\Program Files (x86)\NSIS on PATH (actions/runner-images,
+        # images/windows/scripts/build/Install-NSIS.ps1), so there is nothing to install here.
+        run: makensis -VERSION
+      - name: Build the NSIS installer
+        shell: bash
+        # PACKAGE_VERSION was written to $GITHUB_ENV above; the script reads it (or
+        # SEMAPHORE_VERSION) and computes the four-part file-version resource itself. It writes
+        # Semaphore-Chat-Native-Setup-<version>-x64.exe and its .sha256 next to the zip.
+        run: scripts/package-windows.sh
+
+      # ----- SIGNING PLACEHOLDER --------------------------------------------------------------
+      # No signing yet (a decision for later). The installer and the exe it installs are
+      # unsigned, so SmartScreen warns and no auto-updater can trust them. Signing belongs here,
+      # between the build and the uploads: signtool /fd SHA256 sign on both
+      # target/dist/semaphore-app.exe (before packaging) and the installer, then rewrite the
+      # .sha256. See native/docs/packaging.md, "Windows installer".
+      # ----------------------------------------------------------------------------------------
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: native-windows-portable
           path: native/dist-packages/semaphore-chat-native-*-windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-windows-installer
+          path: |
+            native/dist-packages/Semaphore-Chat-Native-Setup-*-x64.exe
+            native/dist-packages/Semaphore-Chat-Native-Setup-*-x64.exe.sha256
           if-no-files-found: error
           retention-days: 14
