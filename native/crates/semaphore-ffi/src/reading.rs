@@ -45,6 +45,13 @@ impl SemaphoreCore {
         self.core.mark_read(conversation, message_id).await
     }
 
+    pub async fn mark_conversation_read(
+        &self,
+        conversation: Conversation,
+    ) -> Result<bool, CoreError> {
+        self.core.mark_conversation_read(conversation).await
+    }
+
     pub fn thread_info(&self, parent_message_id: String) -> ThreadInfo {
         self.core.thread_info(parent_message_id)
     }

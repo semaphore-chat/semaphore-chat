@@ -782,6 +782,9 @@ pub(crate) fn store_clip(
             filename: filename.clone(),
             mime_type: "video/mp4".to_owned(),
             bytes: CLIP_MP4.to_vec(),
+            width: None,
+            height: None,
+            thumbnail: None,
         },
     );
     let clip = Clip {
