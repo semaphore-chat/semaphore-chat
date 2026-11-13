@@ -156,15 +156,10 @@ impl ConversationPane {
             // The one switch, at the root; the featured list arrives as a ViewChanged.
             GifPickerEvent::Allow => {
                 cx.emit(PaneEvent::EnableThirdPartyMedia);
-                // The notice and its button go, and the keyboard with them: a fresh picker has
-                // the caret in its search again. The results follow the switch
-                // (`media_third_party`).
-                let view = host.view.clone();
-                let (picker, subscription) = self.media_new_picker(&view, window, cx);
-                if let Some(host) = &mut self.gif {
-                    host.picker = picker;
-                    host._subscription = subscription;
-                }
+                // The notice and its button go; the picker keeps the keyboard (its root now, the
+                // search field once the results follow the switch: `media_third_party`).
+                host.picker
+                    .update(cx, |picker, cx| picker.focus_search(window, cx));
                 cx.notify();
             }
             GifPickerEvent::Pick(gif) => {

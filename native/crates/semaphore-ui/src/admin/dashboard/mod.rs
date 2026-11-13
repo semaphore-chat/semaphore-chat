@@ -22,6 +22,8 @@ use semaphore_core::model::{
     InstanceAdminCaps, InstanceStats, InstanceStorage, LoadState,
 };
 use semaphore_design::Icon as DesignIcon;
+use std::cell::Cell;
+use std::rc::Rc;
 
 #[cfg(any(test, feature = "stories"))]
 mod fixtures;
@@ -46,6 +48,8 @@ pub enum DashboardEvent {
 pub struct DashboardPage {
     caps: InstanceAdminCaps,
     view: AdminDashboardView,
+    /// The width the totals actually get, written by the totals' own paint (0 until painted).
+    totals_width: Rc<Cell<f32>>,
 }
 
 impl EventEmitter<DashboardEvent> for DashboardPage {}
@@ -55,6 +59,7 @@ impl DashboardPage {
         Self {
             caps: InstanceAdminCaps::default(),
             view: AdminDashboardView::default(),
+            totals_width: Rc::new(Cell::new(0.)),
         }
     }
 
@@ -71,8 +76,30 @@ impl DashboardPage {
     }
 }
 
-/// Window widths from which the totals sit six to a row, as the web's 1200px container query.
-const SIX_TILES_FROM: f32 = 1600.;
+/// The least width a tile needs so its longest label ("Active invites", "Banned users") sits
+/// beside the icon, the number and the chevron without breaking inside a word: the tile's padding
+/// and border (34), icon and chevron (48), the two gaps (24) and the label (about 100).
+const TILE_MIN: f32 = 206.;
+/// The gap between tiles.
+const TILE_GAP: f32 = 16.;
+/// The admin shell's page list, and its content column's widest.
+const SHELL_LIST: f32 = 260.;
+const SHELL_CONTENT_MAX: f32 = 1100.;
+
+/// How many tiles sit in a row of `available` px (the width the totals really get): six when each
+/// would keep `TILE_MIN`, else three, else two.
+fn tiles_per_row(available: f32) -> usize {
+    [6usize, 3]
+        .into_iter()
+        .find(|n| available >= TILE_MIN * *n as f32 + TILE_GAP * (*n as f32 - 1.))
+        .unwrap_or(2)
+}
+
+/// What the totals get before they have been painted once: the window inside the admin shell
+/// (its page list, the content's maximum width and the page's padding).
+fn estimated_width(window_width: f32) -> f32 {
+    (window_width - SHELL_LIST).min(SHELL_CONTENT_MAX) - 48.
+}
 
 /// Why this user can't open `page`, or `None` when they can: the admin shell's rule, from the caps.
 fn page_locked(caps: &InstanceAdminCaps, page: AdminPage) -> Option<String> {
@@ -361,13 +388,13 @@ impl DashboardPage {
     fn totals(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let narrow = phone(window);
         let width = f32::from(window.viewport_size().width);
-        let per_row = if narrow {
-            2
-        } else if width >= SIX_TILES_FROM {
-            6
+        let measured = self.totals_width.get();
+        let available = if measured > 0. {
+            measured
         } else {
-            3
+            estimated_width(width)
         };
+        let per_row = if narrow { 2 } else { tiles_per_row(available) };
         let cells: Vec<AnyElement> = match &self.view.stats {
             Some(stats) => tiles(stats)
                 .into_iter()
@@ -411,9 +438,30 @@ impl DashboardPage {
                     .flex()
                     .flex_col()
                     .gap(spacing(if narrow { 1.5 } else { 2. }))
+                    .child(self.measure(cx))
                     .children(rows),
             )
             .into_any_element()
+    }
+
+    /// An empty element as wide as the totals: its paint reports that width and, when it changed,
+    /// redraws the page with the tiles per row it allows.
+    fn measure(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let seen = self.totals_width.clone();
+        let id = cx.entity_id();
+        canvas(
+            |_, _, _| {},
+            move |bounds, _, _, cx| {
+                let width = f32::from(bounds.size.width);
+                if (seen.get() - width).abs() > 0.5 {
+                    seen.set(width);
+                    cx.notify(id);
+                }
+            },
+        )
+        .w_full()
+        .h(px(0.))
+        .absolute()
     }
 
     fn tile(&self, tile: Tile, narrow: bool, cx: &mut Context<Self>) -> AnyElement {

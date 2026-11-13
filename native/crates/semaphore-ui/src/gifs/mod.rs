@@ -81,6 +81,8 @@ pub struct GifPicker {
     more_asked: bool,
     scroll: ScrollHandle,
     focus: FocusHandle,
+    /// `focus_search` came while the notice hid the field: the caret goes there once it shows.
+    field_wanted: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -103,6 +105,7 @@ impl GifPicker {
             more_asked: false,
             scroll: ScrollHandle::new(),
             focus: cx.focus_handle(),
+            field_wanted: false,
             _subscriptions: subscriptions,
         }
     }
@@ -133,6 +136,19 @@ impl GifPicker {
             self.more_asked = false;
         }
         cx.notify();
+    }
+
+    /// Puts the caret in the search field (the web's `autoFocus`): call it when the picker opens
+    /// and after a host update that shows the field again (the notice's "Allow"). While the field
+    /// isn't shown (the notice), the picker's own root takes focus so Escape still reaches it.
+    pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.view.needs_permission {
+            self.field_wanted = true;
+            self.focus.focus(window, cx);
+        } else {
+            self.field_wanted = false;
+            self.field.update(cx, |field, cx| field.focus(window, cx));
+        }
     }
 
     fn on_field_event(
@@ -320,7 +336,7 @@ impl GifPicker {
                         this.field
                             .update(cx, |field, cx| field.set_value("", window, cx));
                         this.typed_changed(String::new(), cx);
-                        this.field.update(cx, |field, cx| field.focus(window, cx));
+                        this.focus_search(window, cx);
                     })),
                 )
             })
@@ -463,7 +479,10 @@ impl GifPicker {
                 Button::new("gif-allow", "Allow")
                     .contained()
                     .size(ButtonSize::Small)
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(GifPickerEvent::Allow))),
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.focus_search(window, cx);
+                        cx.emit(GifPickerEvent::Allow)
+                    })),
             )
             .child(
                 // Two lines, so neither width breaks the Settings path in the middle.
@@ -505,7 +524,10 @@ impl GifPicker {
                 "gif-retry",
                 "Couldn't load GIFs",
                 error.message.clone(),
-                cx.listener(|_, _, _, cx| cx.emit(GifPickerEvent::Retry)),
+                cx.listener(|this, _, window, cx| {
+                    this.focus_search(window, cx);
+                    cx.emit(GifPickerEvent::Retry)
+                }),
                 cx,
             ))
             .into_any_element()
@@ -599,6 +621,9 @@ impl Focusable for GifPicker {
 impl Render for GifPicker {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let touch = is_phone(window);
+        if self.field_wanted && !self.view.needs_permission {
+            self.focus_search(window, cx);
+        }
         let header = self.header(touch, window, cx);
         let body = self.body(window, cx);
         let sem = cx.sem();
@@ -646,11 +671,10 @@ impl Render for GifPicker {
                                 Button::new("gif-more", "Load more")
                                     .size(ButtonSize::Small)
                                     .color(primary)
-                                    .on_click(
-                                        cx.listener(|_, _, _, cx| {
-                                            cx.emit(GifPickerEvent::LoadMore)
-                                        }),
-                                    )
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.focus_search(window, cx);
+                                        cx.emit(GifPickerEvent::LoadMore)
+                                    }))
                                     .into_any_element()
                             })
                         },
