@@ -315,6 +315,76 @@ impl Core {
             })
     }
 
+    /// Marks a channel or DM read up to its newest message, whatever is on screen: the web's
+    /// `markConversationRead`, behind Escape. Nothing unread does nothing (`Ok(false)`). The newest
+    /// id is the loaded window's when it reaches the live edge; a window detached from it (after a
+    /// jump into history) doesn't hold the newest, so it is read from the server, one message. The
+    /// count drops when the server's read receipt comes back, as for any read mark.
+    pub async fn mark_conversation_read(
+        &self,
+        conversation: Conversation,
+    ) -> Result<bool, CoreError> {
+        let services = self.services().ok_or_else(|| unavailable("read marks"))?;
+        let context_id = match &conversation {
+            Conversation::Channel { id } | Conversation::DirectMessage { id } => id.clone(),
+            Conversation::Thread { .. } => return Ok(false),
+        };
+        let (unread, loaded, epoch) = self.read(|state| {
+            let loaded = state
+                .windows
+                .get(&conversation)
+                .filter(|window| window.is_loaded() && !window.is_detached_from_live_edge())
+                .and_then(|window| window.newest_settled_id().map(str::to_owned));
+            (state.unread_for(&context_id).0, loaded, state.session_epoch)
+        });
+        if unread == 0 {
+            return Ok(false);
+        }
+        let newest = match loaded {
+            Some(id) => Some(id),
+            None => {
+                let page = match &conversation {
+                    Conversation::Channel { id } => {
+                        services
+                            .backend
+                            .messages_controller_find_all_for_channel(
+                                id.clone(),
+                                None,
+                                None,
+                                Some(1),
+                            )
+                            .await
+                    }
+                    _ => {
+                        services
+                            .backend
+                            .messages_controller_find_all_for_group(
+                                context_id.clone(),
+                                None,
+                                None,
+                                Some(1),
+                            )
+                            .await
+                    }
+                }
+                .map_err(|error| self.backend_failed(error))?;
+                // A session has ended since: its read mark isn't the next one's.
+                if self.read(|state| state.session_epoch) != epoch {
+                    return Ok(false);
+                }
+                page.messages
+                    .into_iter()
+                    .map(|message| message.id)
+                    .find(|id| !is_optimistic_id(id))
+            }
+        };
+        let Some(newest) = newest else {
+            return Ok(false);
+        };
+        self.mark_read(conversation, newest).await?;
+        Ok(true)
+    }
+
     /// The user is typing here (`started`), or stopped. The owner debounces: the web sends a start at
     /// most every few seconds while keys arrive, and a stop when the draft is sent or cleared. Over
     /// the socket; nothing happens while it's down, because typing is worthless late.

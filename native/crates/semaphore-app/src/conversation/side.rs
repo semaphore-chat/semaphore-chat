@@ -13,12 +13,6 @@ use semaphore_ui::panel::{
 };
 use semaphore_ui::thread::{ThreadPane, ThreadPaneEvent};
 
-/// How often, and how many times, a search that waits for its first page looks again: core
-/// fetches the page, and answers only when it has it. Two seconds of looking is plenty for one
-/// page; a page that fails says so and stops the waiting.
-const SEARCH_WAIT: std::time::Duration = std::time::Duration::from_millis(20);
-const SEARCH_WAIT_TRIES: u32 = 100;
-
 /// The panel under the thread pane, or on its own.
 pub(crate) enum Side {
     Pins {
@@ -334,32 +328,11 @@ impl ConversationPane {
                 let panel = panel.clone();
                 *asked = Some((searched.clone(), query.clone()));
                 // The first page is core's: it fetches it and keeps it, for "More results" to read
-                // the next one. Core doesn't say when a first page lands, so this waits for it and
-                // shows it then (the spinner shows meanwhile).
+                // the next one. This shows the spinner at once; the page itself arrives on the
+                // panel's `ViewChanged { Search }` listener, as every later page does.
                 panel.update(cx, |panel, cx| {
                     feed_search(panel, &core, &searched, &query, cx)
                 });
-                let waiting = (core.clone(), searched.clone(), query.clone());
-                let (shown, shown_query) = (searched, query);
-                self.exec.run(
-                    window,
-                    cx,
-                    async move {
-                        let (core, scope, query) = waiting;
-                        for _ in 0..SEARCH_WAIT_TRIES {
-                            let view = core.search_results(scope.clone(), query.clone());
-                            if view.state != LoadState::Loading {
-                                break;
-                            }
-                            tokio::time::sleep(SEARCH_WAIT).await;
-                        }
-                    },
-                    move |_, (), _, cx| {
-                        panel.update(cx, |panel, cx| {
-                            feed_search(panel, &core, &shown, &shown_query, cx)
-                        });
-                    },
-                );
             }
             SearchPanelEvent::Jump(hit) => {
                 let Some(message_id) = hit.row.id.clone() else {

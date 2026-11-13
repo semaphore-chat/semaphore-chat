@@ -10,6 +10,7 @@
 //! wait core w9 group-actions shown           # the open DM header's overflow menu
 //! wait core w9 sheet open                    # open|closed: the keyboard shortcut sheet
 //! wait core w9 search-more shown             # shown|gone: the search panel's "More results"
+//! wait core w9 unread cc-general 1           # the channel's unread count, as the sidebar has it
 //! ```
 
 use anyhow::{Result, bail};
@@ -35,6 +36,9 @@ pub(crate) enum W9 {
     Sheet(bool),
     /// `search-more shown|gone`: the search panel's "More results" button.
     SearchMore(bool),
+    /// `unread CHANNEL_ID N`: the channel's unread count as the sidebar has it: at least N, and
+    /// exactly none when N is 0.
+    Unread(String, u32),
 }
 
 /// The words after `w9`.
@@ -59,6 +63,12 @@ pub(crate) fn parse(words: &[&str]) -> Result<W9> {
         ),
         ["sheet", state @ ("open" | "closed")] => W9::Sheet(*state == "open"),
         ["search-more", shown @ ("shown" | "gone")] => W9::SearchMore(*shown == "shown"),
+        ["unread", id, count] => W9::Unread(
+            (*id).to_owned(),
+            count
+                .parse()
+                .map_err(|_| anyhow::anyhow!("not a number: {count}"))?,
+        ),
         _ => bail!("unknown w9 condition: {}", words.join(" ")),
     })
 }
@@ -70,7 +80,7 @@ impl super::Rig {
             W9::GroupActions(shown) => return self.w9_element("dm-header-more", *shown),
             W9::Sheet(open) => return self.w9_element("shortcuts-close", *open),
             W9::SearchMore(shown) => return self.w9_element("search-more", *shown),
-            W9::Register(_) | W9::UnreadNotifications(_) | W9::DmMembers(_) => {}
+            W9::Register(_) | W9::UnreadNotifications(_) | W9::DmMembers(_) | W9::Unread(_, _) => {}
         }
         let app = self.app()?.clone();
         Ok(self.driver.cx.update(|cx| {
@@ -78,19 +88,41 @@ impl super::Rig {
             let Some(core) = root.core() else {
                 return false;
             };
-            let open_dm = root
-                .shell()
-                .and_then(|shell| match shell.read(cx).nav().current() {
-                    semaphore_ui::nav::Route::DirectMessage { dm_group_id } => {
-                        Some(dm_group_id.clone())
-                    }
-                    _ => None,
-                });
+            let route = root.shell().map(|shell| shell.read(cx).nav().current());
+            let open_dm = route.as_ref().and_then(|route| match route {
+                semaphore_ui::nav::Route::DirectMessage { dm_group_id } => {
+                    Some(dm_group_id.clone())
+                }
+                _ => None,
+            });
+            let open_channel = route.as_ref().and_then(|route| match route {
+                semaphore_ui::nav::Route::Channel {
+                    community_id,
+                    channel_id,
+                } => Some((community_id.clone(), channel_id.clone())),
+                _ => None,
+            });
             match condition {
                 W9::Register(wanted) => core.register_requirements().mode == *wanted,
                 W9::UnreadNotifications(count) => core.notifications().unread_count == *count,
                 W9::DmMembers(wanted) => open_dm
                     .is_some_and(|id| core.dm(id).is_some_and(|row| row.members.len() == *wanted)),
+                W9::Unread(id, wanted) => {
+                    // The sidebar's row for the channel on screen holds the count.
+                    let unread = open_channel
+                        .filter(|(_, channel_id)| channel_id == id)
+                        .and_then(|(community_id, _)| {
+                            core.channels(community_id)
+                                .into_iter()
+                                .find(|channel| channel.id == *id)
+                        })
+                        .map_or(0, |channel| channel.unread_count);
+                    if *wanted == 0 {
+                        unread == 0
+                    } else {
+                        unread >= *wanted
+                    }
+                }
                 W9::SetupNotice(_) | W9::GroupActions(_) | W9::Sheet(_) | W9::SearchMore(_) => {
                     unreachable!("answered above")
                 }
@@ -113,7 +145,7 @@ mod tests {
 
     #[test]
     fn every_form_parses_and_nothing_else_does() {
-        let good: [(&[&str], W9); 9] = [
+        let good: [(&[&str], W9); 10] = [
             (&["setup-notice", "shown"], W9::SetupNotice(true)),
             (&["setup-notice", "gone"], W9::SetupNotice(false)),
             (
@@ -129,13 +161,17 @@ mod tests {
             (&["group-actions", "gone"], W9::GroupActions(false)),
             (&["dm-members", "4"], W9::DmMembers(4)),
             (&["search-more", "shown"], W9::SearchMore(true)),
+            (
+                &["unread", "cc-general", "1"],
+                W9::Unread("cc-general".into(), 1),
+            ),
         ];
         for (words, want) in good {
             assert_eq!(parse(words).unwrap(), want, "{words:?}");
         }
         assert_eq!(parse(&["sheet", "open"]).unwrap(), W9::Sheet(true));
         assert_eq!(parse(&["sheet", "closed"]).unwrap(), W9::Sheet(false));
-        let bad: [&[&str]; 8] = [
+        let bad: [&[&str]; 9] = [
             &[],
             &["setup-notice"],
             &["setup-notice", "maybe"],
@@ -144,6 +180,7 @@ mod tests {
             &["dm-members", "some"],
             &["sheet", "ajar"],
             &["search-more", "shown", "extra"],
+            &["unread", "cc-general", "many"],
         ];
         for words in bad {
             assert!(parse(words).is_err(), "{words:?}");

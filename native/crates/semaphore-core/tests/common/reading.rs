@@ -33,6 +33,8 @@ pub struct ReadingFakes {
     pub community_results: Mutex<Vec<Value>>,
     /// Holds the next search page at the server until this fires.
     pub search_gate: Mutex<Option<oneshot::Receiver<()>>>,
+    /// The next channel search fails with this.
+    pub search_error: Mutex<Option<BackendError>>,
 }
 
 impl ReadingFakes {
@@ -169,6 +171,9 @@ impl SearchBackend for FakeBackend {
         self.reading
             .search("channel", channel_id, q, limit, continuation_token.clone());
         self.reading.hold_search().await;
+        if let Some(error) = self.reading.search_error.lock().unwrap().take() {
+            return Err(error);
+        }
         let rows = self.reading.search_results.lock().unwrap().clone();
         self.reading.page(rows, limit, continuation_token)
     }

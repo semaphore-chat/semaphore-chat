@@ -4,7 +4,8 @@
 # notifications page (all read), the friends, profile and create-community routes, a channel's
 # search route with a page of results and the next one, a group DM's "Add people" and "Leave
 # group", and the web's shortcuts: Ctrl+/ for the sheet, Escape to close it, Alt+Down for the
-# next channel.
+# next channel. Then Escape in a conversation, one thing per press: the side panel closes, and
+# with the list detached from the live edge the conversation is marked read.
 #
 # Two windows: the signed-out screens at the size the other lanes use, then (signed out, so no
 # session is lost) a tall one, because the search panel's "More results" sits below fifty hits
@@ -17,11 +18,9 @@ wait idle
 # button opens that page.
 server onboarding "{\"needsSetup\": true}"
 click auth-connect
-wait core label "Username"
-# The probe answers itself and no core event follows it, so the connect screen takes the server's
-# answer on the next core event (see the lane report: the hook belongs in the probe's reply).
-os suspend
-os resume
+# The probe announces `ViewChanged { Session }` itself when its answer changes, so the screen
+# says the server needs setting up at once: no other core event provokes it, and the sign-in
+# form never shows.
 wait core w9 setup-notice shown
 wait idle
 shot 01-setup-notice
@@ -32,10 +31,8 @@ click auth-setup-change-server
 wait core element auth-connect
 server onboarding "{\"needsSetup\": false}"
 click auth-connect
-wait core label "Username"
-os suspend
-os resume
 wait core w9 setup-notice gone
+wait core label "Username"
 
 # 2. Registering: closed (not offered), invite-only (the code required), open (optional).
 server public_settings "{\"registrationMode\": \"CLOSED\"}"
@@ -236,7 +233,149 @@ wait core route channel/$ID(cc-clips)
 press alt-shift-down
 wait core route channel/$ID(cc-lfg)
 
-# 8. An invite to a community he isn't in, joined with his account; then a code he can't use.
+# 8. Escape in the pane, as the shortcut sheet says: one thing per press. With the focus in the
+# composer the pane's own binding has the key, after the composer's (nothing open) and the list's
+# (nothing selected): the pins panel closes and the conversation stays where it is.
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+click header-pins
+wait core side-panel pins
+click composer-field
+press escape
+wait core side-panel none
+wait core channel $ID(cc-general)
+
+# 9. A jump into history leaves the list detached from the live edge, and the pane marks read only
+# at the live edge: another user's message then stays unread on screen until Escape marks the
+# conversation read, wherever it is.
+#
+# A window of a usual size, opened over the session the tall one keeps: in the tall window the
+# whole gap fits on screen at once and the list walks back to the live edge by itself. ch-dev's
+# first page is a hundred messages behind its oldest, so a search jump to that message (the same
+# `open_conversation_at` a pin's or a link's jump goes through) detaches the window. The side
+# panel goes before Escape, which is the pane's then.
+app 1600 1400
+window activate
+wait core session signed-in
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 1\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 2\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 3\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 4\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 5\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 6\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 7\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 8\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 9\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 10\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 11\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 12\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 13\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 14\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 15\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 16\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 17\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 18\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 19\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 20\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 21\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 22\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 23\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 24\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 25\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 26\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 27\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 28\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 29\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 30\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 31\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 32\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 33\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 34\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 35\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 36\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 37\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 38\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 39\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 40\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 41\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 42\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 43\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 44\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 45\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 46\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 47\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 48\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 49\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 50\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 51\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 52\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 53\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 54\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 55\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 56\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 57\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 58\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 59\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 60\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 61\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 62\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 63\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 64\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 65\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 66\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 67\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 68\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 69\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 70\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 71\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 72\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 73\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 74\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 75\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 76\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 77\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 78\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 79\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 80\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 81\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 82\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 83\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 84\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 85\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 86\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 87\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 88\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 89\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 90\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 91\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 92\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 93\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 94\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 95\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 96\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 97\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 98\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 99\"}"
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 dev 100\"}"
+navigate /community/$ID(c-lumen)/channel/$ID(ch-dev)
+wait core channel $ID(ch-dev)
+wait core w9 unread $ID(ch-dev) 0
+click header-search
+wait core side-panel search
+type "Afternoon"
+tick 400
+wait core search-hits >= 1
+click search-hit-$MSG(sc-msg-28)
+wait core detached
+click header-search
+wait core side-panel none
+server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 unread on screen\"}"
+wait core w9 unread $ID(ch-dev) 1
+click composer-field
+press escape
+wait core w9 unread $ID(ch-dev) 0
+
+# 10. An invite to a community he isn't in, joined with his account; then a code he can't use.
 server seed_invite "{\"code\": \"W9-INVITE\", \"communityIds\": [\"W9 Invite Club\"]}"
 link "semaphore://join/W9-INVITE"
 wait core route /join/W9-INVITE

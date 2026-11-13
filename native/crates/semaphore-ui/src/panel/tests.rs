@@ -523,3 +523,15 @@ fn moderators_unpin_without_jumping(cx: &mut TestAppContext) {
         [PinsPanelEvent::Unpin { message_id: id }]
     );
 }
+
+#[gpui_kit::test]
+fn escape_in_pins_closes_the_panel(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, false);
+    // A press on a pin puts the focus inside the panel, as the keyboard's Tab would.
+    let id = row(2, "").id.unwrap();
+    rig.with(cx, |window, cx| window.click(format!("pin-{id}"), cx));
+    rig.events.borrow_mut().clear();
+    cx.simulate_keystrokes(rig.window, "escape");
+    rig.with(cx, |_, _| {});
+    assert_eq!(rig.events.borrow().as_slice(), [PinsPanelEvent::Close]);
+}

@@ -659,14 +659,18 @@ impl MessageList {
         }
     }
 
-    /// Escape: closes whatever is open, else clears the selection.
+    /// Escape: closes whatever is open, else clears the selection. With nothing open, nothing
+    /// staged and nothing selected the list has nothing to do, and the key goes on: the pane's
+    /// own Escape closes its side panel or marks the conversation read.
     fn escape(&mut self, cx: &mut Context<Self>) {
         if self.menu.is_some() {
             self.close_menu(cx);
         } else if self.remove.is_some() || self.shared.staged_delete.get().is_some() {
             self.cancel_delete(cx);
-        } else {
+        } else if self.shared.selection.get().is_some() {
             self.set_selection(None, cx);
+        } else {
+            cx.propagate();
         }
     }
 

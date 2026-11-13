@@ -286,6 +286,15 @@ impl Render for PinsPanel {
             .flex()
             .flex_col()
             .bg(paper)
+            .on_key_down(cx.listener(|_, event: &KeyDownEvent, _, cx| {
+                // Nothing inside the panel takes Escape before this: its buttons and rows have no
+                // menu, edit or selection of their own. With the focus in here, the key closes the
+                // panel, as its close button does.
+                if event.keystroke.key == "escape" {
+                    cx.emit(PinsPanelEvent::Close);
+                    cx.stop_propagation();
+                }
+            }))
             .child(header)
             .child(
                 div()
