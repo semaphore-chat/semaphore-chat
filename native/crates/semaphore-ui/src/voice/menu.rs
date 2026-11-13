@@ -1,10 +1,12 @@
 //! The menu on someone in a call (a right-click on their tile or their row in the channel list):
 //! the web's `VoiceUserContextMenu.tsx`.
 //!
-//! "View Profile" for anyone. For someone else: "Mute for Me" and a volume up to 200%. A moderator
-//! in a channel call also gets "Server Mute" (or "Server Unmute") and "Kick", as
-//! `VoiceModerationCaps` allows. Kick hands the member to the owner, who asks first with W5's
-//! moderation kick dialog (`moderation::ModerationDialog`, as `KickConfirmDialog.tsx`).
+//! "View Profile" for anyone. For someone else: "Mute for Me" and a volume up to 200%, plus, while
+//! their screen share carries audio, a second slider for that audio alone (the web's
+//! `ScreenShareVolumeControl`). A moderator in a channel call also gets "Server Mute" (or
+//! "Server Unmute") and "Kick", as `VoiceModerationCaps` allows. Kick hands the member to the
+//! owner, who asks first with W5's moderation kick dialog (`moderation::ModerationDialog`, as
+//! `KickConfirmDialog.tsx`).
 //!
 //! The owner places it at the pointer (`set_position`), drops it on `Close`, and calls core for
 //! everything else. A refused server mute is the owner's to show (a toast): the menu has closed by
@@ -32,6 +34,11 @@ pub enum ParticipantMenuEvent {
         identity: String,
         percent: u32,
     },
+    /// The screen share slider moved: `Core::set_screen_share_volume`.
+    SetScreenShareVolume {
+        identity: String,
+        percent: u32,
+    },
     /// `Core::server_mute`. The menu closes with it.
     ServerMute {
         identity: String,
@@ -51,6 +58,8 @@ pub struct ParticipantMenuModel {
     pub participant: ParticipantView,
     /// How loud they play here, 0 to 200. Core's `ParticipantView` will carry it.
     pub volume_percent: u32,
+    /// The same for the audio of their screen share, 0 to 200.
+    pub screen_share_volume_percent: u32,
     /// `Core::voice_moderation_caps(channel_id)`. Ignored outside a channel call.
     pub caps: VoiceModerationCaps,
     /// A channel call: moderation only makes sense in a community.
@@ -64,6 +73,11 @@ impl ParticipantMenuModel {
 
     pub fn shows_server_mute(&self) -> bool {
         self.others() && self.in_channel && self.caps.can_server_mute
+    }
+
+    /// The share's own slider shows only while their screen share carries audio, as on the web.
+    pub fn shows_screen_share_volume(&self) -> bool {
+        self.others() && self.participant.screen_share_audio
     }
 
     pub fn shows_kick(&self) -> bool {
@@ -81,6 +95,9 @@ pub struct ParticipantMenu {
     position: Point<Pixels>,
     slider: Entity<SliderState>,
     _slider_events: Subscription,
+    /// The share's own slider, while their screen share carries audio.
+    screen_share_slider: Option<Entity<SliderState>>,
+    _screen_share_slider_events: Option<Subscription>,
 }
 
 impl EventEmitter<ParticipantMenuEvent> for ParticipantMenu {}
@@ -93,15 +110,27 @@ impl ParticipantMenu {
         cx: &mut Context<Self>,
     ) -> Self {
         let (slider, events) = Self::slider(model.volume_percent, cx);
+        let (screen_share_slider, screen_share_events) = if model.shows_screen_share_volume() {
+            let (slider, events) = Self::screen_share_slider(model.screen_share_volume_percent, cx);
+            (Some(slider), Some(events))
+        } else {
+            (None, None)
+        };
         Self {
             model,
             position,
             slider,
             _slider_events: events,
+            screen_share_slider,
+            _screen_share_slider_events: screen_share_events,
         }
     }
 
-    fn slider(percent: u32, cx: &mut Context<Self>) -> (Entity<SliderState>, Subscription) {
+    fn make_slider(
+        percent: u32,
+        cx: &mut Context<Self>,
+        apply: impl Fn(&mut Self, u32, &mut Context<Self>) + 'static,
+    ) -> (Entity<SliderState>, Subscription) {
         let slider = cx.new(|_| {
             SliderState::new()
                 .min(0.)
@@ -109,13 +138,20 @@ impl ParticipantMenu {
                 .step(1.)
                 .default_value(percent.min(MAX_VOLUME) as f32)
         });
-        let events = cx.subscribe(&slider, |menu: &mut Self, _, event, cx| {
+        let events = cx.subscribe(&slider, move |menu: &mut Self, _, event, cx| {
             let (SliderEvent::Change(SliderValue::Single(value))
             | SliderEvent::Release(SliderValue::Single(value))) = *event
             else {
                 return;
             };
             let percent = value.round().clamp(0., MAX_VOLUME as f32) as u32;
+            apply(menu, percent, cx);
+        });
+        (slider, events)
+    }
+
+    fn slider(percent: u32, cx: &mut Context<Self>) -> (Entity<SliderState>, Subscription) {
+        Self::make_slider(percent, cx, |menu, percent, cx| {
             if percent != menu.model.volume_percent {
                 menu.model.volume_percent = percent;
                 cx.emit(ParticipantMenuEvent::SetVolume {
@@ -124,8 +160,23 @@ impl ParticipantMenu {
                 });
                 cx.notify();
             }
-        });
-        (slider, events)
+        })
+    }
+
+    fn screen_share_slider(
+        percent: u32,
+        cx: &mut Context<Self>,
+    ) -> (Entity<SliderState>, Subscription) {
+        Self::make_slider(percent, cx, |menu, percent, cx| {
+            if percent != menu.model.screen_share_volume_percent {
+                menu.model.screen_share_volume_percent = percent;
+                cx.emit(ParticipantMenuEvent::SetScreenShareVolume {
+                    identity: menu.model.participant.identity.clone(),
+                    percent,
+                });
+                cx.notify();
+            }
+        })
     }
 
     pub fn model(&self) -> &ParticipantMenuModel {
@@ -133,12 +184,24 @@ impl ParticipantMenu {
     }
 
     pub fn set_model(&mut self, model: ParticipantMenuModel, cx: &mut Context<Self>) {
-        if model.volume_percent != self.model.volume_percent
-            || model.participant.identity != self.model.participant.identity
-        {
+        let same_person = model.participant.identity == self.model.participant.identity;
+        if model.volume_percent != self.model.volume_percent || !same_person {
             let (slider, events) = Self::slider(model.volume_percent, cx);
             self.slider = slider;
             self._slider_events = events;
+        }
+        let shows_share = model.shows_screen_share_volume();
+        if shows_share
+            && (self.screen_share_slider.is_none()
+                || !same_person
+                || model.screen_share_volume_percent != self.model.screen_share_volume_percent)
+        {
+            let (slider, events) = Self::screen_share_slider(model.screen_share_volume_percent, cx);
+            self.screen_share_slider = Some(slider);
+            self._screen_share_slider_events = Some(events);
+        } else if !shows_share {
+            self.screen_share_slider = None;
+            self._screen_share_slider_events = None;
         }
         self.model = model;
         cx.notify();
@@ -181,6 +244,34 @@ impl ParticipantMenu {
 
     fn divider(cx: &App) -> impl IntoElement {
         div().my(px(8.)).h(px(1.)).bg(cx.sem().divider)
+    }
+
+    /// A labelled slider block: the caption row with its percent, then the slider.
+    fn volume_block(
+        label: &'static str,
+        percent: u32,
+        slider: &Entity<SliderState>,
+        aria: String,
+        cx: &App,
+    ) -> impl IntoElement {
+        let sem = cx.sem().clone();
+        div()
+            .px(px(16.))
+            .py(px(8.))
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .child(text(Variant::Caption, label).text_color(sem.text_secondary))
+                    .child(
+                        text(Variant::Caption, format!("{percent}%"))
+                            .text_color(sem.text_secondary),
+                    ),
+            )
+            .child(Slider::new(slider, aria))
     }
 
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -247,28 +338,28 @@ impl ParticipantMenu {
                     cx.emit(ParticipantMenuEvent::Close);
                 },
             ))
-            .child(
-                div()
-                    .px(px(16.))
-                    .py(px(8.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.))
-                    .child(
-                        div()
-                            .flex()
-                            .justify_between()
-                            .child(
-                                text(Variant::Caption, "User Volume")
-                                    .text_color(sem.text_secondary),
-                            )
-                            .child(
-                                text(Variant::Caption, format!("{}%", model.volume_percent))
-                                    .text_color(sem.text_secondary),
-                            ),
-                    )
-                    .child(Slider::new(&self.slider, format!("Volume for {name}"))),
-            );
+            .child(Self::volume_block(
+                "User Volume",
+                model.volume_percent,
+                &self.slider,
+                format!("Volume for {name}"),
+                cx,
+            ));
+        if let Some(share_slider) = self
+            .screen_share_slider
+            .as_ref()
+            .filter(|_| model.shows_screen_share_volume())
+        {
+            // The share's audio, apart from their mic, as the web's tile control: only while the
+            // share carries audio at all.
+            list = list.child(Self::volume_block(
+                "Screen share volume",
+                model.screen_share_volume_percent,
+                share_slider,
+                format!("Screen share volume for {name}"),
+                cx,
+            ));
+        }
         if model.shows_server_mute() {
             let mute = !participant.server_muted;
             let mute_identity = identity.clone();
@@ -332,6 +423,7 @@ mod tests {
                 ..ParticipantView::default()
             },
             volume_percent: 100,
+            screen_share_volume_percent: 100,
             caps: VoiceModerationCaps {
                 can_server_mute: mute,
                 can_kick: kick,
@@ -359,5 +451,18 @@ mod tests {
         assert_eq!(toggled_volume(150), 0);
         assert_eq!(toggled_volume(1), 0);
         assert_eq!(toggled_volume(0), 100);
+    }
+
+    #[test]
+    fn the_screen_share_slider_shows_only_while_the_share_carries_audio() {
+        let mut sharing = model(false, true, false, false);
+        sharing.participant.screen_share_audio = true;
+        assert!(sharing.shows_screen_share_volume());
+        // A screen without audio, or no share at all, has nothing for the slider to turn.
+        assert!(!model(false, true, false, false).shows_screen_share_volume());
+        // Nobody sets their own.
+        let mut own = model(true, true, false, false);
+        own.participant.screen_share_audio = true;
+        assert!(!own.shows_screen_share_volume());
     }
 }

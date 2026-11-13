@@ -1133,6 +1133,12 @@ impl MediaEngine for FakeMedia {
             .unwrap()
             .push(format!("volume {identity} {percent}"));
     }
+    fn set_screen_share_volume(&self, identity: String, percent: u32) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("share-volume {identity} {percent}"));
+    }
     async fn diagnostics(&self) -> Option<semaphore_core::model::MediaDiagnostics> {
         let hold = self.hold_diagnostics.lock().unwrap().take();
         if let Some(hold) = hold {

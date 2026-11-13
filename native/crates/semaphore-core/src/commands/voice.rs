@@ -833,6 +833,22 @@ impl Core {
         }
     }
 
+    /// W4: how loud the audio of a participant's screen share plays here, 0 to 200 percent, apart
+    /// from their mic. Straight to the media engine, which remembers it too.
+    pub fn set_screen_share_volume(&self, identity: String, percent: u32) {
+        let percent = percent.min(200);
+        self.write(|state, _| {
+            state
+                .w4
+                .screen_share_volumes
+                .insert(identity.clone(), percent);
+            state.view_changed(ViewKey::Voice);
+        });
+        if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
+            media.set_screen_share_volume(identity, percent);
+        }
+    }
+
     pub(crate) async fn leave_presence(&self, channel_id: String) {
         let Some(services) = self.services() else {
             return;
@@ -881,9 +897,11 @@ impl Core {
                         deafened: user.is_deafened || media.is_some_and(|media| media.deafened),
                         camera: media.and_then(|media| media.camera.clone()),
                         screen_share: media.and_then(|media| media.screen_share.clone()),
+                        screen_share_audio: media.is_some_and(|media| media.screen_share_audio),
                         quality: media.map(|media| media.quality).unwrap_or_default(),
                         server_muted: user.is_server_muted,
                         volume_percent: 100,
+                        screen_share_volume_percent: 100,
                     }
                 })
                 .collect();
@@ -902,6 +920,12 @@ impl Core {
                 participant.volume_percent = state
                     .w4
                     .volumes
+                    .get(&participant.identity)
+                    .copied()
+                    .unwrap_or(100);
+                participant.screen_share_volume_percent = state
+                    .w4
+                    .screen_share_volumes
                     .get(&participant.identity)
                     .copied()
                     .unwrap_or(100);

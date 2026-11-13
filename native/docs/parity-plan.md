@@ -101,7 +101,7 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Device test, mic level meter | `hooks/useDeviceTest.ts` | not started |
 | Voice processing (echo, noise, AGC, voice isolation, mic quality), VAD threshold | `hooks/useVoiceSettings.ts`, `components/Settings/AudioVideoSettingsPanel.tsx` | partial: echo/noise/AGC, mic preset, VAD and push-to-talk are persisted in the app's settings store and applied by the engine; voice isolation has no counterpart in libwebrtc's APM (ask, section 4); no core view, UI pending |
 | Push-to-talk | `hooks/usePushToTalk.ts` (in-window key only) | partial: engine `set_ptt_*` and UI `PttState`; no key binding |
-| Per-user volume, screen-share volume | `components/Voice/VoiceUserContextMenu.tsx`, `ScreenShareVolumeControl.tsx`, `features/voice/volumeStorage.ts` | participant volume: core `set_participant_volume`, persisted in the app's store and applied on every join. Screen-share volume needs a per-track gain in the engine (the mixer's gain is per identity): media ask. UI pending |
+| Per-user volume, screen-share volume | `components/Voice/VoiceUserContextMenu.tsx`, `ScreenShareVolumeControl.tsx`, `features/voice/volumeStorage.ts` | done: mic and screen-share audio each have their own volume, core `set_participant_volume` and `set_screen_share_volume`, the engine's mixer keyed by participant and source, both persisted in the app's store and applied on every join. The participant menu's "Screen share volume" slider shows only while that person's share carries audio |
 | Server mute state; moderator mute/remove from voice | `hooks/useServerMuteEffect.ts`, `useServerMutedVoiceUsers.ts`, `VoiceUserContextMenu.tsx` | partial: being removed is handled; server-mute state unknown; no moderator actions |
 | DM voice calls, incoming call banner | `components/DirectMessage/` | core done, UI pending: `Core::incoming_call`, `join_dm_voice`, `decline_call`; `ui/src/voice/incoming.rs` exists |
 | Soundboard playback | `components/Voice/SoundboardButton.tsx`, `features/voice/soundboardPlayer.ts` | core done, UI pending: `Core::soundboard`, `play_sound` (`MediaEngine::play_soundboard`) |
@@ -354,8 +354,8 @@ screen) and a diff review against its brief; a lane that fails once is redone by
 
 **Later platform lanes** (outside these waves): the application menu with About (Electron has
 one: `electron/main.ts` `setupApplicationMenu`), the app version shown, the replay trim preview
-(the player reading HLS / MPEG-TS), screen-share volume (a per-track gain in the engine), voice
-isolation (no libwebrtc counterpart). Packaging, auto-update and installers are the packaging lane's.
+(the player reading HLS / MPEG-TS), voice isolation (no libwebrtc counterpart). Packaging,
+auto-update and installers are the packaging lane's.
 
 ## 2. Build units
 
@@ -444,7 +444,7 @@ identical static shots). "Stories" means the unit's stories render in `rigs/shot
 | Unit | Delivers | Touches | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | W4-core | DM voice (dm-token, DM presence, incoming call), soundboard list/play, moderator voice actions (mute participant, remove), server-mute state, replay start/stop/capture/clips/share, voice diagnostics report | core lane files, net, fake server | W3-core | L | core tests for call state machine incl. incoming-call accept/decline; fake server endpoints |
-| W4-media | Soundboard on its own published `soundboard` track (`MediaEngine::play_soundboard`, decoding chosen by this unit; the default build works without the player feature), the VAD threshold applied (devices, processing, PTT and the mic preset are applied since W3-app), device test loopback and level meter (`LiveKitEngine::start_input_test`), participant volume through `MediaEngine::set_participant_volume`, `MediaEngine::diagnostics`, `LocalMediaView::{may_speak, screen_tracks}` in reports, keep-awake during calls (`keep_awake.rs`: logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (`keep_awake.rs` only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
+| W4-media | Soundboard on its own published `soundboard` track (`MediaEngine::play_soundboard`, decoding chosen by this unit; the default build works without the player feature), the VAD threshold applied (devices, processing, PTT and the mic preset are applied since W3-app), device test loopback and level meter (`LiveKitEngine::start_input_test`), participant volume through `MediaEngine::set_participant_volume` and the screen share's through `MediaEngine::set_screen_share_volume`, `MediaEngine::diagnostics`, `LocalMediaView::{may_speak, screen_tracks}` in reports, keep-awake during calls (`keep_awake.rs`: logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (`keep_awake.rs` only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
 | W4-ui-voice | Incoming call banner, DM call controls, participant context menu (volume, moderator mute/remove), soundboard button, float card and dock zones, voice debug panel | `ui/src/voice` | W4 freeze | L | stories: each state, moderator vs member, phone |
 | W4-ui-replay | Capture modal, trim timeline, clip library, share dialog | new `ui/src/replay` | W4 freeze, W3-player | M | stories: empty library, long clip, capture failure |
 | W4-av-publish (placeholder) | Camera publish, screen share publish with quality, source picker, screen audio | designed separately | separate design | L | defined by that design |
@@ -489,7 +489,8 @@ engine report of `screen_audio: Failed` starts the video alone at once.
 - Keep-awake holds off system sleep only, not the display (Electron's `prevent-app-suspension`).
 - Soundboard sounds go out on a separate `soundboard` track, as on the web, not mixed into the mic:
   the mic's mute, push to talk and server mute don't hold them back.
-- Participant volume goes through the `MediaEngine` trait, so a mobile engine can take it.
+- Participant volume goes through the `MediaEngine` trait, so a mobile engine can take it; the
+  screen share's audio has its own (`set_screen_share_volume`), as on the web.
 - Join failures are classified and kept for the debug panel only: nothing is reported until the
   backend accepts a native platform.
 
@@ -819,5 +820,4 @@ Found while building the W9 core lane (2026-11-12). None blocks it; each has a w
 |---|---|---|---|
 | Say `code` optional in `CreateUserDto` | `contract/openapi.json`, `backend/src/user/dto/create-user.dto.ts` (`@IsOptional() code?`) | The backend honours `OPEN` with no code, but the contract still requires the field, so a generated client must invent one | Sends `""`, which the backend reads as absent |
 | Tell a "seen by" list that a channel receipt moved | `backend/src/read-receipts/read-receipts.service.ts` (`markAsRead`) | Channels send no `readReceiptUpdated` (privacy), so a channel message's readers are only read when shown and stay as read until a reconnect | Read once per message; `keys::MESSAGE_READERS` is invalidated on a new connection |
-| A per-track gain for screen-share audio | `semaphore-media-livekit/src/audio/mixer.rs` (`set_volume` is per identity) | The web keeps a separate screen-share volume per user; the native mixer gives a member one gain for the mic and the share | Participant volume applies to both (one slider, not two); the web's separate share slider waits on the mixer |
 | A voice-isolation counterpart | `semaphore-media-livekit/src/audio/apm.rs` | The web's "voice isolation" is a browser audio feature; libwebrtc's APM has echo cancellation, noise suppression and AGC only | The persisted toggles are echo cancellation, noise suppression and AGC; voice isolation is not offered |

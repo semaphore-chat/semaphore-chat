@@ -398,6 +398,12 @@ enum W4 {
     MicLevelHeard,
     /// `engine vad N`: the voice-activity threshold the app gave the engine.
     EngineVad(u8),
+    /// `engine share-volume IDENTITY N`: the gain the engine holds for that participant's screen
+    /// share audio, which is apart from their mic's.
+    EngineShareVolume {
+        identity: String,
+        percent: u32,
+    },
     /// `soundboard playing ID|none`: the engine's sound in my call (`LocalMediaView::soundboard`).
     SoundboardPlaying(Option<String>),
     /// `livekit track ROOM IDENTITY NAME`: LiveKit's server lists that participant publishing a
@@ -572,6 +578,12 @@ enum Step {
     ExpectLinkRegistrations(usize),
     /// W4: `mic tone on|off`.
     MicTone(bool),
+    /// W4: `voice share-volume IDENTITY N`: sets that participant's screen-share volume through
+    /// core, as the participant menu's second slider does.
+    VoiceShareVolume {
+        identity: String,
+        percent: u32,
+    },
     /// W4: `save-as NAME`: the next save dialog answers `<data dir>/saved/NAME`.
     SaveAs(String),
     /// W4: `clock hold|run`: the scenario clock stops counting real time, or counts it again.
@@ -716,6 +728,12 @@ fn condition(words: &[&str]) -> Result<Condition> {
                 .parse()
                 .map_err(|_| anyhow!("{threshold} is not a threshold"))?,
         )),
+        ["engine", "share-volume", identity, percent] => Condition::W4(W4::EngineShareVolume {
+            identity: (*identity).into(),
+            percent: percent
+                .parse()
+                .map_err(|_| anyhow!("{percent} is not a percentage"))?,
+        }),
         ["soundboard", "playing", "none"] => Condition::W4(W4::SoundboardPlaying(None)),
         ["soundboard", "playing", id] => Condition::W4(W4::SoundboardPlaying(Some((*id).into()))),
         ["livekit", "track", room, identity, name] => Condition::W4(W4::LiveKitTrack {
@@ -844,6 +862,12 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["click-label", label] => Step::ClickLabel((*label).into()),
             ["forget", "sounds"] => Step::ForgetSounds,
             ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
+            ["voice", "share-volume", identity, percent] => Step::VoiceShareVolume {
+                identity: (*identity).into(),
+                percent: percent
+                    .parse()
+                    .map_err(|_| at(anyhow!("share-volume percent")))?,
+            },
             ["save-as", name] => Step::SaveAs((*name).into()),
             ["clock", state @ ("hold" | "run")] => Step::ClockHold(*state == "hold"),
             ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
@@ -1479,6 +1503,9 @@ impl Rig {
                 W4::EngineVad(threshold) => root.app_voice().is_some_and(|voice| {
                     voice.vad_applied.load(std::sync::atomic::Ordering::Relaxed) == *threshold
                 }),
+                W4::EngineShareVolume { identity, percent } => root
+                    .app_voice()
+                    .is_some_and(|voice| voice.engine.screen_share_volume(identity) == *percent),
                 W4::SoundboardPlaying(id) => core.voice().local.soundboard == *id,
                 W4::Replay(state) => {
                     let now = core.voice().replay;
@@ -2467,6 +2494,16 @@ impl Rig {
                 }
                 Step::MicTone(on) => {
                     self.tone.store(*on, std::sync::atomic::Ordering::Relaxed);
+                    Ok(())
+                }
+                Step::VoiceShareVolume { identity, percent } => {
+                    let app = self.app()?.clone();
+                    let (identity, percent) = (identity.clone(), *percent);
+                    self.driver
+                        .cx
+                        .update(|cx| app.read(cx).core())
+                        .ok_or_else(|| anyhow!("no core: not signed in"))?
+                        .set_screen_share_volume(identity, percent);
                     Ok(())
                 }
                 Step::Tick(ms) => {

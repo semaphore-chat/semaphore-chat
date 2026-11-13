@@ -234,6 +234,9 @@ pub trait MediaEngine: Send + Sync {
     /// across calls, like the other setters.
     fn set_participant_volume(&self, _identity: String, _percent: u32) {}
 
+    /// W4: the same for the audio of their screen share, which the web keeps apart from the mic's.
+    fn set_screen_share_volume(&self, _identity: String, _percent: u32) {}
+
     /// W4: what the engine measures about the call now, for the debug panel. `None` outside a call
     /// or when it can't tell.
     async fn diagnostics(&self) -> Option<MediaDiagnostics> {

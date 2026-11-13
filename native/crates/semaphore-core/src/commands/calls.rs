@@ -118,6 +118,8 @@ pub struct W4State {
     pub(crate) clips_busy: Vec<String>,
     /// Participant volumes set this session, by identity.
     pub(crate) volumes: HashMap<String, u32>,
+    /// Screen-share audio volumes set this session, by identity. The mic's is `volumes`.
+    pub(crate) screen_share_volumes: HashMap<String, u32>,
     /// Set while a query's answer that's older than a change to its data is applied.
     pub(crate) answer_dirty: bool,
     pub(crate) clips_error: Option<ErrorView>,

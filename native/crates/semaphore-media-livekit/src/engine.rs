@@ -1,5 +1,5 @@
-//! The voice session: join, leave, mic, mute, deafen, per-person volume, devices, speaking, video
-//! demand, and rejoining when the SDK gives up.
+//! The voice session: join, leave, mic, mute, deafen, per-person volume (the mic's and the screen
+//! share's), devices, speaking, video demand, and rejoining when the SDK gives up.
 //!
 //! **Why an app-level rejoin.** The SDK retries a dead connection for about 60 s and then emits
 //! `Disconnected` and stops. T7 proved that a longer outage (a laptop lid, a train) otherwise ends
@@ -8,7 +8,7 @@
 use crate::VideoSink;
 use crate::audio::apm::{Apm, AudioProcessing};
 use crate::audio::cpal_io::CpalIo;
-use crate::audio::mixer::{MAX_VOLUME_PERCENT, Mixer, MixerInput};
+use crate::audio::mixer::{AudioSource, MAX_VOLUME_PERCENT, Mixer, MixerInput};
 use crate::audio::system::{
     CaptureScope, STEREO_FRAME_SAMPLES, SYSTEM_AUDIO_CHANNELS, StereoChunker, SystemAudioCapture,
 };
@@ -557,6 +557,18 @@ impl LiveKitEngine {
         self.inner.mixer.volume(identity)
     }
 
+    /// 0 to 200, by identity, for the audio of their screen share only: the mic has its own.
+    /// Survives the share's track ending, and a rejoin.
+    pub fn set_screen_share_volume(&self, identity: &str, percent: u32) {
+        self.inner
+            .mixer
+            .set_screen_share_volume(identity, percent.min(MAX_VOLUME_PERCENT));
+    }
+
+    pub fn screen_share_volume(&self, identity: &str) -> u32 {
+        self.inner.mixer.screen_share_volume(identity)
+    }
+
     /// Applies at the next join, like the web setting.
     pub fn set_mic_preset(&self, preset: MicPreset) {
         lock(&self.inner.wanted).preset = preset;
@@ -813,6 +825,10 @@ impl MediaEngine for LiveKitEngine {
 
     fn set_participant_volume(&self, identity: String, percent: u32) {
         LiveKitEngine::set_participant_volume(self, &identity, percent);
+    }
+
+    fn set_screen_share_volume(&self, identity: String, percent: u32) {
+        LiveKitEngine::set_screen_share_volume(self, &identity, percent);
     }
 
     async fn diagnostics(&self) -> Option<MediaDiagnostics> {
@@ -1264,7 +1280,12 @@ impl Inner {
                     participant,
                 } => match track {
                     RemoteTrack::Audio(track) => {
-                        self.start_audio_track(track, publication.sid().to_string(), participant);
+                        self.start_audio_track(
+                            track,
+                            publication.sid().to_string(),
+                            participant,
+                            audio_source_of(publication.source()),
+                        );
                     }
                     RemoteTrack::Video(track) => {
                         let sid = publication.sid().to_string();
@@ -1356,9 +1377,10 @@ impl Inner {
         track: RemoteAudioTrack,
         sid: String,
         participant: RemoteParticipant,
+        source: AudioSource,
     ) {
         let identity = participant.identity().to_string();
-        let input = self.mixer.add_input(&sid, &identity);
+        let input = self.mixer.add_input(&sid, &identity, source);
         let task = tokio::spawn(pump_track_audio(track, input));
         if let Some(old) = lock(&self.audio_tasks).insert(sid, task) {
             old.abort();
@@ -1799,10 +1821,12 @@ impl Inner {
                 deafened: wanted_deafened,
                 camera: own_camera,
                 screen_share: own_screen,
+                screen_share_audio: false,
                 quality: quality_view(local.connection_quality()),
                 // Presence knows a server mute and core merges it; the engine also sees its own.
                 server_muted: self.server_muted.load(Ordering::SeqCst),
                 volume_percent: 100,
+                screen_share_volume_percent: 100,
             }];
             snapshot.local_quality = quality_view(local.connection_quality());
             snapshot.quality.clear();
@@ -1871,6 +1895,15 @@ fn user_view(identity: &str, name: &str) -> UserView {
     }
 }
 
+/// The mixer's two gains: a person's mic, and the audio of their screen share. A soundboard track,
+/// or a track with no source, plays as the mic (nobody sets its volume).
+fn audio_source_of(source: TrackSource) -> AudioSource {
+    match source {
+        TrackSource::ScreenshareAudio => AudioSource::ScreenShare,
+        _ => AudioSource::Microphone,
+    }
+}
+
 fn remote_view(
     participant: &RemoteParticipant,
     speaking: bool,
@@ -1879,6 +1912,7 @@ fn remote_view(
     let mut mic_live = false;
     let mut camera = None;
     let mut screen_share = None;
+    let mut screen_share_audio = false;
     for (sid, publication) in participant.track_publications() {
         let TrackDimension(width, height) = publication.dimension();
         let video = || VideoTrackView {
@@ -1890,6 +1924,7 @@ fn remote_view(
             TrackSource::Microphone => mic_live = !publication.is_muted(),
             TrackSource::Camera if !publication.is_muted() => camera = Some(video()),
             TrackSource::Screenshare if !publication.is_muted() => screen_share = Some(video()),
+            TrackSource::ScreenshareAudio if !publication.is_muted() => screen_share_audio = true,
             _ => {}
         }
     }
@@ -1906,9 +1941,11 @@ fn remote_view(
         deafened,
         camera,
         screen_share,
+        screen_share_audio,
         quality: quality_view(participant.connection_quality()),
         server_muted: false,
         volume_percent: 100,
+        screen_share_volume_percent: 100,
     }
 }
 
@@ -2105,7 +2142,11 @@ impl Inner {
                 previous.task.abort();
             }
             let id = self.next_sound.fetch_add(1, Ordering::Relaxed);
-            let monitor = self.mixer.add_input(SOUNDBOARD_MONITOR, SOUNDBOARD_MONITOR);
+            let monitor = self.mixer.add_input(
+                SOUNDBOARD_MONITOR,
+                SOUNDBOARD_MONITOR,
+                AudioSource::Microphone,
+            );
             let weak = self.me.clone();
             let task = self.runtime.spawn(async move {
                 soundboard::play(source, sound, monitor).await;

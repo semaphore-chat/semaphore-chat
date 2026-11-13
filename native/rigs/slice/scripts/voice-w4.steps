@@ -104,6 +104,10 @@ snap 05-live-participant-menu
 click participant-local-mute
 wait core dialog participant-menu closed
 expect settings /user_volumes/demo-peer 0
+# The share's audio has a gain of its own: core's command reaches the engine's mixer, which keeps
+# it apart from the mic's (0 here, from "Mute for Me").
+voice share-volume demo-peer 40
+wait core engine share-volume demo-peer 40
 right-click tile-demo-peer-camera
 wait core dialog participant-menu open
 click participant-server-mute

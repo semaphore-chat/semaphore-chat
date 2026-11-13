@@ -1,5 +1,5 @@
 //! Our own audio graph: device streams at the edge, libwebrtc's APM on the mic, and a mixer with a
-//! gain per person on the way out.
+//! gain per person and source (their mic, and the audio of their screen share) on the way out.
 //!
 //! The SDK's `PlatformAudio` would play and capture for us, but it renders every remote track
 //! through libwebrtc's own mixer and has no per-track gain (nothing in `webrtc-sys` reaches

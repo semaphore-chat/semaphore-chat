@@ -8,7 +8,8 @@
 //! - **Sounds.** Core decides the cues (`CoreEvent::Sound`); `Sounds` plays them, the ring on a
 //!   loop until core stops it.
 //! - **What's kept:** the float card's placement per `viewport_bucket` and the DM stage's split, in
-//!   the settings; volumes per user (`Settings::user_volumes`), applied on every join.
+//!   the settings; volumes per user (`Settings::user_volumes`, and `screen_share_volumes` for the
+//!   audio of their screen shares), applied on every join.
 
 use super::AppRoot;
 use crate::settings::StoredPlacement;
@@ -308,6 +309,9 @@ impl AppRoot {
             for (user_id, percent) in &self.settings.get().user_volumes {
                 core.set_participant_volume(user_id.clone(), u32::from(*percent));
             }
+            for (user_id, percent) in &self.settings.get().screen_share_volumes {
+                core.set_screen_share_volume(user_id.clone(), u32::from(*percent));
+            }
         }
     }
 
@@ -364,6 +368,7 @@ impl AppRoot {
         };
         let model = ParticipantMenuModel {
             volume_percent: participant.volume_percent,
+            screen_share_volume_percent: participant.screen_share_volume_percent,
             participant,
             caps: channel
                 .clone()
@@ -400,6 +405,17 @@ impl AppRoot {
                         settings.user_volumes.remove(&identity);
                     } else {
                         settings.user_volumes.insert(identity, percent);
+                    }
+                });
+            }
+            ParticipantMenuEvent::SetScreenShareVolume { identity, percent } => {
+                core.set_screen_share_volume(identity.clone(), *percent);
+                let (identity, percent) = (identity.clone(), (*percent).min(200) as u8);
+                self.update_settings(|settings| {
+                    if percent == 100 {
+                        settings.screen_share_volumes.remove(&identity);
+                    } else {
+                        settings.screen_share_volumes.insert(identity, percent);
                     }
                 });
             }
