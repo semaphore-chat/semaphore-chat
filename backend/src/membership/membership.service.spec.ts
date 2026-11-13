@@ -352,6 +352,55 @@ describe('MembershipService', () => {
     });
   });
 
+  // AUTHZ-6: adding someone needs no consent, but a block in either
+  // direction refuses it
+  describe('create on behalf of another member (blocks)', () => {
+    const dto = { userId: 'target-1', communityId: 'community-1' };
+
+    beforeEach(() => {
+      mockDatabase.community.findUniqueOrThrow.mockResolvedValue({});
+      mockDatabase.user.findUniqueOrThrow.mockResolvedValue({ id: 'target-1' });
+      mockDatabase.membership.findUnique.mockResolvedValue(null);
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+      mockDatabase.membership.create.mockResolvedValue(
+        MembershipFactory.build(dto),
+      );
+      mockDatabase.channel.findMany.mockResolvedValue([]);
+      communityRolesService.getCommunityMemberRole.mockResolvedValue(
+        RoleFactory.build({ name: 'Member' }),
+      );
+    });
+
+    it.each([
+      ['the target blocked the caller', { blockerId: 'target-1' }],
+      ['the caller blocked the target', { blockerId: 'actor-1' }],
+    ])('refuses when %s', async (_label, block) => {
+      mockDatabase.userBlock.findFirst.mockResolvedValue({ id: 'b-1', ...block });
+
+      await expect(service.create(dto, 'actor-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockDatabase.membership.create).not.toHaveBeenCalled();
+      expect(mockDatabase.userBlock.findFirst).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { blockerId: 'actor-1', blockedId: { in: ['target-1'] } },
+            { blockerId: { in: ['target-1'] }, blockedId: 'actor-1' },
+          ],
+        },
+        select: { id: true },
+      });
+    });
+
+    it('adds them when there is no block', async () => {
+      mockDatabase.userBlock.findFirst.mockResolvedValue(null);
+
+      await service.create(dto, 'actor-1');
+
+      expect(mockDatabase.membership.create).toHaveBeenCalled();
+    });
+  });
+
   describe('acceptInvite', () => {
     const inviteFor = (
       ...communityIds: string[]

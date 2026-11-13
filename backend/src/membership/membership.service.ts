@@ -17,6 +17,7 @@ import { DatabaseService } from '@/database/database.service';
 import { CommunityService } from '@/community/community.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { isPrismaError } from '@/common/utils/prisma.utils';
+import { isBlockedWithAny } from '@/common/utils/user-block.utils';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
@@ -48,8 +49,13 @@ export class MembershipService {
     private readonly inviteService: InviteService,
   ) {}
 
+  /**
+   * `actorId`: the member adding someone else (POST /membership). A block in
+   * either direction between the two refuses it.
+   */
   async create(
     createMembershipDto: CreateMembershipDto,
+    actorId?: string,
   ): Promise<MembershipResponseDto> {
     const { userId, communityId } = createMembershipDto;
 
@@ -80,6 +86,14 @@ export class MembershipService {
         throw new ConflictException(
           'User is already a member of this community',
         );
+      }
+
+      if (
+        actorId &&
+        actorId !== userId &&
+        (await isBlockedWithAny(this.databaseService, actorId, [userId]))
+      ) {
+        throw new ForbiddenException('You cannot add this user');
       }
 
       // Check if user is banned from this community
