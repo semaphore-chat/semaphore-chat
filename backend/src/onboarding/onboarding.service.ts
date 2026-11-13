@@ -239,7 +239,9 @@ export class OnboardingService implements OnApplicationBootstrap {
       // two concurrent submits can both pass them. Serialize on a
       // transaction-scoped advisory lock and repeat the check with the lock
       // held, so only one submit can create the owner.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${SETUP_ADVISORY_LOCK_KEY}::bigint)`;
+      // $executeRaw: pg_advisory_xact_lock returns `void`, which the Prisma 7
+      // driver adapter cannot deserialize as a $queryRaw result (500).
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${SETUP_ADVISORY_LOCK_KEY}::bigint)`;
       if (!(await this.isSetupNeeded(tx))) {
         throw new ConflictException('Instance setup is no longer needed');
       }

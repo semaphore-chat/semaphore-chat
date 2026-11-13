@@ -528,7 +528,7 @@ describe('OnboardingService', () => {
       );
       expect(ownersCreated).toBe(1);
       // The lock is taken inside the transaction, before the repeat check.
-      expect(raceTx.$queryRaw).toHaveBeenCalledTimes(2);
+      expect(raceTx.$executeRaw).toHaveBeenCalledTimes(2);
     });
 
     it('should throw ConflictException when setup token is invalid', async () => {
