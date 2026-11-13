@@ -679,16 +679,16 @@ preview's `reason`). Another repin follows when the open backend PRs land.
 
 | Item | Electron today | Native needs | Size |
 |---|---|---|---|
-| Installers, Windows | NSIS via electron-builder (`.github/workflows/electron-build.yml`) | MSI or NSIS/Inno for the GPUI binary, VC runtime, `semaphore://` registration, Start menu entry | M |
-| Installers, Linux | AppImage, .deb, .rpm (electron-builder) | Same three (or Flatpak); `.desktop` with `x-scheme-handler/semaphore`, icons, keyring and PipeWire runtime deps | M |
-| Auto-update | electron-updater against GitHub Releases; per-format quirks (.deb pkexec, CLAUDE.md patch notes) | An updater (e.g. a signed manifest on Releases plus per-format install: AppImage replace, MSI/NSIS run, .deb/.rpm via package manager or notify-only) | L |
+| Installers, Windows | NSIS via electron-builder (`.github/workflows/electron-build.yml`) | **Portable zip built** by `native-package.yml` (exe plus licences; no runtime DLLs: static CRT, static libwebrtc). An MSI/NSIS installer still needs a tool (WiX/cargo-wix or NSIS), Start menu shortcuts, protocol registration and Authenticode signing | M |
+| Installers, Linux | AppImage, .deb, .rpm (electron-builder) | **Built and verified**: `native/scripts/package-linux.sh` makes all three on Debian 12 (glibc 2.36); `.desktop` with `x-scheme-handler/semaphore`, hicolor icons, AppStream metainfo, declared runtime deps; `native/scripts/test-packages.sh` installs and starts them on Debian 13, Ubuntu 24.04 and Fedora 45. Not published | M |
+| Auto-update | electron-updater against GitHub Releases; per-format quirks (.deb pkexec, CLAUDE.md patch notes) | Not started. An updater (e.g. a signed manifest on Releases plus per-format install: AppImage replace, MSI/NSIS run, .deb/.rpm via package manager or notify-only) | L |
 | Code signing | none found in `electron-build.yml` | Decide: Windows Authenticode (SmartScreen), update manifest signing (needed regardless for a safe updater) | M |
 | Crash reporting | none (no `crashReporter`) | Panic hook writing a report to the log dir; remote reporting only if Mike decides | S |
 | Logging | `electron/voiceLog.ts` writes voice events to a log file; console otherwise | Rotating log file under the data dir (`SEMAPHORE_LOG` today is stderr only); "open log folder" in settings | S |
 | Localisation | none (no i18n library in `frontend/src`) | none for parity; keep strings in one place per UI module | n/a |
 | Accessibility | MUI/ARIA, `useMessageListAnnouncer`, shortcut sheet | Orca pass done (T5); each UI unit keeps labels; a Windows Narrator pass is not done (unknown) | M |
 | Telemetry | none found (backend `metrics` is server-side; voice diagnostics upload is a feature, W4) | none | n/a |
-| CI on main | `native-spike.yml` runs on pushes to `spike/native-gpui` only (paths filter); header says no job had run as of Phase 0 | PR and `main` triggers, `verify.sh` and both `slice-e2e.sh` runs, Windows link job, release job for installers | M |
+| CI on main | `native-spike.yml` runs on pushes to `spike/native-gpui` only (paths filter); header says no job had run as of Phase 0 | `native-package.yml` builds and verifies the Linux packages and the Windows portable zip on PRs touching packaging and on dispatch; artifacts only, never a release. `verify.sh` and both `slice-e2e.sh` runs on PRs and `main` still to do | M |
 | Settings migration from Electron | `userData/settings.json` (`closeToTray`), window state file, safeStorage-encrypted refresh token, renderer `localStorage` (voice settings, volumes, device ids, server URL, drafts) | Import `settings.json` and server URL; the token and `localStorage` live in Chromium's encrypted store and LevelDB: re-sign-in is the realistic path (decide) | S-M |
 | Coexistence with Electron | n/a | Both register `semaphore://`; decide which wins while both are installed | S |
 

@@ -1,0 +1,98 @@
+# Linux package build and verification environment.
+#
+# The normal build image (Dockerfile.build) is Arch. A binary linked there needs glibc 2.44,
+# which no current Debian, Ubuntu or Fedora release has (docs/size.md, "Release build
+# environment"). Packages are therefore linked on Debian 12 (glibc 2.36), the oldest current
+# distribution, so the same binary runs on Debian 12/13, Ubuntu 24.04 and Fedora 45.
+#
+# This image is only for native/scripts/package-linux.sh and native/scripts/test-packages.sh;
+# development, tests, fmt, clippy and cargo-deny keep using Dockerfile.build.
+#
+# Base digest: debian:12-slim @ 2026-11-12.
+FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+
+ARG HOST_UID=1000
+ARG RUSTUP_VERSION=1.29.2
+ARG RUSTUP_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+ARG APPIMAGETOOL_VERSION=1.9.1
+ARG APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+ARG APPIMAGE_RUNTIME_SHA256=617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46
+
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+
+# Build dependencies: the same native libraries Dockerfile.build has, plus the package tools.
+# The versions are Debian 12's, which is also the glibc floor of what we ship.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl gnupg xz-utils zstd file \
+      build-essential pkg-config cmake git jq python3 \
+      binutils patchelf \
+      dpkg-dev fakeroot rpm desktop-file-utils appstream \
+      squashfs-tools zsync imagemagick \
+      libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxcomposite-dev \
+      libxrandr-dev libxtst-dev libxcursor-dev libxi-dev \
+      libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+      libxcb-randr0-dev libxcb-composite0-dev libxcb-damage0-dev \
+      libxcb-shm0-dev libxcb-util-dev libxcb-image0-dev libxcb-keysyms1-dev \
+      libxkbcommon-dev libxkbcommon-x11-dev \
+      libwayland-dev wayland-protocols \
+      libdrm-dev libva-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
+      libasound2-dev libpulse-dev libpipewire-0.3-dev \
+      libglib2.0-dev libssl-dev libfontconfig1-dev libfreetype-dev \
+      libvulkan-dev mesa-vulkan-drivers \
+      fonts-dejavu-core fonts-noto-color-emoji \
+ && rm -rf /var/lib/apt/lists/*
+
+# clang 22 and lld 22: libwebrtc's glue needs clang 21 or newer (native/.cargo/config.toml).
+RUN curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
+      | gpg --dearmor -o /usr/share/keyrings/llvm.gpg \
+ && echo 'deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-22 main' \
+      > /etc/apt/sources.list.d/llvm.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends clang-22 lld-22 \
+ && ln -sf /usr/bin/clang-22 /usr/local/bin/clang \
+ && ln -sf /usr/bin/clang++-22 /usr/local/bin/clang++ \
+ && ln -sf /usr/bin/ld.lld-22 /usr/local/bin/ld.lld \
+ && ln -sf /usr/bin/lld-22 /usr/local/bin/lld \
+ && rm -rf /var/lib/apt/lists/*
+
+# rustup, pinned by version and hash. RUSTUP_TOOLCHAIN is passed by package-linux.sh, so only
+# the host toolchain is installed: rust-toolchain.toml's mobile targets are not needed here.
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
+COPY rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN curl -fsSL "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/x86_64-unknown-linux-gnu/rustup-init" \
+      -o /tmp/rustup-init \
+ && echo "${RUSTUP_SHA256}  /tmp/rustup-init" | sha256sum -c - \
+ && chmod +x /tmp/rustup-init \
+ && /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain none \
+ && channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' /tmp/rust-toolchain.toml)" \
+ && /opt/cargo/bin/rustup toolchain install "$channel" --profile minimal \
+ && /opt/cargo/bin/rustup default "$channel" \
+ && rm /tmp/rustup-init /tmp/rust-toolchain.toml \
+ && chmod -R a+rX /opt/rustup /opt/cargo
+ENV PATH=/opt/cargo/bin:$PATH CARGO_HOME=/cache/cargo
+
+# appimagetool, extracted so no AppImage/FUSE is needed when building one.
+RUN curl -fsSL "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage" \
+      -o /tmp/appimagetool.AppImage \
+ && echo "${APPIMAGETOOL_SHA256}  /tmp/appimagetool.AppImage" | sha256sum -c - \
+ && chmod +x /tmp/appimagetool.AppImage \
+ && cd /opt && /tmp/appimagetool.AppImage --appimage-extract >/dev/null \
+ && mv /opt/squashfs-root /opt/appimagetool \
+ && ln -sf /opt/appimagetool/AppRun /usr/local/bin/appimagetool \
+ && rm /tmp/appimagetool.AppImage
+
+# The AppImage type-2 runtime appimagetool would otherwise download while packaging. Baked in
+# so a package build never depends on GitHub being reachable for it.
+RUN curl -fsSL "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64" \
+      -o /opt/appimage-runtime-x86_64 \
+ && echo "${APPIMAGE_RUNTIME_SHA256}  /opt/appimage-runtime-x86_64" | sha256sum -c -
+
+RUN mkdir -p /cache/cargo /cache/target /cache/home \
+ && chown -R "$HOST_UID" /cache
+
+ENV CARGO_HOME=/cache/cargo \
+    CARGO_TARGET_DIR=/cache/target \
+    HOME=/cache/home \
+    CC=clang \
+    CXX=clang++ \
+    CARGO_TERM_COLOR=never

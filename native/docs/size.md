@@ -374,6 +374,10 @@ lld from LLVM's apt repository, since libwebrtc needs them), or `cargo zigbuild`
 target. Whatever floor is chosen also decides RELR (needs 2.36). The packaging unit owns this; the
 size numbers here won't move much with it (estimate).
 
+**Decided:** packages are linked in `native/docker/Dockerfile.package`, a pinned Debian 12 image
+(glibc 2.36, clang 22). The resulting binary's highest symbol version is `GLIBC_2.35`, which Debian 12,
+Ubuntu 22.04 and newer, and Fedora 45 provide. See [packaging.md](packaging.md).
+
 ### Not worth it now
 
 - `opt-level = "z"` over `"s"`: -0.4 to -0.9 MB compressed for slower code and no loop vectorisation.
