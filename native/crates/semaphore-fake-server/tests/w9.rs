@@ -123,6 +123,19 @@ async fn sign_up(client: &reqwest::Client, base: &str, name: &str, code: &str) -
     .await
 }
 
+/// The same without a `code` field at all: optional in the contract (`CreateUserDto.code`).
+async fn sign_up_without_a_code(client: &reqwest::Client, base: &str, name: &str) -> (u16, Value) {
+    request(
+        client,
+        reqwest::Method::POST,
+        base,
+        "/api/users",
+        Some(json!({ "username": name, "password": "Password123!" })),
+        false,
+    )
+    .await
+}
+
 #[tokio::test]
 async fn registration_honours_the_instance_mode() {
     let (server, client, base) = showcase().await;
@@ -146,12 +159,23 @@ async fn registration_honours_the_instance_mode() {
         (404, Some("NOT_FOUND"))
     );
     assert_eq!(body["message"], "No invite found for the provided code.");
+    // The field left out entirely is the same refusal, as `UserService.createUser` answers.
+    let (status, body) = sign_up_without_a_code(&client, &base, "absent-code").await;
+    assert_eq!(
+        (status, body["errorCode"].as_str()),
+        (404, Some("NOT_FOUND"))
+    );
+    assert_eq!(body["message"], "No invite found for the provided code.");
 
     // OPEN: an account without a code, which joins no community.
     set_mode(&client, &base, "OPEN").await;
     let (status, user) = sign_up(&client, &base, "open-user", "").await;
     assert_eq!(status, 201, "{user}");
     assert_eq!(user["username"], "open-user");
+    // With the field left out, too: the server honours the mode, not the field.
+    let (status, user) = sign_up_without_a_code(&client, &base, "open-no-code").await;
+    assert_eq!(status, 201, "{user}");
+    assert_eq!(user["username"], "open-no-code");
     // The code was not spent by either refusal.
     let (_, invite) = request(
         &client,

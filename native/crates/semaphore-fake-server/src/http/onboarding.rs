@@ -81,13 +81,18 @@ async fn register(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     let username = dto.username.to_lowercase();
     let mut accounts = lock(&inner.accounts);
 
-    let wanted = accounts
-        .invites
-        .iter()
-        .position(|invite| invite.code == dto.code && invite.usable(now));
+    // `UserService.createUser`: a code, when given, must be usable; `OPEN` registers without one,
+    // and an empty code counts as none, as the backend's falsy check does.
+    let code = dto.code.as_deref().filter(|code| !code.is_empty());
+    let wanted = code.and_then(|code| {
+        accounts
+            .invites
+            .iter()
+            .position(|invite| invite.code == code && invite.usable(now))
+    });
     let invite = match (mode, wanted) {
         // Open with no code: no invite, and the account joins no community.
-        (RegistrationMode::Open, None) if dto.code.trim().is_empty() => None,
+        (RegistrationMode::Open, None) if code.is_none() => None,
         (_, Some(index)) => Some(index),
         _ => {
             drop(accounts);
