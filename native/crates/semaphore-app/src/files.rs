@@ -690,30 +690,50 @@ pub fn ask_save_path(
     crate::ask_save_path(name, cx)
 }
 
-/// Writes a download where the user chose, on a blocking thread of the net runtime.
+/// Writes a download where the user chose, on a blocking thread of the net runtime, and marks it
+/// as downloaded from the internet (Windows' Mark-of-the-Web), as a browser does. A volume that
+/// can't hold the mark (FAT32) keeps the file: the user chose where it goes, and nothing opens it
+/// from here.
 pub async fn write_file(path: std::path::PathBuf, bytes: Vec<u8>) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || std::fs::write(&path, bytes).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || {
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        if let Err(error) = semaphore_platform_desktop::download_mark::mark_downloaded(&path) {
+            log::warn!(
+                "{} is saved without its downloaded mark: {error}",
+                path.display()
+            );
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-/// File types the OS would run, install or follow rather than show: never handed to its opener.
-/// One list for every platform, since a file can come from anyone.
-const RUN_NOT_SHOWN: &[&str] = &[
-    "exe", "msi", "bat", "cmd", "com", "scr", "pif", "ps1", "vbs", "js", "jse", "wsf", "hta",
-    "lnk", "url", "reg", "jar", "sh", "run", "bin", "appimage", "desktop", "deb", "rpm",
+/// What "Open externally" may hand to the OS's default app: audio and video, the only kinds the
+/// player offers it for. An allowlist, not a denylist: Windows runs, loads or follows far more
+/// kinds of file on "open" than any list of them stays complete for (`.cpl`, `.chm`, `.msc`,
+/// `.appref-ms`, `.rdp`, `.iso`, `.search-ms` ...). Anything else is saved instead.
+pub const MEDIA_EXTENSIONS: &[&str] = &[
+    "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "mpg", "mpeg", "ogv", "ogg", "oga", "opus",
+    "mp3", "m4a", "aac", "wav", "flac",
 ];
 
-/// Whether an attachment called `name` may go to the OS's default app. Programs, scripts,
-/// installers and shortcuts may not, and nor may a name with no extension, which the OS would
-/// judge by content: those are saved instead. Judged on the name as it would be written, so
-/// trailing dots and direction marks can't hide the real extension.
+/// The file name "Open externally" writes under the app's `open` folder for an attachment:
+/// `<id>-<name>`, both made safe. [`may_open_with_the_os`] judges this name, the one the OS sees.
+pub fn open_externally_name(file_id: &str, filename: &str) -> String {
+    format!("{}-{}", safe_file_name(file_id), safe_file_name(filename))
+}
+
+/// Whether a file called `name` may go to the OS's default app: only audio and video
+/// ([`MEDIA_EXTENSIONS`]). Judged on the name as it would be written ([`safe_file_name`]), so
+/// trailing dots, stream names and direction marks can't hide the real extension; callers pass
+/// the name actually written to disk ([`open_externally_name`]).
 pub fn may_open_with_the_os(name: &str) -> bool {
     let safe = safe_file_name(name);
     match safe.rsplit_once('.') {
         Some((stem, extension)) if !stem.is_empty() && !extension.is_empty() => {
             let extension = extension.to_ascii_lowercase();
-            !RUN_NOT_SHOWN.contains(&extension.as_str())
+            MEDIA_EXTENSIONS.contains(&extension.as_str())
         }
         _ => false,
     }
@@ -945,21 +965,35 @@ mod tests {
     }
 
     #[test]
-    fn only_documents_and_media_open_with_the_os() {
+    fn only_media_open_with_the_os() {
         for name in [
-            "report.pdf",
-            "photo.JPG",
-            "a.exe.pdf",
             "song.mp3",
-            "notes.txt",
             "clip.webm",
+            "CLIP.MP4",
+            "a.exe.mp4",
+            "film.mkv",
+            "film.Mov",
+            "voice.opus",
+            "track.flac",
         ] {
             assert!(may_open_with_the_os(name), "{name:?} was refused");
         }
+        for extension in MEDIA_EXTENSIONS {
+            assert!(may_open_with_the_os(&format!("x.{extension}")));
+            assert!(may_open_with_the_os(&format!(
+                "x.{}",
+                extension.to_ascii_uppercase()
+            )));
+        }
         for name in [
+            // Documents and pictures: the button is only offered for audio and video.
+            "report.pdf",
+            "photo.JPG",
+            "notes.txt",
             "setup.exe",
             "SETUP.EXE",
             "a.pdf.exe",
+            "a.mp4.exe",
             "installer.msi",
             "x.bat",
             "x.cmd",
@@ -984,15 +1018,94 @@ mod tests {
             "pkg.deb",
             "pkg.rpm",
             "noextension",
+            "mp4",
+            ".mp4",
             ".exe",
             "x.",
             "trailing.exe.",
             "trailing.exe .",
+            "trailing.mp4.exe.",
+            "invoice\u{202E}4pm.exe",
             "invoice\u{202E}fdp.exe",
             "CON.exe",
+            "clip.mp4:Zone.Identifier",
+            "clip.mp4:evil.exe",
         ] {
             assert!(!may_open_with_the_os(name), "{name:?} would be opened");
         }
+    }
+
+    /// NAT-1: every kind of file Windows runs, loads or follows on "open" that the old denylist
+    /// missed.
+    #[test]
+    fn programs_the_denylist_missed_are_not_opened() {
+        for ext in [
+            "cpl",
+            "vbe",
+            "wsh",
+            "chm",
+            "msc",
+            "appref-ms",
+            "application",
+            "py",
+            "pyw",
+            "rdp",
+            "search-ms",
+            "library-ms",
+            "iso",
+            "img",
+            "vhd",
+            "vhdx",
+            "xll",
+            "msp",
+            "msix",
+            "appx",
+            "appinstaller",
+            "diagcab",
+            "jnlp",
+            "settingcontent-ms",
+            "website",
+            "theme",
+        ] {
+            assert!(!may_open_with_the_os(&format!("clip.{ext}")), "{ext}");
+            assert!(!may_open_with_the_os(&format!("clip.mp4.{ext}")), "{ext}");
+        }
+    }
+
+    /// The check runs on the name written to disk, which is what the OS sees.
+    #[test]
+    fn the_name_on_disk_is_the_one_judged() {
+        assert_eq!(open_externally_name("f1", "clip.mp4"), "f1-clip.mp4");
+        assert!(may_open_with_the_os(&open_externally_name(
+            "f1", "clip.mp4"
+        )));
+        // A path in the name is cut to its last part; what's left decides.
+        assert_eq!(
+            open_externally_name("f1", "clip.mp4/evil.cpl"),
+            "f1-evil.cpl"
+        );
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "f1",
+            "clip.mp4/evil.cpl"
+        )));
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "f1",
+            "a.mp4\\b.cpl"
+        )));
+        // Trailing dots and spaces are dropped as Windows would.
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "f1",
+            "a.mp4.cpl. . "
+        )));
+        // A name with no extension can't borrow one from the id.
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "x.mp4", "noext"
+        )));
+        // A server id can't smuggle a separator or a stream name.
+        assert_eq!(open_externally_name("../x:y", "a.mp4"), "xy-a.mp4");
+        // An extension too long to keep is cut with the rest: never opened.
+        let long = format!("clip.mp4{}", "4".repeat(300));
+        assert!(!may_open_with_the_os(&open_externally_name("f", &long)));
     }
 
     /// One canned HTTP answer per connection, for the fetcher's limits.

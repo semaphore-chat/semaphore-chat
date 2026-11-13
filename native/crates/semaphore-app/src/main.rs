@@ -300,6 +300,7 @@ fn main() -> ExitCode {
                 heartbeat: semaphore_app::voice::HEARTBEAT,
                 notifier: desktop.notifier.clone(),
                 open_url: None,
+                open_path: None,
                 pick_files: None,
                 save_path: None,
                 links: Some(Arc::new(semaphore_app::desktop::DesktopLinks::from_env())),

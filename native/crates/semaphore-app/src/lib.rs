@@ -74,6 +74,9 @@ pub struct AppConfig {
     /// Opens a web address in the system's browser (browser sign-in): `cx.open_url` when `None`,
     /// a recorder in the rig.
     pub open_url: Option<OpenUrl>,
+    /// Opens a file or folder the app wrote itself (an attachment opened externally, the logs
+    /// folder) with the OS's default app: `cx.open_with_system` when `None`, a recorder in the rig.
+    pub open_path: Option<OpenPath>,
     /// The system's file picker (the portal's on Linux, the common dialog on Windows) when `None`;
     /// the rig answers from a queue.
     pub pick_files: Option<PickFiles>,
@@ -96,6 +99,9 @@ pub struct AppConfig {
 
 /// `AppConfig::open_url`.
 pub type OpenUrl = std::rc::Rc<dyn Fn(&str, &mut App)>;
+
+/// `AppConfig::open_path`.
+pub type OpenPath = std::rc::Rc<dyn Fn(&std::path::Path, &mut App)>;
 
 /// What a file pick is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +128,7 @@ pub struct Seams {
     pub pick_files: PickFiles,
     pub save_path: SavePath,
     pub open_url: OpenUrl,
+    pub open_path: OpenPath,
 }
 
 impl Global for Seams {}
@@ -161,6 +168,19 @@ pub fn open_url(url: &str, cx: &mut App) {
     match cx.try_global::<Seams>().map(|seams| seams.open_url.clone()) {
         Some(open) => open(url, cx),
         None => cx.open_url(url),
+    }
+}
+
+/// Opens a local `path` the app wrote itself with the OS's default app (or file manager, for a
+/// folder), through the config's seam. The OS gets the path itself, never a `file://` string, so
+/// `#` or `%` in a name can't be read as anything else.
+pub fn open_path(path: &std::path::Path, cx: &mut App) {
+    match cx
+        .try_global::<Seams>()
+        .map(|seams| seams.open_path.clone())
+    {
+        Some(open) => open(path, cx),
+        None => cx.open_with_system(path),
     }
 }
 

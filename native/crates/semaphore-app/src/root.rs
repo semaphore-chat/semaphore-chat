@@ -225,6 +225,9 @@ impl AppRoot {
                 .open_url
                 .clone()
                 .unwrap_or_else(|| Rc::new(|url: &str, cx: &mut App| cx.open_url(url))),
+            open_path: config.open_path.clone().unwrap_or_else(|| {
+                Rc::new(|path: &std::path::Path, cx: &mut App| cx.open_with_system(path))
+            }),
         });
         // The app menu's actions act on this root, and its Close to Tray item starts checked.
         // Check for Updates starts disabled: the updater is started once the services are.
@@ -763,13 +766,16 @@ impl AppRoot {
     }
 
     /// Fetches the file into a folder under the app's own data directory (private to this user,
-    /// unlike the shared temp directory, where another local user could plant the path) and hands
-    /// it to the OS's default app: an attachment the inline player can't play.
+    /// unlike the shared temp directory, where another local user could plant the path), marks it
+    /// as downloaded from the internet (Windows' Mark-of-the-Web, so SmartScreen and the OS's
+    /// warnings still apply) and hands its path to the OS's default app: an attachment the inline
+    /// player can't play. Only audio and video go to the OS; anything else is saved instead.
     fn open_externally(&mut self, attachment: AttachmentView, cx: &mut Context<Self>) {
-        // A program, script, installer or shortcut would run, not show: it's saved instead.
-        if !files::may_open_with_the_os(&attachment.filename) {
+        // The name judged is the one written, which is what the OS sees.
+        let name = files::open_externally_name(&attachment.file_id, &attachment.filename);
+        if !files::may_open_with_the_os(&name) {
             log::info!(
-                "saving {:?} instead of opening it: the OS would run that kind of file",
+                "saving {:?} instead of opening it: only audio and video go to the OS",
                 files::safe_file_name(&attachment.filename)
             );
             self.save_attachment(attachment, cx);
@@ -779,11 +785,7 @@ impl AppRoot {
             return;
         };
         let directory = services.data_dir.join("open");
-        let path = directory.join(format!(
-            "{}-{}",
-            files::safe_file_name(&attachment.file_id),
-            files::safe_file_name(&attachment.filename)
-        ));
+        let path = directory.join(name);
         let (core, handle) = (services.core.clone(), services.exec.handle().clone());
         cx.spawn(async move |_, cx| {
             let file_id = attachment.file_id.clone();
@@ -793,7 +795,11 @@ impl AppRoot {
                     let bytes = core.file(file_id, false).await.map_err(|e| e.to_string())?;
                     tokio::task::spawn_blocking(move || {
                         files::create_private_dir(&directory).map_err(|e| e.to_string())?;
-                        std::fs::write(&target, bytes).map_err(|e| e.to_string())
+                        std::fs::write(&target, bytes).map_err(|e| e.to_string())?;
+                        // Without the mark the OS would trust it as the user's own file: not
+                        // opened then.
+                        semaphore_platform_desktop::download_mark::mark_downloaded(&target)
+                            .map_err(|e| format!("marking it as downloaded: {e}"))
                     })
                     .await
                     .map_err(|e| e.to_string())?
@@ -801,8 +807,7 @@ impl AppRoot {
                 .await;
             match written {
                 Ok(Ok(())) => {
-                    let url = format!("file://{}", path.display());
-                    cx.update(|cx| crate::open_url(&url, cx));
+                    cx.update(|cx| crate::open_path(&path, cx));
                 }
                 other => log::warn!("opening {} externally: {other:?}", attachment.filename),
             }
@@ -825,11 +830,7 @@ impl AppRoot {
             let saved = handle
                 .spawn(async move {
                     let bytes = core.file(file_id, false).await.map_err(|e| e.to_string())?;
-                    tokio::task::spawn_blocking(move || {
-                        std::fs::write(&path, bytes).map_err(|e| e.to_string())
-                    })
-                    .await
-                    .map_err(|e| e.to_string())?
+                    files::write_file(path, bytes).await
                 })
                 .await;
             match saved {
