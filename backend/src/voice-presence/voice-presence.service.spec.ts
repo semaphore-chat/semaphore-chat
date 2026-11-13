@@ -852,7 +852,7 @@ describe('VoicePresenceService', () => {
       );
     });
 
-    it('should not update if user not found in channel', async () => {
+    it('should not update presence if user not found in channel', async () => {
       const channelId = 'channel-123';
       const userId = 'nonexistent-user';
 
@@ -862,6 +862,52 @@ describe('VoicePresenceService', () => {
 
       expect(mockRedis.set).not.toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it("sets the LiveKit deafen metadata, even when the presence entry is gone", async () => {
+      mockRedis.get.mockResolvedValue(null);
+
+      await service.updateDeafenState('channel-123', 'user-123', true);
+
+      // Only a participant of the room gets it: LiveKit 404s anyone else
+      expect(livekitService.setDeafenMetadata).toHaveBeenCalledWith(
+        'channel-123',
+        'user-123',
+        true,
+      );
+    });
+  });
+
+  describe('updateDmDeafenState', () => {
+    it("checks membership, then sets the caller's deafen metadata in the call", async () => {
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue({
+        id: 'member-1',
+      });
+
+      await service.updateDmDeafenState('dm-1', 'user-1', true);
+
+      expect(
+        mockDatabaseService.directMessageGroupMember.findFirst,
+      ).toHaveBeenCalledWith({
+        where: { groupId: 'dm-1', userId: 'user-1' },
+        select: { id: true },
+      });
+      expect(livekitService.setDeafenMetadata).toHaveBeenCalledWith(
+        'dm-1',
+        'user-1',
+        true,
+      );
+    });
+
+    it('refuses a non-member', async () => {
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue(
+        null,
+      );
+
+      await expect(
+        service.updateDmDeafenState('dm-1', 'user-1', true),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(livekitService.setDeafenMetadata).not.toHaveBeenCalled();
     });
   });
 

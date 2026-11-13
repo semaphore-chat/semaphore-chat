@@ -76,6 +76,7 @@ vi.mock('../../api-client/sdk.gen', () => ({
   voicePresenceControllerJoinPresence: vi.fn().mockResolvedValue(undefined),
   voicePresenceControllerLeavePresence: vi.fn().mockResolvedValue(undefined),
   voicePresenceControllerUpdateDeafenState: vi.fn().mockResolvedValue(undefined),
+  dmVoicePresenceControllerUpdateDmDeafenState: vi.fn().mockResolvedValue(undefined),
   voiceDiagnosticsControllerReportJoinFailure: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -146,7 +147,7 @@ import { playSound } from '../../hooks/useSound';
 import { setVoiceReconnectCanceller } from '../../features/voice/reconnectControl';
 import { VideoLayoutMode } from '../../types/videoLayout';
 import type { Room } from 'livekit-client';
-import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from '../../api-client/sdk.gen';
+import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState, dmVoicePresenceControllerUpdateDmDeafenState } from '../../api-client/sdk.gen';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
 import { JOIN_PRESENCE_TIMEOUT_MS, ICE_SUMMARY_DELAY_MS } from '../../features/voice/voiceActions';
 import { getJoinAttempts, resetJoinAttempts } from '../../features/voice/joinAttemptLog';
@@ -478,12 +479,13 @@ describe('voiceActions', () => {
   });
 
   describe('toggleDeafenUnified', () => {
-    it('dispatches SET_DEAFENED and updates metadata', async () => {
+    it('dispatches SET_DEAFENED and leaves the metadata to the server', async () => {
       const deps = createMockDeps({ isDeafened: false });
       await toggleDeafenUnified(deps);
 
       expect(deps.dispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetDeafened, payload: true });
-      expect(mockRoomInstance.localParticipant.setMetadata).toHaveBeenCalled();
+      // The token can't update its own metadata: the deafen endpoint sets it
+      expect(mockRoomInstance.localParticipant.setMetadata).not.toHaveBeenCalled();
     });
 
     it('mutes mic when deafening if mic was enabled', async () => {
@@ -504,15 +506,30 @@ describe('voiceActions', () => {
       });
     });
 
-    it('does not call deafen API when in DM (no channelId)', async () => {
+    it('calls the DM deafen API in a DM call', async () => {
       const deps = createMockDeps({ isDeafened: false, channelId: null, dmGroupId: 'dm-1' });
       await toggleDeafenUnified(deps);
 
       expect(voicePresenceControllerUpdateDeafenState).not.toHaveBeenCalled();
+      expect(dmVoicePresenceControllerUpdateDmDeafenState).toHaveBeenCalledWith({
+        path: { dmGroupId: 'dm-1' },
+        body: { isDeafened: true },
+      });
+    });
+
+    it('still deafens when the deafen API fails', async () => {
+      vi.mocked(voicePresenceControllerUpdateDeafenState).mockRejectedValueOnce(new Error('offline'));
+      mockRoomInstance.localParticipant.isMicrophoneEnabled = true;
+      const deps = createMockDeps({ isDeafened: false });
+
+      await expect(toggleDeafenUnified(deps)).resolves.toBeUndefined();
+      expect(deps.dispatch).not.toHaveBeenCalledWith({ type: VoiceActionType.SetDeafened, payload: false });
+      expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
     });
 
     it('rolls back deafen state on error', async () => {
-      mockRoomInstance.localParticipant.setMetadata.mockRejectedValueOnce(new Error('fail'));
+      mockRoomInstance.localParticipant.isMicrophoneEnabled = true;
+      mockRoomInstance.localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(new Error('fail'));
       const deps = createMockDeps({ isDeafened: false });
 
       await expect(toggleDeafenUnified(deps)).rejects.toThrow('fail');
@@ -1165,31 +1182,65 @@ describe('voiceActions resilience (#309)', () => {
   });
 
   describe('deafened rejoin (review #3)', () => {
-    it('starts with isDeafened: true in metadata and restores the backend deafen state', async () => {
+    it('restores the deafen state through the deafen endpoint, not its own metadata', async () => {
       const deps = createMockDeps({ isDeafened: true });
 
       await joinVoiceChannel({ ...params, quiet: true, startMuted: true }, deps);
 
-      expect(mockLocalParticipant.setMetadata).toHaveBeenCalledWith(JSON.stringify({ isDeafened: true }));
+      expect(mockLocalParticipant.setMetadata).not.toHaveBeenCalled();
       expect(voicePresenceControllerUpdateDeafenState).toHaveBeenCalledWith({
         path: { channelId: 'ch-1' },
         body: { isDeafened: true },
       });
     });
 
-    it('a DM rejoin while deafened keeps the metadata deafened', async () => {
+    it('a failing deafen endpoint does not fail the join', async () => {
+      vi.mocked(voicePresenceControllerUpdateDeafenState).mockRejectedValueOnce(new Error('offline'));
+      const deps = createMockDeps({ isDeafened: true });
+
+      await expect(joinVoiceChannel({ ...params, quiet: true, startMuted: true }, deps)).resolves.toBeUndefined();
+      expect(deps.dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: VoiceActionType.SetConnectionError }),
+      );
+    });
+
+    it('a DM rejoin while deafened restores it through the DM deafen endpoint', async () => {
       const deps = createMockDeps({ isDeafened: true });
       await joinDmVoice(
         { dmGroupId: 'dm-1', dmGroupName: 'DM', user: params.user, connectionInfo: params.connectionInfo, quiet: true },
         deps,
       );
-      expect(mockLocalParticipant.setMetadata).toHaveBeenCalledWith(JSON.stringify({ isDeafened: true }));
+      expect(mockLocalParticipant.setMetadata).not.toHaveBeenCalled();
+      expect(dmVoicePresenceControllerUpdateDmDeafenState).toHaveBeenCalledWith({
+        path: { dmGroupId: 'dm-1' },
+        body: { isDeafened: true },
+      });
     });
 
-    it('not deafened: metadata false and no deafen update', async () => {
+    it('a failing DM deafen endpoint does not fail the DM join', async () => {
+      vi.mocked(dmVoicePresenceControllerUpdateDmDeafenState).mockRejectedValueOnce(new Error('offline'));
+      const deps = createMockDeps({ isDeafened: true });
+
+      await expect(
+        joinDmVoice(
+          { dmGroupId: 'dm-1', dmGroupName: 'DM', user: params.user, connectionInfo: params.connectionInfo, quiet: true },
+          deps,
+        ),
+      ).resolves.toBeUndefined();
+      expect(deps.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ type: VoiceActionType.SetDmConnected }),
+      );
+    });
+
+    it('not deafened: no metadata and no deafen update', async () => {
       await joinVoiceChannel(params, createMockDeps());
-      expect(mockLocalParticipant.setMetadata).toHaveBeenCalledWith(JSON.stringify({ isDeafened: false }));
+      await joinDmVoice(
+        { dmGroupId: 'dm-1', dmGroupName: 'DM', user: params.user, connectionInfo: params.connectionInfo, quiet: true },
+        createMockDeps(),
+      );
+      expect(mockLocalParticipant.setMetadata).not.toHaveBeenCalled();
       expect(voicePresenceControllerUpdateDeafenState).not.toHaveBeenCalled();
+      expect(dmVoicePresenceControllerUpdateDmDeafenState).not.toHaveBeenCalled();
     });
   });
 

@@ -14,7 +14,7 @@ import {
   type VoiceJoinTarget,
   type VoiceState,
 } from "../../contexts/VoiceContext";
-import { livekitControllerGenerateToken, livekitControllerGenerateDmToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from "../../api-client/sdk.gen";
+import { livekitControllerGenerateToken, livekitControllerGenerateDmToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState, dmVoicePresenceControllerUpdateDmDeafenState } from "../../api-client/sdk.gen";
 import { queryClient } from "../../queryClient";
 
 import { getScreenShareSettings, DEFAULT_SCREEN_SHARE_SETTINGS } from "../../utils/screenShareState";
@@ -352,7 +352,7 @@ async function connectToLiveKitRoom(
   token: string,
   setRoom: (room: Room | null) => void,
   dispatch: React.Dispatch<VoiceAction>,
-  options: { startMuted?: boolean; pending?: PendingJoin; isDeafened?: boolean } = {},
+  options: { startMuted?: boolean; pending?: PendingJoin } = {},
 ): Promise<Room> {
   logger.info('[Voice] Creating new LiveKit room instance');
   // Dynamically import livekit-client (and its Web Worker timer shim) here —
@@ -420,11 +420,8 @@ async function connectToLiveKitRoom(
     logger.info('[Voice] Connected to LiveKit room, state:', room.state);
     throwIfCancelled(options.pending);
     setRoom(room);
-
-    // A rejoin while deafened must keep showing others we're deafened.
-    const initialMetadata = JSON.stringify({ isDeafened: options.isDeafened === true });
-    await room.localParticipant.setMetadata(initialMetadata);
-    logger.info('[Voice] Set initial participant metadata');
+    // No setMetadata: the token can't change its own metadata (the server
+    // sets `{ isDeafened }` through the deafen endpoints, see the callers)
   } catch (error) {
     if (options.pending?.cancelled) {
       throw new JoinCancelledError();
@@ -633,7 +630,7 @@ export async function joinVoiceChannel(
     logger.info('[Voice] Connecting to LiveKit room...');
     throwIfCancelled(join);
     const isDeafened = deps.getVoiceState().isDeafened;
-    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted, pending: join, isDeafened });
+    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted, pending: join });
     throwIfCancelled(join);
 
     dispatch({
@@ -898,9 +895,16 @@ export async function joinDmVoice(
     const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, {
       startMuted,
       pending: join,
-      isDeafened: deps.getVoiceState().isDeafened,
     });
     throwIfCancelled(join);
+
+    // A rejoin while deafened must keep showing the others we're deafened.
+    // Best effort: a failure must not fail the join.
+    if (deps.getVoiceState().isDeafened) {
+      dmVoicePresenceControllerUpdateDmDeafenState({ path: { dmGroupId }, body: { isDeafened: true } }).catch((err) => {
+        logger.warn('[Voice] Failed to restore DM deafen state:', err);
+      });
+    }
 
     dispatch({
       type: VoiceActionType.SetDmConnected,
@@ -1185,28 +1189,22 @@ export async function toggleDeafenUnified(deps: VoiceActionDeps) {
   try {
     dispatch({ type: VoiceActionType.SetDeafened, payload: newDeafenedState });
 
-    if (room) {
-      const currentMetadata = room.localParticipant.metadata;
-      let metadata: Record<string, unknown> = {};
-      try {
-        metadata = currentMetadata ? JSON.parse(currentMetadata) : {};
-      } catch {
-        // Invalid existing metadata, start fresh
-      }
-      metadata.isDeafened = newDeafenedState;
-      await room.localParticipant.setMetadata(JSON.stringify(metadata));
-      logger.info('[Voice] Updated LiveKit metadata with isDeafened:', newDeafenedState);
-    }
-
-    // Notify backend so non-connected viewers see the deafen state change
-    const channelId = currentChannelId;
-    if (channelId) {
+    // The server sets our LiveKit metadata (what the call's tiles show) and,
+    // in a channel, the presence the sidebar shows. Best effort: the deafen
+    // itself is local and must not wait for it or fail with it.
+    const onDeafenSyncError = (err: unknown) => {
+      logger.warn('[Voice] Failed to update deafen state on backend:', err);
+    };
+    if (currentChannelId) {
       voicePresenceControllerUpdateDeafenState({
-        path: { channelId },
+        path: { channelId: currentChannelId },
         body: { isDeafened: newDeafenedState },
-      }).catch((err) => {
-        logger.warn('[Voice] Failed to update deafen state on backend:', err);
-      });
+      }).catch(onDeafenSyncError);
+    } else if (currentDmGroupId) {
+      dmVoicePresenceControllerUpdateDmDeafenState({
+        path: { dmGroupId: currentDmGroupId },
+        body: { isDeafened: newDeafenedState },
+      }).catch(onDeafenSyncError);
     }
 
     if (newDeafenedState && room) {

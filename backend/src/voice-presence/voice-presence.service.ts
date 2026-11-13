@@ -796,6 +796,20 @@ export class VoicePresenceService {
   }
 
   /**
+   * Set the caller's deafen state in a DM call: the LiveKit metadata the
+   * call's tiles read (a no-op unless they're in the call). DM presence has
+   * no per-user update event, so nothing else changes.
+   */
+  async updateDmDeafenState(
+    dmGroupId: string,
+    userId: string,
+    isDeafened: boolean,
+  ): Promise<void> {
+    await this.assertDmMember(dmGroupId, userId);
+    await this.livekitService.setDeafenMetadata(dmGroupId, userId, isDeafened);
+  }
+
+  /**
    * Update a user's deafen state in a voice channel
    * Updates Redis and broadcasts the change to all clients in the channel
    */
@@ -804,6 +818,10 @@ export class VoicePresenceService {
     userId: string,
     isDeafened: boolean,
   ): Promise<void> {
+    // What the call's tiles show (only for a participant of the room), also
+    // when the presence entry has lapsed
+    await this.livekitService.setDeafenMetadata(channelId, userId, isDeafened);
+
     const userDataKey = `${this.VOICE_PRESENCE_USER_DATA_PREFIX}:${channelId}:${userId}`;
     const userDataStr = await this.redis.get(userDataKey);
 
