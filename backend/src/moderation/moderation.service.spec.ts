@@ -71,6 +71,12 @@ describe('ModerationService', () => {
     jest.clearAllMocks();
   });
 
+  /** The payload of the `event` sent to `room`, if any. */
+  const sentTo = (room: string, event: string) =>
+    websocketService.sendToRoom.mock.calls.find(
+      ([r, e]) => r === room && e === event,
+    )?.[2];
+
   // Position-based role mocks: lower position = higher rank (Community Admin=10, Moderator=20, Member=100)
   const mockAdminRole = {
     id: '1',
@@ -516,6 +522,11 @@ describe('ModerationService', () => {
         expect.any(String),
         expect.objectContaining({ communityId, userId }),
       );
+      // RT-4: the community hears who, not by whom or why; the target does
+      expect(sentTo(RoomName.community(communityId), ServerEvents.USER_BANNED)).toEqual({ communityId, userId, expiresAt: undefined });
+      expect(sentTo(RoomName.user(userId), ServerEvents.USER_BANNED)).toEqual(
+        expect.objectContaining({ moderatorId, reason: 'spam' }),
+      );
       // removeMemberInternal removes role assignments via a raw
       // tx.userRoles.deleteMany, bypassing CommunityRolesService — banUser must
       // bump the target user's epoch explicitly.
@@ -616,7 +627,7 @@ describe('ModerationService', () => {
       );
     });
 
-    it('tells the community a ban was lifted, with who lifted it', async () => {
+    it('tells the community a ban was lifted, without who lifted it (RT-4)', async () => {
       mockDatabase.communityBan.findUnique.mockResolvedValue({
         id: 'ban-1',
         active: true,
@@ -628,7 +639,7 @@ describe('ModerationService', () => {
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         RoomName.community(communityId),
         ServerEvents.USER_UNBANNED,
-        { communityId, userId, moderatorId },
+        { communityId, userId },
       );
     });
 
@@ -834,6 +845,11 @@ describe('ModerationService', () => {
         expect.any(String),
         expect.objectContaining({ communityId, userId }),
       );
+      // RT-4: the community hears who, not by whom or why; the target does
+      expect(sentTo(RoomName.community(communityId), ServerEvents.USER_KICKED)).toEqual({ communityId, userId });
+      expect(sentTo(RoomName.user(userId), ServerEvents.USER_KICKED)).toEqual(
+        expect.objectContaining({ moderatorId, reason: 'rule violation' }),
+      );
       // removeMemberInternal removes role assignments via a raw
       // tx.userRoles.deleteMany, bypassing CommunityRolesService — kickUser must
       // bump the target user's epoch explicitly.
@@ -887,6 +903,16 @@ describe('ModerationService', () => {
         RoomName.community(communityId),
         expect.any(String),
         expect.objectContaining({ communityId, userId }),
+      );
+      // RT-4: the community hears who, not by whom or why; the target does
+      expect(sentTo(RoomName.community(communityId), ServerEvents.USER_TIMED_OUT)).toEqual({
+        communityId,
+        userId,
+        durationSeconds: 600,
+        expiresAt: expect.any(String),
+      });
+      expect(sentTo(RoomName.user(userId), ServerEvents.USER_TIMED_OUT)).toEqual(
+        expect.objectContaining({ moderatorId, reason: 'cool down' }),
       );
       // Timeouts don't touch UserRoles/Role and aren't consulted by
       // PermissionsService — no epoch bump is expected.
@@ -1005,6 +1031,11 @@ describe('ModerationService', () => {
         RoomName.community(communityId),
         expect.any(String),
         expect.objectContaining({ communityId, userId }),
+      );
+      // RT-4: the community hears who, not by whom or why; the target does
+      expect(sentTo(RoomName.community(communityId), ServerEvents.TIMEOUT_REMOVED)).toEqual({ communityId, userId });
+      expect(sentTo(RoomName.user(userId), ServerEvents.TIMEOUT_REMOVED)).toEqual(
+        expect.objectContaining({ moderatorId }),
       );
     });
 

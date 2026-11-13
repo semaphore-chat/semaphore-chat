@@ -255,11 +255,12 @@ export class ModerationService {
       `User ${userId} banned from community ${communityId} by ${moderatorId}`,
     );
 
-    // Emit WebSocket event to community (for other members)
+    // Emit WebSocket event to community (for other members). Who banned them
+    // and why stay with the target and the moderation log.
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.USER_BANNED,
-      banPayload,
+      { communityId, userId, expiresAt: banPayload.expiresAt },
     );
   }
 
@@ -312,11 +313,12 @@ export class ModerationService {
     );
 
     // The ban list and moderation log changed for everyone who can see them
-    // (the same community-wide audience as USER_BANNED).
+    // (the same community-wide audience as USER_BANNED). Who lifted it is in
+    // the log, for those who may read it.
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.USER_UNBANNED,
-      { communityId, userId, moderatorId },
+      { communityId, userId },
     );
   }
 
@@ -456,11 +458,12 @@ export class ModerationService {
       `User ${userId} kicked from community ${communityId} by ${moderatorId}`,
     );
 
-    // Emit WebSocket event to community (for other members)
+    // Emit WebSocket event to community (for other members). Who kicked them
+    // and why stay with the target and the moderation log.
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.USER_KICKED,
-      kickPayload,
+      { communityId, userId },
     );
   }
 
@@ -568,18 +571,23 @@ export class ModerationService {
       `User ${userId} timed out for ${durationSeconds}s in community ${communityId} by ${moderatorId}`,
     );
 
-    // Emit WebSocket event to community
+    // The target hears who timed them out and why; the community only that
+    // they are (the moderation log keeps the rest)
+    const timeoutPayload = {
+      communityId,
+      userId,
+      durationSeconds,
+      expiresAt: expiresAt.toISOString(),
+    };
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.USER_TIMED_OUT,
+      { ...timeoutPayload, moderatorId, reason },
+    );
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.USER_TIMED_OUT,
-      {
-        communityId,
-        userId,
-        moderatorId,
-        reason,
-        durationSeconds,
-        expiresAt: expiresAt.toISOString(),
-      },
+      timeoutPayload,
     );
 
     // Voice: make them listen-only right away in any call they're in
@@ -702,16 +710,16 @@ export class ModerationService {
       `Timeout removed for user ${userId} in community ${communityId} by ${moderatorId}`,
     );
 
-    // Emit WebSocket event to community
+    // The target hears who lifted it and why; the community only that it is
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.TIMEOUT_REMOVED,
+      { communityId, userId, moderatorId, reason },
+    );
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.TIMEOUT_REMOVED,
-      {
-        communityId,
-        userId,
-        moderatorId,
-        reason,
-      },
+      { communityId, userId },
     );
 
     // Voice: restore what they may publish in any call they're in

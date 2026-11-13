@@ -1,4 +1,6 @@
 import { TestBed } from '@suites/unit';
+import { ServerEvents } from '@semaphore-chat/shared';
+import { WebsocketService } from '@/websocket/websocket.service';
 import type { Mocked } from '@suites/doubles.jest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MembershipService } from './membership.service';
@@ -35,6 +37,7 @@ describe('MembershipService', () => {
   let eventEmitter: Mocked<EventEmitter2>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
   let inviteService: Mocked<InviteService>;
+  let websocketServiceMock: Mocked<WebsocketService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -50,6 +53,7 @@ describe('MembershipService', () => {
     eventEmitter = unitRef.get(EventEmitter2);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
     inviteService = unitRef.get(InviteService);
+    websocketServiceMock = unitRef.get(WebsocketService);
   });
 
   afterEach(() => {
@@ -1054,6 +1058,35 @@ describe('MembershipService', () => {
           communityRolesService.assertKeepsTopHolder,
         ).not.toHaveBeenCalled();
         expect(tx.membership.delete).toHaveBeenCalled();
+      });
+
+      // RT-4: who removed them goes to the target only
+      it('tells the community who was removed, not by whom', async () => {
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(removalTx()));
+        mockDatabase.moderationLog.create.mockResolvedValue({});
+        const websocketService = websocketServiceMock;
+
+        await service.removeByActor(
+          { id: 'owner-1', role: 'OWNER' },
+          'member-1',
+          'community-1',
+        );
+
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'community:community-1',
+          ServerEvents.USER_KICKED,
+          { communityId: 'community-1', userId: 'member-1' },
+        );
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'user:member-1',
+          ServerEvents.USER_KICKED,
+          {
+            communityId: 'community-1',
+            userId: 'member-1',
+            moderatorId: 'owner-1',
+          },
+        );
       });
     });
 

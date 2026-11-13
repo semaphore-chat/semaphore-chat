@@ -529,16 +529,16 @@ export class MembershipService {
       },
     });
 
-    const payload = { communityId, userId, moderatorId: actor.id };
+    // As for a kick: who removed them goes to the target only
     this.websocketService.sendToRoom(
       RoomName.user(userId),
       ServerEvents.USER_KICKED,
-      payload,
+      { communityId, userId, moderatorId: actor.id },
     );
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.USER_KICKED,
-      payload,
+      { communityId, userId },
     );
   }
 

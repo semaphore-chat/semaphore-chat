@@ -627,9 +627,19 @@ describe('RoomSubscriptionHandler', () => {
         moderatorId: 'mod-1',
       });
 
-      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(1);
+      // RT-4: the community isn't told who set the timeout; the target is
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(2);
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'community:community-456',
+        ServerEvents.TIMEOUT_REMOVED,
+        {
+          communityId: 'community-456',
+          userId: 'user-1',
+          expired: true,
+        },
+      );
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        'user:user-1',
         ServerEvents.TIMEOUT_REMOVED,
         {
           communityId: 'community-456',

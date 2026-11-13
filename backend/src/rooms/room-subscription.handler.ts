@@ -225,10 +225,16 @@ export class RoomSubscriptionHandler {
     communityId,
     moderatorId,
   }: ModerationTimeoutExpiredEvent): void {
+    // Who set it goes to the target only, as for a moderator lifting it
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.TIMEOUT_REMOVED,
+      { communityId, userId, moderatorId, expired: true },
+    );
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.TIMEOUT_REMOVED,
-      { communityId, userId, moderatorId, expired: true },
+      { communityId, userId, expired: true },
     );
     this.logger.debug(
       `Timeout of ${userId} in community ${communityId} expired`,
