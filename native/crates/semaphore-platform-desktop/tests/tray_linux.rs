@@ -164,7 +164,11 @@ fn enabled(connection: &zbus::Connection, item: &str, id: i32) -> bool {
     ))
     .unwrap();
     let groups: Vec<(i32, HashMap<String, OwnedValue>)> = reply.body().deserialize().unwrap();
-    bool::try_from(groups[0].1["enabled"].clone()).unwrap()
+    // dbusmenu leaves a property out when it has its default, and `enabled` defaults to true.
+    groups[0]
+        .1
+        .get("enabled")
+        .map_or(true, |value| bool::try_from(value.clone()).unwrap())
 }
 
 /// A check box's `toggle-state`: 1 checked, 0 not.
