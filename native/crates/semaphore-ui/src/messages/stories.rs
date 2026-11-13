@@ -42,6 +42,8 @@ struct StoryList {
     selection: Option<Selection>,
     /// The row to start at. The list starts at its tail otherwise.
     top_seq: Option<i64>,
+    /// "Load images from other sites" (off, as the list starts).
+    third_party: bool,
 }
 
 impl StoryList {
@@ -53,6 +55,7 @@ impl StoryList {
             now_ms: NOW_MS,
             selection: None,
             top_seq: None,
+            third_party: false,
         }
     }
 
@@ -75,6 +78,7 @@ impl StoryList {
                 cx,
             );
             list.set_selection(self.selection, cx);
+            list.set_third_party_media(self.third_party, cx);
             if let Some(seq) = self.top_seq {
                 list.scroll_to_seq(seq, 0.);
             }
@@ -219,7 +223,12 @@ fn link_preview(cx: &mut App) -> AnyView {
         favicon_url: None,
         author_name: None,
     }];
-    StoryList::new(vec![row]).view(cx)
+    // Allowed, with a source that has no such picture: the card as it was before the setting.
+    StoryList {
+        third_party: true,
+        ..StoryList::new(vec![row])
+    }
+    .view(cx)
 }
 
 fn conversation(top_seq: Option<i64>, cx: &mut App) -> AnyView {
@@ -502,6 +511,8 @@ fn action_stories() -> Vec<Story> {
 pub fn stories() -> Vec<Story> {
     let mut stories = action_stories();
     stories.extend(base_stories());
+    // UM: GIFs, third-party pictures and "Seen by", in their own file.
+    stories.extend(super::media_stories::stories());
     stories
 }
 

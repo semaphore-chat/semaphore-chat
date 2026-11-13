@@ -102,6 +102,8 @@ pub struct Composer {
     slowmode: Option<Duration>,
     slowmode_until: Option<Instant>,
     emoji_open: bool,
+    /// The server offers GIF search (`ServerInfo::gif_search`): the GIF button shows.
+    gifs_enabled: bool,
     actions_open: bool,
     focused: bool,
     ticker: Option<Task<()>>,
@@ -128,6 +130,15 @@ fn draft_rows(window: &Window) -> usize {
 }
 
 impl Composer {
+    /// U-freeze (UG): show the GIF button (the server offers GIF search). Drawn by UG.
+    pub fn set_gifs_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.gifs_enabled == enabled {
+            return;
+        }
+        self.gifs_enabled = enabled;
+        cx.notify();
+    }
+
     pub fn new(config: ComposerConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let rows = draft_rows(window);
         let placeholder = config.placeholder;
@@ -171,6 +182,7 @@ impl Composer {
             slowmode: None,
             slowmode_until: None,
             emoji_open: false,
+            gifs_enabled: false,
             actions_open: false,
             focused: false,
             ticker: None,
@@ -1300,6 +1312,18 @@ impl Composer {
                         .aria_expanded(self.emoji_open)
                         .on_click(cx.listener(|this, _, _, cx| this.open_emoji(cx))),
                     )
+                    .when(self.gifs_enabled, |paper| {
+                        paper.child(
+                            self.icon_button(
+                                "composer-gif",
+                                "add gif",
+                                DesignIcon::GifBoxOutlined,
+                                p.icon,
+                                sending,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.open_gifs(cx))),
+                        )
+                    })
                     .when(self.mode == ComposerMode::Send, |paper| {
                         paper.child(
                             self.icon_button(
@@ -1472,6 +1496,12 @@ impl Composer {
         cx.notify();
     }
 
+    fn open_gifs(&mut self, cx: &mut Context<Self>) {
+        self.actions_open = false;
+        cx.emit(ComposerEvent::OpenGifs);
+        cx.notify();
+    }
+
     fn open_files(&mut self, cx: &mut Context<Self>) {
         self.actions_open = false;
         cx.emit(ComposerEvent::OpenFilePicker);
@@ -1533,6 +1563,12 @@ impl Composer {
                             can_attach,
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.open_files(cx))),
+                    )
+                })
+                .when(self.gifs_enabled, |sheet| {
+                    sheet.child(
+                        row("composer-gif", "GIF", DesignIcon::GifBoxOutlined, true)
+                            .on_click(cx.listener(|this, _, _, cx| this.open_gifs(cx))),
                     )
                 })
                 .child(

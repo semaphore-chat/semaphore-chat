@@ -1,0 +1,102 @@
+# WP: the voice pre-join in the real app, against semaphore-fake-server minting real tokens for
+# lk-stack's LiveKit (run by `slice-e2e.sh --voice`). Choosing a voice channel shows who's here
+# and the joins instead of joining; Join muted joins muted; another user's join shows in the list
+# before we join (`voice_join_as`, a second client's presence); a voice channel chosen while in a
+# call says joining moves you, and moving works; a timed-out member joins listen-only.
+# Snaps named *-live-* carry a live call and aren't compared; 01-prejoin and 04-left are.
+
+app 1280 800
+server act_as "{\"communityId\": \"$ID(c-couch)\", \"roleIds\": [\"$ID(role-moderator-c-couch)\"], \"userId\": \"$ID(u-marcus)\"}"
+server sign_in_as "{\"username\": \"pri\", \"userId\": \"$ID(u-priya)\"}"
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core connection connected
+
+# 1. Squad Up chosen from the sidebar: its pre-join, with who's here, and no join.
+click channel-$ID(vc-squad)
+wait core element voice-prejoin
+wait core w9v prejoin users 2
+wait core w9v prejoin user "dropbear"
+wait core w9v prejoin user "pri"
+expect core voice room none
+expect core requests VoicePresenceController_joinPresence == 0
+# Another user joins (their own client's join): the list shows them before we join.
+server voice_join_as "{\"channelId\": \"$ID(vc-squad)\", \"userId\": \"$ID(u-grace)\"}"
+wait core w9v prejoin users 3
+wait core w9v prejoin user "gracie"
+wait idle
+shot 01-prejoin
+server voice_leave_as "{\"channelId\": \"$ID(vc-squad)\", \"userId\": \"$ID(u-grace)\"}"
+wait core w9v prejoin users 2
+
+# 2. Join muted: the call starts muted, and the column shows the stage.
+click voice-prejoin-join-muted
+wait core voice connected within 30
+wait core voice muted
+wait core w9v prejoin gone
+wait core label "Share screen"
+wait core voice participant demo-peer within 30
+expect requests VoicePresenceController_joinPresence >= 1
+tick 100
+snap 02-live-joined-muted
+
+# 3. AFK chosen while in Squad Up: "joining moves you here"; Join moves the call.
+click channel-$ID(vc-afk)
+wait core element voice-prejoin-elsewhere
+wait core w9v prejoin user "kwam3"
+# The call's float card stays off the pre-join (its joins sit where the card goes); the bar shows
+# the call.
+wait core float hidden
+wait core label "Share screen"
+expect core voice room channel $ID(vc-squad)
+tick 100
+snap 03-live-moves-you
+click voice-prejoin-join
+wait core voice room channel $ID(vc-afk) within 30
+wait core voice connected within 30
+wait core w9v prejoin gone
+wait core requests VoicePresenceController_leavePresence >= 1
+expect core w9v join-failed gone
+click voice-leave
+wait core voice disconnected
+# Left: the channel's pre-join again, without us.
+wait core element voice-prejoin
+wait core w9v prejoin users 1
+wait idle
+shot 04-left
+
+# 4. Priya, timed out in Couch Co-op: "you can listen", and the one join is listen-only.
+server moderate_as "{\"moderatorId\": \"$ID(u-marcus)\", \"action\": \"timeout\", \"communityId\": \"$ID(c-couch)\", \"userId\": \"$ID(u-priya)\", \"durationSeconds\": 3600}"
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+click auth-username
+type "pri"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+navigate /community/$ID(c-couch)/channel/$ID(vc-squad)
+wait core element voice-prejoin
+wait core element voice-prejoin-listen-note
+wait core w5 enabled voice-prejoin-listen
+expect core no-element voice-prejoin-join
+expect core no-element voice-prejoin-join-muted
+tick 100
+snap 05-live-listen-only
+click voice-prejoin-listen
+wait core voice connected within 30
+wait core voice muted
+wait core w9v prejoin gone
+click voice-leave
+wait core voice disconnected

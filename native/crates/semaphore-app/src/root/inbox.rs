@@ -401,6 +401,8 @@ impl AppRoot {
         {
             let state = header_state(&core, &dm_group_id);
             header.update(cx, |header, cx| header.set_state(state, cx));
+            // UI freeze: WU offers a group's "Add people" and "Leave".
+            self.u9_dm_header_updated(&header, &dm_group_id, cx);
         }
     }
 
@@ -508,6 +510,7 @@ impl AppRoot {
                 if let Some(header) = self.inbox.header.clone() {
                     let state = header_state(&core, dm_group_id);
                     header.update(cx, |header, cx| header.set_state(state, cx));
+                    self.u9_dm_header_updated(&header, dm_group_id, cx);
                 }
                 Some(dm_group_id.clone())
             }
@@ -690,6 +693,16 @@ impl AppRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.run_notification_event(event, window, cx);
+    }
+
+    /// A notification row's action, from the centre or (UI freeze, WU) the notifications page.
+    pub(super) fn run_notification_event(
+        &mut self,
+        event: &NotificationEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let (Some(core), Some(exec)) = (
             self.core(),
             self.services.as_ref().map(|services| services.exec.clone()),
@@ -852,6 +865,8 @@ impl AppRoot {
         cx: &mut Context<Self>,
     ) {
         match event {
+            // UI freeze: WU's hub file.
+            DmHeaderEvent::AddPeople | DmHeaderEvent::Leave => self.u9_dm_header(event, window, cx),
             DmHeaderEvent::Back => self.navigate(Route::DirectMessages, cx),
             DmHeaderEvent::OpenProfile { user_id } => {
                 self.open_profile(user_id.clone(), window, cx)

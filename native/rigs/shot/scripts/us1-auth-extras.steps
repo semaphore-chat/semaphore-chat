@@ -1,0 +1,111 @@
+# US1 connect notice, register modes, joining an invite: every state, each at 1280x800 (dark) and
+# 390x844 (light).
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/us1-auth-extras.steps
+story auth-connect-needs-setup 1280 800 dark-blue-balanced
+wait idle
+shot auth-connect-needs-setup-desktop
+story auth-connect-needs-setup 390 844 light-blue-balanced
+wait idle
+shot auth-connect-needs-setup-phone
+story auth-connect-needs-setup-phone 1280 800 dark-blue-balanced
+wait idle
+shot auth-connect-needs-setup-phone-desktop
+story auth-connect-needs-setup-phone 390 844 light-blue-balanced
+wait idle
+shot auth-connect-needs-setup-phone-phone
+story auth-register-closed 1280 800 dark-blue-balanced
+wait idle
+shot auth-register-closed-desktop
+story auth-register-closed 390 844 light-blue-balanced
+wait idle
+shot auth-register-closed-phone
+story auth-register-invite-required 1280 800 dark-blue-balanced
+wait idle
+shot auth-register-invite-required-desktop
+story auth-register-invite-required 390 844 light-blue-balanced
+wait idle
+shot auth-register-invite-required-phone
+story auth-register-open 1280 800 dark-blue-balanced
+wait idle
+shot auth-register-open-desktop
+story auth-register-open 390 844 light-blue-balanced
+wait idle
+shot auth-register-open-phone
+story auth-signin-registration-closed 1280 800 dark-blue-balanced
+wait idle
+shot auth-signin-registration-closed-desktop
+story auth-signin-registration-closed 390 844 light-blue-balanced
+wait idle
+shot auth-signin-registration-closed-phone
+story invite-signed-in 1280 800 dark-blue-balanced
+wait idle
+shot invite-signed-in-desktop
+story invite-signed-in 390 844 light-blue-balanced
+wait idle
+shot invite-signed-in-phone
+story invite-joining 1280 800 dark-blue-balanced
+wait idle
+shot invite-joining-desktop
+story invite-joining 390 844 light-blue-balanced
+wait idle
+shot invite-joining-phone
+story invite-joined 1280 800 dark-blue-balanced
+wait idle
+shot invite-joined-desktop
+story invite-joined 390 844 light-blue-balanced
+wait idle
+shot invite-joined-phone
+story invite-joined-some-skipped 1280 800 dark-blue-balanced
+wait idle
+shot invite-joined-some-skipped-desktop
+story invite-joined-some-skipped 390 844 light-blue-balanced
+wait idle
+shot invite-joined-some-skipped-phone
+story invite-joined-nothing-new 1280 800 dark-blue-balanced
+wait idle
+shot invite-joined-nothing-new-desktop
+story invite-joined-nothing-new 390 844 light-blue-balanced
+wait idle
+shot invite-joined-nothing-new-phone
+story invite-join-failed 1280 800 dark-blue-balanced
+wait idle
+shot invite-join-failed-desktop
+story invite-join-failed 390 844 light-blue-balanced
+wait idle
+shot invite-join-failed-phone
+story invite-expired 1280 800 dark-blue-balanced
+wait idle
+shot invite-expired-desktop
+story invite-expired 390 844 light-blue-balanced
+wait idle
+shot invite-expired-phone
+story invite-exhausted 1280 800 dark-blue-balanced
+wait idle
+shot invite-exhausted-desktop
+story invite-exhausted 390 844 light-blue-balanced
+wait idle
+shot invite-exhausted-phone
+story invite-not-found 1280 800 dark-blue-balanced
+wait idle
+shot invite-not-found-desktop
+story invite-not-found 390 844 light-blue-balanced
+wait idle
+shot invite-not-found-phone
+story invite-disabled 1280 800 dark-blue-balanced
+wait idle
+shot invite-disabled-desktop
+story invite-disabled 390 844 light-blue-balanced
+wait idle
+shot invite-disabled-phone
+story invite-long-names 1280 800 dark-blue-balanced
+wait idle
+shot invite-long-names-desktop
+story invite-long-names 390 844 light-blue-balanced
+wait idle
+shot invite-long-names-phone
+story invite-phone 1280 800 dark-blue-balanced
+wait idle
+shot invite-phone-desktop
+story invite-phone 390 844 light-blue-balanced
+wait idle
+shot invite-phone-phone

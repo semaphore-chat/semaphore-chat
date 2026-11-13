@@ -162,6 +162,9 @@ pub trait MentionSource {
 
 #[derive(Clone)]
 pub enum ComposerEvent {
+    /// U-freeze (UG): the GIF button: the owner opens the `GifPicker` over the composer.
+    /// Offered with `Composer::set_gifs_enabled(true)` (`ServerInfo::gif_search`).
+    OpenGifs,
     /// Upload `attachments`, send `draft`, then call `Composer::send_settled`.
     Send {
         conversation: Conversation,

@@ -5,7 +5,7 @@ use super::common::{
     design_icon, error_block, icon_button, is_phone, panel_header, preview_text, relative_time,
 };
 use super::{SearchPanel, SearchPanelEvent, SearchResults, SearchScopeChoice};
-use crate::kit::{Spinner, Variant, spacing, text};
+use crate::kit::{Button, Spinner, Variant, spacing, text};
 use crate::theme::SemTheme;
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
@@ -420,7 +420,39 @@ impl SearchPanel {
                             .into_any_element()
                     })
                     .collect();
-                if at_limit {
+                if self.more_known {
+                    if self.loading_more {
+                        rows.push(
+                            div()
+                                .id("search-more-loading")
+                                .flex_shrink_0()
+                                .test_support()
+                                .role(Role::ProgressIndicator)
+                                .aria_label("Loading more results")
+                                .py(spacing(2.))
+                                .flex()
+                                .justify_center()
+                                .child(Spinner::new("search-more-spinner").size(24.))
+                                .into_any_element(),
+                        );
+                    } else if self.more {
+                        rows.push(
+                            div()
+                                .flex_shrink_0()
+                                .py(spacing(1.))
+                                .flex()
+                                .justify_center()
+                                .child(
+                                    Button::new("search-more", "More results")
+                                        .outlined()
+                                        .on_click(cx.listener(|_, _, _, cx| {
+                                            cx.emit(SearchPanelEvent::More)
+                                        })),
+                                )
+                                .into_any_element(),
+                        );
+                    }
+                } else if at_limit {
                     rows.push(
                         div()
                             .id("search-at-limit")

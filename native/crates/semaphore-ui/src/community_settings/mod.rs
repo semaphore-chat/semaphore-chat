@@ -25,7 +25,9 @@
 //! `CommunitySettingsScreen::set_settings` hands that op to the tabs that send on it.
 
 mod channels;
-mod common;
+/// Shared with the admin pages (UI freeze): page frame, cards, rows, lists, locked buttons,
+/// loading rows, empty lines, server errors.
+pub(crate) mod common;
 mod emoji;
 mod groups;
 mod invites;

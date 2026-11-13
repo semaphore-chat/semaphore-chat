@@ -1,0 +1,2 @@
+# WT image thumbnails with mixed shapes. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/wt-thumbnails.steps

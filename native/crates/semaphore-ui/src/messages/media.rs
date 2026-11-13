@@ -32,6 +32,11 @@ pub trait MediaSource: 'static {
     fn link_image(&self, _url: &str) -> MediaRef {
         MediaRef::Missing
     }
+    /// UI freeze (UG, UM, WM): a GIF from the GIF service (a picker preview or a GIF message): a
+    /// third-party URL, so nothing unless the app allows it, as `link_image`.
+    fn gif(&self, _url: &str) -> MediaRef {
+        MediaRef::Missing
+    }
 }
 
 #[derive(Clone)]

@@ -115,7 +115,7 @@ impl Render for DesktopAppSettings {
         let previews = section("Link previews", cx).child(switch_row(
             Switch::new(
                 "desktop-link-preview-images",
-                "Link preview images",
+                "Load images from other sites (link previews, GIFs)",
                 state.link_preview_images,
             )
             .on_change(move |on, _, cx| {
@@ -123,8 +123,8 @@ impl Render for DesktopAppSettings {
                     .update(cx, |_, cx| cx.emit(DesktopAppEvent::SetLinkPreviewImages(on)))
                     .ok();
             }),
-            "Link preview images",
-            Some("Show the picture in a link's preview. The images load from third-party sites, which can see your IP address.".into()),
+            "Load images from other sites (link previews, GIFs)",
+            Some("Show link-preview pictures and GIFs. They load from third-party sites, which can see your IP address.".into()),
             cx,
         ));
         let server_name = state.server_name.clone();

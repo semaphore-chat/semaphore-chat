@@ -1,0 +1,74 @@
+# UG the GIF picker and the composer's GIF button: every story at 1280x800 dark and 390x844 light.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/ug-gif-picker.steps
+story gif-picker-loading 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-loading-desktop
+story gif-picker-loading 390 844 light-blue-balanced
+wait idle
+shot gif-picker-loading-phone
+story gif-picker-featured 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-featured-desktop
+story gif-picker-featured 390 844 light-blue-balanced
+wait idle
+shot gif-picker-featured-phone
+story gif-picker-search 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-search-desktop
+story gif-picker-search 390 844 light-blue-balanced
+wait idle
+shot gif-picker-search-phone
+story gif-picker-empty 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-empty-desktop
+story gif-picker-empty 390 844 light-blue-balanced
+wait idle
+shot gif-picker-empty-phone
+story gif-picker-failed 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-failed-desktop
+story gif-picker-failed 390 844 light-blue-balanced
+wait idle
+shot gif-picker-failed-phone
+story gif-picker-needs-permission 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-needs-permission-desktop
+story gif-picker-needs-permission 390 844 light-blue-balanced
+wait idle
+shot gif-picker-needs-permission-phone
+story gif-picker-loading-more 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-loading-more-desktop
+story gif-picker-loading-more 390 844 light-blue-balanced
+wait idle
+shot gif-picker-loading-more-phone
+story gif-picker-long 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-long-desktop
+story gif-picker-long 390 844 light-blue-balanced
+wait idle
+shot gif-picker-long-phone
+story gif-picker-highlighted 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-highlighted-desktop
+story gif-picker-highlighted 390 844 light-blue-balanced
+wait idle
+shot gif-picker-highlighted-phone
+story gif-picker-phone 1280 800 dark-blue-balanced
+wait idle
+shot gif-picker-phone-desktop
+story gif-picker-phone 390 844 light-blue-balanced
+wait idle
+shot gif-picker-phone-phone
+story composer-gif-button 1280 800 dark-blue-balanced
+wait idle
+shot composer-gif-button-desktop
+story composer-gif-button 390 844 light-blue-balanced
+wait idle
+shot composer-gif-button-phone
+story composer-no-gif-button 1280 800 dark-blue-balanced
+wait idle
+shot composer-no-gif-button-desktop
+story composer-no-gif-button 390 844 light-blue-balanced
+wait idle
+shot composer-no-gif-button-phone

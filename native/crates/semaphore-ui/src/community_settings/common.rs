@@ -17,15 +17,15 @@ use semaphore_design::Icon as DesignIcon;
 use std::sync::Arc;
 
 /// A div with an id, observable by the test rig.
-pub(super) type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
+pub(crate) type Observed = gpui_kit::base::ObservedElement<Stateful<Div>>;
 
 /// Under this width (of the window) a tab draws its phone layout.
-pub(super) fn phone(window: &Window) -> bool {
+pub(crate) fn phone(window: &Window) -> bool {
     crate::panel::common::is_phone(window)
 }
 
 /// A tab's page: its heading (and actions at the right) over its scrolling body.
-pub(super) fn page(
+pub(crate) fn page(
     id: &'static str,
     title: impl Into<SharedString>,
     caption: Option<SharedString>,
@@ -82,7 +82,7 @@ pub(super) fn page(
 }
 
 /// MUI's `Card` with a title and a divider: one section of a tab.
-pub(super) fn card(title: impl Into<SharedString>, body: impl IntoElement, cx: &App) -> Div {
+pub(crate) fn card(title: impl Into<SharedString>, body: impl IntoElement, cx: &App) -> Div {
     let sem = cx.sem();
     div()
         .w_full()
@@ -111,7 +111,7 @@ pub(super) fn card(title: impl Into<SharedString>, body: impl IntoElement, cx: &
 }
 
 /// A list row with the web's divider border.
-pub(super) fn row(id: impl Into<ElementId>, label: impl Into<SharedString>, cx: &App) -> Observed {
+pub(crate) fn row(id: impl Into<ElementId>, label: impl Into<SharedString>, cx: &App) -> Observed {
     let sem = cx.sem();
     div()
         .id(id)
@@ -130,7 +130,7 @@ pub(super) fn row(id: impl Into<ElementId>, label: impl Into<SharedString>, cx: 
 }
 
 /// A list's container, for its accessible name.
-pub(super) fn list(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Observed {
+pub(crate) fn list(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Observed {
     div()
         .id(id)
         .test_support()
@@ -143,7 +143,7 @@ pub(super) fn list(id: impl Into<ElementId>, label: impl Into<SharedString>) -> 
 }
 
 /// Why a section is turned off: a lock and the reason, where a tooltip wouldn't reach a phone.
-pub(super) fn locked_note(
+pub(crate) fn locked_note(
     id: impl Into<ElementId>,
     reason: impl Into<SharedString>,
     cx: &App,
@@ -173,7 +173,7 @@ pub(super) fn locked_note(
 
 /// An icon button that is off, with its reason as a tooltip, when `locked` says why.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn action_icon(
+pub(crate) fn action_icon(
     id: impl Into<SharedString>,
     icon: DesignIcon,
     label: impl Into<SharedString>,
@@ -204,7 +204,7 @@ pub(super) fn action_icon(
 }
 
 /// A button that is off with its reason under it, when `locked` says why.
-pub(super) fn locked_button(
+pub(crate) fn locked_button(
     button: Button,
     id: &'static str,
     locked: Option<String>,
@@ -224,12 +224,12 @@ pub(super) fn locked_button(
 }
 
 /// The server's message for the last change, over the tab.
-pub(super) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
+pub(crate) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
     error.map(|error| Alert::new(Severity::Error, error.message.clone()))
 }
 
 /// A file on its way up: its name and a bar.
-pub(super) fn upload_bar(id: &'static str, upload: Option<&UploadView>, cx: &App) -> Option<Div> {
+pub(crate) fn upload_bar(id: &'static str, upload: Option<&UploadView>, cx: &App) -> Option<Div> {
     let upload = upload?;
     let sem = cx.sem();
     let value = (upload.size_bytes > 0)
@@ -252,7 +252,7 @@ pub(super) fn upload_bar(id: &'static str, upload: Option<&UploadView>, cx: &App
 }
 
 /// Skeleton rows while a list loads.
-pub(super) fn loading_rows(id: &'static str, label: &'static str, rows: usize) -> AnyElement {
+pub(crate) fn loading_rows(id: &'static str, label: &'static str, rows: usize) -> AnyElement {
     div()
         .id(id)
         .test_support()
@@ -283,7 +283,7 @@ pub(super) fn loading_rows(id: &'static str, label: &'static str, rows: usize) -
 }
 
 /// A muted line where a list would be.
-pub(super) fn empty_line(content: impl Into<SharedString>, cx: &App) -> Div {
+pub(crate) fn empty_line(content: impl Into<SharedString>, cx: &App) -> Div {
     div().py(spacing(2.)).flex().justify_center().child(
         text(Variant::Body2, content)
             .text_color(cx.sem().text_secondary)
@@ -292,7 +292,7 @@ pub(super) fn empty_line(content: impl Into<SharedString>, cx: &App) -> Div {
 }
 
 /// A user's face, username and display name, as the member rows draw them.
-pub(super) fn user_line(user: &UserView, cx: &App) -> Div {
+pub(crate) fn user_line(user: &UserView, cx: &App) -> Div {
     let sem = cx.sem();
     let display = user
         .display_name
@@ -327,12 +327,12 @@ pub(super) fn user_line(user: &UserView, cx: &App) -> Div {
 }
 
 /// A user's name for a dialog's sentence.
-pub(super) fn who(user: &UserView) -> String {
+pub(crate) fn who(user: &UserView) -> String {
     user_name(user)
 }
 
 /// The web's `ConfirmDialog`: a sentence, Cancel, and the red action.
-pub(super) struct Confirm {
+pub(crate) struct Confirm {
     pub id: &'static str,
     pub title: &'static str,
     pub message: String,
@@ -371,24 +371,24 @@ impl Confirm {
 }
 
 /// A chip in a colour of its own: the outlined `Chip color=…` of the web.
-pub(super) fn tone_chip(label: impl Into<SharedString>, color: Hsla) -> crate::kit::Chip {
+pub(crate) fn tone_chip(label: impl Into<SharedString>, color: Hsla) -> crate::kit::Chip {
     crate::kit::Chip::new(label).colors(color.opacity(0.12), color, color)
 }
 
 /// Monospace text, for shortcodes and invite codes.
-pub(super) fn mono(content: impl Into<SharedString>, cx: &App) -> Div {
+pub(crate) fn mono(content: impl Into<SharedString>, cx: &App) -> Div {
     text(Variant::Body2, content)
         .font_family(crate::messages::palette::Fonts::pick(cx).code)
         .text_color(cx.sem().text_primary)
 }
 
 /// A field's error line.
-pub(super) fn field_error(message: impl Into<SharedString>, cx: &App) -> Div {
+pub(crate) fn field_error(message: impl Into<SharedString>, cx: &App) -> Div {
     text(Variant::Caption, message).text_color(cx.sem().error)
 }
 
 /// The picked bytes as something `img` decodes.
-pub(super) fn preview_of(file: &DraftFile) -> Option<ImageSource> {
+pub(crate) fn preview_of(file: &DraftFile) -> Option<ImageSource> {
     let format = match file.mime_type.as_str() {
         "image/png" => ImageFormat::Png,
         "image/jpeg" => ImageFormat::Jpeg,
@@ -403,7 +403,7 @@ pub(super) fn preview_of(file: &DraftFile) -> Option<ImageSource> {
 }
 
 /// A stored file through the app's image resolver (`AvatarImages`), when it has the bytes.
-pub(super) fn stored_image(file_id: Option<&str>, cx: &App) -> Option<Img> {
+pub(crate) fn stored_image(file_id: Option<&str>, cx: &App) -> Option<Img> {
     let file_id = file_id?;
     let images = cx.try_global::<crate::kit::AvatarImages>()?;
     let resource = (images.resolve)(file_id)?;

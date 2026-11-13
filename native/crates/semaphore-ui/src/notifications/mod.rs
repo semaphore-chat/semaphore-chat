@@ -12,6 +12,8 @@
 
 mod center;
 mod menu;
+/// US2: the notifications page (frozen API).
+pub mod page;
 mod settings;
 #[cfg(feature = "stories")]
 pub(crate) mod stories;
@@ -171,5 +173,7 @@ impl EventEmitter<SettingsEvent> for NotificationSettingsSection {}
 
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
-    stories::stories()
+    let mut all = stories::stories();
+    all.extend(page::stories());
+    all
 }

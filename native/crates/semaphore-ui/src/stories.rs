@@ -62,6 +62,7 @@ pub fn all() -> Vec<Story> {
         crate::moderation::stories(),
         crate::admin::stories(),
         crate::gifs::stories(),
+        crate::shortcuts::stories(),
     ]
     .into_iter()
     .flatten()

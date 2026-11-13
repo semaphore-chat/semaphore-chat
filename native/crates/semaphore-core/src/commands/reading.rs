@@ -607,7 +607,10 @@ impl Core {
     /// tooltip lists them.
     pub fn seen_by(&self, conversation: Conversation, message_id: String) -> SeenByView {
         self.write(|state, _| {
-            let empty = SeenByView::default();
+            let empty = SeenByView {
+                message_id: message_id.clone(),
+                ..SeenByView::default()
+            };
             match &conversation {
                 Conversation::DirectMessage { id: dm_group_id } => {
                     let key = keys::scoped(keys::DM_PEER_READS, dm_group_id);
@@ -639,6 +642,7 @@ impl Core {
                         .map(|(id, _)| state.user_or_stub(id))
                         .collect();
                     SeenByView {
+                        message_id: message_id.clone(),
                         state: load,
                         more: count - u32::try_from(named.len()).unwrap_or(0),
                         readers: named,
@@ -667,6 +671,7 @@ impl Core {
                     let count = u32::try_from(readers.len()).unwrap_or(u32::MAX);
                     let named: Vec<UserView> = readers.into_iter().take(SEEN_BY_NAMES).collect();
                     SeenByView {
+                        message_id: message_id.clone(),
                         state: state.load_of(&key),
                         more: count - u32::try_from(named.len()).unwrap_or(0),
                         readers: named,

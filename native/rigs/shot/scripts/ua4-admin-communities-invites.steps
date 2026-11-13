@@ -1,0 +1,159 @@
+# UA4 admin communities and instance invites: every state of both screens, each at 1280x800 (dark)
+# and 390x844 (light).
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/ua4-admin-communities-invites.steps
+story admin-communities-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-loading-desktop
+story admin-communities-loading 390 844 light-blue-balanced
+wait idle
+shot admin-communities-loading-phone
+story admin-communities-empty 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-empty-desktop
+story admin-communities-empty 390 844 light-blue-balanced
+wait idle
+shot admin-communities-empty-phone
+story admin-communities-failed 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-failed-desktop
+story admin-communities-failed 390 844 light-blue-balanced
+wait idle
+shot admin-communities-failed-phone
+story admin-communities-ready 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-ready-desktop
+story admin-communities-ready 390 844 light-blue-balanced
+wait idle
+shot admin-communities-ready-phone
+story admin-communities-long 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-long-desktop
+story admin-communities-long 390 844 light-blue-balanced
+wait idle
+shot admin-communities-long-phone
+story admin-communities-loading-more 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-loading-more-desktop
+story admin-communities-loading-more 390 844 light-blue-balanced
+wait idle
+shot admin-communities-loading-more-phone
+story admin-communities-detail 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-detail-desktop
+story admin-communities-detail 390 844 light-blue-balanced
+wait idle
+shot admin-communities-detail-phone
+story admin-communities-delete-confirm 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-delete-confirm-desktop
+story admin-communities-delete-confirm 390 844 light-blue-balanced
+wait idle
+shot admin-communities-delete-confirm-phone
+story admin-communities-delete-busy 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-delete-busy-desktop
+story admin-communities-delete-busy 390 844 light-blue-balanced
+wait idle
+shot admin-communities-delete-busy-phone
+story admin-communities-delete-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-delete-refused-desktop
+story admin-communities-delete-refused 390 844 light-blue-balanced
+wait idle
+shot admin-communities-delete-refused-phone
+story admin-communities-read-only 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-read-only-desktop
+story admin-communities-read-only 390 844 light-blue-balanced
+wait idle
+shot admin-communities-read-only-phone
+story admin-communities-locked 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-locked-desktop
+story admin-communities-locked 390 844 light-blue-balanced
+wait idle
+shot admin-communities-locked-phone
+story admin-communities-phone 1280 800 dark-blue-balanced
+wait idle
+shot admin-communities-phone-desktop
+story admin-communities-phone 390 844 light-blue-balanced
+wait idle
+shot admin-communities-phone-phone
+story admin-invites-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-loading-desktop
+story admin-invites-loading 390 844 light-blue-balanced
+wait idle
+shot admin-invites-loading-phone
+story admin-invites-empty 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-empty-desktop
+story admin-invites-empty 390 844 light-blue-balanced
+wait idle
+shot admin-invites-empty-phone
+story admin-invites-failed 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-failed-desktop
+story admin-invites-failed 390 844 light-blue-balanced
+wait idle
+shot admin-invites-failed-phone
+story admin-invites-ready 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-ready-desktop
+story admin-invites-ready 390 844 light-blue-balanced
+wait idle
+shot admin-invites-ready-phone
+story admin-invites-long 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-long-desktop
+story admin-invites-long 390 844 light-blue-balanced
+wait idle
+shot admin-invites-long-phone
+story admin-invites-create 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-create-desktop
+story admin-invites-create 390 844 light-blue-balanced
+wait idle
+shot admin-invites-create-phone
+story admin-invites-create-invalid 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-create-invalid-desktop
+story admin-invites-create-invalid 390 844 light-blue-balanced
+wait idle
+shot admin-invites-create-invalid-phone
+story admin-invites-create-busy 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-create-busy-desktop
+story admin-invites-create-busy 390 844 light-blue-balanced
+wait idle
+shot admin-invites-create-busy-phone
+story admin-invites-create-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-create-refused-desktop
+story admin-invites-create-refused 390 844 light-blue-balanced
+wait idle
+shot admin-invites-create-refused-phone
+story admin-invites-copied 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-copied-desktop
+story admin-invites-copied 390 844 light-blue-balanced
+wait idle
+shot admin-invites-copied-phone
+story admin-invites-delete-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-delete-refused-desktop
+story admin-invites-delete-refused 390 844 light-blue-balanced
+wait idle
+shot admin-invites-delete-refused-phone
+story admin-invites-limited 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-limited-desktop
+story admin-invites-limited 390 844 light-blue-balanced
+wait idle
+shot admin-invites-limited-phone
+story admin-invites-phone 1280 800 dark-blue-balanced
+wait idle
+shot admin-invites-phone-desktop
+story admin-invites-phone 390 844 light-blue-balanced
+wait idle
+shot admin-invites-phone-phone

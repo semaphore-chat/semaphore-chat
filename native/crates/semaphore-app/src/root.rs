@@ -37,13 +37,17 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub mod account;
+pub mod admin;
 pub mod calls;
 pub mod community;
 pub mod inbox;
+pub mod media;
 pub mod moderation;
 pub mod onboarding;
+pub mod prejoin;
 pub mod replay;
 pub mod roles;
+pub mod u9;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
@@ -118,6 +122,15 @@ pub struct AppRoot {
     replay: replay::Replay,
     /// W5: community settings (`community`).
     community: community::CommunityAdmin,
+    /// UI freeze hubs: WA, WM, WU, WP (each lane reads its own).
+    #[allow(dead_code)]
+    admin: admin::AdminArea,
+    #[allow(dead_code)]
+    media_area: media::MediaArea,
+    #[allow(dead_code)]
+    u9: u9::U9Area,
+    #[allow(dead_code)]
+    prejoin: prejoin::PreJoinArea,
     /// W5: roles, assignment and channel overrides (`roles`).
     roles: roles::Roles,
     /// W5: the moderation menu, dialogs, tab, removal notice and timeout timers (`moderation`).
@@ -236,6 +249,10 @@ impl AppRoot {
             calls: calls::Calls::default(),
             replay: replay::Replay::default(),
             community: community::CommunityAdmin::default(),
+            admin: admin::AdminArea::default(),
+            media_area: media::MediaArea::default(),
+            u9: u9::U9Area::default(),
+            prejoin: prejoin::PreJoinArea::default(),
             roles: roles::Roles::default(),
             moderation: moderation::Moderation::default(),
             server_info: None,
@@ -755,6 +772,10 @@ impl AppRoot {
         self.community_on_core(event, cx);
         self.roles_on_core(event, cx);
         self.moderation_on_core(event, cx);
+        self.admin_on_core(event, cx);
+        self.media_on_core(event, cx);
+        self.u9_on_core(event, cx);
+        self.prejoin_on_core(event, cx);
     }
 
     /// After sign-in, the first community instead of an empty home.
@@ -887,6 +908,8 @@ impl AppRoot {
         };
         let (core, exec) = (services.core.clone(), services.exec.clone());
         match event.clone() {
+            // UI freeze: WU's hub file.
+            AuthEvent::OpenInBrowser { url } => self.u9_open_in_browser(url, cx),
             AuthEvent::ConnectServer { url, name } => {
                 auth.update(cx, |auth, cx| {
                     auth.set_step(
@@ -1029,6 +1052,17 @@ impl AppRoot {
                 if stage_shown {
                     return element;
                 }
+                // WP: no float card over another voice channel's pre-join, whose joins sit where
+                // the card goes; the bar under the columns still shows the call.
+                let prejoin_shown = props.channel.as_ref().is_some_and(|channel| {
+                    channel.kind == ChannelKind::Voice
+                        && root
+                            .upgrade()
+                            .is_some_and(|root| root.read(cx).prejoin_shows(&channel.id))
+                });
+                if prejoin_shown {
+                    return element;
+                }
                 // W4: the call over the column while its stage isn't shown (wide windows).
                 let float = root
                     .upgrade()
@@ -1126,6 +1160,7 @@ impl AppRoot {
                 cx.notify();
             }),
             PaneEvent::OpenProfile { .. } => {}
+            PaneEvent::EnableThirdPartyMedia => self.media_set_third_party(true, cx),
         }
     }
 
@@ -1149,6 +1184,10 @@ impl AppRoot {
                 self.inbox_navigated(route, cx);
                 self.account_navigated(route, window, cx);
                 self.community_navigated(route, window, cx);
+                self.admin_navigated(route, window, cx);
+                self.media_navigated(route, window, cx);
+                self.u9_navigated(route, window, cx);
+                self.prejoin_navigated(route, window, cx);
             }
             ShellEvent::OpenCommunitySettings { community_id } => {
                 self.open_community_settings(community_id.clone(), None, cx)
@@ -1170,7 +1209,9 @@ impl AppRoot {
             ShellEvent::CreateCommunity => self.open_create_community(window, cx),
             ShellEvent::OpenProfile { user_id } => self.open_profile(user_id.clone(), window, cx),
             ShellEvent::OpenNotifications => self.toggle_centre(cx),
-            ShellEvent::JoinVoice { channel_id } => self.join_voice(channel_id.clone(), cx),
+            // WP: a voice row only selects its channel; the route shows the pre-join, whose Join
+            // joins (`prejoin.rs`), as the web's row does.
+            ShellEvent::JoinVoice { .. } => {}
             ShellEvent::OpenPins => {
                 if let Some(pane) = &self.pane {
                     pane.update(cx, |pane, cx| pane.toggle_pins(window, cx));
@@ -1217,7 +1258,7 @@ impl AppRoot {
         let sign_out = close.clone();
         let profile = close.clone();
         let settings = close.clone();
-        Dialog::new(format!("Signed in as {name}"))
+        let dialog = Dialog::new(format!("Signed in as {name}"))
             .body(text(
                 Variant::Body2,
                 "Signing out forgets this session on this computer.",
@@ -1248,7 +1289,13 @@ impl AppRoot {
                         })
                         .ok();
                 }),
-            )
+            );
+        // UI freeze: WA's "Admin" entry (`InstanceAdminCaps::show_admin`).
+        let dialog = match self.admin_account_action(cx) {
+            Some(admin) => dialog.action(admin),
+            None => dialog,
+        };
+        dialog
             .action(
                 Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
                     cancel
@@ -1566,6 +1613,14 @@ fn content(
         (_, Some(channel)) if core.voice().channel_id.as_deref() == Some(&channel.id) => {
             stage.clone().into_any_element()
         }
+        // UI freeze: WP's pre-join, when it has one.
+        (_, Some(channel))
+            if let Some(element) = root
+                .upgrade()
+                .and_then(|root| root.read(cx).prejoin_voice_channel(channel, cx)) =>
+        {
+            element
+        }
         (_, Some(channel)) => {
             let join = root.clone();
             let channel_id = channel.id.clone();
@@ -1604,6 +1659,28 @@ fn content(
         ) if let Some(element) = root
             .upgrade()
             .and_then(|root| root.read(cx).account_content(route, cx)) =>
+        {
+            element
+        }
+        // UI freeze: the new routes' hubs (WA, WU). Until they build a screen, the same
+        // placeholder these paths had as `Route::Unbuilt`.
+        (route @ Route::Admin { .. }, _)
+            if let Some(element) = root
+                .upgrade()
+                .and_then(|root| root.read(cx).admin_content(route, cx)) =>
+        {
+            element
+        }
+        (
+            route @ (Route::Notifications
+            | Route::Friends
+            | Route::OwnProfile
+            | Route::CreateCommunity
+            | Route::ChannelSearch { .. }),
+            _,
+        ) if let Some(element) = root
+            .upgrade()
+            .and_then(|root| root.read(cx).u9_content(route, cx)) =>
         {
             element
         }
@@ -1660,6 +1737,10 @@ impl Render for AppRoot {
             overlays.extend(self.community_overlays(cx));
             overlays.extend(self.roles_overlays(cx));
             overlays.extend(self.moderation_overlays(cx));
+            overlays.extend(self.admin_overlays(cx));
+            overlays.extend(self.media_overlays(cx));
+            overlays.extend(self.u9_overlays(cx));
+            overlays.extend(self.prejoin_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)

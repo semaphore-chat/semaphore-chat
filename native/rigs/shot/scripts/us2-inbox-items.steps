@@ -1,0 +1,80 @@
+# US2 notifications page, DM group actions, search paging: every story at 1280x800 dark and 390x844 light.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/us2-inbox-items.steps
+story notifications-page-loading 1280 800 dark-blue-balanced
+wait idle
+shot notifications-page-loading-desktop
+story notifications-page-loading 390 844 light-blue-balanced
+wait idle
+shot notifications-page-loading-phone
+story notifications-page-empty 1280 800 dark-blue-balanced
+wait idle
+shot notifications-page-empty-desktop
+story notifications-page-empty 390 844 light-blue-balanced
+wait idle
+shot notifications-page-empty-phone
+story notifications-page-failed 1280 800 dark-blue-balanced
+wait idle
+shot notifications-page-failed-desktop
+story notifications-page-failed 390 844 light-blue-balanced
+wait idle
+shot notifications-page-failed-phone
+story notifications-page-mixed 1280 800 dark-blue-balanced
+wait idle
+shot notifications-page-mixed-desktop
+story notifications-page-mixed 390 844 light-blue-balanced
+wait idle
+shot notifications-page-mixed-phone
+story notifications-page-unread-tab 1280 800 dark-blue-balanced
+wait idle
+shot notifications-page-unread-tab-desktop
+story notifications-page-unread-tab 390 844 light-blue-balanced
+wait idle
+shot notifications-page-unread-tab-phone
+story notifications-page-long 1280 800 dark-blue-balanced
+wait idle
+shot notifications-page-long-desktop
+story notifications-page-long 390 844 light-blue-balanced
+wait idle
+shot notifications-page-long-phone
+story notifications-page-phone 1280 800 dark-blue-balanced
+wait idle
+shot notifications-page-phone-desktop
+story notifications-page-phone 390 844 light-blue-balanced
+wait idle
+shot notifications-page-phone-phone
+story dm-header-group-actions 1280 800 dark-blue-balanced
+wait idle
+shot dm-header-group-actions-desktop
+story dm-header-group-actions 390 844 light-blue-balanced
+wait idle
+shot dm-header-group-actions-phone
+story dm-header-group-menu-open 1280 800 dark-blue-balanced
+wait idle
+shot dm-header-group-menu-open-desktop
+story dm-header-group-menu-open 390 844 light-blue-balanced
+wait idle
+shot dm-header-group-menu-open-phone
+story dm-header-leave-confirm 1280 800 dark-blue-balanced
+wait idle
+shot dm-header-leave-confirm-desktop
+story dm-header-leave-confirm 390 844 light-blue-balanced
+wait idle
+shot dm-header-leave-confirm-phone
+story dm-header-one-to-one 1280 800 dark-blue-balanced
+wait idle
+shot dm-header-one-to-one-desktop
+story dm-header-one-to-one 390 844 light-blue-balanced
+wait idle
+shot dm-header-one-to-one-phone
+story search-panel-more 1280 800 dark-blue-balanced
+wait idle
+shot search-panel-more-desktop
+story search-panel-more 390 844 light-blue-balanced
+wait idle
+shot search-panel-more-phone
+story search-panel-loading-more 1280 800 dark-blue-balanced
+wait idle
+shot search-panel-loading-more-desktop
+story search-panel-loading-more 390 844 light-blue-balanced
+wait idle
+shot search-panel-loading-more-phone

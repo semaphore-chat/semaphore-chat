@@ -22,6 +22,7 @@ pub struct DmPeerReadsView {
 
 #[uniffi::remote(Record)]
 pub struct SeenByView {
+    pub message_id: String,
     pub state: semaphore_core::model::LoadState,
     pub readers: Vec<UserView>,
     pub count: u32,

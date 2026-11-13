@@ -128,6 +128,11 @@ pub enum DmHeaderEvent {
     Search,
     /// A one-to-one DM's name: the other person's profile.
     OpenProfile { user_id: String },
+    /// U-freeze (US2): "Add people" on a group: the owner opens the user picker and calls
+    /// `Core::add_dm_members(dm_id, user_ids)`. Offered with `set_group_actions(true)`.
+    AddPeople,
+    /// U-freeze (US2): "Leave group", confirmed: `Core::leave_dm(dm_id)`.
+    Leave,
 }
 
 pub struct DmHeader {
@@ -137,11 +142,26 @@ pub struct DmHeader {
     call: Option<crate::voice::DmCallState>,
     members_button: bool,
     search: bool,
+    /// US2: a group DM's "Add people" and "Leave group" in the overflow menu.
+    group: bool,
+    menu_open: bool,
+    /// US2: "Leave group" is asking first.
+    leave_open: bool,
 }
 
 impl EventEmitter<DmHeaderEvent> for DmHeader {}
 
 impl DmHeader {
+    /// U-freeze (US2): offer "Add people" and "Leave group" (a group DM only). Drawn by US2.
+    pub fn set_group_actions(&mut self, group: bool, cx: &mut Context<Self>) {
+        self.group = group;
+        if !group {
+            self.menu_open = false;
+            self.leave_open = false;
+        }
+        cx.notify();
+    }
+
     pub fn new(_: &mut Context<Self>) -> Self {
         Self {
             state: DmHeaderState::Loading,
@@ -149,6 +169,9 @@ impl DmHeader {
             call: None,
             members_button: false,
             search: false,
+            group: false,
+            menu_open: false,
+            leave_open: false,
         }
     }
 
