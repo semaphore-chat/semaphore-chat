@@ -77,10 +77,16 @@ impl CaptureReplayDialog {
         session: ReplaySessionView,
         cx: &mut Context<Self>,
     ) {
+        let session_id = match &state {
+            ReplayState::Recording { session_id } => Some(session_id.clone()),
+            _ => None,
+        };
         self.state = state;
         self.session = session.clone();
-        self.trim
-            .update(cx, |trim, cx| trim.set_session(session, cx));
+        self.trim.update(cx, |trim, cx| {
+            trim.set_session(session, cx);
+            trim.set_session_id(session_id, cx);
+        });
         cx.notify();
     }
 
@@ -118,13 +124,19 @@ impl CaptureReplayDialog {
 
     pub fn set_minutes(&mut self, minutes: ReplayMinutes, cx: &mut Context<Self>) {
         self.minutes = minutes;
-        self.trim_on = false;
-        cx.notify();
+        self.set_trim_on(false, cx);
     }
 
     pub fn set_trim_on(&mut self, on: bool, cx: &mut Context<Self>) {
         self.trim_on = on;
+        self.trim.update(cx, |trim, cx| trim.set_shown(on, cx));
         cx.notify();
+    }
+
+    /// The window's players, for the trim's preview (`None`: a build without them).
+    pub fn set_players(&mut self, players: Option<crate::player::Players>, cx: &mut Context<Self>) {
+        self.trim
+            .update(cx, |trim, cx| trim.set_players(players, cx));
     }
 
     /// Picks where the clip goes. The first pick of a channel or DM asks the owner for the list.

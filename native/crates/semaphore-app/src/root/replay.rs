@@ -2,7 +2,8 @@
 //! replay audio-wait timer, the clip library on profile pages and the share dialog.
 //!
 //! - **Capture** (`CaptureReplayDialog`): the buffer's state from `VoiceView::replay` and
-//!   `Core::replay_session`; the destinations from the call's community's text channels or my DMs;
+//!   `Core::replay_session`; the window's `Players` for the trim's preview (none without the
+//!   player feature); the destinations from the call's community's text channels or my DMs;
 //!   `Core::capture_replay`, or `Core::download_replay` saved where the user chooses
 //!   (`files::ask_save_path`: the config's save dialog, the system's or the rig's queue).
 //! - **Clip libraries** (`ClipLibrary`) on profile pages: mine (`Core::clips`) on my page, the
@@ -273,6 +274,13 @@ impl AppRoot {
     }
 
     /// The toast, for the rig.
+    /// The capture dialog's trim preview, while one is open (rigs).
+    pub fn trim_preview(&self, cx: &App) -> Option<Entity<semaphore_ui::replay::TrimPreview>> {
+        let capture = self.replay.capture.as_ref()?;
+        let trim = capture.dialog.read(cx).trim().clone();
+        trim.read(cx).preview_entity().cloned()
+    }
+
     pub fn replay_toast(&self) -> Option<&str> {
         self.replay
             .toast
@@ -291,7 +299,11 @@ impl AppRoot {
         let dialog = cx.new(|cx| CaptureReplayDialog::new(window, cx));
         let voice = core.voice();
         let session = core.replay_session();
-        dialog.update(cx, |dialog, cx| dialog.set_state(voice.replay, session, cx));
+        let players = self.players.clone();
+        dialog.update(cx, |dialog, cx| {
+            dialog.set_players(players, cx);
+            dialog.set_state(voice.replay, session, cx);
+        });
         let subscription = cx.subscribe_in(&dialog, window, Self::on_capture);
         self.replay.capture = Some(Capture {
             dialog,

@@ -1,10 +1,18 @@
 //! The trim timeline, after `TrimTimeline.tsx` and the states of `TrimPreview.tsx`: a start and
-//! an end handle over the buffer, a ruler, the times, and Refresh. No preview yet: the player
-//! can't read the buffer's MPEG-TS segments, so [`TrimTimeline::preview`] is where it goes later.
+//! an end handle over the buffer, a ruler, the times, and Refresh.
+//!
+//! - **The preview** ([`TrimPreview`]) sits above it while the timeline is shown, the buffer has
+//!   something and the window has [`Players`] (the app built with its player). Then the track
+//!   draws the playhead, a press on a handle drags it and a press anywhere else seeks there, a
+//!   start handle dragged past the playhead takes the playhead with it, and Refresh (in the
+//!   preview's controls) reopens the preview at the playhead with the newest segments.
+//! - **Without a player** a press moves the nearer handle there, and Refresh sits in the header.
 
 use super::model::{self, Handle, TrimRange};
+use super::preview::{PreviewEvent, TrimPreview};
 use crate::kit::{Alert, Button, IconButton, Severity, Spinner, Variant, text, with_tip};
 use crate::panel::common::is_phone;
+use crate::player::Players;
 use crate::theme::SemTheme as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -12,6 +20,7 @@ use semaphore_core::model::{LoadState, ReplaySessionView, ReplayTrim};
 use semaphore_design::Icon as IconName;
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::Duration;
 
 /// What the timeline asks of its owner.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +47,13 @@ pub struct TrimTimeline {
     keyed: Handle,
     focus: FocusHandle,
     bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// The window's players: `None` in a build without them (no preview).
+    players: Option<Players>,
+    /// The recording session, whose buffer the preview plays.
+    session_id: Option<String>,
+    /// The timeline is on screen (the dialog's trim is open): only then is a preview open.
+    shown: bool,
+    preview: Option<(Entity<TrimPreview>, [Subscription; 2])>,
 }
 
 impl EventEmitter<TrimEvent> for TrimTimeline {}
@@ -52,7 +68,76 @@ impl TrimTimeline {
             keyed: Handle::End,
             focus: cx.focus_handle(),
             bounds: Rc::default(),
+            players: None,
+            session_id: None,
+            shown: false,
+            preview: None,
         }
+    }
+
+    /// The window's players, for the preview; `None` keeps the timeline without one.
+    pub fn set_players(&mut self, players: Option<Players>, cx: &mut Context<Self>) {
+        self.players = players;
+        self.sync_preview(cx);
+    }
+
+    /// The buffer's recording session (`ReplayState::Recording`), or `None` when not recording.
+    pub fn set_session_id(&mut self, session_id: Option<String>, cx: &mut Context<Self>) {
+        if self.session_id != session_id {
+            self.session_id = session_id;
+            self.preview = None;
+        }
+        self.sync_preview(cx);
+    }
+
+    /// Whether the timeline is on screen. Hidden, the preview closes and frees its player.
+    pub fn set_shown(&mut self, shown: bool, cx: &mut Context<Self>) {
+        self.shown = shown;
+        self.sync_preview(cx);
+    }
+
+    /// Opens the preview when it can play, closes it when it can't.
+    fn sync_preview(&mut self, cx: &mut Context<Self>) {
+        let wanted = self.shown && self.range.is_some() && self.session_id.is_some();
+        match (&self.players, wanted, &self.preview) {
+            (Some(players), true, None) => {
+                let (Some(range), Some(session_id)) = (self.range, self.session_id.clone()) else {
+                    return;
+                };
+                let players = players.clone();
+                let preview = cx.new(|cx| {
+                    TrimPreview::new(&players, session_id, secs(range.start), secs(range.end), cx)
+                });
+                let subscriptions = [
+                    cx.observe(&preview, |_, _, cx| cx.notify()),
+                    cx.subscribe(&preview, |view, _, event: &PreviewEvent, cx| match event {
+                        PreviewEvent::Refresh => view.refresh(cx),
+                    }),
+                ];
+                self.preview = Some((preview, subscriptions));
+                self.sync_selection(cx);
+            }
+            (None, _, Some(_)) | (_, false, Some(_)) => self.preview = None,
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    /// Hands the preview the selection and whether more has been recorded.
+    fn sync_selection(&mut self, cx: &mut Context<Self>) {
+        let (Some((preview, _)), Some(range)) = (&self.preview, self.range) else {
+            return;
+        };
+        let has_more = self.has_more();
+        preview.update(cx, |preview, cx| {
+            preview.set_selection(secs(range.start), secs(range.end), cx);
+            preview.set_has_more(has_more, cx);
+        });
+    }
+
+    /// The preview, while one is open.
+    pub fn preview_entity(&self) -> Option<&Entity<TrimPreview>> {
+        self.preview.as_ref().map(|(preview, _)| preview)
     }
 
     /// Core's `replay_session()`. The first view with something buffered sets the range to the
@@ -69,6 +154,8 @@ impl TrimTimeline {
             cx.emit(TrimEvent::Changed(range.trim()));
         }
         self.session = session;
+        self.sync_preview(cx);
+        self.sync_selection(cx);
         cx.notify();
     }
 
@@ -82,13 +169,18 @@ impl TrimTimeline {
         self.range.is_some_and(|range| self.latest != range.max)
     }
 
-    /// Refresh: take the buffer's newest length.
+    /// Refresh: take the buffer's newest length, and reopen the preview with its newest
+    /// segments at the playhead.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         if let Some(range) = &mut self.range {
             let before = *range;
             range.refresh(self.latest);
             if *range != before {
                 cx.emit(TrimEvent::Changed(range.trim()));
+            }
+            self.sync_selection(cx);
+            if let Some((preview, _)) = &self.preview {
+                preview.update(cx, |preview, cx| preview.refresh(cx));
             }
             cx.notify();
         }
@@ -99,9 +191,26 @@ impl TrimTimeline {
         self.change(cx, |range| range.set(handle, seconds));
     }
 
-    /// Where a preview of the selection will go: `None` until the player reads HLS.
+    /// The preview of the selection, while the timeline is shown and the window has a player.
     pub fn preview(&self) -> Option<AnyView> {
-        None
+        self.preview_entity().map(|preview| preview.clone().into())
+    }
+
+    /// The preview's playhead, if one is open.
+    fn playhead(&self, cx: &App) -> Option<Duration> {
+        self.preview_entity()
+            .map(|preview| preview.read(cx).position())
+    }
+
+    /// Seeks the preview to `seconds` on the buffer (a press on the track away from a handle).
+    pub fn seek_to(&mut self, seconds: f32, cx: &mut Context<Self>) {
+        let Some(range) = self.range else {
+            return;
+        };
+        let to = Duration::from_secs_f32(seconds.clamp(0., range.max as f32));
+        if let Some((preview, _)) = &self.preview {
+            preview.update(cx, |preview, cx| preview.seek(to, cx));
+        }
     }
 
     fn change(&mut self, cx: &mut Context<Self>, edit: impl FnOnce(&mut TrimRange)) {
@@ -111,7 +220,17 @@ impl TrimTimeline {
         let before = *range;
         edit(range);
         if *range != before {
+            let range = *range;
             cx.emit(TrimEvent::Changed(range.trim()));
+            self.sync_selection(cx);
+            // A start dragged past the playhead takes it along, as on the web.
+            if range.start != before.start
+                && let Some(playhead) = self.playhead(cx)
+                && playhead < secs(range.start)
+                && let Some((preview, _)) = &self.preview
+            {
+                preview.update(cx, |preview, cx| preview.seek(secs(range.start), cx));
+            }
             cx.notify();
         }
     }
@@ -152,6 +271,9 @@ impl TrimTimeline {
         let (start, end) = (range.fraction(Handle::Start), range.fraction(Handle::End));
         let dim = black().opacity(if sem.is_dark { 0.55 } else { 0.35 });
         let focused = self.focus.is_focused(window);
+        let playhead = self
+            .playhead(cx)
+            .map(|at| (at.as_secs_f32() / range.max.max(1) as f32).clamp(0., 1.));
         let handle = |handle: Handle, at: f32, color: Hsla| {
             let keyed = focused && self.keyed == handle;
             div()
@@ -237,24 +359,53 @@ impl TrimTimeline {
                     .border_b(px(3.))
                     .border_color(sem.primary),
             )
+            .children(playhead.map(|at| {
+                div()
+                    .id("trim-playhead")
+                    .test_support()
+                    .absolute()
+                    .top(px(-4.))
+                    .bottom(px(-4.))
+                    .left(relative(at))
+                    .ml(px(-1.))
+                    .w(px(2.))
+                    .rounded(px(1.))
+                    .bg(sem.text_primary)
+            }))
             .child(handle(Handle::Start, start, sem.success))
             .child(handle(Handle::End, end, sem.error))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|view, event: &MouseDownEvent, window, cx| {
-                    let (Some(fraction), Some(range)) = (view.fraction(event.position), view.range)
+                    let (Some(fraction), Some(range), Some(bounds)) =
+                        (view.fraction(event.position), view.range, view.bounds.get())
                     else {
                         return;
                     };
-                    let handle = range.nearest(fraction);
+                    let handle = if view.preview.is_some() {
+                        let x = f32::from(event.position.x - bounds.origin.x);
+                        match range.handle_at(x, f32::from(bounds.size.width)) {
+                            Some(handle) => handle,
+                            None => {
+                                window.focus(&view.focus, cx);
+                                cx.stop_propagation();
+                                view.seek_to(fraction * range.max as f32, cx);
+                                return;
+                            }
+                        }
+                    } else {
+                        range.nearest(fraction)
+                    };
                     view.drag = Some(handle);
                     view.keyed = handle;
                     window.focus(&view.focus, cx);
                     cx.stop_propagation();
-                    view.change(cx, |range| {
-                        let at = range.seconds_at(fraction);
-                        range.set(handle, at);
-                    });
+                    if view.preview.is_none() {
+                        view.change(cx, |range| {
+                            let at = range.seconds_at(fraction);
+                            range.set(handle, at);
+                        });
+                    }
                     cx.notify();
                 }),
             )
@@ -356,7 +507,7 @@ impl TrimTimeline {
                     .gap(px(8.))
                     .mb(px(4.))
                     .child(text(Variant::Subtitle2, "Trim the clip").text_color(sem.text_primary))
-                    .child(refresh),
+                    .when(self.preview.is_none(), |el| el.child(refresh)),
             )
             .child(
                 div()
@@ -424,4 +575,8 @@ impl Render for TrimTimeline {
             .w_full()
             .child(body)
     }
+}
+
+fn secs(seconds: u32) -> Duration {
+    Duration::from_secs(seconds.into())
 }

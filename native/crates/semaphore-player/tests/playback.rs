@@ -3,7 +3,8 @@
 //! reaches the host's speakers or display. Waits are on events, each with a deadline.
 
 use semaphore_core::player::{
-    MediaPlayer, PlaybackSource, PlaybackState, PlayerError, PlayerEvent, PlayerFactory,
+    AttachmentSource, MediaPlayer, PlaybackSource, PlaybackState, PlayerError, PlayerEvent,
+    PlayerFactory,
 };
 use semaphore_media_livekit::audio::virtual_io::VirtualIo;
 use semaphore_player::{DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
@@ -82,12 +83,14 @@ impl Rig {
             |source: &PlaybackSource,
              _: &semaphore_player::Cancel,
              buffered: &semaphore_player::BufferedReport| {
-                if source.file_id == "missing" {
+                let id = source.id();
+                if id == "missing" {
                     return Err(PlayerError::Network);
                 }
                 buffered.full();
-                Ok(Box::new(Cursor::new(fixture(&source.file_id)))
-                    as Box<dyn semaphore_player::Source>)
+                Ok(semaphore_player::Opened::Bytes(Box::new(Cursor::new(
+                    fixture(&id),
+                ))))
             },
         );
         Self {
@@ -116,13 +119,13 @@ impl Rig {
 }
 
 fn source(file: &str) -> PlaybackSource {
-    PlaybackSource {
+    PlaybackSource::Attachment(AttachmentSource {
         file_id: file.into(),
         filename: file.into(),
         mime_type: "video/webm".into(),
         size: 0,
         has_thumbnail: false,
-    }
+    })
 }
 
 /// Events until one matches, or panics at the deadline.

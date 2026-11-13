@@ -4,8 +4,13 @@
 //!   reads with the bearer token, a shared 32 MiB block cache), sound through the app's `AudioIo`
 //!   (the rig's virtual device in rigs), video into the window's `VideoFrames`. Every list gets the
 //!   same `Players`, so the engine's one-playing rule spans channels, threads and DMs.
-//! - **Off:** [`players`] is `None` and audio and video attachments stay file rows. The engine
-//!   crate isn't in the build at all.
+//! - **The replay preview** (the trim dialog's): `PlaybackSource::ReplayBuffer` opens as the
+//!   engine's `Opened::Segments`. With no segments in the source, the opener lists them
+//!   (`Core::replay_preview`) on the player's thread; each segment comes through [`CoreSegments`]
+//!   (`Core::fetch_replay_segment` on the app's runtime: no answer, 5xx and 429 are transient, a
+//!   refusal final, a cancelled player stops waiting).
+//! - **Off:** [`players`] is `None` and audio and video attachments stay file rows, and the trim
+//!   dialog has no preview. The engine crate isn't in the build at all.
 //! - **Output device:** `Players::set_output_device` reaches `DesktopPlayers::set_output_device`
 //!   (players opened after it play there).
 //! - **Soundboard:** [`sound_decoder`] is the engine's `SoundDecoder` for what it doesn't decode
@@ -79,14 +84,128 @@ pub fn players(
     }
 
     let cache = Arc::new(BlockCache::default());
-    let opener = http_opener(
-        services.backend.clone(),
-        cache,
-        services.exec.handle().clone(),
-    );
+    let runtime = services.exec.handle().clone();
+    let attachments = http_opener(services.backend.clone(), cache, runtime.clone());
+    let core = services.core.clone();
+    let opener: semaphore_player::Opener = Arc::new(move |source, cancel, buffered| match source {
+        PlaybackSource::Attachment(_) => attachments(source, cancel, buffered),
+        PlaybackSource::ReplayBuffer {
+            segments, start, ..
+        } => replay_opened(&core, &runtime, segments, *start, cancel),
+    });
     let players = semaphore_player::DesktopPlayers::new(services.audio.clone(), opener);
     let engine: Rc<dyn PlayerOpener> = Rc::new(Engine { players, activity });
     Some(Players::new(engine, frames))
+}
+
+/// How often a blocked player-thread wait looks at its cancel flag.
+#[cfg(feature = "player")]
+const CANCEL_CHECK: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Runs `future` on the app's runtime from a player thread; `None` once the player is cancelled.
+#[cfg(feature = "player")]
+fn block_unless_cancelled<T>(
+    runtime: &tokio::runtime::Handle,
+    cancel: &semaphore_player::Cancel,
+    future: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    runtime.block_on(async {
+        let mut future = std::pin::pin!(future);
+        loop {
+            if cancel.is_cancelled() {
+                return None;
+            }
+            if let Ok(value) = tokio::time::timeout(CANCEL_CHECK, future.as_mut()).await {
+                return Some(value);
+            }
+        }
+    })
+}
+
+/// The replay buffer's segments, listed first when the source has none.
+#[cfg(feature = "player")]
+fn replay_opened(
+    core: &Arc<semaphore_core::Core>,
+    runtime: &tokio::runtime::Handle,
+    segments: &[semaphore_core::model::PreviewSegment],
+    start: std::time::Duration,
+    cancel: &semaphore_player::Cancel,
+) -> Result<semaphore_player::Opened, semaphore_core::player::PlayerError> {
+    use semaphore_core::player::PlayerError;
+    let segments = if segments.is_empty() {
+        let listing = core.clone();
+        block_unless_cancelled(
+            runtime,
+            cancel,
+            async move { listing.replay_preview().await },
+        )
+        .ok_or(PlayerError::Network)?
+        .map_err(|error| {
+            log::warn!("player: cannot list the replay preview: {error}");
+            PlayerError::Network
+        })?
+    } else {
+        segments.to_vec()
+    };
+    if segments.is_empty() {
+        log::warn!("player: the replay preview has no segments");
+        return Err(PlayerError::Network);
+    }
+    let durations = segments
+        .iter()
+        .map(|segment| std::time::Duration::from_millis(segment.duration_ms.into()))
+        .collect();
+    Ok(semaphore_player::Opened::Segments {
+        fetch: Arc::new(CoreSegments {
+            core: core.clone(),
+            runtime: runtime.clone(),
+            segments,
+        }),
+        durations,
+        start,
+    })
+}
+
+/// The preview's segments, fetched with the session's token through core.
+#[cfg(feature = "player")]
+pub struct CoreSegments {
+    core: Arc<semaphore_core::Core>,
+    runtime: tokio::runtime::Handle,
+    segments: Vec<semaphore_core::model::PreviewSegment>,
+}
+
+#[cfg(feature = "player")]
+impl semaphore_player::SegmentFetch for CoreSegments {
+    fn fetch(
+        &self,
+        index: usize,
+        cancel: &semaphore_player::Cancel,
+    ) -> Result<Vec<u8>, semaphore_player::FetchError> {
+        let segment = self
+            .segments
+            .get(index)
+            .cloned()
+            .ok_or(semaphore_player::FetchError::Failed)?;
+        let core = self.core.clone();
+        let result = block_unless_cancelled(&self.runtime, cancel, async move {
+            core.fetch_replay_segment(segment).await
+        })
+        .ok_or(semaphore_player::FetchError::Cancelled)?;
+        result.map_err(|failure| {
+            log::warn!("player: replay segment {index}: {}", failure.error);
+            fetch_error(&failure)
+        })
+    }
+}
+
+/// Core's failure as the segment reader's: transient ones are retried.
+#[cfg(feature = "player")]
+fn fetch_error(failure: &semaphore_core::model::SegmentFailure) -> semaphore_player::FetchError {
+    if failure.transient {
+        semaphore_player::FetchError::Transient
+    } else {
+        semaphore_player::FetchError::Failed
+    }
 }
 
 /// The window's players, or `None` when the app is built without them.
@@ -150,6 +269,41 @@ mod tests {
         assert!((0.9..1.2).contains(&seconds), "{seconds} s");
         // The fixture is lavfi's sine, at 1/8 of full scale.
         assert!(pcm.samples.iter().any(|sample| sample.abs() > 0.08));
+    }
+
+    #[test]
+    fn transient_segment_failures_are_retried_and_refusals_are_not() {
+        use semaphore_core::model::SegmentFailure;
+        use semaphore_core::platform::CoreError;
+        let failure = |transient| SegmentFailure {
+            transient,
+            error: CoreError::Failed {
+                message: "x".into(),
+            },
+        };
+        assert_eq!(
+            fetch_error(&failure(true)),
+            semaphore_player::FetchError::Transient
+        );
+        assert_eq!(
+            fetch_error(&failure(false)),
+            semaphore_player::FetchError::Failed
+        );
+    }
+
+    #[test]
+    fn a_cancelled_wait_gives_up() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_time()
+            .build()
+            .unwrap();
+        let cancel = semaphore_player::Cancel::default();
+        let quick = block_unless_cancelled(runtime.handle(), &cancel, async { 7 });
+        assert_eq!(quick, Some(7));
+        cancel.cancel();
+        let never = block_unless_cancelled(runtime.handle(), &cancel, std::future::pending::<()>());
+        assert_eq!(never, None);
     }
 
     #[test]

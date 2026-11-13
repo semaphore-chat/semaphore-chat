@@ -4,7 +4,9 @@
 
 use semaphore_core::backend::{FileUpload, FilesBackend, SessionBackend};
 use semaphore_core::platform::{CoreError, SecretStore};
-use semaphore_core::player::{MediaPlayer, PlaybackSource, PlaybackState, PlayerEvent};
+use semaphore_core::player::{
+    AttachmentSource, MediaPlayer, PlaybackSource, PlaybackState, PlayerEvent,
+};
 use semaphore_fake_server::{FakeServer, Record, ScenarioSource};
 use semaphore_media_livekit::audio::virtual_io::VirtualIo;
 use semaphore_net::HttpBackend;
@@ -440,13 +442,13 @@ fn a_fixture_plays_to_its_end_over_http() {
     let (tx, rx) = mpsc::channel();
     let tx = Mutex::new(tx);
     let player = players.open_with_sink(
-        PlaybackSource {
+        PlaybackSource::Attachment(AttachmentSource {
             file_id: id,
             filename: "vp9-opus.webm".into(),
             mime_type: "video/webm".into(),
             size,
             has_thumbnail: false,
-        },
+        }),
         Arc::new(move |e| {
             let _ = tx.lock().unwrap().send(e);
         }),

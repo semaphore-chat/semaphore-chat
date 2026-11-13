@@ -127,3 +127,11 @@ pub struct PreviewSegment {
     pub url: String,
     pub duration_ms: u32,
 }
+
+/// Why a preview segment didn't come (`Core::fetch_replay_segment`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SegmentFailure {
+    /// No response, a 5xx or a 429: trying again may work.
+    pub transient: bool,
+    pub error: crate::platform::CoreError,
+}

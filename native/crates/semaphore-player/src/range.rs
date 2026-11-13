@@ -12,9 +12,8 @@
 //! - **Cancellation.** [`Cancel`] (held by the player) ends a read that is waiting and aborts
 //!   the fetches in flight; dropping the source does too, and frees its blocks.
 
-use crate::Source;
 use crate::buffered::{BufferedReport, merged_ranges};
-use crate::engine::{Cancel, Opener};
+use crate::engine::{Cancel, Opened, Opener};
 use semaphore_core::player::{PlaybackSource, PlayerError};
 use semaphore_net::HttpBackend;
 use std::collections::{HashMap, HashSet};
@@ -578,6 +577,10 @@ impl Drop for RangeSource {
 pub fn http_opener(backend: HttpBackend, cache: Arc<BlockCache>, runtime: Handle) -> Opener {
     Arc::new(
         move |source: &PlaybackSource, cancel: &Cancel, buffered: &BufferedReport| {
+            let Some(source) = source.attachment() else {
+                log::warn!("player: {} isn't an attachment", source.id());
+                return Err(PlayerError::Unsupported);
+            };
             let fetch = Arc::new(HttpFile::new(backend.clone(), source.file_id.clone()));
             let size = (source.size > 0).then_some(source.size);
             RangeSource::open(
@@ -588,7 +591,7 @@ pub fn http_opener(backend: HttpBackend, cache: Arc<BlockCache>, runtime: Handle
                 runtime.clone(),
                 cancel.clone(),
             )
-            .map(|range| Box::new(range.with_buffered(buffered.clone())) as Box<dyn Source>)
+            .map(|range| Opened::Bytes(Box::new(range.with_buffered(buffered.clone()))))
             .map_err(|error| {
                 log::warn!("player: cannot open {}: {error}", source.file_id);
                 PlayerError::Network

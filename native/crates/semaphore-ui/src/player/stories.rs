@@ -11,7 +11,7 @@ use crate::voice::VideoFrames;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use image::{Frame, RgbaImage};
-use semaphore_core::player::{PlaybackSource, PlaybackState, PlayerError};
+use semaphore_core::player::{AttachmentSource, PlaybackState, PlayerError};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,8 +22,8 @@ fn secs(s: u64) -> Duration {
     Duration::from_secs(s)
 }
 
-fn video_source(file_id: &str, filename: &str) -> PlaybackSource {
-    PlaybackSource {
+fn video_source(file_id: &str, filename: &str) -> AttachmentSource {
+    AttachmentSource {
         file_id: file_id.into(),
         filename: filename.into(),
         mime_type: "video/mp4".into(),
@@ -32,8 +32,8 @@ fn video_source(file_id: &str, filename: &str) -> PlaybackSource {
     }
 }
 
-fn audio_source(file_id: &str, filename: &str) -> PlaybackSource {
-    PlaybackSource {
+fn audio_source(file_id: &str, filename: &str) -> AttachmentSource {
+    AttachmentSource {
         file_id: file_id.into(),
         filename: filename.into(),
         mime_type: "audio/ogg".into(),
@@ -78,7 +78,7 @@ fn framed(children: Vec<AnyView>, cx: &mut App) -> AnyView {
 }
 
 struct VideoStory {
-    source: PlaybackSource,
+    source: AttachmentSource,
     dimensions: (Option<u32>, Option<u32>),
     script: Script,
     play: bool,
@@ -134,7 +134,7 @@ impl VideoStory {
 }
 
 struct AudioStory {
-    source: PlaybackSource,
+    source: AttachmentSource,
     script: Script,
     play: bool,
 }

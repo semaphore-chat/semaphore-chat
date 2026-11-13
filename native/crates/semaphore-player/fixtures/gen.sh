@@ -47,5 +47,26 @@ aac='-c:a aac -b:a 24k'
 # The faststart MP4 cut inside its moov box: a known container that fails to open.
 head -c 600 h264-aac.mp4 > truncated.mp4
 
+# The replay preview (src/ts.rs, src/segments.rs): an HLS cut into three 10 s MPEG-TS segments,
+# as the backend serves the replay buffer (H.264 and stereo AAC, timestamps continuing across
+# segments). Segment 0 is red with a 440 Hz tone, 1 green with 660 Hz, 2 blue with 880 Hz; a
+# keyframe every 2 s. Then segment 1 as 192-byte M2TS packets (LiveKit egress's HDMV-style TS,
+# which the backend serves unremuxed when its remux fails), and 2 s of H.264 with Opus in TS (a
+# stream the player reports and refuses).
+mkdir -p ts
+tsv='color=c=red:s=64x64:r=10:d=10[r];color=c=green:s=64x64:r=10:d=10[g];color=c=blue:s=64x64:r=10:d=10[b];[r][g][b]concat=n=3:v=1:a=0,format=yuv420p[v]'
+tsa='sine=frequency=440:sample_rate=48000:duration=10[a0];sine=frequency=660:sample_rate=48000:duration=10[a1];sine=frequency=880:sample_rate=48000:duration=10[a2];[a0][a1][a2]concat=n=3:v=0:a=1,pan=stereo|c0=c0|c1=c0[a]'
+gop='-g 20 -keyint_min 20 -sc_threshold 0'
+# shellcheck disable=SC2086
+ff -filter_complex "$tsv;$tsa" -map '[v]' -map '[a]' $x264 $gop -c:a aac -b:a 32k \
+  -f hls -hls_time 10 -hls_list_size 0 -hls_segment_type mpegts \
+  -hls_segment_filename 'ts/seg%d.ts' ts/playlist.m3u8
+rm ts/playlist.m3u8
+ff -i ts/seg1.ts -map 0 -c copy -copyts -f mpegts -mpegts_m2ts_mode 1 ts/seg1-m2ts.ts
+# shellcheck disable=SC2086
+ff -filter_complex 'color=c=red:s=64x64:r=10:d=2,format=yuv420p[v];sine=frequency=440:sample_rate=48000:duration=2[a]' \
+  -map '[v]' -map '[a]' $x264 -c:a libopus -b:a 16k -f mpegts ts/h264-opus.ts
+ls -l ts
+
 ls -l
 du -cb ./*.mp4 ./*.mov ./*.webm ./*.mkv ./*.avi ./*.ogv ./*.ogg ./*.mp3 ./*.wav ./*.flac ./*.m4a | tail -n 1
