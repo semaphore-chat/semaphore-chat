@@ -1,0 +1,262 @@
+# WU/W9: the remaining routes and small flows in the real app, against the showcase scenario.
+# The server is asked for what it hasn't been set up as yet, what it says about registering, an
+# invite to a community alexk isn't in (joined with his account, and one he can't use), the
+# notifications page (all read), the friends, profile and create-community routes, a channel's
+# search route with a page of results and the next one, a group DM's "Add people" and "Leave
+# group", and the web's shortcuts: Ctrl+/ for the sheet, Escape to close it, Alt+Down for the
+# next channel.
+#
+# Two windows: the signed-out screens at the size the other lanes use, then (signed out, so no
+# session is lost) a tall one, because the search panel's "More results" sits below fifty hits
+# and a click needs it in the window. The rig can only open a window, not resize one.
+app 1600 1400
+window activate
+wait idle
+
+# 1. A server nobody has set up yet: the connect screen says to set it up in a browser, and its
+# button opens that page.
+server onboarding "{\"needsSetup\": true}"
+click auth-connect
+wait core label "Username"
+# The probe answers itself and no core event follows it, so the connect screen takes the server's
+# answer on the next core event (see the lane report: the hook belongs in the probe's reply).
+os suspend
+os resume
+wait core w9 setup-notice shown
+wait idle
+shot 01-setup-notice
+click auth-setup-open
+expect opened-url "$SERVER"
+# Set up in the browser now: back to the connect step, and the probe says so.
+click auth-setup-change-server
+wait core element auth-connect
+server onboarding "{\"needsSetup\": false}"
+click auth-connect
+wait core label "Username"
+os suspend
+os resume
+wait core w9 setup-notice gone
+
+# 2. Registering: closed (not offered), invite-only (the code required), open (optional).
+server public_settings "{\"registrationMode\": \"CLOSED\"}"
+click auth-change-server
+wait core element auth-connect
+click auth-connect
+wait core element auth-register-closed
+wait core no-element auth-register
+wait idle
+shot 02-register-closed
+server public_settings "{\"registrationMode\": \"INVITE_ONLY\"}"
+click auth-change-server
+wait core element auth-connect
+click auth-connect
+wait core element auth-register
+click auth-register
+wait core element register-code
+wait core label "Invite code"
+wait idle
+shot 03-register-invite-only
+click register-sign-in
+server public_settings "{\"registrationMode\": \"OPEN\"}"
+click auth-change-server
+wait core element auth-connect
+click auth-connect
+wait core element auth-register
+click auth-register
+wait core element register-code
+wait core label "Invite code (optional)"
+wait idle
+shot 04-register-open
+click register-sign-in
+
+# The tall window: nothing is signed in yet, so no session is left behind by the one this
+# replaces.
+app 1600 3600
+window activate
+wait idle
+click auth-connect
+wait core label "Username"
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait idle
+
+# 3. The notifications page: the showcase's unread ones, then every one read.
+navigate /notifications
+wait core route /notifications
+wait core element notifications-page
+# "Mark all as read" is offered exactly while something is unread.
+wait core element notifications-mark-all
+wait idle
+shot 05-notifications
+click notifications-mark-all
+wait core w9 unread-notifications 0
+wait core no-element notifications-mark-all
+wait idle
+shot 06-notifications-read
+
+# 4. The friends page, his profile by `/profile`, and the create-community route.
+navigate /friends
+wait core route /friends
+wait core element friends-panel
+wait idle
+shot 07-friends
+navigate /profile
+wait core route profile/$ID(me)
+wait core element profile-edit
+wait idle
+shot 08-profile
+navigate /community/create
+wait core element create-community-name
+wait idle
+shot 09-create-community
+click create-community-cancel
+wait core no-element create-community-name
+
+# 5. A channel's search route: more hits than one page holds, so the panel offers the next page,
+# and takes it.
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 1\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 2\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 3\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 4\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 5\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 6\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 7\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 8\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 9\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 10\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 11\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 12\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 13\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 14\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 15\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 16\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 17\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 18\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 19\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 20\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 21\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 22\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 23\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 24\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 25\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 26\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 27\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 28\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 29\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 30\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 31\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 32\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 33\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 34\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 35\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 36\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 37\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 38\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 39\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 40\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 41\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 42\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 43\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 44\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 45\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 46\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 47\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 48\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 49\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 50\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9needle 51\"}"
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)/search
+wait core channel $ID(cc-general)
+wait core side-panel search
+expect focused "Search messages"
+type "w9needle"
+tick 400
+wait core requests MessagesController_searchChannelMessages >= 1
+wait core search-hits >= 1
+wait core w9 search-more shown
+wait idle
+shot 10-search-more
+click search-more
+wait core search-hits >= 51
+wait core w9 search-more gone
+wait idle
+shot 11-search-next-page
+
+# 6. A group DM: "Add people" adds Kwame, and "Leave group" goes back to the conversations.
+navigate /direct-messages/$ID(dm-launch)
+wait core element dm-header-more
+wait core w9 group-actions shown
+wait idle
+shot 12-group-dm
+click dm-header-more
+wait core element dm-add-people
+click dm-add-people
+wait core element add-people-field
+click add-people-field
+type "kwam"
+tick 400
+wait core element add-people-user-$ID(u-kwame)
+click add-people-user-$ID(u-kwame)
+wait idle
+shot 13-add-people
+click add-people-submit
+wait core no-element add-people-submit
+expect requests DirectMessagesController_addMembers >= 1
+wait core w9 dm-members 4
+wait idle
+shot 14-group-grew
+click dm-header-more
+wait core element dm-leave
+click dm-leave
+wait core element dm-leave-confirm
+wait idle
+shot 15-leave-group
+click dm-leave-confirm
+wait core route dms
+wait core dms 4
+
+# 7. The shortcuts: Ctrl+/ shows the web's sheet, Escape closes it, Alt+Down is the next channel.
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+press ctrl-/
+wait core w9 sheet open
+wait idle
+shot 16-shortcuts
+press escape
+wait core w9 sheet closed
+press alt-down
+wait core route channel/$ID(cc-clips)
+press alt-shift-down
+wait core route channel/$ID(cc-lfg)
+
+# 8. An invite to a community he isn't in, joined with his account; then a code he can't use.
+server seed_invite "{\"code\": \"W9-INVITE\", \"communityIds\": [\"W9 Invite Club\"]}"
+link "semaphore://join/W9-INVITE"
+wait core route /join/W9-INVITE
+wait core element invite-join
+wait idle
+shot 17-invite
+click invite-join
+wait core element invite-joined
+wait core requests inviteControllerAcceptInvite >= 1
+wait core label "W9 Invite Club"
+wait idle
+shot 18-invite-joined
+click invite-close
+wait core no-element invite-join
+server seed_invite "{\"code\": \"W9-USED\", \"maxUses\": 0}"
+link "semaphore://join/W9-USED"
+wait core element invite-reason
+# The server's own sentence for the code it refuses.
+wait core label "This invite has reached its maximum number of uses."
+wait idle
+shot 19-invite-unusable
+click invite-close
+wait core no-element invite-reason
