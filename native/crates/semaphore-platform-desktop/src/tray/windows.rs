@@ -5,7 +5,10 @@
 //! Explorer asks for icons again. Commands from other threads are queued on the channel and the
 //! loop woken with a posted message.
 
-use super::{CLOSE_TO_TRAY, Command, QUIT, SHOW_HIDE, Shared, TrayOptions, TrayStatus, tooltip};
+use super::{
+    CHECK_FOR_UPDATES, CLOSE_TO_TRAY, Command, QUIT, SHOW_HIDE, Shared, TrayOptions, TrayStatus,
+    tooltip,
+};
 use crate::icon::{Rgba, app_icon, with_dot};
 use crate::{DesktopEvent, DesktopEventSink};
 use std::sync::Arc;
@@ -24,10 +27,10 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon,
     DestroyMenu, DestroyWindow, DispatchMessageW, GWLP_USERDATA, GetCursorPos, GetMessageW,
-    GetWindowLongPtrW, HICON, ICONINFO, MF_CHECKED, MF_SEPARATOR, MF_STRING, MSG, PostMessageW,
-    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SM_CXSMICON, SetForegroundWindow,
-    SetWindowLongPtrW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenuEx,
-    TranslateMessage, WM_APP, WM_CONTEXTMENU, WM_NULL, WNDCLASSW, WS_OVERLAPPED,
+    GetWindowLongPtrW, HICON, ICONINFO, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG,
+    PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SM_CXSMICON,
+    SetForegroundWindow, SetWindowLongPtrW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TrackPopupMenuEx, TranslateMessage, WM_APP, WM_CONTEXTMENU, WM_NULL, WNDCLASSW, WS_OVERLAPPED,
 };
 
 /// The icon's callback message.
@@ -41,7 +44,8 @@ const NIN_KEYSELECT: u32 = NIN_SELECT | 1;
 
 const MENU_SHOW_HIDE: usize = 1;
 const MENU_CLOSE_TO_TRAY: usize = 2;
-const MENU_QUIT: usize = 3;
+const MENU_CHECK_FOR_UPDATES: usize = 3;
+const MENU_QUIT: usize = 4;
 
 fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(Some(0)).collect()
@@ -102,6 +106,7 @@ struct State {
     dotted: HICON,
     unread: u32,
     close_to_tray: bool,
+    updates_enabled: bool,
     taskbar_created: u32,
     taskbar: Option<Taskbar>,
     app_window: Option<HWND>,
@@ -207,6 +212,7 @@ impl State {
                 }
                 Command::Unread(_) => {}
                 Command::CloseToTray(on) => self.close_to_tray = on,
+                Command::Updates(enabled) => self.updates_enabled = enabled,
                 Command::TaskbarWindow(handle) => {
                     self.app_window = Some(handle as HWND);
                     self.overlay();
@@ -226,6 +232,7 @@ impl State {
 unsafe fn show_menu(window: HWND, state: *mut State) {
     // SAFETY: a short read; see above.
     let close_to_tray = unsafe { (*state).close_to_tray };
+    let updates_enabled = unsafe { (*state).updates_enabled };
     // SAFETY: a menu we create, show and destroy here.
     let chosen = unsafe {
         let menu = CreatePopupMenu();
@@ -234,6 +241,7 @@ unsafe fn show_menu(window: HWND, state: *mut State) {
         }
         let show_hide = wide(SHOW_HIDE);
         let close = wide(CLOSE_TO_TRAY);
+        let check_for_updates = wide(CHECK_FOR_UPDATES);
         let quit = wide(QUIT);
         AppendMenuW(menu, MF_STRING, MENU_SHOW_HIDE, show_hide.as_ptr());
         AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
@@ -245,6 +253,13 @@ unsafe fn show_menu(window: HWND, state: *mut State) {
             close.as_ptr(),
         );
         AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
+        let updates = if updates_enabled { 0 } else { MF_GRAYED };
+        AppendMenuW(
+            menu,
+            MF_STRING | updates,
+            MENU_CHECK_FOR_UPDATES,
+            check_for_updates.as_ptr(),
+        );
         AppendMenuW(menu, MF_STRING, MENU_QUIT, quit.as_ptr());
         let mut cursor = POINT::default();
         GetCursorPos(&mut cursor);
@@ -270,6 +285,7 @@ unsafe fn show_menu(window: HWND, state: *mut State) {
             state.close_to_tray = !state.close_to_tray;
             (state.sink)(DesktopEvent::SetCloseToTray(state.close_to_tray));
         }
+        MENU_CHECK_FOR_UPDATES => (state.sink)(DesktopEvent::CheckForUpdates),
         MENU_QUIT => (state.sink)(DesktopEvent::Quit),
         _ => {}
     }
@@ -360,6 +376,7 @@ pub(super) fn run(
             dotted: hicon(&with_dot(&base)),
             unread: 0,
             close_to_tray: options.close_to_tray,
+            updates_enabled: options.updates_enabled,
             taskbar_created,
             taskbar: Taskbar::new(),
             app_window: None,

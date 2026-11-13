@@ -141,6 +141,7 @@ impl AppRoot {
         self.updates.exec = Some(services.exec.clone());
         self.updates.stop = Some(stop);
         self.updates.updater = Some(updater);
+        self.sync_update_actions(cx);
         cx.notify();
     }
 
@@ -154,8 +155,28 @@ impl AppRoot {
     fn on_update_state(&mut self, state: UpdateState, cx: &mut Context<Self>) {
         self.updates.state = state;
         self.show_update_banner(cx);
+        self.sync_update_actions(cx);
         self.refresh_desktop_tab(cx);
         cx.notify();
+    }
+
+    /// Whether the settings' Check for updates button is enabled: an updater exists and isn't
+    /// already working. The app menu's and the tray's items are enabled with it, exactly.
+    pub(crate) fn can_check_for_updates(&self) -> bool {
+        self.updates.updater.is_some() && !crate::update::status_of(&self.updates.state).busy()
+    }
+
+    /// Puts that state on the app menu's and the tray's Check for Updates.
+    pub(crate) fn sync_update_actions(&mut self, cx: &mut Context<Self>) {
+        let enabled = self.can_check_for_updates();
+        let close_to_tray = self.settings.get().close_to_tray;
+        crate::menu::install(cx, close_to_tray, enabled);
+        if let Some(tray) = cx
+            .try_global::<crate::desktop::DesktopShell>()
+            .and_then(|shell| shell.tray())
+        {
+            tray.set_updates_enabled(enabled);
+        }
     }
 
     fn on_update_banner(
@@ -255,8 +276,11 @@ impl AppRoot {
         cx.notify();
     }
 
-    /// "Check for updates" in the settings, or Retry on a failed card.
-    pub(super) fn check_for_updates(&mut self, cx: &mut Context<Self>) {
+    /// "Check for updates" in the settings, the app menu or the tray, or Retry on a failed card.
+    pub(crate) fn check_for_updates(&mut self, cx: &mut Context<Self>) {
+        if !self.can_check_for_updates() {
+            return;
+        }
         let (Some(updater), Some(exec)) = (self.updates.updater.clone(), self.updates.exec.clone())
         else {
             return;

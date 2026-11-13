@@ -22,6 +22,7 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
     Router::new()
         .route("/api/users", post(register))
         .route("/api/auth/forgot-password", post(forgot_password))
+        .route("/api/auth/reset-password", post(reset_password))
         .route("/api/invite/public/{code}", get(public_invite))
         .route("/api/onboarding/status", get(instance_status))
         .route("/api/invite/{code}/accept", post(accept_invite))
@@ -32,6 +33,7 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
     Some(match (method.as_str(), route) {
         ("POST", "/api/users") => "UserController_register",
         ("POST", "/api/auth/forgot-password") => "AuthController_forgotPassword",
+        ("POST", "/api/auth/reset-password") => "AuthController_resetPassword",
         ("GET", "/api/invite/public/{code}") => "InviteController_getPublicInvite",
         ("GET", "/api/onboarding/status") => "OnboardingController_getStatus",
         ("POST", "/api/invite/{code}/accept") => "inviteControllerAcceptInvite",
@@ -159,6 +161,64 @@ async fn forgot_password(State(inner): State<Arc<Inner>>, body: Bytes) -> Respon
     json_response(
         StatusCode::OK,
         json!({ "message": "If an account with that email exists, a reset link has been sent." }),
+    )
+}
+
+/// The body as the endpoint takes it, checked here rather than by the generated type so the
+/// password rules answer in the backend DTO's own words.
+#[derive(serde::Deserialize)]
+struct ResetBody {
+    token: String,
+    #[serde(rename = "newPassword")]
+    new_password: String,
+}
+
+/// `PasswordResetService.resetPassword`: one generic 400 for a token that is unknown, already
+/// used or expired; the DTO's 8 to 128 characters for the password; single use; the account's
+/// sessions end, as the backend revokes them.
+async fn reset_password(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
+    let Ok(dto) = typed::<ResetBody>(&body) else {
+        return invalid("The request body does not match the contract");
+    };
+    if dto.token.chars().count() > 128 {
+        return invalid("token must be shorter than or equal to 128 characters");
+    }
+    let length = dto.new_password.chars().count();
+    if length < 8 {
+        return invalid("Password must be at least 8 characters");
+    }
+    if length > 128 {
+        return invalid("Password must be at most 128 characters");
+    }
+    let now = inner.now();
+    let index = lock(&inner.accounts)
+        .password_resets
+        .iter()
+        .position(|reset| reset.token == dto.token && !reset.used && reset.expires_at > now);
+    let Some(index) = index else {
+        return inner.error(400, "BAD_REQUEST", "Invalid or expired reset token", false);
+    };
+    let user_id = {
+        let mut accounts = lock(&inner.accounts);
+        accounts.password_resets[index].used = true;
+        accounts.password_resets[index].user_id.clone()
+    };
+    {
+        let mut accounts = lock(&inner.accounts);
+        for credential in accounts.credentials.values_mut() {
+            if credential.user_id == user_id {
+                credential.password = dto.new_password.clone();
+            }
+        }
+        for session in &mut accounts.sessions {
+            if session.user_id == user_id {
+                session.revoked = true;
+            }
+        }
+    }
+    json_response(
+        StatusCode::OK,
+        json!({ "message": "Password has been reset." }),
     )
 }
 

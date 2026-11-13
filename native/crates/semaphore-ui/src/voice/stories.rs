@@ -439,6 +439,15 @@ fn ptt_held(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
     stage(m, window, cx)
 }
 
+fn ptt_idle(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
+    let mut m = model(cameras(2));
+    m.ptt = Some(PttState {
+        held: false,
+        key_label: "Space".into(),
+    });
+    stage(m, window, cx)
+}
+
 fn crowd(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
     let mut people: Vec<_> = (0..12).map(person).collect();
     people[1].speaking = true;
@@ -489,6 +498,7 @@ pub fn stories() -> Vec<Story> {
         Story::new("voice-reconnecting", reconnecting),
         Story::new("voice-screen-share", screen_share),
         Story::new("voice-ptt-held", ptt_held),
+        Story::new("voice-ptt-idle", ptt_idle),
         Story::new("voice-crowd", crowd),
         Story::new("voice-long-names", long_names),
     ]

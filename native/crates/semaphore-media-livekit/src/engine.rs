@@ -537,6 +537,11 @@ impl LiveKitEngine {
         self.inner.publish_snapshot();
     }
 
+    /// Whether the push-to-talk key is held, as the mic gate reads it.
+    pub fn ptt_pressed(&self) -> bool {
+        lock(&self.inner.wanted).ptt_pressed
+    }
+
     /// Voice activity's threshold, 0 to 100 on the web's scale (`audio::vad`): below it the mic
     /// sends nothing. 0, the default, is no gate. Push-to-talk mode ignores it. Remembered across
     /// calls, and a live call follows at once.

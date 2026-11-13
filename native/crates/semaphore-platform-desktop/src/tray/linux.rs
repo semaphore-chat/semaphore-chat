@@ -4,7 +4,10 @@
 //! after the app (or restarts) still gets the icon: ksni re-registers when the watcher comes back,
 //! and `watcher_online`/`watcher_offline` keep [`TrayStatus`] in step.
 
-use super::{CLOSE_TO_TRAY, Command, QUIT, SHOW_HIDE, Shared, TrayOptions, TrayStatus, tooltip};
+use super::{
+    CHECK_FOR_UPDATES, CLOSE_TO_TRAY, Command, QUIT, SHOW_HIDE, Shared, TrayOptions, TrayStatus,
+    tooltip,
+};
 use crate::icon::{Rgba, app_icon, with_dot};
 use crate::links::APP_ID;
 use crate::{DesktopEvent, DesktopEventSink};
@@ -49,6 +52,7 @@ struct Item {
     shared: Arc<Shared>,
     unread: u32,
     close_to_tray: bool,
+    updates_enabled: bool,
 }
 
 impl ksni::Tray for Item {
@@ -105,6 +109,13 @@ impl ksni::Tray for Item {
             .into(),
             ksni::MenuItem::Separator,
             StandardItem {
+                label: CHECK_FOR_UPDATES.into(),
+                enabled: self.updates_enabled,
+                activate: Box::new(|item: &mut Self| (item.sink)(DesktopEvent::CheckForUpdates)),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
                 label: QUIT.into(),
                 activate: Box::new(|item: &mut Self| (item.sink)(DesktopEvent::Quit)),
                 ..Default::default()
@@ -155,6 +166,7 @@ pub(super) fn run(
         shared: shared.clone(),
         unread: 0,
         close_to_tray: options.close_to_tray,
+        updates_enabled: options.updates_enabled,
     };
     // Optimistic: a watcher that isn't there calls `watcher_offline` before `spawn` returns.
     shared.set_status(TrayStatus::Shown);
@@ -184,6 +196,9 @@ pub(super) fn run(
             }
             Command::CloseToTray(on) => {
                 handle.update(|item| item.close_to_tray = on);
+            }
+            Command::Updates(enabled) => {
+                handle.update(|item| item.updates_enabled = enabled);
             }
             // The taskbar overlay is Windows'; the launcher count above is Linux's equivalent.
             Command::TaskbarWindow(_) => {}

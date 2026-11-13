@@ -522,14 +522,6 @@ impl VoiceVideoSettings {
                 },
                 cx,
             ))
-            .children(self.limits.push_to_talk.clone().map(|note| {
-                div()
-                    .id("voice-ptt-limit")
-                    .test_support()
-                    .role(Role::Note)
-                    .aria_label(note.clone())
-                    .child(caption(note, cx))
-            }))
     }
 
     fn processing(&self, cx: &mut Context<Self>) -> Div {

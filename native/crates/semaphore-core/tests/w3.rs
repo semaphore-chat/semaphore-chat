@@ -452,6 +452,76 @@ async fn forgot_password_asks_for_the_email() {
 }
 
 #[tokio::test]
+async fn reset_password_redeems_its_token_without_a_session_or_storage() {
+    let rig = Rig::new();
+    rig.core.probe_server("http://server".into()).await.ok();
+    rig.backend.w3.answer(
+        "reset_password",
+        json!({ "message": "Password has been reset." }),
+    );
+    rig.core
+        .reset_password(" tok3n ".into(), "a new password".into())
+        .await
+        .unwrap();
+    assert!(
+        rig.backend
+            .w3
+            .calls()
+            .contains(&"reset_password tok3n a new password".to_owned())
+    );
+    // Nothing signed in, nothing stored: the token and password leave and are forgotten.
+    assert_eq!(rig.core.session(), SessionState::SignedOut);
+    assert!(!*rig.backend.stored_session.lock().unwrap());
+
+    // A refused token is the server's message.
+    rig.backend.w3.answer(
+        "reset_password",
+        json!({ "message": "Invalid or expired reset token" }),
+    );
+    rig.backend.w3.fail_next(
+        "reset_password",
+        error(400, "Invalid or expired reset token"),
+    );
+    assert_eq!(
+        rig.core
+            .reset_password("bad".into(), "a new password".into())
+            .await,
+        Err(CoreError::Failed {
+            message: "Invalid or expired reset token from the server".into()
+        })
+    );
+
+    // A server that can't be reached is the same `Failed`, with its message.
+    rig.backend
+        .w3
+        .fail_next("reset_password", error(503, "UNAVAILABLE"));
+    assert_eq!(
+        rig.core
+            .reset_password("tok".into(), "a new password".into())
+            .await,
+        Err(CoreError::Failed {
+            message: "UNAVAILABLE from the server".into()
+        })
+    );
+
+    // Too short or too long is refused here, in the server's own words, without a request.
+    let before = rig.backend.w3.calls().len();
+    assert_eq!(
+        rig.core.reset_password("tok".into(), "short".into()).await,
+        Err(CoreError::Failed {
+            message: "Password must be at least 8 characters".into()
+        })
+    );
+    assert_eq!(
+        rig.core.reset_password("tok".into(), "a".repeat(129)).await,
+        Err(CoreError::Failed {
+            message: "Password must be at most 128 characters".into()
+        })
+    );
+    assert_eq!(rig.backend.w3.calls().len(), before);
+}
+
+#[tokio::test]
 async fn an_invite_preview_loads_says_why_and_fails_until_retried() {
     let rig = Rig::new();
     rig.core.probe_server("http://server".into()).await.ok();

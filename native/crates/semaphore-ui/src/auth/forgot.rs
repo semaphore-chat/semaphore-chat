@@ -1,5 +1,6 @@
 //! `ForgotPasswordScreen`, after `ForgotPasswordPage.tsx`: the email, then "we've sent a reset
-//! link". The reset itself finishes in the web app the email opens.
+//! link". The mail's link is a web URL; its success card also takes one pasted back here (the
+//! whole URL or just the token) and opens the native reset screen with it.
 
 use super::{card, event_link, page};
 use crate::kit::{Alert, Button, Icon, Severity, TextField, Variant, spacing, text, text_state};
@@ -15,15 +16,60 @@ pub enum ForgotEvent {
     /// "Send reset link": `Core::forgot_password(email)`. Answer with `set_sent(true)`, or
     /// `set_error`.
     Submit { email: String },
+    /// A reset link or token pasted into the success card: the owner opens the reset screen.
+    OpenReset { token: String },
     /// "Back to login".
     Back,
 }
 
+/// The token in a pasted reset link or token: the mail's web URL
+/// (`https://host/reset-password?token=...`, with or without a `#`), or the bare token. `None`
+/// when it doesn't look like one.
+pub fn reset_token_from_input(input: &str) -> Option<String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
+    let raw = input
+        .split(['?', '&', '#'])
+        .find_map(|part| part.strip_prefix("token="))
+        .map(|token| token.split('#').next().unwrap_or(token))
+        .unwrap_or(input);
+    let token = percent_decode(raw)?;
+    let length = token.chars().count();
+    (length > 0
+        && length <= 128
+        && !token.contains(['/', '\\', '?', '#', '&', '='])
+        && token.chars().all(|c| c.is_ascii_graphic()))
+    .then_some(token)
+}
+
+fn percent_decode(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let hex = text.get(index + 1..index + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 pub struct ForgotPasswordScreen {
     email: Entity<InputState>,
+    /// The pasted reset link or token, on the success card.
+    reset_link: Entity<InputState>,
     busy: bool,
     sent: bool,
     error: Option<String>,
+    /// Why the pasted link wasn't one, under its field.
+    link_error: Option<String>,
     tried: bool,
     took_focus: bool,
     _subscriptions: Vec<Subscription>,
@@ -34,12 +80,18 @@ impl EventEmitter<ForgotEvent> for ForgotPasswordScreen {}
 impl ForgotPasswordScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let email = text_state(window, cx, false);
-        let _subscriptions = vec![cx.observe(&email, |_, _, cx| cx.notify())];
+        let reset_link = text_state(window, cx, false);
+        let _subscriptions = vec![
+            cx.observe(&email, |_, _, cx| cx.notify()),
+            cx.observe(&reset_link, |_, _, cx| cx.notify()),
+        ];
         Self {
             email,
+            reset_link,
             busy: false,
             sent: false,
             error: None,
+            link_error: None,
             tried: false,
             took_focus: false,
             _subscriptions,
@@ -58,6 +110,7 @@ impl ForgotPasswordScreen {
     pub fn set_sent(&mut self, sent: bool, cx: &mut Context<Self>) {
         self.sent = sent;
         self.busy = false;
+        self.link_error = None;
         cx.notify();
     }
 
@@ -73,6 +126,33 @@ impl ForgotPasswordScreen {
         let email = email.to_owned();
         self.email
             .update(cx, |field, cx| field.set_value(email, window, cx));
+        cx.notify();
+    }
+
+    /// "Continue" under the pasted link: the token it carries, or why it doesn't carry one.
+    pub(crate) fn open_pasted_link(&mut self, cx: &mut Context<Self>) {
+        let pasted = self.reset_link.read(cx).value().to_string();
+        match reset_token_from_input(&pasted) {
+            Some(token) => {
+                self.link_error = None;
+                cx.emit(ForgotEvent::OpenReset { token });
+            }
+            None => self.link_error = Some("That doesn't look like a reset link.".into()),
+        }
+        cx.notify();
+    }
+
+    /// Fills the pasted-link field, for stories and tests.
+    #[cfg(any(test, feature = "stories"))]
+    pub(crate) fn preset_reset_link(
+        &mut self,
+        link: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let link = link.to_owned();
+        self.reset_link
+            .update(cx, |field, cx| field.set_value(link, window, cx));
         cx.notify();
     }
 
@@ -124,8 +204,46 @@ impl Render for ForgotPasswordScreen {
                     .mb(spacing(2.))
                     .child(Alert::new(
                         Severity::Success,
-                        "If an account with that email exists, we've sent a reset link. Open it to choose a new password in your browser, then sign in here.",
+                        "If an account with that email exists, we've sent a reset link. Open it to choose a new password, then sign in here.",
                     )),
+            )
+            .child(
+                div()
+                    .id("forgot-paste")
+                    .test_support()
+                    .w_full()
+                    .mb(spacing(2.))
+                    .flex()
+                    .flex_col()
+                    .gap(spacing(1.))
+                    .child(
+                        text(
+                            Variant::Body2,
+                            "Have a reset link? Paste it here to finish in the app.",
+                        )
+                        .text_color(sem.text_secondary),
+                    )
+                    .child({
+                        let field = TextField::new(
+                            "forgot-reset-link",
+                            &self.reset_link,
+                            "Reset link or token",
+                        )
+                        .error(self.link_error.is_some())
+                        .surface(sem.background_default);
+                        match self.link_error.clone() {
+                            Some(message) => field.helper(message),
+                            None => field,
+                        }
+                    })
+                    .child(
+                        Button::new("forgot-reset-open", "Continue")
+                            .outlined()
+                            .full_width()
+                            .on_click(
+                                cx.listener(|screen, _, _, cx| screen.open_pasted_link(cx)),
+                            ),
+                    ),
             )
             .child(back)
         } else {
@@ -211,6 +329,22 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
         }),
         Story::new("auth-forgot-sent", |_, window, cx| {
             screen(window, cx, |screen, _, cx| screen.set_sent(true, cx))
+        }),
+        Story::new("auth-forgot-sent-pasted", |_, window, cx| {
+            screen(window, cx, |screen, window, cx| {
+                screen.set_sent(true, cx);
+                screen.preset_reset_link(
+                    "https://chat.example.com/reset-password?token=aB3x9Q2w",
+                    window,
+                    cx,
+                );
+            })
+        }),
+        Story::new("auth-forgot-sent-bad-link", |_, window, cx| {
+            screen(window, cx, |screen, _, cx| {
+                screen.set_sent(true, cx);
+                screen.link_error = Some("That doesn't look like a reset link.".into());
+            })
         }),
         Story::new("auth-forgot-failed", |_, window, cx| {
             screen(window, cx, |screen, window, cx| {

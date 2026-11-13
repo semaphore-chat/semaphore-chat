@@ -27,50 +27,6 @@ story. "Depends" names the thing that must happen first.
 
 ## B. Partial features (behaviours missing)
 
-### B1. Forgot / reset password
-
-- **Web:** `frontend/src/pages/ForgotPasswordPage.tsx` sends the link;
-  `frontend/src/pages/ResetPasswordPage.tsx` takes `?token=` and posts the new password.
-- **Native:** the forgot screen is built and wired (`native/crates/semaphore-ui/src/auth/forgot.rs`,
-  `root/onboarding.rs`, `Core::forgot_password`). `/reset-password` has no route variant, so it
-  parses to `Route::Unbuilt` (`native/crates/semaphore-ui/src/nav/mod.rs:194`); core has no
-  user-facing reset command (`semaphore-core/src/commands/onboarding.rs:180` stops at forgot).
-- **Missing:** a reset screen and a core command for `POST /auth/reset-password` (the generated
-  client has `authControllerResetPassword`). Reachability is the harder half: the mailer builds
-  `${publicAppUrl}/reset-password?token=...`, a web URL, so a native screen only helps someone who
-  pastes the link or if a `semaphore://reset-password` route is added to the mailer.
-- **Size:** S for the screen and command; M with the deep-link/product decision.
-- **Depends:** product decision on whether the emailed link should open the native app (mailer +
-  deep-link route), which is a backend change.
-
-### B2. Home's invite card
-
-- **Web:** `frontend/src/components/Home/HomeInviteCard.tsx` with `useHomeInviteCard` offers "Invite
-  people": create an invite for a chosen community, copy the link, show its uses.
-- **Native:** Home's sections, "You're all caught up", the zero-community gate, the next step and
-  the create-community form are built (`native/crates/semaphore-ui/src/home/mod.rs`, sections in
-  `home/sections.rs`). The `HomeEvent` list in `native/crates/semaphore-app/src/root/account.rs`
-  has no invite action, and no invite UI exists under `ui/src/home`.
-- **Missing:** the card: pick a community, `Core::create_invite`, copy the link, and the empty/error
-  states. Core already has invite creation (W5-A), so no new plumbing.
-- **Size:** S.
-- **Depends:** none.
-
-### B3. Push-to-talk key binding
-
-- **Web:** `frontend/src/hooks/usePushToTalk.ts` listens for the configured key on keydown/keyup and
-  starts/stops transmitting, ignoring repeats and editable targets.
-- **Native:** the key is captured and saved (`native/crates/semaphore-ui/src/settings/key_capture.rs`,
-  `key_capture::ptt_key_from`, settings `push_to_talk_key`), the engine has `set_ptt_mode` and
-  `set_ptt_pressed` (`native/crates/semaphore-app/src/voice.rs:279`), and the voice bar's hold
-  button presses it (`native/crates/semaphore-ui/src/voice/bar.rs:441`). No key binding exists:
-  `semaphore-app/src/menu.rs:298` and `root/u9.rs:730` bind only quit/close/full-screen, the
-  navigation keys, Ctrl+/ and Esc.
-- **Missing:** a window-level keydown/keyup pair for the saved key (with the editable-target and
-  repeat rules the web has), enabled only while connected in push-to-talk mode.
-- **Size:** S.
-- **Depends:** none.
-
 ### B4. Voice diagnostics upload
 
 - **Web:** `frontend/src/features/voice/joinFailureReport.ts` posts a classified join failure to
@@ -97,20 +53,6 @@ story. "Depends" names the thing that must happen first.
 - **Size:** S-M (the engine's capture and preview path today only runs for a published camera; a test
   loop outside a call is the audio `start_input_test`'s video analogue).
 - **Depends:** none for the engine seam; a real camera to check it (D3).
-
-### B6. "Check for Updates" in the tray (and menu)
-
-- **Web/Electron:** `frontend/electron/main.ts:346` puts "Check for Updates" in the tray context
-  menu, and again in the app menu.
-- **Native:** the tray has show/hide, "Close to Tray", quit and the unread dot/overlay
-  (`native/crates/semaphore-platform-desktop/src/tray/mod.rs`), but no update item — the module
-  docstring still says "minus Check for Updates until there's an updater". The updater exists and
-  the settings' Desktop tab has the button (`native/crates/semaphore-ui/src/settings/desktop.rs:184`,
-  wired at `root/account.rs:906`), and the menu leaves it out on purpose (`menu.rs` prose in the
-  plan).
-- **Missing:** tray (and menu) entries that call the same check as the settings button.
-- **Size:** S.
-- **Depends:** none.
 
 ### B7. Voice event log file
 
@@ -307,12 +249,17 @@ Not listed: "Copy message link" from W1's defaults is not a gap — the web has 
 | Group | Items |
 |---|---|
 | A. Missing features | 1 |
-| B. Partial features | 7 |
+| B. Partial features | 3 |
 | C. Platform and distribution | 9 |
 | D. Only a person can check | 10 |
 | E. Decided not to build | 10 |
 
-The inventory itself (128 rows, 11 tables) now reads: 115 done, 8 partial, 2 not started, 3 n/a.
+B1 (reset password), B2 (Home's invite card), B3 (push-to-talk) and B6 (Check for Updates in the
+tray and menu) closed on 2026-11-13: the reset screen, command, deep link and pasted-link entry;
+the Home invite card; the window-level PTT key; and the tray and Help items. What each builds is
+spelled out in `docs/parity-plan.md`'s rows.
+
+The inventory itself (128 rows, 11 tables) now reads: 119 done, 4 partial, 2 not started, 3 n/a.
 
 ## The ten gaps that matter most for a first usable release
 
@@ -322,17 +269,17 @@ The inventory itself (128 rows, 11 tables) now reads: 115 done, 8 partial, 2 not
    the app ever runs, and it is the cheapest of the distribution items to fix.
 3. **Real Wayland and Windows capture checks (D1, D2).** Screen share is the feature that sells a
    voice client over a browser; it has never run on a real Wayland or Windows desktop.
-4. **Reset-password screen, or a deliberate decision to keep it on the web (B1).** Account recovery is
-   a hard support cost, and today the only path is a browser the desktop user may not have open.
-5. **Push-to-talk key binding (B3).** The setting exists and does nothing; anyone who turns it on
-   silently can't talk.
-6. **Home's invite card (B2).** It is the only in-app path from "I made a community" to "other people
-   can join", and the core work is already done.
-7. **File logging plus a panic hook (C5/B7).** Without a log file, every report from an installed app
+4. **File logging plus a panic hook (C5/B7).** Without a log file, every report from an installed app
    is unactionable; this is small and makes all of D cheaper.
-8. **Voice diagnostics upload (B4).** The panel classifies failures but can't tell anyone; it needs
+5. **Voice diagnostics upload (B4).** The panel classifies failures but can't tell anyone; it needs
    the backend's native platform value and then a one-line upload.
-9. **"Check for Updates" in the tray and menu (B6).** Users look for it there, not in Settings; the
-   tray module's own comment shows it was only waiting for the updater.
-10. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
-    blocker for any accessibility claim; scope the kit question before promising it.
+6. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
+   blocker for any accessibility claim; scope the kit question before promising it.
+7. **Camera test and preview in settings (B5).** The microphone has a test and a meter; the camera
+   has neither, so a broken camera is only found in a call.
+8. **Importing Electron's settings (C6).** Every existing desktop user who tries this build starts
+   from scratch; reading `settings.json` and the server URL once is small.
+9. **Which app owns `semaphore://` (C7).** With both installed, whichever registered last wins and
+   users have no way to choose; a shared setting is small.
+10. **`slice-e2e.sh` in CI (C8).** The behavioural gate only runs locally today, so a regression
+    waits for someone to run it by hand.

@@ -133,6 +133,7 @@ fn is_public(operation: Option<&str>) -> bool {
                 | "AuthController_refresh"
                 | "AuthController_redeemDesktopLogin"
                 | "AuthController_forgotPassword"
+                | "AuthController_resetPassword"
                 | "UserController_register"
                 | "InviteController_getPublicInvite"
                 | "OnboardingController_getStatus"
@@ -455,6 +456,44 @@ async fn control(
                 disabled: invite.disabled,
                 created_by: invite.created_by,
                 community_ids: invite.community_ids,
+            });
+        }
+        // W3: a reset token for an account, as the mailer's link would carry. `email` picks a
+        // registered account; without one, the scenario's own user. `expiresInSeconds` (negative
+        // for an expired one) defaults to the backend's hour.
+        "reset_token" => {
+            use crate::accounts::PasswordReset;
+            let token = request
+                .get("token")
+                .and_then(Value::as_str)
+                .unwrap_or("fixture-reset-token");
+            let email = request.get("email").and_then(Value::as_str);
+            let seconds = request
+                .get("expiresInSeconds")
+                .and_then(Value::as_i64)
+                .unwrap_or(3600);
+            let user_id = {
+                let accounts = lock(&inner.accounts);
+                email
+                    .and_then(|email| {
+                        accounts
+                            .credentials
+                            .values()
+                            .find(|credential| credential.email.as_deref() == Some(email))
+                    })
+                    .map(|credential| credential.user_id.clone())
+                    .unwrap_or_else(|| inner.scenario.me.id.clone())
+            };
+            let expires_at = inner.now() + chrono::Duration::seconds(seconds);
+            let mut accounts = lock(&inner.accounts);
+            accounts
+                .password_resets
+                .retain(|reset| reset.token != token);
+            accounts.password_resets.push(PasswordReset {
+                token: token.to_owned(),
+                user_id,
+                expires_at,
+                used: false,
             });
         }
         "add_session" => {

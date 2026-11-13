@@ -578,6 +578,7 @@ impl Render for HomeScreen {
                     .flex_col()
                     .gap(spacing(3.))
                     .child(text(Variant::H5, "Home").font_weight(FontWeight(700.)))
+                    .children(self.invite_card(cx))
                     .child(pair)
                     .children(rest),
             )

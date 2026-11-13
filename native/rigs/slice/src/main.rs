@@ -79,9 +79,9 @@
 //!
 //! W3's conditions: `route PREFIX` (the shell's route, as `settings/voice`, `profile/ID`,
 //! `profile-edit`, `home`, `community/ID`, `channel/ID`, `dms`), `theme NAME` (the theme drawn,
-//! `light-teal-minimal`), `engine ptt on|off`, `engine preset standard|high|music`, `engine
-//! input|output|camera ID|default` (what the voice engine holds), `profile-open ID`, `desktop-sign-in
-//! shown|gone`.
+//! `light-teal-minimal`), `engine ptt on|off`, `engine ptt-pressed on|off`, `engine preset
+//! standard|high|music`, `engine input|output|camera ID|default` (what the voice engine holds),
+//! `profile-open ID`, `desktop-sign-in shown|gone`.
 //!
 //! W2's conditions: `dm ID` (the pane is on that DM), `notified TAG` (the rig's notifier shows
 //! it), `withdrawn TAG` (shown, then taken down), `notifications-shown N` (shows since the start),
@@ -698,7 +698,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["theme", name] => Condition::Theme((*name).into()),
         [
             "engine",
-            key @ ("ptt" | "preset" | "input" | "output" | "camera"),
+            key @ ("ptt" | "ptt-pressed" | "preset" | "input" | "output" | "camera"),
             value,
         ] => Condition::Engine((*key).into(), (*value).into()),
         ["profile-open", id] => Condition::ProfileOpen((*id).into()),
@@ -2101,6 +2101,7 @@ impl Rig {
                     };
                     match key.as_str() {
                         "ptt" => choices.ptt_mode == (value == "on"),
+                        "ptt-pressed" => voice.engine.ptt_pressed() == (value == "on"),
                         "preset" => format!("{:?}", choices.preset).to_lowercase() == *value,
                         "input" => device(&choices.input_device),
                         "output" => device(&choices.output_device),

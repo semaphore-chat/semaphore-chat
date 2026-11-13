@@ -10,6 +10,8 @@
 //! drag 360 400 600 400                              # window-local, through real hit testing
 //! type "hello there"                                # text to whatever has focus
 //! press enter
+//! key-down f13                                      # hold a key until key-up (push to talk)
+//! key-up f13
 //! emit connection offline                           # the CoreEvent core would send
 //! emit unread help-desk 9 2                         # changes the fixture, then ViewChanged
 //! emit message general liam "hi"                    # ListOp::Insert into MessagesChanged
@@ -71,6 +73,13 @@ pub enum Step {
         text: String,
     },
     Press {
+        key: String,
+    },
+    /// A key held down until `key-up`: push-to-talk needs the press and release apart.
+    KeyDown {
+        key: String,
+    },
+    KeyUp {
         key: String,
     },
     Emit(Emit),
@@ -163,6 +172,8 @@ pub fn step(words: &[&str]) -> Result<Step, String> {
             text: (*text).into(),
         },
         ["press", key] => Step::Press { key: (*key).into() },
+        ["key-down", key] => Step::KeyDown { key: (*key).into() },
+        ["key-up", key] => Step::KeyUp { key: (*key).into() },
         ["emit", "connection", state] => Step::Emit(Emit::Connection {
             state: (*state).into(),
         }),
@@ -226,6 +237,8 @@ mod tests {
             right-click row-3
             type "hello # there"
             press enter
+            key-down f13
+            key-up f13
             emit connection offline
             emit unread help-desk 9 2
             emit message general liam "hi \"you\""
@@ -239,7 +252,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_eq!(steps.len(), 17);
+        assert_eq!(steps.len(), 19);
         assert_eq!(steps[3], Step::Hover { id: "row-2".into() });
         assert_eq!(steps[4], Step::RightClick { id: "row-3".into() });
         assert_eq!(
@@ -248,8 +261,10 @@ mod tests {
                 text: "hello # there".into()
             }
         );
+        assert_eq!(steps[7], Step::KeyDown { key: "f13".into() });
+        assert_eq!(steps[8], Step::KeyUp { key: "f13".into() });
         assert_eq!(
-            steps[9],
+            steps[11],
             Step::Emit(Emit::Message {
                 channel: "general".into(),
                 author: "liam".into(),

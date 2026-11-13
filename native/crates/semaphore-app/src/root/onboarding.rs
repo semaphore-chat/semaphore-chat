@@ -20,7 +20,7 @@ use semaphore_core::model::{SessionState, ViewKey};
 use semaphore_core::platform::CoreError;
 use semaphore_ui::auth::{
     AuthStep, BrowserLogin, ForgotEvent, ForgotPasswordScreen, InviteEvent, InviteScreen,
-    RegisterEvent, RegisterScreen,
+    RegisterEvent, RegisterScreen, ResetEvent, ResetPasswordScreen,
 };
 use semaphore_ui::nav::Route;
 
@@ -31,6 +31,7 @@ pub(super) enum Page {
     SignIn,
     Register(Entity<RegisterScreen>),
     Forgot(Entity<ForgotPasswordScreen>),
+    Reset(Entity<ResetPasswordScreen>),
     Invite {
         code: String,
         screen: Entity<InviteScreen>,
@@ -152,6 +153,7 @@ impl AppRoot {
             Page::SignIn => None,
             Page::Register(screen) => Some(screen.clone().into_any_element()),
             Page::Forgot(screen) => Some(screen.clone().into_any_element()),
+            Page::Reset(screen) => Some(screen.clone().into_any_element()),
             Page::Invite { screen, .. } => Some(screen.clone().into_any_element()),
         }
     }
@@ -295,7 +297,88 @@ impl AppRoot {
                     },
                 );
             }
+            ForgotEvent::OpenReset { token } => self.open_reset_password(Some(token), window, cx),
             ForgotEvent::Back => self.show_page(Page::SignIn, cx),
+        }
+    }
+
+    // ---- Resetting a password. ----
+
+    /// `/reset-password?token=...`, signed out: the new password twice. A link with no token
+    /// still opens the screen, which says the link is missing or invalid.
+    pub(super) fn open_reset_password(
+        &mut self,
+        token: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let screen = cx.new(|cx| ResetPasswordScreen::new(token, window, cx));
+        self.onboarding.subscriptions.push(cx.subscribe_in(
+            &screen,
+            window,
+            Self::on_reset_password,
+        ));
+        self.show_page(Page::Reset(screen), cx);
+    }
+
+    /// A `semaphore://reset-password?token=...` link. The screen is the signed-out flow's, as the
+    /// web's public route is: while signed in the link is left to the browser.
+    pub(super) fn open_reset_link(
+        &mut self,
+        token: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.shell.is_some() {
+            log::info!("a reset-password link while signed in: leaving it to the web");
+            return;
+        }
+        if self.auth.is_none() {
+            log::info!("a reset-password link before a server is known");
+            return;
+        }
+        self.open_reset_password(token, window, cx);
+    }
+
+    fn on_reset_password(
+        &mut self,
+        screen: &Entity<ResetPasswordScreen>,
+        event: &ResetEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event.clone() {
+            ResetEvent::Submit { token, password } => {
+                let (Some(core), Some(exec)) = (
+                    self.core(),
+                    self.services.as_ref().map(|services| services.exec.clone()),
+                ) else {
+                    return;
+                };
+                screen.update(cx, |screen, cx| {
+                    screen.set_error(None, cx);
+                    screen.set_busy(true, cx);
+                });
+                let screen = screen.downgrade();
+                exec.run(
+                    window,
+                    cx,
+                    async move { core.reset_password(token, password).await },
+                    move |_, result, _, cx| {
+                        screen
+                            .update(cx, |screen, cx| {
+                                screen.set_busy(false, cx);
+                                match result {
+                                    Ok(()) => screen.set_success(true, cx),
+                                    Err(error) => screen.set_error(Some(message(&error)), cx),
+                                }
+                            })
+                            .ok();
+                    },
+                );
+            }
+            ResetEvent::SignIn => self.show_page(Page::SignIn, cx),
+            ResetEvent::RequestNewLink => self.open_forgot_password(window, cx),
         }
     }
 

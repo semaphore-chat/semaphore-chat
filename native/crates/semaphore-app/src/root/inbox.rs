@@ -543,6 +543,18 @@ impl AppRoot {
 
     /// A `semaphore://` link: routed now, or once signed in.
     pub(super) fn route_link(&mut self, link: DeepLink, cx: &mut Context<Self>) {
+        // A reset link opens the signed-out reset screen, as an invite opens its page.
+        if let DeepLink::ResetPassword { token } = &link {
+            let (window, root, token) = (self.window, cx.entity(), token.clone());
+            cx.defer(move |cx| {
+                window
+                    .update(cx, |_, window, cx| {
+                        root.update(cx, |root, cx| root.open_reset_link(token, window, cx))
+                    })
+                    .ok();
+            });
+            return;
+        }
         // An invite opens its page, signed out too: in a frame of its own, with the window.
         if let DeepLink::Invite { invite_code } = &link
             && (self.shell.is_some() || (self.server.is_some() && self.auth.is_some()))

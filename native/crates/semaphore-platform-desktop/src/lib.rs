@@ -22,6 +22,8 @@ pub enum DesktopEvent {
     ToggleWindow,
     /// The tray's "Close to tray" was toggled to this.
     SetCloseToTray(bool),
+    /// The tray's "Check for Updates", or the app menu's: the same check the settings button runs.
+    CheckForUpdates,
     /// The tray's "Quit".
     Quit,
     /// A second launch: show and focus the window (with its activation token, if it had one),

@@ -595,3 +595,195 @@ fn invite_reason_sentences() {
     );
     assert_eq!(invite_reason("SOMETHING_ELSE"), "SOMETHING_ELSE");
 }
+
+#[test]
+fn a_pasted_reset_link_yields_its_token() {
+    for (input, want) in [
+        (
+            "https://chat.example.com/reset-password?token=aB3x9Q2w",
+            Some("aB3x9Q2w"),
+        ),
+        (
+            "https://chat.example.com/#/reset-password?token=aB3x9Q2w",
+            Some("aB3x9Q2w"),
+        ),
+        ("  aB3_-x  ", Some("aB3_-x")),
+        ("a%2Db", Some("a-b")),
+        ("", None),
+        ("https://chat.example.com/login", None),
+        ("has space", None),
+        ("a/b", None),
+        ("a?b", None),
+    ] {
+        assert_eq!(reset_token_from_input(input).as_deref(), want, "{input:?}");
+    }
+    assert_eq!(reset_token_from_input(&"a".repeat(129)), None);
+    assert_eq!(
+        reset_token_from_input(&"a".repeat(128)).as_deref(),
+        Some("a".repeat(128).as_str())
+    );
+}
+
+#[test]
+fn the_reset_fields_take_the_dtos_rules() {
+    assert_eq!(validate_reset("", ""), ResetErrors::default());
+    assert_eq!(
+        validate_reset("short", "short"),
+        ResetErrors {
+            too_short: true,
+            ..ResetErrors::default()
+        }
+    );
+    assert_eq!(
+        validate_reset(&"p".repeat(129), ""),
+        ResetErrors {
+            too_long: true,
+            ..ResetErrors::default()
+        }
+    );
+    assert_eq!(
+        validate_reset("a long password", "another password"),
+        ResetErrors {
+            mismatch: true,
+            ..ResetErrors::default()
+        }
+    );
+    assert!(!can_submit_reset(
+        None,
+        "a long password",
+        "a long password",
+        false,
+        false
+    ));
+    assert!(!can_submit_reset(
+        Some("tok"),
+        "short",
+        "short",
+        false,
+        false
+    ));
+    assert!(!can_submit_reset(
+        Some("tok"),
+        "a long password",
+        "another password",
+        false,
+        false
+    ));
+    assert!(!can_submit_reset(
+        Some("tok"),
+        "a long password",
+        "a long password",
+        true,
+        false
+    ));
+    assert!(can_submit_reset(
+        Some("tok"),
+        "a long password",
+        "a long password",
+        false,
+        false
+    ));
+}
+
+#[gpui_kit::test]
+fn the_reset_screen_sends_only_a_password_the_server_takes(cx: &mut TestAppContext) {
+    let rig = rig(cx, 390., |window, cx| {
+        ResetPasswordScreen::new(Some("tok3n".into()), window, cx)
+    });
+    rig.click(cx, "reset-password-submit");
+    assert!(rig.events().is_empty(), "empty fields");
+    rig.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| screen.preset("short", "short", window, cx))
+    });
+    rig.click(cx, "reset-password-submit");
+    assert!(rig.events().is_empty(), "too short");
+    rig.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.preset("a long password", "another password", window, cx)
+        })
+    });
+    rig.click(cx, "reset-password-submit");
+    assert!(rig.events().is_empty(), "they differ");
+    rig.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.preset("a long password", "a long password", window, cx)
+        })
+    });
+    rig.click(cx, "reset-password-submit");
+    assert_eq!(
+        rig.events(),
+        [ResetEvent::Submit {
+            token: "tok3n".into(),
+            password: "a long password".into()
+        }]
+    );
+
+    // Busy: a second click waits.
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| screen.set_busy(true, cx))
+    });
+    rig.click(cx, "reset-password-submit");
+    assert_eq!(rig.events().len(), 1);
+
+    // The server refused: the message and a way to ask for another link.
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.set_error(Some("Invalid or expired reset token".into()), cx)
+        })
+    });
+    assert!(rig.has(cx, "reset-password-error"));
+    rig.click(cx, "reset-password-request-new");
+    assert_eq!(rig.events().last(), Some(&ResetEvent::RequestNewLink));
+
+    // Done: sign in with the new password.
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| screen.set_success(true, cx))
+    });
+    assert!(rig.has(cx, "reset-password-done"));
+    rig.click(cx, "reset-password-sign-in");
+    assert_eq!(rig.events().last(), Some(&ResetEvent::SignIn));
+}
+
+#[gpui_kit::test]
+fn a_reset_link_without_its_token_says_so(cx: &mut TestAppContext) {
+    let rig = rig(cx, 390., |window, cx| {
+        ResetPasswordScreen::new(None, window, cx)
+    });
+    assert!(rig.has(cx, "reset-password-invalid"));
+    assert!(!rig.has(cx, "reset-password-submit"));
+    rig.click(cx, "reset-password-request-new");
+    assert_eq!(rig.events(), [ResetEvent::RequestNewLink]);
+}
+
+#[gpui_kit::test]
+fn the_forgot_card_takes_a_pasted_reset_link(cx: &mut TestAppContext) {
+    let rig = rig(cx, 390., ForgotPasswordScreen::new);
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| screen.set_sent(true, cx))
+    });
+    rig.click(cx, "forgot-reset-open");
+    assert!(rig.events().is_empty(), "nothing pasted");
+    rig.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.preset_reset_link(
+                "https://chat.example.com/reset-password?token=aB3x9Q2w",
+                window,
+                cx,
+            )
+        })
+    });
+    rig.click(cx, "forgot-reset-open");
+    assert_eq!(
+        rig.events(),
+        [ForgotEvent::OpenReset {
+            token: "aB3x9Q2w".into()
+        }]
+    );
+    rig.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.preset_reset_link("not a link", window, cx)
+        })
+    });
+    rig.click(cx, "forgot-reset-open");
+    assert_eq!(rig.events().len(), 1, "a bad link is refused");
+}

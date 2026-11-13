@@ -295,7 +295,7 @@ pub fn stories() -> Vec<Story> {
             };
             voice_story(state, sample_devices(), Some(0.9), window, cx)
         }),
-        // What the desktop build says today: no mic test, and push to talk only from the bar.
+        // A build without the microphone test: the tab says so where its button would be.
         Story::new("settings-voice-limited", |_, window, cx| {
             let state = VoiceVideoState {
                 input_mode: InputMode::PushToTalk,
@@ -307,8 +307,10 @@ pub fn stories() -> Vec<Story> {
                 voice.update(cx, |voice, cx| {
                     voice.set_limits(
                         VoiceLimits {
-                            mic_test: Some("Testing the microphone isn't available in this version yet.".into()),
-                            push_to_talk: Some("The key is saved, but this version doesn't listen for it yet: hold the voice bar's Push to Talk button to transmit.".into()),
+                            mic_test: Some(
+                                "Testing the microphone isn't available in this version yet."
+                                    .into(),
+                            ),
                         },
                         cx,
                     )

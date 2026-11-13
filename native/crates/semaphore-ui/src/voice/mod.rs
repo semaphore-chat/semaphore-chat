@@ -12,6 +12,8 @@ mod model;
 mod picker;
 /// UV: the pre-join panel (frozen API; Claude builds it).
 pub mod prejoin;
+/// The push-to-talk key's rule (`usePushToTalk.ts`), free of GPUI so it is a table test.
+pub mod ptt;
 mod soundboard;
 mod stage;
 #[cfg(feature = "stories")]
@@ -37,6 +39,7 @@ pub use picker::{
     PickerActions, PickerModel, PickerSource, PickerState, THUMBNAIL_PX, source_picker,
     thumbnail_image,
 };
+pub use ptt::{PttAction, PttContext, PttInput, decide as ptt_decide};
 pub use soundboard::{SoundboardActions, SoundboardBar, soundboard_popover};
 pub use stage::{VoiceBadge, VoiceBadgeKind, VoiceStage, voice_badges};
 

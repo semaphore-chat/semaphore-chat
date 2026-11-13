@@ -175,8 +175,7 @@ impl Core {
         self.sign_in(server_url, username, form.password).await
     }
 
-    /// Asks the server to email a reset link. The reset itself happens in the web app the email
-    /// opens. Succeeds whether or not the address has an account.
+    /// Asks the server to email a reset link. Succeeds whether or not the address has an account.
     pub async fn forgot_password(&self, email: String) -> Result<(), CoreError> {
         let services = self
             .services()
@@ -186,6 +185,41 @@ impl Core {
             .auth_controller_forgot_password(wire::ForgotPasswordRequestDto {
                 email: email.trim().to_owned(),
             })
+            .await
+            .map(|_| ())
+            .map_err(refused)
+    }
+
+    /// Redeems a reset token for a new password (`ResetPasswordPage.tsx`). Session-free, like
+    /// `forgot_password`: it changes the account on the server and stores nothing here, not even
+    /// the token. A wrong, used or expired token is the server's message. The password's length is
+    /// checked here first, in the server's words, so a short one never needs the round trip.
+    pub async fn reset_password(
+        &self,
+        token: String,
+        new_password: String,
+    ) -> Result<(), CoreError> {
+        let services = self
+            .services()
+            .ok_or_else(|| unavailable("password reset"))?;
+        let length = new_password.chars().count();
+        if length < 8 {
+            return Err(CoreError::Failed {
+                message: "Password must be at least 8 characters".into(),
+            });
+        }
+        if length > 128 {
+            return Err(CoreError::Failed {
+                message: "Password must be at most 128 characters".into(),
+            });
+        }
+        let body = wire::ResetPasswordRequestDto {
+            token: token.trim().parse().map_err(|_| invalid("reset token"))?,
+            new_password: new_password.parse().map_err(|_| invalid("password"))?,
+        };
+        services
+            .backend
+            .auth_controller_reset_password(body)
             .await
             .map(|_| ())
             .map_err(refused)
