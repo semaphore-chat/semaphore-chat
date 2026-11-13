@@ -1,0 +1,304 @@
+# W6: the instance admin area in the real app, against the showcase scenario, as alexk (the
+# instance owner): the account menu's "Admin" entry and the dashboard, its disk item going red,
+# renaming the instance and closing registration; the users, searched, one banned and unbanned,
+# given a new password, a quota and her owner role; a community force-deleted with its typed
+# name; an instance invite and its copied link; a role made, edited and deleted; and the storage
+# filter. Then pri, an owner now, whose own session opens Admin and every page, and diego, who
+# holds no admin permission and sees no Admin entry.
+# The scenario clock is held from sign-in, so the dates on screen don't move between runs.
+
+app 1600 1400
+window activate
+wait idle
+server sign_in_as "{\"username\": \"pri\", \"userId\": \"$ID(u-priya)\"}"
+server sign_in_as "{\"username\": \"diego\", \"userId\": \"$ID(u-diego)\"}"
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait idle
+clock hold
+
+# 1. alexk, the owner: the account menu offers Admin, which opens the dashboard.
+click rail-account
+wait core label "Sign out"
+wait core element account-admin
+wait idle
+shot 01-account-menu
+click account-admin
+wait core route /admin
+wait core w6 page dashboard
+wait core element admin-totals
+wait core element admin-attention
+wait idle
+shot 02-dashboard
+
+# 2. The disk at 95% is a red attention item once the dashboard reads again.
+server instance_storage "{\"server\": {\"diskUsedPercent\": 95.0}}"
+tick 31000
+click admin-page-dashboard
+wait core w6 attention disk error
+wait idle
+shot 03-dashboard-disk
+
+# 3. Settings: the instance renamed and registration closed, the field showing the new name once
+# the re-read lands.
+click admin-page-settings
+wait core w6 page settings
+wait core element admin-settings-name
+click admin-settings-name
+press ctrl-a
+type "Lumen Chat"
+click admin-settings-registration
+press down
+press enter
+click admin-settings-save
+wait core w6 instance name "Lumen Chat"
+wait core w6 instance registration closed
+wait idle
+shot 04-settings
+
+# 4. Users: a search, then Priya banned (her row says so), unbanned, a new password, a 10 GB
+# quota, and made an owner (the users page can't grant an instance role: core lists none to give).
+click admin-page-users
+wait core w6 page users
+wait core element admin-users-search
+click admin-users-search
+type "pri"
+tick 400
+wait core w6 user $ID(u-priya) listed
+wait core w6 user $ID(u-diego) gone
+wait idle
+shot 05-users-search
+click admin-user-menu-$ID(u-priya)
+wait core element admin-user-ban
+wait idle
+shot 06-user-menu
+click admin-user-ban
+wait core element admin-ban-confirm
+click admin-ban-confirm
+wait core w6 user $ID(u-priya) banned
+wait core no-element admin-ban-confirm
+wait idle
+shot 07-user-banned
+click admin-user-menu-$ID(u-priya)
+wait core element admin-user-unban
+click admin-user-unban
+wait core w6 user $ID(u-priya) active
+wait idle
+shot 08-user-unbanned
+click admin-user-menu-$ID(u-priya)
+wait core element admin-user-reset-password
+click admin-user-reset-password
+wait core element admin-reset-password-field
+click admin-reset-password-field
+type "w6-password-1"
+wait idle
+shot 09-password-dialog
+click admin-reset-password-save
+wait core no-element admin-reset-password-field
+wait idle
+click admin-user-menu-$ID(u-priya)
+wait core element admin-user-quota
+click admin-user-quota
+wait core element admin-quota-field
+click admin-quota-field
+press ctrl-a
+type "10"
+wait idle
+shot 10-quota-dialog
+click admin-quota-save
+wait core no-element admin-quota-field
+wait core w6 storage quota $ID(u-priya) 10
+wait idle
+click admin-user-menu-$ID(u-priya)
+wait core element admin-user-make-owner
+click admin-user-make-owner
+wait core element admin-owner-confirm
+click admin-owner-confirm
+wait core w6 user $ID(u-priya) owner
+wait core no-element admin-owner-confirm
+wait idle
+shot 11-user-owner
+
+# 5. Communities: Trailheads force-deleted with its typed name; it leaves the list and the rail.
+click admin-page-communities
+wait core w6 page communities
+wait core element admin-communities-search
+wait core w6 community $ID(c-trail) listed
+wait core element admin-community-$ID(c-trail)
+click admin-community-$ID(c-trail)
+wait core element admin-community-delete
+wait idle
+shot 12-community-detail
+click admin-community-delete
+wait core element admin-community-delete-typed
+click admin-community-delete-typed
+type "Trailheads"
+wait idle
+shot 13-community-confirm
+click admin-community-delete-confirm
+wait core no-element admin-community-delete-confirm
+wait core w6 community $ID(c-trail) gone
+wait idle
+shot 14-community-gone
+
+# 6. An instance invite for Couch Co-op (the form picks every community first), and its link
+# copied. A role made with Read users, edited, then deleted. The storage page filtered to the
+# users over 90%.
+click admin-page-invites
+wait core w6 page invites
+wait core element admin-invites-create
+click admin-invites-create
+wait core element admin-invites-create-submit
+wait idle
+shot 15-invite-form
+click admin-invites-community-$ID(c-lumen)
+click admin-invites-community-$ID(c-synth)
+click admin-invites-create-submit
+wait core w6 invites 1
+wait idle
+click-label "Copy invite link"
+expect clipboard "/join/"
+wait idle
+shot 16-invites
+click admin-page-roles
+wait core w6 page roles
+wait core element admin-roles-new
+click admin-roles-new
+wait core element admin-role-name
+click admin-role-name
+type "Helpers"
+click admin-role-action-READ_USER
+wait idle
+shot 17-role-create
+click admin-role-editor-save
+wait core no-element admin-role-name
+wait core w6 role "Helpers" exists
+wait core w6 role "Helpers" has READ_USER
+wait idle
+shot 18-roles
+click-label "Edit Helpers"
+wait core element admin-role-name
+click admin-role-action-READ_INSTANCE_STATS
+click admin-role-editor-save
+wait core no-element admin-role-name
+wait core w6 role "Helpers" has READ_INSTANCE_STATS
+wait idle
+shot 19-role-edited
+click-label "Delete Helpers"
+wait core element admin-role-delete-confirm
+click admin-role-delete-confirm
+wait core w6 role "Helpers" gone
+wait core no-element admin-role-delete-confirm
+wait idle
+shot 20-role-deleted
+# Priya's 10 GB quota is most of her use now, so the filter has a row to show. The
+# dashboard's over-quota item opens Storage on its own filter; the page's filter then asks again.
+server storage_usage "{\"$ID(u-priya)\": 10000000000}"
+tick 31000
+click admin-page-dashboard
+wait core w6 page dashboard
+click admin-attention-over-quota-action
+wait core w6 page storage
+wait core w6 storage filter 90
+wait core element admin-storage-filter
+click admin-storage-filter
+press up
+press enter
+wait core w6 storage filter 75
+click admin-storage-filter
+press down
+press enter
+wait core w6 storage filter 90
+wait idle
+shot 21-storage-over-90
+
+# 7. Priya, an instance owner now, sees Admin and every page; diego, who holds none, doesn't.
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+click auth-username
+type "pri"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait idle
+click rail-account
+wait core label "Sign out"
+wait core element account-admin
+click account-admin
+wait core route /admin
+wait core w6 page dashboard
+wait core element admin-page-dashboard
+wait core w5 enabled admin-page-dashboard
+wait core w5 enabled admin-page-users
+wait core w5 enabled admin-page-communities
+wait core w5 enabled admin-page-invites
+wait core w5 enabled admin-page-roles
+wait core w5 enabled admin-page-storage
+wait core w5 enabled admin-page-settings
+wait idle
+shot 22-pri-admin
+click admin-page-users
+wait core w6 page users
+wait core element admin-users-search
+wait idle
+shot 23-pri-users
+# The phone: the admin area is a page list that drills into a page, and back to the list.
+app 420 900
+wait core session signed-in
+wait core connection connected
+wait idle
+navigate /admin
+wait core w6 page dashboard
+wait core element admin-back
+wait idle
+shot 24-phone-dashboard
+click admin-back
+wait core no-element admin-back
+wait core element admin-page-users
+wait idle
+shot 25-phone-pages
+click admin-page-users
+wait core w6 page users
+wait core element admin-users-search
+wait idle
+shot 26-phone-users
+click phone-rail
+wait core element rail-account
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+click auth-username
+type "diego"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait idle
+# He lands in a channel: back to the list first, where the app bar's rail button is.
+click phone-back
+wait core element phone-rail
+click phone-rail
+wait core element rail-account
+click rail-account
+wait core label "Sign out"
+wait core no-element account-admin
+wait idle
+shot 27-phone-diego-account
+click account-cancel
+wait core no-element account-cancel
