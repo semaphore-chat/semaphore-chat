@@ -31,7 +31,9 @@ pub mod version;
 #[cfg(test)]
 mod testserver;
 
-pub use download::{DownloadError, clear_previous};
+pub use download::{
+    DownloadError, Stall, check_private_dir, clear_partial, clear_previous, configure_client,
+};
 pub use install::{InstallEnv, InstallKind, PackageFamily, ReadyAction, RpmManager};
 pub use manifest::{
     Arch, Artifact, ArtifactKind, MAX_ARTIFACT_SIZE, MAX_MANIFEST_BYTES, ManifestError,

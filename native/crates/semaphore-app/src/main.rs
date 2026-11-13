@@ -4,6 +4,7 @@
 use gpui_kit::*;
 use semaphore_app::AppConfig;
 use semaphore_app::desktop::DesktopServices;
+use semaphore_app::update::AFTER_UPDATE_FLAG;
 use semaphore_core::platform::AppPaths as _;
 use semaphore_platform_desktop::update::InstallKind;
 use semaphore_platform_desktop::{
@@ -74,6 +75,11 @@ const VERSION: &str = env!("SEMAPHORE_VERSION");
 const USAGE: &str =
     "usage: semaphore-app [--server <url>] [semaphore://...] | --probe-media <url> <token>";
 
+/// How long a build started by "Restart to update" waits for the previous app to shut down and
+/// release the single-instance lock. Shutting down is quick; this only bounds a hung one.
+#[cfg(unix)]
+const AFTER_UPDATE_PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
+
 fn usage() -> ExitCode {
     eprintln!("{USAGE}");
     ExitCode::from(2)
@@ -135,6 +141,10 @@ fn main() -> ExitCode {
     // Links can come anywhere: the OS appends one to the registered command.
     let (link_args, rest): (Vec<String>, Vec<String>) =
         args.into_iter().partition(|arg| links::is_candidate(arg));
+    // Set by "Restart to update" on the build it starts (`semaphore_app::update::restart_command`).
+    let (after_update, rest): (Vec<String>, Vec<String>) =
+        rest.into_iter().partition(|arg| arg == AFTER_UPDATE_FLAG);
+    let after_update = !after_update.is_empty();
     let server_url = match rest.as_slice() {
         [] => None,
         [flag, url] if flag == "--server" => Some(url.clone()),
@@ -151,7 +161,30 @@ fn main() -> ExitCode {
     // One app per user: a second launch hands its links to the first and exits, before it opens
     // anything. If the check itself fails, run anyway rather than not at all.
     let launch = instance::Forward::from_launch(&link_args);
-    let primary = match instance::acquire(&instance::default_dir(&data_dir), &launch) {
+    let instance_dir = instance::default_dir(&data_dir);
+    // The build an update started waits for the old app to let go instead of forwarding to it.
+    #[cfg(unix)]
+    let handover = after_update.then(|| {
+        instance::acquire_after_update(&instance_dir, AFTER_UPDATE_PATIENCE)
+            .map(instance::Instance::Primary)
+    });
+    #[cfg(not(unix))]
+    let handover: Option<std::io::Result<instance::Instance>> = {
+        let _ = after_update;
+        None
+    };
+    if let Some(Err(error)) = &handover
+        && error.kind() == std::io::ErrorKind::TimedOut
+    {
+        // The previous version is still running (it holds the lock): that one stays.
+        eprintln!("semaphore-app: the previous version is still running ({error}); not starting");
+        return ExitCode::FAILURE;
+    }
+    let acquired = match handover {
+        Some(result) => result,
+        None => instance::acquire(&instance_dir, &launch),
+    };
+    let primary = match acquired {
         Ok(instance::Instance::Forwarded) => {
             log::info!("handed over to the running app");
             return ExitCode::SUCCESS;
@@ -164,10 +197,11 @@ fn main() -> ExitCode {
     };
     register_scheme();
 
-    // Set when "Restart to update" is chosen; read after the event loop, when the
-    // single-instance lock the running app held is free.
-    let pending_restart: Arc<std::sync::Mutex<Option<std::path::PathBuf>>> = Arc::default();
-    let restart_slot = pending_restart.clone();
+    // The answering primary: released explicitly once the event loop has ended (after shutdown),
+    // which is the moment an updated build waiting on the lock takes over.
+    let serving: Arc<std::sync::Mutex<Option<instance::ServingInstance>>> = Arc::default();
+    let serving_slot = serving.clone();
+    let restart_server_url = server_url.clone();
     gpui_kit::application()
         .with_assets(semaphore_app::files::AppAssets)
         .run(move |cx| {
@@ -188,23 +222,41 @@ fn main() -> ExitCode {
             let desktop = DesktopServices::start(settings.get().close_to_tray, true, cx);
             if let Some(primary) = primary {
                 let sink = desktop.sink.clone();
-                primary.serve(move |forward| {
+                let answering = primary.serve(move |forward| {
                     sink(DesktopEvent::Opened {
                         urls: forward.urls,
                         activation_token: forward.activation_token,
                     })
                 });
+                *serving_slot
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner()) = Some(answering);
             }
             let cold_start_links = desktop.sink.clone();
             let config = AppConfig {
                 update,
+                // The new build starts now, while this app still holds the lock; it waits for the
+                // lock (`--after-update`), which this process releases after shutting down. A
+                // build that can't be started leaves this app running and says why.
                 restart: Some(Rc::new(move |cx: &mut App| {
-                    if let Some(path) = &restart_path {
-                        *restart_slot
-                            .lock()
-                            .unwrap_or_else(|poison| poison.into_inner()) = Some(path.clone());
+                    let Some(path) = &restart_path else {
+                        return Err("this installation doesn't restart itself".into());
+                    };
+                    let mut command = semaphore_app::update::restart_command(
+                        path,
+                        restart_server_url.as_deref(),
+                        std::env::vars_os(),
+                    );
+                    match command.spawn() {
+                        Ok(_child) => {
+                            log::info!("started {}; quitting to hand over", path.display());
+                            cx.quit();
+                            Ok(())
+                        }
+                        Err(error) => {
+                            Err(format!("{} could not be started: {error}", path.display()))
+                        }
                     }
-                    cx.quit();
                 })),
                 secrets: Arc::new(KeyringSecrets::new()),
                 clock: Arc::new(SystemClock),
@@ -265,19 +317,15 @@ fn main() -> ExitCode {
                 .detach();
             }
         });
-    // The update is in place and the app quit to apply it: the lock is free now, so this launch
-    // is the new build.
-    let restarting = pending_restart
+    // Everything has shut down: stop answering, remove the socket, unlock. An updated build
+    // waiting with `--after-update` becomes the primary now. (Were this never reached, the
+    // kernel drops the lock when the process ends, with the same result.)
+    let answering = serving
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
         .take();
-    if let Some(path) = restarting
-        && let Err(error) = std::process::Command::new(&path).spawn()
-    {
-        eprintln!(
-            "semaphore-app: the update is installed but {} could not be started: {error}",
-            path.display()
-        );
+    if let Some(answering) = answering {
+        answering.release();
     }
     ExitCode::SUCCESS
 }

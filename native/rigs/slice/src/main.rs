@@ -1381,6 +1381,7 @@ impl Rig {
                 let restarts = feed.restarts();
                 Rc::new(move |_: &mut App| {
                     restarts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    Ok(())
                 }) as semaphore_app::RestartApp
             }),
         };

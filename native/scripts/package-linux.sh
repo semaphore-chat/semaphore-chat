@@ -199,22 +199,39 @@ EOF
   echo "== AppImage"
   build_appimage "$stage" "$appimage" "$version" "$work"
 
-  ( cd "$OUT_DIR" && sha256sum "$(basename "$deb")" "$(basename "$rpm")" \
-      "$(basename "$appimage")" > SHA256SUMS )
+  finish_artifacts "$deb" "$rpm" "$appimage" "$version"
 
   echo
   echo "== artifacts in $OUT_DIR"
-  ls -lh "$deb" "$rpm" "$appimage" "$OUT_DIR/SHA256SUMS" | awk '{print $5"\t"$9}'
+  ls -lh "$deb" "$rpm" "$appimage" "$OUT_DIR/latest.json" "$OUT_DIR/SHA256SUMS" \
+    | awk '{print $5"\t"$9}'
   echo
   echo "== installed tree (the same files are in all three packages)"
   du -ah "$stage" | sort -k2 | sed "s#$stage#/#"
 }
+
+# What the build flow does once the three packages exist: SHA256SUMS and latest.json, both in
+# OUT_DIR. `--finish-artifacts` runs exactly this on existing files (no build, no image), which is
+# how the manifest step is tested.
+finish_artifacts() { # <deb> <rpm> <appimage> <version>
+  local deb="$1" rpm="$2" appimage="$3" version="$4"
+  ( cd "$OUT_DIR" && sha256sum "$(basename "$deb")" "$(basename "$rpm")" \
+      "$(basename "$appimage")" > SHA256SUMS )
+  echo "== latest.json"
+  write_manifest "$deb" "$rpm" "$appimage" "$version"
+}
+
+# A semantic version as the updater parses it (semver.org's grammar: no leading zeros, no "v").
+SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
 
 # The release manifest the updater reads. Its URLs are the names the artifacts will be published
 # under, not where they are now; the hashes and sizes are of the files just built. Nothing is
 # signed yet: the trust model is HTTPS plus these hashes (docs/packaging.md, "Auto-update").
 write_manifest() { # <deb> <rpm> <appimage> <version>
   local deb="$1" rpm="$2" appimage="$3" version="$4"
+  # Every client would reject anything else (a "v0.10.0" from a tag, say) and never update.
+  [[ "$version" =~ $SEMVER_RE ]] \
+    || die "latest.json: version '$version' is not a semantic version the updater accepts"
   local base="${SEMAPHORE_UPDATE_BASE_URL:-https://github.com/semaphore-chat/semaphore-chat/releases/download/v$version}"
   base="${base%/}"
   local notes="${SEMAPHORE_RELEASE_NOTES_URL:-https://github.com/semaphore-chat/semaphore-chat/releases/tag/v$version}"
@@ -245,8 +262,8 @@ write_manifest() { # <deb> <rpm> <appimage> <version>
       ]
     }' >"$manifest"
   # The updater is strict about this document; refuse to publish one it would reject.
-  jq -e '
-    (.version | type == "string") and
+  jq -e --arg semver "$SEMVER_RE" '
+    (.version | type == "string") and (.version | test($semver)) and
     (.notes_url | startswith("https://")) and
     (.artifacts | length == 3) and
     (all(.artifacts[];
@@ -484,6 +501,16 @@ EOF
 if [ "${1:-}" = "--in-image" ]; then
   shift
   in_image "$@"
+  exit 0
+fi
+
+# Testing the manifest step on existing files: SEMAPHORE_PACKAGES_DIR=<dir> package-linux.sh
+# --finish-artifacts <deb> <rpm> <appimage> <version>, the packages being in <dir>. Needs jq and
+# sha256sum; builds nothing.
+if [ "${1:-}" = "--finish-artifacts" ]; then
+  shift
+  [ "$#" = 4 ] || die "--finish-artifacts <deb> <rpm> <appimage> <version>"
+  finish_artifacts "$@"
   exit 0
 fi
 

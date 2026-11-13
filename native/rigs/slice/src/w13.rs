@@ -71,8 +71,16 @@ impl UpdateFeed {
 
 /// Starts the feed and writes the file it would replace, under `dir` (the run's data directory).
 pub(crate) fn start(dir: &Path) -> Result<UpdateFeed> {
-    std::fs::create_dir_all(dir).with_context(|| dir.display().to_string())?;
-    let appimage = dir.join("Semaphore-Chat-Native.AppImage");
+    // The updater only replaces a file in a folder that is this user's alone, so the stand-in
+    // gets one of its own, private whatever the umask.
+    let folder = dir.join("appimage");
+    std::fs::create_dir_all(&folder).with_context(|| folder.display().to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let appimage = folder.join("Semaphore-Chat-Native.AppImage");
     std::fs::write(&appimage, RUNNING_MARKER).with_context(|| appimage.display().to_string())?;
     #[cfg(unix)]
     {

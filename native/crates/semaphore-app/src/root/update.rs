@@ -8,8 +8,9 @@
 //!   the shell's notice corner and the settings row's status line.
 //! - **Dismiss** is per version (saved in the settings), so a card for 1.4.0 stays away until
 //!   1.4.1. A dismissed failure stays away until the next attempt.
-//! - **Restart** goes through `AppConfig::restart`, the seam the binary implements (set a pending
-//!   restart, quit; the binary starts the new file once the single-instance lock is free).
+//! - **Restart** goes through `AppConfig::restart`, the seam the binary implements: it starts the
+//!   new file (which waits for this app's single-instance lock) and quits, or reports why it
+//!   couldn't, and the app keeps running. Refused during a call: restarting would end it.
 //!
 //! The update itself is `semaphore-platform-desktop`'s: nothing here downloads, hashes or
 //! installs.
@@ -19,7 +20,7 @@ use crate::runtime::Exec;
 use crate::update::{UpdateStart, WhyNoUpdates};
 use gpui_kit::*;
 use semaphore_platform_desktop::update::{
-    Arch, InstallKind, ReadyAction, UpdateConfig, UpdateState, Updater, drive,
+    Arch, ReadyAction, UpdateConfig, UpdateState, Updater, drive,
 };
 use semaphore_ui::update::{UpdateBanner, UpdateBannerEvent, UpdateStatus};
 use std::sync::Arc;
@@ -66,15 +67,6 @@ impl AppRoot {
             }
             return;
         };
-        // The previous update's backup goes now that the new file has started: this process is
-        // it. (The app only ever replaces an AppImage it runs from.)
-        if let InstallKind::AppImage { path } = &options.install {
-            match semaphore_platform_desktop::update::clear_previous(path) {
-                Ok(true) => log::info!("the installed update is running; its predecessor is gone"),
-                Ok(false) => {}
-                Err(error) => log::warn!("cannot remove the previous AppImage: {error}"),
-            }
-        }
         let Ok(version) = crate::update::current_version() else {
             self.updates.off = Some(WhyNoUpdates::BadVersion);
             return;
@@ -83,16 +75,19 @@ impl AppRoot {
             self.updates.off = Some(WhyNoUpdates::UnsupportedInstall);
             return;
         };
-        // The client the app already trusts: `semaphore-net`'s TLS configuration (the OS store).
-        // Its config was built when the backend started, so this is cheap and does no I/O.
-        let client = match semaphore_net::http_client() {
-            Ok(client) => client,
+        // The TLS trust the app already has: `semaphore-net`'s configuration (the OS store),
+        // built when the backend started, so this is cheap and does no I/O. The updater adds its
+        // own redirect rule and timeouts.
+        let tls = match semaphore_net::tls_client_config() {
+            Ok(tls) => tls,
             Err(error) => {
-                log::warn!("updates are off: no HTTP client: {error}");
+                log::warn!("updates are off: no TLS configuration: {error}");
                 self.updates.off = Some(WhyNoUpdates::UnsupportedInstall);
                 return;
             }
         };
+        let builder =
+            reqwest::Client::builder().tls_backend_preconfigured(rustls::ClientConfig::clone(&tls));
         let config = UpdateConfig {
             manifest_url: options.manifest_url.clone(),
             current_version: version,
@@ -101,7 +96,17 @@ impl AppRoot {
             arch,
             user_agent: format!("Semaphore-Chat-Native/{}", env!("SEMAPHORE_VERSION")),
         };
-        let updater = Updater::new(config, client);
+        let updater = match Updater::new(config, builder) {
+            Ok(updater) => updater,
+            Err(error) => {
+                log::warn!("updates are off: no HTTP client: {error}");
+                self.updates.off = Some(WhyNoUpdates::UnsupportedInstall);
+                return;
+            }
+        };
+        // What an earlier run left: the replaced AppImage (this process proves its successor
+        // starts) and a download killed half way.
+        updater.clear_leftovers();
         let (sender, receiver) = async_channel::unbounded();
         let activity = self.activity.clone();
         updater.set_sink(Arc::new(move |state| {
@@ -176,12 +181,7 @@ impl AppRoot {
                 self.show_update_banner(cx);
             }
             UpdateBannerEvent::Retry => self.check_for_updates(cx),
-            UpdateBannerEvent::Restart => match &self.config.restart {
-                Some(restart) => restart(cx),
-                None => log::warn!(
-                    "the update is in place but this build has no way to restart: it runs next start"
-                ),
-            },
+            UpdateBannerEvent::Restart => self.restart_to_update(cx),
             UpdateBannerEvent::ShowPackage => {
                 if let UpdateState::Ready {
                     action: ReadyAction::Package { path, .. },
@@ -189,7 +189,12 @@ impl AppRoot {
                 } = &self.updates.state
                 {
                     let folder = path.parent().unwrap_or(path);
-                    crate::open_url(&format!("file://{}", folder.display()), cx);
+                    match reqwest::Url::from_directory_path(folder) {
+                        Ok(url) => crate::open_url(url.as_str(), cx),
+                        Err(()) => {
+                            log::warn!("cannot open {}: not an absolute path", folder.display())
+                        }
+                    }
                 }
             }
             UpdateBannerEvent::ReleaseNotes => {
@@ -203,6 +208,51 @@ impl AppRoot {
                 }
             }
         }
+    }
+
+    /// "Restart to update": never during a call (it would end it); otherwise the binary's seam
+    /// starts the new build and quits, or says why it couldn't and the app carries on.
+    fn restart_to_update(&mut self, cx: &mut Context<Self>) {
+        let in_call = self
+            .services
+            .as_ref()
+            .is_some_and(|services| services.core.voice().room.is_some());
+        if in_call {
+            self.show_restart_problem(
+                "Leave the call first: restarting now would end it. Retry to restart afterwards."
+                    .into(),
+                cx,
+            );
+            return;
+        }
+        let Some(restart) = self.config.restart.clone() else {
+            log::warn!(
+                "the update is in place but this build has no way to restart: it runs next start"
+            );
+            return;
+        };
+        if let Err(problem) = restart(cx) {
+            log::warn!("restart to update failed: {problem}");
+            self.show_restart_problem(
+                format!(
+                    "The app couldn't restart ({problem}). The update runs the next time you start it."
+                ),
+                cx,
+            );
+        }
+    }
+
+    /// Shows a restart that didn't happen as a failure card. The updater still holds `Ready`, so
+    /// Retry (a check) brings the restart button back.
+    fn show_restart_problem(&mut self, message: String, cx: &mut Context<Self>) {
+        self.updates.state = UpdateState::Failed {
+            message,
+            retryable: true,
+        };
+        self.updates.dismissed_failure = None;
+        self.show_update_banner(cx);
+        self.refresh_desktop_tab(cx);
+        cx.notify();
     }
 
     /// "Check for updates" in the settings, or Retry on a failed card.

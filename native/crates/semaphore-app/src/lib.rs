@@ -75,8 +75,9 @@ pub struct AppConfig {
     pub links: Option<Arc<dyn desktop::LinkRegistrar>>,
     /// W13: whether this build and install check for updates, and what it needs to.
     pub update: update::UpdateStart,
-    /// W13: starts the app again once an AppImage update is in place. The app sets a pending
-    /// restart and quits; a rig records that it was asked.
+    /// W13: starts the app again once an AppImage update is in place. The app starts the new
+    /// build and quits (or returns why it couldn't, and keeps running); a rig records that it was
+    /// asked.
     pub restart: Option<RestartApp>,
     /// W4: holds off system sleep during a call (`Core::set_keep_awake`): the desktop's
     /// (`DesktopKeepAwake`) in the app, a recorder in the rig, `None` for none. Never the
@@ -98,8 +99,9 @@ pub struct PickRequest {
 /// `AppConfig::pick_files`: the paths picked, or `None` when cancelled.
 pub type PickFiles = std::rc::Rc<dyn Fn(PickRequest, &mut App) -> Task<Option<Vec<PathBuf>>>>;
 
-/// `AppConfig::restart`: starts the app again after it quits, from the file the update replaced.
-pub type RestartApp = std::rc::Rc<dyn Fn(&mut App)>;
+/// `AppConfig::restart`: starts the updated build and quits, or says why it couldn't (the app then
+/// keeps running).
+pub type RestartApp = std::rc::Rc<dyn Fn(&mut App) -> Result<(), String>>;
 
 /// `AppConfig::save_path`: given the suggested file name, where to save it, or `None` when
 /// cancelled.

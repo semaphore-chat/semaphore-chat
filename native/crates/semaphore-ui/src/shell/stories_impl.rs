@@ -467,7 +467,7 @@ fn ready_package() -> crate::update::UpdateStatus {
     crate::update::UpdateStatus::Ready {
         version: "1.4.0".into(),
         how: crate::update::ReadyHow::Package {
-            command: "sudo dpkg -i '/home/mike/.cache/semaphore/updates/semaphore-chat-native_1.4.0_amd64.deb'".into(),
+            command: "sudo apt install '/home/mike/.cache/semaphore/updates/semaphore-chat-native_1.4.0_amd64.deb'".into(),
         },
     }
 }

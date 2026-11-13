@@ -66,7 +66,7 @@ windows = { version = "=0.62.2", features = [
 
 [dev-dependencies]
 proptest.workspace = true
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
 
 # The updater's tests build an HTTP client. In a workspace build reqwest is compiled with
 # semaphore-net's `rustls-no-provider`, so a client needs a crypto provider installed first --

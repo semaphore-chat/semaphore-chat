@@ -415,10 +415,10 @@ mod tests {
             summary(&UpdateStatus::Ready {
                 version: "1.4.0".into(),
                 how: ReadyHow::Package {
-                    command: "sudo dpkg -i '/tmp/a.deb'".into(),
+                    command: "sudo apt install '/tmp/a.deb'".into(),
                 },
             }),
-            "Version 1.4.0 was downloaded. Install it with: sudo dpkg -i '/tmp/a.deb'"
+            "Version 1.4.0 was downloaded. Install it with: sudo apt install '/tmp/a.deb'"
         );
         assert_eq!(
             summary(&UpdateStatus::Failed {
