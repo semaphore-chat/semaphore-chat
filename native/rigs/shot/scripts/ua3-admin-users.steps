@@ -1,0 +1,2 @@
+# UA3 admin users and their dialogs. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/ua3-admin-users.steps

@@ -104,6 +104,14 @@ enum Pressed {
 /// What the list asks of the app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageListEvent {
+    /// U-freeze (UM): a "GIF from <host>: Load" or "Image from <host>: Load" card's Enable:
+    /// `Core::set_third_party_media(true)` (the app also saves it and opens the fetcher).
+    EnableThirdPartyMedia,
+    /// U-freeze (UM): the pointer is over this message's "Seen by" (or left it: `None`); the
+    /// owner feeds `set_seen_by` from `Core::seen_by(conversation, message_id)`.
+    SeenByHovered {
+        message_id: Option<String>,
+    },
     /// Few rows left above the viewport: `Core::load_older`.
     LoadOlder,
     /// `Core::hold_rows`: core keeps this span loaded while a selection needs it.
@@ -263,6 +271,31 @@ const PHONE_WIDTH: f32 = 600.;
 impl EventEmitter<MessageListEvent> for MessageList {}
 
 impl MessageList {
+    /// U-freeze (UM): whether third-party pictures (GIFs, link-preview images) may load
+    /// (`Core::third_party_media()`); off draws the "Load" cards. Drawn by UM.
+    pub fn set_third_party_media(&mut self, _on: bool, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
+    /// U-freeze (UM): "Seen by" for the hovered message (`Core::seen_by`). Drawn by UM.
+    pub fn set_seen_by(
+        &mut self,
+        _seen: Option<semaphore_core::model::SeenByView>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.notify();
+    }
+
+    /// U-freeze (UM): a DM's read watermarks (`Core::dm_peer_reads`), for "Seen" on my latest
+    /// message. Drawn by UM.
+    pub fn set_dm_peer_reads(
+        &mut self,
+        _reads: Option<semaphore_core::model::DmPeerReadsView>,
+        cx: &mut Context<Self>,
+    ) {
+        cx.notify();
+    }
+
     pub fn new(
         data: ListData,
         media: Rc<dyn MediaSource>,

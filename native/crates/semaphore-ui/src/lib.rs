@@ -23,6 +23,7 @@ pub mod replay;
 pub mod roles;
 pub mod settings;
 pub mod shell;
+pub mod shortcuts;
 #[cfg(feature = "stories")]
 pub mod stories;
 pub mod theme;

@@ -17,7 +17,7 @@ mod register;
 mod tests;
 
 pub use forgot::{ForgotEvent, ForgotPasswordScreen};
-pub use invite::{InviteEvent, InviteScreen};
+pub use invite::{InviteEvent, InviteJoinState, InviteScreen};
 pub use register::{
     PASSWORD_MAX, PASSWORD_MIN, RegisterEvent, RegisterField, RegisterScreen, USERNAME_MAX,
     USERNAME_MIN, validate_register,
@@ -39,6 +39,11 @@ use semaphore_design::Icon as IconName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthEvent {
+    /// U-freeze (US1): "Set it up in a browser": the owner opens `url` with the system's link
+    /// handler (`ServerInfo::needs_setup`).
+    OpenInBrowser {
+        url: String,
+    },
     /// Test and save this server.
     ConnectServer {
         url: String,
@@ -126,6 +131,23 @@ pub struct AuthScreen {
 impl EventEmitter<AuthEvent> for AuthScreen {}
 
 impl AuthScreen {
+    /// U-freeze (US1): the probed server has no users yet (`ServerInfo::needs_setup`): the
+    /// connect step shows "set this server up in a browser" with `web_url` to open. `None`
+    /// hides it. Drawn by US1.
+    pub fn set_setup_needed(&mut self, _web_url: Option<String>, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
+    /// U-freeze (US1): what the register form asks for (`Core::register_requirements()`).
+    /// Drawn by US1.
+    pub fn set_register_requirements(
+        &mut self,
+        _requirements: semaphore_core::model::RegisterRequirements,
+        cx: &mut Context<Self>,
+    ) {
+        cx.notify();
+    }
+
     pub fn new(step: AuthStep, window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             step,

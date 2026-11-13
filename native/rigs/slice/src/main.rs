@@ -91,6 +91,10 @@
 //! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
 mod w5;
+mod w6;
+mod w7;
+mod w9;
+mod w9v;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use gpui_kit::test::TestQueryExt as _;
@@ -344,6 +348,11 @@ enum Condition {
     W4(W4),
     /// W5's (`w5.rs`, `w5_holds`).
     W5(w5::W5),
+    /// UI freeze hubs: WA's, WM's, WU's and WP's.
+    W6(w6::W6),
+    W7(w7::W7),
+    W9(w9::W9),
+    W9v(w9v::W9V),
 }
 
 /// W4's conditions.
@@ -645,6 +654,10 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ] => Condition::W4(W4::Replay((*state).into())),
         ["clips", count] => Condition::W4(W4::Clips(number(count)?)),
         ["w5", rest @ ..] => Condition::W5(w5::parse(rest)?),
+        ["w6", rest @ ..] => Condition::W6(w6::parse(rest)?),
+        ["w7", rest @ ..] => Condition::W7(w7::parse(rest)?),
+        ["w9", rest @ ..] => Condition::W9(w9::parse(rest)?),
+        ["w9v", rest @ ..] => Condition::W9v(w9v::parse(rest)?),
         ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
         ["ringing", dm] => Condition::W4(W4::RingingFor((*dm).into())),
         ["ring", state @ ("looping" | "stopped")] => {
@@ -1599,6 +1612,13 @@ impl Rig {
         if let Condition::W5(w5) = condition {
             return self.w5_holds(w5);
         }
+        match condition {
+            Condition::W6(w6) => return self.w6_holds(w6),
+            Condition::W7(w7) => return self.w7_holds(w7),
+            Condition::W9(w9) => return self.w9_holds(w9),
+            Condition::W9v(w9v) => return self.w9v_holds(w9v),
+            _ => {}
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -1698,7 +1718,11 @@ impl Rig {
             | Condition::PlayerFrames(_)
             | Condition::PlayersOpen(_)
             | Condition::W4(_)
-            | Condition::W5(_) => unreachable!("answered above"),
+            | Condition::W5(_)
+            | Condition::W6(_)
+            | Condition::W7(_)
+            | Condition::W9(_)
+            | Condition::W9v(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }

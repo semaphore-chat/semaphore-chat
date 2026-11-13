@@ -26,6 +26,17 @@ pub enum InviteEvent {
     Close,
 }
 
+/// U-freeze (US1): where "Join with your account" stands (`Core::accept_invite`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum InviteJoinState {
+    #[default]
+    Idle,
+    Joining,
+    Joined(semaphore_core::model::InviteJoin),
+    /// The server's message.
+    Failed(String),
+}
+
 pub struct InviteScreen {
     view: InvitePreviewView,
     signed_in: bool,
@@ -40,6 +51,11 @@ pub(crate) fn invite_date(time: &TimeFormat, ms: i64) -> String {
 }
 
 impl InviteScreen {
+    /// U-freeze (US1): the signed-in join's progress and result. Drawn by US1.
+    pub fn set_join(&mut self, _join: InviteJoinState, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
     pub fn new(_: &mut Context<Self>) -> Self {
         Self {
             view: InvitePreviewView::default(),

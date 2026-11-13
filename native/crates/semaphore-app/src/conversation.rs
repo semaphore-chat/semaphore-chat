@@ -10,6 +10,8 @@
 //! itself with a [`PaneEvent`]: show a side panel, go to another channel, the header's pin count.
 
 mod actions;
+mod media;
+mod seen;
 mod side;
 
 use crate::files::AppMedia;

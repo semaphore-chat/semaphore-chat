@@ -7,7 +7,7 @@
 //! The deep-link parser is a port of `frontend/electron/deep-link-parser.ts`, and for the same reason
 //! it is strict: once the scheme is registered, any program on the machine can hand us a string.
 
-use semaphore_core::model::Conversation;
+use semaphore_core::model::{AdminPage, Conversation};
 
 /// Every path in `routes.tsx`, in its order. 32, counting the catch-all.
 pub const WEB_PATHS: [&str; 32] = [
@@ -90,6 +90,24 @@ pub enum Route {
         community_id: String,
         tab: crate::community_settings::CommunityTab,
     },
+    /// U-freeze: the instance admin area, on a page (`/admin`, `/admin/users`, ...).
+    /// `/admin/debug` stays `Unbuilt`: the owner chose not to build it natively.
+    Admin {
+        page: semaphore_core::model::AdminPage,
+    },
+    /// U-freeze: the notifications page (the centre panel is the shell's).
+    Notifications,
+    /// U-freeze: the friends page.
+    Friends,
+    /// U-freeze: this user's own profile (`/profile`).
+    OwnProfile,
+    /// U-freeze: the create-community screen (`/community/create`).
+    CreateCommunity,
+    /// U-freeze: a channel with its search panel open (`.../channel/:channelId/search`).
+    ChannelSearch {
+        community_id: String,
+        channel_id: String,
+    },
     /// A web path this slice has no screen for yet.
     Unbuilt {
         pattern: &'static str,
@@ -158,6 +176,21 @@ impl Route {
                     community_id: param(0),
                     channel_id: param(1),
                 },
+                "/community/:communityId/channel/:channelId/search" => Route::ChannelSearch {
+                    community_id: param(0),
+                    channel_id: param(1),
+                },
+                "/notifications" => Route::Notifications,
+                "/friends" => Route::Friends,
+                "/profile" => Route::OwnProfile,
+                "/community/create" => Route::CreateCommunity,
+                "/admin" => admin(AdminPage::Dashboard),
+                "/admin/users" => admin(AdminPage::Users),
+                "/admin/communities" => admin(AdminPage::Communities),
+                "/admin/invites" => admin(AdminPage::Invites),
+                "/admin/roles" => admin(AdminPage::Roles),
+                "/admin/storage" => admin(AdminPage::Storage),
+                "/admin/settings" => admin(AdminPage::Settings),
                 _ => Route::Unbuilt {
                     pattern,
                     path: path.to_owned(),
@@ -187,6 +220,15 @@ impl Route {
             Route::CommunitySettings { community_id, .. } => {
                 format!("/community/{community_id}/edit")
             }
+            Route::Admin { page } => admin_path(*page).into(),
+            Route::Notifications => "/notifications".into(),
+            Route::Friends => "/friends".into(),
+            Route::OwnProfile => "/profile".into(),
+            Route::CreateCommunity => "/community/create".into(),
+            Route::ChannelSearch {
+                community_id,
+                channel_id,
+            } => format!("/community/{community_id}/channel/{channel_id}/search"),
             Route::Unbuilt { path, .. } | Route::NotFound { path } => path.clone(),
         }
     }
@@ -205,6 +247,7 @@ impl Route {
         match self {
             Route::Community { community_id }
             | Route::Channel { community_id, .. }
+            | Route::ChannelSearch { community_id, .. }
             | Route::CommunitySettings { community_id, .. } => Some(community_id),
             _ => None,
         }
@@ -212,7 +255,9 @@ impl Route {
 
     pub fn channel_id(&self) -> Option<&str> {
         match self {
-            Route::Channel { channel_id, .. } => Some(channel_id),
+            Route::Channel { channel_id, .. } | Route::ChannelSearch { channel_id, .. } => {
+                Some(channel_id)
+            }
             _ => None,
         }
     }
@@ -220,14 +265,33 @@ impl Route {
     /// What core should have on screen for this route.
     pub fn conversation(&self) -> Option<Conversation> {
         match self {
-            Route::Channel { channel_id, .. } => Some(Conversation::Channel {
-                id: channel_id.clone(),
-            }),
+            Route::Channel { channel_id, .. } | Route::ChannelSearch { channel_id, .. } => {
+                Some(Conversation::Channel {
+                    id: channel_id.clone(),
+                })
+            }
             Route::DirectMessage { dm_group_id } => Some(Conversation::DirectMessage {
                 id: dm_group_id.clone(),
             }),
             _ => None,
         }
+    }
+}
+
+fn admin(page: AdminPage) -> Route {
+    Route::Admin { page }
+}
+
+/// The web path of an admin page.
+pub fn admin_path(page: AdminPage) -> &'static str {
+    match page {
+        AdminPage::Dashboard => "/admin",
+        AdminPage::Users => "/admin/users",
+        AdminPage::Communities => "/admin/communities",
+        AdminPage::Invites => "/admin/invites",
+        AdminPage::Roles => "/admin/roles",
+        AdminPage::Storage => "/admin/storage",
+        AdminPage::Settings => "/admin/settings",
     }
 }
 
@@ -517,10 +581,11 @@ mod tests {
                 dm_group_id: "d1".into()
             }
         );
+        assert_eq!(Route::parse("/community/create"), Route::CreateCommunity);
         assert!(matches!(
-            Route::parse("/community/create"),
+            Route::parse("/admin/debug"),
             Route::Unbuilt {
-                pattern: "/community/create",
+                pattern: "/admin/debug",
                 ..
             }
         ));
@@ -528,6 +593,86 @@ mod tests {
             Route::parse("/nope/at/all"),
             Route::NotFound { .. }
         ));
+    }
+
+    #[test]
+    fn the_freeze_routes_parse_and_round_trip() {
+        let cases = [
+            (
+                "/admin",
+                Route::Admin {
+                    page: AdminPage::Dashboard,
+                },
+            ),
+            (
+                "/admin/users",
+                Route::Admin {
+                    page: AdminPage::Users,
+                },
+            ),
+            (
+                "/admin/communities",
+                Route::Admin {
+                    page: AdminPage::Communities,
+                },
+            ),
+            (
+                "/admin/invites",
+                Route::Admin {
+                    page: AdminPage::Invites,
+                },
+            ),
+            (
+                "/admin/roles",
+                Route::Admin {
+                    page: AdminPage::Roles,
+                },
+            ),
+            (
+                "/admin/storage",
+                Route::Admin {
+                    page: AdminPage::Storage,
+                },
+            ),
+            (
+                "/admin/settings",
+                Route::Admin {
+                    page: AdminPage::Settings,
+                },
+            ),
+            ("/notifications", Route::Notifications),
+            ("/friends", Route::Friends),
+            ("/profile", Route::OwnProfile),
+            ("/community/create", Route::CreateCommunity),
+            (
+                "/community/c1/channel/ch1/search",
+                Route::ChannelSearch {
+                    community_id: "c1".into(),
+                    channel_id: "ch1".into(),
+                },
+            ),
+        ];
+        for (path, route) in cases {
+            assert_eq!(Route::parse(path), route, "{path}");
+            assert_eq!(route.path(), path);
+            assert!(route.requires_auth(), "{path} needs a session");
+        }
+        let search = Route::parse("/community/c1/channel/ch1/search");
+        assert_eq!(search.community_id(), Some("c1"));
+        assert_eq!(search.channel_id(), Some("ch1"));
+        assert_eq!(
+            search.conversation(),
+            Some(Conversation::Channel { id: "ch1".into() })
+        );
+        assert_eq!(
+            Route::Admin {
+                page: AdminPage::Users
+            }
+            .community_id(),
+            None
+        );
+        assert!(Route::parse("/profile/edit") == Route::ProfileEdit);
+        assert!(matches!(Route::parse("/onboarding"), Route::Unbuilt { .. }));
     }
 
     #[test]

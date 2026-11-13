@@ -170,6 +170,7 @@ fn open_mode(
                         ComposerEvent::CancelEdit { message_id } => {
                             log.cancels.push(message_id.clone())
                         }
+                        ComposerEvent::OpenGifs => {}
                     }
                 })
                 .detach();

@@ -128,6 +128,11 @@ pub enum DmHeaderEvent {
     Search,
     /// A one-to-one DM's name: the other person's profile.
     OpenProfile { user_id: String },
+    /// U-freeze (US2): "Add people" on a group: the owner opens the user picker and calls
+    /// `Core::add_dm_members(dm_id, user_ids)`. Offered with `set_group_actions(true)`.
+    AddPeople,
+    /// U-freeze (US2): "Leave group", confirmed: `Core::leave_dm(dm_id)`.
+    Leave,
 }
 
 pub struct DmHeader {
@@ -142,6 +147,11 @@ pub struct DmHeader {
 impl EventEmitter<DmHeaderEvent> for DmHeader {}
 
 impl DmHeader {
+    /// U-freeze (US2): offer "Add people" and "Leave group" (a group DM only). Drawn by US2.
+    pub fn set_group_actions(&mut self, _group: bool, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
     pub fn new(_: &mut Context<Self>) -> Self {
         Self {
             state: DmHeaderState::Loading,

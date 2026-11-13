@@ -1,0 +1,2 @@
+# UM GIF embeds, Load cards and seen-by in the message list. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/um-message-media.steps

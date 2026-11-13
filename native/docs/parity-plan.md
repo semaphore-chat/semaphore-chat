@@ -246,17 +246,108 @@ contract or engine gaps, with workarounds).
 | Notification auto-mark on view | `State::w2_auto_read` on opening a channel or DM, when the centre's list arrives, and for a notification that arrives in the open conversation; one mark per notification, a failed one retried on the next visit | uses `notificationsControllerMarkAsRead` | — |
 | Voice pre-join and join options | `Core::voice_prejoin` (`VoicePreJoinView`, `VoiceJoinMode`), `Core::join_voice_with` (`VoiceJoinOptions`); the engine is told before `connect` | uses the existing presence and capability reads | — |
 
-### UI lanes still to build (core is done; each reads a view, no logic)
+### UI status, verified against the code (2026-11-12)
 
-| Lane | Screen | Reads | Listens to |
-|---|---|---|---|
-| U9-connect | The connect screen's "set this up in a browser" notice | `Core::probe_server` → `ServerInfo::needs_setup` (and `url` to open) | — (the probe's answer) |
-| U9-register | The register form's mode | `Core::register_requirements` (`can_register`, `invite_required`) | — (the probe's answer) |
-| U9-invites | The join screen: preview with its reason; signed in, "Join with your account" and the result | `Core::invite_preview` (`InvitePreviewView.reason`), `Core::accept_invite` (`InviteJoin`: joined, skipped with `InviteSkipReason`) | `InvitePreview { code }` |
-| U9-seen-by | "Seen by" on a message | `Core::seen_by` → `SeenByView` (`readers`, `count`, `more`); `Core::dm_peer_reads` for a roster | `SeenBy { conversation, message_id }`, `DmPeerReads { dm_group_id }` |
-| U9-media | The one switch "Load images from other sites (link previews, GIFs)" (the desktop tab still says "Link preview images"), the GIF picker's "Allow" notice, the "GIF from <host>: Load" and "Image from <host>: Load" cards | `Core::third_party_media`, `Core::set_third_party_media(true)` (the host also saves it and opens `PreviewFetcher`), `GifResultsView.needs_permission`, `GifEmbed.host`, `LinkPreviewView.image_host` | `Gifs { query }` |
-| U9-voice-prejoin | A voice channel's pre-join: who's here, Join voice / Join muted, "you can listen", "you don't have permission", "You're in X; joining moves you here" | `Core::voice_prejoin` → `VoicePreJoinView` (`users`, `mode`, `timed_out_until_ms`, `connected_elsewhere`), `Core::join_voice_with` | `Voice` |
-| U9-notifications-page | The notifications page (the centre panel has its own lane) | `Core::notifications`, `mark_notification_read`, `mark_all_notifications_read`, `dismiss_notification`, `load_more_notifications` | `Notifications`, `Badge` |
+The status column above was written before the W1-W5 UI lanes and their app wiring landed, and
+many rows that say "UI pending" are built and wired. A sweep of `semaphore-app` (every core command
+the app never calls) and `semaphore-ui` (which views no screen reads) found these, and only these,
+still missing; everything else in the inventory that has a core command is drawn and wired.
+
+| Missing | UI | App |
+|---|---|---|
+| Instance admin, 8 pages | stubs only (`ui/src/admin/*`) | `/admin/*` routed to placeholders since the UI freeze |
+| GIF picker | stub (`ui/src/gifs`) | `gifs`, `load_more_gifs` never called |
+| GIF embeds, "Load" cards for GIFs and link-preview images | `MessageRow::gif`, `GifEmbed`, `GifResultsView.needs_permission` unread | the merged setting exists in the store (v3); no GIF fetch |
+| Seen by | none | `seen_by`, `dm_peer_reads` never called |
+| Voice pre-join | none | `voice_prejoin`, `join_voice_with` never called |
+| Joining an invite as a signed-in account | preview only (`auth/invite.rs`) | `accept_invite` never called |
+| Register form's mode | the form exists | `register_requirements` never called |
+| Connect screen's "set it up in a browser" | none | `needs_setup` unread |
+| Notifications page | the centre panel exists | `/notifications` was `Unbuilt` |
+| `/friends`, `/profile`, `/community/create`, a channel's `/search` routes | the screens exist | were `Unbuilt` |
+| Search paging | no "More" | one-shot `search_messages`; `search_results`/`load_more_search` unused |
+| DM group: add people, leave | not offered | `add_dm_members`, `leave_dm` never called |
+| The web's global shortcuts and the Mod+/ sheet | no sheet | only selection keys and Esc are bound |
+| Replay trim preview | `TrimTimeline::preview` is a slot | the web plays the selection in `components/Voice/TrimPreview.tsx` (hls.js over `GET /livekit/replay/preview/playlist.m3u8`); native's player can't read the buffer's MPEG-TS segments yet: a later player lane (Claude) |
+| Thumbnails (W7-T) | rows are sized from `width`/`height` | `files.rs` already fetches `/thumbnail` when `has_thumbnail` and the viewer `full_image`: only the proof is left (WT) |
+
+The profile's friend button is already built (`FriendAction` Add / Pending / Friends, as the web).
+
+### UI freeze and lanes (2026-11-12)
+
+The UI freeze (on `native/ui-plan`) lets screens and their wiring be built in parallel:
+
+- **Routes** (`ui/src/nav`): `Route::Admin { page }` (`/admin/debug` stays unbuilt),
+  `Notifications`, `Friends`, `OwnProfile`, `CreateCommunity`, `ChannelSearch`, with nav tests.
+  Until their lanes land they draw the placeholder these paths had before.
+- **Frozen component APIs** (`new`, setters, an `Event` enum naming the command per event; a
+  placeholder render): `admin::{layout::AdminShell, dashboard::DashboardPage,
+  settings::InstanceSettingsPage, users::UsersPage, communities::CommunitiesPage,
+  invites::InstanceInvitesPage, roles::InstanceRolesPage, storage::StoragePage}`,
+  `gifs::GifPicker`, `voice::prejoin::PreJoinPanel`, `notifications::page::NotificationsPage`,
+  `shortcuts::ShortcutSheet`; new events and setter stubs on existing components:
+  `MessageListEvent::{EnableThirdPartyMedia, SeenByHovered}` with `MessageList::{set_third_party_media,
+  set_seen_by, set_dm_peer_reads}`, `ComposerEvent::OpenGifs` with `Composer::set_gifs_enabled`,
+  `SearchPanelEvent::More` with `SearchPanel::set_more`, `DmHeaderEvent::{AddPeople, Leave}` with
+  `DmHeader::set_group_actions`, `AuthEvent::OpenInBrowser` with `AuthScreen::{set_setup_needed,
+  set_register_requirements}`, `InviteScreen::set_join` (`InviteJoinState`).
+- **App hub files**, each called once from `root.rs` (core events, navigation, content, overlays):
+  `root/admin.rs` (WA), `root/media.rs` (WM), `root/u9.rs` (WU), `root/prejoin.rs` (WP), and the
+  conversation pane's `conversation/media.rs` (WM) and `conversation/seen.rs` (WP).
+- **More hooks**: `MediaSource::gif(url)` (a GIF from the GIF service, nothing unless the app
+  allows it) and `GifPicker::set_media`; the account menu's Admin entry
+  (`AppRoot::admin_account_action`); `u9_accept_invite` from the invite page's Accept (signed out it
+  still registers), `u9_dm_header_updated` whenever the open DM's header gets its state, and
+  `run_notification_event` (the centre's handler, shared with the page) in `root/inbox.rs`;
+  `community_settings::common` is `pub(crate)` for the admin pages; the slice rig's condition hubs
+  `rigs/slice/src/{w6, w7, w9, w9v}.rs` (`wait core w6 ..` etc., empty).
+- **Review scripts** (empty): `rigs/shot/scripts/{ua1-admin-shell-settings, ua2-admin-dashboard,
+  ua3-admin-users, ua4-admin-communities-invites, ua5-admin-roles-storage, ug-gif-picker,
+  um-message-media, uv-voice-prejoin, us1-auth-extras, us2-inbox-items, uk-shortcut-sheet,
+  wt-thumbnails}.steps`.
+
+| Lane | Owns | Copies | Size | Built by |
+|---|---|---|---|---|
+| UA1 admin shell and settings | `ui/src/admin/{mod.rs, layout, settings}` | `community_settings/shell.rs`, `overview.rs` | M | DeepSeek (`lane-briefs/ua1-admin-shell-settings.md`) |
+| UA2 dashboard | `ui/src/admin/dashboard` | new | S-M | Claude |
+| UA3 users | `ui/src/admin/users` | `community_settings/members.rs`, `moderation/dialogs.rs` | L | DeepSeek (`ua3-admin-users.md`) |
+| UA4 communities, invites | `ui/src/admin/{communities, invites}` | `community_settings/invites.rs` | M | DeepSeek (`ua4-admin-communities-invites.md`) |
+| UA5 roles, storage | `ui/src/admin/{roles, storage}` | `roles/list.rs`, `roles/editor.rs` | M | DeepSeek (`ua5-admin-roles-storage.md`) |
+| UG GIF picker | `ui/src/gifs`, the GIF button in `ui/src/composer` | `ui/src/emoji` grid, composer palette | M | DeepSeek (`ug-gif-picker.md`); moves to Claude if UA1/UA3 needed heavy fixes |
+| UM message media, seen-by | `ui/src/messages/*`, the switch label in `ui/src/settings/desktop.rs` | — | M | Claude |
+| UV voice pre-join | `ui/src/voice/prejoin.rs` | — | S-M | Claude |
+| US1 auth extras | `ui/src/auth/{mod.rs, register.rs, invite.rs}` | edits | S-M | DeepSeek (`us1-auth-extras.md`) |
+| US2 inbox items | `ui/src/notifications/page.rs`, `ui/src/dms/{mod.rs, header.rs}`, `ui/src/panel/{mod.rs, search.rs}` | `notifications/center.rs`, `dms/picker.rs` | M | DeepSeek (`us2-inbox-items.md`) |
+| UK shortcut sheet | `ui/src/shortcuts` | — | S | DeepSeek (`uk-shortcut-sheet.md`) |
+| WA admin wiring | `app/src/root/admin.rs`, `rigs/slice/scripts/w6.steps` | `root/community.rs` | M-L | DeepSeek (`wa-admin-wiring.md`) |
+| WM media wiring | `app/src/root/media.rs`, `app/src/conversation/media.rs`, `app/src/files.rs`, `rigs/slice/scripts/w7.steps` | — | M | Claude |
+| WU U9 wiring | `app/src/root/u9.rs`, `app/src/conversation/side.rs`, `rigs/slice/scripts/w9.steps` | `root/inbox.rs` | M-L | DeepSeek (`wu-u9-wiring.md`) |
+| WP pre-join, seen-by wiring | `app/src/root/prejoin.rs`, `app/src/conversation/seen.rs`, `rigs/slice/scripts/voice-w9.steps` | `root/calls.rs` | S-M | Claude |
+| WT thumbnails proof | stories in `ui/src/messages/stories.rs` (after UM), `rigs/slice/scripts/w7-thumbs.steps` | — | S | DeepSeek (`wt-thumbnails-proof.md`) |
+
+Order: the freeze; then UA1, UA3 (DeepSeek, at most two at once on the Ollama plan) with UA2, UM
+(Claude); then UA4, UA5 with UV; then US1, US2, then UG, UK; then the wiring (WA and WU need their
+screens, WM needs UG and UM, WP needs UV and UM); then WT. Every DeepSeek UI lane gets a Claude
+screenshot review of its review script (desktop and phone, against the web page and the copied
+screen) and a diff review against its brief; a lane that fails once is redone by Claude.
+
+**UI defaults (chosen with the owner, 2026-11-12):**
+
+- GIFs and animated images autoplay in the list once third-party media is on, as on the web;
+  reduced motion shows the first frame only; WM's frame and pixel budget lands before autoplay.
+- Shortcuts: the web's set only.
+- Admin pages are a route in the main window, like community settings; the phone drills in.
+- The pre-join replaces click-to-join on voice channels everywhere, as on the web.
+- "Seen by" shows on my own latest message, on hover.
+- A DM group can be left; a one-to-one DM doesn't offer "Add people".
+- Search paging replaces the one-shot search.
+- An unknown `INVITE_*` reason shows the server's message.
+- The quota dialog takes GiB and sends bytes.
+
+**Later platform lanes** (outside these waves): the application menu with About (Electron has
+one: `electron/main.ts` `setupApplicationMenu`), the app version shown, the replay trim preview
+(the player reading HLS / MPEG-TS), screen-share volume (a per-track gain in the engine), voice
+isolation (no libwebrtc counterpart). Packaging, auto-update and installers are the packaging lane's.
 
 ## 2. Build units
 

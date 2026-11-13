@@ -380,13 +380,18 @@ impl AppRoot {
 
     fn on_invite(
         &mut self,
-        _: &Entity<InviteScreen>,
+        screen: &Entity<InviteScreen>,
         event: &InviteEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event.clone() {
-            InviteEvent::Accept { code } => self.open_register(Some(code), window, cx),
+            // UI freeze: WU joins with the signed-in account; otherwise register with the code.
+            InviteEvent::Accept { code } => {
+                if !self.u9_accept_invite(screen, &code, window, cx) {
+                    self.open_register(Some(code), window, cx)
+                }
+            }
             InviteEvent::SignIn => self.show_page(Page::SignIn, cx),
             InviteEvent::Retry => {
                 if let Some(core) = self.core() {

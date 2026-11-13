@@ -128,6 +128,11 @@ fn draft_rows(window: &Window) -> usize {
 }
 
 impl Composer {
+    /// U-freeze (UG): show the GIF button (the server offers GIF search). Drawn by UG.
+    pub fn set_gifs_enabled(&mut self, _enabled: bool, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
     pub fn new(config: ComposerConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let rows = draft_rows(window);
         let placeholder = config.placeholder;

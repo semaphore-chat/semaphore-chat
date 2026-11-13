@@ -116,6 +116,9 @@ pub enum SearchPanelEvent {
     },
     /// A hit was clicked.
     Jump(Box<SearchHit>),
+    /// U-freeze (US2): "More results": `Core::load_more_search(scope, query)`. Offered with
+    /// `set_more`.
+    More,
     Close,
 }
 
@@ -134,6 +137,12 @@ pub struct SearchPanel {
 }
 
 impl SearchPanel {
+    /// U-freeze (US2): whether the results have more (`SearchResultsView::more`) and a page is
+    /// on its way (`loading_more`). Drawn by US2; until then nothing shows.
+    pub fn set_more(&mut self, _more: bool, _loading_more: bool, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
     /// `community_scope`: offer "All channels" (false in a DM).
     pub fn new(community_scope: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let field = cx.new(|cx| InputState::new(window, cx).placeholder("Search messages..."));
