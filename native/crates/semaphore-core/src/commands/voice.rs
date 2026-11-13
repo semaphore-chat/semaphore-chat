@@ -220,7 +220,8 @@ impl Core {
             state.call += 1;
             state.call_ended_early = None;
             if let Some(options) = options {
-                state.voice.muted = options.muted;
+                // Deafened means muted, as the web's voice controls keep it, whatever the screen sent.
+                state.voice.muted = options.muted || options.deafened;
                 state.voice.deafened = options.deafened;
             }
             state.view_changed(ViewKey::Voice);

@@ -17,7 +17,7 @@ mod register;
 mod tests;
 
 pub use forgot::{ForgotEvent, ForgotPasswordScreen};
-pub use invite::{InviteEvent, InviteScreen};
+pub use invite::{InviteEvent, InviteJoinState, InviteScreen};
 pub use register::{
     PASSWORD_MAX, PASSWORD_MIN, RegisterEvent, RegisterField, RegisterScreen, USERNAME_MAX,
     USERNAME_MIN, validate_register,
@@ -33,12 +33,17 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    BrowserSignInFailure, BrowserSignInView, RegistrationMode, SessionState,
+    BrowserSignInFailure, BrowserSignInView, RegisterRequirements, RegistrationMode, SessionState,
 };
 use semaphore_design::Icon as IconName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthEvent {
+    /// U-freeze (US1): "Set it up in a browser": the owner opens `url` with the system's link
+    /// handler (`ServerInfo::needs_setup`).
+    OpenInBrowser {
+        url: String,
+    },
     /// Test and save this server.
     ConnectServer {
         url: String,
@@ -114,7 +119,9 @@ pub enum AuthStep {
 pub struct AuthScreen {
     step: AuthStep,
     session: SessionState,
-    registration: RegistrationMode,
+    requirements: RegisterRequirements,
+    /// `ServerInfo::needs_setup`'s web address: this server has no users yet.
+    setup_url: Option<String>,
     server_url: Entity<InputState>,
     server_name: Entity<InputState>,
     username: Entity<InputState>,
@@ -126,11 +133,31 @@ pub struct AuthScreen {
 impl EventEmitter<AuthEvent> for AuthScreen {}
 
 impl AuthScreen {
+    /// U-freeze (US1): the probed server has no users yet (`ServerInfo::needs_setup`): the
+    /// connect step shows "set this server up in a browser" with `web_url` to open. `None`
+    /// hides it. Drawn by US1.
+    pub fn set_setup_needed(&mut self, web_url: Option<String>, cx: &mut Context<Self>) {
+        self.setup_url = web_url;
+        cx.notify();
+    }
+
+    /// U-freeze (US1): what the register form asks for (`Core::register_requirements()`).
+    /// Drawn by US1.
+    pub fn set_register_requirements(
+        &mut self,
+        requirements: RegisterRequirements,
+        cx: &mut Context<Self>,
+    ) {
+        self.requirements = requirements;
+        cx.notify();
+    }
+
     pub fn new(step: AuthStep, window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             step,
             session: SessionState::SignedOut,
-            registration: RegistrationMode::default(),
+            requirements: requirements_of(RegistrationMode::default()),
+            setup_url: None,
             server_url: text_state(window, cx, false),
             server_name: text_state(window, cx, false),
             username: text_state(window, cx, false),
@@ -165,8 +192,75 @@ impl AuthScreen {
 
     /// `ServerInfo::registration`: "Register here" shows unless it's `Closed`.
     pub fn set_registration(&mut self, mode: RegistrationMode, cx: &mut Context<Self>) {
-        self.registration = mode;
+        self.requirements = requirements_of(mode);
         cx.notify();
+    }
+
+    fn render_setup_notice(
+        &self,
+        web_url: &str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let sem = cx.sem().clone();
+        let view = cx.entity().downgrade();
+        let open_url = web_url.to_owned();
+        card(
+            sem.background_default,
+            div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .items_center()
+                .child(
+                    div()
+                        .mb(spacing(2.))
+                        .child(Icon::new(IconName::Settings).size(40.).color(sem.primary)),
+                )
+                .child(text(Variant::H5, "Set up this server").mb(spacing(1.)))
+                .child(
+                    div().w_full().mb(spacing(2.)).flex().justify_center().child(
+                        text(Variant::Body2, web_url.to_owned())
+                            .text_color(sem.text_secondary)
+                            .min_w_0()
+                            .truncate(),
+                    ),
+                )
+                .child(
+                    div().w_full().mb(spacing(2.)).child(Alert::new(
+                        Severity::Info,
+                        "This server isn't set up yet. Set it up in a browser first, then sign in here.",
+                    )),
+                )
+                .child(
+                    div().w_full().mb(spacing(2.)).child(
+                        Button::new("auth-setup-open", "Open in browser")
+                            .contained()
+                            .size(ButtonSize::Large)
+                            .full_width()
+                            .start_icon(IconName::OpenInBrowser)
+                            .on_click(move |_, _, cx| {
+                                view.update(cx, |_, cx| {
+                                    cx.emit(AuthEvent::OpenInBrowser {
+                                        url: open_url.clone(),
+                                    })
+                                })
+                                .ok();
+                            }),
+                    ),
+                )
+                .child({
+                    let view = cx.entity().downgrade();
+                    link("auth-setup-change-server", "Change server", cx, move |_, cx| {
+                        view.update(cx, |screen, cx| {
+                            // The notice belongs to the server we're leaving.
+                            screen.setup_url = None;
+                            cx.emit(AuthEvent::ChangeServer);
+                            cx.notify();
+                        })
+                        .ok();
+                    })
+                }),
+        )
     }
 
     fn render_server_url(
@@ -312,7 +406,7 @@ impl AuthScreen {
         };
         let reset_view = view.clone();
         let register_view = view.clone();
-        let can_register = self.registration != RegistrationMode::Closed;
+        let can_register = self.requirements.can_register;
 
         card(
             sem.background_default,
@@ -410,8 +504,32 @@ impl AuthScreen {
                                     .ok();
                             })),
                     )
+                })
+                .when(!can_register, |form| {
+                    form.child(
+                        div()
+                            .id("auth-register-closed")
+                            .test_support()
+                            .w_full()
+                            .flex()
+                            .justify_center()
+                            .text_color(sem.text_secondary)
+                            .child(text(
+                                Variant::Body2,
+                                "Registration is closed on this server",
+                            )),
+                    )
                 }),
         )
+    }
+}
+
+/// What a server's registration mode allows, the shape `Core::register_requirements` answers.
+fn requirements_of(mode: RegistrationMode) -> RegisterRequirements {
+    RegisterRequirements {
+        mode,
+        can_register: mode != RegistrationMode::Closed,
+        invite_required: mode == RegistrationMode::InviteOnly,
     }
 }
 
@@ -582,17 +700,23 @@ impl Render for AuthScreen {
             }
         }
         let sem = cx.sem().clone();
-        let body = match self.step.clone() {
-            AuthStep::ServerUrl { testing, error } => self
+        let setup_url = self.setup_url.clone();
+        let body = match (setup_url, self.step.clone()) {
+            // No accounts exist yet: the browser sets this server up, then sign-in works.
+            (Some(url), _) => self.render_setup_notice(&url, cx).into_any_element(),
+            (None, AuthStep::ServerUrl { testing, error }) => self
                 .render_server_url(testing, error, cx)
                 .into_any_element(),
-            AuthStep::SignIn {
-                server_url,
-                server_name,
-                browser,
-                notice,
-                password_reset,
-            } => self
+            (
+                None,
+                AuthStep::SignIn {
+                    server_url,
+                    server_name,
+                    browser,
+                    notice,
+                    password_reset,
+                },
+            ) => self
                 .render_sign_in(server_url, server_name, browser, notice, password_reset, cx)
                 .into_any_element(),
         };
@@ -632,6 +756,17 @@ pub fn stories() -> Vec<crate::stories::Story> {
         cx.new(|cx| {
             let mut screen = AuthScreen::new(step, window, cx);
             screen.session = session;
+            screen
+        })
+        .into()
+    }
+
+    /// A server with no users yet: the browser sets it up.
+    fn setup_screen(step: AuthStep, url: &str, window: &mut Window, cx: &mut App) -> AnyView {
+        let url = url.to_owned();
+        cx.new(|cx| {
+            let mut screen = AuthScreen::new(step, window, cx);
+            screen.set_setup_needed(Some(url), cx);
             screen
         })
         .into()
@@ -752,10 +887,45 @@ pub fn stories() -> Vec<crate::stories::Story> {
         Story::new("auth-registration-closed", |_, window, cx| {
             cx.new(|cx| {
                 let mut screen = AuthScreen::new(sign_in(BrowserLogin::Idle, None), window, cx);
-                screen.registration = RegistrationMode::Closed;
+                screen.set_registration(RegistrationMode::Closed, cx);
                 screen
             })
             .into()
+        }),
+        Story::new("auth-signin-registration-closed", |_, window, cx| {
+            cx.new(|cx| {
+                let mut screen = AuthScreen::new(sign_in(BrowserLogin::Idle, None), window, cx);
+                screen.set_register_requirements(
+                    RegisterRequirements {
+                        mode: RegistrationMode::Closed,
+                        can_register: false,
+                        invite_required: false,
+                    },
+                    cx,
+                );
+                screen
+            })
+            .into()
+        }),
+        Story::new("auth-connect-needs-setup", |_, window, cx| {
+            setup_screen(
+                AuthStep::ServerUrl {
+                    testing: false,
+                    error: None,
+                },
+                "https://chat.example.com",
+                window,
+                cx,
+            )
+        }),
+        // The sign-in screen of a server that answered a probe with "no users yet".
+        Story::new("auth-connect-needs-setup-phone", |_, window, cx| {
+            setup_screen(
+                sign_in(BrowserLogin::Idle, None),
+                "https://chat.example.com",
+                window,
+                cx,
+            )
         }),
         Story::new("auth-browser-timed-out", |_, window, cx| {
             screen(

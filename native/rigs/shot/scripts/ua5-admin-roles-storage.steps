@@ -1,0 +1,170 @@
+# UA5 instance roles and storage: every story at 1280x800 dark and 390x844 light.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/ua5-admin-roles-storage.steps
+story admin-roles-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-loading-desktop
+story admin-roles-loading 390 844 light-blue-balanced
+wait idle
+shot admin-roles-loading-phone
+story admin-roles-empty 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-empty-desktop
+story admin-roles-empty 390 844 light-blue-balanced
+wait idle
+shot admin-roles-empty-phone
+story admin-roles-failed 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-failed-desktop
+story admin-roles-failed 390 844 light-blue-balanced
+wait idle
+shot admin-roles-failed-phone
+story admin-roles-ready 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-ready-desktop
+story admin-roles-ready 390 844 light-blue-balanced
+wait idle
+shot admin-roles-ready-phone
+story admin-roles-long 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-long-desktop
+story admin-roles-long 390 844 light-blue-balanced
+wait idle
+shot admin-roles-long-phone
+story admin-roles-limited 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-limited-desktop
+story admin-roles-limited 390 844 light-blue-balanced
+wait idle
+shot admin-roles-limited-phone
+story admin-roles-locked 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-locked-desktop
+story admin-roles-locked 390 844 light-blue-balanced
+wait idle
+shot admin-roles-locked-phone
+story admin-roles-editor-new 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-editor-new-desktop
+story admin-roles-editor-new 390 844 light-blue-balanced
+wait idle
+shot admin-roles-editor-new-phone
+story admin-roles-editor-default 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-editor-default-desktop
+story admin-roles-editor-default 390 844 light-blue-balanced
+wait idle
+shot admin-roles-editor-default-phone
+story admin-roles-editor-invalid 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-editor-invalid-desktop
+story admin-roles-editor-invalid 390 844 light-blue-balanced
+wait idle
+shot admin-roles-editor-invalid-phone
+story admin-roles-editor-busy 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-editor-busy-desktop
+story admin-roles-editor-busy 390 844 light-blue-balanced
+wait idle
+shot admin-roles-editor-busy-phone
+story admin-roles-editor-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-editor-refused-desktop
+story admin-roles-editor-refused 390 844 light-blue-balanced
+wait idle
+shot admin-roles-editor-refused-phone
+story admin-roles-users 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-users-desktop
+story admin-roles-users 390 844 light-blue-balanced
+wait idle
+shot admin-roles-users-phone
+story admin-roles-users-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-users-loading-desktop
+story admin-roles-users-loading 390 844 light-blue-balanced
+wait idle
+shot admin-roles-users-loading-phone
+story admin-roles-delete-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-delete-refused-desktop
+story admin-roles-delete-refused 390 844 light-blue-balanced
+wait idle
+shot admin-roles-delete-refused-phone
+story admin-roles-phone 1280 800 dark-blue-balanced
+wait idle
+shot admin-roles-phone-desktop
+story admin-roles-phone 390 844 light-blue-balanced
+wait idle
+shot admin-roles-phone-phone
+story admin-storage-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-loading-desktop
+story admin-storage-loading 390 844 light-blue-balanced
+wait idle
+shot admin-storage-loading-phone
+story admin-storage-empty 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-empty-desktop
+story admin-storage-empty 390 844 light-blue-balanced
+wait idle
+shot admin-storage-empty-phone
+story admin-storage-failed 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-failed-desktop
+story admin-storage-failed 390 844 light-blue-balanced
+wait idle
+shot admin-storage-failed-phone
+story admin-storage-ready 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-ready-desktop
+story admin-storage-ready 390 844 light-blue-balanced
+wait idle
+shot admin-storage-ready-phone
+story admin-storage-over-90 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-over-90-desktop
+story admin-storage-over-90 390 844 light-blue-balanced
+wait idle
+shot admin-storage-over-90-phone
+story admin-storage-long 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-long-desktop
+story admin-storage-long 390 844 light-blue-balanced
+wait idle
+shot admin-storage-long-phone
+story admin-storage-loading-more 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-loading-more-desktop
+story admin-storage-loading-more 390 844 light-blue-balanced
+wait idle
+shot admin-storage-loading-more-phone
+story admin-storage-quota-dialog 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-quota-dialog-desktop
+story admin-storage-quota-dialog 390 844 light-blue-balanced
+wait idle
+shot admin-storage-quota-dialog-phone
+story admin-storage-quota-busy 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-quota-busy-desktop
+story admin-storage-quota-busy 390 844 light-blue-balanced
+wait idle
+shot admin-storage-quota-busy-phone
+story admin-storage-recalc-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-recalc-refused-desktop
+story admin-storage-recalc-refused 390 844 light-blue-balanced
+wait idle
+shot admin-storage-recalc-refused-phone
+story admin-storage-locked 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-locked-desktop
+story admin-storage-locked 390 844 light-blue-balanced
+wait idle
+shot admin-storage-locked-phone
+story admin-storage-phone 1280 800 dark-blue-balanced
+wait idle
+shot admin-storage-phone-desktop
+story admin-storage-phone 390 844 light-blue-balanced
+wait idle
+shot admin-storage-phone-phone

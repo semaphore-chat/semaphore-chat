@@ -33,6 +33,9 @@
 //! hover-row message "text"            # the pointer over a row's element, as click-row finds it
 //! right-click-row message "text"      # a right press on it: the actions menu
 //! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
+//! drag-text "row" "from" "row" "to"   # a drag from the start of `from` in the first row to the
+//!                                     # end of `to` in the second: a selection that follows the
+//!                                     # rows wherever they are laid out
 //! server post_dm_as {"dmGroupId": "…", "authorId": "…", "text": "hi"}   # likewise into a DM
 //! server friend_request_as {"fromId": "…"}  # another user asks to be friends
 //! notification click "dm:…"           # the OS notification with that tag is clicked
@@ -91,6 +94,10 @@
 //! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
 mod w5;
+mod w6;
+mod w7;
+mod w9;
+mod w9v;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use gpui_kit::test::TestQueryExt as _;
@@ -344,6 +351,11 @@ enum Condition {
     W4(W4),
     /// W5's (`w5.rs`, `w5_holds`).
     W5(w5::W5),
+    /// UI freeze hubs: WA's, WM's, WU's and WP's.
+    W6(w6::W6),
+    W7(w7::W7),
+    W9(w9::W9),
+    W9v(w9v::W9V),
 }
 
 /// W4's conditions.
@@ -471,6 +483,12 @@ enum Step {
     ClickText {
         text: String,
         needle: String,
+    },
+    /// A drag from the first glyph of `from.1` in the newest row containing `from.0` to just past
+    /// the last glyph of `to.1` in the newest row containing `to.0`.
+    DragText {
+        from: (String, String),
+        to: (String, String),
     },
     /// What the OS watcher would report.
     Os(OsEvent),
@@ -645,6 +663,10 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ] => Condition::W4(W4::Replay((*state).into())),
         ["clips", count] => Condition::W4(W4::Clips(number(count)?)),
         ["w5", rest @ ..] => Condition::W5(w5::parse(rest)?),
+        ["w6", rest @ ..] => Condition::W6(w6::parse(rest)?),
+        ["w7", rest @ ..] => Condition::W7(w7::parse(rest)?),
+        ["w9", rest @ ..] => Condition::W9(w9::parse(rest)?),
+        ["w9v", rest @ ..] => Condition::W9v(w9v::parse(rest)?),
         ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
         ["ringing", dm] => Condition::W4(W4::RingingFor((*dm).into())),
         ["ring", state @ ("looping" | "stopped")] => {
@@ -800,6 +822,10 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
                 needle: (*needle).into(),
+            },
+            ["drag-text", from_text, from_needle, to_text, to_needle] => Step::DragText {
+                from: ((*from_text).into(), (*from_needle).into()),
+                to: ((*to_text).into(), (*to_needle).into()),
             },
             [
                 verb @ ("click-row" | "hover-row" | "right-click-row"),
@@ -1599,6 +1625,13 @@ impl Rig {
         if let Condition::W5(w5) = condition {
             return self.w5_holds(w5);
         }
+        match condition {
+            Condition::W6(w6) => return self.w6_holds(w6),
+            Condition::W7(w7) => return self.w7_holds(w7),
+            Condition::W9(w9) => return self.w9_holds(w9),
+            Condition::W9v(w9v) => return self.w9v_holds(w9v),
+            _ => {}
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -1698,7 +1731,11 @@ impl Rig {
             | Condition::PlayerFrames(_)
             | Condition::PlayersOpen(_)
             | Condition::W4(_)
-            | Condition::W5(_) => unreachable!("answered above"),
+            | Condition::W5(_)
+            | Condition::W6(_)
+            | Condition::W7(_)
+            | Condition::W9(_)
+            | Condition::W9v(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -2192,6 +2229,26 @@ impl Rig {
 
     fn click_text(&mut self, text: &str, needle: &str) -> Result<()> {
         self.driver.settle()?;
+        // A few glyphs in, so the point is on the needle and not its edge.
+        let at = self.text_point(text, needle, |byte, len| byte + len.min(3))?;
+        self.driver.update(|window, cx| window.drag(at, at, cx))
+    }
+
+    fn drag_text(&mut self, from: &(String, String), to: &(String, String)) -> Result<()> {
+        self.driver.settle()?;
+        let start = self.text_point(&from.0, &from.1, |byte, _| byte)?;
+        let end = self.text_point(&to.0, &to.1, |byte, len| byte + len)?;
+        self.driver.update(|window, cx| window.drag(start, end, cx))
+    }
+
+    /// Where the byte `at(start of needle, its length)` of `needle` in the newest row containing
+    /// `text` is painted.
+    fn text_point(
+        &mut self,
+        text: &str,
+        needle: &str,
+        at: impl Fn(usize, usize) -> usize,
+    ) -> Result<Point<Pixels>> {
         let (rows, _, _) = self.rows()?;
         let row = rows
             .iter()
@@ -2204,19 +2261,16 @@ impl Rig {
             .ok_or_else(|| anyhow!("{text:?} has no {needle:?}"))?;
         let pos = semaphore_ui::messages::Pos {
             seq: row.seq,
-            // A few glyphs in, so the point is on the needle and not its edge.
-            byte: (byte + needle.len().min(3)) as u32,
+            byte: at(byte, needle.len()) as u32,
         };
         let app = self.app()?.clone();
-        let at = self
-            .driver
+        self.driver
             .cx
             .update(|cx| {
                 let list = app.read(cx).pane()?.read(cx).list()?.clone();
                 list.read(cx).point_of(pos)
             })
-            .ok_or_else(|| anyhow!("{needle:?} isn't painted"))?;
-        self.driver.update(|window, cx| window.drag(at, at, cx))
+            .ok_or_else(|| anyhow!("{needle:?} isn't painted"))
     }
 
     fn requests(&self, name: &str) -> Result<usize> {
@@ -2276,6 +2330,7 @@ impl Rig {
                     }
                 }
                 Step::ClickText { text, needle } => self.click_text(text, needle),
+                Step::DragText { from, to } => self.drag_text(from, to),
                 Step::ClickRow {
                     name,
                     text,
@@ -2581,10 +2636,19 @@ mod tests {
             expect clipboard "copied"
             click auth-login
             shot one
+            drag-text "are we" "are" "yeah i'll" "friday"
             "#,
         )
         .unwrap();
-        assert_eq!(steps.len(), 10);
+        assert_eq!(steps.len(), 11);
+        assert_eq!(
+            steps[10],
+            Step::DragText {
+                from: ("are we".into(), "are".into()),
+                to: ("yeah i'll".into(), "friday".into()),
+            }
+        );
+        assert!(parse("drag-text \"a\" \"b\" \"c\"").is_err());
         assert_eq!(
             steps[2],
             Step::Wait {

@@ -15,8 +15,11 @@ wait core session signed-in
 wait core channel $ID(cc-general)
 wait core connection connected
 
-# Join: connected, the publisher seen, its video reaching a tile.
+# Join: connected, the publisher seen, its video reaching a tile. The row shows the pre-join
+# (WP); its Join joins.
 click channel-$ID(vc-squad)
+wait core element voice-prejoin-join
+click voice-prejoin-join
 wait core voice connected within 30
 # The stage, with its own bar, is what the column shows.
 wait core label "Share screen"
@@ -108,8 +111,10 @@ wait core voice disconnected within 15
 wait core requests VoicePresenceController_leavePresence >= 1
 expect core voice camera off
 
-# A new call, then leaving it from the bar.
+# A new call (through Squad Up's pre-join), then leaving it from the bar.
 click channel-$ID(vc-squad)
+wait core element voice-prejoin-join
+click voice-prejoin-join
 wait core voice connected within 30
 wait core voice participant demo-peer within 30
 click voice-leave

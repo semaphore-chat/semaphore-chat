@@ -144,6 +144,11 @@ impl ConversationPane {
         let core = self.core.clone();
         let paged = self.conversation_of(which);
         match event.clone() {
+            // UI freeze: WM's and WP's hub files.
+            MessageListEvent::EnableThirdPartyMedia => self.media_enable(which, cx),
+            MessageListEvent::SeenByHovered { message_id } => {
+                self.seen_by_hovered(which, message_id, cx)
+            }
             MessageListEvent::LoadOlder => {
                 if let Some(conversation) = paged {
                     self.exec.fire(async move {
@@ -416,6 +421,8 @@ impl ConversationPane {
         let core = self.core.clone();
         let mode = composer.read(cx).mode().clone();
         match event.clone() {
+            // UI freeze: WM's hub file.
+            ComposerEvent::OpenGifs => self.media_open_gifs(composer, window, cx),
             ComposerEvent::Send {
                 conversation,
                 draft,

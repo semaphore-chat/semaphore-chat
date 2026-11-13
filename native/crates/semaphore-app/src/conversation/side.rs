@@ -250,6 +250,8 @@ impl ConversationPane {
         cx: &mut Context<Self>,
     ) {
         match event.clone() {
+            // UI freeze: WU pages the results here (`Core::load_more_search`).
+            SearchPanelEvent::More => {}
             SearchPanelEvent::Search { scope, query } => {
                 let searched = match (scope, &self.community_id, &self.conversation) {
                     (SearchScopeChoice::Community, Some(community_id), _) => {

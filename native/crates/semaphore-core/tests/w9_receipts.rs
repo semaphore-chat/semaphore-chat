@@ -328,6 +328,7 @@ async fn a_channels_message_readers_come_from_the_server() {
     assert_eq!(seen.state, LoadState::Loading);
     rig.core.run_until_idle().await;
     let seen: SeenByView = rig.core.seen_by(channel(), "m1".into());
+    assert_eq!(seen.message_id, "m1", "the answer names its message");
     assert_eq!(seen.state, LoadState::Ready);
     assert_eq!(seen.count, 1);
     assert_eq!(seen.readers[0].username, "ann");

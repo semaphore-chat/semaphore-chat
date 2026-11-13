@@ -90,6 +90,9 @@ pub struct DmPeerReadsView {
 /// excludes this user. Threads have no readers.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SeenByView {
+    /// The message this answers for, so a screen can tell a late answer from the current one.
+    /// Empty only in a default (no read made).
+    pub message_id: String,
     /// The read behind it: `Ready` with nobody for a message that isn't loaded, a thread, or
     /// nobody having read it.
     pub state: LoadState,

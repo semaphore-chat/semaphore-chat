@@ -10,6 +10,8 @@ mod incoming;
 mod menu;
 mod model;
 mod picker;
+/// UV: the pre-join panel (frozen API; Claude builds it).
+pub mod prejoin;
 mod soundboard;
 mod stage;
 #[cfg(feature = "stories")]
@@ -117,6 +119,7 @@ pub fn video_window_options(options: WindowOptions) -> WindowOptions {
 pub fn stories() -> Vec<crate::stories::Story> {
     let mut all = stories::stories();
     all.extend(stories_w4::stories());
+    all.extend(prejoin::stories());
     all
 }
 

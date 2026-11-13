@@ -1,14 +1,103 @@
-//! The conversation header, after `DMChatHeader.tsx`.
+//! The conversation header, after `DMChatHeader.tsx`. US2 adds a group's overflow menu: "Add people"
+//! and "Leave group" (the latter behind a confirm).
 
 use super::names::dm_title;
 use super::{DmHeader, DmHeaderEvent, DmHeaderState};
-use crate::kit::{Skeleton, Variant, spacing, text};
+use crate::community_settings::common::Confirm;
+use crate::kit::{Menu, MenuItem, Skeleton, Variant, spacing, text};
 use crate::panel::common::{icon_button, is_phone};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_design::Icon as DesignIcon;
+
+impl DmHeader {
+    /// The conversation's name, when it is a group that has one.
+    fn group_name(&self) -> Option<String> {
+        match &self.state {
+            DmHeaderState::Ready(row) if row.is_group => Some(dm_title(row)),
+            _ => None,
+        }
+    }
+
+    /// US2: "Add people" picked: the owner opens the user picker.
+    fn add_people(&mut self, cx: &mut Context<Self>) {
+        self.menu_open = false;
+        cx.emit(DmHeaderEvent::AddPeople);
+        cx.notify();
+    }
+
+    /// US2: "Leave group" picked: ask, as the web's ConfirmDialog would.
+    fn confirm_leave(&mut self, cx: &mut Context<Self>) {
+        self.menu_open = false;
+        self.leave_open = true;
+        cx.notify();
+    }
+
+    /// The overflow button and its menu, below it at the header's end.
+    fn group_menu(&self, touch: bool, cx: &mut Context<Self>) -> AnyElement {
+        let height = if touch { 48. } else { 36. };
+        let add = cx.weak_entity();
+        let leave = cx.weak_entity();
+        let items = vec![
+            MenuItem::new("dm-add-people", "Add people", move |_, cx| {
+                add.update(cx, |header, cx| header.add_people(cx)).ok();
+            })
+            .icon(DesignIcon::PersonAdd)
+            .min_height(height),
+            MenuItem::new("dm-leave", "Leave group", move |_, cx| {
+                leave.update(cx, |header, cx| header.confirm_leave(cx)).ok();
+            })
+            .icon(DesignIcon::Logout)
+            .destructive()
+            .min_height(height),
+        ];
+        div()
+            .relative()
+            .flex_shrink_0()
+            .child(
+                icon_button(
+                    "dm-header-more",
+                    DesignIcon::MoreVert,
+                    "Conversation actions",
+                    touch,
+                    cx.sem().action_active,
+                    cx,
+                )
+                .selected(self.menu_open)
+                .on_click(cx.listener(|header, _, _, cx| {
+                    header.menu_open = !header.menu_open;
+                    cx.notify();
+                })),
+            )
+            .children(self.menu_open.then(|| {
+                div()
+                    .absolute()
+                    .top(px(if touch { 48. } else { 38. }))
+                    .right_0()
+                    .child(
+                        deferred(
+                            anchored()
+                                .anchor(Anchor::TopRight)
+                                .snap_to_window_with_margin(px(8.))
+                                .child(
+                                    div()
+                                        .w(px(220.))
+                                        .occlude()
+                                        .on_mouse_down_out(cx.listener(|header, _, _, cx| {
+                                            header.menu_open = false;
+                                            cx.notify();
+                                        }))
+                                        .child(Menu::new("Conversation actions", items)),
+                                ),
+                        )
+                        .with_priority(1),
+                    )
+            }))
+            .into_any_element()
+    }
+}
 
 impl Render for DmHeader {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -114,6 +203,39 @@ impl Render for DmHeader {
             )
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DmHeaderEvent::OpenMembers)))
         });
+        let more = (ready && self.group).then(|| self.group_menu(touch, cx));
+        let leave = (self.group && self.leave_open).then(|| {
+            let name = self.group_name().unwrap_or_else(|| "this group".to_owned());
+            let confirm = cx.weak_entity();
+            let cancel = cx.weak_entity();
+            Confirm {
+                id: "dm-leave",
+                title: "Leave group",
+                message: format!("Leave {name}? You won't get its messages."),
+                confirm: "Leave group",
+                busy: false,
+            }
+            .dialog(
+                move |_, cx| {
+                    confirm
+                        .update(cx, |header, cx| {
+                            header.leave_open = false;
+                            cx.emit(DmHeaderEvent::Leave);
+                            cx.notify();
+                        })
+                        .ok();
+                },
+                move |_, cx| {
+                    cancel
+                        .update(cx, |header, cx| {
+                            header.leave_open = false;
+                            cx.notify();
+                        })
+                        .ok();
+                },
+                cx,
+            )
+        });
         div()
             .id("dm-header")
             .test_support()
@@ -148,7 +270,9 @@ impl Render for DmHeader {
                     .gap(px(4.))
                     .children(search)
                     .children(call)
-                    .children(members),
+                    .children(members)
+                    .children(more),
             )
+            .children(leave)
     }
 }

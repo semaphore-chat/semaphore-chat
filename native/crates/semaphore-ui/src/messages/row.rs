@@ -9,16 +9,19 @@ use super::format::{TimeFormat, file_size};
 use super::icons::{self, Glyph, glyph as icon};
 use super::media::{CacheKind, Media, MediaRef, MediaState, contain};
 use super::palette::*;
+use super::seen::{self, SeenState};
 use super::selection::Selection;
 use super::store::RowStore;
 use super::text::{self, BlockKind};
 use super::text_element::{BlockGeom, MessageText};
+use super::third_party::{self, ThirdParty};
 use super::view::{MessageList, MessageListEvent};
+use crate::kit::{Button as KitButton, ButtonSize};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, MessageRow, ReactionUsers, SegKind, SendState,
+    AttachmentKind, AttachmentView, GifEmbed, MessageRow, ReactionUsers, SegKind, SendState,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
@@ -135,6 +138,16 @@ pub(crate) struct Shared {
     /// The window's players (`ListOptions::players`), and this list's own.
     pub players: Option<crate::player::Players>,
     pub list_players: crate::player::ListPlayers,
+    /// "Load images from other sites" (`MessageList::set_third_party_media`). Off until the app
+    /// says otherwise: see `third_party`.
+    pub third_party: Cell<bool>,
+    /// "Seen by" for the own latest message (`MessageList::set_seen_by`).
+    pub seen: RefCell<SeenState>,
+    /// The pointer is over the "Seen by" line: its tooltip shows.
+    pub seen_hovered: Cell<bool>,
+    /// `MessageList::set_dm_peer_reads`, kept for the app; the list draws "Seen by" from core's
+    /// `SeenByView` only, so nothing reads it yet.
+    pub dm_peer_reads: RefCell<Option<semaphore_core::model::DmPeerReadsView>>,
 }
 
 impl Shared {
@@ -205,7 +218,28 @@ impl Shared {
         } else {
             return;
         };
-        if self.hovered.replace(now) != now {
+        let was = self.hovered.replace(now);
+        if was != now {
+            // Entering or leaving the own latest message asks the app to refresh its "Seen by".
+            let target = self.seen.borrow().target.clone();
+            if let Some((target_seq, message_id)) = target {
+                if now == Some(target_seq) {
+                    self.emit(
+                        MessageListEvent::SeenByHovered {
+                            message_id: Some(message_id),
+                        },
+                        cx,
+                    );
+                } else if was == Some(target_seq) {
+                    self.emit(MessageListEvent::SeenByHovered { message_id: None }, cx);
+                }
+            }
+            self.notify_view(cx);
+        }
+    }
+
+    fn hover_seen(&self, hovered: bool, cx: &mut App) {
+        if self.seen_hovered.replace(hovered) != hovered {
             self.notify_view(cx);
         }
     }
@@ -990,9 +1024,16 @@ fn render_link_previews(
                 event_shared.emit(MessageListEvent::OpenLink { url: url.clone() }, cx);
             })
             .child(text);
-        if let Some(image_url) = &preview.image_url {
-            let media = shared.media.source.link_image(image_url);
-            if !matches!(media, MediaRef::Missing) {
+        match third_party::link_image(
+            shared.third_party.get(),
+            shared.media.source.as_ref(),
+            preview,
+        ) {
+            None | Some(ThirdParty::Allowed(MediaRef::Missing)) => {}
+            Some(ThirdParty::Blocked { host }) => {
+                card = card.child(render_image_strip(shared, row.seq, index, &host));
+            }
+            Some(ThirdParty::Allowed(media)) => {
                 let state = shared.media.resolve(media, CacheKind::Images, window, cx);
                 let frame = div().w_full().h(px(160.)).rounded(px(4.)).overflow_hidden();
                 card = card.child(match state {
@@ -1007,6 +1048,282 @@ fn render_link_previews(
         cards = cards.child(card);
     }
     Some(cards.into_any_element())
+}
+
+/// A "Load" button inside a row: it turns third-party pictures on for everything, and a press on it
+/// neither selects text nor reaches the card or row under it.
+fn load_button(shared: &Rc<Shared>, id: String) -> impl IntoElement {
+    let event_shared = shared.clone();
+    div()
+        .flex_none()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            KitButton::new(SharedString::from(id), "Load")
+                .outlined()
+                .size(ButtonSize::Small)
+                .on_click(move |_, _, cx| {
+                    cx.stop_propagation();
+                    event_shared.emit(MessageListEvent::EnableThirdPartyMedia, cx);
+                }),
+        )
+}
+
+/// A link preview's picture while third-party pictures are off: "Image from <host>" and Load.
+fn render_image_strip(
+    shared: &Rc<Shared>,
+    seq: i64,
+    index: usize,
+    host: &SharedString,
+) -> impl IntoElement {
+    let palette = shared.palette.get();
+    let title = SharedString::from(third_party::image_title(host));
+    div()
+        .id(SharedString::from(format!(
+            "message-preview-blocked-{seq}-{index}"
+        )))
+        .test_support()
+        .role(Role::Group)
+        .aria_label(title.clone())
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .min_w_0()
+        .px(px(8.))
+        .py(px(4.))
+        .rounded(px(4.))
+        .bg(palette.hover)
+        .child(icon(icons::IMAGE, 20., palette.text_secondary))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_size(px(NAME_SIZE))
+                .text_color(palette.text_secondary)
+                .child(title),
+        )
+        .child(load_button(
+            shared,
+            format!("message-preview-load-{seq}-{index}"),
+        ))
+}
+
+/// A GIF message while third-party pictures are off: "GIF from <host>", what Load does, and Load.
+fn render_gif_card(shared: &Rc<Shared>, seq: i64, host: &SharedString) -> AnyElement {
+    let palette = shared.palette.get();
+    let title = SharedString::from(third_party::gif_title(host));
+    div()
+        .id(SharedString::from(format!("message-gif-blocked-{seq}")))
+        .test_support()
+        .role(Role::Group)
+        .aria_label(title.clone())
+        .mt(px(4.))
+        .flex()
+        .items_start()
+        .gap(px(12.))
+        .p(px(12.))
+        .max_w(px(TEXT_MAX_WIDTH))
+        .min_w_0()
+        .rounded(px(8.))
+        .border_1()
+        .border_color(palette.divider)
+        .bg(palette.paper)
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(40.))
+                .rounded(px(4.))
+                .bg(palette.hover)
+                .child(icon(icons::GIF, 28., palette.text_secondary)),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(NAME_SIZE))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(palette.text)
+                        .child(title),
+                )
+                .child(
+                    div()
+                        .text_size(px(CAPTION_SIZE))
+                        .text_color(palette.text_secondary)
+                        .child(third_party::GIF_NOTE),
+                )
+                // Under the text, so a phone keeps the host and the note readable.
+                .child(
+                    div()
+                        .mt(px(6.))
+                        .flex()
+                        .child(load_button(shared, format!("message-gif-load-{seq}"))),
+                ),
+        )
+        .into_any_element()
+}
+
+/// A GIF message's picture, as the web's `GifEmbed`: its own shape inside 400x300, never wider
+/// than the column, opening its URL on a click. `None` when it failed: the row falls back to the
+/// URL and its preview, as the web's `onError` does.
+fn render_gif(
+    shared: &Rc<Shared>,
+    row: &MessageRow,
+    embed: &GifEmbed,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    let palette = shared.palette.get();
+    let media = match third_party::gif(
+        shared.third_party.get(),
+        shared.media.source.as_ref(),
+        embed,
+    ) {
+        ThirdParty::Blocked { host } => return Some(render_gif_card(shared, row.seq, &host)),
+        ThirdParty::Allowed(media) => media,
+    };
+    let state = shared.media.resolve(media, CacheKind::Images, window, cx);
+    let (width, height, image) = match state {
+        MediaState::Failed => return None,
+        MediaState::Loading => (third_party::GIF_MAX.0, third_party::GIF_MAX.1, None),
+        MediaState::Ready(image) => {
+            let size = image.size(0);
+            let (width, height) = third_party::gif_box(size.width.0 as f32, size.height.0 as f32);
+            (width, height, Some(image))
+        }
+    };
+    // Full width up to its own: a fixed width clamped by `max_w_full` would keep the height of
+    // the unclamped width on a phone and leave a gap under the picture.
+    let frame = div()
+        .mt(px(4.))
+        .w_full()
+        .max_w(px(width))
+        .flex_none()
+        .aspect_ratio(width / height)
+        .rounded(px(4.))
+        .overflow_hidden();
+    Some(match image {
+        None => frame.bg(palette.hover).into_any_element(),
+        Some(image) => {
+            let event_shared = shared.clone();
+            let url = embed.url.clone();
+            frame
+                .id(SharedString::from(format!("message-gif-{}", row.seq)))
+                .test_support()
+                .role(Role::Image)
+                .aria_label("GIF")
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .cursor_pointer()
+                .on_click(move |_, _, cx| {
+                    event_shared.emit(MessageListEvent::OpenLink { url: url.clone() }, cx);
+                })
+                .child(image_canvas(shared, image, px(4.)))
+                .into_any_element()
+        }
+    })
+}
+
+/// "Seen by" under the own latest message: an eye, two names and "+N", the full list on hover.
+fn render_seen(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
+    let seen_state = shared.seen.borrow();
+    let view = seen_state.for_row(row.seq)?;
+    let line = seen::seen_line(view)?;
+    let palette = shared.palette.get();
+    let tooltip = shared
+        .seen_hovered
+        .get()
+        .then(|| seen::seen_tooltip(view))
+        .flatten()
+        .map(|tip| {
+            // Above the line; moved down into the window when the row sits near its top.
+            deferred(
+                anchored()
+                    .anchor(Anchor::BottomLeft)
+                    .snap_to_window_with_margin(px(8.))
+                    .child(div().pb(px(4.)).child(render_seen_tooltip(tip, &palette))),
+            )
+        });
+    let label = match &line.more {
+        Some(more) => format!("{} {more}", line.names),
+        None => line.names.clone(),
+    };
+    let hover_shared = shared.clone();
+    Some(
+        div()
+            .id("message-seen-by")
+            .test_support()
+            .role(Role::Status)
+            .aria_label(SharedString::from(label))
+            .relative()
+            .mt(px(2.))
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .max_w(px(TEXT_MAX_WIDTH))
+            .min_w_0()
+            .text_size(px(CAPTION_SIZE))
+            .line_height(px(18.))
+            .text_color(palette.text_secondary)
+            .on_hover(move |hovered, _, cx| hover_shared.hover_seen(*hovered, cx))
+            .child(icon(icons::VISIBILITY, 14., palette.primary))
+            .child(div().min_w_0().truncate().child(line.names))
+            .children(line.more.map(|more| div().flex_none().child(more)))
+            .children(tooltip)
+            .into_any_element(),
+    )
+}
+
+/// The web's `SeenByTooltip`: a paper card with a header, the names, and "+N more".
+fn render_seen_tooltip(tip: seen::SeenTooltip, palette: &Palette) -> impl IntoElement {
+    div()
+        .id("message-seen-tooltip")
+        .test_support()
+        .role(Role::Tooltip)
+        .aria_label(SharedString::from(tip.header.clone()))
+        .flex()
+        .flex_col()
+        .gap(px(2.))
+        .min_w(px(150.))
+        .max_w(px(250.))
+        .p(px(8.))
+        .rounded(px(4.))
+        .border_1()
+        .border_color(palette.divider)
+        .bg(palette.paper)
+        .shadow_md()
+        .text_size(px(CAPTION_SIZE))
+        .text_color(palette.text)
+        .child(
+            div()
+                .mb(px(2.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(palette.text_secondary)
+                .truncate()
+                .child(tip.header),
+        )
+        .when(tip.names.len() > 1 || tip.more.is_some(), |card| {
+            card.children(
+                tip.names
+                    .into_iter()
+                    .map(|name| div().text_size(px(NAME_SIZE - 1.)).truncate().child(name)),
+            )
+        })
+        .children(tip.more.map(|more| {
+            div()
+                .mt(px(2.))
+                .italic()
+                .text_size(px(NAME_SIZE - 1.))
+                .text_color(palette.text_secondary)
+                .child(more)
+        }))
 }
 
 fn render_video(attachment: &AttachmentView, palette: &Palette) -> impl IntoElement {
@@ -1531,18 +1848,31 @@ pub(crate) fn render_row(
                 .child(editor),
         );
     } else {
-        for block in &prepared.blocks {
-            body = body.child(render_block(shared, &row, block, window, cx));
+        // A lone GIF URL draws the GIF (or its Load card) in place of the link and its preview.
+        let gif = row
+            .gif
+            .as_ref()
+            .filter(|_| !row.removed)
+            .and_then(|embed| render_gif(shared, &row, embed, window, cx));
+        let has_gif = gif.is_some();
+        if !has_gif {
+            for block in &prepared.blocks {
+                body = body.child(render_block(shared, &row, block, window, cx));
+            }
         }
         body = body
+            .children(gif)
             .children(render_attachments(shared, &row, window, cx))
-            .children(render_uploads(shared, &row))
-            .children(render_link_previews(shared, &row, window, cx));
+            .children(render_uploads(shared, &row));
+        if !has_gif {
+            body = body.children(render_link_previews(shared, &row, window, cx));
+        }
     }
     body = body
         .children(render_reactions(shared, &row, window, cx))
         .children(render_thread_badge(shared, &row))
-        .children(render_failed(shared, &row));
+        .children(render_failed(shared, &row))
+        .children(render_seen(shared, &row));
     // A grouped row with nothing to hang its marks on: they get their own line.
     if decor.grouped && prepared.blocks.iter().all(|b| b.kind != BlockKind::Inline) {
         body = body.children(render_marks(&row, &palette));

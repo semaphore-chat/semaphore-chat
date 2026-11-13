@@ -1,0 +1,82 @@
+# UA1: the admin shell (owner, limited, loading, a phone's list and open page) and instance settings
+# (loading, ready, failed, read-only, invalid, saving, refused, long content), each on a desktop
+# (dark) and a phone (light).
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/ua1-admin-shell-settings.steps
+story admin-shell-owner 1280 800 dark-blue-balanced
+wait idle
+shot admin-shell-owner-desktop
+story admin-shell-owner 390 844 light-blue-balanced
+wait idle
+shot admin-shell-owner-phone
+story admin-shell-limited 1280 800 dark-blue-balanced
+wait idle
+shot admin-shell-limited-desktop
+story admin-shell-limited 390 844 light-blue-balanced
+wait idle
+shot admin-shell-limited-phone
+story admin-shell-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-shell-loading-desktop
+story admin-shell-loading 390 844 light-blue-balanced
+wait idle
+shot admin-shell-loading-phone
+story admin-shell-phone-list 1280 800 dark-blue-balanced
+wait idle
+shot admin-shell-phone-list-desktop
+story admin-shell-phone-list 390 844 light-blue-balanced
+wait idle
+shot admin-shell-phone-list-phone
+story admin-shell-phone-page 1280 800 dark-blue-balanced
+wait idle
+shot admin-shell-phone-page-desktop
+story admin-shell-phone-page 390 844 light-blue-balanced
+wait idle
+shot admin-shell-phone-page-phone
+story admin-settings-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-loading-desktop
+story admin-settings-loading 390 844 light-blue-balanced
+wait idle
+shot admin-settings-loading-phone
+story admin-settings-ready 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-ready-desktop
+story admin-settings-ready 390 844 light-blue-balanced
+wait idle
+shot admin-settings-ready-phone
+story admin-settings-failed 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-failed-desktop
+story admin-settings-failed 390 844 light-blue-balanced
+wait idle
+shot admin-settings-failed-phone
+story admin-settings-read-only 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-read-only-desktop
+story admin-settings-read-only 390 844 light-blue-balanced
+wait idle
+shot admin-settings-read-only-phone
+story admin-settings-invalid 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-invalid-desktop
+story admin-settings-invalid 390 844 light-blue-balanced
+wait idle
+shot admin-settings-invalid-phone
+story admin-settings-busy 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-busy-desktop
+story admin-settings-busy 390 844 light-blue-balanced
+wait idle
+shot admin-settings-busy-phone
+story admin-settings-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-refused-desktop
+story admin-settings-refused 390 844 light-blue-balanced
+wait idle
+shot admin-settings-refused-phone
+story admin-settings-long 1280 800 dark-blue-balanced
+wait idle
+shot admin-settings-long-desktop
+story admin-settings-long 390 844 light-blue-balanced
+wait idle
+shot admin-settings-long-phone

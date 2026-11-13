@@ -316,6 +316,39 @@ fn community_images_are_checked_against_the_server_limit() {
     assert_eq!(size_label(1536 * 1024), "1.5 MB");
 }
 
+#[test]
+fn size_label_table() {
+    const KIB: u64 = 1024;
+    const MIB: u64 = KIB * 1024;
+    const GIB: u64 = MIB * 1024;
+    const TIB: u64 = GIB * 1024;
+    const PIB: u64 = TIB * 1024;
+    for (bytes, want) in [
+        (0, "0 KB"),
+        (1, "1 KB"),
+        (1023, "1 KB"),
+        (KIB, "1 KB"),
+        (KIB + KIB / 2, "2 KB"),
+        (MIB - 1, "1024 KB"),
+        (MIB, "1 MB"),
+        (MIB * 4096 / 10, "409.6 MB"),
+        (GIB - MIB, "1023 MB"),
+        (GIB - 1, "1 GB"),
+        (GIB, "1 GB"),
+        (GIB * 12 / 10, "1.2 GB"),
+        (50 * GIB, "50 GB"),
+        (500 * MIB, "500 MB"),
+        (GIB * 10239 / 10, "1023.9 GB"),
+        (TIB - 1, "1 TB"),
+        (TIB, "1 TB"),
+        (3 * PIB, "3 PB"),
+        (1024 * PIB, "1024 PB"),
+        (u64::MAX, "16384 PB"),
+    ] {
+        assert_eq!(size_label(bytes), want, "{bytes} bytes");
+    }
+}
+
 // ---- Invites. ----
 
 #[test]
@@ -1272,5 +1305,18 @@ fn the_settings_entry_needs_a_change_not_just_reading() {
         let mut caps = reader;
         set(&mut caps);
         assert!(opens_settings(&caps), "{name}");
+    }
+}
+
+#[test]
+fn grouped_counts_get_thousands_separators() {
+    for (n, want) in [
+        (0, "0"),
+        (999, "999"),
+        (1000, "1,000"),
+        (4812, "4,812"),
+        (1234567, "1,234,567"),
+    ] {
+        assert_eq!(grouped(n), want);
     }
 }

@@ -721,6 +721,13 @@ async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
     .await;
     assert_eq!(status, 200, "{caps}");
     assert!(caps["channels"][0]["timedOutUntil"].is_string(), "{caps}");
+    // As the backend's `TIMEOUT_BLOCKED_ACTIONS`: they can still connect and listen, not speak,
+    // turn the camera on or share a screen.
+    let first = &caps["channels"][0];
+    assert_eq!(first["connect"], true, "{caps}");
+    assert_eq!(first["speak"], false, "{caps}");
+    assert_eq!(first["video"], false, "{caps}");
+    assert_eq!(first["share"], false, "{caps}");
     let (_, mine) = get(
         &client,
         &base,
@@ -728,6 +735,7 @@ async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
     )
     .await;
     assert!(mine["channels"][0]["timedOutUntil"].is_null(), "{mine}");
+    assert_eq!(mine["channels"][0]["speak"], true, "{mine}");
 
     // The checks are the moderator's: no ban on someone ranked above them, nothing without the
     // action.
