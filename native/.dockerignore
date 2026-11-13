@@ -1,0 +1,4 @@
+# Built packages are 80 MB and are not part of the image build context.
+dist-packages/
+# Direct cargo builds may create this; normally it is a Docker volume.
+target/
