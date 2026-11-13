@@ -5,6 +5,7 @@ import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { revokedSessionKey } from '@/auth/token-blacklist.service';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
   LIVEKIT_SESSION_ATTRIBUTE,
@@ -20,6 +21,7 @@ export type LivekitJoinDenial =
   | 'SESSION_REVOKED'
   | 'NO_CHANNEL_ACCESS'
   | 'NOT_DM_MEMBER'
+  | 'DM_BLOCKED'
   | 'UNKNOWN_ROOM';
 
 const TOKEN_CUTOFF_PREFIX = 'livekit:token_cutoff:';
@@ -96,7 +98,15 @@ export class LivekitAccessService {
         },
       });
       if (!group) return 'UNKNOWN_ROOM';
-      return group.members.length > 0 ? null : 'NOT_DM_MEMBER';
+      if (group.members.length === 0) return 'NOT_DM_MEMBER';
+      // A token minted before a block in a 1:1 DM must not reach the call
+      try {
+        await assertNotBlockedInDm(this.databaseService, identity, roomName);
+      } catch (error) {
+        if (error instanceof ForbiddenException) return 'DM_BLOCKED';
+        throw error;
+      }
+      return null;
     } catch (error) {
       this.logger.error(
         `Could not check room access of ${identity} to ${roomName}; allowing the join: ${

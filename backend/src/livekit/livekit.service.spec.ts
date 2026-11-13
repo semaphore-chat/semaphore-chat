@@ -576,6 +576,42 @@ describe('LivekitService', () => {
     });
   });
 
+  describe('isParticipantInRoom', () => {
+    it('is true when LiveKit has the participant', async () => {
+      mockRoomServiceClient.getParticipant.mockResolvedValue({
+        identity: 'user-1',
+      });
+
+      await expect(service.isParticipantInRoom('dm-1', 'user-1')).resolves.toBe(
+        true,
+      );
+      expect(mockRoomServiceClient.getParticipant).toHaveBeenCalledWith(
+        'dm-1',
+        'user-1',
+      );
+    });
+
+    it('is false when LiveKit says not found', async () => {
+      mockRoomServiceClient.getParticipant.mockRejectedValue(
+        Object.assign(new Error('participant not found'), { status: 404 }),
+      );
+
+      await expect(service.isParticipantInRoom('dm-1', 'user-1')).resolves.toBe(
+        false,
+      );
+    });
+
+    it("is null when LiveKit can't tell", async () => {
+      mockRoomServiceClient.getParticipant.mockRejectedValue(
+        new Error('connect ECONNREFUSED'),
+      );
+
+      await expect(service.isParticipantInRoom('dm-1', 'user-1')).resolves.toBe(
+        null,
+      );
+    });
+  });
+
   describe('listParticipantRooms', () => {
     it('returns the rooms the identity is in', async () => {
       mockRoomServiceClient.listRooms.mockResolvedValue([

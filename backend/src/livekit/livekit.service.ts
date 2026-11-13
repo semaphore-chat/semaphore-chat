@@ -265,6 +265,33 @@ export class LivekitService {
   }
 
   /**
+   * Whether the identity is connected to the room right now: false when
+   * LiveKit says it isn't (404), null when LiveKit can't tell (unreachable,
+   * unconfigured), so callers can fail open on a LiveKit blip.
+   */
+  async isParticipantInRoom(
+    roomId: string,
+    identity: string,
+  ): Promise<boolean | null> {
+    if (!this.roomServiceClient) return null;
+    try {
+      await withTimeout(
+        this.roomServiceClient.getParticipant(roomId, identity),
+        `getParticipant ${roomId}/${identity}`,
+      );
+      return true;
+    } catch (error) {
+      if ((error as { status?: unknown } | null)?.status === 404) return false;
+      this.logger.warn(
+        `Could not ask LiveKit whether ${identity} is in room ${roomId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * The LiveKit rooms a participant identity is currently in, asked of
    * LiveKit itself (every room, then its participants), so it also finds
    * rooms no presence index knows about (e.g. DM calls whose presence
