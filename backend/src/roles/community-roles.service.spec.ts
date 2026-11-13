@@ -41,6 +41,9 @@ describe('CommunityRolesService', () => {
     unitRef
       .get(PermissionsService)
       .getRank.mockResolvedValue({ best: 10, isTop: true });
+    unitRef
+      .get(PermissionsService)
+      .instanceOwnerIds.mockResolvedValue(new Set());
   });
 
   afterEach(() => {
@@ -889,6 +892,7 @@ describe('CommunityRolesService', () => {
         .compile();
       service = unit;
       permissionsService = unitRef.get(PermissionsService);
+      permissionsService.instanceOwnerIds.mockResolvedValue(new Set());
       mockDatabase.role.findUnique.mockResolvedValue({
         communityId,
         position: 60,
@@ -922,6 +926,20 @@ describe('CommunityRolesService', () => {
       await service.removeRoleAsActor(actor, actor.id, communityId, 'role-r');
 
       expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+    });
+
+    // AUTHZ-3: not even the community's top role outranks the instance owner
+    it("refuses a top-role holder stripping the instance owner's role", async () => {
+      permissionsService.getRank.mockResolvedValue({ best: 10, isTop: true });
+      permissionsService.instanceOwnerIds.mockResolvedValue(
+        new Set(['owner-1']),
+      );
+      mockDatabase.userRoles.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.removeRoleAsActor(actor, 'owner-1', communityId, 'role-r'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockDatabase.userRoles.delete).not.toHaveBeenCalled();
     });
 
     it('lets a top-role holder remove a deny role from themselves', async () => {

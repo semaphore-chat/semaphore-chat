@@ -11,6 +11,7 @@ import { CommunityRolesService } from '@/roles/community-roles.service';
 import { MembershipService } from '@/membership/membership.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import {
   ForbiddenException,
   NotFoundException,
@@ -34,6 +35,7 @@ describe('ModerationService', () => {
   let websocketService: Mocked<WebsocketService>;
   let eventEmitter: Mocked<EventEmitter2>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
+  let permissionsService: Mocked<PermissionsService>;
   let timeoutExpiryQueue: Mocked<Queue>;
 
   const moderatorId = 'moderator-123';
@@ -60,6 +62,9 @@ describe('ModerationService', () => {
 
     // Default: user lookups return empty (enrichment queries)
     mockDatabase.user.findMany.mockResolvedValue([]);
+    // Default: no target is the instance owner
+    permissionsService = unitRef.get(PermissionsService);
+    permissionsService.instanceOwnerIds.mockResolvedValue(new Set());
   });
 
   afterEach(() => {
@@ -256,6 +261,70 @@ describe('ModerationService', () => {
       await expect(
         service.banUser(communityId, userId, moderatorId),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // AUTHZ-3: the instance owner is never a moderation target for a
+  // community moderator, whether they hold a community role or not
+  describe('instance owner as the target', () => {
+    beforeEach(() => {
+      permissionsService.instanceOwnerIds.mockResolvedValue(new Set([userId]));
+      membershipService.isMember.mockResolvedValue(true);
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+      mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
+      mockDatabase.communityTimeout.upsert.mockResolvedValue({});
+      mockDatabase.moderationLog.create.mockResolvedValue({});
+      mockRemovalTransaction();
+    });
+
+    describe.each([
+      ['with no community role', [] as (typeof mockAdminRole)[]],
+      ['with Member only', [mockMemberRole]],
+    ])('%s', (_label, ownerRoles) => {
+      beforeEach(() => {
+        communityRolesService.getUserRolesForCommunity.mockImplementation(
+          (id: string) =>
+            Promise.resolve(
+              createMockUserRoles(
+                id === moderatorId ? [mockModeratorRole] : ownerRoles,
+              ),
+            ),
+        );
+      });
+
+      it('refuses a timeout', async () => {
+        await expect(
+          service.timeoutUser(communityId, userId, moderatorId, 2419200),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.communityTimeout.upsert).not.toHaveBeenCalled();
+      });
+
+      it('refuses a kick', async () => {
+        await expect(
+          service.kickUser(communityId, userId, moderatorId),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('refuses a ban', async () => {
+        await expect(
+          service.banUser(communityId, userId, moderatorId),
+        ).rejects.toThrow(ForbiddenException);
+      });
+    });
+
+    it('another instance owner can still act on them', async () => {
+      communityRolesService.getUserRolesForCommunity.mockResolvedValue(
+        createMockUserRoles([]),
+      );
+      await service.timeoutUser(
+        communityId,
+        userId,
+        moderatorId,
+        600,
+        undefined,
+        InstanceRole.OWNER,
+      );
+      expect(mockDatabase.communityTimeout.upsert).toHaveBeenCalled();
     });
   });
 

@@ -34,6 +34,7 @@ import {
   InstanceRole,
 } from '@prisma/client';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
+import { PermissionsService } from '@/roles/permissions.service';
 
 @Injectable()
 export class ModerationService {
@@ -46,6 +47,7 @@ export class ModerationService {
     private readonly websocketService: WebsocketService,
     private readonly eventEmitter: EventEmitter2,
     private readonly permissionsCacheService: PermissionsCacheService,
+    private readonly permissionsService: PermissionsService,
     @InjectQueue(TIMEOUT_EXPIRY_QUEUE)
     private readonly timeoutExpiryQueue: Queue<TimeoutExpiryJobData>,
   ) {}
@@ -74,12 +76,17 @@ export class ModerationService {
   /**
    * Check if moderator can moderate target user based on role position hierarchy.
    * Lower position = higher rank; moderator must strictly outrank target.
+   * Nobody outranks the instance owner.
    */
   private async canModerate(
     moderatorId: string,
     targetUserId: string,
     communityId: string,
   ): Promise<boolean> {
+    const owners = await this.permissionsService.instanceOwnerIds([
+      targetUserId,
+    ]);
+    if (owners.has(targetUserId)) return false;
     const moderatorPosition = await this.getUserBestRolePosition(
       moderatorId,
       communityId,

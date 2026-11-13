@@ -114,14 +114,19 @@ export class CommunityRolesService {
     }
   }
 
-  /** Changing a person's roles: yourself, or someone ranked below you. */
+  /**
+   * Changing a person's roles: yourself, or someone ranked below you. Nobody
+   * but an instance owner outranks the instance owner, not even the top role.
+   */
   private async assertCanChangeRolesOf(
     actor: RoleActor,
     st: RoleStanding,
     userId: string,
     communityId: string,
   ): Promise<void> {
-    if (st.isTop || userId === actor.id) return;
+    if (st.isOwner || userId === actor.id) return;
+    const owners = await this.permissionsService.instanceOwnerIds([userId]);
+    if (!owners.has(userId) && st.isTop) return;
     if (await this.permissionsService.outranks(actor.id, userId, communityId)) {
       return;
     }

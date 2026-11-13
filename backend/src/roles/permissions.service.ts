@@ -391,8 +391,23 @@ export class PermissionsService {
   }
 
   /**
+   * The instance owners among these users. Nobody outranks one in a
+   * community, whatever community roles they hold (the moderation rank rule
+   * and the voice path share this).
+   */
+  async instanceOwnerIds(userIds: string[]): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const owners = await this.databaseService.user.findMany({
+      where: { id: { in: userIds }, role: InstanceRole.OWNER },
+      select: { id: true },
+    });
+    return new Set(owners.map((owner) => owner.id));
+  }
+
+  /**
    * Moderation's rule: the actor holds a role and strictly outranks the
-   * target. A user with no roles ranks below everyone. A thin wrapper over
+   * target. A user with no roles ranks below everyone; the instance owner
+   * ranks above everyone. A thin wrapper over
    * {@link outranksMany}, so the single and the batched answer cannot drift.
    */
   async outranks(
@@ -419,7 +434,7 @@ export class PermissionsService {
     const uniqueTargets = [...new Set(targetIds)];
     if (uniqueTargets.length === 0) return result;
 
-    const [actor, targetRoles] = await Promise.all([
+    const [actor, targetRoles, owners] = await Promise.all([
       this.getRank(actorId, communityId),
       this.databaseService.userRoles.findMany({
         where: {
@@ -429,6 +444,7 @@ export class PermissionsService {
         },
         select: { userId: true, role: { select: { position: true } } },
       }),
+      this.instanceOwnerIds(uniqueTargets),
     ]);
 
     const bestByTarget = new Map<string, number>();
@@ -439,7 +455,10 @@ export class PermissionsService {
     const actorHoldsRole = actor.best !== Number.MAX_SAFE_INTEGER;
     for (const id of uniqueTargets) {
       const targetBest = bestByTarget.get(id) ?? Number.MAX_SAFE_INTEGER;
-      result.set(id, actorHoldsRole && actor.best < targetBest);
+      result.set(
+        id,
+        !owners.has(id) && actorHoldsRole && actor.best < targetBest,
+      );
     }
     return result;
   }
