@@ -453,6 +453,7 @@ enum RowGesture {
 #[derive(Debug, Clone, PartialEq)]
 enum Step {
     Shot(script::Step),
+    W7(w7::W7Step),
     App {
         width: f32,
         height: f32,
@@ -779,6 +780,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["os", "network-down"] => Step::Os(OsEvent::Network(NetworkState::Unavailable)),
             ["os", "network-up"] => Step::Os(OsEvent::Network(NetworkState::Available)),
             ["restart"] => Step::Restart,
+            ["w7", rest @ ..] => Step::W7(w7::parse_step(rest).map_err(at)?),
             ["tick", ms] => Step::Tick(ms.parse().map_err(|_| at(anyhow!("tick ms")))?),
             ["player", "toggle", name] => Step::PlayerToggle((*name).into()),
             ["snap", name] => Step::Snap((*name).into()),
@@ -2343,6 +2345,7 @@ impl Rig {
                     Ok(())
                 }
                 Step::Restart => self.restart(),
+                Step::W7(step) => self.w7_run(step),
                 Step::ClockHold(hold) => {
                     let elapsed = self.clock_started.elapsed().as_millis() as i64;
                     if *hold {

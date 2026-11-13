@@ -145,6 +145,9 @@ pub struct ConversationPane {
     pub(crate) side: Option<side::Side>,
     pub(crate) editing: Option<actions::Editing>,
     pub(crate) picker: Option<actions::OpenPicker>,
+    /// WM: the open GIF picker, and whether the server offers GIFs (the root says).
+    pub(crate) gif: Option<media::GifHost>,
+    pub(crate) gifs_enabled: bool,
     /// The reaction whose tooltip shows: its list, message and emoji.
     hovered_reaction: Option<(Which, String, String)>,
     /// The last thing the server refused, in its words, until dismissed.
@@ -209,6 +212,8 @@ impl ConversationPane {
             side: None,
             editing: None,
             picker: None,
+            gif: None,
+            gifs_enabled: false,
             hovered_reaction: None,
             notice: None,
             flash: None,
@@ -461,6 +466,7 @@ impl ConversationPane {
                 let composer = cx.new(|cx| {
                     let mut composer = Composer::new(config, window, cx);
                     composer.follow_theme(cx);
+                    composer.set_gifs_enabled(self.media_gifs_enabled(), cx);
                     composer
                 });
                 self._subscriptions.push(cx.subscribe_in(
