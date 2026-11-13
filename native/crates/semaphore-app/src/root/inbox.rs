@@ -570,7 +570,8 @@ impl AppRoot {
             return;
         }
         if self.shell.is_none() {
-            log::info!("deep link kept until sign-in: {link:?}");
+            // The kind only: an invite's code is a credential, and ids say where the user goes.
+            log::info!("deep link kept until sign-in: {}", link.kind());
             self.inbox.pending_link = Some(link);
             return;
         }

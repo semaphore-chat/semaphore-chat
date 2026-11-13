@@ -25,6 +25,9 @@ pub(crate) fn link_note(links: LinkHandler, open_links: bool) -> Option<&'static
         }
         LinkHandler::AnotherApp => Some("Another app opens semaphore:// links on this computer."),
         LinkHandler::NotRegistered => Some("No app opens semaphore:// links on this computer yet."),
+        LinkHandler::ManagedElsewhere => Some(
+            "Your mimeapps.list is managed by another tool (it's a symlink), so Semaphore can't change which app opens semaphore:// links.",
+        ),
         LinkHandler::Unknown => {
             Some("Couldn't tell which app opens semaphore:// links on this computer.")
         }

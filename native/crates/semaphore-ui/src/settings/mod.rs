@@ -409,6 +409,9 @@ pub enum LinkHandler {
     /// Another program is the default handler for the scheme.
     AnotherApp,
     NotRegistered,
+    /// The user's handler list is managed by another tool (a symlinked `mimeapps.list`): this app
+    /// won't change it.
+    ManagedElsewhere,
     /// It couldn't be told.
     #[default]
     Unknown,
@@ -421,6 +424,7 @@ impl LinkHandler {
             Self::Registered | Self::PackageOwned => "This app",
             Self::AnotherApp => "Another app",
             Self::NotRegistered => "Not registered",
+            Self::ManagedElsewhere => "Managed outside the app",
             Self::Unknown => "Couldn't tell",
         }
     }

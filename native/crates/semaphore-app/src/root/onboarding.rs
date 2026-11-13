@@ -253,7 +253,13 @@ impl AppRoot {
     // ---- A forgotten password. ----
 
     pub(super) fn open_forgot_password(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let screen = cx.new(|cx| ForgotPasswordScreen::new(window, cx));
+        // A pasted web reset link must come from this server: its token is never sent elsewhere.
+        let server_url = self.server.as_ref().map(|(url, _)| url.clone());
+        let screen = cx.new(|cx| {
+            let mut screen = ForgotPasswordScreen::new(window, cx);
+            screen.set_server_url(server_url, cx);
+            screen
+        });
         self.onboarding
             .subscriptions
             .push(cx.subscribe_in(&screen, window, Self::on_forgot));
@@ -312,7 +318,13 @@ impl AppRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let screen = cx.new(|cx| ResetPasswordScreen::new(token, window, cx));
+        // The card names the server the new password goes to: a `semaphore://` link and a pasted
+        // token carry none.
+        let host = self
+            .server
+            .as_ref()
+            .map(|(url, _)| semaphore_ui::auth::server_host(url));
+        let screen = cx.new(|cx| ResetPasswordScreen::new(token, host, window, cx));
         self.onboarding.subscriptions.push(cx.subscribe_in(
             &screen,
             window,

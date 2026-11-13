@@ -13,6 +13,7 @@ pub mod crash;
 pub mod desktop;
 pub mod electron_import;
 pub mod files;
+pub mod launch;
 pub mod logging;
 pub mod menu;
 pub mod notifier;

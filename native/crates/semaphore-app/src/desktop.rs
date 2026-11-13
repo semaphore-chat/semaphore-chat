@@ -419,6 +419,8 @@ pub fn link_action(open_links: bool, current: semaphore_ui::settings::LinkHandle
     use semaphore_ui::settings::LinkHandler;
     match (open_links, current) {
         (true, LinkHandler::Registered | LinkHandler::PackageOwned) => LinkAction::Nothing,
+        // Another tool manages the handler list: neither way is ours to change.
+        (_, LinkHandler::ManagedElsewhere) => LinkAction::Nothing,
         (true, _) => LinkAction::Register,
         (false, LinkHandler::Registered) => LinkAction::Unregister,
         (false, _) => LinkAction::Nothing,
@@ -485,6 +487,7 @@ pub fn link_handler(
         Ok(LinkStatus::Packaged(_)) => LinkHandler::PackageOwned,
         Ok(LinkStatus::Another(_)) => LinkHandler::AnotherApp,
         Ok(LinkStatus::NotRegistered) => LinkHandler::NotRegistered,
+        Ok(LinkStatus::ManagedElsewhere(_)) => LinkHandler::ManagedElsewhere,
         Err(error) => {
             log::info!("who opens semaphore:// links: {error}");
             LinkHandler::Unknown
@@ -668,7 +671,9 @@ mod tests {
         #[test]
         fn the_action_is_the_setting_and_who_owns_the_scheme_now() {
             use LinkAction::{Nothing, Register, Unregister};
-            use LinkHandler::{AnotherApp, NotRegistered, PackageOwned, Registered, Unknown};
+            use LinkHandler::{
+                AnotherApp, ManagedElsewhere, NotRegistered, PackageOwned, Registered, Unknown,
+            };
             let cases = [
                 (true, Registered, Nothing),
                 (true, PackageOwned, Nothing),
@@ -680,6 +685,8 @@ mod tests {
                 (false, AnotherApp, Nothing),
                 (false, NotRegistered, Nothing),
                 (false, Unknown, Nothing),
+                (true, ManagedElsewhere, Nothing),
+                (false, ManagedElsewhere, Nothing),
             ];
             for (open_links, current, expected) in cases {
                 assert_eq!(
