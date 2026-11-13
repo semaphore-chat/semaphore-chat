@@ -69,8 +69,8 @@ wait idle
 shot 04-profile-edit-picked
 click profile-save
 wait core route profile/$ID(me)
-expect requests UserController_updateProfile >= 1
-expect requests FileUploadController_uploadFile >= 1
+wait core requests UserController_updateProfile >= 1
+wait core requests FileUploadController_uploadFile >= 1
 wait core element profile-edit
 wait idle
 shot 05-profile-saved
@@ -105,7 +105,7 @@ wait idle
 shot 08-settings-sessions
 click session-revoke-$ID(w3-laptop)
 wait core no-element session-revoke-$ID(w3-laptop)
-expect requests AuthController_revokeSession >= 1
+wait core requests AuthController_revokeSession >= 1
 wait idle
 shot 09-session-revoked
 
@@ -141,7 +141,7 @@ wait core route settings/appearance
 wait core theme dark-teal-minimal
 click appearance-dark
 wait core theme light-teal-minimal
-expect requests AppearanceSettingsController_updateSettings >= 1
+wait core requests AppearanceSettingsController_updateSettings >= 1
 expect settings /theme light-teal-minimal
 wait idle
 shot 12-appearance-light-settings
@@ -201,14 +201,14 @@ click forgot-email
 type "alexk@example.com"
 click forgot-submit
 wait core element forgot-sent
-expect requests AuthController_forgotPassword >= 1
+wait core requests AuthController_forgotPassword >= 1
 wait idle
 shot 18-forgot-password-sent
 click forgot-back
 wait core element auth-username
 link "semaphore://join/w3-invite"
 wait core element invite-accept
-expect requests InviteController_getPublicInvite >= 1
+wait core requests InviteController_getPublicInvite >= 1
 wait idle
 shot 19-invite-page
 click invite-accept
@@ -223,7 +223,7 @@ wait idle
 shot 20-register-by-invite
 click register-submit
 wait core session signed-in
-expect requests UserController_register >= 1
+wait core requests UserController_register >= 1
 wait core route home
 wait idle
 shot 21-registered-home
@@ -243,7 +243,7 @@ wait idle
 shot 22-browser-waiting
 browser approve
 wait core session signed-in
-expect requests AuthController_redeemDesktopLogin >= 1
+wait core requests AuthController_redeemDesktopLogin >= 1
 wait core channel $ID(cc-general)
 wait idle
 shot 23-browser-signed-in

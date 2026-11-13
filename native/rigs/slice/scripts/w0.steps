@@ -15,4 +15,4 @@ wait core channel $ID(cc-general)
 wait core rows >= 5
 wait idle
 shot 00-signed-in
-expect requests AuthController_login >= 1
+wait core requests AuthController_login >= 1

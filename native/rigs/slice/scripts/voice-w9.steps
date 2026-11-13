@@ -25,6 +25,8 @@ wait core element voice-prejoin
 wait core w9v prejoin users 2
 wait core w9v prejoin user "dropbear"
 wait core w9v prejoin user "pri"
+# Settled first, so "no join was asked for" is a claim about a still window, not a race.
+wait idle
 expect core voice room none
 expect core requests VoicePresenceController_joinPresence == 0
 # Another user joins (their own client's join): the list shows them before we join.
@@ -43,7 +45,7 @@ wait core voice muted
 wait core w9v prejoin gone
 wait core label "Share screen"
 wait core voice participant demo-peer within 30
-expect requests VoicePresenceController_joinPresence >= 1
+wait core requests VoicePresenceController_joinPresence >= 1
 tick 100
 snap 02-live-joined-muted
 

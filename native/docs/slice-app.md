@@ -210,7 +210,9 @@ mute and deafen, the camera on (our own preview reaching our tile) and off, a ca
 is retried, a screen share through our picker (the engine's fake screens, the rig's list) shown on
 our own stage with its audio failing cleanly (no PipeWire in a container), a cancelled picker, the
 bar elsewhere, a moderator removing us with the camera on (the call ends here and on the server, and
-the camera goes off), a second call, and leaving.
+the camera goes off), a second call, and leaving. The second call waits for LiveKit to list the
+removed participant gone first (`wait core livekit participant … gone`): the room keeps them for a
+moment, and a rejoin before it lets go is refused with `ParticipantRemoved`.
 
 `w1.steps` drives the message features against the showcase scenario: edit in place and Up to edit,
 a thread with a reply and the bell, a first reply shown while the thread's count is still 0, delete,
@@ -249,6 +251,11 @@ don't. `slice-e2e.sh <out-dir> <steps-file>` runs just that file.
 The default run also covers media: avatars and images drawn, two files sent after their message, a
 refused upload retried and one removed, the image viewer, a custom emoji, and a link preview whose
 image stays unrequested until the switch is turned on (the fake server's log proves it).
+
+Every static shot also waits until the shell draws no connection banner (the amber "Reconnecting…"
+and "You're offline" pill), so a socket that dropped cannot reach a compared shot; the two steps
+that shoot the pill itself ask for that with `shot NAME while-away`. The fake server pings its
+sockets as the real backend does, so a slow run no longer loses the connection.
 
 `rig-slice` runs the app's own code in GPUI's headless context on lavapipe, against a fake server in
 the same container, through `rigs/slice/scripts/text.steps`: probe and sign in, lists, selection and

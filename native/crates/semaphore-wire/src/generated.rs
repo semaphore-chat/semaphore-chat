@@ -2550,7 +2550,9 @@ pub mod types {
     ///`CreateUserDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct CreateUserDto {
-        pub code: ::std::string::String,
+        ///Invite code. Required when the instance is invite-only; optional when registration is open.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub code: ::std::option::Option<::std::string::String>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub email: ::std::option::Option<::std::string::String>,
         pub password: CreateUserDtoPassword,
@@ -3280,6 +3282,10 @@ pub mod types {
         )]
         pub file_user_id: ::std::option::Option<::std::string::String>,
         pub filename: ::std::string::String,
+        /**Whether a thumbnail was generated for this file. Clients fetch it from
+        `GET /file/:id/thumbnail`.*/
+        #[serde(rename = "hasThumbnail")]
+        pub has_thumbnail: bool,
         ///Display height in pixels, for images and videos; null when unknown.
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub height: ::std::option::Option<i64>,

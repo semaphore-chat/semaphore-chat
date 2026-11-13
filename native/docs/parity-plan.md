@@ -101,7 +101,7 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Device test, mic level meter | `hooks/useDeviceTest.ts` | not started |
 | Voice processing (echo, noise, AGC, voice isolation, mic quality), VAD threshold | `hooks/useVoiceSettings.ts`, `components/Settings/AudioVideoSettingsPanel.tsx` | partial: echo/noise/AGC, mic preset, VAD and push-to-talk are persisted in the app's settings store and applied by the engine; voice isolation has no counterpart in libwebrtc's APM (ask, section 4); no core view, UI pending |
 | Push-to-talk | `hooks/usePushToTalk.ts` (in-window key only) | partial: engine `set_ptt_*` and UI `PttState`; no key binding |
-| Per-user volume, screen-share volume | `components/Voice/VoiceUserContextMenu.tsx`, `ScreenShareVolumeControl.tsx`, `features/voice/volumeStorage.ts` | participant volume: core `set_participant_volume`, persisted in the app's store and applied on every join. Screen-share volume needs a per-track gain in the engine (the mixer's gain is per identity): media ask. UI pending |
+| Per-user volume, screen-share volume | `components/Voice/VoiceUserContextMenu.tsx`, `ScreenShareVolumeControl.tsx`, `features/voice/volumeStorage.ts` | done: mic and screen-share audio each have their own volume, core `set_participant_volume` and `set_screen_share_volume`, the engine's mixer keyed by participant and source, both persisted in the app's store and applied on every join. The participant menu's "Screen share volume" slider shows only while that person's share carries audio |
 | Server mute state; moderator mute/remove from voice | `hooks/useServerMuteEffect.ts`, `useServerMutedVoiceUsers.ts`, `VoiceUserContextMenu.tsx` | partial: being removed is handled; server-mute state unknown; no moderator actions |
 | DM voice calls, incoming call banner | `components/DirectMessage/` | core done, UI pending: `Core::incoming_call`, `join_dm_voice`, `decline_call`; `ui/src/voice/incoming.rs` exists |
 | Soundboard playback | `components/Voice/SoundboardButton.tsx`, `features/voice/soundboardPlayer.ts` | core done, UI pending: `Core::soundboard`, `play_sound` (`MediaEngine::play_soundboard`) |
@@ -354,8 +354,8 @@ screen) and a diff review against its brief; a lane that fails once is redone by
 
 **Later platform lanes** (outside these waves): the application menu with About (Electron has
 one: `electron/main.ts` `setupApplicationMenu`), the app version shown, the replay trim preview
-(the player reading HLS / MPEG-TS), screen-share volume (a per-track gain in the engine), voice
-isolation (no libwebrtc counterpart). Packaging, auto-update and installers are the packaging lane's.
+(the player reading HLS / MPEG-TS), voice isolation (no libwebrtc counterpart). Packaging,
+auto-update and installers are the packaging lane's.
 
 ## 2. Build units
 
@@ -444,7 +444,7 @@ identical static shots). "Stories" means the unit's stories render in `rigs/shot
 | Unit | Delivers | Touches | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | W4-core | DM voice (dm-token, DM presence, incoming call), soundboard list/play, moderator voice actions (mute participant, remove), server-mute state, replay start/stop/capture/clips/share, voice diagnostics report | core lane files, net, fake server | W3-core | L | core tests for call state machine incl. incoming-call accept/decline; fake server endpoints |
-| W4-media | Soundboard on its own published `soundboard` track (`MediaEngine::play_soundboard`, decoding chosen by this unit; the default build works without the player feature), the VAD threshold applied (devices, processing, PTT and the mic preset are applied since W3-app), device test loopback and level meter (`LiveKitEngine::start_input_test`), participant volume through `MediaEngine::set_participant_volume`, `MediaEngine::diagnostics`, `LocalMediaView::{may_speak, screen_tracks}` in reports, keep-awake during calls (`keep_awake.rs`: logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (`keep_awake.rs` only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
+| W4-media | Soundboard on its own published `soundboard` track (`MediaEngine::play_soundboard`, decoding chosen by this unit; the default build works without the player feature), the VAD threshold applied (devices, processing, PTT and the mic preset are applied since W3-app), device test loopback and level meter (`LiveKitEngine::start_input_test`), participant volume through `MediaEngine::set_participant_volume` and the screen share's through `MediaEngine::set_screen_share_volume`, `MediaEngine::diagnostics`, `LocalMediaView::{may_speak, screen_tracks}` in reports, keep-awake during calls (`keep_awake.rs`: logind inhibitor / `SetThreadExecutionState`) | `semaphore-media-livekit`, `semaphore-platform-desktop` (`keep_awake.rs` only) | W0-settings | M | engine tests with `testing.rs` fakes; `slice-e2e.sh --voice` still green |
 | W4-ui-voice | Incoming call banner, DM call controls, participant context menu (volume, moderator mute/remove), soundboard button, float card and dock zones, voice debug panel | `ui/src/voice` | W4 freeze | L | stories: each state, moderator vs member, phone |
 | W4-ui-replay | Capture modal, trim timeline, clip library, share dialog | new `ui/src/replay` | W4 freeze, W3-player | M | stories: empty library, long clip, capture failure |
 | W4-av-publish (placeholder) | Camera publish, screen share publish with quality, source picker, screen audio | designed separately | separate design | L | defined by that design |
@@ -489,7 +489,8 @@ engine report of `screen_audio: Failed` starts the video alone at once.
 - Keep-awake holds off system sleep only, not the display (Electron's `prevent-app-suspension`).
 - Soundboard sounds go out on a separate `soundboard` track, as on the web, not mixed into the mic:
   the mic's mute, push to talk and server mute don't hold them back.
-- Participant volume goes through the `MediaEngine` trait, so a mobile engine can take it.
+- Participant volume goes through the `MediaEngine` trait, so a mobile engine can take it; the
+  screen share's audio has its own (`set_screen_share_volume`), as on the web.
 - Join failures are classified and kept for the debug panel only: nothing is reported until the
   backend accepts a native platform.
 
@@ -589,7 +590,7 @@ Model changes after the freeze are additive only, with the coordinator. A's fake
 | Unit | Delivers | Touches | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | W7-gifs | GIF search/featured picker, animated GIF/WebP embeds (frame limit) | core lane (gifs endpoints), new `ui/src/gifs`, `ui/src/messages/media.rs` | W1-ui-emoji, Mike's third-party image decision | M | stories; fake server gifs endpoints; frame-limit tests |
-| W7-thumbnails | Server-sized thumbnails (U12) so image boxes size correctly | `backend/` (U12, API-contract stack), core, `ui/src/messages` | U12 landed in the `fd19adce` repin | S | core test on dimensions (done: `AttachmentView` takes them from the DTO); story shot with mixed aspect ratios |
+| W7-thumbnails | Server-sized thumbnails (U12) so image boxes size correctly | `backend/` (U12, API-contract stack), core, `ui/src/messages` | U12 landed in the `fd19adce` repin; images and replay clips get thumbnails and measurements as of `5816fcef` | S | core test on dimensions (done: `AttachmentView` takes them from the DTO, clips included); story shot with mixed aspect ratios |
 | W7-preview-images | Link-preview images per Mike's decision (direct fetch with the existing limits, or a server proxy) | `semaphore-app/src/files.rs`, possibly `backend/` | Mike's decision | S | `slice-e2e.sh` link-preview step flips from "unrequested" to drawn |
 
 ### W6/W7 freeze
@@ -633,23 +634,26 @@ At most three UI lanes at once: shell, users, content; then roles-storage, gifs,
 Left for W6-app: `AdminUserRolesView::available` (it joins W6-B's user roles with W6-E's roles list,
 built in parallel).
 
-**Contract has it, core doesn't use it yet** (after the repin to `fd19adce`, 2026-11-12, which
-wired the channel capability flags, `deleteMessage`'s `removal`, `DM_BLOCKED`, search paging, the
-notifications list's `includeDismissed` and its rows' `channelName`/`parentMessageId`, the
-nullable DND window, and attachment `width`/`height`): `ErrorCode::CURRENT_SESSION_UNKNOWN` (the
-web has no special handling for it either: the sessions commands already treat a refusal as "not
-signed out"); `VoiceClientPlatform::native` (join failures stay local until the backend accepts a
-native platform); `timeoutRemoved.expired`, which changes no decision (a timeout that ran out and
-one a moderator lifted unlock the composer and read the same lists again), so nothing branches on
-it; `ChannelVoicePresenceUserDto.canModerate`, which the presence list keeps for a later "remove
-from this call" menu that core doesn't offer; the new events `dmGroupCreated`,
-`dmGroupMemberAdded`/`dmGroupMemberLeft`, the five `friend*` ones, `instanceRolesUpdated`,
-`notificationDismissed` and `notificationsRead` (each ignored in `core/src/events.rs`, where the
-comment says which list is read again instead); the invite list's `communityId` filter;
-`POST /api/livekit/channels/{channelId}/remove-participant` (W4's Kick stays the community kick);
-and the file DTOs' `width`/`height`, which the message's attachments already carry. W9 now uses
-`POST /api/invite/{code}/accept` (`Core::accept_invite`) and the `INVITE_*` error codes (an invite
-preview's `reason`). Another repin follows when the open backend PRs land.
+**Contract has it, core doesn't use it yet** (after the repin to `5816fcef`, 2026-11-13, which made
+`CreateUserDto.code` optional — core now sends no code at all for an open registration, and still
+refuses locally, in the server's words, on a closed instance and for a missing code on an
+invite-only one — and made the upload response's `hasThumbnail` required, which the attachment the
+message echo carries already supplies; the upload's own answer is read for its id, as the web's
+`attachmentSend.ts` reads it. `socket-events.json` did not change, so there are no new events to
+ignore): `ErrorCode::CURRENT_SESSION_UNKNOWN` (the web has no special handling for it either: the
+sessions commands already treat a refusal as "not signed out"); `VoiceClientPlatform::native` (join
+failures stay local until the backend accepts a native platform); `timeoutRemoved.expired`, which
+changes no decision (a timeout that ran out and one a moderator lifted unlock the composer and read
+the same lists again), so nothing branches on it; `ChannelVoicePresenceUserDto.canModerate`, which
+the presence list keeps for a later "remove from this call" menu that core doesn't offer; the events
+`dmGroupCreated`, `dmGroupMemberAdded`/`dmGroupMemberLeft`, the five `friend*` ones,
+`instanceRolesUpdated`, `notificationDismissed` and `notificationsRead` (each ignored in
+`core/src/events.rs`, where the comment says which list is read again instead); the invite list's
+`communityId` filter; `POST /api/livekit/channels/{channelId}/remove-participant` (W4's Kick stays
+the community kick); and the file DTOs' `width`/`height` in the upload answer, which the message's
+attachments already carry (replay clips included, measured by the backend since this pin). W9 now
+uses `POST /api/invite/{code}/accept` (`Core::accept_invite`) and the `INVITE_*` error codes (an
+invite preview's `reason`). Another repin follows when the open backend PRs land.
 
 **W6/W7 defaults** (chosen with the owner, 2026-11-11/12):
 
@@ -816,5 +820,4 @@ Found while building the W9 core lane (2026-11-12). None blocks it; each has a w
 |---|---|---|---|
 | Say `code` optional in `CreateUserDto` | `contract/openapi.json`, `backend/src/user/dto/create-user.dto.ts` (`@IsOptional() code?`) | The backend honours `OPEN` with no code, but the contract still requires the field, so a generated client must invent one | Sends `""`, which the backend reads as absent |
 | Tell a "seen by" list that a channel receipt moved | `backend/src/read-receipts/read-receipts.service.ts` (`markAsRead`) | Channels send no `readReceiptUpdated` (privacy), so a channel message's readers are only read when shown and stay as read until a reconnect | Read once per message; `keys::MESSAGE_READERS` is invalidated on a new connection |
-| A per-track gain for screen-share audio | `semaphore-media-livekit/src/audio/mixer.rs` (`set_volume` is per identity) | The web keeps a separate screen-share volume per user; the native mixer gives a member one gain for the mic and the share | Participant volume applies to both (one slider, not two); the web's separate share slider waits on the mixer |
 | A voice-isolation counterpart | `semaphore-media-livekit/src/audio/apm.rs` | The web's "voice isolation" is a browser audio feature; libwebrtc's APM has echo cancellation, noise suppression and AGC only | The persisted toggles are echo cancellation, noise suppression and AGC; voice isolation is not offered |

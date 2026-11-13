@@ -7,9 +7,9 @@ mod common;
 use common::w4::{clip_json, sound_json};
 use common::*;
 use semaphore_core::model::{
-    CaptureRequest, ClipDestination, JoinFailureClass, LoadState, LocalMediaView, LocalShare,
-    RING_MS, ReplayMinutes, ReplayState, ReplayTrim, ScreenShareRequest, ShareTracks, SoundCue,
-    VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
+    AttachmentKind, CaptureRequest, ClipDestination, JoinFailureClass, LoadState, LocalMediaView,
+    LocalShare, RING_MS, ReplayMinutes, ReplayState, ReplayTrim, ScreenShareRequest, ShareTracks,
+    SoundCue, VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
 };
 use semaphore_core::platform::{CoreError, CoreEvent};
 use serde_json::{Value, json};
@@ -447,6 +447,13 @@ async fn participant_volume_goes_to_the_engine_capped() {
     let rig = signed_in().await;
     rig.core.set_participant_volume("bob".into(), 350);
     assert!(media_calls(&rig).contains(&"volume bob 200".to_owned()));
+}
+
+#[tokio::test]
+async fn screen_share_volume_goes_to_the_engine_capped() {
+    let rig = signed_in().await;
+    rig.core.set_screen_share_volume("bob".into(), 350);
+    assert!(media_calls(&rig).contains(&"share-volume bob 200".to_owned()));
 }
 
 // --- Soundboard ---
@@ -1339,6 +1346,37 @@ async fn a_participants_volume_shows_on_them_until_sign_out() {
 }
 
 #[tokio::test]
+async fn a_participants_screen_share_volume_shows_apart_from_their_mic_until_sign_out() {
+    let mut rig = in_channel_call(&[ME, "bob"]).await;
+    rig.core.set_participant_volume("bob".into(), 150);
+    rig.core.set_screen_share_volume("bob".into(), 60);
+    let volumes = |rig: &Rig, id: &str| {
+        rig.core
+            .voice()
+            .participants
+            .iter()
+            .find(|participant| participant.identity == id)
+            .map(|participant| {
+                (
+                    participant.volume_percent,
+                    participant.screen_share_volume_percent,
+                )
+            })
+    };
+    assert_eq!(volumes(&rig, "bob"), Some((150, 60)));
+    assert_eq!(volumes(&rig, ME), Some((100, 100)));
+    rig.core.sign_out().await.unwrap();
+    rig.core
+        .sign_in("http://server".into(), "me".into(), "pw".into())
+        .await
+        .unwrap();
+    rig.settle().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    rig.settle().await;
+    assert_eq!(volumes(&rig, "bob"), Some((100, 100)));
+}
+
+#[tokio::test]
 async fn a_group_calls_ring_says_it_is_a_group() {
     let mut rig = signed_in().await;
     rig.backend.w2.answer(
@@ -1495,6 +1533,27 @@ async fn a_clip_is_an_mp4_without_a_thumbnail_until_the_server_says() {
     let clip = rig.core.clips().clips.remove(0);
     assert_eq!(clip.mime_type, "video/mp4");
     assert!(!clip.has_thumbnail);
+}
+
+/// A clip posted to a conversation arrives as an MP4 attachment. The replay service now stores the
+/// clip's measurements like an upload's, and the row takes them from the same `AttachmentDto` the
+/// message carries: `a_clip_is_an_mp4_without_a_thumbnail_until_the_server_says` (the library's own
+/// `ClipResponseDto` still names neither).
+#[tokio::test]
+async fn a_clip_message_carries_the_clips_measurements() {
+    let mut rig = signed_in().await.open_channel(history("m", 1)).await;
+    let mut clip_message = message_json("clip-msg", ME, "Replay clip - 40s (2MB)");
+    clip_message["attachments"] = json!([{
+        "id": "clip-file", "filename": "replay-1.mp4", "mimeType": "video/mp4",
+        "fileType": "VIDEO", "size": 2048, "hasThumbnail": false, "width": 64, "height": 64,
+    }]);
+    rig.core
+        .ingest(event("newMessage", json!({ "message": clip_message })));
+    rig.sync();
+    let attachment = &rig.row("clip-msg").attachments[0];
+    assert_eq!(attachment.kind, AttachmentKind::Video);
+    assert_eq!((attachment.width, attachment.height), (Some(64), Some(64)));
+    assert!(!attachment.has_thumbnail);
 }
 
 // --- Carried over from the wave 4 rig: a late answer from the previous ring ---

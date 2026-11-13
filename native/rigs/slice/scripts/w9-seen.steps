@@ -55,6 +55,6 @@ type "seen check channel"
 press enter
 wait core sent "seen check channel"
 wait core w9v seen "seen check channel" "Seen by pri"
-expect core requests ReadReceiptsController_getMessageReaders >= 1
+wait core requests ReadReceiptsController_getMessageReaders >= 1
 wait idle
 shot 03-channel-seen

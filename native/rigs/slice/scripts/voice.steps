@@ -25,8 +25,8 @@ wait core voice connected within 30
 wait core label "Share screen"
 wait core voice participant demo-peer within 30
 wait core voice frames within 30
-expect requests VoicePresenceController_joinPresence >= 1
-expect requests LivekitController_generateToken >= 1
+wait core requests VoicePresenceController_joinPresence >= 1
+wait core requests LivekitController_generateToken >= 1
 tick 100
 snap 01-live-in-call
 
@@ -111,7 +111,10 @@ wait core voice disconnected within 15
 wait core requests VoicePresenceController_leavePresence >= 1
 expect core voice camera off
 
-# A new call (through Squad Up's pre-join), then leaving it from the bar.
+# A new call (through Squad Up's pre-join), then leaving it from the bar. LiveKit lists the
+# removed participant for a moment after the removal, and a rejoin before it goes is refused with
+# ParticipantRemoved: wait for the room to let them go.
+wait core livekit participant $ID(vc-squad) $ID(me) gone
 click channel-$ID(vc-squad)
 wait core element voice-prejoin-join
 click voice-prejoin-join

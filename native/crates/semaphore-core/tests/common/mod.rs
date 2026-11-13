@@ -877,7 +877,8 @@ impl FilesBackend for FakeBackend {
             "id": id, "checksum": "c", "deletedAt": null, "fileCommunityId": null,
             "fileMessageId": file.resource_id, "fileType": "DOCUMENT", "fileUserId": null,
             "filename": file.filename, "mimeType": file.mime_type, "resourceType": "MESSAGE_ATTACHMENT",
-            "size": size, "storagePath": "s", "storageType": "LOCAL", "thumbnailPath": null,
+            "size": size, "hasThumbnail": false, "storagePath": "s", "storageType": "LOCAL",
+            "thumbnailPath": null,
             "uploadedAt": "2026-09-22T18:00:00.000Z", "uploadedById": null,
         }))
     }
@@ -1131,6 +1132,12 @@ impl MediaEngine for FakeMedia {
             .lock()
             .unwrap()
             .push(format!("volume {identity} {percent}"));
+    }
+    fn set_screen_share_volume(&self, identity: String, percent: u32) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("share-volume {identity} {percent}"));
     }
     async fn diagnostics(&self) -> Option<semaphore_core::model::MediaDiagnostics> {
         let hold = self.hold_diagnostics.lock().unwrap().take();

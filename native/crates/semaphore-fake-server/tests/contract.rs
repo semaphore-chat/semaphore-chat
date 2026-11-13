@@ -544,6 +544,20 @@ async fn every_implemented_route_matches_openapi() {
         assert_eq!(&first[..8], b"\x89PNG\r\n\x1a\n", "{path} is a PNG");
     }
 
+    // The upload's own answer, whose `hasThumbnail` the contract makes required (the thumbnail
+    // path itself is never sent). A document has none, as `FileUploadService` answers.
+    let (status, record) =
+        upload_file(&client, &base, "notes.txt", "text/plain", b"contract").await;
+    assert_eq!(status, 201, "{record}");
+    assert_valid(
+        &schemas,
+        &schemas.component("FileUploadResponseDto"),
+        &record,
+        "upload",
+    );
+    assert_eq!(record["hasThumbnail"], false, "{record}");
+    assert!(record["thumbnailPath"].is_null(), "{record}");
+
     // Errors use ErrorResponseDto too.
     let (status, body) = request(
         &client,
@@ -637,6 +651,45 @@ async fn file_bytes(client: &reqwest::Client, base: &str, path: &str) -> Vec<u8>
         Some("image/png")
     );
     response.bytes().await.expect("bytes").to_vec()
+}
+
+/// `POST /api/file-upload` with one file and its resource type, answering the record.
+async fn upload_file(
+    client: &reqwest::Client,
+    base: &str,
+    filename: &str,
+    mime_type: &str,
+    bytes: &[u8],
+) -> (u16, Value) {
+    const BOUNDARY: &str = "contract-boundary";
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"resourceType\"\r\n\r\nMESSAGE_ATTACHMENT\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(
+        format!(
+            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {mime_type}\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
+    let response = client
+        .post(format!("{base}/api/file-upload"))
+        .header("Authorization", TOKEN)
+        .header(
+            "Content-Type",
+            format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
+        .body(body)
+        .send()
+        .await
+        .expect("the fake answers");
+    let status = response.status().as_u16();
+    (status, response.json().await.expect("a JSON record"))
 }
 
 /// The sockets and the events they carry.

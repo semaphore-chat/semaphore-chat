@@ -38,7 +38,7 @@ shot 02-dm-open
 type "lunch at noon?"
 press enter
 wait core sent "lunch at noon?"
-expect requests sendDirectMessage >= 1
+wait core requests sendDirectMessage >= 1
 wait idle
 shot 03-dm-sent
 
@@ -54,7 +54,7 @@ wait core editing yes
 type " (the usual place)"
 press enter
 wait core edited "lunch at noon? (the usual place)"
-expect requests MessagesController_update >= 1
+wait core requests MessagesController_update >= 1
 hover-row message "lunch at noon?"
 click message-action-react
 wait core picker open
@@ -62,14 +62,14 @@ type "fire"
 click "emoji-🔥"
 wait core picker closed
 wait core reaction "lunch at noon?" "🔥" 1
-expect requests MessagesController_addReaction >= 1
+wait core requests MessagesController_addReaction >= 1
 hover-row message "lunch at noon?"
 click message-action-thread
 wait core side-panel thread
 type "or one?"
 press enter
 wait core thread-sent "or one?"
-expect requests sendThreadReply >= 1
+wait core requests sendThreadReply >= 1
 wait idle
 shot 05-dm-thread
 click thread-close
@@ -111,7 +111,7 @@ shot 07-group-dialog
 click create-dm-create
 wait core dms 6
 wait core no-element create-dm-picker
-expect requests DirectMessagesController_createDmGroup >= 1
+wait core requests DirectMessagesController_createDmGroup >= 1
 wait idle
 shot 08-group-created
 
@@ -127,7 +127,7 @@ shot 09-friend-request
 click request-accept-$ID(w2-zara)
 wait core friend $ID(u-zara)
 wait core incoming 1
-expect requests FriendsController_acceptFriendRequest >= 1
+wait core requests FriendsController_acceptFriendRequest >= 1
 wait idle
 shot 10-friend-accepted
 click dm-tab-messages
@@ -167,7 +167,7 @@ wait idle
 shot 13-centre
 click notifications-mark-all
 wait core badge 0
-expect requests NotificationsController_markAllAsRead >= 1
+wait core requests NotificationsController_markAllAsRead >= 1
 wait idle
 shot 14-centre-all-read
 click rail-notifications
