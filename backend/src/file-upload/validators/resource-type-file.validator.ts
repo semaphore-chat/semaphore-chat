@@ -9,6 +9,15 @@ import {
   SoundboardSoundValidationStrategy,
 } from './strategies';
 import { matchesDeclaredMediaType, readFileHeader } from './magic-bytes.util';
+import {
+  IMAGE_HEADER_MAX_BYTES,
+  MEDIA_MAX_PIXELS,
+} from '@/common/constants/media-limits.constant';
+import {
+  exceedsMediaPixelCap,
+  ImageSize,
+  readImageSize,
+} from '@/common/utils/image-header.util';
 
 interface ResourceTypeFileValidatorOptions {
   resourceType: ResourceType;
@@ -27,6 +36,9 @@ export class ResourceTypeFileValidator extends FileValidator<ResourceTypeFileVal
    * because a validator instance is created per upload request.
    */
   private contentTypeMismatch = false;
+
+  /** Set by isValid() when an image's header is over the pixel cap. */
+  private oversizedImage: ImageSize | null = null;
 
   constructor(validationOptions: ResourceTypeFileValidatorOptions) {
     super(validationOptions);
@@ -55,6 +67,7 @@ export class ResourceTypeFileValidator extends FileValidator<ResourceTypeFileVal
     // Reset per validation so a reused instance (e.g. a construct-once pipe)
     // never reports a stale mismatch message for a different failure.
     this.contentTypeMismatch = false;
+    this.oversizedImage = null;
 
     if (!file) {
       return false;
@@ -77,9 +90,22 @@ export class ResourceTypeFileValidator extends FileValidator<ResourceTypeFileVal
     // claiming image/png or video/x-msvideo). Documents and archives pass
     // through unchanged.
     if (/^(image|video|audio)\//.test(file.mimetype)) {
-      const header = await readFileHeader(file);
+      const isImage = file.mimetype.startsWith('image/');
+      const header = await readFileHeader(
+        file,
+        isImage ? IMAGE_HEADER_MAX_BYTES : undefined,
+      );
       if (!matchesDeclaredMediaType(header, file.mimetype)) {
         this.contentTypeMismatch = true;
+        return false;
+      }
+
+      // Refuse an image too large to decode safely (a small file can decode
+      // to gigabytes). An unreadable size passes: FFmpeg's -max_pixels
+      // still bounds the decode.
+      const size = isImage ? readImageSize(header) : null;
+      if (exceedsMediaPixelCap(size)) {
+        this.oversizedImage = size;
         return false;
       }
     }
@@ -110,6 +136,11 @@ export class ResourceTypeFileValidator extends FileValidator<ResourceTypeFileVal
 
     if (!allowedMimeTypes.includes(file.mimetype)) {
       return `Invalid file type. ${strategy.getValidationDescription()}`;
+    }
+
+    if (this.oversizedImage) {
+      const { width, height } = this.oversizedImage;
+      return `Image is too large (${width}×${height}). The maximum is ${MEDIA_MAX_PIXELS / 1_000_000} megapixels.`;
     }
 
     if (this.contentTypeMismatch) {

@@ -6,6 +6,12 @@ import {
   FfmpegCommand,
   FfmpegProvider,
 } from '@/livekit/providers/ffmpeg.provider';
+import { MEDIA_MAX_PIXELS } from '@/common/constants/media-limits.constant';
+import {
+  exceedsMediaPixelCap,
+  readImageSizeFromFile,
+} from '@/common/utils/image-header.util';
+import { mediaProcessSlots } from '@/common/utils/process-slots.util';
 import type { MediaDimensions } from './media-dimensions.service';
 
 /**
@@ -73,7 +79,12 @@ export class ThumbnailService {
         this.runThumbnailExtraction(inputPath, outputPath, (command) =>
           command
             .input(inputPath)
-            .inputOptions('-ss', '1') // Seek to 1 second (fast, before decoding)
+            .inputOptions(
+              '-ss',
+              '1', // Seek to 1 second (fast, before decoding)
+              '-max_pixels',
+              String(MEDIA_MAX_PIXELS), // Refuse frames over the pixel cap
+            )
             .outputOptions(
               '-vframes',
               '1', // Extract single frame
@@ -128,6 +139,16 @@ export class ThumbnailService {
       return null;
     }
 
+    // Never decode an image the header says is over the pixel cap; with no
+    // known dimensions the header is the only size there is.
+    const headerSize = await readImageSizeFromFile(filePath);
+    if (exceedsMediaPixelCap(headerSize)) {
+      this.logger.debug(
+        `Skipping thumbnail for file ${fileId}: ${headerSize!.width}×${headerSize!.height} is over the pixel cap`,
+      );
+      return null;
+    }
+
     return this.generateThumbnail(
       filePath,
       fileId,
@@ -136,18 +157,21 @@ export class ThumbnailService {
         this.runThumbnailExtraction(inputPath, outputPath, (command) =>
           // ffmpeg's default autorotate applies the EXIF orientation; it is
           // not disabled here, so rotated phone photos come out upright.
-          command.input(inputPath).outputOptions(
-            '-frames:v',
-            '1',
-            '-vf',
-            IMAGE_THUMBNAIL_SCALE,
-            '-map_metadata',
-            '-1', // No EXIF (orientation) in the thumbnail
-            '-f',
-            'image2',
-            '-q:v',
-            '5',
-          ),
+          command
+            .input(inputPath)
+            .inputOptions('-max_pixels', String(MEDIA_MAX_PIXELS))
+            .outputOptions(
+              '-frames:v',
+              '1',
+              '-vf',
+              IMAGE_THUMBNAIL_SCALE,
+              '-map_metadata',
+              '-1', // No EXIF (orientation) in the thumbnail
+              '-f',
+              'image2',
+              '-q:v',
+              '5',
+            ),
         ),
     );
   }
@@ -249,6 +273,18 @@ export class ThumbnailService {
   }
 
   private runThumbnailExtraction(
+    inputPath: string,
+    outputPath: string,
+    configure: (command: FfmpegCommand) => FfmpegCommand,
+  ): Promise<void> {
+    // One slot bounds how many decodes run at once; it is released when
+    // ffmpeg ends, fails or is killed at the timeout.
+    return mediaProcessSlots.run(() =>
+      this.extractThumbnail(inputPath, outputPath, configure),
+    );
+  }
+
+  private extractThumbnail(
     inputPath: string,
     outputPath: string,
     configure: (command: FfmpegCommand) => FfmpegCommand,

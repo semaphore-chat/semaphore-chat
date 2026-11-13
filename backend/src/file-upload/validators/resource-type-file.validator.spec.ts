@@ -407,6 +407,39 @@ describe('ResourceTypeFileValidator', () => {
       expect(message).toContain('image/png');
     });
 
+    it('refuses an image over the pixel cap with a size message', async () => {
+      const ihdr = Buffer.alloc(33);
+      PNG_HEADER.copy(ihdr);
+      ihdr.writeUInt32BE(13, 8);
+      ihdr.write('IHDR', 12, 'latin1');
+      ihdr.writeUInt32BE(20000, 16);
+      ihdr.writeUInt32BE(20000, 20);
+
+      for (const resourceType of [
+        ResourceType.MESSAGE_ATTACHMENT,
+        ResourceType.USER_AVATAR,
+        ResourceType.CUSTOM_EMOJI,
+      ]) {
+        const validator = new ResourceTypeFileValidator({ resourceType });
+        const file = makeFile({ mimetype: 'image/png', buffer: ihdr });
+
+        expect(await validator.isValid(file)).toBe(false);
+        expect(validator.buildErrorMessage(file)).toContain(
+          'Image is too large (20000×20000)',
+        );
+      }
+    });
+
+    it('accepts an image whose size cannot be read (the decode cap still applies)', async () => {
+      const validator = new ResourceTypeFileValidator({
+        resourceType: ResourceType.MESSAGE_ATTACHMENT,
+      });
+      // A bare PNG signature: valid magic bytes, no IHDR
+      expect(await validator.isValid(makeFile({ mimetype: 'image/png' }))).toBe(
+        true,
+      );
+    });
+
     it('refuses an executable declared as a video or audio attachment', async () => {
       for (const mimetype of ['video/x-msvideo', 'video/mp4', 'audio/mpeg']) {
         const validator = new ResourceTypeFileValidator({

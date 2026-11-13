@@ -201,9 +201,10 @@ export function matchesDeclaredMediaType(
  */
 export async function readFileHeader(
   file: Express.Multer.File,
+  length: number = MAGIC_BYTES_HEADER_LENGTH,
 ): Promise<Buffer> {
   if (file.buffer && file.buffer.length > 0) {
-    return file.buffer.subarray(0, MAGIC_BYTES_HEADER_LENGTH);
+    return file.buffer.subarray(0, length);
   }
 
   if (!file.path) {
@@ -213,13 +214,8 @@ export async function readFileHeader(
   try {
     const handle = await open(file.path, 'r');
     try {
-      const buffer = Buffer.alloc(MAGIC_BYTES_HEADER_LENGTH);
-      const { bytesRead } = await handle.read(
-        buffer,
-        0,
-        MAGIC_BYTES_HEADER_LENGTH,
-        0,
-      );
+      const buffer = Buffer.alloc(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, 0);
       return buffer.subarray(0, bytesRead);
     } finally {
       await handle.close();
