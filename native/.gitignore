@@ -1,4 +1,6 @@
 # Local builds use a Docker volume; only a direct cargo run (CI on Windows) makes this.
 /target/
+# Linux packages from scripts/package-linux.sh (built artifacts, never committed).
+/dist-packages/
 tools/web-export/out/
 tools/web-export/.work-*/
