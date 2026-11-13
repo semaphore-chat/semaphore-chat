@@ -3,16 +3,21 @@
 
 use super::{ConversationPane, PaneEvent, Which};
 use gpui_kit::*;
-use semaphore_core::model::{Conversation, ListOp, MessageRow, SearchScope};
+use semaphore_core::model::{Conversation, ListOp, LoadState, MessageRow, SearchScope, ViewKey};
+use semaphore_core::{Core, CoreEvent};
 use semaphore_ui::composer::{Composer, ComposerConfig, ComposerMode};
+use semaphore_ui::kit::on_core_event;
 use semaphore_ui::messages::{ListStatus, MessageList};
 use semaphore_ui::panel::{
     PinsPanel, PinsPanelEvent, SearchPanel, SearchPanelEvent, SearchResults, SearchScopeChoice,
 };
 use semaphore_ui::thread::{ThreadPane, ThreadPaneEvent};
 
-/// As many results as one search asks for: the server has no paging for search yet.
-const SEARCH_LIMIT: u32 = 50;
+/// How often, and how many times, a search that waits for its first page looks again: core
+/// fetches the page, and answers only when it has it. Two seconds of looking is plenty for one
+/// page; a page that fails says so and stops the waiting.
+const SEARCH_WAIT: std::time::Duration = std::time::Duration::from_millis(20);
+const SEARCH_WAIT_TRIES: u32 = 100;
 
 /// The panel under the thread pane, or on its own.
 pub(crate) enum Side {
@@ -22,6 +27,8 @@ pub(crate) enum Side {
     },
     Search {
         panel: Entity<SearchPanel>,
+        /// What the panel last asked: the scope and query "More results" reads its next page of.
+        asked: Option<(SearchScope, String)>,
         _subscription: Subscription,
     },
 }
@@ -78,6 +85,34 @@ pub(crate) fn apply_ops(rows: &mut Vec<MessageRow>, ops: &[ListOp]) {
             }
         }
     }
+}
+
+/// Pushes core's page for `scope`/`query` into the panel: the hits, whether another page is
+/// there, and whether one is on its way.
+fn feed_search(
+    panel: &mut SearchPanel,
+    core: &Core,
+    scope: &SearchScope,
+    query: &str,
+    cx: &mut Context<SearchPanel>,
+) {
+    let choice = match scope {
+        SearchScope::Community { .. } => SearchScopeChoice::Community,
+        SearchScope::Channel { .. } | SearchScope::DirectMessage { .. } => SearchScopeChoice::Here,
+    };
+    let view = core.search_results(scope.clone(), query.to_owned());
+    let results = match &view.state {
+        LoadState::Loading => SearchResults::Loading,
+        LoadState::Ready => SearchResults::Ready {
+            hits: view.hits.clone(),
+            at_limit: view.more,
+        },
+        LoadState::Failed { error } => SearchResults::Failed {
+            message: error.message.clone(),
+        },
+    };
+    panel.set_more(view.more, view.loading_more, cx);
+    panel.set_results(choice, view.query.clone(), results, cx);
 }
 
 impl ConversationPane {
@@ -176,10 +211,27 @@ impl ConversationPane {
             panel
         });
         panel.update(cx, |panel, cx| panel.focus_field(window, cx));
+        // Core pages a search's results itself: the panel is fed from the cache whenever the page
+        // it asked for changes, and "More results" asks core for the next one. The listener is on
+        // the panel, so it goes with the panel when the side panel closes.
+        let core = self.core.clone();
+        on_core_event(
+            panel.downgrade(),
+            move |panel, event, cx| {
+                if let CoreEvent::ViewChanged {
+                    view: ViewKey::Search { scope, query },
+                } = event
+                {
+                    feed_search(panel, &core, scope, query, cx);
+                }
+            },
+            cx,
+        );
         let subscription = cx.subscribe_in(&panel, window, Self::on_search_event);
         self.thread = None;
         self.side = Some(Side::Search {
             panel,
+            asked: None,
             _subscription: subscription,
         });
         self.sync_side(cx);
@@ -244,52 +296,68 @@ impl ConversationPane {
 
     fn on_search_event(
         &mut self,
-        panel: &Entity<SearchPanel>,
+        _panel: &Entity<SearchPanel>,
         event: &SearchPanelEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event.clone() {
-            // UI freeze: WU pages the results here (`Core::load_more_search`).
-            SearchPanelEvent::More => {}
-            SearchPanelEvent::Search { scope, query } => {
-                let searched = match (scope, &self.community_id, &self.conversation) {
-                    (SearchScopeChoice::Community, Some(community_id), _) => {
-                        SearchScope::Community {
-                            id: community_id.clone(),
+            // The next page: core appends it to the page it keeps, and says so on its own view.
+            SearchPanelEvent::More => {
+                let Some(Side::Search {
+                    asked: Some((scope, query)),
+                    ..
+                }) = &self.side
+                else {
+                    return;
+                };
+                let (core, scope, query) = (self.core.clone(), scope.clone(), query.clone());
+                self.exec.run(
+                    window,
+                    cx,
+                    async move { core.load_more_search(scope, query).await },
+                    |_, result, _, _| {
+                        if let Err(error) = result {
+                            log::warn!("loading more results: {error}");
                         }
-                    }
-                    (_, _, Some(Conversation::Channel { id })) => {
-                        SearchScope::Channel { id: id.clone() }
-                    }
-                    (_, _, Some(Conversation::DirectMessage { id })) => {
-                        SearchScope::DirectMessage { id: id.clone() }
-                    }
-                    _ => return,
+                    },
+                );
+            }
+            SearchPanelEvent::Search { scope, query } => {
+                let Some(searched) = self.search_scope(scope) else {
+                    return;
+                };
+                let Some(Side::Search { panel, asked, .. }) = &mut self.side else {
+                    return;
                 };
                 let core = self.core.clone();
-                let panel = panel.downgrade();
-                let asked = query.clone();
+                let panel = panel.clone();
+                *asked = Some((searched.clone(), query.clone()));
+                // The first page is core's: it fetches it and keeps it, for "More results" to read
+                // the next one. Core doesn't say when a first page lands, so this waits for it and
+                // shows it then (the spinner shows meanwhile).
+                panel.update(cx, |panel, cx| {
+                    feed_search(panel, &core, &searched, &query, cx)
+                });
+                let waiting = (core.clone(), searched.clone(), query.clone());
+                let (shown, shown_query) = (searched, query);
                 self.exec.run(
                     window,
                     cx,
                     async move {
-                        core.search_messages(searched, asked, Some(SEARCH_LIMIT))
-                            .await
+                        let (core, scope, query) = waiting;
+                        for _ in 0..SEARCH_WAIT_TRIES {
+                            let view = core.search_results(scope.clone(), query.clone());
+                            if view.state != LoadState::Loading {
+                                break;
+                            }
+                            tokio::time::sleep(SEARCH_WAIT).await;
+                        }
                     },
-                    move |_, result, _, cx| {
-                        let results = match result {
-                            Ok(hits) => SearchResults::Ready {
-                                at_limit: hits.len() as u32 >= SEARCH_LIMIT,
-                                hits,
-                            },
-                            Err(error) => SearchResults::Failed {
-                                message: error.to_string(),
-                            },
-                        };
-                        panel
-                            .update(cx, |panel, cx| panel.set_results(scope, query, results, cx))
-                            .ok();
+                    move |_, (), _, cx| {
+                        panel.update(cx, |panel, cx| {
+                            feed_search(panel, &core, &shown, &shown_query, cx)
+                        });
                     },
                 );
             }
@@ -308,6 +376,23 @@ impl ConversationPane {
                 );
             }
             SearchPanelEvent::Close => self.close_side(cx),
+        }
+    }
+
+    /// Where a search looks, from the panel's scope: the community when "All channels" is chosen
+    /// and there is one, else the conversation on screen.
+    fn search_scope(&self, scope: SearchScopeChoice) -> Option<SearchScope> {
+        match (scope, &self.community_id, &self.conversation) {
+            (SearchScopeChoice::Community, Some(community_id), _) => Some(SearchScope::Community {
+                id: community_id.clone(),
+            }),
+            (_, _, Some(Conversation::Channel { id })) => {
+                Some(SearchScope::Channel { id: id.clone() })
+            }
+            (_, _, Some(Conversation::DirectMessage { id })) => {
+                Some(SearchScope::DirectMessage { id: id.clone() })
+            }
+            _ => None,
         }
     }
 
