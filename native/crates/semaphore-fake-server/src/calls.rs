@@ -12,6 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 /// A clip's MP4 (the player's `h264-aac.mp4`: 2 s, 64x64): what every captured or seeded clip's
 /// file serves.
 pub(crate) const CLIP_MP4: &[u8] = include_bytes!("../fixtures/clip.mp4");
+/// The replay preview's segments: three 10 s MPEG-TS cut by ffmpeg's HLS muxer.
+const REPLAY_SEGMENTS: [&[u8]; 3] = [
+    include_bytes!("../fixtures/replay/seg0.ts"),
+    include_bytes!("../fixtures/replay/seg1.ts"),
+    include_bytes!("../fixtures/replay/seg2.ts"),
+];
 
 /// `LivekitReplayService.STALE_NOTIFY_MAX_AGE_MS`: a session that ended longer ago than this
 /// gets no "missed" stop or fail event.
@@ -615,9 +621,9 @@ pub(crate) fn playlist(inner: &Inner) -> Result<String, Refusal> {
     Ok(lines.join("\n"))
 }
 
-/// `ReplaySegmentsService.getSegmentPath`'s checks, then the segment's bytes: MPEG-TS null
-/// packets, 54 of them (10 152 bytes, over the 10 kB a complete segment has), the first byte
-/// after each sync byte carrying the segment's index so two segments differ.
+/// `ReplaySegmentsService.getSegmentPath`'s checks, then the segment's bytes: real MPEG-TS, the
+/// player's fixtures (`semaphore-player/fixtures/ts`, copied to `fixtures/replay`): 10 s each of
+/// 64x64 H.264 (red, green, blue) with AAC, segment `i` serving fixture `i % 3`.
 pub(crate) fn segment(inner: &Inner, file: &str) -> Result<Vec<u8>, Refusal> {
     let Some(session) = lock(&inner.calls).active_session().cloned() else {
         return Err(refuse(
@@ -646,17 +652,7 @@ pub(crate) fn segment(inner: &Inner, file: &str) -> Result<Vec<u8>, Refusal> {
             "That part of the replay is no longer available.",
         ));
     };
-    let mut bytes = Vec::with_capacity(188 * 54);
-    for _ in 0..54 {
-        let mut packet = [0xffu8; 188];
-        packet[0] = 0x47;
-        packet[1] = 0x1f;
-        packet[2] = 0xff;
-        packet[3] = 0x10;
-        packet[4] = index as u8;
-        bytes.extend_from_slice(&packet);
-    }
-    Ok(bytes)
+    Ok(REPLAY_SEGMENTS[index % REPLAY_SEGMENTS.len()].to_vec())
 }
 
 /// A capture's request, already validated as `CaptureReplayDto` is.

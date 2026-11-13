@@ -59,6 +59,11 @@
 //! `player NAME idle|loading|playing|paused|buffering|ended|failed`, `player-frames NAME` (its video
 //! reached the window) and `players-open N` (players holding an open file).
 //!
+//! W14 (the trim preview, same build): `preview idle|loading|playing|paused|ended|stopped|failed|none` (the
+//! capture dialog's preview), `preview-frames` (its video reached the window), `preview-at above|below
+//! SECONDS` (its playhead), `preview-sound yes|no` (it decodes a sound track) and `preview-players N`
+//! (engine players of the replay buffer not yet dropped).
+//!
 //! W4's conditions: `replay off|starting|recording|failed`, `clips N` (the open profile page's
 //! library), `dialog capture|share|participant-menu|kick|debug open|closed`, `ringing yes|no|DM_ID`,
 //! `ring looping|stopped` (the ring's sound), `cue NAME N` (core asked for the cue at least N
@@ -99,6 +104,7 @@
 //! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
 mod thumbs;
+mod w13;
 mod w5;
 mod w6;
 mod w7;
@@ -357,6 +363,14 @@ enum Condition {
     PlayerFrames(String),
     /// This many players hold an open file.
     PlayersOpen(usize),
+    /// W14: the trim preview's phase, or `none` for no preview.
+    Preview(String),
+    PreviewFrames,
+    /// The preview's playhead is above (`true`) or below this many seconds.
+    PreviewAt(bool, f64),
+    PreviewSound(bool),
+    /// Engine players of the replay buffer alive, through the window's `Players`.
+    PlayersLive(usize),
     /// W4's (`w4_holds`).
     W4(W4),
     /// W5's (`w5.rs`, `w5_holds`).
@@ -368,6 +382,8 @@ enum Condition {
     W7T(thumbs::Thumbs),
     W9(w9::W9),
     W9v(w9v::W9V),
+    /// W13's (`w13.rs`, `w13_holds`): the updater.
+    W13(w13::W13),
 }
 
 /// W4's conditions.
@@ -692,6 +708,16 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["player", name, phase] => Condition::Player((*name).into(), (*phase).into()),
         ["player-frames", name] => Condition::PlayerFrames((*name).into()),
         ["players-open", count] => Condition::PlayersOpen(number(count)?),
+        ["preview", phase] => Condition::Preview((*phase).into()),
+        ["preview-frames"] => Condition::PreviewFrames,
+        ["preview-at", side @ ("above" | "below"), seconds] => Condition::PreviewAt(
+            *side == "above",
+            seconds
+                .parse()
+                .map_err(|_| anyhow!("preview-at wants seconds, got {seconds}"))?,
+        ),
+        ["preview-sound", yes @ ("yes" | "no")] => Condition::PreviewSound(*yes == "yes"),
+        ["preview-players", count] => Condition::PlayersLive(number(count)?),
         [
             "replay",
             state @ ("off" | "starting" | "recording" | "failed"),
@@ -703,6 +729,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["w7t", rest @ ..] => Condition::W7T(thumbs::parse(rest)?),
         ["w9", rest @ ..] => Condition::W9(w9::parse(rest)?),
         ["w9v", rest @ ..] => Condition::W9v(w9v::parse(rest)?),
+        ["w13", rest @ ..] => Condition::W13(w13::parse(rest)?),
         ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
         ["ringing", dm] => Condition::W4(W4::RingingFor((*dm).into())),
         ["ring", state @ ("looping" | "stopped")] => {
@@ -1082,6 +1109,8 @@ struct Rig {
     keep_awake: Arc<RigKeepAwake>,
     /// `mic tone on`: the virtual mic plays a tone instead of silence.
     tone: Arc<std::sync::atomic::AtomicBool>,
+    /// W13: the loopback update feed, when the run was started with `--update`.
+    update: Option<w13::UpdateFeed>,
 }
 
 /// The link handler in the rig: not registered until asked, then registered. Touches nothing.
@@ -1199,6 +1228,7 @@ impl Rig {
         data_dir: PathBuf,
         livekit: Option<LiveKit>,
         heartbeat: Duration,
+        update: Option<w13::UpdateFeed>,
     ) -> Self {
         let mut driver = Driver::new(Arc::new(semaphore_app::files::AppAssets));
         driver.cx.update(|cx| {
@@ -1231,6 +1261,7 @@ impl Rig {
             clock_started: Instant::now(),
             keep_awake: Arc::default(),
             tone: Arc::default(),
+            update,
         }
     }
 
@@ -1360,6 +1391,23 @@ impl Rig {
             links: Some(self.links.clone()),
             // Never the machine's sleep inhibitor: one that only remembers.
             keep_awake: Some(self.keep_awake.clone()),
+            // W13: the loopback feed, or nothing to check (the shipped default).
+            update: match &self.update {
+                Some(feed) => semaphore_app::update::UpdateStart::On(Box::new(
+                    feed.options(self.data_dir.join("cache")),
+                )),
+                None => semaphore_app::update::UpdateStart::Off(
+                    semaphore_app::update::WhyNoUpdates::NoFeed,
+                ),
+            },
+            // The restart seam: records that it was asked, and opens no process.
+            restart: self.update.as_ref().map(|feed| {
+                let restarts = feed.restarts();
+                Rc::new(move |_: &mut App| {
+                    restarts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    Ok(())
+                }) as semaphore_app::RestartApp
+            }),
         };
         let mut app = None;
         let (handle, _) = self.driver.cx.update(|cx| {
@@ -1563,10 +1611,16 @@ impl Rig {
 
     /// W3-player-wire's conditions.
     fn player_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
-        use semaphore_ui::player::Phase;
         if !matches!(
             condition,
-            Condition::Player(..) | Condition::PlayerFrames(_) | Condition::PlayersOpen(_)
+            Condition::Player(..)
+                | Condition::PlayerFrames(_)
+                | Condition::PlayersOpen(_)
+                | Condition::Preview(_)
+                | Condition::PreviewFrames
+                | Condition::PreviewAt(..)
+                | Condition::PreviewSound(_)
+                | Condition::PlayersLive(_)
         ) {
             return Ok(None);
         }
@@ -1577,6 +1631,34 @@ impl Rig {
                     .read(cx)
                     .players()
                     .is_some_and(|players| players.open_count(cx) == *count),
+                Condition::PlayersLive(count) => app
+                    .read(cx)
+                    .players()
+                    .is_some_and(|players| players.live_previews() == *count),
+                Condition::Preview(phase) => {
+                    let preview = app.read(cx).trim_preview(cx);
+                    match (preview, phase.as_str()) {
+                        (None, wanted) => wanted == "none",
+                        (Some(_), "none") => false,
+                        (Some(preview), wanted) => {
+                            Self::phase_is(preview.read(cx).phase(), wanted)?
+                        }
+                    }
+                }
+                Condition::PreviewFrames => app
+                    .read(cx)
+                    .trim_preview(cx)
+                    .is_some_and(|preview| preview.read(cx).has_frame()),
+                Condition::PreviewAt(above, seconds) => {
+                    app.read(cx).trim_preview(cx).is_some_and(|preview| {
+                        let at = preview.read(cx).position().as_secs_f64();
+                        if *above { at > *seconds } else { at < *seconds }
+                    })
+                }
+                Condition::PreviewSound(yes) => app
+                    .read(cx)
+                    .trim_preview(cx)
+                    .is_some_and(|preview| preview.read(cx).has_audio() == *yes),
                 Condition::PlayerFrames(name) => {
                     Self::player_named(&app, name, cx)?.is_some_and(|player| player.has_frame(cx))
                 }
@@ -1584,20 +1666,27 @@ impl Rig {
                     let Some(player) = Self::player_named(&app, name, cx)? else {
                         return Ok(Some(false));
                     };
-                    let now = player.phase(cx);
-                    match phase.as_str() {
-                        "idle" => now == Phase::Idle,
-                        "loading" => now == Phase::Loading,
-                        "playing" => now == Phase::Playing,
-                        "paused" => now == Phase::Paused,
-                        "buffering" => now == Phase::Buffering,
-                        "ended" => now == Phase::Ended,
-                        "failed" => matches!(now, Phase::Failed(_)),
-                        _ => bail!("unknown player phase {phase}"),
-                    }
+                    Self::phase_is(&player.phase(cx), phase)?
                 }
                 _ => unreachable!("matched above"),
             }))
+        })
+    }
+
+    /// Whether a player's phase is the one a step names.
+    fn phase_is(now: &semaphore_ui::player::Phase, phase: &str) -> Result<bool> {
+        use semaphore_ui::player::Phase;
+        Ok(match phase {
+            "idle" => *now == Phase::Idle,
+            "loading" => *now == Phase::Loading,
+            "playing" => *now == Phase::Playing,
+            "paused" => *now == Phase::Paused,
+            "buffering" => *now == Phase::Buffering,
+            "ended" => *now == Phase::Ended,
+            // Paused, or stopped at the media's end.
+            "stopped" => matches!(now, Phase::Paused | Phase::Ended),
+            "failed" => matches!(now, Phase::Failed(_)),
+            _ => bail!("unknown player phase {phase}"),
         })
     }
 
@@ -1694,6 +1783,9 @@ impl Rig {
         }
         if let Some(answer) = self.w3_holds(condition)? {
             return Ok(answer);
+        }
+        if let Condition::W13(w13) = condition {
+            return self.w13_holds(w13);
         }
         if let Condition::W4(w4) = condition {
             return self.w4_holds(w4);
@@ -1807,13 +1899,19 @@ impl Rig {
             | Condition::Player(..)
             | Condition::PlayerFrames(_)
             | Condition::PlayersOpen(_)
+            | Condition::Preview(_)
+            | Condition::PreviewFrames
+            | Condition::PreviewAt(..)
+            | Condition::PreviewSound(_)
+            | Condition::PlayersLive(_)
             | Condition::W4(_)
             | Condition::W5(_)
             | Condition::W6(_)
             | Condition::W7(_)
             | Condition::W7T(_)
             | Condition::W9(_)
-            | Condition::W9v(_) => unreachable!("answered above"),
+            | Condition::W9v(_)
+            | Condition::W13(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -2725,6 +2823,8 @@ fn main() -> Result<()> {
             .transpose()?
             .unwrap_or(30_000),
     );
+    let update = args.iter().any(|arg| arg == "--update");
+    args.retain(|arg| arg != "--update");
     let livekit = match (
         optional_flag(&mut args, "--livekit-http")?,
         optional_flag(&mut args, "--livekit-key")?,
@@ -2753,7 +2853,12 @@ fn main() -> Result<()> {
     if data_dir.exists() {
         std::fs::remove_dir_all(&data_dir)?;
     }
-    let mut rig = Rig::new(server, now_ms, data_dir, livekit, heartbeat);
+    let update = if update {
+        Some(w13::start(&data_dir)?)
+    } else {
+        None
+    };
+    let mut rig = Rig::new(server, now_ms, data_dir, livekit, heartbeat, update);
     let result = rig.run(&steps, &out_dir);
     if let Some(app) = rig.app.clone() {
         rig.driver

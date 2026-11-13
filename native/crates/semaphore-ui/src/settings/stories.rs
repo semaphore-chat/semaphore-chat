@@ -196,6 +196,9 @@ pub(crate) fn sample_desktop(links: LinkHandler) -> DesktopAppState {
         server_version: Some("0.8.2".into()),
         links_note: None,
         links_blocked: None,
+        update: crate::update::UpdateStatus::UpToDate,
+        update_enabled: true,
+        update_note: None,
     }
 }
 
@@ -474,6 +477,94 @@ pub fn stories() -> Vec<Story> {
                 DesktopAppState {
                     links_blocked: Some(
                         "Turned off for this computer (SEMAPHORE_REGISTER_SCHEME=0).".into(),
+                    ),
+                    ..sample_desktop(LinkHandler::NotRegistered)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-update-available", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    update: crate::update::UpdateStatus::Available {
+                        version: "1.4.0".into(),
+                        notes_url: Some(
+                            "https://github.com/semaphore-chat/semaphore-chat/releases/tag/v1.4.0"
+                                .into(),
+                        ),
+                    },
+                    ..sample_desktop(LinkHandler::PackageOwned)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-update-downloading", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    update: crate::update::UpdateStatus::Downloading {
+                        received: 12_138_288,
+                        total: 30_345_720,
+                    },
+                    ..sample_desktop(LinkHandler::PackageOwned)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-update-checking", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    update: crate::update::UpdateStatus::Checking,
+                    ..sample_desktop(LinkHandler::PackageOwned)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-update-ready", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    update: crate::update::UpdateStatus::Ready {
+                        version: "1.4.0".into(),
+                        how: crate::update::ReadyHow::Package {
+                            command: "sudo apt install '/home/mike/.cache/semaphore/updates/semaphore-chat-native_1.4.0_amd64.deb'".into(),
+                        },
+                    },
+                    ..sample_desktop(LinkHandler::PackageOwned)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-update-failed", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    update: crate::update::UpdateStatus::Failed {
+                        message:
+                            "The download didn't match the release's SHA-256, so it was discarded."
+                                .into(),
+                        retryable: true,
+                    },
+                    ..sample_desktop(LinkHandler::PackageOwned)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-update-off", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    update: crate::update::UpdateStatus::Unknown,
+                    update_enabled: false,
+                    update_note: Some("This build has no update feed.".into()),
+                    ..sample_desktop(LinkHandler::PackageOwned)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-update-dev-build", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    update: crate::update::UpdateStatus::Unknown,
+                    update_enabled: false,
+                    update_note: Some(
+                        "Updates aren't available for the way this copy was installed.".into(),
                     ),
                     ..sample_desktop(LinkHandler::NotRegistered)
                 },

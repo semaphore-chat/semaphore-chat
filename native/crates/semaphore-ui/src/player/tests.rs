@@ -9,15 +9,15 @@ use crate::dms::rig::{Rig, rig};
 use crate::voice::VideoFrames;
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
-use semaphore_core::player::{PlaybackSource, PlaybackState, PlayerError, PlayerEvent};
+use semaphore_core::player::{AttachmentSource, PlaybackState, PlayerError, PlayerEvent};
 use std::time::Duration;
 
 fn secs(s: u64) -> Duration {
     Duration::from_secs(s)
 }
 
-fn source(kind: &str) -> PlaybackSource {
-    PlaybackSource {
+fn source(kind: &str) -> AttachmentSource {
+    AttachmentSource {
         file_id: format!("f-{kind}"),
         filename: format!("clip.{kind}"),
         mime_type: format!("{kind}/x"),
@@ -220,7 +220,7 @@ fn surface_keys() {
 
 fn playback(script: Script) -> (Playback, FakeOpener) {
     let (opener, fake) = FakeOpener::rc(script);
-    (Playback::new(source("video"), opener, None), fake)
+    (Playback::new(source("video").into(), opener, None), fake)
 }
 
 #[test]

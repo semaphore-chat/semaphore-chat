@@ -186,10 +186,7 @@ impl PlayerOpener for FakeOpener {
         events: PlayerEvents,
         surface: Option<PlayerSurface>,
     ) -> Box<dyn MediaPlayer> {
-        self.calls
-            .lock()
-            .unwrap()
-            .push(Call::Open(source.file_id.clone()));
+        self.calls.lock().unwrap().push(Call::Open(source.id()));
         *self.last.lock().unwrap() = Some(FakeHandle {
             events: events.clone(),
             surface: surface.clone(),

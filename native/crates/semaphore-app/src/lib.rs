@@ -19,6 +19,7 @@ pub mod runtime;
 pub mod services;
 pub mod settings;
 pub mod sounds;
+pub mod update;
 pub mod version;
 
 pub use version::version;
@@ -77,6 +78,12 @@ pub struct AppConfig {
     /// Who opens `semaphore://` links, and registering for them: the desktop's
     /// (`desktop::DesktopLinks`) in the app, a fake in the rig, `None` for "can't tell".
     pub links: Option<Arc<dyn desktop::LinkRegistrar>>,
+    /// W13: whether this build and install check for updates, and what it needs to.
+    pub update: update::UpdateStart,
+    /// W13: starts the app again once an AppImage update is in place. The app starts the new
+    /// build and quits (or returns why it couldn't, and keeps running); a rig records that it was
+    /// asked.
+    pub restart: Option<RestartApp>,
     /// W4: holds off system sleep during a call (`Core::set_keep_awake`): the desktop's
     /// (`DesktopKeepAwake`) in the app, a recorder in the rig, `None` for none. Never the
     /// desktop's in tests or rigs.
@@ -96,6 +103,10 @@ pub struct PickRequest {
 
 /// `AppConfig::pick_files`: the paths picked, or `None` when cancelled.
 pub type PickFiles = std::rc::Rc<dyn Fn(PickRequest, &mut App) -> Task<Option<Vec<PathBuf>>>>;
+
+/// `AppConfig::restart`: starts the updated build and quits, or says why it couldn't (the app then
+/// keeps running).
+pub type RestartApp = std::rc::Rc<dyn Fn(&mut App) -> Result<(), String>>;
 
 /// `AppConfig::save_path`: given the suggested file name, where to save it, or `None` when
 /// cancelled.

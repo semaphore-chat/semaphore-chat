@@ -15,6 +15,13 @@ png = "0.18"
 semaphore-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Auto-update (`src/update`): the client is built by `semaphore-net` (the app's TLS trust), so
+# this crate only names its type. `semver` orders releases, `sha2` verifies an artifact,
+# `url` decides whether a manifest's URLs may be fetched. All four are already in Cargo.lock.
+reqwest.workspace = true
+semver = "1"
+sha2 = "0.10"
+url = "2"
 # The sign-in-with-browser listener (`loopback`). Not zbus: see the Linux section below.
 tokio = { workspace = true, features = ["io-util", "net", "rt", "time"] }
 
@@ -59,4 +66,11 @@ windows = { version = "=0.62.2", features = [
 
 [dev-dependencies]
 proptest.workspace = true
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
+
+# The updater's tests build an HTTP client. In a workspace build reqwest is compiled with
+# semaphore-net's `rustls-no-provider`, so a client needs a crypto provider installed first --
+# which the app does in `services::start` and no test process does. ring is what net picks.
+# Linux only: ring needs MSVC headers, which the Windows checks in `verify.sh` don't have.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

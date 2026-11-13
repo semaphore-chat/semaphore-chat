@@ -715,6 +715,8 @@ fn desktop(
                 server_version: None,
                 links_note: None,
                 links_blocked: None,
+                update_enabled: true,
+                ..DesktopAppState::default()
             },
             cx,
         );
@@ -729,6 +731,7 @@ fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
     rig.click(cx, "desktop-link-preview-images");
     rig.click(cx, "desktop-register-links");
     rig.click(cx, "desktop-change-server");
+    rig.click(cx, "desktop-check-updates");
     assert_eq!(
         rig.events(),
         [
@@ -736,6 +739,7 @@ fn each_desktop_control_sends_its_event(cx: &mut TestAppContext) {
             DesktopAppEvent::SetLinkPreviewImages(true),
             DesktopAppEvent::RegisterLinkHandler,
             DesktopAppEvent::ChangeServer,
+            DesktopAppEvent::CheckForUpdates,
         ]
     );
 }

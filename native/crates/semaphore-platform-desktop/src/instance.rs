@@ -9,6 +9,14 @@
 //!
 //! The message is one line of JSON, at most [`MAX_MESSAGE`] bytes, answered with `ok`. Whatever
 //! arrives is still untrusted: links are only prefix-checked here and parsed by the app.
+//!
+//! **Handing over to an updated build** (Linux): [`PrimaryInstance::serve`] returns a
+//! [`ServingInstance`] the app keeps; [`ServingInstance::release`] stops the listener, removes the
+//! socket and unlocks, in that order, and returns once all three are done. The new build is started
+//! with `--after-update` *before* the old one shuts down, and calls [`acquire_after_update`]: it
+//! waits on the lock itself (never forwarding to the app that is about to go away), so it becomes
+//! the primary the moment the old one releases, whatever the timing. If it can't be started at
+//! all, the old app simply keeps running.
 
 use crate::links;
 use serde::{Deserialize, Serialize};
@@ -141,7 +149,15 @@ pub fn acquire(dir: &Path, forward: &Forward) -> io::Result<Instance> {
     platform::acquire(dir, forward)
 }
 
-pub use platform::PrimaryInstance;
+pub use platform::{PrimaryInstance, ServingInstance};
+
+/// For the process an update starts (`--after-update`): waits up to `patience` for the lock the
+/// previous app holds until it has shut down, then becomes the primary. Never forwards: the app
+/// holding the lock now is the one going away. `ErrorKind::TimedOut` when it never let go.
+#[cfg(unix)]
+pub fn acquire_after_update(dir: &Path, patience: Duration) -> io::Result<PrimaryInstance> {
+    platform::acquire_after_update(dir, patience)
+}
 
 #[cfg(unix)]
 mod platform {
@@ -149,6 +165,8 @@ mod platform {
     use std::fs::{File, OpenOptions, TryLockError};
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
     use std::os::unix::net::{UnixListener, UnixStream};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     pub struct PrimaryInstance {
         listener: UnixListener,
@@ -160,35 +178,65 @@ mod platform {
         dir.join("instance.sock")
     }
 
-    pub fn acquire(dir: &Path, forward: &Forward) -> io::Result<Instance> {
+    /// The private directory and the lock file in it, not yet locked.
+    fn open_lock(dir: &Path) -> io::Result<File> {
         std::fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)
             .create(dir)?;
         // An existing directory may have been made with a looser mode.
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-        let lock = OpenOptions::new()
+        OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
             .mode(0o600)
-            .open(dir.join("instance.lock"))?;
+            .open(dir.join("instance.lock"))
+    }
+
+    /// With `lock` held: listen.
+    fn become_primary(dir: &Path, lock: File) -> io::Result<PrimaryInstance> {
+        let socket = socket_path(dir);
+        // Holding the lock means any socket file is a dead (or departed) primary's.
+        match std::fs::remove_file(&socket) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+        let listener = UnixListener::bind(&socket)?;
+        std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
+        Ok(PrimaryInstance {
+            listener,
+            socket,
+            _lock: lock,
+        })
+    }
+
+    pub fn acquire_after_update(dir: &Path, patience: Duration) -> io::Result<PrimaryInstance> {
+        let lock = open_lock(dir)?;
+        // `flock` has no timeout, so a thread blocks on it and this one waits for its answer. The
+        // clone shares the open file description, so the lock it takes is `lock`'s.
+        let waiting = lock.try_clone()?;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("instance-handover".into())
+            .spawn(move || {
+                let _ = sender.send(waiting.lock());
+            })?;
+        match receiver.recv_timeout(patience) {
+            Ok(Ok(())) => become_primary(dir, lock),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the previous app still holds the single-instance lock",
+            )),
+        }
+    }
+
+    pub fn acquire(dir: &Path, forward: &Forward) -> io::Result<Instance> {
+        let lock = open_lock(dir)?;
         let socket = socket_path(dir);
         match lock.try_lock() {
-            Ok(()) => {
-                // Holding the lock means any socket file is a dead primary's.
-                match std::fs::remove_file(&socket) {
-                    Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-                    _ => {}
-                }
-                let listener = UnixListener::bind(&socket)?;
-                std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
-                Ok(Instance::Primary(PrimaryInstance {
-                    listener,
-                    socket,
-                    _lock: lock,
-                }))
-            }
+            Ok(()) => Ok(Instance::Primary(become_primary(dir, lock)?)),
             Err(TryLockError::WouldBlock) => {
                 // The primary may hold the lock a moment before it listens.
                 let deadline = Instant::now() + PATIENCE;
@@ -238,31 +286,104 @@ mod platform {
     }
 
     impl PrimaryInstance {
-        /// Answers second launches on a thread of its own, for the process's lifetime. `on_forward`
-        /// runs on that thread and mustn't block.
-        pub fn serve(self, on_forward: impl Fn(Forward) + Send + Sync + 'static) {
-            let spawned = std::thread::Builder::new()
-                .name("single-instance".into())
-                .spawn(move || {
-                    for stream in self.listener.incoming() {
-                        let Ok(stream) = stream else { continue };
-                        if !same_user(&stream) {
-                            log::warn!("single instance: refused a connection from another user");
-                            continue;
-                        }
-                        let _ = stream.set_read_timeout(Some(PATIENCE));
-                        let _ = stream.set_write_timeout(Some(PATIENCE));
-                        serve_one(stream, &on_forward);
-                    }
-                });
-            if let Err(error) = spawned {
-                log::warn!("single instance: cannot start its listener: {error}");
+        /// Answers second launches on a thread of its own until the returned [`ServingInstance`]
+        /// is released or dropped: keep it for the app's lifetime. `on_forward` runs on that
+        /// thread and mustn't block.
+        pub fn serve(
+            self,
+            on_forward: impl Fn(Forward) + Send + Sync + 'static,
+        ) -> ServingInstance {
+            let stop = Arc::new(AtomicBool::new(false));
+            // The thread accepts on a second descriptor of the same socket; this one stays here
+            // to shut it down.
+            let thread = match self.listener.try_clone() {
+                Ok(listener) => {
+                    let stopping = stop.clone();
+                    std::thread::Builder::new()
+                        .name("single-instance".into())
+                        .spawn(move || {
+                            for stream in listener.incoming() {
+                                if stopping.load(Ordering::Acquire) {
+                                    return;
+                                }
+                                let Ok(stream) = stream else { continue };
+                                if !same_user(&stream) {
+                                    log::warn!(
+                                        "single instance: refused a connection from another user"
+                                    );
+                                    continue;
+                                }
+                                let _ = stream.set_read_timeout(Some(PATIENCE));
+                                let _ = stream.set_write_timeout(Some(PATIENCE));
+                                serve_one(stream, &on_forward);
+                            }
+                        })
+                }
+                Err(error) => Err(error),
+            };
+            let thread = match thread {
+                Ok(thread) => Some(thread),
+                Err(error) => {
+                    log::warn!("single instance: cannot start its listener: {error}");
+                    None
+                }
+            };
+            ServingInstance {
+                primary: Some(self),
+                stop,
+                thread,
             }
+        }
+    }
+
+    /// A primary that is answering. Holds the lock until [`ServingInstance::release`] or drop.
+    #[must_use = "dropping it releases the single-instance lock"]
+    pub struct ServingInstance {
+        primary: Option<PrimaryInstance>,
+        stop: Arc<AtomicBool>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl ServingInstance {
+        /// Stops answering, removes the socket, then unlocks; returns when all three are done.
+        /// From here on a launch (the updated build waiting with `--after-update`) becomes the
+        /// primary.
+        pub fn release(mut self) {
+            self.release_now();
+        }
+
+        fn release_now(&mut self) {
+            let Some(primary) = self.primary.take() else {
+                return;
+            };
+            self.stop.store(true, Ordering::Release);
+            if let Some(thread) = self.thread.take() {
+                // Wake the thread's `accept`: Linux fails it on a shut-down listener; elsewhere a
+                // connection of our own does it. The thread sees `stop` and returns.
+                #[cfg(target_os = "linux")]
+                {
+                    use std::os::fd::AsRawFd as _;
+                    // SAFETY: the listening socket `primary` owns, open until it drops below.
+                    unsafe { libc::shutdown(primary.listener.as_raw_fd(), libc::SHUT_RDWR) };
+                }
+                let _ = UnixStream::connect(&primary.socket);
+                let _ = thread.join();
+            }
+            // Removes the socket, then closes the lock file, which drops the `flock`.
+            drop(primary);
+        }
+    }
+
+    impl Drop for ServingInstance {
+        fn drop(&mut self) {
+            self.release_now();
         }
     }
 
     impl Drop for PrimaryInstance {
         fn drop(&mut self) {
+            // The lock file closes after this, as a field: the socket is gone before anyone else
+            // can take the lock and bind it.
             let _ = std::fs::remove_file(&self.socket);
         }
     }
@@ -414,8 +535,16 @@ mod platform {
     }
 
     impl PrimaryInstance {
-        /// Answers second launches on a thread of its own, for the process's lifetime.
-        pub fn serve(mut self, on_forward: impl Fn(Forward) + Send + Sync + 'static) {
+        /// Answers second launches on a thread of its own; the mutex is held until the returned
+        /// [`ServingInstance`] is released or dropped. (The pipe thread lives for the process:
+        /// Windows never hands over to an updated build.)
+        pub fn serve(
+            mut self,
+            on_forward: impl Fn(Forward) + Send + Sync + 'static,
+        ) -> ServingInstance {
+            let serving = ServingInstance {
+                mutex: std::mem::replace(&mut self.mutex, std::ptr::null_mut()),
+            };
             let on_forward = std::sync::Arc::new(on_forward);
             let spawned = std::thread::Builder::new()
                 .name("single-instance".into())
@@ -451,13 +580,39 @@ mod platform {
             if let Err(error) = spawned {
                 log::warn!("single instance: cannot start its listener: {error}");
             }
+            serving
         }
     }
 
     impl Drop for PrimaryInstance {
         fn drop(&mut self) {
-            // SAFETY: created in `acquire`.
-            unsafe { CloseHandle(self.mutex) };
+            if !self.mutex.is_null() {
+                // SAFETY: created in `acquire`, not yet handed to a `ServingInstance`.
+                unsafe { CloseHandle(self.mutex) };
+            }
+        }
+    }
+
+    /// A primary that is answering. Holds the mutex until released or dropped.
+    #[must_use = "dropping it releases the single-instance mutex"]
+    pub struct ServingInstance {
+        mutex: HANDLE,
+    }
+
+    // SAFETY: a kernel object handle, usable from any thread.
+    unsafe impl Send for ServingInstance {}
+
+    impl ServingInstance {
+        /// Closes the mutex.
+        pub fn release(self) {}
+    }
+
+    impl Drop for ServingInstance {
+        fn drop(&mut self) {
+            if !self.mutex.is_null() {
+                // SAFETY: created in `acquire`; closed only here.
+                unsafe { CloseHandle(self.mutex) };
+            }
         }
     }
 }
@@ -492,7 +647,7 @@ mod tests {
     fn a_second_launch_forwards_its_links_and_token_to_the_first() {
         let dir = temp_dir("forward");
         let (sender, receiver) = mpsc::channel();
-        primary(&dir).serve(move |forward| sender.send(forward).unwrap());
+        let _serving = primary(&dir).serve(move |forward| sender.send(forward).unwrap());
 
         let sent = forward(&["semaphore://direct-messages"], Some("token-123"));
         assert!(matches!(acquire(&dir, &sent).unwrap(), Instance::Forwarded));
@@ -548,7 +703,7 @@ mod tests {
         use std::os::unix::net::UnixStream;
         let dir = temp_dir("malformed");
         let (sender, receiver) = mpsc::channel();
-        primary(&dir).serve(move |forward| sender.send(forward).unwrap());
+        let _serving = primary(&dir).serve(move |forward| sender.send(forward).unwrap());
         let socket = dir.join("instance.sock");
 
         for garbage in [
@@ -585,6 +740,93 @@ mod tests {
             receiver.recv_timeout(PATIENCE).unwrap(),
             forward(&["semaphore://join/abc"], None)
         );
+    }
+
+    /// The update handover: the new build, started while the old app still serves, waits on the
+    /// lock instead of forwarding to it, and is the primary as soon as the old one releases.
+    /// Later launches then reach the new one.
+    #[test]
+    fn an_updated_build_waits_for_the_lock_and_takes_over() {
+        let dir = temp_dir("handover");
+        let (old_sender, old_received) = mpsc::channel();
+        let old = primary(&dir).serve(move |forward| old_sender.send(forward).unwrap());
+
+        let (ready_sender, ready) = mpsc::channel();
+        let waiting = {
+            let dir = dir.clone();
+            std::thread::spawn(move || {
+                let result = acquire_after_update(&dir, Duration::from_secs(30));
+                ready_sender.send(()).unwrap();
+                result
+            })
+        };
+        // While the old app serves, the new one is still waiting: a plain launch still reaches
+        // the old app, and the waiting one has sent it nothing.
+        assert!(matches!(
+            acquire(&dir, &forward(&["semaphore://join/a"], None)).unwrap(),
+            Instance::Forwarded
+        ));
+        assert_eq!(
+            old_received.recv_timeout(PATIENCE).unwrap(),
+            forward(&["semaphore://join/a"], None)
+        );
+        assert!(
+            ready.try_recv().is_err(),
+            "it took over while the old app held the lock"
+        );
+
+        old.release();
+        let new = waiting
+            .join()
+            .unwrap()
+            .expect("the new build became the primary");
+        assert!(
+            old_received.try_recv().is_err(),
+            "the new build forwarded nothing"
+        );
+
+        let (new_sender, new_received) = mpsc::channel();
+        let _new = new.serve(move |forward| new_sender.send(forward).unwrap());
+        assert!(matches!(
+            acquire(&dir, &forward(&["semaphore://join/b"], None)).unwrap(),
+            Instance::Forwarded
+        ));
+        assert_eq!(
+            new_received.recv_timeout(PATIENCE).unwrap(),
+            forward(&["semaphore://join/b"], None)
+        );
+    }
+
+    /// An old app that never lets go: the new build gives up after its patience.
+    #[test]
+    fn waiting_for_the_lock_times_out() {
+        let dir = temp_dir("handover-timeout");
+        let _old = primary(&dir).serve(|_| {});
+        let error = acquire_after_update(&dir, Duration::from_millis(200))
+            .err()
+            .expect("the lock is held");
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    }
+
+    /// With no app running, an updated build is the primary at once.
+    #[test]
+    fn an_updated_build_with_nobody_running_starts_at_once() {
+        let dir = temp_dir("handover-free");
+        let _new = acquire_after_update(&dir, Duration::from_secs(5)).unwrap();
+        assert!(dir.join("instance.sock").exists());
+    }
+
+    /// Releasing (or dropping) a serving instance stops its thread, removes the socket and frees
+    /// the lock, all before it returns: the next launch is the primary.
+    #[test]
+    fn releasing_frees_the_lock_and_the_socket_before_returning() {
+        let dir = temp_dir("release");
+        primary(&dir).serve(|_| {}).release();
+        assert!(!dir.join("instance.sock").exists());
+        let again = primary(&dir).serve(|_| {});
+        drop(again);
+        assert!(!dir.join("instance.sock").exists());
+        let _third = primary(&dir);
     }
 
     #[test]

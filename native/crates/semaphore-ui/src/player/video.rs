@@ -14,13 +14,14 @@ use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::slider::{SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::player::PlaybackSource;
+use semaphore_core::player::AttachmentSource;
 use semaphore_design::Icon as IconName;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 pub struct VideoPlayer {
+    source: AttachmentSource,
     playback: Playback,
     scrub: Scrub,
     poster: Option<ImageSource>,
@@ -43,13 +44,13 @@ impl VideoPlayer {
     /// attachment's dimensions ([`model::video_box`]); give it [`Self::set_poster`] for the
     /// thumbnail.
     pub fn new(
-        source: PlaybackSource,
+        source: AttachmentSource,
         dimensions: (Option<u32>, Option<u32>),
         opener: Rc<dyn PlayerOpener>,
         frames: Arc<VideoFrames>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let playback = Playback::new(source, opener, Some(frames));
+        let playback = Playback::new(source.clone().into(), opener, Some(frames));
         let inbox = playback.inbox.clone();
         let task = cx.spawn(async move |this, cx| {
             loop {
@@ -73,6 +74,7 @@ impl VideoPlayer {
             }
         });
         Self {
+            source,
             playback,
             scrub: Scrub::default(),
             poster: None,
@@ -119,8 +121,8 @@ impl VideoPlayer {
     }
 
     /// The attachment this plays.
-    pub fn source(&self) -> &semaphore_core::player::PlaybackSource {
-        &self.playback.source
+    pub fn source(&self) -> &AttachmentSource {
+        &self.source
     }
 
     /// Stops for good and frees the file (a sign-out); the next play opens it again.
@@ -223,7 +225,7 @@ impl VideoPlayer {
     }
 
     fn emit_for_file(&self, cx: &mut Context<Self>, make: fn(String) -> PlayerViewEvent) {
-        cx.emit(make(self.playback.source.file_id.clone()));
+        cx.emit(make(self.source.file_id.clone()));
     }
 
     fn picture(&self, picture: Picture, radius: Pixels) -> AnyElement {
@@ -273,10 +275,13 @@ impl VideoPlayer {
                             .size(18.)
                             .color(white().opacity(0.75)),
                     )
-                    .child(div().flex_1().min_w_0().truncate().child(text(
-                        Variant::Caption,
-                        self.playback.source.filename.clone(),
-                    )))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .child(text(Variant::Caption, self.source.filename.clone())),
+                    )
                     .into_any_element(),
             },
         }
@@ -476,7 +481,7 @@ impl VideoPlayer {
                 .text_color(white())
                 .child(text(
                     Variant::Xs,
-                    crate::format::file_size(self.playback.source.size),
+                    crate::format::file_size(self.source.size),
                 ))
         });
         div()

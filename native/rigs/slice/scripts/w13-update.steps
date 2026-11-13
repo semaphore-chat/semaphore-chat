@@ -1,0 +1,47 @@
+# W13: the updater end to end, against the release feed the rig hosts on loopback (--update). The
+# feed's version is newer than this build's, so the app checks at once, downloads, verifies the
+# SHA-256 and replaces the stand-in AppImage in the run's data directory; "Restart to update" asks
+# the app's restart seam (the rig records it and starts nothing). No release is contacted and no
+# file outside the run's data directory is touched.
+
+app 1280 800
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core connection connected
+
+# The check starts with the app; the card appears once the file is verified and in place.
+wait core w13 state ready within 20
+wait core w13 banner 9.9.9 within 5
+wait core w13 appimage updated within 5
+wait idle
+shot 01-update-ready
+
+# The same news, and the manual check, in the settings.
+navigate /settings
+wait core route settings
+click settings-tab-desktop
+wait core element desktop-update-status
+wait idle
+shot 02-update-settings
+
+# "Check for updates" asks the feed again (the first check was the start-up one).
+expect core w13 checks 1
+click desktop-check-updates
+wait core w13 checks 2 within 10
+wait core w13 state ready within 10
+
+# "Restart to update" through the seam.
+click update-restart
+wait core w13 restart-asked 1 within 5
+
+# Dismissing the card is per version, and remembered.
+click update-dismiss
+wait core w13 banner none within 5
+expect settings /dismissed_update "9.9.9"

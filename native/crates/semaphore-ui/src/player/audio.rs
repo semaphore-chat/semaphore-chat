@@ -11,7 +11,7 @@ use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::slider::{SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::player::PlaybackSource;
+use semaphore_core::player::AttachmentSource;
 use semaphore_design::Icon as IconName;
 use std::rc::Rc;
 
@@ -19,6 +19,7 @@ use std::rc::Rc;
 const PHONE_WIDTH: f32 = 600.;
 
 pub struct AudioPlayer {
+    source: AttachmentSource,
     playback: Playback,
     scrub: Scrub,
     focus: FocusHandle,
@@ -32,11 +33,11 @@ impl EventEmitter<PlayerViewEvent> for AudioPlayer {}
 impl AudioPlayer {
     /// A row for `source`, opened through `opener` on the first play (with no surface).
     pub fn new(
-        source: PlaybackSource,
+        source: AttachmentSource,
         opener: Rc<dyn PlayerOpener>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let playback = Playback::new(source, opener, None);
+        let playback = Playback::new(source.clone().into(), opener, None);
         let inbox = playback.inbox.clone();
         let task = cx.spawn(async move |this, cx| {
             loop {
@@ -60,6 +61,7 @@ impl AudioPlayer {
             }
         });
         Self {
+            source,
             playback,
             scrub: Scrub::default(),
             focus: cx.focus_handle(),
@@ -78,8 +80,8 @@ impl AudioPlayer {
     }
 
     /// The attachment this plays.
-    pub fn source(&self) -> &semaphore_core::player::PlaybackSource {
-        &self.playback.source
+    pub fn source(&self) -> &AttachmentSource {
+        &self.source
     }
 
     /// Stops for good and frees the file (a sign-out); the next play opens it again.
@@ -125,7 +127,7 @@ impl AudioPlayer {
     }
 
     fn emit_for_file(&self, cx: &mut Context<Self>, make: fn(String) -> PlayerViewEvent) {
-        cx.emit(make(self.playback.source.file_id.clone()));
+        cx.emit(make(self.source.file_id.clone()));
     }
 
     fn main_button(&self, button: MainButton, ink: Ink, cx: &mut Context<Self>) -> AnyElement {
@@ -231,7 +233,7 @@ impl Render for AudioPlayer {
         let (text_primary, text_secondary) = (sem.text_primary, sem.text_secondary);
         let ink = Ink::on_card(cx);
         let (button, failure) = model::audio_shown(&self.playback.phase);
-        let source = &self.playback.source;
+        let source = &self.source;
         let name = div()
             .flex()
             .items_baseline()

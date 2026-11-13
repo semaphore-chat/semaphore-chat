@@ -12,7 +12,7 @@ use crate::client::{Core, State};
 use crate::commands::calls::ReplayOp;
 use crate::model::{
     CaptureRequest, CapturedClip, Clip, ClipDestination, ClipsView, ErrorView, PreviewSegment,
-    ReplayMinutes, ReplaySessionView, ReplayState, ViewKey, VoiceRoom,
+    ReplayMinutes, ReplaySessionView, ReplayState, SegmentFailure, ViewKey, VoiceRoom,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -63,6 +63,11 @@ fn wire_minutes(minutes: ReplayMinutes) -> ReplayDurationMinutes {
 /// The segments of an HLS playlist, in order, with their `#EXTINF` lengths. Each URI's file name
 /// is all the server's segment route needs, so a relative or absolute URI alike becomes
 /// `{base}/api/livekit/replay/preview/segment/{file}`.
+/// Whether a segment fetch that failed with this status is worth trying again.
+fn segment_transient(status: u16, retryable: bool) -> bool {
+    retryable || status == 0 || status == 429 || status >= 500
+}
+
 pub(crate) fn parse_playlist(text: &str, base: &str) -> Vec<PreviewSegment> {
     let mut segments = Vec::new();
     let mut duration_ms = None;
@@ -291,22 +296,43 @@ impl Core {
     /// One preview segment's bytes (MPEG-TS), fetched with this session's token, for a player
     /// that can't add `Authorization` itself.
     pub async fn replay_segment(&self, segment: PreviewSegment) -> Result<Vec<u8>, CoreError> {
+        self.fetch_replay_segment(segment)
+            .await
+            .map_err(|failure| failure.error)
+    }
+
+    /// [`Core::replay_segment`], saying whether a failure is worth retrying: no response, a 5xx
+    /// or a 429 is; a refusal (4xx), a URL that isn't a segment or no session isn't. For the
+    /// desktop player's segment reader.
+    pub async fn fetch_replay_segment(
+        &self,
+        segment: PreviewSegment,
+    ) -> Result<Vec<u8>, SegmentFailure> {
+        let lasting = |error| SegmentFailure {
+            transient: false,
+            error,
+        };
         let services = self
             .services()
-            .ok_or_else(|| unavailable("the replay preview"))?;
+            .ok_or_else(|| lasting(unavailable("the replay preview")))?;
         let file = segment
             .url
             .rsplit('/')
             .next()
             .filter(|file| !file.is_empty())
-            .ok_or_else(|| CoreError::Failed {
-                message: "not a replay segment".into(),
+            .ok_or_else(|| {
+                lasting(CoreError::Failed {
+                    message: "not a replay segment".into(),
+                })
             })?;
         services
             .backend
             .livekit_controller_get_preview_segment(file.to_owned())
             .await
-            .map_err(|error| self.backend_failed(error))
+            .map_err(|error| SegmentFailure {
+                transient: segment_transient(error.status, error.retryable),
+                error: self.backend_failed(error),
+            })
     }
 
     /// The last `minutes` of the buffer as MP4 bytes, saved nowhere on the server ("Download only",
@@ -520,7 +546,23 @@ impl Core {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_playlist;
+    use super::{parse_playlist, segment_transient};
+
+    #[test]
+    fn only_no_answer_5xx_and_429_are_worth_another_try() {
+        for (status, retryable, want) in [
+            (0, false, true),
+            (429, false, true),
+            (500, false, true),
+            (503, false, true),
+            (400, false, false),
+            (401, false, false),
+            (404, false, false),
+            (404, true, true),
+        ] {
+            assert_eq!(segment_transient(status, retryable), want, "{status}");
+        }
+    }
 
     #[test]
     fn a_playlist_without_lengths_or_with_queries_still_lists_its_segments() {

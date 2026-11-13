@@ -642,3 +642,232 @@ mod properties {
         }
     }
 }
+
+// ---- The trim preview. ----
+
+mod preview {
+    use super::*;
+    use crate::player::Players;
+    use crate::player::fake::{Call, FakeOpener, Script};
+    use crate::voice::VideoFrames;
+    use gpui_kit::point;
+    use gpui_kit::test::TestWindowExt as _;
+    use semaphore_core::player::{PlaybackState, PlayerEvent};
+    use std::time::Duration;
+
+    const S: Duration = Duration::from_secs(1);
+
+    type TrimRig = crate::dms::rig::Rig<TrimTimeline, TrimEvent>;
+
+    /// A shown timeline over 100 s of buffer (the selection 40..100), with players when `fake`.
+    fn timeline(cx: &mut TestAppContext, fake: Option<&FakeOpener>) -> TrimRig {
+        let rig = rig(cx, 1000., |_, cx| TrimTimeline::new(cx));
+        let opener = fake.cloned();
+        rig.with(cx, move |trim, window, cx| {
+            let players = opener.map(|opener| {
+                Players::new(std::rc::Rc::new(opener), VideoFrames::for_window(window))
+            });
+            trim.update(cx, |trim, cx| {
+                trim.set_players(players, cx);
+                trim.set_session(session(100), cx);
+                trim.set_session_id(Some("s".into()), cx);
+                trim.set_shown(true, cx);
+            })
+        });
+        // The engine says Paused once it has opened without a play; the fake leaves that to us.
+        if let Some(fake) = fake {
+            rig.with(cx, |_, _, _| {
+                fake.handle()
+                    .emit(PlayerEvent::State(PlaybackState::Paused))
+            });
+        }
+        rig.clear();
+        rig
+    }
+
+    fn opened_at_start() -> FakeOpener {
+        FakeOpener::new(Script::video().at(40 * S, PlaybackState::Playing))
+    }
+
+    fn position(rig: &TrimRig, cx: &mut TestAppContext) -> Duration {
+        rig.with(cx, |trim, _, cx| {
+            trim.read(cx)
+                .preview_entity()
+                .map(|preview| preview.read(cx).position())
+                .expect("a preview")
+        })
+    }
+
+    #[gpui_kit::test]
+    fn the_slot_is_filled_only_with_a_player(cx: &mut TestAppContext) {
+        let rig = timeline(cx, None);
+        assert!(rig.with(cx, |trim, _, cx| trim.read(cx).preview().is_none()));
+        assert!(!rig.has(cx, "trim-preview"));
+        assert!(rig.has(cx, "trim-refresh"), "Refresh stays in the header");
+
+        let fake = opened_at_start();
+        let rig = timeline(cx, Some(&fake));
+        assert!(rig.with(cx, |trim, _, cx| trim.read(cx).preview().is_some()));
+        assert!(rig.has(cx, "trim-preview"));
+        assert!(rig.has(cx, "trim-playhead"));
+        assert_eq!(
+            fake.calls(),
+            [Call::Open("replay:s".into())],
+            "opened, paused"
+        );
+        assert_eq!(position(&rig, cx), 40 * S);
+        // Hidden (the dialog's trim closed): the player goes.
+        rig.with(cx, |trim, _, cx| {
+            trim.update(cx, |trim, cx| trim.set_shown(false, cx))
+        });
+        assert_eq!(fake.alive(), 0);
+        assert!(!rig.has(cx, "trim-preview"));
+    }
+
+    #[gpui_kit::test]
+    fn loop_on_wraps_to_the_start(cx: &mut TestAppContext) {
+        let fake = opened_at_start();
+        let rig = timeline(cx, Some(&fake));
+        rig.click(cx, "trim-loop");
+        rig.click(cx, "trim-play-selection");
+        assert_eq!(fake.calls()[1..], [Call::Seek(40 * S), Call::Play]);
+        fake.clear();
+        rig.with(cx, |_, _, _| {
+            fake.handle()
+                .emit(PlayerEvent::Position(Duration::from_millis(99_950)))
+        });
+        assert_eq!(fake.calls(), [Call::Seek(40 * S)], "back to the start");
+        assert_eq!(position(&rig, cx), 40 * S);
+        // The buffer ending before a position reached the end (they come every 250 ms) loops too.
+        fake.clear();
+        rig.with(cx, |_, _, _| {
+            fake.handle().emit(PlayerEvent::State(PlaybackState::Ended))
+        });
+        assert_eq!(fake.calls(), [Call::Seek(40 * S), Call::Play]);
+    }
+
+    #[gpui_kit::test]
+    fn loop_off_pauses_at_the_end(cx: &mut TestAppContext) {
+        let fake = opened_at_start();
+        let rig = timeline(cx, Some(&fake));
+        rig.click(cx, "trim-play");
+        assert_eq!(fake.calls()[1..], [Call::Play]);
+        fake.clear();
+        rig.with(cx, |_, _, _| {
+            fake.handle().emit(PlayerEvent::Position(70 * S))
+        });
+        assert!(fake.calls().is_empty(), "inside the selection");
+        rig.with(cx, |_, _, _| {
+            fake.handle().emit(PlayerEvent::Position(100 * S))
+        });
+        assert_eq!(fake.calls(), [Call::Pause]);
+        // Play again at the end starts the selection over.
+        fake.clear();
+        rig.click(cx, "trim-play");
+        assert_eq!(fake.calls(), [Call::Seek(40 * S), Call::Play]);
+        // Jump to end lands a second before it.
+        fake.clear();
+        rig.click(cx, "trim-jump-end");
+        rig.click(cx, "trim-jump-start");
+        assert_eq!(fake.calls(), [Call::Seek(99 * S), Call::Seek(40 * S)]);
+    }
+
+    #[gpui_kit::test]
+    fn a_press_on_the_track_seeks_and_a_start_past_the_playhead_takes_it(cx: &mut TestAppContext) {
+        let fake = opened_at_start();
+        let rig = timeline(cx, Some(&fake));
+        fake.clear();
+        // A quarter along, away from both handles (at 40% and 100%): 25 s.
+        rig.with(cx, |_, window, cx| {
+            let bounds = window.find("trim-track").bounds();
+            let at = point(bounds.size.width * 0.25, bounds.size.height / 2.);
+            window.click_at("trim-track", at, cx);
+        });
+        let seeks: Vec<Call> = fake.calls();
+        let [Call::Seek(to)] = seeks.as_slice() else {
+            panic!("one seek: {seeks:?}");
+        };
+        assert!(to.abs_diff(25 * S) < S, "{to:?}");
+        assert!(rig.events().is_empty(), "no handle moved");
+        // The start dragged past the playhead (25 s) takes it along.
+        fake.clear();
+        rig.with(cx, |trim, _, cx| {
+            trim.update(cx, |trim, cx| trim.set_handle(model::Handle::Start, 60, cx))
+        });
+        assert_eq!(fake.calls(), [Call::Seek(60 * S)]);
+        // Behind the playhead it stays.
+        fake.clear();
+        rig.with(cx, |trim, _, cx| {
+            trim.update(cx, |trim, cx| trim.set_handle(model::Handle::Start, 50, cx))
+        });
+        assert!(fake.calls().is_empty());
+    }
+
+    #[gpui_kit::test]
+    fn refresh_reopens_at_the_playhead_and_a_failure_retries(cx: &mut TestAppContext) {
+        let fake = opened_at_start();
+        let rig = timeline(cx, Some(&fake));
+        rig.with(cx, |trim, _, cx| {
+            trim.update(cx, |trim, cx| trim.set_session(session(130), cx))
+        });
+        rig.with(cx, |_, _, _| {
+            fake.handle().emit(PlayerEvent::Position(70 * S))
+        });
+        fake.clear();
+        rig.clear();
+        rig.click(cx, "trim-refresh");
+        assert_eq!(fake.calls(), [Call::Open("replay:s".into())]);
+        assert_eq!(
+            rig.events(),
+            [TrimEvent::Changed(ReplayTrim {
+                start_seconds: 40,
+                end_seconds: 130
+            })]
+        );
+        assert_eq!(fake.alive(), 1, "the old player went");
+
+        fake.set_script(Script::failing(
+            semaphore_core::player::PlayerError::Network,
+        ));
+        rig.click(cx, "trim-refresh");
+        assert!(rig.has(cx, "trim-preview-error"));
+        fake.set_script(Script::video().at(40 * S, PlaybackState::Playing));
+        fake.clear();
+        rig.click(cx, "trim-preview-retry");
+        assert_eq!(fake.calls(), [Call::Open("replay:s".into())]);
+        assert!(!rig.has(cx, "trim-preview-error"));
+    }
+
+    #[gpui_kit::test]
+    fn a_preview_without_sound_says_so(cx: &mut TestAppContext) {
+        let mut script = Script::video().at(40 * S, PlaybackState::Playing);
+        if let Some(Ok(meta)) = &mut script.open {
+            meta.has_audio = false;
+        }
+        let fake = FakeOpener::new(script);
+        let rig = timeline(cx, Some(&fake));
+        assert!(rig.has(cx, "trim-preview-video-only"));
+        let rig = timeline(cx, Some(&opened_at_start()));
+        assert!(!rig.has(cx, "trim-preview-video-only"));
+    }
+}
+
+#[test]
+fn with_a_preview_only_a_press_on_a_handle_grabs_it() {
+    // 100 s over 1000 px: the start at 400 px, the end at 1000 px.
+    let range = range(100, 40, 100);
+    assert_eq!(range.handle_at(400., 1000.), Some(Handle::Start));
+    assert_eq!(range.handle_at(390., 1000.), Some(Handle::Start));
+    assert_eq!(range.handle_at(411., 1000.), None);
+    assert_eq!(range.handle_at(250., 1000.), None);
+    assert_eq!(range.handle_at(995., 1000.), Some(Handle::End));
+    assert_eq!(range.handle_at(400., 0.), None);
+    // Handles a pixel apart: the nearer.
+    let tight = TrimRange {
+        max: 1000,
+        start: 500,
+        end: 501,
+    };
+    assert_eq!(tight.handle_at(499., 1000.), Some(Handle::Start));
+    assert_eq!(tight.handle_at(502., 1000.), Some(Handle::End));
+}

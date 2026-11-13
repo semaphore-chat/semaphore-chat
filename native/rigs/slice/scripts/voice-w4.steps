@@ -149,6 +149,39 @@ wait core label "Replay clip downloaded successfully!"
 # The toast sits over the bar's middle until it goes by itself.
 tick 5000
 wait core no-element replay-toast
+
+# W14: the trim's preview plays the buffer (the fake server's six 10 s segments; this build has no
+# AAC, so video only). It opens paused at the selection's start (0:00 of 1:00).
+click voice-capture
+wait core dialog capture open
+expect core preview-players 0
+click capture-trim
+wait core preview paused within 30
+wait core preview-frames within 15
+expect core preview-sound no
+wait core element trim-preview-video-only
+expect core preview-players 1
+click trim-play-selection
+wait core preview playing within 15
+wait core preview-at above 0.5 within 15
+# Loop on: from a second before the end, the playhead wraps to the start and plays on.
+click trim-loop
+click trim-jump-end
+wait core preview-at above 58 within 15
+wait core preview-at below 5 within 15
+wait core preview playing
+# Loop off: from a second before the end, it stops there (paused, or ended where the selection
+# ends with the buffer).
+click trim-loop
+click trim-jump-end
+wait core preview-at above 58 within 15
+wait core preview stopped within 15
+expect core preview-at above 58
+# Closed, no player is left open.
+click capture-cancel
+wait core dialog capture closed
+wait core preview none
+wait core preview-players 0
 click voice-share
 wait core voice screen off within 15
 wait core replay off within 15

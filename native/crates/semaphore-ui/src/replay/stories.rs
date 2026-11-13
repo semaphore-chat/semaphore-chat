@@ -15,6 +15,8 @@ use gpui_kit::*;
 use semaphore_core::model::{
     Clip, ClipsView, ErrorView, LoadState, ReplaySessionView, ReplayState,
 };
+use semaphore_core::player::{PlaybackState, PlayerError, PlayerEvent};
+use std::time::Duration;
 
 /// 2026-11-08 15:04 UTC.
 const CAPTURED: i64 = 1_794_150_240_000;
@@ -74,6 +76,26 @@ struct Capture {
     trim_on: bool,
     busy: bool,
     failed: Option<&'static str>,
+    preview: Option<Preview>,
+}
+
+/// The trim's preview on a fake player: what opening finds, the state the engine then reports,
+/// and Loop.
+struct Preview {
+    script: Script,
+    state: Option<PlaybackState>,
+    looping: bool,
+}
+
+impl Preview {
+    /// Opened on the default trim (3:12 to 4:12 of a 4:12 buffer) at `seconds`, then `state`.
+    fn at(seconds: u64, state: PlaybackState) -> Self {
+        Self {
+            script: Script::video().at(Duration::from_secs(seconds), state.clone()),
+            state: Some(state),
+            looping: false,
+        }
+    }
 }
 
 impl Capture {
@@ -88,12 +110,29 @@ impl Capture {
             trim_on: false,
             busy: false,
             failed: None,
+            preview: None,
+        }
+    }
+
+    fn preview(preview: Preview) -> Self {
+        Self {
+            trim_on: true,
+            preview: Some(preview),
+            ..Self::new()
         }
     }
 
     fn story(self, window: &mut Window, cx: &mut App) -> AnyView {
+        let fake = self
+            .preview
+            .as_ref()
+            .map(|preview| FakeOpener::new(preview.script.clone()));
+        let players = fake
+            .clone()
+            .map(|fake| Players::new(std::rc::Rc::new(fake), VideoFrames::for_window(window)));
         let dialog = cx.new(|cx| {
             let mut dialog = CaptureReplayDialog::new(window, cx);
+            dialog.set_players(players, cx);
             dialog.set_state(self.state, self.session, cx);
             dialog.set_target(self.target, cx);
             if self.lists {
@@ -114,6 +153,18 @@ impl Capture {
             dialog.set_failed(self.failed.map(str::to_owned), cx);
             dialog
         });
+        if let (Some(preview), Some(fake)) = (self.preview, fake) {
+            if let Some(state) = preview.state {
+                fake.handle().emit(PlayerEvent::State(state));
+            }
+            let trim = dialog.read(cx).trim().clone();
+            let entity = trim.read(cx).preview_entity().cloned();
+            if let Some(entity) = entity {
+                entity.update(cx, |preview_view, cx| {
+                    preview_view.set_looping(preview.looping, cx)
+                });
+            }
+        }
         dialog_framed(dialog.into(), cx)
     }
 }
@@ -391,6 +442,41 @@ pub fn stories() -> Vec<Story> {
                 target: CaptureTarget::Download,
                 ..Capture::new()
             }
+            .story(window, cx)
+        }),
+        // The trim's preview, on a fake player.
+        Story::new("replay-preview-loading", |_, window, cx| {
+            Capture::preview(Preview {
+                script: Script::loading(),
+                state: None,
+                looping: false,
+            })
+            .story(window, cx)
+        }),
+        Story::new("replay-preview-playing", |_, window, cx| {
+            Capture::preview(Preview::at(215, PlaybackState::Playing)).story(window, cx)
+        }),
+        Story::new("replay-preview-paused-at-handle", |_, window, cx| {
+            // Opened at the selection's start, in a build that plays it without sound.
+            let mut preview = Preview::at(192, PlaybackState::Paused);
+            if let Some(Ok(meta)) = &mut preview.script.open {
+                meta.has_audio = false;
+            }
+            Capture::preview(preview).story(window, cx)
+        }),
+        Story::new("replay-preview-loop", |_, window, cx| {
+            Capture::preview(Preview {
+                looping: true,
+                ..Preview::at(240, PlaybackState::Playing)
+            })
+            .story(window, cx)
+        }),
+        Story::new("replay-preview-error", |_, window, cx| {
+            Capture::preview(Preview {
+                script: Script::failing(PlayerError::Network),
+                state: None,
+                looping: false,
+            })
             .story(window, cx)
         }),
         // The library.

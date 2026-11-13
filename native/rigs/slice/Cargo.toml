@@ -19,6 +19,9 @@ semaphore-app = { path = "../../crates/semaphore-app" }
 semaphore-core.workspace = true
 semaphore-fake-server = { path = "../../crates/semaphore-fake-server" }
 semaphore-media-livekit.workspace = true
+# W13: the rig hosts the update feed and names an AppImage install.
+semaphore-platform-desktop.workspace = true
+sha2 = "0.10"
 semaphore-ui.workspace = true
 serde_json.workspace = true
 # `core revoke-other-sessions` runs the command on a runtime of its own while the rig waits.

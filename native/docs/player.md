@@ -168,7 +168,51 @@ crate isn't linked at all. Bytes, MB = 10^6:
 - **The fake server** answers `Range` on `GET /api/file/{id}` as the backend does (206 with
   `Content-Range`, 416 with `bytes */size`).
 
-Not in this round: HLS (the replay preview's MPEG-TS) and the feature on by default.
+Not in this round: the feature on by default.
+
+## The replay preview's segments (W14, lane 1)
+
+The trim preview plays the replay buffer's HLS (`GET /livekit/replay/preview/playlist.m3u8`,
+segments of MPEG-TS with H.264 and AAC, `#EXTINF:10.0` each). The FFmpeg here has no MPEG-TS
+demuxer, so:
+
+- **`src/ts.rs`** demuxes by hand: 188- or 192-byte (M2TS, LiveKit egress's "HDMV-style")
+  packets found by sync spacing, PAT and PMT with CRC-32, PES with 33-bit PTS/DTS, ADTS frames
+  split and timed. H.264 (0x1B) and AAC (0x0F) are read; Opus in TS (0x06 with an `Opus`
+  registration) and anything else is listed and refused. A continuity gap drops the PES it broke.
+- **The shim's `sp_decoder`** decodes those units with the same FFmpeg decoders (Annex B H.264,
+  ADTS AAC, parameters in band). AAC stays behind the `aac` feature: without it the preview is
+  video only.
+- **`src/segments.rs`** (`Media::open_segments`, or `Opened::Segments` from an `Opener`): segment
+  `i` starts at the sum of the `#EXTINF` lengths before it and time inside it counts from its
+  first video PTS, the model the backend captures with. A seek decodes from the segment's last
+  keyframe at or before the target. Segments come through `SegmentFetch` (the app's will call
+  `Core::replay_segment`), retried 3 times for transient failures, the next one prefetched, kept
+  in a 64 MiB cache; the opened segment is fetched first, so opening at the selection's start
+  doesn't fetch the buffer's beginning.
+- **Fixtures**: `fixtures/ts/` (gen.sh): three 10 s segments cut by ffmpeg's HLS muxer (red, green,
+  blue; 440, 660, 880 Hz; a keyframe every 2 s), segment 1 again as M2TS, and H.264 with Opus.
+- **Core and the app (lane 2):** `PlaybackSource` is an enum, `Attachment(AttachmentSource)` (the
+  old struct, renamed) or `ReplayBuffer { session_id, segments, start }`. The app's opener plays
+  the latter as `Opened::Segments`: an empty `segments` is listed on the player's thread
+  (`Core::replay_preview`), each segment fetched by `CoreSegments` through
+  `Core::fetch_replay_segment` (no answer, 5xx, 429: `Transient`; a refusal: `Failed`; a cancelled
+  player: `Cancelled`). `semaphore_core::player::selection_step` is the web's end-of-selection
+  rule (within 0.1 s of the end: loop to the start, or pause). The fake server serves these
+  fixtures as the preview's segments (`fixtures/replay/`, segment `i` is fixture `i % 3`).
+- **The trim preview (lane 3):** `semaphore_ui::replay::TrimPreview` above the capture dialog's
+  trim timeline, only while the trim is shown and the window has `Players` (the app's `player`
+  feature). It opens paused at the selection's start; the web's controls (jump to start,
+  play/pause, play selection from start, jump to end less 1 s, Loop off at first, Refresh
+  segments); `selection_step` on every position while playing. The timeline draws the playhead; a
+  press on a handle drags it, anywhere else seeks; a start dragged past the playhead takes it
+  along; Refresh reopens the preview at the playhead with the newest playlist. States: loading,
+  "Could not load the video preview. Please try again." with Retry, and "Video only" when no
+  sound track is decoded (no `aac`). Stories `replay-preview-*` (`rigs/shot/scripts/
+  w14-trim-preview.steps`); `rigs/slice/scripts/voice-w4.steps` plays it against the fake
+  server's segments (video only: the `--voice` build has no AAC).
+- **Not verified yet** against a segment LiveKit egress wrote (raw and remuxed), nor which audio
+  codec egress uses when it falls back to its `H264_1080P_30` preset.
 
 ## In the app (W3-player-wire)
 

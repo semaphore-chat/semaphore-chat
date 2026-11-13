@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 /// The settings file's name inside the data directory.
 pub const SETTINGS_FILE: &str = "settings.json";
 /// The schema version this build reads and writes.
-pub const CURRENT_VERSION: u32 = 3;
+pub const CURRENT_VERSION: u32 = 4;
 /// A user's volume, in percent, is clamped to this.
 pub const MAX_USER_VOLUME: u8 = 200;
 
@@ -211,6 +211,9 @@ pub struct Settings {
     /// W4: the DM call's stage share of the column's height (0..1), as the web's
     /// `semaphore_dm_stage_ratio`. `None`: the default split.
     pub dm_stage_ratio: Option<f32>,
+    /// W13: the release version whose update card the user dismissed, so the card stays away
+    /// until a newer release. `None`: nothing dismissed.
+    pub dismissed_update: Option<String>,
 }
 
 impl Default for Settings {
@@ -228,6 +231,7 @@ impl Default for Settings {
             theme: None,
             float_placements: BTreeMap::new(),
             dm_stage_ratio: None,
+            dismissed_update: None,
         }
     }
 }
@@ -463,6 +467,7 @@ fn migrate(from_version: u32, mut value: Value) -> Value {
             0 => migrate_v0_to_v1(value),
             1 => migrate_v1_to_v2(value),
             2 => migrate_v2_to_v3(value),
+            3 => migrate_v3_to_v4(value),
             _ => value,
         };
         version += 1;
@@ -523,6 +528,15 @@ fn migrate_v2_to_v3(mut value: Value) -> Value {
             .entry("third_party_media")
             .or_insert(Value::Bool(was_on));
         object.insert("version".to_owned(), Value::from(3));
+    }
+    value
+}
+
+/// v4 adds the dismissed update version, which starts empty.
+fn migrate_v3_to_v4(mut value: Value) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        object.entry("dismissed_update").or_insert(Value::Null);
+        object.insert("version".to_owned(), Value::from(4));
     }
     value
 }
@@ -810,6 +824,32 @@ mod tests {
         assert_eq!(saved["voice"]["input_mode"]["mode"], "push_to_talk");
         assert_eq!(saved["voice"]["mic_quality"], "standard");
         assert!(saved["voice"].get("push_to_talk").is_none());
+    }
+
+    #[test]
+    fn a_v3_file_gets_no_dismissed_update() {
+        let dir = TempDir::new();
+        std::fs::write(
+            dir.file(),
+            r#"{"version":3,"close_to_tray":false,"third_party_media":true}"#,
+        )
+        .unwrap();
+        let mut store = SettingsStore::load(&dir.0);
+        assert_eq!(store.get().version, CURRENT_VERSION);
+        assert!(!store.get().close_to_tray);
+        assert!(store.get().third_party_media);
+        assert_eq!(store.get().dismissed_update, None);
+
+        // A dismissed version survives a save and a fresh load.
+        store
+            .update(|settings| settings.dismissed_update = Some("1.4.0".into()))
+            .unwrap();
+        let re_read = SettingsStore::load(&dir.0);
+        assert_eq!(re_read.get().dismissed_update.as_deref(), Some("1.4.0"));
+        let saved: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.file()).unwrap()).unwrap();
+        assert_eq!(saved["version"], CURRENT_VERSION);
+        assert_eq!(saved["dismissed_update"], "1.4.0");
     }
 
     #[test]

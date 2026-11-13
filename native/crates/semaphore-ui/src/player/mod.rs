@@ -29,6 +29,7 @@ pub use crate::format::file_size;
 pub use audio::AudioPlayer;
 pub use model::{Phase, surface_key, video_box};
 pub use registry::{AttachmentPlayer, ListPlayers, Players, PosterResolver};
+pub(crate) use session::Playback;
 pub use session::{FactoryOpener, PlayerOpener, PlayerSurface};
 pub use video::VideoPlayer;
 
