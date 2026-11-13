@@ -1,13 +1,17 @@
 //! The register rules, the browser sign-in mapping and the invite words, then the screens in a
 //! window.
 
-use super::invite::invite_date;
+use super::invite::{InviteJoinState, invite_date, invite_reason};
 use super::*;
 use crate::dms::rig::rig;
 use crate::panel::PanelClock;
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
-use semaphore_core::model::{ErrorView, InvitePreview, InvitePreviewView, LoadState, RegisterForm};
+use gpui_kit::test::TestQueryExt as _;
+use semaphore_core::model::{
+    ErrorView, InviteJoin, InvitePreview, InvitePreviewView, InviteSkipReason, JoinedCommunity,
+    LoadState, RegisterForm, RegisterRequirements, RegistrationMode, SkippedInviteCommunity,
+};
 
 fn form(username: &str, email: Option<&str>, password: &str, code: &str) -> RegisterForm {
     RegisterForm {
@@ -19,7 +23,7 @@ fn form(username: &str, email: Option<&str>, password: &str, code: &str) -> Regi
 }
 
 fn fields(form: &RegisterForm) -> Vec<RegisterField> {
-    validate_register(form)
+    validate_register(form, true)
         .into_iter()
         .map(|(field, _)| field)
         .collect()
@@ -48,7 +52,7 @@ fn register_takes_the_servers_rules() {
         ]
     );
     assert_eq!(
-        validate_register(&form("ava chen", None, "hunter2hunter2", "C"))[0].1,
+        validate_register(&form("ava chen", None, "hunter2hunter2", "C"), true)[0].1,
         "Username can only contain letters, numbers, underscores, and hyphens"
     );
     assert_eq!(
@@ -147,27 +151,52 @@ fn invite_dates_are_written_in_the_users_zone() {
     }
 }
 
-#[gpui_kit::test]
-fn sign_in_hides_register_when_registration_is_closed(cx: &mut TestAppContext) {
-    let step = AuthStep::SignIn {
+fn sign_in_step() -> AuthStep {
+    AuthStep::SignIn {
         server_url: "https://chat.example.com".into(),
         server_name: "Ladle".into(),
         browser: BrowserLogin::Idle,
         notice: None,
         password_reset: true,
-    };
-    let rig = rig(cx, 1280., move |window, cx| {
-        AuthScreen::new(step, window, cx)
+    }
+}
+
+#[gpui_kit::test]
+fn closed_registration_hides_register(cx: &mut TestAppContext) {
+    let closed_rig = rig(cx, 1280., |window, cx| {
+        AuthScreen::new(sign_in_step(), window, cx)
     });
-    assert!(rig.has(cx, "auth-register"));
-    rig.click(cx, "auth-register");
-    assert_eq!(rig.events(), [AuthEvent::Register]);
-    rig.with(cx, |screen, _, cx| {
+    assert!(closed_rig.has(cx, "auth-register"));
+    closed_rig.click(cx, "auth-register");
+    assert_eq!(closed_rig.events(), [AuthEvent::Register]);
+
+    let closed = RegisterRequirements {
+        mode: RegistrationMode::Closed,
+        can_register: false,
+        invite_required: false,
+    };
+    closed_rig.with(cx, |screen, _, cx| {
         screen.update(cx, |screen, cx| {
-            screen.set_registration(semaphore_core::model::RegistrationMode::Closed, cx)
+            screen.set_register_requirements(closed, cx)
         })
     });
-    assert!(!rig.has(cx, "auth-register"));
+    assert!(!closed_rig.has(cx, "auth-register"), "no way to register");
+    assert!(
+        closed_rig.has(cx, "auth-register-closed"),
+        "the link is replaced by the sentence"
+    );
+
+    // The older setter says the same thing.
+    let older = rig(cx, 1280., |window, cx| {
+        AuthScreen::new(sign_in_step(), window, cx)
+    });
+    older.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.set_registration(RegistrationMode::Closed, cx)
+        })
+    });
+    assert!(!older.has(cx, "auth-register"));
+    assert!(older.has(cx, "auth-register-closed"));
 }
 
 #[gpui_kit::test]
@@ -317,8 +346,252 @@ fn an_invite_is_joined_or_refused_retried_or_explained(cx: &mut TestAppContext) 
     rig.with(cx, |screen, _, cx| {
         screen.update(cx, |screen, cx| screen.set_signed_in(true, cx))
     });
-    assert!(rig.has(cx, "invite-signed-in"));
+    assert!(rig.has(cx, "invite-join"));
     assert!(!rig.has(cx, "invite-accept"));
     rig.click(cx, "invite-close");
     assert_eq!(rig.events().last(), Some(&InviteEvent::Close));
+}
+
+#[gpui_kit::test]
+fn setup_notice_emits_open_in_browser(cx: &mut TestAppContext) {
+    let rig = rig(cx, 1280., |window, cx| {
+        let mut screen = AuthScreen::new(
+            AuthStep::ServerUrl {
+                testing: false,
+                error: None,
+            },
+            window,
+            cx,
+        );
+        screen.set_setup_needed(Some("https://chat.example.com".into()), cx);
+        screen
+    });
+    assert!(
+        !rig.has(cx, "auth-connect"),
+        "a server with no users can't be connected to"
+    );
+    rig.click(cx, "auth-setup-open");
+    assert_eq!(
+        rig.events(),
+        [AuthEvent::OpenInBrowser {
+            url: "https://chat.example.com".into()
+        }]
+    );
+    rig.clear();
+    rig.click(cx, "auth-setup-change-server");
+    assert_eq!(rig.events(), [AuthEvent::ChangeServer]);
+}
+
+#[gpui_kit::test]
+fn setup_notice_hides_sign_in(cx: &mut TestAppContext) {
+    let rig = rig(cx, 1280., |window, cx| {
+        let mut screen = AuthScreen::new(sign_in_step(), window, cx);
+        screen.set_setup_needed(Some("https://chat.example.com".into()), cx);
+        screen
+    });
+    assert!(!rig.has(cx, "auth-login"), "no accounts to sign in with");
+    assert!(!rig.has(cx, "auth-username"));
+    assert!(rig.has(cx, "auth-setup-open"));
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| screen.set_setup_needed(None, cx))
+    });
+    assert!(rig.has(cx, "auth-login"), "a set-up server signs in here");
+    assert!(!rig.has(cx, "auth-setup-open"));
+}
+
+#[gpui_kit::test]
+fn invite_code_required_only_when_required(cx: &mut TestAppContext) {
+    assert!(
+        validate_register(&form("ava", None, "hunter2hunter2", ""), false).is_empty(),
+        "an open server takes an empty code"
+    );
+    assert_eq!(
+        validate_register(&form("ava", None, "hunter2hunter2", ""), true),
+        [(
+            RegisterField::InviteCode,
+            "An invite code is required".to_owned()
+        )]
+    );
+
+    let open = rig(cx, 390., |window, cx| {
+        let mut screen = RegisterScreen::new(window, cx);
+        screen.set_mode(RegistrationMode::Open, cx);
+        screen
+    });
+    open.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.preset("ava", "ava@example.com", "hunter2hunter2", "", window, cx)
+        })
+    });
+    open.with(cx, |_, window, _| {
+        assert!(
+            window.try_find_by_label("Invite code (optional)").is_some(),
+            "an open server's code says it's optional"
+        );
+    });
+    open.click(cx, "register-submit");
+    assert_eq!(
+        open.events(),
+        [RegisterEvent::Submit(form(
+            "ava",
+            Some("ava@example.com"),
+            "hunter2hunter2",
+            ""
+        ))]
+    );
+
+    let invite_only = rig(cx, 390., |window, cx| {
+        let mut screen = RegisterScreen::new(window, cx);
+        screen.set_mode(RegistrationMode::InviteOnly, cx);
+        screen
+    });
+    invite_only.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.preset("ava", "ava@example.com", "hunter2hunter2", "", window, cx)
+        })
+    });
+    invite_only.with(cx, |_, window, _| {
+        assert!(window.try_find_by_label("Invite code").is_some());
+        assert!(
+            window.try_find_by_label("Invite code (optional)").is_none(),
+            "an invite-only server's code isn't optional"
+        );
+    });
+    invite_only.click(cx, "register-submit");
+    assert!(
+        invite_only.events().is_empty(),
+        "an invite-only server sends no form without the code"
+    );
+}
+
+#[gpui_kit::test]
+fn join_button_only_signed_in(cx: &mut TestAppContext) {
+    let rig = rig(cx, 1280., |_, cx| {
+        let mut screen = InviteScreen::new(cx);
+        screen.set_view(preview(), cx);
+        screen
+    });
+    assert!(!rig.has(cx, "invite-join"), "signed out: register instead");
+    assert!(rig.has(cx, "invite-accept"));
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| screen.set_signed_in(true, cx))
+    });
+    assert!(rig.has(cx, "invite-join"));
+    assert!(!rig.has(cx, "invite-accept"));
+}
+
+#[gpui_kit::test]
+fn join_emits_accept(cx: &mut TestAppContext) {
+    let rig = rig(cx, 1280., |_, cx| {
+        let mut screen = InviteScreen::new(cx);
+        screen.set_view(preview(), cx);
+        screen.set_signed_in(true, cx);
+        screen
+    });
+    rig.click(cx, "invite-join");
+    assert_eq!(
+        rig.events(),
+        [InviteEvent::Accept {
+            code: "WELCOME".into()
+        }]
+    );
+    rig.clear();
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.set_join(InviteJoinState::Joining, cx)
+        })
+    });
+    rig.click(cx, "invite-join");
+    assert!(rig.events().is_empty(), "a join on its way doesn't repeat");
+}
+
+#[gpui_kit::test]
+fn joined_lists_joined_and_skipped_with_reasons(cx: &mut TestAppContext) {
+    let join = InviteJoin {
+        joined: vec![JoinedCommunity {
+            id: "c1".into(),
+            name: "Maple City".into(),
+        }],
+        skipped: vec![
+            SkippedInviteCommunity {
+                id: "c2".into(),
+                name: "Pine Ridge".into(),
+                reason: InviteSkipReason::AlreadyMember,
+            },
+            SkippedInviteCommunity {
+                id: "c3".into(),
+                name: "Bayview".into(),
+                reason: InviteSkipReason::Banned,
+            },
+            SkippedInviteCommunity {
+                id: "c4".into(),
+                name: "Old Mill".into(),
+                reason: InviteSkipReason::Other,
+            },
+        ],
+    };
+    let rig = rig(cx, 1280., move |_, cx| {
+        let mut screen = InviteScreen::new(cx);
+        screen.set_view(preview(), cx);
+        screen.set_signed_in(true, cx);
+        screen.set_join(InviteJoinState::Joined(join), cx);
+        screen
+    });
+    assert!(rig.has(cx, "invite-joined"));
+    assert!(!rig.has(cx, "invite-join"), "nothing more to join");
+    rig.with(cx, |_, window, _| {
+        assert!(window.try_find_by_label("Maple City").is_some());
+        assert!(
+            window
+                .try_find_by_label("Pine Ridge, You're already a member")
+                .is_some()
+        );
+        assert!(
+            window
+                .try_find_by_label("Bayview, You're banned from it")
+                .is_some()
+        );
+        assert!(
+            window
+                .try_find_by_label("Old Mill, Couldn't join")
+                .is_some()
+        );
+    });
+
+    rig.with(cx, |screen, _, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.set_join(InviteJoinState::Joined(InviteJoin::default()), cx)
+        })
+    });
+    rig.with(cx, |_, window, _| {
+        assert!(
+            window
+                .try_find_by_label("You're already in every community this invite adds")
+                .is_some(),
+            "an empty result says so"
+        );
+    });
+}
+
+#[test]
+fn invite_reason_sentences() {
+    assert_eq!(
+        invite_reason("INVITE_NOT_FOUND"),
+        "This invite doesn't exist"
+    );
+    assert_eq!(invite_reason("INVITE_EXPIRED"), "This invite has expired");
+    assert_eq!(
+        invite_reason("INVITE_EXHAUSTED"),
+        "This invite has been used up"
+    );
+    assert_eq!(
+        invite_reason("INVITE_DISABLED"),
+        "This invite has been disabled"
+    );
+    assert_eq!(
+        invite_reason("This invite has expired."),
+        "This invite has expired.",
+        "a message from an older server is shown as it came"
+    );
+    assert_eq!(invite_reason("SOMETHING_ELSE"), "SOMETHING_ELSE");
 }
