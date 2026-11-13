@@ -25,6 +25,14 @@ pub trait OnboardingBackend: Send + Sync {
     ) -> BackendResult<wire::ForgotPasswordResponseDto> {
         Err(unsupported("password reset"))
     }
+    /// Public. Redeems a reset token for a new password. A wrong, used or expired token is the
+    /// server's one message for all three ("Invalid or expired reset token").
+    async fn auth_controller_reset_password(
+        &self,
+        _body: wire::ResetPasswordRequestDto,
+    ) -> BackendResult<wire::ResetPasswordResponseDto> {
+        Err(unsupported("resetting a password"))
+    }
     /// Public. The server answers a code it won't honour with a 404 and an `INVITE_*` code
     /// (older builds sent an empty 200, which reads as no invite).
     async fn invite_controller_get_public_invite(

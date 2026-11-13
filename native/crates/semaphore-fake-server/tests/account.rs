@@ -156,6 +156,87 @@ fn is_uuid(text: &str) -> bool {
 // ----- onboarding ------------------------------------------------------------------------------
 
 #[tokio::test]
+async fn reset_password_takes_a_live_token_once_under_the_dtos_rules() {
+    let api = api().await;
+    api.server.seed_invite(InviteSeed::new("RESET"));
+    let (status, user) = api
+        .public_post(
+            "/api/users",
+            json!({ "code": "RESET", "username": "reset-user", "password": "Password123!",
+                    "email": "reset@example.com" }),
+        )
+        .await;
+    assert_eq!(status, 201, "{user}");
+    let (old_token, _) = api.login("reset-user", "Password123!", None).await;
+
+    // A token nobody issued, and an expired one, are the backend's one generic refusal.
+    let (status, error) = api
+        .public_post(
+            "/api/auth/reset-password",
+            json!({ "token": "nobody", "newPassword": "Another123!" }),
+        )
+        .await;
+    assert_eq!(status, 400, "{error}");
+    assert_eq!(error["message"], "Invalid or expired reset token");
+    api.public_post(
+        "/__control/reset_token",
+        json!({ "token": "expired", "email": "reset@example.com", "expiresInSeconds": -1 }),
+    )
+    .await;
+    let (status, error) = api
+        .public_post(
+            "/api/auth/reset-password",
+            json!({ "token": "expired", "newPassword": "Another123!" }),
+        )
+        .await;
+    assert_eq!(status, 400, "{error}");
+    assert_eq!(error["message"], "Invalid or expired reset token");
+
+    // The DTO's password bounds answer in its own words, and cost no token.
+    api.public_post(
+        "/__control/reset_token",
+        json!({ "token": "live", "email": "reset@example.com" }),
+    )
+    .await;
+    let too_long = "a".repeat(129);
+    for (password, message) in [
+        ("short".to_owned(), "Password must be at least 8 characters"),
+        (too_long, "Password must be at most 128 characters"),
+    ] {
+        let (status, error) = api
+            .public_post(
+                "/api/auth/reset-password",
+                json!({ "token": "live", "newPassword": password }),
+            )
+            .await;
+        assert_eq!(status, 400, "{error}");
+        assert_eq!(error["message"], message);
+    }
+
+    // The live token works once: the password changes, the account's sessions end, and the
+    // token is spent.
+    let (status, body) = api
+        .public_post(
+            "/api/auth/reset-password",
+            json!({ "token": "live", "newPassword": "Another123!" }),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["message"], "Password has been reset.");
+    let (status, _) = api.get("/api/users/profile", &old_token).await;
+    assert_eq!(status, 401, "the old session ended");
+    let _ = api.login("reset-user", "Another123!", None).await;
+    let (status, error) = api
+        .public_post(
+            "/api/auth/reset-password",
+            json!({ "token": "live", "newPassword": "Third123!" }),
+        )
+        .await;
+    assert_eq!(status, 400, "{error}");
+    assert_eq!(error["message"], "Invalid or expired reset token");
+}
+
+#[tokio::test]
 async fn register_on_an_invite_only_instance_needs_a_usable_invite_and_checks_it_before_names() {
     let api = api().await;
     let body = |code: &str, username: &str| json!({ "code": code, "username": username, "password": "Password123!" });

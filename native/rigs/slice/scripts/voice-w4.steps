@@ -95,7 +95,27 @@ expect core voice muted
 click voice-mic
 wait core voice unmuted
 
-# 5. The participant menu on demo-peer's tile: muted for me (saved), then, as the community's
+# 5. Push to talk: switched on in settings (the key captured there), the key opens the mic only
+# while it is held, with no mic click needed. The bar shows the held state.
+click rail-account
+click account-settings
+click settings-tab-voice
+wait core route settings/voice
+click voice-mode-push-to-talk
+wait core engine ptt on
+click voice-ptt-change
+press f13
+expect settings /voice/push_to_talk_key "f13"
+click settings-close
+wait core no-element voice-ptt-key
+key-down f13
+wait core engine ptt-pressed on
+tick 100
+snap 04b-live-ptt-held
+key-up f13
+wait core engine ptt-pressed off
+
+# 6. The participant menu on demo-peer's tile: muted for me (saved), then, as the community's
 # owner, a server mute.
 right-click tile-demo-peer-camera
 wait core dialog participant-menu open
@@ -114,7 +134,7 @@ click participant-server-mute
 wait core dialog participant-menu closed
 wait core requests LivekitController_muteParticipant >= 1
 
-# 6. A screen share starts the replay buffer: the Capture button and the recording dot.
+# 7. A screen share starts the replay buffer: the Capture button and the recording dot.
 click voice-share
 wait core label "Screen 1"
 click picker-source-screen-1
@@ -187,7 +207,7 @@ wait core voice screen off within 15
 wait core replay off within 15
 wait core no-element voice-capture
 
-# 7. Leaving.
+# 8. Leaving.
 click voice-leave
 wait core voice disconnected within 15
 wait core keep-awake off
@@ -196,7 +216,7 @@ wait core float hidden
 wait idle
 shot 07-left
 
-# 8. The captured clip is in my library, on my profile page.
+# 9. The captured clip is in my library, on my profile page.
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
 type "my clip"

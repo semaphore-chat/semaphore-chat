@@ -14,6 +14,7 @@
 //! user asked for; the owner calls core.
 
 mod create;
+mod invite;
 mod sections;
 #[cfg(feature = "stories")]
 pub(crate) mod stories;
@@ -23,6 +24,11 @@ mod tests;
 pub use create::{
     COMMUNITY_DESCRIPTION_MAX, COMMUNITY_NAME_MAX, COMMUNITY_NAME_MIN, CommunityField,
     validate_community,
+};
+pub use invite::{
+    INVITE_DAYS, INVITE_USES, InviteCardModel, InviteCommunity, InviteEvent, InviteNotice,
+    NOTICE_COPIED, NOTICE_COPY_FAILED, NOTICE_COPY_FAILED_AFTER_CREATE, NOTICE_CREATE_FAILED,
+    can_quick_invite, invite_terms, quick_invite_targets,
 };
 
 use gpui_kit::component::input::InputState;
@@ -104,12 +110,15 @@ pub enum HomeEvent {
     Retry(HomeSection),
     /// "Create a community": the owner shows a `CreateCommunityForm`.
     CreateCommunity,
+    /// The invite card's buttons.
+    Invite(InviteEvent),
 }
 
 /// `HomePage`.
 pub struct HomeScreen {
     data: HomeData,
     can_create_community: bool,
+    invite: InviteCardModel,
 }
 
 impl EventEmitter<HomeEvent> for HomeScreen {}
@@ -119,7 +128,15 @@ impl HomeScreen {
         Self {
             data: HomeData::default(),
             can_create_community: false,
+            invite: InviteCardModel::default(),
         }
+    }
+
+    /// The invite card's state, from what core knows: permissions, communities and whichever
+    /// request the app has in flight.
+    pub fn set_invite(&mut self, invite: InviteCardModel, cx: &mut Context<Self>) {
+        self.invite = invite;
+        cx.notify();
     }
 
     pub fn set_data(&mut self, data: HomeData, cx: &mut Context<Self>) {

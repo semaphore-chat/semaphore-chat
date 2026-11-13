@@ -288,6 +288,8 @@ pub(super) fn voice_bar(
         .iter()
         .any(|participant| participant.is_self && participant.speaking);
     let ptt_held = model.ptt.as_ref().is_some_and(|ptt| ptt.held);
+    // Push to talk's resting state is a closed microphone, as the web's participant has it.
+    let ptt_idle = model.ptt.as_ref().is_some_and(|ptt| !ptt.held);
 
     let status = reconnecting.map(|attempt| {
         let leave = controller.clone();
@@ -404,7 +406,7 @@ pub(super) fn voice_bar(
             hover: theme::positive(),
             disabled: false,
         }
-    } else if voice.muted {
+    } else if voice.muted || ptt_idle {
         ButtonStyle {
             icon: theme::white(),
             fill: Some(theme::error_main()),
@@ -419,7 +421,7 @@ pub(super) fn voice_bar(
     let push_to_talk = model.ptt.is_some();
     let mut mic = round_button(
         "voice-mic",
-        if blocked.is_some() || (voice.muted && !ptt_held) {
+        if blocked.is_some() || ((voice.muted || ptt_idle) && !ptt_held) {
             icons::MIC_OFF
         } else {
             icons::MIC

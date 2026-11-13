@@ -271,8 +271,6 @@ pub enum VoiceSettingsEvent {
 pub struct VoiceLimits {
     /// In place of the mic test's button and meter.
     pub mic_test: Option<SharedString>,
-    /// Under the push-to-talk key, while push to talk is chosen.
-    pub push_to_talk: Option<SharedString>,
 }
 
 pub struct VoiceVideoSettings {

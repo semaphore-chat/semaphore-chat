@@ -5,22 +5,30 @@
 //! W3-ui-auth adds, each its own view the owner swaps in like `AuthScreen`:
 //! - `RegisterScreen` (`RegisterPage.tsx`): by the server's `RegistrationMode`, always with an
 //!   invite code; a "registration is closed" card when it's closed.
-//! - `ForgotPasswordScreen` (`ForgotPasswordPage.tsx`): the email form only; the reset itself
-//!   finishes in the web app the email opens.
+//! - `ForgotPasswordScreen` (`ForgotPasswordPage.tsx`): the email form, then a card that also
+//!   takes a pasted reset link.
+//! - `ResetPasswordScreen` (`ResetPasswordPage.tsx`): the new password twice, from the link's
+//!   token, with missing-token, refusal and success states.
 //! - `InviteScreen` (`JoinInvitePage.tsx`): an invite link's preview, usable or invalid, and the message
 //!   for one opened while signed in.
 
 mod forgot;
 mod invite;
 mod register;
+mod reset;
 #[cfg(test)]
 mod tests;
 
-pub use forgot::{ForgotEvent, ForgotPasswordScreen};
+pub use forgot::{ForgotEvent, ForgotPasswordScreen, reset_token_from_input};
 pub use invite::{InviteEvent, InviteJoinState, InviteScreen};
 pub use register::{
     PASSWORD_MAX, PASSWORD_MIN, RegisterEvent, RegisterField, RegisterScreen, USERNAME_MAX,
     USERNAME_MIN, validate_register,
+};
+pub use reset::{
+    DONE as RESET_DONE, MISMATCH as RESET_MISMATCH, ResetErrors, ResetEvent, ResetPasswordScreen,
+    TOO_LONG as RESET_TOO_LONG, TOO_SHORT as RESET_TOO_SHORT, can_submit as can_submit_reset,
+    validate_reset,
 };
 
 use crate::kit::{
@@ -939,6 +947,7 @@ pub fn stories() -> Vec<crate::stories::Story> {
     .into_iter()
     .chain(register::stories())
     .chain(forgot::stories())
+    .chain(reset::stories())
     .chain(invite::stories())
     .collect()
 }

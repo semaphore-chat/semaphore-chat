@@ -23,10 +23,10 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Sign out | `components/Desktop/RailUserMenu.tsx`, `hooks/useLogout.ts` | done (account menu) |
 | Sign in with browser (PKCE, loopback) | `electron/browser-login.ts`, `components/Electron/BrowserLoginPanel.tsx`, `pages/DesktopLoginPage.tsx`, `utils/pkce.ts`, `docs-site/docs/installation/desktop-browser-sign-in.md` | done (`semaphore-core/src/commands/browser_sign_in.rs`; `ui/src/auth`'s browser panel, and `root/onboarding.rs` opens `/#/desktop-login` through the app's `open_url`) |
 | Registration (with invite code) | `pages/RegisterPage.tsx` | done (`ui/src/auth/register.rs`; `Core::register_requirements` fed by `root/u9.rs`; `Core::register` refuses locally per the instance's mode) |
-| Forgot / reset password | `pages/ForgotPasswordPage.tsx`, `pages/ResetPasswordPage.tsx` | partial: sending the link is built (`ui/src/auth/forgot.rs`, `root/onboarding.rs`); `/reset-password` is still `Unbuilt` (`ui/src/nav`), so the emailed link finishes in the web app |
+| Forgot / reset password | `pages/ForgotPasswordPage.tsx`, `pages/ResetPasswordPage.tsx` | done: the forgot screen (`ui/src/auth/forgot.rs`) also takes a pasted reset link or token; `ResetPasswordScreen` (`ui/src/auth/reset.rs`) posts the new password through `Core::reset_password` and has missing-token, refusal and success states. `/reset-password?token=` parses (`ui/src/nav`), and `semaphore://reset-password?token=` opens it through the deep-link mapping; a signed-in app leaves the link to the web |
 | First-run instance setup wizard | `pages/OnboardingPage.tsx`, `components/Onboarding/` | n/a: owner decision — setup is done on the web; the connect screen says so and links there (`root/u9.rs`, from `needs_setup`) |
 | Join by invite link | `pages/JoinInvitePage.tsx` | done (`ui/src/auth/invite.rs` preview; `root/u9.rs` runs `Core::accept_invite` and registers the code when signed out) |
-| Home: summary, zero-community gate, next step, invite card | `pages/HomePage.tsx`, `components/Home/`, `hooks/useHomeSummary.ts` | partial: sections, "all caught up", the zero-community gate, the next step and the create-community form are wired (`ui/src/home`, `root/account.rs`); the web's invite card (create and copy an invite, `HomeInviteCard.tsx`) has no counterpart (invites live in community settings) |
+| Home: summary, zero-community gate, next step, invite card | `pages/HomePage.tsx`, `components/Home/`, `hooks/useHomeSummary.ts` | done: sections, "all caught up", the zero-community gate, the next step and the create-community form are wired (`ui/src/home`, `root/account.rs`), and Home's "Invite people" card (`ui/src/home/invite.rs`, `HomeInviteCard.tsx`) creates a 7-day, 10-use invite for the communities this user may invite to, copies its link, shows the code and offers Manage/dismiss; the dismissal is saved in the local settings, as the web's is per browser |
 
 ### Communities and channels
 
@@ -100,7 +100,7 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Input/output device selection | `components/Voice/DeviceSettingsDialog.tsx`, `hooks/useDeviceSettings.ts` | done (two-list dialog) |
 | Device test, mic level meter | `hooks/useDeviceTest.ts` | done (`ui/src/settings/voice.rs` meter; `MediaEngine::start_input_test` loopback, `root/account.rs`) |
 | Voice processing (echo, noise, AGC, voice isolation, mic quality), VAD threshold | `hooks/useVoiceSettings.ts`, `components/Settings/AudioVideoSettingsPanel.tsx` | partial: echo/noise/AGC, mic preset, VAD and push-to-talk are applied (`app/src/voice.rs` `apply_settings`); voice isolation has no libwebrtc counterpart (section 4) |
-| Push-to-talk | `hooks/usePushToTalk.ts` (in-window key only) | partial: the key is captured and saved (`ui/src/settings/key_capture.rs`) but never bound; only the bar's hold button presses `set_ptt_pressed` (`ui/src/voice/bar.rs`) |
+| Push-to-talk | `hooks/usePushToTalk.ts` (in-window key only) | done: the captured key (`ui/src/settings/key_capture.rs`) is a window key down/up pair through the web's rule (`ui/src/voice/ptt.rs`: repeats, editable targets, mode, connection and SPEAK ignored; window blur and a key changed while held release), active only connected in push-to-talk mode; the bar shows the resting mute and the held state (`ui/src/voice/bar.rs`), and its hold button works through the same `set_ptt_pressed` |
 | Per-user volume, screen-share volume | `components/Voice/VoiceUserContextMenu.tsx`, `ScreenShareVolumeControl.tsx`, `features/voice/volumeStorage.ts` | done: mic and screen-share audio each have their own volume, core `set_participant_volume` and `set_screen_share_volume`, the engine's mixer keyed by participant and source, both persisted in the app's store and applied on every join. The participant menu's "Screen share volume" slider shows only while that person's share carries audio |
 | Server mute state; moderator mute/remove from voice | `hooks/useServerMuteEffect.ts`, `useServerMutedVoiceUsers.ts`, `VoiceUserContextMenu.tsx` | done: `VoiceView.server_muted` shown and enforced; moderator mute and Kick in `ui/src/voice/menu.rs` (`root/calls.rs`) |
 | DM voice calls, incoming call banner | `components/DirectMessage/` | done (`ui/src/voice/incoming.rs` banner; `root/calls.rs` ring timer, `join_dm_voice`/`decline_call`) |
@@ -186,10 +186,10 @@ All live under `pages/EditCommunityPage.tsx` tabs and `components/Community/`, `
 | Secure refresh-token storage | `electron/main.ts` `secure-storage:*` (safeStorage), `components/Electron/SecureStorageWarning.tsx` | done (OS keyring via `keyring`; locked-keyring prompt) |
 | Sleep/resume and network events | `electron/main.ts` powerMonitor, `onSystemResume` | done (logind/NetworkManager, Windows power and IP notifications) |
 | Clipboard write | `electron/main.ts` `clipboard:write` | done |
-| Deep links `semaphore://` (community, channel, DM, invite) | `electron/deep-link-parser.ts`, `hooks/useDeepLinks.ts`, `utils/deepLinkStash.ts` | done (`ui/src/nav` parses; `app/src/desktop.rs` routes a forwarded or clicked link; registration in `main.rs` and `links.rs` for Linux and Windows) |
+| Deep links `semaphore://` (community, channel, DM, invite, reset-password) | `electron/deep-link-parser.ts`, `hooks/useDeepLinks.ts`, `utils/deepLinkStash.ts` | done (`ui/src/nav` parses; `app/src/desktop.rs` routes a forwarded or clicked link; registration in `main.rs` and `links.rs` for Linux and Windows). `semaphore://reset-password?token=` is native's own addition: the web's parser has no reset host |
 | Single instance (second launch focuses the first, forwards links) | `electron/main.ts` `requestSingleInstanceLock` | done (`semaphore-platform-desktop/src/instance.rs`; `main.rs` forwards a second launch's links and exits, and an updated build waits for the lock) |
-| System tray: show/hide, close to tray, check updates, quit | `electron/main.ts` `setupTray`, `buildTrayContextMenu` | partial: show/hide, close to tray, quit and the unread dot/overlay are built (`semaphore-platform-desktop/src/tray/`); no "Check for Updates" item, which the updater now makes possible |
-| Application menu | `electron/main.ts` `setupApplicationMenu` | done (W13: the full tree below, About included; reload, dev tools, zoom and check-for-updates left out) |
+| System tray: show/hide, close to tray, check updates, quit | `electron/main.ts` `setupTray`, `buildTrayContextMenu` | done: show/hide, close to tray, Check for Updates, quit and the unread dot/overlay (`semaphore-platform-desktop/src/tray/`); the item runs the settings button's check and is disabled exactly when that button is (no updater, or one already working) |
+| Application menu | `electron/main.ts` `setupApplicationMenu` | done (W13: the full tree below, About and Check for Updates included; reload, dev tools and zoom left out) |
 | Auto-update (check, progress, install) | `electron/main.ts` electron-updater, `components/Electron/AutoUpdater.tsx` | done, with the differences `docs/packaging.md` lists: no feed is published yet (`SEMAPHORE_UPDATE_MANIFEST_URL` is empty), the AppImage replaces itself and restarts, `.deb`/`.rpm` are downloaded and the user installs them (Electron does it under `pkexec`; native never elevates), the Windows zip is announced only, and a manifest signature is a documented seam, not implemented |
 | Window position/size remembered | `electron/main.ts` window state | done (`app/src/desktop.rs`: bounds and maximized saved and restored) |
 | Native notifications with click | `electron/main.ts` `notification:*` | done (`app/src/notifier.rs`; `root/inbox.rs`) |
@@ -210,8 +210,9 @@ platforms the same actions are on key bindings (Ctrl+Q quit, Ctrl+W close or hid
 full screen) and About is also in the account menu. Left out on purpose: reload, force reload and
 the developer tools (there is no webview), zoom (the kit draws in px, so a window-level rem scale
 would need kit changes), and macOS's hide, hide others and unhide (GPUI has no menu item for those
-roles). Check for Updates isn't in the menu either: the settings' Desktop app tab has the button
-(`ui/src/settings/desktop.rs`), and the tray doesn't offer it.
+roles). Help also has Check for Updates, as Electron's does: it runs the settings' Desktop app
+tab's check (`ui/src/settings/desktop.rs`) and is disabled exactly when that button is, as the
+tray's item is.
 
 ### Web/PWA-only (not counted)
 
@@ -221,23 +222,25 @@ PWA install prompt and settings (`components/PWA/`, `hooks/useInstallPrompt.ts`,
 
 | Area | Done | Partial | Not started | Unknown |
 |---|---|---|---|---|
-| Auth and onboarding | 7 | 2 | 0 | 0 |
+| Auth and onboarding | 9 | 0 | 0 | 0 |
 | Communities and channels | 10 | 0 | 0 | 0 |
 | Messaging | 26 | 0 | 1 | 0 |
 | DMs, groups, friends | 5 | 0 | 0 | 0 |
-| Voice, video, replay | 20 | 3 | 0 | 0 |
+| Voice, video, replay | 21 | 2 | 0 | 0 |
 | Presence | 3 | 0 | 0 | 0 |
 | Notifications | 5 | 0 | 0 | 0 |
 | Profile and settings | 7 | 1 | 0 | 0 |
 | Community settings, roles, moderation | 14 | 0 | 0 | 0 |
 | Instance admin | 7 | 0 | 1 | 0 |
-| Electron-only | 11 | 2 | 0 | 0 |
-| **Total** | **115** | **8** | **2** | **0** |
+| Electron-only | 12 | 1 | 0 | 0 |
+| **Total** | **119** | **4** | **2** | **0** |
 
 (n/a rows are left out: the first-run wizard, Web Push and auto-start at login, three rows.) These
 counts were taken on 2026-11-13 by re-reading every row against the code, after the UA/UG/UM/UV/
-US/UK/WA/WM/WU/WP/WT and W13 lanes; the eight partials, the two unbuilt rows and the n/a decisions
-are spelled out in `docs/parity-gaps.md`.
+US/UK/WA/WM/WU/WP/WT and W13 lanes; the four partials, the two unbuilt rows and the n/a decisions
+are spelled out in `docs/parity-gaps.md`. The 2026-11-13 gaps work closed reset password, Home's
+invite card, the push-to-talk key and Check for Updates in the tray and menu, which is the four
+rows moved from partial to done here.
 
 ### W9: the UI-free gaps (done 2026-11-12)
 

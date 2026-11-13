@@ -171,8 +171,16 @@ impl DesktopServices {
         let sink: DesktopEventSink = Arc::new(move |event| {
             let _ = sender.try_send(event);
         });
-        let tray =
-            with_os.then(|| Arc::new(tray::start(TrayOptions { close_to_tray }, sink.clone())));
+        let tray = with_os.then(|| {
+            Arc::new(tray::start(
+                TrayOptions {
+                    close_to_tray,
+                    // Check for Updates is offered once the updater has started.
+                    updates_enabled: false,
+                },
+                sink.clone(),
+            ))
+        });
         let notifier = with_os.then(|| crate::notifier::start(sink.clone(), cx));
         Self {
             sink,
@@ -341,6 +349,11 @@ fn handle(event: DesktopEvent, cx: &mut App) {
         }
         DesktopEvent::SetCloseToTray(on) => {
             let _ = app.update(cx, |root, cx| root.set_close_to_tray(on, cx));
+        }
+        DesktopEvent::CheckForUpdates => {
+            // The settings button's command, from the tray. It no-ops when the button would be
+            // disabled (no updater, or one already working).
+            let _ = app.update(cx, |root, cx| root.check_for_updates(cx));
         }
         DesktopEvent::Quit => cx.quit(),
         DesktopEvent::Opened {

@@ -214,6 +214,9 @@ pub struct Settings {
     /// W13: the release version whose update card the user dismissed, so the card stays away
     /// until a newer release. `None`: nothing dismissed.
     pub dismissed_update: Option<String>,
+    /// Home's "Invite people" card was dismissed: the web keeps this per browser, here per
+    /// install.
+    pub home_invite_dismissed: bool,
 }
 
 impl Default for Settings {
@@ -232,6 +235,7 @@ impl Default for Settings {
             float_placements: BTreeMap::new(),
             dm_stage_ratio: None,
             dismissed_update: None,
+            home_invite_dismissed: false,
         }
     }
 }
