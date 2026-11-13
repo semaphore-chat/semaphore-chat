@@ -21,7 +21,7 @@ use crate::community_settings::common::{
     card, empty_line, field_error, list, loading_rows, locked_button, locked_note, page, row,
 };
 use crate::community_settings::rules::{
-    Outcome, Pending, act, confirms_name, date_label, failure, needs, running,
+    Outcome, Pending, act, confirms_name, date_label, failure, grouped, needs, running,
 };
 use crate::dms::picker::DEBOUNCE;
 use crate::kit::{
@@ -307,8 +307,8 @@ impl CommunitiesPage {
         .child(words)
         .when(wide, |entry| {
             entry
-                .child(stat(community.member_count, "Members", cx))
-                .child(stat(community.channel_count, "Channels", cx))
+                .child(stat(grouped(community.member_count), "Members", cx))
+                .child(stat(grouped(community.channel_count), "Channels", cx))
                 .child(stat(
                     date_label(&self.time, community.created_at_ms),
                     "Created",
@@ -458,9 +458,9 @@ impl CommunitiesPage {
                     .flex()
                     .flex_wrap()
                     .gap(spacing(3.))
-                    .child(stat(community.member_count, "Members", cx))
-                    .child(stat(community.channel_count, "Channels", cx))
-                    .child(stat(detail.message_count, "Messages", cx))
+                    .child(stat(grouped(community.member_count), "Members", cx))
+                    .child(stat(grouped(community.channel_count), "Channels", cx))
+                    .child(stat(grouped(detail.message_count), "Messages", cx))
                     .child(stat(
                         date_label(&self.time, community.created_at_ms),
                         "Created",

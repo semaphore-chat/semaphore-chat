@@ -541,25 +541,11 @@ fn not_allowed(reason: AdminNotAllowed) -> &'static str {
     }
 }
 
-/// "1.2 GB of 50 GB", as the admin area writes storage: `size_label`'s KB and MB steps, with the
-/// GB one the instance quotas use.
+/// "1.2 GB of 50 GB", as the admin area writes storage.
 fn storage_text(row: &AdminUserRow) -> String {
     format!(
         "{} of {}",
-        size_text(row.storage_used_bytes),
-        size_text(row.storage_quota_bytes)
+        size_label(row.storage_used_bytes),
+        size_label(row.storage_quota_bytes)
     )
-}
-
-fn size_text(bytes: u64) -> String {
-    const GIB: f64 = 1024. * 1024. * 1024.;
-    let value = bytes as f64 / GIB;
-    if value < 1. {
-        return size_label(bytes);
-    }
-    if (value - value.round()).abs() < 0.05 {
-        format!("{} GB", value.round() as u64)
-    } else {
-        format!("{value:.1} GB")
-    }
 }

@@ -335,8 +335,16 @@ impl InstanceInvitesPage {
     }
 
     /// The row's words under the code: uses, expiry, creation and who made it. Each stays whole
-    /// and they wrap between themselves, so a phone's narrow line never splits a date in two.
-    fn detail_line(&self, invite: &InstanceInviteRow, leading: Vec<AnyElement>, cx: &App) -> Div {
+    /// and they wrap between themselves, so a line never splits a date in two. On a phone each
+    /// takes its own line after the status chip, with no separators: a "·" that wrapped would
+    /// start a line.
+    fn detail_line(
+        &self,
+        invite: &InstanceInviteRow,
+        leading: Vec<AnyElement>,
+        stacked: bool,
+        cx: &App,
+    ) -> Div {
         let sem = cx.sem();
         let wire = Self::as_invite(invite);
         let mut details = vec![uses_label(&wire)];
@@ -348,15 +356,15 @@ impl InstanceInvitesPage {
             Some(by) => format!("{created} by {}", who(by)),
             None => created,
         });
-        div()
-            .w_full()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap(spacing(0.5))
-            .children(leading)
+        let line = div().w_full().flex();
+        let line = if stacked {
+            line.flex_col().items_start().gap(spacing(0.5))
+        } else {
+            line.flex_wrap().items_center().gap(spacing(0.5))
+        };
+        line.children(leading)
             .children(details.into_iter().enumerate().map(|(index, detail)| {
-                let label = if index == 0 {
+                let label = if index == 0 || stacked {
                     detail
                 } else {
                     format!("\u{b7} {detail}")
@@ -432,7 +440,7 @@ impl InstanceInvitesPage {
             // the words, so nothing pushes the buttons off the row.
             let chip = tone_chip(chip_label, chip_color);
             let code_line = mono(code.clone(), cx).flex_1().min_w_0().truncate();
-            let line = self.detail_line(invite, vec![chip.into_any_element()], cx);
+            let line = self.detail_line(invite, vec![chip.into_any_element()], true, cx);
             entry
                 .flex_col()
                 .items_start()
@@ -453,7 +461,7 @@ impl InstanceInvitesPage {
                 .children(error)
                 .into_any_element()
         } else {
-            let line = self.detail_line(invite, Vec::new(), cx);
+            let line = self.detail_line(invite, Vec::new(), false, cx);
             let identity = div()
                 .flex()
                 .flex_wrap()
