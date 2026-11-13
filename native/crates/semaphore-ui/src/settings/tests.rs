@@ -479,6 +479,11 @@ fn each_voice_control_sends_the_new_state(cx: &mut TestAppContext) {
 
     rig.click(cx, "voice-mode-push-to-talk");
     assert_eq!(last_state(&rig).input_mode, InputMode::PushToTalk);
+    assert_eq!(
+        last_state(&rig).ptt_key.as_deref(),
+        Some("`"),
+        "no key yet: the web's default, Backquote"
+    );
     rig.click(cx, "voice-mode-voice-activity");
     assert_eq!(
         last_state(&rig).input_mode,
@@ -500,6 +505,19 @@ fn each_voice_control_sends_the_new_state(cx: &mut TestAppContext) {
         [],
         "picking what's already chosen sends nothing"
     );
+}
+
+#[gpui_kit::test]
+fn push_to_talk_keeps_a_key_already_chosen(cx: &mut TestAppContext) {
+    let rig = voice(
+        cx,
+        VoiceVideoState {
+            ptt_key: Some("f13".into()),
+            ..VoiceVideoState::default()
+        },
+    );
+    rig.click(cx, "voice-mode-push-to-talk");
+    assert_eq!(last_state(&rig).ptt_key.as_deref(), Some("f13"));
 }
 
 #[gpui_kit::test]

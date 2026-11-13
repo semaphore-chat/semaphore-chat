@@ -293,7 +293,7 @@ fn the_quick_invite_prefers_a_community_called_default() {
 }
 
 #[test]
-fn quick_invite_needs_a_community_and_a_quiet_card() {
+fn quick_invite_needs_a_quiet_card_not_a_community() {
     let base = invitable();
     assert!(can_quick_invite(&base));
     assert!(!can_quick_invite(&InviteCardModel {
@@ -304,7 +304,8 @@ fn quick_invite_needs_a_community_and_a_quiet_card() {
         creating: true,
         ..base.clone()
     }));
-    assert!(!can_quick_invite(&InviteCardModel {
+    // None to invite to: an invite to the instance alone, as on the web.
+    assert!(can_quick_invite(&InviteCardModel {
         communities: Vec::new(),
         ..base.clone()
     }));
@@ -392,7 +393,11 @@ fn a_dismissed_or_pointless_card_shows_what_it_can(cx: &mut TestAppContext) {
     );
     assert!(empty.has(cx, "home-invite-empty"));
     empty.click(cx, "home-invite-quick");
-    assert!(empty.events().is_empty(), "nowhere to point the invite");
+    assert_eq!(
+        empty.events(),
+        [HomeEvent::Invite(InviteEvent::QuickInvite)],
+        "an invite to the instance alone"
+    );
 
     let loading = home_with(
         cx,

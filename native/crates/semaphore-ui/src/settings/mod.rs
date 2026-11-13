@@ -309,6 +309,14 @@ pub struct VoiceVideoSettings {
 
 impl EventEmitter<VoiceSettingsEvent> for VoiceVideoSettings {}
 
+impl VoiceVideoSettings {
+    /// The push-to-talk key box is waiting for a new key: every key belongs to it, the current
+    /// push-to-talk key included.
+    pub fn capturing(&self) -> bool {
+        self.capturing
+    }
+}
+
 // ---- Appearance. ----
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

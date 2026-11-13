@@ -181,15 +181,14 @@ fn refused(message: &str) -> CoreError {
     }
 }
 
-/// The body a draft sends, or the reason it's refused: at least one community, each a UUID, uses
-/// of at least one, and an expiry after now.
+/// The body a draft sends, or the reason it's refused: each community a UUID, uses of at least one,
+/// and an expiry after now. No community at all is an invite to the instance alone, which the
+/// backend takes (Home's Quick invite with nothing to invite to); the admin page's form asks for
+/// one itself.
 fn invite_body(
     draft: &InstanceInviteDraft,
     now_ms: u64,
 ) -> Result<wire::CreateInviteDto, CoreError> {
-    if draft.community_ids.is_empty() {
-        return Err(refused("Pick at least one community"));
-    }
     let mut communities = Vec::with_capacity(draft.community_ids.len());
     for id in &draft.community_ids {
         let community = id

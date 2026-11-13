@@ -124,6 +124,13 @@ click voice-mic-test
 wait core mic-test running
 click settings-tab-notifications
 wait core mic-test stopped
+# W19: hiding the window to the tray ends it too: nothing on screen would show the mic open.
+click settings-tab-voice
+wait core route settings/voice
+click voice-mic-test
+wait core mic-test running
+window hide
+wait core mic-test stopped
 
 # 9. Signing out while it rings: the ring stops, and the banner goes with the session.
 server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"

@@ -91,14 +91,14 @@ pub enum InviteEvent {
     Dismiss,
 }
 
-/// Whether Quick invite can run: a visible card, roles read, nothing in flight, and somewhere to
-/// point the invite.
+/// Whether Quick invite can run: a visible card, roles read, and nothing in flight. With no
+/// community to invite to, it's an invite to the instance alone, as on the web.
 pub fn can_quick_invite(model: &InviteCardModel) -> bool {
-    model.visible && !model.loading && !model.creating && !model.communities.is_empty()
+    model.visible && !model.loading && !model.creating
 }
 
 /// The communities a quick invite names: the one called "default" alone when there is one, else
-/// every invitable one, as the web does.
+/// every invitable one (none: the instance alone), as the web does.
 pub fn quick_invite_targets(communities: &[InviteCommunity]) -> Vec<String> {
     match communities
         .iter()
@@ -228,12 +228,12 @@ impl HomeScreen {
                                             .test_support()
                                             .role(Role::Note)
                                             .aria_label(
-                                                "There is no community you can invite people to yet.",
+                                                "No community to invite people to yet: the link invites them to the instance alone.",
                                             )
                                             .child(
                                                 text(
                                                     Variant::Caption,
-                                                    "There is no community you can invite people to yet.",
+                                                    "No community to invite people to yet: the link invites them to the instance alone.",
                                                 )
                                                 .text_color(sem.text_secondary),
                                             ),

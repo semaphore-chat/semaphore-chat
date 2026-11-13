@@ -115,6 +115,13 @@ impl PreviewFrame {
         }
     }
 
+    /// Whether a frame now would be sent rather than dropped: a caller that converts its frames
+    /// first (the camera test) skips the work for frames `send` would drop.
+    pub(crate) fn due(&self) -> bool {
+        self.last
+            .is_none_or(|last| Instant::now() - last >= PREVIEW_INTERVAL)
+    }
+
     /// Sends `buffer` to `sink` as `sid`, scaled and converted to NV12. False when the frame came
     /// too soon after the last one and was dropped.
     pub(crate) fn send(&mut self, sink: &dyn VideoSink, sid: &str, buffer: &I420Buffer) -> bool {
@@ -386,6 +393,28 @@ mod tests {
         // BT.601 limited range: white is Y 235, U and V 128.
         assert!(y.iter().all(|&value| value >= 234), "{:?}", &y[..4]);
         assert!(u.iter().chain(v).all(|&value| (127..=129).contains(&value)));
+    }
+
+    #[test]
+    fn a_preview_frame_is_due_first_and_not_again_until_its_interval() {
+        struct Counting(std::sync::atomic::AtomicU32);
+        impl VideoSink for Counting {
+            fn on_frame(&self, _: &str, _: &crate::VideoFrameRef<'_>) {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            fn on_track_ended(&self, _: &str) {}
+        }
+        let sink = Counting(Default::default());
+        let mut preview = PreviewFrame::new();
+        assert!(preview.due());
+        let buffer = I420Buffer::new(64, 36);
+        assert!(preview.send(&sink, "sid", &buffer));
+        // Right after a send, `due` says what `send` would do: drop it.
+        assert!(!preview.due());
+        assert!(!preview.send(&sink, "sid", &buffer));
+        assert_eq!(sink.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        preview.last = Some(Instant::now() - PREVIEW_INTERVAL);
+        assert!(preview.due());
     }
 
     #[test]
