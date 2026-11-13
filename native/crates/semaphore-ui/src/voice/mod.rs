@@ -19,13 +19,17 @@ mod stage;
 #[cfg(feature = "stories")]
 mod stories;
 #[cfg(feature = "stories")]
+pub(crate) use stories::test_card;
+#[cfg(feature = "stories")]
 mod stories_w4;
 mod theme;
 
 pub use debug::{DebugActions, voice_debug_panel};
 pub use dock::{PipAnchor, PipPlacement, dock_zones};
 pub use float::{FloatCard, FloatEvent};
+pub(crate) use frames::Fit;
 pub use frames::VideoFrames;
+
 pub use incoming::{
     DmCallActions, DmCallState, IncomingActions, IncomingProps, dm_call_controls,
     incoming_call_banner, incoming_subtitle,

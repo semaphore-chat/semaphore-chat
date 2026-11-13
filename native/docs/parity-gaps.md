@@ -27,22 +27,7 @@ story. "Depends" names the thing that must happen first.
 
 ## B. Partial features (behaviours missing)
 
-### B5. Camera test and preview in settings
-
-- **Web:** `frontend/src/hooks/useDeviceTest.ts` tests the camera (`testVideoInput`) and
-  `AudioVideoSettingsPanel.tsx` shows the preview and permission state beside the microphone test.
-- **Native:** the microphone test, level meter and VAD marker are built
-  (`native/crates/semaphore-ui/src/settings/voice.rs:257`, `MediaEngine::start_input_test`,
-  `root/account.rs:617`), along with devices, processing, mic quality, the PTT key, the camera list
-  and screen-share size/fps/audio. The settings module says it outright: no camera preview
-  (`settings/voice.rs:3`).
-- **Missing:** a camera test loop with a preview surface and its permission/failure states.
-- **Size:** S-M (the engine's capture and preview path today only runs for a published camera; a test
-  loop outside a call is the audio `start_input_test`'s video analogue).
-- **Depends:** none for the engine seam; a real camera to check it (D3).
-
-- **Size:** S.
-- **Depends:** none.
+None left: every partial feature the audit found is closed (see the list under Counts).
 
 ## C. Platform and distribution
 
@@ -187,19 +172,19 @@ Not listed: "Copy message link" from W1's defaults is not a gap — the web has 
 | Group | Items |
 |---|---|
 | A. Missing features | 1 |
-| B. Partial features | 1 |
+| B. Partial features | 0 |
 | C. Platform and distribution | 5 |
 | D. Only a person can check | 10 |
 | E. Decided not to build | 10 |
 
 Closed on 2026-11-13: B1 (reset password), B2 (Home's invite card), B3 (push-to-talk), B4 (the
-voice join-failure upload), B6 (Check for Updates in the tray and menu), B7 and C5 (log files, the
-voice event log, crash reports), C6 (Electron's close-to-tray setting imported on first run; its
-server URL lives in browser storage and cannot be), C7 (the "Open semaphore:// links with this app"
-setting) and C8 (the end-to-end suite as a nightly CI job). What each builds is spelled out in
-`docs/parity-plan.md`'s rows.
+voice join-failure upload), B5 (the camera test and its preview in settings), B6 (Check for
+Updates in the tray and menu), B7 and C5 (log files, the voice event log, crash reports), C6
+(Electron's close-to-tray setting imported on first run; its server URL lives in browser storage
+and cannot be), C7 (the "Open semaphore:// links with this app" setting) and C8 (the end-to-end
+suite as a nightly CI job). What each builds is spelled out in `docs/parity-plan.md`'s rows.
 
-The inventory itself (128 rows, 11 tables) now reads: 121 done, 2 partial, 2 not started, 3 n/a.
+The inventory itself (128 rows, 11 tables) now reads: 122 done, 1 partial, 2 not started, 3 n/a.
 
 ## The gaps that matter most for a first usable release
 
@@ -211,5 +196,13 @@ The inventory itself (128 rows, 11 tables) now reads: 121 done, 2 partial, 2 not
    voice client over a browser; it has never run on a real Wayland or Windows desktop.
 4. **Screen-reader announcements (A1).** The one outright missing user-facing feature, and the
    blocker for any accessibility claim; scope the kit question before promising it.
-5. **Camera test and preview in settings (B5).** The microphone has a test and a meter; the camera
-   has neither, so a broken camera is only found in a call.
+| C. Platform and distribution | 5 |
+| D. Only a person can check | 10 |
+| E. Decided not to build | 10 |
+
+Closed on 2026-11-13: B1 (reset password), B2 (Home's invite card), B3 (push-to-talk), B4 (the
+voice join-failure upload), B5 (the camera test and its preview in settings), B6 (Check for
+Updates in the tray and menu), B7 and C5 (log files, the voice event log, crash reports), C6
+(Electron's close-to-tray setting imported on first run; its server URL lives in browser storage
+and cannot be), C7 (the "Open semaphore:// links with this app" setting) and C8 (the end-to-end
+suite as a nightly CI job). What each builds is spelled out in `docs/parity-plan.md`'s rows.

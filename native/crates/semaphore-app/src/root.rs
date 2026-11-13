@@ -14,8 +14,8 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{AttachmentKind, AttachmentView};
 use semaphore_core::model::{
-    ChannelKind, CommunityRow, ErrorView, LoadState, RestoreOutcome, SessionState, SignOutReason,
-    ViewKey, VoiceRoom, VoiceStatus,
+    ChannelKind, CommunityRow, ErrorView, LoadState, LocalShare, RestoreOutcome, SessionState,
+    SignOutReason, ViewKey, VoiceRoom, VoiceStatus,
 };
 use semaphore_core::platform::CaptureKind;
 use semaphore_core::{Core, CoreEvent};
@@ -617,6 +617,18 @@ impl AppRoot {
             self.call_ended();
         }
         self.apply_server_mute(model.voice.server_muted);
+        // The call sending the camera ends the test: the engine let go of the camera when it
+        // opened its own, and the tab says why it can't start another.
+        let camera_published = matches!(
+            model.voice.local.camera,
+            LocalShare::On | LocalShare::Starting
+        );
+        if camera_published {
+            self.stop_camera_test(cx);
+        }
+        if let Some(tab) = self.voice_tab(cx) {
+            tab.update(cx, |tab, cx| tab.set_camera_published(camera_published, cx));
+        }
         let soundboard = self.soundboard_bar();
         if let Some(stage) = &self.stage {
             stage.update(cx, |stage, cx| {

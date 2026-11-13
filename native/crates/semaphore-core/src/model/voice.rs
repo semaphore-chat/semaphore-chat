@@ -2,6 +2,12 @@
 
 use super::{LoadState, ReplayState, UserView};
 
+/// The track id the media engine's camera test sends preview frames under. It names no
+/// publication: it only says which surface the settings page's preview paints, through the same
+/// `VideoSink` a call's own camera uses under its publication's sid. UI-facing, so both the engine
+/// and the settings page read it here.
+pub const CAMERA_TEST_TRACK_SID: &str = "camera-test";
+
 /// Which join controls a voice channel offers, from the web's `voiceJoinMode`: none without
 /// CONNECT, one listen-only join without SPEAK (a text-only role, or a running timeout), and both
 /// otherwise.

@@ -100,6 +100,45 @@ shot w3-settings-voice-long-devices-desktop
 story settings-voice-long-devices 390 844 light-blue-balanced
 wait idle
 shot w3-settings-voice-long-devices-phone
+
+# The camera test, in each state it can be in; its picture in a story is a test card, since a shot
+# rig opens no camera. Tall windows, so the section below the fold is in the picture.
+story settings-voice-camera-idle 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-camera-idle-desktop
+story settings-voice-camera-idle 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-camera-idle-phone
+story settings-voice-camera-starting 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-camera-starting-desktop
+story settings-voice-camera-starting 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-camera-starting-phone
+story settings-voice-camera-running 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-camera-running-desktop
+story settings-voice-camera-running 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-camera-running-phone
+story settings-voice-camera-failed 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-camera-failed-desktop
+story settings-voice-camera-failed 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-camera-failed-phone
+story settings-voice-camera-no-camera 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-camera-no-camera-desktop
+story settings-voice-camera-no-camera 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-camera-no-camera-phone
+story settings-voice-camera-in-use 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-camera-in-use-desktop
+story settings-voice-camera-in-use 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-camera-in-use-phone
 story settings-appearance-dark 1280 800 dark-blue-balanced
 wait idle
 shot w3-settings-appearance-dark-desktop

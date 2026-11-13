@@ -139,7 +139,7 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Profile view and modal | `pages/ProfilePage.tsx`, `components/Profile/UserProfileModal.tsx` | done (`ui/src/profile`; the modal and `/profile/:id` in `root/account.rs`) |
 | Edit profile: display name, avatar, banner | `pages/ProfileEditPage.tsx`, `components/Profile/UserAvatarUpload.tsx`, `UserBannerUpload.tsx` | done (`ui/src/profile/edit.rs`; avatar and banner pick, replace and remove through `update_profile`) |
 | Settings: Notifications tab | `pages/SettingsPage.tsx` | done (`ui/src/settings/shell.rs` tab → the notifications section) |
-| Settings: Voice and video tab | `components/Settings/AudioVideoSettingsPanel.tsx`, `VoiceSettings.tsx` | partial: devices, mic test and meter, processing, mic quality, PTT key, camera list, share size/fps/audio (`ui/src/settings/voice.rs`); no voice isolation (no counterpart) and no camera test or preview |
+| Settings: Voice and video tab | `components/Settings/AudioVideoSettingsPanel.tsx`, `VoiceSettings.tsx` | done: devices, mic test and meter, processing, mic quality, PTT key, the camera test and its preview (`LiveKitEngine::start_camera_test`, `ui/src/settings/voice.rs`; preview frames through the same `VideoFrames` a call's own tile draws), share size/fps/audio; voice isolation has no counterpart (section 4) |
 | Settings: Appearance (theme, synced) | `hooks/useThemeSync.ts`, `backend/src/appearance-settings` | done (`ui/src/settings/appearance.rs`; the root draws core's appearance when it arrives, `root/account.rs`) |
 | Settings: Sessions (list, revoke, revoke others) | `components/Settings/SessionsSettings.tsx` | done (`ui/src/settings/sessions.rs`; `sessions`/`revoke_session`/`revoke_other_sessions`) |
 | Settings: Desktop app (close to tray, backend URL, the merged media switch) | `pages/SettingsPage.tsx` | done in the app (`SettingsStore` v4, `ui/src/settings/desktop.rs`); the switch reads "Load images from other sites (link previews, GIFs)", and "Open semaphore:// links with this app" registers on start or takes this app's registration away, with the current owner shown |
@@ -229,11 +229,11 @@ PWA install prompt and settings (`components/PWA/`, `hooks/useInstallPrompt.ts`,
 | Voice, video, replay | 22 | 1 | 0 | 0 |
 | Presence | 3 | 0 | 0 | 0 |
 | Notifications | 5 | 0 | 0 | 0 |
-| Profile and settings | 7 | 1 | 0 | 0 |
+| Profile and settings | 8 | 0 | 0 | 0 |
 | Community settings, roles, moderation | 14 | 0 | 0 | 0 |
 | Instance admin | 7 | 0 | 1 | 0 |
 | Electron-only | 13 | 0 | 0 | 0 |
-| **Total** | **121** | **2** | **2** | **0** |
+| **Total** | **122** | **1** | **2** | **0** |
 
 (n/a rows are left out: the first-run wizard, Web Push and auto-start at login, three rows.) These
 counts were taken on 2026-11-13 by re-reading every row against the code, after the UA/UG/UM/UV/
