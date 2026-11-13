@@ -34,6 +34,8 @@ wait core connection connected
 wait idle
 navigate /community/$ID(c-couch)/channel/$ID(cc-general)
 wait core channel $ID(cc-general)
+# The readers answer ("Seen by" under my latest message) lands on its own: wait for it, or a shot can beat it.
+wait core w9v seen "yeah i'll bring it friday" "Seen by alexk"
 wait core element member-$ID(u-priya)
 right-click member-$ID(u-priya)
 wait core element moderation-menu
@@ -240,6 +242,8 @@ wait core connection connected
 wait idle
 navigate /community/$ID(c-couch)/channel/$ID(cc-general)
 wait core channel $ID(cc-general)
+# The readers answer ("Seen by" under my latest message) lands on its own: wait for it, or a shot can beat it.
+wait core w9v seen "yeah i'll bring it friday" "Seen by alexk"
 wait core element member-$ID(u-priya)
 right-click member-$ID(u-priya)
 wait core element moderation-menu
