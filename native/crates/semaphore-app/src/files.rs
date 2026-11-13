@@ -13,7 +13,9 @@
 //!   through one entry point, [`third_party`], which refuses while the "Load images from other
 //!   sites" setting is off before it looks anywhere: no request, nothing served from the store.
 //!   Turning the setting off drops what was kept ([`set_third_party`]) and any fetch still on its
-//!   way. Animated ones pass the frame budget ([`budget`]) before they're kept.
+//!   way.
+//! - **Every image passes the frame budget** ([`budget`]) in [`FileStore::finish`] before it's
+//!   kept: GPUI decodes every frame of a GIF or WebP up front, whoever sent it.
 //! - **Video posters** are the server's thumbnails, through the same store ([`poster_resolver`]).
 //! - **Saving** a download asks where with the system's save dialog ([`ask_save_path`]), then
 //!   writes off the UI thread ([`write_file`]). The rigs' headless platform never answers that
@@ -131,12 +133,17 @@ impl FileStore {
         true
     }
 
-    /// Takes a fetch's answer, refusing an image that's too big to decode.
+    /// Takes a fetch's answer, refusing an image that's too big to decode and passing every image
+    /// (avatars, custom emoji, attachments, pictures from other sites) through the frame budget
+    /// ([`budget::within_budget`]): kept, frame 0 alone, or refused. Reads headers only, unless
+    /// frame 0 must be re-encoded: call it off the async workers.
     pub fn finish(&self, path: &str, fetched: Result<Vec<u8>, String>) {
-        let accepted = fetched.and_then(|bytes| match decodable(&bytes) {
-            Ok(()) => Ok(bytes),
-            Err(refusal) => Err(format!("{refusal:?}")),
-        });
+        let accepted = fetched
+            .and_then(|bytes| match decodable(&bytes) {
+                Ok(()) => Ok(bytes),
+                Err(refusal) => Err(format!("{refusal:?}")),
+            })
+            .and_then(budget::within_budget);
         let mut inner = self.lock();
         match accepted {
             Ok(bytes) => {
@@ -380,7 +387,7 @@ pub fn third_party(
                 .spawn_blocking(move || {
                     if previews.allowed() {
                         // The budget reads the header, and may decode one frame: off the workers.
-                        store.finish(&path, fetched.and_then(budget::within_budget));
+                        store.finish(&path, fetched);
                     } else {
                         store.forget(&path);
                     }
@@ -891,6 +898,58 @@ mod tests {
         assert_eq!(store.have("t"), Have::Ready);
         store.clear();
         assert_eq!(store.bytes(), 0);
+    }
+
+    /// NAT-2: avatars, custom emoji and full-size attachments pass the frame budget as well,
+    /// not only pictures from other sites.
+    #[test]
+    fn every_image_the_store_keeps_passes_the_frame_budget() {
+        use budget::tests::{gif_frames, gif_shape, real_gif};
+        let store = FileStore::default();
+        for path in [
+            "semaphore-file/f/avatar",
+            "semaphore-file/f/emoji",
+            "semaphore-file/t/thumb",
+        ] {
+            // 2000x2000 x 10,000 frames: 160 GB decoded from a quarter of a megabyte. Not even
+            // one frame of it is drawn from filler data, so nothing is kept.
+            store.begin(path);
+            store.finish(path, Ok(gif_shape(2000, 2000, 10_000, true)));
+            match store.get(path) {
+                None => assert_eq!(store.have(path), Have::Unavailable, "{path}"),
+                Some(kept) => assert_eq!(
+                    budget::animation_cost(&kept).unwrap().frames,
+                    1,
+                    "{path} kept every frame"
+                ),
+            }
+        }
+
+        // Over the budget but drawable: frame 0 alone, as a PNG.
+        store.begin("semaphore-file/f/long");
+        store.finish("semaphore-file/f/long", Ok(real_gif(600, 600, 30)));
+        let kept = store
+            .get("semaphore-file/f/long")
+            .expect("first frame kept");
+        assert_eq!(image::guess_format(&kept).unwrap(), image::ImageFormat::Png);
+        assert_eq!(budget::animation_cost(&kept).unwrap().frames, 1);
+
+        // Inside the budget: kept as sent, and still animated.
+        let small = real_gif(32, 32, 5);
+        store.begin("semaphore-file/f/small");
+        store.finish("semaphore-file/f/small", Ok(small.clone()));
+        assert_eq!(
+            store.get("semaphore-file/f/small").unwrap().as_slice(),
+            small
+        );
+
+        // A frame bigger than its screen: refused.
+        store.begin("semaphore-file/f/wide");
+        store.finish(
+            "semaphore-file/f/wide",
+            Ok(gif_frames(10, 10, &[(0, 0, 65535, 65535)])),
+        );
+        assert_eq!(store.have("semaphore-file/f/wide"), Have::Unavailable);
     }
 
     #[test]
