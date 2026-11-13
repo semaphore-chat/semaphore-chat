@@ -3,13 +3,14 @@
 //!
 //! - **What is in it.** File (non-macOS) or the app menu (macOS): Close Window, a checked Close to
 //!   Tray, Quit. Edit: undo, redo, cut, copy, paste, select all, which are the text inputs' and the
-//!   message list's own actions. View: toggle full screen. Help: About Semaphore Chat. Every label
-//!   and item is in [`FILE_MENU`] and the tables beside it, so a test can compare the built tree.
+//!   message list's own actions. View: toggle full screen. Help: About Semaphore Chat and Check
+//!   for Updates, which runs the same check as the settings button (and is disabled exactly when
+//!   that button is). Every label and item is in [`FILE_MENU`] and the tables beside it, so a test
+//!   can compare the built tree.
 //! - **What is left out, and why.** Reload, force reload and the developer tools drive the
 //!   webview this app doesn't have. Zoom needs a UI scale, and the kit draws in px (a window-level
 //!   rem scale would change nothing without kit changes), so Electron's zoom roles have no
-//!   counterpart yet. Check for Updates belongs to the auto-updater lane. macOS's hide, hide
-//!   others and unhide are menu roles GPUI has no item for.
+//!   counterpart yet. macOS's hide, hide others and unhide are menu roles GPUI has no item for.
 //! - **Where it is drawn.** `cx.set_menus` hands the tree to platforms with a native menu bar
 //!   (macOS). The pinned GPUI's Linux (X11 and Wayland) and Windows platforms copy it into
 //!   `OwnedMenu`s and never show it, so this file is not the only way to an action: on those
@@ -33,7 +34,8 @@ actions!(
         CloseWindow,
         ToggleFullScreen,
         ToggleCloseToTray,
-        About
+        About,
+        CheckForUpdates
     ]
 );
 
@@ -76,16 +78,18 @@ pub enum MenuAction {
     CloseToTray,
     ToggleFullScreen,
     About,
+    CheckForUpdates,
 }
 
 impl MenuAction {
     /// Every action the menu offers, in the order the tables below use them.
-    pub const ALL: [MenuAction; 5] = [
+    pub const ALL: [MenuAction; 6] = [
         MenuAction::Quit,
         MenuAction::CloseWindow,
         MenuAction::CloseToTray,
         MenuAction::ToggleFullScreen,
         MenuAction::About,
+        MenuAction::CheckForUpdates,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -95,18 +99,21 @@ impl MenuAction {
             MenuAction::CloseToTray => "Close to Tray",
             MenuAction::ToggleFullScreen => "Toggle Full Screen",
             MenuAction::About => "About Semaphore Chat",
+            MenuAction::CheckForUpdates => "Check for Updates",
         }
     }
 
-    fn item(self, close_to_tray: bool) -> MenuItem {
+    fn item(self, close_to_tray: bool, updates_enabled: bool) -> MenuItem {
         let item = match self {
             MenuAction::Quit => MenuItem::action(self.label(), Quit),
             MenuAction::CloseWindow => MenuItem::action(self.label(), CloseWindow),
             MenuAction::CloseToTray => MenuItem::action(self.label(), ToggleCloseToTray),
             MenuAction::ToggleFullScreen => MenuItem::action(self.label(), ToggleFullScreen),
             MenuAction::About => MenuItem::action(self.label(), About),
+            MenuAction::CheckForUpdates => MenuItem::action(self.label(), CheckForUpdates),
         };
-        item.checked(self == MenuAction::CloseToTray && close_to_tray)
+        item.disabled(self == MenuAction::CheckForUpdates && !updates_enabled)
+            .checked(self == MenuAction::CloseToTray && close_to_tray)
     }
 
     /// What choosing the item (or pressing its key) does. The match is exhaustive, so a new action
@@ -118,6 +125,7 @@ impl MenuAction {
             MenuAction::CloseToTray => toggle_close_to_tray(cx),
             MenuAction::ToggleFullScreen => toggle_full_screen(cx),
             MenuAction::About => open_about(cx),
+            MenuAction::CheckForUpdates => check_for_updates(cx),
         }
     }
 }
@@ -203,10 +211,10 @@ impl ItemSpec {
         }
     }
 
-    fn build(self, close_to_tray: bool) -> MenuItem {
+    fn build(self, close_to_tray: bool, updates_enabled: bool) -> MenuItem {
         match self.kind {
             ItemKind::Separator => MenuItem::separator(),
-            ItemKind::Menu(action) => action.item(close_to_tray),
+            ItemKind::Menu(action) => action.item(close_to_tray, updates_enabled),
             ItemKind::Edit(action) => action.item(),
         }
     }
@@ -263,7 +271,10 @@ pub const VIEW_MENU: MenuSpec = MenuSpec {
 
 pub const HELP_MENU: MenuSpec = MenuSpec {
     label: "Help",
-    items: &[ItemSpec::own(MenuAction::About)],
+    items: &[
+        ItemSpec::own(MenuAction::About),
+        ItemSpec::own(MenuAction::CheckForUpdates),
+    ],
 };
 
 /// The bar on Linux and Windows.
@@ -271,8 +282,9 @@ pub const DESKTOP_MENUS: &[&MenuSpec] = &[&FILE_MENU, &EDIT_MENU, &VIEW_MENU, &H
 /// The bar on macOS: the app menu, then Edit, View and Help (Electron has no File menu there).
 pub const MAC_MENUS: &[&MenuSpec] = &[&APP_MENU, &EDIT_MENU, &VIEW_MENU, &HELP_MENU];
 
-/// The menu bar for this platform, with the Close to Tray check box where the settings say it is.
-pub fn menus(close_to_tray: bool, mac: bool) -> Vec<Menu> {
+/// The menu bar for this platform, with the Close to Tray check box where the settings say it is
+/// and Check for Updates enabled where the settings button is.
+pub fn menus(close_to_tray: bool, updates_enabled: bool, mac: bool) -> Vec<Menu> {
     let specs = if mac { MAC_MENUS } else { DESKTOP_MENUS };
     specs
         .iter()
@@ -280,17 +292,21 @@ pub fn menus(close_to_tray: bool, mac: bool) -> Vec<Menu> {
             Menu::new(menu.label).items(
                 menu.items
                     .iter()
-                    .map(|item| item.build(close_to_tray))
+                    .map(|item| item.build(close_to_tray, updates_enabled))
                     .collect::<Vec<_>>(),
             )
         })
         .collect()
 }
 
-/// Hands the bar to the platform. Call it when the app starts and whenever the Close to Tray
-/// setting changes (the item is checked).
-pub fn install(cx: &mut App, close_to_tray: bool) {
-    cx.set_menus(menus(close_to_tray, cfg!(target_os = "macos")));
+/// Hands the bar to the platform. Call it when the app starts, whenever the Close to Tray setting
+/// changes (the item is checked) and whenever the updater's availability changes.
+pub fn install(cx: &mut App, close_to_tray: bool, updates_enabled: bool) {
+    cx.set_menus(menus(
+        close_to_tray,
+        updates_enabled,
+        cfg!(target_os = "macos"),
+    ));
 }
 
 /// Registers the key bindings and handlers, once per process, before the first window.
@@ -305,6 +321,7 @@ pub fn init(cx: &mut App) {
     cx.on_action(|_: &ToggleFullScreen, cx| MenuAction::ToggleFullScreen.run(cx));
     cx.on_action(|_: &ToggleCloseToTray, cx| MenuAction::CloseToTray.run(cx));
     cx.on_action(|_: &About, cx| MenuAction::About.run(cx));
+    cx.on_action(|_: &CheckForUpdates, cx| MenuAction::CheckForUpdates.run(cx));
 }
 
 /// The window's root the menu actions act on: the app has one window.
@@ -332,6 +349,14 @@ fn toggle_close_to_tray(cx: &mut App) {
         .unwrap_or(false);
     root.update(cx, |root, cx| root.set_close_to_tray(next, cx))
         .ok();
+}
+
+/// The settings' "Check for updates", from a menu item or the tray: the same command.
+fn check_for_updates(cx: &mut App) {
+    let Some(root) = target_root(cx) else {
+        return;
+    };
+    root.update(cx, |root, cx| root.check_for_updates(cx)).ok();
 }
 
 fn toggle_full_screen(cx: &mut App) {
@@ -380,26 +405,27 @@ mod tests {
     use core::prelude::v1::test;
 
     /// One item of the built bar, ready to compare: the label and the action's full name (None for
-    /// a separator), and whether it is checked.
-    type Built = (String, Option<&'static str>, bool);
+    /// a separator), whether it is checked, and whether it is disabled.
+    type Built = (String, Option<&'static str>, bool, bool);
 
-    fn built(close_to_tray: bool, mac: bool) -> Vec<(String, Vec<Built>)> {
-        menus(close_to_tray, mac)
+    fn built(close_to_tray: bool, updates_enabled: bool, mac: bool) -> Vec<(String, Vec<Built>)> {
+        menus(close_to_tray, updates_enabled, mac)
             .into_iter()
             .map(|menu| {
                 let items = menu
                     .items
                     .into_iter()
                     .map(|item| match item {
-                        MenuItem::Separator => (String::new(), None, false),
+                        MenuItem::Separator => (String::new(), None, false, false),
                         MenuItem::Action {
                             name,
                             action,
                             checked,
+                            disabled,
                             ..
-                        } => (name.to_string(), Some(action.name()), checked),
-                        MenuItem::Submenu(menu) => (menu.name.to_string(), None, false),
-                        MenuItem::SystemMenu(menu) => (menu.name.to_string(), None, false),
+                        } => (name.to_string(), Some(action.name()), checked, disabled),
+                        MenuItem::Submenu(menu) => (menu.name.to_string(), None, false, false),
+                        MenuItem::SystemMenu(menu) => (menu.name.to_string(), None, false, false),
                     })
                     .collect();
                 (menu.name.to_string(), items)
@@ -408,11 +434,15 @@ mod tests {
     }
 
     fn item(label: &str, action: &'static str) -> Built {
-        (label.to_owned(), Some(action), false)
+        (label.to_owned(), Some(action), false, false)
+    }
+
+    fn disabled_item(label: &str, action: &'static str) -> Built {
+        (label.to_owned(), Some(action), false, true)
     }
 
     fn separator() -> Built {
-        (String::new(), None, false)
+        (String::new(), None, false, false)
     }
 
     /// The bar on Linux and Windows: Electron's File (with Close Window), Edit, View and Help,
@@ -420,7 +450,7 @@ mod tests {
     #[test]
     fn the_desktop_bar_matches_the_table() {
         assert_eq!(
-            built(false, false),
+            built(false, true, false),
             [
                 (
                     "File".to_owned(),
@@ -449,7 +479,10 @@ mod tests {
                 ),
                 (
                     "Help".to_owned(),
-                    vec![item("About Semaphore Chat", "semaphore::About")]
+                    vec![
+                        item("About Semaphore Chat", "semaphore::About"),
+                        item("Check for Updates", "semaphore::CheckForUpdates"),
+                    ]
                 ),
             ]
         );
@@ -459,7 +492,7 @@ mod tests {
     /// which GPUI has no roles for), and no File menu.
     #[test]
     fn the_mac_bar_matches_the_table() {
-        let bar = built(false, true);
+        let bar = built(false, true, true);
         assert_eq!(bar[0].0, "Semaphore Chat");
         assert_eq!(
             bar[0].1,
@@ -473,6 +506,38 @@ mod tests {
         );
         let labels: Vec<&str> = bar.iter().map(|(label, _)| label.as_str()).collect();
         assert_eq!(labels, ["Semaphore Chat", "Edit", "View", "Help"]);
+        let help = bar.last().expect("a Help menu");
+        assert_eq!(
+            help.1,
+            [
+                item("About Semaphore Chat", "semaphore::About"),
+                item("Check for Updates", "semaphore::CheckForUpdates"),
+            ]
+        );
+    }
+
+    /// Check for Updates is enabled exactly when the settings button is: an updater is there and
+    /// not already checking.
+    #[test]
+    fn check_for_updates_follows_the_settings_button() {
+        let find = |bar: Vec<(String, Vec<Built>)>| {
+            bar.into_iter()
+                .flat_map(|(_, items)| items)
+                .find(|(label, _, _, _)| label == "Check for Updates")
+                .expect("a Check for Updates item")
+        };
+        assert_eq!(
+            find(built(false, true, false)),
+            item("Check for Updates", "semaphore::CheckForUpdates")
+        );
+        assert_eq!(
+            find(built(false, false, false)),
+            disabled_item("Check for Updates", "semaphore::CheckForUpdates")
+        );
+        assert_eq!(
+            find(built(false, false, true)),
+            disabled_item("Check for Updates", "semaphore::CheckForUpdates")
+        );
     }
 
     /// Every binding the app already answers, context-free ones and the inputs' and the message
@@ -512,21 +577,21 @@ mod tests {
 
     #[test]
     fn close_to_tray_is_the_only_checked_item() {
-        let checked: Vec<(String, String)> = built(true, false)
+        let checked: Vec<(String, String)> = built(true, true, false)
             .into_iter()
             .flat_map(|(menu, items)| {
                 items
                     .into_iter()
-                    .filter(|(_, _, checked)| *checked)
-                    .map(move |(label, _, _)| (menu.clone(), label))
+                    .filter(|(_, _, checked, _)| *checked)
+                    .map(move |(label, _, _, _)| (menu.clone(), label))
             })
             .collect();
         assert_eq!(checked, [("File".to_owned(), "Close to Tray".to_owned())]);
         // With the setting off, nothing is checked.
         assert!(
-            built(false, false)
+            built(false, true, false)
                 .iter()
-                .all(|(_, items)| items.iter().all(|(_, _, checked)| !checked))
+                .all(|(_, items)| items.iter().all(|(_, _, checked, _)| !checked))
         );
     }
 
@@ -537,7 +602,7 @@ mod tests {
         cx.update(|cx| {
             init(cx);
             for action in MenuAction::ALL {
-                let item = action.item(false);
+                let item = action.item(false, true);
                 let MenuItem::Action { action, .. } = item else {
                     panic!("{:?} is not an action item", action);
                 };

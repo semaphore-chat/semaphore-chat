@@ -20,12 +20,15 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::CoreEvent;
 use semaphore_core::model::{
-    ChannelKind, DraftFile, LoadState, ProfileView, SessionState, ShareResolution, ViewKey,
+    AdminPage, ChannelKind, DraftFile, InstanceInviteDraft, LoadState, ProfileView, SessionState,
+    ShareResolution, ViewKey,
 };
 use semaphore_core::platform::CoreError;
 use semaphore_ui::home::{
     CreateCommunityEvent, CreateCommunityForm, HomeData, HomeEvent, HomeMention, HomeScreen,
-    HomeVoiceChannel, Section, ZeroCommunityGate,
+    HomeVoiceChannel, INVITE_DAYS, INVITE_USES, InviteCardModel, InviteCommunity, InviteEvent,
+    InviteNotice, NOTICE_COPY_FAILED, NOTICE_COPY_FAILED_AFTER_CREATE, NOTICE_CREATE_FAILED,
+    Section, ZeroCommunityGate, quick_invite_targets,
 };
 use semaphore_ui::kit::{Alert, Button, Severity};
 use semaphore_ui::nav::Route;
@@ -43,10 +46,6 @@ use semaphore_ui::settings::{
 /// How often the mic test's meter is fed while a test runs.
 const MIC_TEST_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
-/// What the voice tab says in place of what this build can't do yet.
-pub const PUSH_TO_TALK_LIMIT: &str = "The key is saved, but this version doesn't listen for it \
-     yet: hold the voice bar's Push to Talk button to transmit.";
-
 /// A desktop app signed in to this account: where from, and when.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopSignIn {
@@ -62,6 +61,9 @@ pub(super) struct Account {
     edit: Option<Entity<ProfileEditForm>>,
     home: Option<Entity<HomeScreen>>,
     gate: Option<Entity<ZeroCommunityGate>>,
+    /// Home's invite card: the app's part (in flight, the last code, the notice), while
+    /// `refresh_home` adds what core knows.
+    invite: InviteCardModel,
     create: Option<Entity<CreateCommunityForm>>,
     desktop_sign_in: Option<DesktopSignIn>,
     links: LinkHandler,
@@ -90,15 +92,7 @@ impl AppRoot {
         notifications.update(cx, |section, cx| {
             section.set_local_timezone(semaphore_core::notify::system_timezone(), cx)
         });
-        voice.update(cx, |voice, cx| {
-            voice.set_limits(
-                VoiceLimits {
-                    mic_test: None,
-                    push_to_talk: Some(PUSH_TO_TALK_LIMIT.into()),
-                },
-                cx,
-            )
-        });
+        voice.update(cx, |voice, cx| voice.set_limits(VoiceLimits::default(), cx));
         let clock = self.config.time.now;
         sessions.update(cx, |sessions, cx| sessions.set_clock(clock, cx));
         self.account = Account {
@@ -149,7 +143,8 @@ impl AppRoot {
                     ViewKey::Communities
                     | ViewKey::Channels { .. }
                     | ViewKey::DirectMessages
-                    | ViewKey::InstancePermissions,
+                    | ViewKey::InstancePermissions
+                    | ViewKey::CommunityPermissions { .. },
             } => self.refresh_home(cx),
             CoreEvent::DesktopSignedIn { ip_address, at_ms } => {
                 self.account.desktop_sign_in = Some(DesktopSignIn {
@@ -599,6 +594,9 @@ impl AppRoot {
                 if let Some(players) = &self.players {
                     players.set_output_device(self.settings.get().voice.output_device.clone());
                 }
+                // Push to talk's key and mode changed: the bar follows now, and a key held under
+                // the old setting is released (`refresh_stage`).
+                self.refresh_stage(cx);
             }
             VoiceSettingsEvent::PlayTestSound => {
                 self.play_test_sound();
@@ -850,6 +848,7 @@ impl AppRoot {
             update,
             update_enabled,
             update_note,
+            log_folder: true,
         };
         tab.update(cx, |tab, cx| tab.set_state(state, cx));
     }
@@ -886,7 +885,7 @@ impl AppRoot {
         {
             tray.set_close_to_tray(on);
         }
-        crate::menu::install(cx, on);
+        crate::menu::install(cx, on, self.can_check_for_updates());
         self.refresh_desktop_tab(cx);
     }
 
@@ -904,6 +903,12 @@ impl AppRoot {
                 self.media_set_third_party(on, cx);
             }
             DesktopAppEvent::CheckForUpdates => self.check_for_updates(cx),
+            DesktopAppEvent::OpenLogFolder => {
+                // The app's open seam, so tests and rigs record it instead of opening anything.
+                let dir = crate::logging::logs_dir(&self.config.data_dir);
+                let _ = std::fs::create_dir_all(&dir);
+                crate::open_url(&dir.to_string_lossy(), cx);
+            }
             DesktopAppEvent::RegisterLinkHandler => {
                 let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services)
                 else {
@@ -1003,6 +1008,7 @@ impl AppRoot {
                 Section::Loading => Section::Loading,
             }
         }
+        let invite = self.home_invite_model(&core, &communities);
         let data = HomeData {
             mentions: ready(&communities, mentions),
             voice: ready(&communities, voice),
@@ -1010,10 +1016,12 @@ impl AppRoot {
             communities,
         };
         let can_create = core.instance_permissions().can_create_community;
+        self.account.invite = invite.clone();
         if let Some(home) = self.account.home.clone() {
             home.update(cx, |home, cx| {
                 home.set_data(data, cx);
                 home.set_can_create_community(can_create, cx);
+                home.set_invite(invite, cx);
             });
         }
         if let Some(gate) = self.account.gate.clone() {
@@ -1053,7 +1061,140 @@ impl AppRoot {
                 }
             }
             HomeEvent::CreateCommunity => self.open_create_community(window, cx),
+            HomeEvent::Invite(event) => self.on_invite_card(event, window, cx),
         }
+    }
+
+    /// What Home's invite card shows: `useHomeInviteCard` and `useInvitableCommunities` - who may
+    /// create instance invites, which communities this user may invite to, and the app's own part
+    /// (a request in flight, the last code, the notice).
+    fn home_invite_model(
+        &self,
+        core: &semaphore_core::Core,
+        communities: &Section<String>,
+    ) -> InviteCardModel {
+        let instance = core.instance_permissions();
+        let previous = &self.account.invite;
+        let mut model = InviteCardModel {
+            visible: instance.can_create_invite && !self.settings.get().home_invite_dismissed,
+            can_manage: instance.admin.invites_read,
+            loading: false,
+            communities: Vec::new(),
+            creating: previous.creating,
+            code: previous.code.clone(),
+            notice: previous.notice.clone(),
+        };
+        // The instance owner skips RBAC, so their capabilities need no roles read and the button
+        // is ready at once, as the web's `isOwner` does.
+        let owner = instance.admin.is_owner;
+        if model.visible && (matches!(communities, Section::Loading) && !owner) {
+            model.loading = true;
+        } else if model.visible {
+            for community in core.communities() {
+                let permissions = core.community_permissions(community.id.clone());
+                if permissions.state == LoadState::Loading && !owner {
+                    model.loading = true;
+                }
+                if permissions.caps.create_invite {
+                    model.communities.push(InviteCommunity {
+                        id: community.id,
+                        name: community.name,
+                    });
+                }
+            }
+        }
+        model
+    }
+
+    fn on_invite_card(&mut self, event: InviteEvent, window: &mut Window, cx: &mut Context<Self>) {
+        match event {
+            InviteEvent::QuickInvite => {
+                let (Some(core), Some(exec)) = (
+                    self.core(),
+                    self.services.as_ref().map(|services| services.exec.clone()),
+                ) else {
+                    return;
+                };
+                let targets = quick_invite_targets(&self.account.invite.communities);
+                if targets.is_empty() || self.account.invite.creating || self.account.invite.loading
+                {
+                    return;
+                }
+                self.account.invite.creating = true;
+                self.account.invite.notice = None;
+                self.refresh_home(cx);
+                let now = i64::try_from(self.config.clock.now_ms()).unwrap_or(i64::MAX);
+                let draft = InstanceInviteDraft {
+                    community_ids: targets,
+                    max_uses: Some(INVITE_USES),
+                    valid_until_ms: Some(now + INVITE_DAYS * 24 * 60 * 60 * 1000),
+                };
+                exec.run(
+                    window,
+                    cx,
+                    async move { core.create_instance_invite(draft).await },
+                    |this, result, _, cx| {
+                        this.account.invite.creating = false;
+                        match result {
+                            Ok(code) => {
+                                let copied = this.copy_home_invite(&code, cx);
+                                this.account.invite.code = Some(code);
+                                this.account.invite.notice = Some(if copied {
+                                    InviteNotice::copied()
+                                } else {
+                                    InviteNotice::failed(NOTICE_COPY_FAILED_AFTER_CREATE)
+                                });
+                            }
+                            Err(error) => {
+                                log::warn!("creating an invite from Home: {error}");
+                                this.account.invite.notice =
+                                    Some(InviteNotice::failed(NOTICE_CREATE_FAILED));
+                            }
+                        }
+                        this.refresh_home(cx);
+                    },
+                );
+            }
+            InviteEvent::Copy => {
+                let Some(code) = self.account.invite.code.clone() else {
+                    return;
+                };
+                let copied = self.copy_home_invite(&code, cx);
+                self.account.invite.notice = Some(if copied {
+                    InviteNotice::copied()
+                } else {
+                    InviteNotice::failed(NOTICE_COPY_FAILED)
+                });
+                self.refresh_home(cx);
+            }
+            InviteEvent::Manage => {
+                self.shell_navigate(
+                    Route::Admin {
+                        page: AdminPage::Invites,
+                    },
+                    cx,
+                );
+            }
+            InviteEvent::Dismiss => {
+                self.update_settings(|settings| settings.home_invite_dismissed = true);
+                self.refresh_home(cx);
+            }
+        }
+    }
+
+    /// The card's link on the clipboard, as the web's `copyToClipboard` does. False when this
+    /// session has no server to build the link from.
+    fn copy_home_invite(&self, code: &str, cx: &mut Context<Self>) -> bool {
+        let Some(base) = self
+            .services
+            .as_ref()
+            .and_then(|services| services.backend.server_url())
+        else {
+            return false;
+        };
+        let url = semaphore_ui::community_settings::rules::invite_url(&base, code);
+        cx.write_to_clipboard(ClipboardItem::new_string(url));
+        true
     }
 
     pub(super) fn open_create_community(&mut self, window: &mut Window, cx: &mut Context<Self>) {

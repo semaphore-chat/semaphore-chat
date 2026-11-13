@@ -153,6 +153,24 @@ fn menu_ids(connection: &zbus::Connection, item: &str) -> HashMap<String, i32> {
         .collect()
 }
 
+/// Whether an item can be activated, from dbusmenu's `enabled`.
+fn enabled(connection: &zbus::Connection, item: &str, id: i32) -> bool {
+    let reply = zbus::block_on(connection.call_method(
+        Some(item),
+        "/MenuBar",
+        Some("com.canonical.dbusmenu"),
+        "GetGroupProperties",
+        &(vec![id], vec!["enabled"]),
+    ))
+    .unwrap();
+    let groups: Vec<(i32, HashMap<String, OwnedValue>)> = reply.body().deserialize().unwrap();
+    // dbusmenu leaves a property out when it has its default, and `enabled` defaults to true.
+    groups[0]
+        .1
+        .get("enabled")
+        .is_none_or(|value| bool::try_from(value.clone()).unwrap())
+}
+
 /// A check box's `toggle-state`: 1 checked, 0 not.
 fn toggle_state(connection: &zbus::Connection, item: &str, id: i32) -> i32 {
     let reply = zbus::block_on(connection.call_method(
@@ -218,6 +236,7 @@ fn the_tray_registers_shows_unread_and_sends_its_menu() {
     let tray = tray::start(
         TrayOptions {
             close_to_tray: true,
+            updates_enabled: false,
         },
         sink,
     );
@@ -294,11 +313,21 @@ fn the_tray_registers_shows_unread_and_sends_its_menu() {
         DesktopEvent::ToggleWindow
     );
 
-    // The menu: Show/Hide, Close to Tray (checked, toggles off), Quit. Nothing else.
+    // The menu: Show/Hide, Close to Tray (checked, toggles off), Check for Updates (disabled
+    // until the updater is), Quit. Nothing else.
     let ids = menu_ids(&client, &item);
     let mut labels: Vec<&str> = ids.keys().map(String::as_str).collect();
     labels.sort_unstable();
-    assert_eq!(labels, vec!["Close to Tray", "Quit", "Show/Hide Semaphore"]);
+    assert_eq!(
+        labels,
+        vec![
+            "Check for Updates",
+            "Close to Tray",
+            "Quit",
+            "Show/Hide Semaphore"
+        ]
+    );
+    assert!(!enabled(&client, &item, ids["Check for Updates"]));
     click(&client, &item, ids["Show/Hide Semaphore"]);
     assert_eq!(
         events.recv_timeout(PATIENCE).unwrap(),
@@ -317,6 +346,16 @@ fn the_tray_registers_shows_unread_and_sends_its_menu() {
     until("the check box back on", || {
         toggle_state(&client, &item, ids["Close to Tray"]) == 1
     });
+    // The updater started (or a check finished): the item follows the settings button.
+    tray.set_updates_enabled(true);
+    until("Check for Updates enabled", || {
+        enabled(&client, &item, ids["Check for Updates"])
+    });
+    click(&client, &item, ids["Check for Updates"]);
+    assert_eq!(
+        events.recv_timeout(PATIENCE).unwrap(),
+        DesktopEvent::CheckForUpdates
+    );
     click(&client, &item, ids["Quit"]);
     assert_eq!(events.recv_timeout(PATIENCE).unwrap(), DesktopEvent::Quit);
 

@@ -1,5 +1,5 @@
-//! The tray icon: show/hide, close to tray, quit, and a dot while anything is unread. Electron's
-//! `setupTray`, minus "Check for Updates" until there's an updater.
+//! The tray icon: show/hide, close to tray, check for updates, quit, and a dot while anything is
+//! unread. Electron's `setupTray`.
 //!
 //! - **Linux:** a StatusNotifierItem with a dbusmenu ([`ksni`], on its own thread, async-io like
 //!   every zbus user here). Panels without a StatusNotifier host (a bare Hyprland, GNOME without the
@@ -37,6 +37,9 @@ pub enum TrayStatus {
 pub(crate) enum Command {
     Unread(u32),
     CloseToTray(bool),
+    /// Whether "Check for Updates" can run: off while the updater is absent or busy, exactly when
+    /// the settings button is disabled.
+    Updates(bool),
     /// Windows: the app window whose taskbar button carries the dot.
     TaskbarWindow(#[cfg_attr(not(windows), allow(dead_code))] isize),
     Shutdown,
@@ -69,6 +72,9 @@ impl Shared {
 pub struct TrayOptions {
     /// The "Close to tray" check box's first state.
     pub close_to_tray: bool,
+    /// The "Check for Updates" item's first state (disabled unless the app has an updater it
+    /// isn't using).
+    pub updates_enabled: bool,
 }
 
 pub struct DesktopTray {
@@ -79,6 +85,7 @@ pub struct DesktopTray {
 /// The menu's labels, shared by both platforms.
 pub(crate) const SHOW_HIDE: &str = "Show/Hide Semaphore";
 pub(crate) const CLOSE_TO_TRAY: &str = "Close to Tray";
+pub(crate) const CHECK_FOR_UPDATES: &str = "Check for Updates";
 pub(crate) const QUIT: &str = "Quit";
 
 /// The tooltip: the app's name, and the count while anything is unread.
@@ -152,6 +159,11 @@ impl DesktopTray {
     /// Sets the menu's "Close to tray" check box (after the setting changed elsewhere).
     pub fn set_close_to_tray(&self, on: bool) {
         self.send(Command::CloseToTray(on));
+    }
+
+    /// Enables or disables the menu's "Check for Updates", as the settings button is.
+    pub fn set_updates_enabled(&self, enabled: bool) {
+        self.send(Command::Updates(enabled));
     }
 
     /// Windows: the window (an `HWND`) whose taskbar button shows the unread dot. Elsewhere

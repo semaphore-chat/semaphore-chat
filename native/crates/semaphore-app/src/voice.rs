@@ -173,12 +173,15 @@ impl AppVoice {
         let wanted = engine_choices(voice);
         let now = self.engine.choices();
         if now.input_device != wanted.input_device {
+            log_device("input", wanted.input_device.as_deref());
             self.engine.select_input(wanted.input_device.clone());
         }
         if now.output_device != wanted.output_device {
+            log_device("output", wanted.output_device.as_deref());
             self.engine.select_output(wanted.output_device.clone());
         }
         if now.camera_device != wanted.camera_device {
+            log_device("camera", wanted.camera_device.as_deref());
             self.engine.select_camera(wanted.camera_device.clone());
         }
         if now.processing != wanted.processing {
@@ -345,6 +348,16 @@ impl VoiceController for AppVoice {
             },
         }
     }
+}
+
+/// A chosen device, in the voice event log: `system-default` when the system picks.
+fn log_device(which: &str, id: Option<&str>) {
+    log::info!(
+        target: "voice",
+        "device-changed which={} device={}",
+        which,
+        id.unwrap_or("system-default")
+    );
 }
 
 /// The voice-activity threshold the engine gates the mic at, 0..=100.

@@ -9,8 +9,11 @@
 //! - `desktop`: the window on the desktop: placement, close to tray, the tray, links from the OS.
 
 pub mod conversation;
+pub mod crash;
 pub mod desktop;
+pub mod electron_import;
 pub mod files;
+pub mod logging;
 pub mod menu;
 pub mod notifier;
 pub mod player;

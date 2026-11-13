@@ -123,6 +123,15 @@ impl Invite {
     }
 }
 
+/// A password-reset token, as `PasswordResetService` keeps it: one per request, single use, an
+/// hour by default. Only tests and the `reset_token` control plant them (the fake sends no mail).
+pub(crate) struct PasswordReset {
+    pub token: String,
+    pub user_id: String,
+    pub expires_at: DateTime<Utc>,
+    pub used: bool,
+}
+
 pub(crate) struct Grant {
     pub challenge: String,
     pub user_id: String,
@@ -150,6 +159,7 @@ pub(crate) struct Accounts {
     pub credentials: HashMap<String, Credential>,
     pub sessions: Vec<Session>,
     pub invites: Vec<Invite>,
+    pub password_resets: Vec<PasswordReset>,
     pub grants: HashMap<String, Grant>,
     pub appearance: BTreeMap<String, AppearanceSettingsResponseDto>,
     pub communities: Vec<CreatedCommunity>,
@@ -171,6 +181,7 @@ impl Accounts {
             credentials: HashMap::new(),
             sessions: Vec::new(),
             invites: Vec::new(),
+            password_resets: Vec::new(),
             grants: HashMap::new(),
             appearance: BTreeMap::new(),
             communities: Vec::new(),

@@ -2,8 +2,8 @@
 //! communities, the phone's gate, and the create community dialog.
 
 use super::{
-    CreateCommunityForm, HomeData, HomeMention, HomeScreen, HomeVoiceChannel, Section,
-    ZeroCommunityGate,
+    CreateCommunityForm, HomeData, HomeMention, HomeScreen, HomeVoiceChannel, InviteCardModel,
+    InviteCommunity, InviteNotice, Section, ZeroCommunityGate,
 };
 use crate::dms::stories::{ava, ben, cleo, dev, dialog_framed, emma, finn, long_user};
 use crate::stories::Story;
@@ -125,13 +125,44 @@ fn long() -> HomeData {
 }
 
 fn home(data: HomeData, can_create: bool, cx: &mut App) -> AnyView {
+    home_with_invite(data, can_create, InviteCardModel::default(), cx)
+}
+
+fn home_with_invite(
+    data: HomeData,
+    can_create: bool,
+    invite: InviteCardModel,
+    cx: &mut App,
+) -> AnyView {
     cx.new(|cx| {
         let mut home = HomeScreen::new(cx);
         home.set_data(data, cx);
         home.set_can_create_community(can_create, cx);
+        home.set_invite(invite, cx);
         home
     })
     .into()
+}
+
+fn invitable() -> InviteCardModel {
+    InviteCardModel {
+        visible: true,
+        can_manage: true,
+        loading: false,
+        communities: vec![
+            InviteCommunity {
+                id: "c-1".into(),
+                name: "Ladle Lab".into(),
+            },
+            InviteCommunity {
+                id: "c-2".into(),
+                name: "Synth Club".into(),
+            },
+        ],
+        creating: false,
+        code: None,
+        notice: None,
+    }
 }
 
 fn gate(can_create: bool, cx: &mut App) -> AnyView {
@@ -236,6 +267,67 @@ pub fn stories() -> Vec<Story> {
                     ..full()
                 },
                 false,
+                cx,
+            )
+        }),
+        Story::new("home-invite", |_, _, cx| {
+            home_with_invite(full(), true, invitable(), cx)
+        }),
+        Story::new("home-invite-created", |_, _, cx| {
+            home_with_invite(
+                full(),
+                true,
+                InviteCardModel {
+                    code: Some("aB3x9Q".into()),
+                    notice: Some(InviteNotice::copied()),
+                    ..invitable()
+                },
+                cx,
+            )
+        }),
+        Story::new("home-invite-loading", |_, _, cx| {
+            home_with_invite(
+                full(),
+                true,
+                InviteCardModel {
+                    loading: true,
+                    ..invitable()
+                },
+                cx,
+            )
+        }),
+        Story::new("home-invite-empty", |_, _, cx| {
+            home_with_invite(
+                full(),
+                true,
+                InviteCardModel {
+                    communities: Vec::new(),
+                    ..invitable()
+                },
+                cx,
+            )
+        }),
+        Story::new("home-invite-failed", |_, _, cx| {
+            home_with_invite(
+                full(),
+                true,
+                InviteCardModel {
+                    notice: Some(InviteNotice::failed(
+                        "Couldn't create an invite link. Try again.",
+                    )),
+                    ..invitable()
+                },
+                cx,
+            )
+        }),
+        Story::new("home-invite-busy", |_, _, cx| {
+            home_with_invite(
+                full(),
+                true,
+                InviteCardModel {
+                    creating: true,
+                    ..invitable()
+                },
                 cx,
             )
         }),

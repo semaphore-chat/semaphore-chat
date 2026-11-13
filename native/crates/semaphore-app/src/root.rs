@@ -9,12 +9,13 @@ use crate::runtime::Activity;
 use crate::services::{self, Services, StartOptions};
 use crate::settings::SettingsStore;
 use crate::voice::{AppVoice, VoiceRequest};
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{AttachmentKind, AttachmentView};
 use semaphore_core::model::{
     ChannelKind, CommunityRow, ErrorView, LoadState, RestoreOutcome, SessionState, SignOutReason,
-    ViewKey, VoiceRoom,
+    ViewKey, VoiceRoom, VoiceStatus,
 };
 use semaphore_core::platform::CaptureKind;
 use semaphore_core::{Core, CoreEvent};
@@ -26,11 +27,13 @@ use semaphore_ui::kit::{
 };
 use semaphore_ui::messages::{LruImageCache, MediaRef};
 use semaphore_ui::nav::Route;
+use semaphore_ui::settings::ptt_key_label;
 use semaphore_ui::shell::{ContentProps, CoreSource, ShellEvent};
 use semaphore_ui::theme::SemTheme as _;
 use semaphore_ui::voice::{
-    PickerActions, PickerModel, PickerSource, QualityLevel, VideoFrames, VoiceController,
-    VoiceStage, VoiceStageModel, source_picker, voice_bar_element_with,
+    PickerActions, PickerModel, PickerSource, PttAction, PttContext, PttInput, PttState,
+    QualityLevel, VideoFrames, VoiceController, VoiceStage, VoiceStageModel, ptt_decide,
+    source_picker, voice_bar_element_with,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -142,6 +145,11 @@ pub struct AppRoot {
     moderation: moderation::Moderation,
     /// W13: the updater, the update card and the settings row (`update`).
     updates: update::Updates,
+    /// The push-to-talk key is down, and the key that opened the microphone.
+    ptt_held: bool,
+    ptt_key_held: Option<String>,
+    /// The window's fallback focus: with no widget focused, window keys still reach the root.
+    root_focus: FocusHandle,
     /// What the server said about itself when it was last probed.
     server_info: Option<semaphore_core::model::ServerInfo>,
     window: AnyWindowHandle,
@@ -196,6 +204,11 @@ impl AppRoot {
             if let Some(pane) = &this.pane {
                 pane.update(cx, |pane, cx| pane.set_focused(active, cx));
             }
+            // As the web's window `blur`: a push-to-talk key held while the window loses focus is
+            // released, so the microphone never stays open in the background.
+            if !active {
+                this.ptt_release(cx);
+            }
         });
         let settings = config.settings.clone();
         cx.set_global(crate::Seams {
@@ -213,8 +226,9 @@ impl AppRoot {
                 .unwrap_or_else(|| Rc::new(|url: &str, cx: &mut App| cx.open_url(url))),
         });
         // The app menu's actions act on this root, and its Close to Tray item starts checked.
+        // Check for Updates starts disabled: the updater is started once the services are.
         crate::menu::target(cx);
-        crate::menu::install(cx, settings.get().close_to_tray);
+        crate::menu::install(cx, settings.get().close_to_tray, false);
         // The theme this app last showed, until the server's appearance arrives.
         if let Some(choice) = settings
             .get()
@@ -268,6 +282,9 @@ impl AppRoot {
             roles: roles::Roles::default(),
             moderation: moderation::Moderation::default(),
             updates: update::Updates::default(),
+            ptt_held: false,
+            ptt_key_held: None,
+            root_focus: cx.focus_handle(),
             server_info: None,
             window: window.window_handle(),
             _subscriptions: vec![activation, keys],
@@ -461,6 +478,13 @@ impl AppRoot {
             ),
             _ => (self.voice_channel_name.clone(), false),
         };
+        let ptt = self.ptt_mode().then(|| PttState {
+            held: self.ptt_held,
+            key_label: self
+                .configured_ptt_key()
+                .map(|key| ptt_key_label(&key))
+                .unwrap_or_default(),
+        });
         VoiceStageModel {
             reconnect_attempt: voice.reconnect_attempt,
             voice,
@@ -468,12 +492,123 @@ impl AppRoot {
             is_dm,
             quality,
             local_quality,
-            ptt: None,
+            ptt,
             always_show_overlays: false,
         }
     }
 
+    /// Push to talk is on in settings and this call supports it: the mode the key and the bar's
+    /// hold button belong to.
+    fn ptt_mode(&self) -> bool {
+        self.core().is_some_and(|core| {
+            self.settings.get().voice.input_mode == crate::settings::InputMode::PushToTalk
+                && core.voice().status == VoiceStatus::Connected
+        })
+    }
+
+    fn configured_ptt_key(&self) -> Option<String> {
+        self.settings.get().voice.push_to_talk_key.clone()
+    }
+
+    /// Server mute and a missing SPEAK both outrank the key, as they do on the web.
+    fn ptt_may_speak(&self) -> bool {
+        self.core().is_some_and(|core| {
+            let voice = core.voice();
+            !voice.server_muted && voice.local.may_speak
+        })
+    }
+
+    /// One key event or focus loss through the web's rule, then its effect.
+    fn ptt_event(
+        &mut self,
+        input: PttInput<'_>,
+        editable: bool,
+        cx: &mut Context<Self>,
+    ) -> PttAction {
+        let key = self.configured_ptt_key();
+        let context = PttContext {
+            key: key.as_deref(),
+            connected: self
+                .core()
+                .is_some_and(|core| core.voice().status == VoiceStatus::Connected),
+            push_to_talk: self.settings.get().voice.input_mode
+                == crate::settings::InputMode::PushToTalk,
+            can_speak: self.ptt_may_speak(),
+            editable,
+            held: self.ptt_held,
+        };
+        let action = ptt_decide(input, context);
+        match action {
+            PttAction::Start => {
+                let started = match input {
+                    PttInput::Down { key, .. } => Some(key.to_owned()),
+                    _ => None,
+                };
+                self.ptt_held = true;
+                self.ptt_key_held = started;
+                if let Some(voice) = &self.voice {
+                    voice.ptt_pressed(true);
+                }
+                self.refresh_stage(cx);
+            }
+            PttAction::Stop => self.ptt_release(cx),
+            PttAction::Nothing => {}
+        }
+        action
+    }
+
+    /// Closes the microphone without redrawing: `refresh_stage` calls this while it already knows
+    /// the model that follows.
+    fn ptt_release_state(&mut self) {
+        if !self.ptt_held {
+            return;
+        }
+        self.ptt_held = false;
+        self.ptt_key_held = None;
+        if let Some(voice) = &self.voice {
+            voice.ptt_pressed(false);
+        }
+    }
+
+    fn ptt_release(&mut self, cx: &mut Context<Self>) {
+        if !self.ptt_held {
+            return;
+        }
+        self.ptt_release_state();
+        self.refresh_stage(cx);
+    }
+
+    fn ptt_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.ptt_mode() {
+            return;
+        }
+        let key = event.keystroke.key.to_lowercase();
+        let editable = window.has_focused_input(cx);
+        let input = PttInput::Down {
+            key: &key,
+            repeat: event.is_held,
+        };
+        if self.ptt_event(input, editable, cx) == PttAction::Start {
+            // The web's `preventDefault`: the key must not also type, or trigger a menu item.
+            cx.stop_propagation();
+        }
+    }
+
+    fn ptt_key_up(&mut self, event: &KeyUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.ptt_held {
+            return;
+        }
+        let key = event.keystroke.key.to_lowercase();
+        let editable = window.has_focused_input(cx);
+        self.ptt_event(PttInput::Up { key: &key }, editable, cx);
+    }
+
     fn refresh_stage(&mut self, cx: &mut Context<Self>) {
+        // The key changed in settings, the mode went back to voice activity, or the call ended:
+        // the web's listener is unbound then and its cleanup closes the microphone.
+        if self.ptt_held && (self.ptt_key_held != self.configured_ptt_key() || !self.ptt_mode()) {
+            self.ptt_release_state();
+        }
         let model = self.stage_model();
         // The picker is for this call's share: a call that ended takes it away.
         if model.voice.room.is_none() {
@@ -1582,6 +1717,8 @@ fn apply_os_event(core: &Core, event: OsEvent) {
     match event {
         OsEvent::Suspending => core.suspend(),
         OsEvent::Resumed => {
+            // Electron's voice log records wake events too (`system-resume`).
+            log::info!(target: "voice", "system-resume");
             core.resume();
         }
         OsEvent::Network(network) => {
@@ -1738,6 +1875,11 @@ fn content(
 impl Render for AppRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.reconcile(window, cx);
+        // Window keys (push to talk above all) dispatch along the focus path. Nothing focused means
+        // the window's root node, outside this view: give the root the focus so they reach here.
+        if window.focused(cx).is_none() {
+            window.focus(&self.root_focus, cx);
+        }
         let sem = cx.sem().clone();
         let root = div()
             .id("app-root")
@@ -1762,7 +1904,14 @@ impl Render for AppRoot {
         let root = root
             .capture_any_mouse_down(cx.listener(|this, _, _, cx| this.input_seen(cx)))
             .on_mouse_move(cx.listener(|this, _, _, cx| this.input_seen(cx)))
-            .on_scroll(cx.listener(|this, _, _, cx| this.input_seen(cx)));
+            .on_scroll(cx.listener(|this, _, _, cx| this.input_seen(cx)))
+            // Push to talk listens window-wide, as the web's `window` listeners do. The root holds
+            // the focus whenever nothing else does (`render`), so keys with no widget focused
+            // still travel through here; a text field's keys bubble through it too, and
+            // `has_focused_input` ignores those. Whether an event is ours is `voice::ptt::decide`.
+            .track_focus(&self.root_focus)
+            .on_key_down(cx.listener(Self::ptt_key_down))
+            .on_key_up(cx.listener(Self::ptt_key_up));
         if let Some(shell) = &self.shell {
             let mut overlays = self.inbox_overlays(cx);
             overlays.extend(self.account_overlays(cx));

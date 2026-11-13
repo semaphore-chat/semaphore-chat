@@ -94,6 +94,17 @@ impl OnboardingBackend for FakeBackend {
     ) -> BackendResult<wire::ForgotPasswordResponseDto> {
         self.w3.run("forgot", &[&body.email]).await
     }
+    async fn auth_controller_reset_password(
+        &self,
+        body: wire::ResetPasswordRequestDto,
+    ) -> BackendResult<wire::ResetPasswordResponseDto> {
+        self.w3
+            .run(
+                "reset_password",
+                &[body.token.as_str(), body.new_password.as_str()],
+            )
+            .await
+    }
     async fn invite_controller_get_public_invite(
         &self,
         code: String,

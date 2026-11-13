@@ -3,7 +3,7 @@
 
 use crate::script::Step;
 use anyhow::{Context as _, Result, anyhow, bail};
-use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
+use gpui_kit::test::{TestEventExt as _, TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::*;
 use image::RgbaImage;
 use std::path::Path;
@@ -147,6 +147,8 @@ impl Driver {
                 })?;
             }
             Step::Press { key } => self.update(|window, cx| window.press(key, cx))?,
+            Step::KeyDown { key } => self.update(|window, cx| window.key_down(key, false, cx))?,
+            Step::KeyUp { key } => self.update(|window, cx| window.key_up(key, cx))?,
             Step::Type { text } => {
                 self.settle()?;
                 self.update(|window, cx| window.input(text, cx))?;

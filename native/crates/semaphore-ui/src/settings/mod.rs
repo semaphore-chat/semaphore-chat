@@ -271,8 +271,6 @@ pub enum VoiceSettingsEvent {
 pub struct VoiceLimits {
     /// In place of the mic test's button and meter.
     pub mic_test: Option<SharedString>,
-    /// Under the push-to-talk key, while push to talk is chosen.
-    pub push_to_talk: Option<SharedString>,
 }
 
 pub struct VoiceVideoSettings {
@@ -422,6 +420,8 @@ pub struct DesktopAppState {
     pub update_enabled: bool,
     /// Why updates aren't offered, when they aren't.
     pub update_note: Option<String>,
+    /// Whether the app has a log folder, which shows "Open log folder" in About.
+    pub log_folder: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -434,6 +434,8 @@ pub enum DesktopAppEvent {
     ChangeServer,
     /// W13: "Check for updates".
     CheckForUpdates,
+    /// "Open log folder": the owner opens the logs directory through its open seam.
+    OpenLogFolder,
 }
 
 pub struct DesktopAppSettings {

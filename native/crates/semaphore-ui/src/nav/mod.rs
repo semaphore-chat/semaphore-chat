@@ -99,6 +99,11 @@ pub enum Route {
     Notifications,
     /// U-freeze: the friends page.
     Friends,
+    /// `/reset-password?token=...`: the signed-out reset screen. `None` is a link with no token,
+    /// which the screen shows as missing or invalid.
+    ResetPassword {
+        token: Option<String>,
+    },
     /// U-freeze: this user's own profile (`/profile`).
     OwnProfile,
     /// U-freeze: the create-community screen (`/community/create`).
@@ -143,7 +148,10 @@ impl Route {
     /// From an app path. Static patterns come before parametric ones in [`WEB_PATHS`], as React
     /// Router's ranking would have it, so `/community/create` is not a community called `create`.
     pub fn parse(path: &str) -> Route {
-        let path = path.split(['?', '#']).next().unwrap_or(path);
+        let without_fragment = path.split('#').next().unwrap_or(path);
+        let (path, query) = without_fragment
+            .split_once('?')
+            .unwrap_or((without_fragment, ""));
         let parts = segments(path);
         for pattern in WEB_PATHS.iter().copied().filter(|pattern| *pattern != "*") {
             let Some(params) = matches(pattern, &parts) else {
@@ -183,6 +191,9 @@ impl Route {
                 "/notifications" => Route::Notifications,
                 "/friends" => Route::Friends,
                 "/profile" => Route::OwnProfile,
+                "/reset-password" => Route::ResetPassword {
+                    token: query_token(query),
+                },
                 "/community/create" => Route::CreateCommunity,
                 "/admin" => admin(AdminPage::Dashboard),
                 "/admin/users" => admin(AdminPage::Users),
@@ -224,6 +235,7 @@ impl Route {
             Route::Notifications => "/notifications".into(),
             Route::Friends => "/friends".into(),
             Route::OwnProfile => "/profile".into(),
+            Route::ResetPassword { .. } => "/reset-password".into(),
             Route::CreateCommunity => "/community/create".into(),
             Route::ChannelSearch {
                 community_id,
@@ -236,7 +248,7 @@ impl Route {
     /// Whether reaching this route needs a session.
     pub fn requires_auth(&self) -> bool {
         match self {
-            Route::Login | Route::Invite { .. } => false,
+            Route::Login | Route::Invite { .. } | Route::ResetPassword { .. } => false,
             Route::Unbuilt { pattern, .. } => !PUBLIC_PATTERNS.contains(pattern),
             _ => true,
         }
@@ -312,6 +324,10 @@ pub enum DeepLink {
     Invite {
         invite_code: String,
     },
+    /// `semaphore://reset-password?token=...`: the reset screen, signed out.
+    ResetPassword {
+        token: Option<String>,
+    },
 }
 
 const MAX_URL_LENGTH: usize = 2048;
@@ -380,7 +396,10 @@ pub fn parse_deep_link(raw: &str) -> Option<DeepLink> {
     if !scheme.eq_ignore_ascii_case("semaphore") {
         return None;
     }
-    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+    let without_fragment = rest.split('#').next().unwrap_or(rest);
+    let (rest, query) = without_fragment
+        .split_once('?')
+        .unwrap_or((without_fragment, ""));
     let (authority, path) = match rest.find('/') {
         Some(slash) => rest.split_at(slash),
         None => (rest, ""),
@@ -414,6 +433,9 @@ pub fn parse_deep_link(raw: &str) -> Option<DeepLink> {
         ("join", [code]) if is_invite_code(code) => Some(DeepLink::Invite {
             invite_code: (*code).to_owned(),
         }),
+        ("reset-password", []) => Some(DeepLink::ResetPassword {
+            token: query_token(query),
+        }),
         _ => None,
     }
 }
@@ -433,8 +455,26 @@ impl DeepLink {
             DeepLink::DmInbox => Route::DirectMessages,
             DeepLink::Dm { dm_group_id } => Route::DirectMessage { dm_group_id },
             DeepLink::Invite { invite_code } => Route::Invite { invite_code },
+            DeepLink::ResetPassword { token } => Route::ResetPassword { token },
         }
     }
+}
+
+/// `?token=` from a query string: percent-decoded, and only when it looks like a reset token (a
+/// graphic, slash-free string of at most 128 characters). Anything else reads as no token, which
+/// the screen reports as a missing or invalid link.
+fn query_token(query: &str) -> Option<String> {
+    let raw = query.split('&').find_map(|pair| {
+        pair.strip_prefix("token=")
+            .or_else(|| pair.strip_prefix("amp;token="))
+    })?;
+    let token = percent_decode(raw)?;
+    let length = token.chars().count();
+    (length > 0
+        && length <= 128
+        && !token.contains(['/', '\\'])
+        && token.chars().all(|c| c.is_ascii_graphic()))
+    .then_some(token)
 }
 
 /// The client's position. A plain value, so any UI can hold it: back and forward like a browser's,
@@ -593,6 +633,22 @@ mod tests {
             Route::parse("/nope/at/all"),
             Route::NotFound { .. }
         ));
+        // The reset path carries its token from the query string.
+        assert_eq!(
+            Route::parse("/reset-password?token=w3-reset-token"),
+            Route::ResetPassword {
+                token: Some("w3-reset-token".into())
+            }
+        );
+        assert_eq!(
+            Route::parse("/reset-password"),
+            Route::ResetPassword { token: None }
+        );
+        assert_eq!(
+            Route::parse("/reset-password?token=a%20b"),
+            Route::ResetPassword { token: None },
+            "spaces are not a token"
+        );
     }
 
     #[test]
@@ -720,6 +776,7 @@ mod tests {
         assert!(!Route::parse("/login").requires_auth());
         assert!(!Route::parse("/join/abc").requires_auth());
         assert!(!Route::parse("/register").requires_auth());
+        assert!(!Route::parse("/reset-password?token=x").requires_auth());
         assert!(Route::parse("/settings").requires_auth());
         assert!(Route::parse("/direct-messages").requires_auth());
     }
@@ -744,6 +801,21 @@ mod tests {
             Some(format!("/direct-messages/{UUID}"))
         );
         assert_eq!(path("semaphore://join/aB3_-x"), Some("/join/aB3_-x".into()));
+        assert_eq!(
+            path("semaphore://reset-password?token=w3-reset-token"),
+            Some("/reset-password".into())
+        );
+        assert_eq!(
+            parse_deep_link("semaphore://reset-password?token=w3-reset-token")
+                .map(|link| link.route()),
+            Some(Route::ResetPassword {
+                token: Some("w3-reset-token".into())
+            })
+        );
+        assert_eq!(
+            parse_deep_link("semaphore://reset-password").map(|link| link.route()),
+            Some(Route::ResetPassword { token: None })
+        );
         assert_eq!(
             path(&format!("SEMAPHORE://COMMUNITY/{UUID}?utm=1#frag")),
             Some(format!("/community/{UUID}"))
@@ -870,6 +942,14 @@ mod tests {
                         }
                         DeepLink::Dm { dm_group_id } => prop_assert!(is_uuid(&dm_group_id)),
                         DeepLink::Invite { invite_code } => prop_assert!(is_invite_code(&invite_code)),
+                        DeepLink::ResetPassword { token } => {
+                            let ok = token.is_none_or(|token| {
+                                (1..=128).contains(&token.chars().count())
+                                    && !token.contains(['/', '\\'])
+                                    && token.chars().all(|c| c.is_ascii_graphic())
+                            });
+                            prop_assert!(ok);
+                        }
                         DeepLink::DmInbox => {}
                     }
                 }

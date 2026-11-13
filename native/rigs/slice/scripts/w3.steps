@@ -91,7 +91,6 @@ wait core engine ptt on
 click voice-noise-suppression
 expect settings /voice/input_mode/mode push_to_talk
 expect settings /voice/noise_suppression false
-wait core element voice-ptt-limit
 wait core element voice-mic-test
 wait idle
 shot 07-settings-voice-ptt
@@ -135,6 +134,11 @@ expect settings /third_party_media true
 click desktop-link-preview-images
 expect settings /third_party_media false
 
+# "Open log folder" goes through the app's open seam; the rig records the path instead of opening
+# a file manager.
+click desktop-open-logs
+expect opened-url "app-data/logs"
+
 # 7. Appearance: light, at once, everywhere: the settings, the shell and a conversation, a dialog.
 click settings-tab-appearance
 wait core route settings/appearance
@@ -167,7 +171,6 @@ wait core label "Settings"
 click account-settings
 click settings-tab-voice
 wait core route settings/voice
-wait core element voice-ptt-limit
 wait idle
 shot 15-restart-settings-voice
 
@@ -187,9 +190,23 @@ wait core label "Board Games"
 wait idle
 shot 17-community-created
 
+# 9b. Home's invite card: a quick invite names the communities I may invite to, shows its code,
+# and puts its join link on the clipboard.
+navigate /
+wait core route home
+wait core element home-invite
+click home-invite-quick
+wait core requests InviteController_createInvite >= 1
+wait core element home-invite-code
+wait core element home-invite-notice
+expect clipboard "/#/join/"
+wait idle
+shot 17b-home-invite
+
 # 10. Signed out: a forgotten password, then an invite link that registers someone new.
 server public_settings "{\"passwordResetEnabled\": true}"
 server seed_invite "{\"code\": \"w3-invite\"}"
+server reset_token "{\"token\": \"w3-reset-token\"}"
 click rail-account
 wait core label "Sign out"
 click account-sign-out
@@ -204,7 +221,15 @@ wait core element forgot-sent
 wait core requests AuthController_forgotPassword >= 1
 wait idle
 shot 18-forgot-password-sent
-click forgot-back
+# The mail's link, pasted back: the success card takes the whole web URL and opens the reset
+# screen with its token.
+click forgot-reset-link
+type "$SERVER/reset-password?token=w3-reset-token"
+click forgot-reset-open
+wait core element reset-password-submit
+wait idle
+shot 18b-reset-password
+click reset-password-back
 wait core element auth-username
 link "semaphore://join/w3-invite"
 wait core element invite-accept
@@ -227,6 +252,53 @@ wait core requests UserController_register >= 1
 wait core route home
 wait idle
 shot 21-registered-home
+
+# 10b. A reset link's route, signed out: a token nobody issued is refused in the server's words
+# and offers another link; a live one sets the new account's password, which then signs in.
+server reset_token "{\"email\": \"newcomer@example.com\", \"token\": \"w3-newcomer-reset\"}"
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+link "semaphore://reset-password?token=nobody-issued-this"
+wait core element reset-password-submit
+click reset-password
+type "NewPassword123!"
+click reset-password-confirm
+type "NewPassword123!"
+wait idle
+shot 21b-reset-password
+click reset-password-submit
+wait core requests AuthController_resetPassword >= 1
+wait core element reset-password-error
+wait core label "Invalid or expired reset token"
+wait idle
+shot 21c-reset-refused
+click reset-password-request-new
+wait core element forgot-email
+click forgot-back
+wait core element auth-username
+link "semaphore://reset-password?token=w3-newcomer-reset"
+wait core element reset-password-submit
+click reset-password
+type "NewPassword123!"
+click reset-password-confirm
+type "NewPassword123!"
+click reset-password-submit
+wait core element reset-password-done
+wait idle
+shot 21d-reset-done
+click reset-password-sign-in
+wait core element auth-username
+click auth-username
+type "newcomer"
+click auth-password
+type "NewPassword123!"
+click auth-login
+wait core session signed-in
+wait core route home
+wait idle
+shot 21e-reset-signed-in
 
 # 11. Sign in with the browser, end to end: the app opens the instance's desktop-login page, the
 # rig plays the browser (the signed-in user approves, the browser follows the redirect to the

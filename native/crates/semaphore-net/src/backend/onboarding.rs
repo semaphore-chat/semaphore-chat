@@ -32,6 +32,17 @@ impl OnboardingBackend for HttpBackend {
         }
     }
 
+    async fn auth_controller_reset_password(
+        &self,
+        body: wire::ResetPasswordRequestDto,
+    ) -> BackendResult<wire::ResetPasswordResponseDto> {
+        let (client, _, _) = self.anon_client()?;
+        match client.auth_controller_reset_password(&body).await {
+            Ok(response) => Ok(response.into_inner()),
+            Err(error) => Err(convert(error).await),
+        }
+    }
+
     async fn invite_controller_get_public_invite(
         &self,
         code: String,
