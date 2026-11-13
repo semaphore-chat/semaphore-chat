@@ -40,7 +40,7 @@ shot 01-players-idle
 # 2. The audio plays to its end through the range reader and the virtual speaker.
 player toggle opus.ogg
 wait core player opus.ogg playing within 10
-expect requests FileController_getFile >= 1
+wait core requests FileController_getFile >= 1
 wait core sound heard within 10
 wait core player opus.ogg ended within 15
 

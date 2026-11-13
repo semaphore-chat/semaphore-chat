@@ -17,6 +17,8 @@
 # Each run starts a fresh fake server (scenario showcase) on 127.0.0.1 inside this container and
 # drives rig-slice through the steps: state checks, and screenshots into <run dir>/run-N. The
 # second run must give the same pixels for every static shot, the ones not named *-live-*.
+# Each run also leaves the fake server's log (fake-server.log), the steps' (steps.log) and the
+# app's own, at SEMAPHORE_LOG (rig.log: where a dropped socket says why).
 # Exits non-zero on any failed step or differing shot, after running every steps file.
 set -euo pipefail
 
@@ -159,11 +161,13 @@ for suite in "${suites[@]}"; do
     start_server "$dir/fake-server.log"
     echo "== run $run" >&2
     run_started="$(date +%s%3N)"
-    "$target/rig-slice" \
+    # The rig's own log (the app's, at SEMAPHORE_LOG) lands in the run directory too: it is where
+    # a socket that dropped says why ("socket disconnected: ping timeout").
+    { "$target/rig-slice" \
       --server "http://127.0.0.1:$port" \
       --scenario "fixtures/scenarios/$scenario.json" \
       --script "$steps" \
-      --out "$dir" ${rig_args[@]+"${rig_args[@]}"} | tee "$dir/steps.log" >&2
+      --out "$dir" ${rig_args[@]+"${rig_args[@]}"} 2> >(tee "$dir/rig.log" >&2); } | tee "$dir/steps.log" >&2
     echo "run $run: $(( $(date +%s%3N) - run_started )) ms" >&2
     stop_server
   done

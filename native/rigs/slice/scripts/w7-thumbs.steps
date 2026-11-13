@@ -44,8 +44,8 @@ wait core sent "two pictures"
 wait core attachments "two pictures" 2 within 15
 wait core uploads "two pictures" 0
 wait core pending-files "two pictures" 0
-expect requests FileUploadController_uploadFile >= 2
-expect requests MessagesController_addAttachment >= 2
+wait core requests FileUploadController_uploadFile >= 2
+wait core requests MessagesController_addAttachment >= 2
 # The fake server seeds the scenario's soundboard files (four communities, three sounds each)
 # and numbers uploads from there: one message's first two are the 13th and 14th.
 snap 01-boxes-before-load

@@ -17,8 +17,8 @@ click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
-expect requests AuthController_login >= 1
-expect requests InstanceController_getPublicSettings >= 1
+wait core requests AuthController_login >= 1
+wait core requests InstanceController_getPublicSettings >= 1
 
 # 2. Lists: communities, the first one's channels, its first text channel's first page.
 wait core channel $ID(cc-general)
@@ -53,13 +53,13 @@ wait idle
 shot 05-mention-menu
 press enter
 type "thanks"
-expect requests typingStart >= 1
+wait core requests typingStart >= 1
 
 # 5. Send: a pending row, acked by its nonce, exactly once.
 press enter
 wait core sent "on it @dropbear thanks"
 expect core count "on it @dropbear thanks" 1
-expect requests sendMessage >= 1
+wait core requests sendMessage >= 1
 wait idle
 shot 06-sent
 
@@ -91,8 +91,9 @@ server refuse_connections "{\"refuse\": true}"
 server drop_connections
 wait core connection disconnected
 server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-samira)\", \"text\": \"missed while away\", \"broadcast\": false}"
+# The pill is the subject: this shot asks for the window while the socket is away.
 wait idle
-shot 09-live-reconnecting
+shot 09-live-reconnecting while-away
 expect core no-text "missed while away"
 server refuse_connections "{\"refuse\": false}"
 wait core connection connected within 40
@@ -113,8 +114,9 @@ wait core text "posted while asleep"
 expect core count "posted while asleep" 1
 os network-down
 wait core connection offline
+# Likewise the offline state's own shot.
 wait idle
-shot 11-offline
+shot 11-offline while-away
 os network-up
 wait core connection connected within 40
 # Wi-Fi to cellular, say: the socket is replaced and the new connection resyncs.
@@ -130,7 +132,7 @@ wait core session signed-in
 wait core channel $ID(cc-general)
 wait core rows >= 14
 wait core connection connected
-expect requests AuthController_refresh >= 1
+wait core requests AuthController_refresh >= 1
 wait idle
 shot 12-restored
 # The server doesn't answer at start: the session is kept and a retry offered.
@@ -161,8 +163,8 @@ wait core sent "two files"
 wait core attachments "two files" 2 within 15
 wait core uploads "two files" 0
 wait core pending-files "two files" 0
-expect requests FileUploadController_uploadFile >= 2
-expect requests MessagesController_addAttachment >= 2
+wait core requests FileUploadController_uploadFile >= 2
+wait core requests MessagesController_addAttachment >= 2
 wait idle
 shot 20-files-sent
 server fail_route "{\"operationId\": \"FileUploadController_uploadFile\", \"status\": 413, \"code\": \"PAYLOAD_TOO_LARGE\"}"
@@ -213,7 +215,7 @@ shot 14-account
 click account-sign-out
 wait core session signed-out
 wait core label "Username"
-expect requests AuthController_logout >= 1
+wait core requests AuthController_logout >= 1
 expect stored-session no
 wait idle
 shot 15-signed-out

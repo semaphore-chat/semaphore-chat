@@ -11,7 +11,72 @@ use semaphore_wire::types::{ReauthenticateResultDto, SendAckDto, SendAckErrorDto
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio::time::Instant;
+
+/// Engine.IO's server-side keep-alive, as the real backend's gateways set it
+/// (`backend/src/*/*.gateway.ts`: `pingInterval: 25000, pingTimeout: 60000`).
+///
+/// The client ends a connection that goes `pingInterval + pingTimeout` without a ping from the
+/// server (socket.io-client's rule, `semaphore-net::socket`), so a server that advertises these
+/// numbers has to send the pings: this one did not, and every client connection died of
+/// `ping timeout` 45 s after it connected, then reconnected. A run slower than that (a busy
+/// machine) had its socket drop mid-script, and a shot could catch the "Reconnecting…" pill.
+const PING_INTERVAL: Duration = Duration::from_secs(25);
+const PING_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// When the server pings next, and when an unanswered ping ends the connection.
+#[derive(Debug)]
+struct PingTimer {
+    interval: Duration,
+    timeout: Duration,
+    next_ping: Instant,
+    /// The moment the first ping still unanswered runs out; `None` once a pong came back.
+    pong_by: Option<Instant>,
+}
+
+/// What [`PingTimer`] says to do at its deadline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ping {
+    /// Send `2`; its `3` has to come back before the timeout.
+    Send,
+    /// No pong in time: the connection is dead.
+    Ended,
+}
+
+impl PingTimer {
+    fn new(interval: Duration, timeout: Duration) -> Self {
+        Self {
+            interval,
+            timeout,
+            next_ping: Instant::now() + interval,
+            pong_by: None,
+        }
+    }
+
+    /// The moment it next acts: sends a ping, or ends the connection.
+    fn deadline(&self) -> Instant {
+        self.pong_by
+            .map_or(self.next_ping, |by| by.min(self.next_ping))
+    }
+
+    /// A `3` came back.
+    fn pong(&mut self) {
+        self.pong_by = None;
+    }
+
+    /// At [`Self::deadline`]: ping, or end the connection.
+    fn tick(&mut self, now: Instant) -> Ping {
+        if self.pong_by.is_some_and(|by| by <= now) {
+            return Ping::Ended;
+        }
+        // The first ping of an unanswered run starts the clock; pings after it don't push it out.
+        self.pong_by.get_or_insert(now + self.timeout);
+        self.next_ping = now + self.interval;
+        Ping::Send
+    }
+}
 
 /// The one server-event frame shape: `42["name", payload]`.
 pub(crate) fn event_frame(event: &str, payload: Value) -> String {
@@ -55,8 +120,8 @@ fn open_frame(sid: &str) -> String {
         "0{}",
         json!({
             "sid": sid,
-            "pingInterval": 25000,
-            "pingTimeout": 20000,
+            "pingInterval": PING_INTERVAL.as_millis() as u64,
+            "pingTimeout": PING_TIMEOUT.as_millis() as u64,
             "upgrades": [],
         })
     )
@@ -159,6 +224,7 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
 
     if connected {
         let mut abrupt = false;
+        let mut pings = PingTimer::new(PING_INTERVAL, PING_TIMEOUT);
         loop {
             tokio::select! {
                 changed = close.changed() => {
@@ -183,6 +249,7 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
                                 continue;
                             }
                             if text == "3" {
+                                pings.pong();
                                 continue;
                             }
                             if let Some((ack, args)) = parse_event(text) {
@@ -200,6 +267,14 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
                         Message::Close(_) => break,
                         _ => {}
                     }
+                }
+                // Engine.IO's ping, as the real server sends it: the client times the connection
+                // out if none arrives.
+                _ = tokio::time::sleep_until(pings.deadline()) => {
+                    if pings.tick(Instant::now()) == Ping::Ended {
+                        break;
+                    }
+                    inner.enqueue_text(&tx, "2".to_owned());
                 }
             }
         }
@@ -559,4 +634,52 @@ pub(crate) fn announce_read(
         inner.emit_to_users(&members, "readReceiptUpdated", room);
     }
     Ok(receipt)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ping clock starts at `PingTimer::new`'s now, and the first ping is one interval out.
+    fn started() -> (PingTimer, Instant) {
+        let pings = PingTimer::new(PING_INTERVAL, PING_TIMEOUT);
+        let start = pings.next_ping - PING_INTERVAL;
+        (pings, start)
+    }
+
+    #[test]
+    fn a_pong_every_interval_keeps_the_connection() {
+        let (mut pings, start) = started();
+        for n in 1..=4u32 {
+            let at = start + PING_INTERVAL * n;
+            assert_eq!(
+                pings.deadline(),
+                at,
+                "ping {n} is due one interval after the last"
+            );
+            assert_eq!(pings.tick(at), Ping::Send);
+            pings.pong();
+        }
+    }
+
+    #[test]
+    fn an_unanswered_ping_ends_the_connection_a_timeout_later() {
+        let (mut pings, start) = started();
+        assert_eq!(pings.tick(start + PING_INTERVAL), Ping::Send);
+        assert_eq!(pings.tick(start + PING_INTERVAL * 2), Ping::Send);
+        assert_eq!(pings.tick(start + PING_INTERVAL * 3), Ping::Send);
+        // The deadline is the first unanswered ping's, 25 s + 60 s, not the last one's plus 60 s.
+        let timeout = start + PING_INTERVAL + PING_TIMEOUT;
+        assert_eq!(pings.deadline(), timeout);
+        assert_eq!(pings.tick(timeout), Ping::Ended);
+    }
+
+    #[test]
+    fn the_open_packet_advertises_the_backends_ping_settings() {
+        let open = open_frame("sid-000001");
+        let body: Value = serde_json::from_str(&open[1..]).expect("the open frame is JSON");
+        assert_eq!(body["pingInterval"], 25_000);
+        assert_eq!(body["pingTimeout"], 60_000);
+        assert_eq!(body["sid"], "sid-000001");
+    }
 }

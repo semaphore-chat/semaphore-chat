@@ -205,7 +205,7 @@ wait idle
 shot 13-add-people
 click add-people-submit
 wait core no-element add-people-submit
-expect requests DirectMessagesController_addMembers >= 1
+wait core requests DirectMessagesController_addMembers >= 1
 wait core w9 dm-members 4
 wait idle
 shot 14-group-grew

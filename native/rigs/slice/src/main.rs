@@ -19,6 +19,8 @@
 //! restart                             # quit as closing the window does, start again
 //! tick 100                            # move GPUI's headless clock: the stage redraws on a timer
 //! snap name                           # one frame, no waiting for stillness (live video)
+//! shot NAME while-away                # a shot taken as the window is, even with the connection
+//!                                     # banner up (every other static shot waits for it to go)
 //! attach rigs/slice/fixtures/notes.txt  # a file into the composer, as a dialog or drop would
 //! link-images on                      # the next start loads link previews' images
 //! livekit remove $ID(vc-squad) me    # LiveKit's server API removes someone (needs --livekit-http)
@@ -63,7 +65,8 @@
 //! times: joined, left, connected, disconnected, ring-start, ring-stop, call-ended), `voice room
 //! none|dm ID|channel ID`, `voice server-muted yes|no`, `keep-awake on|off` (the rig's inhibitor),
 //! `mic-test running|stopped`, `mic-level heard`, `engine vad N`, `soundboard playing ID|none`,
-//! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `float shown|hidden`, `saved NAME` (a download reached the
+//! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `livekit participant ROOM
+//! IDENTITY present|gone` (LiveKit's server lists them in the room at all), `float shown|hidden`, `saved NAME` (a download reached the
 //! run's `saved/NAME`). `save-as NAME` answers the next save dialog with `saved/NAME`. The step
 //! `mic tone on|off` makes the virtual mic play a tone; `clock hold|run` stops the scenario clock
 //! counting real time (only `tick` moves it), and starts it again. `tick N` also moves
@@ -86,7 +89,8 @@
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
 //! `rows >= N`, `text S`, `no-text S`, `sent S` (acked), `pending S`, `failed S`, `count S N`,
-//! `channel ID`, `detached`, `live`, `label NAME`; and W1's: `side-panel none|pins|search|thread`,
+//! `channel ID`, `detached`, `live`, `label NAME`, `requests NAME >= N` (the fake server has seen
+//! that operation or socket event at least this often); and W1's: `side-panel none|pins|search|thread`,
 //! `editing yes|no`, `picker open|closed`, `pinned S`, `unpinned S`, `edited S`, `removed S`,
 //! `reaction S EMOJI COUNT` (with mine among them), `thread-rows >= N`, `thread-sent S`,
 //! `subscribed yes|no` (the open thread), `unread-after S` (the divider follows that row),
@@ -136,6 +140,10 @@ const DEFAULT_WITHIN: Duration = Duration::from_secs(15);
 /// The longest a wait sits without news before looking again. Something always moves within this
 /// while work is in flight; it bounds a look at a condition nothing will announce.
 const LOOK_EVERY: Duration = Duration::from_millis(100);
+/// The shell's connection banner: the "Reconnecting…" or "You're offline" pill, drawn exactly
+/// while core's connection is `Disconnected` or `Offline` (`Shell::connection_banner`). A static
+/// shot waits for it to go, so a transient reconnect cannot reach a compared shot.
+const CONNECTION_BANNER: &str = "connection-banner";
 
 /// The keyring stand-in: memory, so nothing touches the machine's secrets.
 #[derive(Default)]
@@ -399,6 +407,14 @@ enum W4 {
         identity: String,
         name: String,
     },
+    /// `livekit participant ROOM IDENTITY present|gone`: LiveKit's server does (or doesn't) list
+    /// them in the room (needs --livekit-http). A removal takes a moment to reach the room, and a
+    /// rejoin before it has is refused with `ParticipantRemoved`.
+    LiveKitParticipant {
+        room: String,
+        identity: String,
+        present: bool,
+    },
     /// `float shown|hidden`: the float card over the middle column.
     Float(bool),
     /// `saved NAME`: a download reached `<data dir>/saved/NAME`, not empty.
@@ -456,6 +472,8 @@ enum RowGesture {
 #[derive(Debug, Clone, PartialEq)]
 enum Step {
     Shot(script::Step),
+    /// `shot NAME while-away`: taken as the window is, even with the connection banner up.
+    ShotWhileAway(script::Step),
     W7(w7::W7Step),
     App {
         width: f32,
@@ -705,6 +723,17 @@ fn condition(words: &[&str]) -> Result<Condition> {
             identity: (*identity).into(),
             name: (*name).into(),
         }),
+        [
+            "livekit",
+            "participant",
+            room,
+            identity,
+            state @ ("present" | "gone"),
+        ] => Condition::W4(W4::LiveKitParticipant {
+            room: (*room).into(),
+            identity: (*identity).into(),
+            present: *state == "present",
+        }),
         ["float", state @ ("shown" | "hidden")] => Condition::W4(W4::Float(*state == "shown")),
         ["saved", name] => Condition::W4(W4::Saved((*name).into())),
         ["dialog", name, state @ ("open" | "closed")] => {
@@ -788,6 +817,10 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["tick", ms] => Step::Tick(ms.parse().map_err(|_| at(anyhow!("tick ms")))?),
             ["player", "toggle", name] => Step::PlayerToggle((*name).into()),
             ["snap", name] => Step::Snap((*name).into()),
+            // A shot with the connection banner up, for a script that shoots the pill itself.
+            ["shot", name, "while-away"] => Step::ShotWhileAway(
+                script::step(&["shot", name]).map_err(|error| at(anyhow!(error)))?,
+            ),
             ["attach", path] => Step::Attach(PathBuf::from(path)),
             ["link-images", "on"] => Step::LinkImages(true),
             ["link-images", "off"] => Step::LinkImages(false),
@@ -1386,6 +1419,14 @@ impl Rig {
         {
             return self.livekit_has_track(room, identity, name);
         }
+        if let W4::LiveKitParticipant {
+            room,
+            identity,
+            present,
+        } = condition
+        {
+            return Ok(self.livekit_lists(room, identity)? == *present);
+        }
         if let W4::Saved(name) = condition {
             let path = self.data_dir.join("saved").join(name);
             return Ok(std::fs::metadata(path).is_ok_and(|meta| meta.len() > 0));
@@ -1469,6 +1510,7 @@ impl Rig {
                 }
                 W4::Dialog(..)
                 | W4::LiveKitTrack { .. }
+                | W4::LiveKitParticipant { .. }
                 | W4::KeepAwake(_)
                 | W4::Float(_)
                 | W4::Saved(_) => {
@@ -2147,6 +2189,55 @@ impl Rig {
         })
     }
 
+    /// A static shot. Unless `gate` is off (`shot NAME while-away`), the banner must be gone from
+    /// the frame that is saved: a socket that dropped and is reconnecting can then never reach a
+    /// compared shot. Every other step rig-shot knows goes straight through.
+    fn shot(&mut self, step: &script::Step, out_dir: &Path, gate: bool) -> Result<()> {
+        self.quiet_files(step)?;
+        let script::Step::Shot { name } = step else {
+            return self.generic(step, out_dir);
+        };
+        if !gate {
+            return self.generic(step, out_dir);
+        }
+        let path = out_dir.join(format!("{name}.png"));
+        let banner = ElementId::Name(CONNECTION_BANNER.into());
+        // Bounded: the banner gone, and still gone in the still frame that is saved. A frame can
+        // bring it back (a socket drop lands between two checks), so what is saved is the frame
+        // whose own element tree has no banner.
+        for _ in 0..5 {
+            self.wait(
+                &Condition::Element(CONNECTION_BANNER.into(), false),
+                DEFAULT_WITHIN,
+            )?;
+            let image = self.driver.wait_idle()?;
+            if self
+                .driver
+                .query(|window| window.try_find(banner.clone()).is_some())?
+            {
+                continue;
+            }
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            image
+                .save(&path)
+                .with_context(|| format!("writing {}", path.display()))?;
+            println!("{} {}x{}", path.display(), image.width(), image.height());
+            return Ok(());
+        }
+        bail!("the connection banner was still up over 5 still frames")
+    }
+
+    /// A step that needs nothing but the window.
+    fn generic(&mut self, step: &script::Step, out_dir: &Path) -> Result<()> {
+        if self.driver.run_generic(step, out_dir)? {
+            Ok(())
+        } else {
+            bail!("{step:?} is a story step; rig-slice opens the app instead")
+        }
+    }
+
     fn snap(&mut self, out: &Path) -> Result<()> {
         self.driver.settle()?;
         let window = self
@@ -2165,8 +2256,8 @@ impl Rig {
         Ok(())
     }
 
-    /// LiveKit's server API: does `identity` in `room` publish a track named `name`?
-    fn livekit_has_track(&self, room: &str, identity: &str, name: &str) -> Result<bool> {
+    /// LiveKit's server API: the room's participants, as it lists them.
+    fn livekit_participants(&self, room: &str) -> Result<Vec<Value>> {
         let livekit = self
             .livekit
             .as_ref()
@@ -2182,11 +2273,26 @@ impl Rig {
         )?;
         Ok(listed["participants"]
             .as_array()
-            .into_iter()
-            .flatten()
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// LiveKit's server API: does `identity` in `room` publish a track named `name`?
+    fn livekit_has_track(&self, room: &str, identity: &str, name: &str) -> Result<bool> {
+        let participants = self.livekit_participants(room)?;
+        Ok(participants
+            .iter()
             .filter(|participant| participant["identity"] == identity)
             .flat_map(|participant| participant["tracks"].as_array().into_iter().flatten())
             .any(|track| track["name"] == name))
+    }
+
+    /// LiveKit's server API: is `identity` listed in `room` at all?
+    fn livekit_lists(&self, room: &str, identity: &str) -> Result<bool> {
+        Ok(self
+            .livekit_participants(room)?
+            .iter()
+            .any(|participant| participant["identity"] == identity))
     }
 
     fn livekit_remove(&self, room: &str, identity: &str) -> Result<()> {
@@ -2298,16 +2404,8 @@ impl Rig {
             let started = Instant::now();
             let result = match step {
                 Step::App { width, height } => self.open(*width, *height),
-                Step::Shot(step) => self
-                    .quiet_files(step)
-                    .and_then(|()| self.driver.run_generic(step, out_dir))
-                    .and_then(|known| {
-                        if known {
-                            Ok(())
-                        } else {
-                            bail!("{step:?} is a story step; rig-slice opens the app instead")
-                        }
-                    }),
+                Step::Shot(step) => self.shot(step, out_dir, true),
+                Step::ShotWhileAway(step) => self.shot(step, out_dir, false),
                 Step::Wait { condition, within } => self.wait(condition, *within),
                 Step::Expect(condition) => {
                     self.driver.settle()?;
@@ -2675,6 +2773,67 @@ mod tests {
         assert_eq!(
             parse_rfc3339_ms("2026-09-22T18:00:00.000Z").unwrap(),
             1_790_100_000_000
+        );
+    }
+
+    /// A static shot waits for the connection banner to be gone; `while-away` asks for it as it is.
+    #[test]
+    fn a_shot_can_ask_to_keep_the_connection_banner() {
+        let steps = parse("shot 09-live-reconnecting while-away\nshot 01-plain\n").unwrap();
+        assert_eq!(
+            steps[0],
+            Step::ShotWhileAway(script::Step::Shot {
+                name: "09-live-reconnecting".into(),
+            })
+        );
+        assert_eq!(
+            steps[1],
+            Step::Shot(script::Step::Shot {
+                name: "01-plain".into(),
+            })
+        );
+        assert!(parse("shot a while-away extra").is_err());
+    }
+
+    /// The rejoin after a LiveKit removal waits for the room to let the identity go, not a delay.
+    #[test]
+    fn reads_a_livekit_participant() {
+        assert_eq!(
+            condition(&["livekit", "participant", "room", "me", "gone"]).unwrap(),
+            Condition::W4(W4::LiveKitParticipant {
+                room: "room".into(),
+                identity: "me".into(),
+                present: false,
+            })
+        );
+        assert_eq!(
+            condition(&["livekit", "participant", "room", "me", "present"]).unwrap(),
+            Condition::W4(W4::LiveKitParticipant {
+                room: "room".into(),
+                identity: "me".into(),
+                present: true,
+            })
+        );
+        assert!(condition(&["livekit", "participant", "room", "me"]).is_err());
+        assert!(condition(&["livekit", "participant", "room", "me", "maybe"]).is_err());
+    }
+
+    /// The count of what the fake server saw can be waited on, not just checked once.
+    #[test]
+    fn waits_for_a_request_count() {
+        assert_eq!(
+            parse("wait core requests MessagesController_update >= 2 within 5").unwrap(),
+            vec![Step::Wait {
+                condition: Condition::Requests("MessagesController_update".into(), 2),
+                within: Duration::from_secs(5),
+            }]
+        );
+        assert_eq!(
+            parse("expect core requests Fixture_image == 0").unwrap(),
+            vec![Step::Expect(Condition::RequestsExactly(
+                "Fixture_image".into(),
+                0
+            ))]
         );
     }
 }
