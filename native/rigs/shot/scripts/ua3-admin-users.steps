@@ -1,2 +1,130 @@
-# UA3 admin users and their dialogs. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# UA3 admin users and their dialogs: the list in each state, the per-user menu (everything
+# allowed, each reason, and this user's own row), the ban, delete, reset-password, instance-role and
+# quota dialogs busy and refused, each on a desktop (dark) and a phone (light).
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/ua3-admin-users.steps
+story admin-users-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-loading-desktop
+story admin-users-loading 390 844 light-blue-balanced
+wait idle
+shot admin-users-loading-phone
+story admin-users-empty 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-empty-desktop
+story admin-users-empty 390 844 light-blue-balanced
+wait idle
+shot admin-users-empty-phone
+story admin-users-failed 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-failed-desktop
+story admin-users-failed 390 844 light-blue-balanced
+wait idle
+shot admin-users-failed-phone
+story admin-users-ready 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-ready-desktop
+story admin-users-ready 390 844 light-blue-balanced
+wait idle
+shot admin-users-ready-phone
+story admin-users-long 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-long-desktop
+story admin-users-long 390 844 light-blue-balanced
+wait idle
+shot admin-users-long-phone
+story admin-users-loading-more 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-loading-more-desktop
+story admin-users-loading-more 390 844 light-blue-balanced
+wait idle
+shot admin-users-loading-more-phone
+story admin-users-filtered 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-filtered-desktop
+story admin-users-filtered 390 844 light-blue-balanced
+wait idle
+shot admin-users-filtered-phone
+story admin-users-menu-owner-actor 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-menu-owner-actor-desktop
+story admin-users-menu-owner-actor 390 844 light-blue-balanced
+wait idle
+shot admin-users-menu-owner-actor-phone
+story admin-users-menu-limited 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-menu-limited-desktop
+story admin-users-menu-limited 390 844 light-blue-balanced
+wait idle
+shot admin-users-menu-limited-phone
+story admin-users-menu-self 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-menu-self-desktop
+story admin-users-menu-self 390 844 light-blue-balanced
+wait idle
+shot admin-users-menu-self-phone
+story admin-users-ban-busy 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-ban-busy-desktop
+story admin-users-ban-busy 390 844 light-blue-balanced
+wait idle
+shot admin-users-ban-busy-phone
+story admin-users-ban-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-ban-refused-desktop
+story admin-users-ban-refused 390 844 light-blue-balanced
+wait idle
+shot admin-users-ban-refused-phone
+story admin-users-reset-password 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-reset-password-desktop
+story admin-users-reset-password 390 844 light-blue-balanced
+wait idle
+shot admin-users-reset-password-phone
+story admin-users-reset-password-invalid 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-reset-password-invalid-desktop
+story admin-users-reset-password-invalid 390 844 light-blue-balanced
+wait idle
+shot admin-users-reset-password-invalid-phone
+story admin-users-reset-password-refused 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-reset-password-refused-desktop
+story admin-users-reset-password-refused 390 844 light-blue-balanced
+wait idle
+shot admin-users-reset-password-refused-phone
+story admin-users-roles-dialog 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-roles-dialog-desktop
+story admin-users-roles-dialog 390 844 light-blue-balanced
+wait idle
+shot admin-users-roles-dialog-phone
+story admin-users-roles-loading 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-roles-loading-desktop
+story admin-users-roles-loading 390 844 light-blue-balanced
+wait idle
+shot admin-users-roles-loading-phone
+story admin-users-roles-busy 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-roles-busy-desktop
+story admin-users-roles-busy 390 844 light-blue-balanced
+wait idle
+shot admin-users-roles-busy-phone
+story admin-users-quota 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-quota-desktop
+story admin-users-quota 390 844 light-blue-balanced
+wait idle
+shot admin-users-quota-phone
+story admin-users-delete-confirm 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-delete-confirm-desktop
+story admin-users-delete-confirm 390 844 light-blue-balanced
+wait idle
+shot admin-users-delete-confirm-phone
+story admin-users-phone 1280 800 dark-blue-balanced
+wait idle
+shot admin-users-phone-desktop
+story admin-users-phone 390 844 light-blue-balanced
+wait idle
+shot admin-users-phone-phone
