@@ -112,6 +112,54 @@ describe('TimingInterceptor', () => {
     });
   });
 
+  it('logs the route template, never webhook tokens or signed query strings', (done) => {
+    mockExecutionContext = {
+      getType: jest.fn().mockReturnValue('http'),
+      switchToHttp: jest.fn().mockReturnValue({
+        getRequest: jest.fn().mockReturnValue({
+          method: 'POST',
+          originalUrl: '/api/webhooks/wh-secret-token?sig=deadbeef',
+          url: '/api/webhooks/wh-secret-token?sig=deadbeef',
+          route: { path: '/api/webhooks/:token' },
+        }),
+      }),
+    } as unknown as ExecutionContext;
+
+    interceptor.intercept(mockExecutionContext, mockCallHandler).subscribe({
+      next: () => {
+        const logCall = loggerSpy.mock.calls[0][0] as string;
+        expect(logCall).toContain('HTTP POST /api/webhooks/:token');
+        expect(logCall).not.toContain('wh-secret-token');
+        expect(logCall).not.toContain('sig=');
+        expect(logCall).not.toContain('deadbeef');
+        done();
+      },
+    });
+  });
+
+  it('strips the query string when there is no route', (done) => {
+    mockExecutionContext = {
+      getType: jest.fn().mockReturnValue('http'),
+      switchToHttp: jest.fn().mockReturnValue({
+        getRequest: jest.fn().mockReturnValue({
+          method: 'GET',
+          originalUrl: '/api/files/abc?sig=deadbeef',
+          url: '/api/files/abc?sig=deadbeef',
+        }),
+      }),
+    } as unknown as ExecutionContext;
+
+    interceptor.intercept(mockExecutionContext, mockCallHandler).subscribe({
+      next: () => {
+        const logCall = loggerSpy.mock.calls[0][0] as string;
+        expect(logCall).toContain('HTTP GET /api/files/abc - ');
+        expect(logCall).not.toContain('sig=');
+        expect(logCall).not.toContain('deadbeef');
+        done();
+      },
+    });
+  });
+
   it('should log different HTTP methods', async () => {
     const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
 

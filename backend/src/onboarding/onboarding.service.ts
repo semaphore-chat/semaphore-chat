@@ -11,6 +11,7 @@ import {
 import { InstanceRole, Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import { generateInviteCode } from '@/invite/invite-code.util';
 import { SetupInstanceDto } from './dto/setup-instance.dto';
 
 /**
@@ -307,10 +308,11 @@ export class OnboardingService {
       );
       this.logger.log(`Created default Community Creator role`);
 
-      // 6. Create a permanent instance invite for future users
+      // 6. Create a permanent instance invite for future users. Same code
+      // shape as any other invite (12 URL-safe base64 chars, 72 bits).
       await tx.instanceInvite.create({
         data: {
-          code: `welcome-${randomUUID().slice(0, 8)}`,
+          code: generateInviteCode(),
           createdById: adminUser.id,
           defaultCommunities: defaultCommunity
             ? { create: [{ communityId: defaultCommunity.id }] }

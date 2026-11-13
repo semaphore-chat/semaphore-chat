@@ -14,6 +14,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '@/types';
 import { SuccessMessageDto } from '@/common/dto/common-response.dto';
@@ -53,6 +54,7 @@ export class PushNotificationsController {
    */
   @Post('subscribe')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ short: { limit: 5, ttl: 1000 }, long: { limit: 10, ttl: 60000 } })
   @ApiCreatedResponse({ type: SuccessMessageDto })
   async subscribe(
     @Req() req: AuthenticatedRequest,
@@ -137,6 +139,7 @@ export class PushNotificationsController {
    */
   @Post('test')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ short: { limit: 1, ttl: 1000 }, long: { limit: 3, ttl: 60000 } })
   @ApiOkResponse({ type: TestPushResponseDto })
   async sendTestPushToSelf(
     @Req() req: AuthenticatedRequest,

@@ -24,6 +24,7 @@ import type { Mocked } from '@suites/doubles.jest';
 // Mock bcrypt and crypto
 jest.mock('bcrypt');
 jest.mock('crypto', () => ({
+  ...jest.requireActual('crypto'),
   randomUUID: jest.fn(() => 'mock-uuid-123'),
 }));
 
@@ -341,10 +342,14 @@ describe('OnboardingService', () => {
       expect(mockDatabase.$transaction).toHaveBeenCalled();
     });
 
-    it('should create permanent instance invite', async () => {
+    it('should create permanent instance invite with a full random code', async () => {
       await service.completeSetup(validSetupDto, 'valid-token');
 
-      expect(mockDatabase.$transaction).toHaveBeenCalled();
+      const createArgs = setupTx.instanceInvite.create.mock.calls[0][0];
+      const code: string = createArgs.data.code;
+      // Same shape as a normal invite code: 12 URL-safe base64 characters,
+      // not an 8-hex-character (32-bit) suffix.
+      expect(code).toMatch(/^[A-Za-z0-9_-]{12}$/);
     });
 
     it('should skip community creation when createDefaultCommunity is false', async () => {

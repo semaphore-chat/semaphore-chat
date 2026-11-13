@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
 import { PushNotificationsService } from './push-notifications.service';
@@ -368,6 +369,36 @@ describe('PushNotificationsService', () => {
         },
       });
     });
+
+    it('should refuse a new subscription once the user has 10 others', async () => {
+      mockDatabase.pushSubscription.count.mockResolvedValue(10);
+
+      await expect(service.subscribe(userId, subscribeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockDatabase.pushSubscription.count).toHaveBeenCalledWith({
+        where: { userId, NOT: { endpoint: subscribeDto.endpoint } },
+      });
+      expect(mockDatabase.pushSubscription.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should still allow re-subscribing an existing endpoint at the limit', async () => {
+      const mockSubscription = {
+        id: 'sub-1',
+        userId,
+        endpoint: subscribeDto.endpoint,
+        keys: subscribeDto.keys,
+        userAgent: subscribeDto.userAgent,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockDatabase.pushSubscription.count.mockResolvedValue(9);
+      mockDatabase.pushSubscription.upsert.mockResolvedValue(mockSubscription);
+
+      await expect(service.subscribe(userId, subscribeDto)).resolves.toEqual(
+        mockSubscription,
+      );
+    });
   });
 
   describe('unsubscribe', () => {
@@ -469,6 +500,34 @@ describe('PushNotificationsService', () => {
 
       expect(result).toEqual({ sent: 2, failed: 0 });
       expect(webpush.sendNotification).toHaveBeenCalledTimes(2);
+    });
+
+    it('should send in chunks of at most five at a time', async () => {
+      const subscriptions = Array.from({ length: 12 }, (_, i) => ({
+        id: `sub-${i}`,
+        userId,
+        endpoint: `https://push${i}.example.com`,
+        keys: { p256dh: `key${i}`, auth: `auth${i}` },
+      }));
+      mockDatabase.pushSubscription.findMany.mockResolvedValue(subscriptions);
+
+      let inFlight = 0;
+      let maxInFlight = 0;
+      (webpush.sendNotification as jest.Mock).mockImplementation(async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        // An async mock runs to its first await synchronously, so calls the
+        // service makes without waiting pile up here: maxInFlight is the
+        // fan-out width.
+        await Promise.resolve();
+        inFlight--;
+        return {};
+      });
+
+      const result = await service.sendToUser(userId, payload);
+
+      expect(result).toEqual({ sent: 12, failed: 0 });
+      expect(maxInFlight).toBe(5);
     });
 
     it('should remove expired subscriptions (410 status)', async () => {

@@ -15,6 +15,8 @@ import {
   ResourceType,
 } from '@prisma/client';
 import { assertOwnFiles } from '@/common/utils/attachable-files.utils';
+import { escapeLikePattern } from '@/common/utils/escape-like.util';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 import { AdminUserEntity } from './dto/admin-user-response.dto';
 import * as bcrypt from 'bcrypt';
 import { DatabaseService } from '../database/database.service';
@@ -255,7 +257,12 @@ export class UserService {
   ): Promise<void> {
     const conditions: Prisma.UserWhereInput[] = [];
     if (username)
-      conditions.push({ username: { equals: username, mode: 'insensitive' } });
+      // Case-insensitive on purpose (an older row may hold capitals, and the
+      // unique index is case-sensitive). Prisma runs this as ILIKE, so the
+      // wildcards are escaped.
+      conditions.push({
+        username: { equals: escapeLikePattern(username), mode: 'insensitive' },
+      });
     if (email) conditions.push({ email });
 
     if (conditions.length === 0) return;
@@ -278,9 +285,11 @@ export class UserService {
   }
 
   async findAll(limit: number = 50, continuationToken?: string) {
+    // Callers hand us whatever ?limit= said; the page size is ours.
+    const take = clampLimit(limit, 100);
     const query = {
       where: {},
-      take: limit,
+      take,
       orderBy: { username: 'asc' as const },
       ...(continuationToken
         ? { cursor: { id: continuationToken }, skip: 1 }
@@ -294,7 +303,7 @@ export class UserService {
       })
     ).map((u) => new UserEntity(u));
     const nextToken =
-      users.length === limit ? users[users.length - 1].id : undefined;
+      users.length === take ? users[users.length - 1].id : undefined;
 
     return { users, continuationToken: nextToken };
   }
@@ -316,11 +325,12 @@ export class UserService {
     viewer: { id: string; role: InstanceRole },
   ): Promise<UserEntity[]> {
     const q = (query ?? '').trim();
+    const escaped = escapeLikePattern(q);
     const take = Math.min(Math.max(limit, 1), SEARCH_MAX_LIMIT);
     const nameMatches: Prisma.UserWhereInput = {
       OR: [
-        { username: { contains: q, mode: 'insensitive' } },
-        { displayName: { contains: q, mode: 'insensitive' } },
+        { username: { contains: escaped, mode: 'insensitive' } },
+        { displayName: { contains: escaped, mode: 'insensitive' } },
       ],
     };
 
@@ -357,7 +367,7 @@ export class UserService {
             },
           ],
         },
-        { username: { equals: q, mode: 'insensitive' } },
+        { username: { equals: q.toLowerCase() } },
       ];
     }
 
@@ -477,10 +487,11 @@ export class UserService {
     }
 
     if (filters?.search) {
+      const escaped = escapeLikePattern(filters.search);
       whereClause.OR = [
-        { username: { contains: filters.search, mode: 'insensitive' } },
-        { email: { contains: filters.search, mode: 'insensitive' } },
-        { displayName: { contains: filters.search, mode: 'insensitive' } },
+        { username: { contains: escaped, mode: 'insensitive' } },
+        { email: { contains: escaped, mode: 'insensitive' } },
+        { displayName: { contains: escaped, mode: 'insensitive' } },
       ];
     }
 

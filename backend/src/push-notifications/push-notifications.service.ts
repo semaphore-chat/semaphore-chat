@@ -36,6 +36,15 @@ const MAX_ENDPOINT_LENGTH = 2048;
 const PUSH_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
+ * A user's browsers are a handful. Each subscription costs an outbound HTTPS
+ * POST on every send, so the list is capped at registration.
+ */
+const MAX_SUBSCRIPTIONS_PER_USER = 10;
+
+/** Concurrent sends per user; the rest wait for the next chunk. */
+const SEND_CHUNK_SIZE = 5;
+
+/**
  * What a push endpoint must look like (RFC 8030: an HTTPS URL of a push
  * service): https on the default port, a host name rather than an IP address,
  * no credentials. Returns the host name, or null. Whether that name is public
@@ -213,6 +222,17 @@ export class PushNotificationsService implements OnModuleInit {
   ): Promise<PushSubscription> {
     await this.assertValidEndpoint(dto.endpoint);
 
+    // Re-subscribing the same endpoint is always allowed: only the user's
+    // other subscriptions count against the cap.
+    const others = await this.databaseService.pushSubscription.count({
+      where: { userId, NOT: { endpoint: dto.endpoint } },
+    });
+    if (others >= MAX_SUBSCRIPTIONS_PER_USER) {
+      throw new BadRequestException(
+        `You already have ${MAX_SUBSCRIPTIONS_PER_USER} push subscriptions`,
+      );
+    }
+
     // Cast keys to JSON-compatible format for Prisma
     const keysJson = {
       p256dh: dto.keys.p256dh,
@@ -316,29 +336,38 @@ export class PushNotificationsService implements OnModuleInit {
       return { sent: 0, failed: 0 };
     }
 
-    const results = await Promise.allSettled(
-      subscriptions.map((sub) => this.sendToSubscription(sub, payload)),
-    );
-
     let sent = 0;
     let failed = 0;
 
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      if (result.status === 'fulfilled') {
-        sent++;
-      } else {
-        failed++;
-        // Handle expired/invalid subscriptions
-        const error = result.reason as { statusCode?: number };
-        if (error.statusCode === 410 || error.statusCode === 404) {
-          // Subscription expired or not found - remove it
-          await this.removeInvalidSubscription(subscriptions[i].id);
+    // At most SEND_CHUNK_SIZE outbound POSTs are in flight at a time, so a
+    // user's subscription list can't turn one send into an unbounded burst.
+    for (
+      let start = 0;
+      start < subscriptions.length;
+      start += SEND_CHUNK_SIZE
+    ) {
+      const chunk = subscriptions.slice(start, start + SEND_CHUNK_SIZE);
+      const results = await Promise.allSettled(
+        chunk.map((sub) => this.sendToSubscription(sub, payload)),
+      );
+
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === 'fulfilled') {
+          sent++;
         } else {
-          this.logger.error(
-            `Failed to send push to subscription ${subscriptions[i].id}:`,
-            result.reason,
-          );
+          failed++;
+          // Handle expired/invalid subscriptions
+          const error = result.reason as { statusCode?: number };
+          if (error.statusCode === 410 || error.statusCode === 404) {
+            // Subscription expired or not found - remove it
+            await this.removeInvalidSubscription(chunk[i].id);
+          } else {
+            this.logger.error(
+              `Failed to send push to subscription ${chunk[i].id}:`,
+              result.reason,
+            );
+          }
         }
       }
     }

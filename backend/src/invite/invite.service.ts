@@ -4,7 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { generateInviteCode } from './invite-code.util';
 import { DatabaseService } from '@/database/database.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
@@ -125,7 +125,7 @@ export class InviteService {
     await this.assertMayInvite(creator, communityIds);
 
     // generate a short code for the invite
-    let shortCode = this.generateInviteCode();
+    let shortCode = generateInviteCode();
     // Check if the short code already exists
     while (
       await this.databaseService.instanceInvite.findFirst({
@@ -134,7 +134,7 @@ export class InviteService {
     ) {
       // If it does, generate a new one
       this.logger.warn(`Short code ${shortCode} collision! Generating new one`);
-      shortCode = this.generateInviteCode();
+      shortCode = generateInviteCode();
     }
 
     // Logic to create an invite for a user to join an instance
@@ -488,9 +488,5 @@ export class InviteService {
     await this.databaseService.instanceInvite.delete({
       where: { code },
     });
-  }
-
-  private generateInviteCode(length: number = 12) {
-    return randomBytes(length).toString('base64url').slice(0, length);
   }
 }
