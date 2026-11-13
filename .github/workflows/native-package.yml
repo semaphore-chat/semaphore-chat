@@ -1,0 +1,173 @@
+name: Native packages
+
+# Builds the native desktop client's Linux packages (AppImage, .deb, .rpm) and the Windows
+# portable zip. Artifacts only: this workflow never creates a release, pushes a tag, publishes
+# an image or writes to a registry, and it does not run on tag pushes.
+#
+# Linux packages are linked on Debian 12 (glibc 2.36) by native/docker/Dockerfile.package, then
+# installed and started in Debian 13, Ubuntu 24.04, Fedora 45 and a FUSE-less AppImage container
+# by native/scripts/test-packages.sh.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (defaults to the semaphore-app crate version)'
+        type: string
+        required: false
+  pull_request:
+    paths:
+      - 'native/scripts/package-linux.sh'
+      - 'native/scripts/test-packages.sh'
+      - 'native/docker/Dockerfile.package'
+      - 'native/docs/packaging.md'
+      - 'native/crates/semaphore-app/**'
+      - 'native/Cargo.toml'
+      - 'native/Cargo.lock'
+      - 'native/.cargo/**'
+      - '.github/workflows/native-package.yml'
+
+concurrency:
+  group: native-package-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux-packages:
+    name: Build and verify Linux packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build AppImage, .deb and .rpm
+        env:
+          SEMAPHORE_VERSION: ${{ github.event.inputs.version }}
+        run: native/scripts/package-linux.sh
+      - name: Install and start each package
+        run: native/scripts/test-packages.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-linux-packages
+          path: native/dist-packages/*
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-portable:
+    name: Build Windows portable zip
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      # gpui-pre-windows compiles its D3D11 shaders with fxc in release, as in native-spike.yml.
+      - name: Check fxc.exe is available
+        shell: pwsh
+        run: |
+          $fxc = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter fxc.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
+          if (-not $fxc) { throw 'fxc.exe not found: gpui-pre-windows compiles its shaders with it in release' }
+          $fxc.FullName
+      - name: The dist profile needs the vendored renderer
+        shell: bash
+        run: |
+          for crate in gpui-pre gpui-pre-windows; do
+            package="$(cargo tree --locked -p semaphore-app --target x86_64-pc-windows-msvc \
+              -e normal -i "$crate" --depth 0 --format '{p}')"
+            echo "$package"
+            echo "$package" | grep -q 'third_party[/\\]vendor[/\\]' \
+              || { echo "$crate isn't the vendored copy"; exit 1; }
+          done
+      - name: Resolve the package version
+        shell: pwsh
+        env:
+          # Through the environment, never spliced into the script text.
+          REQUESTED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          $version = $env:REQUESTED_VERSION
+          if (-not $version) {
+            $meta = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+            $version = ($meta.packages | Where-Object { $_.name -eq 'semaphore-app' }).version
+          }
+          $version = $version -replace '^v', ''
+          if ($version -notmatch '^[0-9][0-9A-Za-z.]*$') {
+            throw "version '$version' is not usable in a package name"
+          }
+          "SEMAPHORE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build the dist binary
+        shell: bash
+        env:
+          SEMAPHORE_PACKAGED: '1'
+        run: cargo build --locked --profile dist -p semaphore-app
+      - name: Collect the portable tree
+        shell: pwsh
+        run: |
+          $version = $env:PACKAGE_VERSION
+          $out = "dist-packages"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item target/dist/semaphore-app.exe "$out/"
+          Copy-Item ../LICENSE.md "$out/"
+          Copy-Item ../LICENSE_COM.md "$out/"
+          # The exe is linked with the static CRT and libwebrtc is static: there are no
+          # non-system DLLs to ship. Print the dependencies so that stays visible in the log.
+          $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
+          if (-not $dumpbin) { throw 'dumpbin.exe not found' }
+          $deps = & $dumpbin.FullName /dependents target/dist/semaphore-app.exe
+          $deps
+          $foreign = $deps | Select-String '\.dll$' | ForEach-Object { $_.Line.Trim() } |
+            Where-Object { $_ -notmatch '^(api-ms-win-|ext-ms-)' -and -not (Test-Path (Join-Path $env:SystemRoot "System32\$_")) }
+          if ($foreign) {
+            throw "unexpected runtime DLLs (add them to the zip): $($foreign -join ', ')"
+          }
+          $meta = cargo metadata --locked --format-version 1 | ConvertFrom-Json
+          $lines = @(
+            "Semaphore Chat native client $version - third-party licences",
+            "==============================================================",
+            "",
+            "Windows portable build. The exe is linked with the static CRT; libwebrtc is static.",
+            "",
+            "Rust crates (name, version, SPDX licence, source)",
+            "-------------------------------------------------"
+          ) + ($meta.packages |
+            Where-Object { $_.source } |
+            Sort-Object name, version |
+            ForEach-Object { "$($_.name) $($_.version) - $($_.license) - $($_.repository)" }) + @(
+            "",
+            "libwebrtc: BSD-3-Clause (webrtc.org), with BoringSSL (ISC), libaom, libvpx, dav1d,",
+            "OpenH264, Opus, FFmpeg (LGPL-2.1-or-later), libjpeg-turbo, libyuv, abseil-cpp,",
+            "libsrtp and libc++ (Apache-2.0 WITH LLVM-exception) as bundled by LiveKit.",
+            "",
+            "webrtc-sys notices",
+            "------------------",
+            (Get-Content -Raw third_party/vendor/webrtc-sys/NOTICE.md)
+          )
+          $lines | Set-Content -Encoding utf8 "$out/THIRD-PARTY-LICENCES.txt"
+          @"
+          Semaphore Chat native client $version (Windows x64, portable)
+          ===========================================================
+
+          Run semaphore-app.exe. There is nothing to install: the assets (fonts, icons, sounds,
+          emoji data) are compiled into the exe, and it is linked with the static CRT, so no
+          Visual C++ redistributable or DLL is needed.
+
+          semaphore:// registration happens on start when the build was compiled with
+          SEMAPHORE_PACKAGED=1. This zip is that build. Delete HKCU\Software\Classes\semaphore
+          to remove it.
+          "@ | Set-Content -Encoding utf8 "$out/README.txt"
+          $zip = "$out/semaphore-chat-native-$version-windows-x86_64.zip"
+          Remove-Item $zip -ErrorAction SilentlyContinue
+          Compress-Archive -Path "$out/semaphore-app.exe", "$out/LICENSE.md", "$out/LICENSE_COM.md", `
+            "$out/THIRD-PARTY-LICENCES.txt", "$out/README.txt" -DestinationPath $zip
+          Get-Item $zip | Format-List Name, Length
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-windows-portable
+          path: native/dist-packages/semaphore-chat-native-*-windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14

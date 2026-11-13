@@ -63,10 +63,17 @@ fn init_logging() {
     }
 }
 
+/// The binary's name in `--version` and `--help`.
+const NAME: &str = env!("CARGO_PKG_NAME");
+/// The version this build reports: the app crate's `Cargo.toml` version, or `SEMAPHORE_VERSION`
+/// when packaging/CI set it (see `build.rs`).
+const VERSION: &str = env!("SEMAPHORE_VERSION");
+
+const USAGE: &str =
+    "usage: semaphore-app [--server <url>] [semaphore://...] | --probe-media <url> <token>";
+
 fn usage() -> ExitCode {
-    eprintln!(
-        "usage: semaphore-app [--server <url>] [semaphore://...] | --probe-media <url> <token>"
-    );
+    eprintln!("{USAGE}");
     ExitCode::from(2)
 }
 
@@ -105,6 +112,21 @@ fn register_scheme() {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // These load the binary and its libraries and exit before any window, keyring or socket:
+    // `scripts/test-packages.sh` uses `--version` as the package smoke test.
+    if let [flag] = args.as_slice() {
+        match flag.as_str() {
+            "--version" | "-V" => {
+                println!("{NAME} {VERSION}");
+                return ExitCode::SUCCESS;
+            }
+            "--help" | "-h" => {
+                println!("{USAGE}");
+                return ExitCode::SUCCESS;
+            }
+            _ => {}
+        }
+    }
     if let Some(code) = run_media_probe(&args) {
         return code;
     }

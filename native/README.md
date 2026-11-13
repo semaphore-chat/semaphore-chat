@@ -23,8 +23,12 @@ feature of the Electron app and where its native counterpart stands.
 | 6 | Instance administration (first run stays on the web) | frozen, lanes not started |
 | 7 | GIFs, thumbnails, link-preview images | frozen, lanes not started (link-preview images done in W3) |
 
-There are no packaged builds yet. Backend and web-client problems found along the way are filed
-as GitHub issues and linked from the plan.
+Linux packages (AppImage, .deb and .rpm) are built by `scripts/package-linux.sh` and verified in
+clean Debian, Ubuntu and Fedora containers by `scripts/test-packages.sh`. CI builds them, plus a
+Windows portable zip, as artifacts only (`.github/workflows/native-package.yml`); nothing is
+released or published, and there is no Windows installer yet. See
+[docs/packaging.md](docs/packaging.md). Backend and web-client problems found along the way are
+filed as GitHub issues and linked from the plan.
 
 ## How it is built
 
@@ -128,6 +132,8 @@ native/scripts/slice-e2e.sh --voice                       # against a real LiveK
 native/scripts/slice-real.sh                              # against a real backend
 native/scripts/lk-stack.sh up                             # LiveKit on semaphore-test, prints its URL
 native/scripts/lk-stack.sh down
+native/scripts/package-linux.sh                           # AppImage, .deb, .rpm -> dist-packages/
+native/scripts/test-packages.sh                           # install and start them in clean containers
 ```
 
 Real-desktop runs (performance, IME, screen reader, real audio): [scripts/desk](scripts/desk/README.md).
@@ -136,10 +142,10 @@ Real-desktop runs (performance, IME, screen reader, real audio): [scripts/desk](
 need it. For size or performance numbers, build with `-p semaphore-app` in release mode.
 
 Two release-type profiles: `release` (thin LTO, what `verify.sh`, CI and the rigs build) and `dist`
-(release plus fat LTO and one codegen unit: about 14 MB smaller, about three minutes longer). Packages
-will be built with `native/scripts/in-image.sh cargo build --locked --profile dist -p semaphore-app`
-(output in `target/dist/`), from an older-glibc environment: see
-[docs/size.md](docs/size.md#release-build-environment).
+(release plus fat LTO and one codegen unit: about 14 MB smaller, about three minutes longer).
+Packages are built with `cargo build --locked --profile dist -p semaphore-app` inside the Debian 12
+package image (glibc 2.36), not the Arch development image: see
+[docs/packaging.md](docs/packaging.md) and [docs/size.md](docs/size.md#release-build-environment).
 
 `verify.sh` reads the result schema from `scripts/native-baseline/result.schema.json`, or from
 `RESULT_SCHEMA_HOST` when run from a checkout that lacks it.
