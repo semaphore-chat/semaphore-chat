@@ -168,7 +168,7 @@ fn enabled(connection: &zbus::Connection, item: &str, id: i32) -> bool {
     groups[0]
         .1
         .get("enabled")
-        .map_or(true, |value| bool::try_from(value.clone()).unwrap())
+        .is_none_or(|value| bool::try_from(value.clone()).unwrap())
 }
 
 /// A check box's `toggle-state`: 1 checked, 0 not.
