@@ -37,7 +37,7 @@ jobs:
     steps:
       # Lists the PR's files through the API, so no checkout is needed.
       - name: Filter Electron-relevant paths
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -64,7 +64,7 @@ jobs:
 
       # keep in sync with electron-build.yml
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       # keep in sync with electron-build.yml
       - name: Setup Node.js
