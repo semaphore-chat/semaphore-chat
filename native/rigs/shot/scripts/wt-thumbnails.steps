@@ -1,2 +1,28 @@
-# WT image thumbnails with mixed shapes. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# WT image thumbnails: the boxes a message draws for images in every shape the server sends — a
+# portrait, a panorama, a square and one it never measured — with a thumbnail and without, plus a
+# 40 x 30 picture, at a desktop and a phone width.
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/wt-thumbnails.steps
+story messages-images-mixed 1280 800 dark-blue-balanced
+wait idle
+shot messages-images-mixed-desktop
+story messages-images-mixed 390 844 light-blue-balanced
+wait idle
+shot messages-images-mixed-phone
+story messages-images-no-thumbnail 1280 800 dark-blue-balanced
+wait idle
+shot messages-images-no-thumbnail-desktop
+story messages-images-no-thumbnail 390 844 light-blue-balanced
+wait idle
+shot messages-images-no-thumbnail-phone
+story messages-images-tiny 1280 800 dark-blue-balanced
+wait idle
+shot messages-images-tiny-desktop
+story messages-images-tiny 390 844 light-blue-balanced
+wait idle
+shot messages-images-tiny-phone
+story messages-images-phone 1280 800 dark-blue-balanced
+wait idle
+shot messages-images-phone-desktop
+story messages-images-phone 390 844 light-blue-balanced
+wait idle
+shot messages-images-phone-phone

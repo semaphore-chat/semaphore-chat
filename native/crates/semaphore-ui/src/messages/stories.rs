@@ -3,16 +3,20 @@
 use super::actions::{ListPermissions, MessageAction};
 use super::fixture::{self, FixtureMedia, NOW_MS};
 use super::format::TimeFormat;
+use super::media::{MediaRef, MediaSource};
 use super::row::ReplyPreview;
 use super::selection::{Pos, Selection};
 use super::view::{ListData, ListOptions, ListStatus, MessageList, init};
 use crate::stories::{Story, StoryEnv};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{MessageRow, ReactionUsers, UnreadMarker};
+use semaphore_core::model::{
+    AttachmentKind, AttachmentView, MessageRow, ReactionUsers, UnreadMarker,
+};
 use semaphore_core::scenario::ScenarioViews;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 /// Holds a story to a phone's width, whatever the window's.
 struct NarrowFrame {
@@ -285,6 +289,166 @@ fn missing_images(cx: &mut App) -> AnyView {
         ..StoryList::new(rows)
     }
     .view(cx)
+}
+
+const MINUTE: i64 = 60_000;
+
+/// Pictures for the shape stories, at each attachment's aspect (the tiny one at its exact size), so
+/// a box is judged by what a real file or thumbnail would fill it with. Nothing is fetched.
+struct ShapeMedia {
+    fixture: FixtureMedia,
+    shapes: HashMap<&'static str, Arc<RenderImage>>,
+}
+
+impl ShapeMedia {
+    fn new() -> Self {
+        let mut shapes = HashMap::new();
+        // Smaller bytes of the same shape: the canvas fits them to the box exactly, as it would a
+        // thumbnail.
+        shapes.insert(
+            "img-shape-portrait",
+            super::media_stories::animated(300, 600, 1, [99, 102, 241]),
+        );
+        shapes.insert(
+            "img-shape-panorama",
+            super::media_stories::animated(600, 100, 1, [20, 184, 166]),
+        );
+        shapes.insert(
+            "img-shape-square",
+            super::media_stories::animated(200, 200, 1, [244, 63, 94]),
+        );
+        shapes.insert(
+            "img-shape-unsized",
+            super::media_stories::animated(160, 100, 1, [245, 158, 11]),
+        );
+        shapes.insert(
+            "img-shape-tiny",
+            super::media_stories::animated(40, 30, 1, [34, 197, 94]),
+        );
+        Self {
+            fixture: FixtureMedia::new(),
+            shapes,
+        }
+    }
+}
+
+impl MediaSource for ShapeMedia {
+    fn attachment(&self, attachment: &AttachmentView) -> MediaRef {
+        self.shapes.get(attachment.file_id.as_str()).map_or_else(
+            || self.fixture.attachment(attachment),
+            |image| MediaRef::Ready(image.clone()),
+        )
+    }
+
+    fn emoji(&self, emoji_id: &str) -> MediaRef {
+        self.fixture.emoji(emoji_id)
+    }
+
+    fn avatar(&self, file_id: &str) -> MediaRef {
+        self.fixture.avatar(file_id)
+    }
+}
+
+/// An image attachment as the server sends it: its pixel size when it measured one, and whether it
+/// made a thumbnail.
+fn image(
+    file_id: &str,
+    filename: &str,
+    size: Option<(u32, u32)>,
+    has_thumbnail: bool,
+) -> AttachmentView {
+    AttachmentView {
+        file_id: file_id.into(),
+        filename: filename.into(),
+        mime_type: "image/png".into(),
+        size_bytes: 482_133,
+        kind: AttachmentKind::Image,
+        has_thumbnail,
+        width: size.map(|(width, _)| width),
+        height: size.map(|(_, height)| height),
+    }
+}
+
+/// The four picture shapes the server sends — a portrait, a panorama, a square and one it never
+/// measured. `has_thumbnail` decides which file the app fetches, not the box: the two stories differ
+/// only in that flag. The portrait is its own message, so its box follows the image's own width and
+/// height (200 × 400, the max height); the other three share one, in the 250-wide cells a message
+/// with several files gets.
+fn image_shapes(has_thumbnail: bool, cx: &mut App) -> AnyView {
+    init(cx);
+    let author = fixture::user("u-cleo", "cleo", Some("Cleo"));
+    let mut portrait = fixture::message(
+        1,
+        author.clone(),
+        NOW_MS - 6 * MINUTE,
+        fixture::Body::default().text("A portrait, 600 × 1200."),
+    );
+    portrait.attachments = vec![image(
+        "img-shape-portrait",
+        "portrait.png",
+        Some((600, 1200)),
+        has_thumbnail,
+    )];
+    let mut others = fixture::message(
+        2,
+        author,
+        NOW_MS - 5 * MINUTE,
+        fixture::Body::default().text("A panorama, a square, and one the server never measured."),
+    );
+    others.attachments = vec![
+        image(
+            "img-shape-panorama",
+            "panorama.png",
+            Some((3000, 500)),
+            has_thumbnail,
+        ),
+        image(
+            "img-shape-square",
+            "square.png",
+            Some((800, 800)),
+            has_thumbnail,
+        ),
+        image("img-shape-unsized", "unsized.png", None, has_thumbnail),
+    ];
+    image_list(vec![portrait, others], cx)
+}
+
+/// A 40 × 30 picture: drawn at its own size, not stretched to a box's width.
+fn image_tiny(cx: &mut App) -> AnyView {
+    init(cx);
+    let mut row = fixture::message(
+        1,
+        fixture::user("u-cleo", "cleo", Some("Cleo")),
+        NOW_MS - 5 * MINUTE,
+        fixture::Body::default().text("A 40 × 30 picture, drawn at its size."),
+    );
+    row.attachments = vec![image("img-shape-tiny", "tiny.png", Some((40, 30)), true)];
+    image_list(vec![row], cx)
+}
+
+/// One row's list over the shape pictures, starting at its first row.
+fn image_list(rows: Vec<MessageRow>, cx: &mut App) -> AnyView {
+    let top = rows.first().map_or(0, |row| row.seq);
+    cx.new(|cx| {
+        let list = MessageList::new(
+            ListData {
+                me_id: fixture::me().id,
+                rows,
+                replies: HashMap::new(),
+                status: ListStatus::Ready,
+            },
+            Rc::new(ShapeMedia::new()),
+            ListOptions {
+                time: TimeFormat::fixed(NOW_MS),
+                scrollbar: false,
+                ..ListOptions::default()
+            },
+            cx,
+        );
+        list.scroll_to_seq(top, 0.);
+        list
+    })
+    .into()
 }
 
 const MEMBER: ListPermissions = ListPermissions {
@@ -568,6 +732,16 @@ fn base_stories() -> Vec<Story> {
         }),
         Story::new("messages-selection", |_, _, cx| with_selection(cx)),
         Story::new("messages-missing-images", |_, _, cx| missing_images(cx)),
+        // WT: the image boxes, in every shape the server sends and with a thumbnail or without.
+        Story::new("messages-images-mixed", |_, _, cx| image_shapes(true, cx)),
+        Story::new("messages-images-no-thumbnail", |_, _, cx| {
+            image_shapes(false, cx)
+        }),
+        Story::new("messages-images-tiny", |_, _, cx| image_tiny(cx)),
+        Story::new("messages-images-phone", |_, _, cx| {
+            let view = image_shapes(true, cx);
+            narrow(view, cx)
+        }),
         Story::new("messages-uploads", |_, _, cx| uploads(cx)),
         Story::new("messages-link-preview", |_, _, cx| link_preview(cx)),
     ]

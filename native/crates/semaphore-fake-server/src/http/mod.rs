@@ -215,6 +215,12 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
         return response;
     }
 
+    // A route held to make a loading state observable, before the handler runs and so before the
+    // request is recorded as answered.
+    if let Some(delay) = inner.route_delay(operation) {
+        tokio::time::sleep(delay).await;
+    }
+
     // The idle control waits for every request to finish; the control request
     // itself must not count, or it would wait for itself.
     let tracked = !path.starts_with("/__control/");
@@ -623,6 +629,17 @@ async fn control(
         "advance_clock" => {
             let millis = request.get("ms").and_then(Value::as_u64).unwrap_or(0);
             inner.advance_clock(std::time::Duration::from_millis(millis));
+        }
+        "delay_route" => {
+            let Some(operation) = request.get("operationId").and_then(Value::as_str) else {
+                return invalid("operationId is required");
+            };
+            let millis = request.get("ms").and_then(Value::as_u64).unwrap_or(0);
+            if millis == 0 {
+                lock(&inner.faults).delay_routes.remove(operation);
+            } else {
+                inner.delay_route(operation, std::time::Duration::from_millis(millis));
+            }
         }
         "idle" => inner.idle().await,
         "requests" => {

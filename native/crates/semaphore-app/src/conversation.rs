@@ -40,6 +40,13 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// inline player can't play, the OS's default app.
 pub type OpenAttachment = Rc<dyn Fn(AttachmentView, OpenHow, &mut Window, &mut App)>;
 
+// What the web does with Escape inside a conversation, one thing per press: close the docked side
+// panel if one is open, else mark the conversation read. Bound in the context the pane's root
+// element carries (`ConversationPane`), so every dialog, menu, the search field, the composer's
+// own Escape and the list's take the key first, and the key reaches this only while nothing of
+// theirs handled it.
+actions!(conversation, [EscapePane]);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenHow {
     View,
@@ -767,6 +774,24 @@ impl ConversationPane {
         });
     }
 
+    /// Escape that the list, the composer, the search field and every dialog left alone:
+    /// `EscapePane`. One thing per press, as the web's `handleEscape` does: the docked side panel
+    /// (the thread over it, or the pins or search panel) closes, else the conversation is marked
+    /// read to its newest message, whatever is on screen.
+    fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.thread.is_some() || self.side.is_some() {
+            self.close_side(cx);
+            return;
+        }
+        let Some(conversation) = self.conversation.clone() else {
+            return;
+        };
+        let core = self.core.clone();
+        self.command("marking the conversation read", window, cx, async move {
+            core.mark_conversation_read(conversation).await.map(|_| ())
+        });
+    }
+
     fn typing_line(&self) -> Option<String> {
         let conversation = self.conversation.clone()?;
         let names: Vec<String> = self
@@ -901,6 +926,8 @@ impl Render for ConversationPane {
         let picker = self.picker_element(cx);
         div()
             .id("conversation")
+            .key_context("ConversationPane")
+            .on_action(cx.listener(|pane, _: &EscapePane, window, cx| pane.escape(window, cx)))
             .size_full()
             .flex()
             .flex_col()

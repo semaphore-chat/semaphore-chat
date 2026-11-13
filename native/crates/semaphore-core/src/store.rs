@@ -182,6 +182,15 @@ impl Window {
             .map(|row| row.message.dto.id.as_str())
     }
 
+    /// The newest row the server knows about.
+    pub fn newest_settled_id(&self) -> Option<&str> {
+        self.rows
+            .iter()
+            .rev()
+            .find(|row| !row.message.is_placeholder() && !row.message.is_optimistic())
+            .map(|row| row.message.dto.id.as_str())
+    }
+
     pub fn has_unsettled_rows(&self) -> bool {
         self.rows.iter().any(|row| row.message.is_optimistic())
     }

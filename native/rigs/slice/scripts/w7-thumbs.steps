@@ -1,0 +1,84 @@
+# WT: the image path in the real app against the fake server, as alexk in Couch Co-op's #general.
+#
+# The fake server measures an uploaded raster image and makes a thumbnail when its longest side
+# exceeds 480 px, exactly as the backend's MediaDimensionsService and ThumbnailService do, and
+# every attachment it builds carries width, height and hasThumbnail. This script proves the client
+# end to end:
+#
+#   1. A portrait (600 x 1200) and a panorama (1600 x 300) in one message: the list asks for each
+#      picture's /thumbnail (never the full file) and draws two 250-wide boxes at the pictures'
+#      own aspects. The thumbnail route is held for a few seconds so the reserved boxes can be
+#      photographed before the bytes arrive (`snap 01-boxes-before-load`) and after (`shot 02-loaded`).
+#   2. A tiny 64 x 64 picture in its own message has no thumbnail: the list asks for its full file
+#      and draws it at its own size.
+#   3. Opening the viewer fetches the portrait's full file.
+#
+# The box sizes are the UI's: a message with several attachments gives each a 250 px cell, so a
+# 2:1 portrait is 250 x 500 and a 16:3 panorama is 250 x 46.875. A lone 64 x 64 picture is 64 x 64.
+
+app 1280 800
+# Hold the thumbnail route so the boxes can be seen before the pictures load. The upload, message
+# and file routes are untouched.
+server delay_route "{\"operationId\": \"FileController_getFileThumbnail\", \"ms\": 4000}"
+wait idle
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait core file-ready sc-img-pit within 10
+wait idle
+
+# 1. Two large pictures in one message: uploaded, attached, and their boxes reserved.
+attach rigs/slice/fixtures/portrait.png
+attach rigs/slice/fixtures/panorama.png
+type "two pictures"
+press enter
+wait core sent "two pictures"
+wait core attachments "two pictures" 2 within 15
+wait core uploads "two pictures" 0
+wait core pending-files "two pictures" 0
+expect requests FileUploadController_uploadFile >= 2
+expect requests MessagesController_addAttachment >= 2
+# The fake server seeds the scenario's soundboard files (four communities, three sounds each)
+# and numbers uploads from there: one message's first two are the 13th and 14th.
+snap 01-boxes-before-load
+# The boxes' shapes come from the attachment's dimensions, before any pixels arrive.
+wait core w7t box "two pictures" portrait.png 250 500 within 15
+wait core w7t box "two pictures" panorama.png 250 47 within 15
+shot 02-loaded
+
+# 1, continued: each large picture was fetched through /thumbnail, and neither at full size.
+expect core w7t thumbnail 0000f11e-0000-4000-8000-00000000000d 1
+expect core w7t thumbnail 0000f11e-0000-4000-8000-00000000000e 1
+expect core w7t full 0000f11e-0000-4000-8000-00000000000d 0
+expect core w7t full 0000f11e-0000-4000-8000-00000000000e 0
+
+# 2. A tiny picture: no thumbnail request, fetched whole, drawn at its own size.
+attach rigs/slice/fixtures/tiny.png
+type "tiny picture"
+press enter
+wait core sent "tiny picture"
+wait core attachments "tiny picture" 1 within 15
+wait core uploads "tiny picture" 0
+wait core pending-files "tiny picture" 0
+wait core w7t box "tiny picture" tiny.png 64 64 within 15
+expect core w7t thumbnail 0000f11e-0000-4000-8000-00000000000f 0
+expect core w7t full 0000f11e-0000-4000-8000-00000000000f 1
+shot 03-tiny
+
+# 3. Opening the portrait in the viewer fetches the full file; the panorama stays unfetched.
+click-row image "two pictures" 0
+wait core viewer open
+wait idle
+shot 04-viewer
+expect core w7t full 0000f11e-0000-4000-8000-00000000000d 1
+expect core w7t full 0000f11e-0000-4000-8000-00000000000e 0
+press escape
+wait core viewer closed
