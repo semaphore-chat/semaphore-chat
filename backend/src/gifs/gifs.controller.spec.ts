@@ -14,10 +14,18 @@ describe('GifsController', () => {
       {
         id: 'gif-1',
         title: 'Cat',
-        url: 'https://media.tenor.com/1/cat.gif',
-        previewUrl: 'https://media.tenor.com/1/cat-tiny.gif',
+        url: 'https://media.giphy.com/1/cat.gif',
+        previewUrl: 'https://media.giphy.com/1/cat-tiny.gif',
         width: 220,
         height: 140,
+        mediumUrl: 'https://media.giphy.com/1/cat-medium.gif',
+        mediumWidth: 160,
+        mediumHeight: 102,
+        mediumSizeBytes: 1048576,
+        originalSizeBytes: 5242880,
+        previewWidth: 100,
+        previewHeight: 64,
+        previewSizeBytes: 262144,
       },
     ],
     next: 'cursor-1',
@@ -65,6 +73,24 @@ describe('GifsController', () => {
 
       expect(service.featured).toHaveBeenCalledWith(15, 'cursor-2');
       expect(result).toEqual(mockResponse);
+    });
+
+    it('forwards a result with no rendition metadata as-is', async () => {
+      const bare = {
+        results: [
+          {
+            id: 'gif-2',
+            title: '',
+            url: 'https://media.giphy.com/2/gif.gif',
+            previewUrl: 'https://media.giphy.com/2/gif.gif',
+            width: 0,
+            height: 0,
+          },
+        ],
+      };
+      service.featured.mockResolvedValue(bare);
+
+      await expect(controller.featured({ limit: 20 })).resolves.toEqual(bare);
     });
   });
 });

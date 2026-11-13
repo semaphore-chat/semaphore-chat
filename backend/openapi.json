@@ -17175,17 +17175,51 @@
           },
           "url": {
             "type": "string",
-            "description": "Full-size animated GIF URL (Giphy: images.original.url) — sent as message content."
+            "description": "Full-size animated GIF URL (Giphy: images.original.url) — sent as message content when there is no smaller one."
           },
           "previewUrl": {
             "type": "string",
             "description": "Small animated preview used in the picker grid (Giphy: images.fixed_height.url)."
           },
           "width": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Original rendition width in pixels; 0 when the provider doesn't report it."
           },
           "height": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Original rendition height in pixels; 0 when the provider doesn't report it."
+          },
+          "mediumUrl": {
+            "type": "string",
+            "description": "Medium rendition URL, the one clients should send for a message: Giphy's\n`downsized_medium`, else `downsized`, else the original. Absent only if the\nprovider offers no rendition a client may load (see `url`)."
+          },
+          "mediumWidth": {
+            "type": "integer",
+            "description": "Medium rendition width in pixels; absent when unknown."
+          },
+          "mediumHeight": {
+            "type": "integer",
+            "description": "Medium rendition height in pixels; absent when unknown."
+          },
+          "mediumSizeBytes": {
+            "type": "integer",
+            "description": "Medium rendition size in bytes; absent when unknown."
+          },
+          "originalSizeBytes": {
+            "type": "integer",
+            "description": "Original rendition size in bytes; absent when unknown."
+          },
+          "previewWidth": {
+            "type": "integer",
+            "description": "Preview rendition width in pixels; absent when unknown."
+          },
+          "previewHeight": {
+            "type": "integer",
+            "description": "Preview rendition height in pixels; absent when unknown."
+          },
+          "previewSizeBytes": {
+            "type": "integer",
+            "description": "Preview rendition size in bytes; absent when unknown."
           }
         },
         "required": [

@@ -833,6 +833,13 @@ describe('Socket event contract (e2e)', () => {
   });
 
   it('a session: TOKEN_EXPIRING, then SESSION_TERMINATED', async () => {
+    // The socket's expiry timer is armed when it authenticates, so the token
+    // must still have a comfortable lifetime left by then. With a 2-second
+    // token the connection alone could consume it: the token expires in
+    // SESSION_TERMINATED without a warning (the warning is never earlier than
+    // MIN_WARNING_DELAY_MS, 1s, after binding), or the handshake is refused
+    // outright. 8 seconds leaves the connection ample room and keeps the
+    // warning (1s after binding) well before expiry.
     const shortLived = app.get(JwtService).sign(
       {
         sub: account.owner.id,
@@ -840,21 +847,17 @@ describe('Socket event contract (e2e)', () => {
         role: account.owner.role,
         jti: randomUUID(),
       },
-      { expiresIn: 2 },
+      { expiresIn: 8 },
     );
-    const client = io(url, {
-      transports: ['websocket'],
-      reconnection: false,
-      autoConnect: false,
-      auth: { token: `Bearer ${shortLived}` },
-    });
-    client.onAny((event: string, payload: unknown) => {
-      events.push({ event, payload, who: 'short-lived' });
-    });
-    opened.push(client);
-    client.connect();
 
-    await seen(ServerEvents.TOKEN_EXPIRING);
+    // connect() attaches the listener before the socket connects and rejects
+    // on connect_error, so a refused handshake fails here rather than as a
+    // timeout waiting for events that were never going to arrive.
+    await connect('short-lived', shortLived);
+
+    const expiring = await seen(ServerEvents.TOKEN_EXPIRING);
+    expect(typeof expiring.expiresAt).toBe('string');
+
     const ended = await seen(ServerEvents.SESSION_TERMINATED);
     expect(ended.reason).toBe('TOKEN_EXPIRED');
   });
@@ -958,7 +961,9 @@ describe('Socket event contract (e2e)', () => {
           !notDriven.has(event),
       );
 
-      expect(missing).toEqual([]);
+      // Named in the failure's object key so a missing event reads as itself
+      // instead of an anonymous empty-array diff.
+      expect({ eventsNotDriven: missing }).toEqual({ eventsNotDriven: [] });
     });
 
     it('nothing carries a sensitive user field', () => {

@@ -42,13 +42,24 @@ vi.mock('../../components/Message/EmojiPicker', () => ({
 }));
 
 // Mock the GIF picker so we can trigger a selection deterministically.
+// A test can set a medium rendition URL for the gif it hands the composer.
+let mockGifMediumUrl: string | undefined;
+
 vi.mock('../../components/Message/GifPicker', () => ({
   GifPickerPopover: ({
     open,
     onSelect,
   }: {
     open: boolean;
-    onSelect: (gif: { id: string; url: string; previewUrl: string; title: string; width: number; height: number }) => void;
+    onSelect: (gif: {
+      id: string;
+      url: string;
+      previewUrl: string;
+      title: string;
+      width: number;
+      height: number;
+      mediumUrl?: string;
+    }) => void;
   }) =>
     open ? (
       <button
@@ -57,11 +68,12 @@ vi.mock('../../components/Message/GifPicker', () => ({
         onClick={() =>
           onSelect({
             id: 'gif-1',
-            url: 'https://media.tenor.com/1/cat.gif',
-            previewUrl: 'https://media.tenor.com/1/cat-tiny.gif',
+            url: 'https://media.giphy.com/1/cat.gif',
+            previewUrl: 'https://media.giphy.com/1/cat-tiny.gif',
             title: 'Cat',
             width: 220,
             height: 140,
+            ...(mockGifMediumUrl ? { mediumUrl: mockGifMediumUrl } : {}),
           })
         }
       >
@@ -138,6 +150,7 @@ describe('MessageInput', () => {
       deviceType: 'desktop',
     });
     mockGifSearchEnabled = false;
+    mockGifMediumUrl = undefined;
   });
 
   describe('emoji insertion', () => {
@@ -279,8 +292,9 @@ describe('MessageInput', () => {
       expect(await screen.findByLabelText('add gif')).toBeInTheDocument();
     });
 
-    it('sends the GIF url immediately on selection, leaving composer text untouched', async () => {
+    it('sends the medium rendition when the provider offers one, leaving composer text untouched', async () => {
       mockGifSearchEnabled = true;
+      mockGifMediumUrl = 'https://media.giphy.com/1/cat-medium.gif';
       const { user, input, onSendMessage } = setup();
 
       await user.type(input, 'still typing');
@@ -291,12 +305,29 @@ describe('MessageInput', () => {
         expect(onSendMessage).toHaveBeenCalledTimes(1);
       });
       expect(onSendMessage).toHaveBeenCalledWith(
-        'https://media.tenor.com/1/cat.gif',
+        'https://media.giphy.com/1/cat-medium.gif',
         expect.any(Array),
         [],
       );
       // The composer's own draft text is untouched by the GIF send.
       expect(input.value).toBe('still typing');
+    });
+
+    it('falls back to the original url when the gif has no medium rendition', async () => {
+      mockGifSearchEnabled = true;
+      const { user, onSendMessage } = setup();
+
+      await user.click(await screen.findByLabelText('add gif'));
+      await user.click(screen.getByTestId('mock-gif-pick'));
+
+      await waitFor(() => {
+        expect(onSendMessage).toHaveBeenCalledTimes(1);
+      });
+      expect(onSendMessage).toHaveBeenCalledWith(
+        'https://media.giphy.com/1/cat.gif',
+        expect.any(Array),
+        [],
+      );
     });
   });
 
