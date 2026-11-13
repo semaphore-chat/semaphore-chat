@@ -35,10 +35,11 @@ pub use reset::{
 };
 
 use crate::kit::{
-    Alert, Button, ButtonSize, Icon, Severity, Spinner, TextField, Variant, link, spacing, text,
-    text_state,
+    Alert, Button, ButtonSize, Icon, LiveElement, Severity, Spinner, TextField, Variant, link,
+    spacing, text, text_state,
 };
 use crate::theme::{FONT_FAMILY, SemTheme};
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -628,10 +629,17 @@ fn browser_panel(
 ) -> AnyElement {
     if matches!(browser, BrowserLogin::Waiting | BrowserLogin::Finishing) {
         let signing_in = browser == BrowserLogin::Finishing;
+        // `BrowserLoginPanel` is `role="status" aria-live="polite"`.
         return div()
             .id("auth-browser-status")
             .test_support()
             .role(Role::Status)
+            .aria_label(if signing_in {
+                "Signing you in\u{2026}"
+            } else {
+                "Waiting for your browser\u{2026}"
+            })
+            .aria_live(Live::Polite)
             .w_full()
             .flex()
             .flex_col()

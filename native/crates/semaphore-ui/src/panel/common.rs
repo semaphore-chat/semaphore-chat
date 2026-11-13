@@ -1,9 +1,10 @@
 //! What the side panels share: the header, the empty and error blocks, relative times and icon
 //! buttons with the web's MUI icons. The thread pane uses these too.
 
-use crate::kit::{Button, Variant, icon_path, spacing, text};
+use crate::kit::{Button, LiveElement, Variant, icon_path, spacing, text};
 use crate::shell::PHONE;
 use crate::theme::SemTheme;
+use gpui_kit::accesskit::Live;
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
@@ -144,10 +145,17 @@ pub(crate) fn error_block(
 ) -> AnyElement {
     let sem = cx.sem();
     let tint = sem.error.opacity(if sem.is_dark { 0.16 } else { 0.1 });
+    let title: SharedString = title.into();
+    let description: SharedString = description.into();
+    // `ListState`'s error on the web is `role="alert"`: assertive. AccessKit has no name from
+    // child text, so the label is the sentence a screen reader reads.
+    let label = SharedString::from(format!("{title}. {description}"));
     div()
         .id(SharedString::from(format!("{id}-block")))
         .test_support()
         .role(Role::Alert)
+        .aria_label(label)
+        .aria_live(Live::Assertive)
         .flex()
         .flex_col()
         .items_center()
@@ -166,14 +174,14 @@ pub(crate) fn error_block(
                 .child(design_icon(DesignIcon::ErrorOutline, 32., sem.error)),
         )
         .child(
-            text(Variant::Subtitle2, title)
+            text(Variant::Subtitle2, title.clone())
                 .font_weight(FontWeight(600.))
                 .text_color(sem.text_primary)
                 .mb(px(4.))
                 .text_center(),
         )
         .child(
-            text(Variant::Caption, description)
+            text(Variant::Caption, description.clone())
                 .text_color(sem.text_secondary)
                 .max_w(px(300.))
                 .mb(px(12.))

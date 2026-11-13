@@ -1,0 +1,16 @@
+[package]
+name = "rig-announce"
+description = "A live message announcement from a real window, for the desktop probe's AT-SPI check. A test rig, not the client."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "rig-announce"
+path = "src/main.rs"
+
+[dependencies]
+gpui-kit.workspace = true
+semaphore-core.workspace = true
+semaphore-ui.workspace = true

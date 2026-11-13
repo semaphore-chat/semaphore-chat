@@ -10,6 +10,7 @@ mod controls;
 mod display;
 mod fields;
 mod lists;
+mod live;
 mod overlays;
 #[cfg(feature = "stories")]
 mod stories;
@@ -28,6 +29,7 @@ pub use display::{
 pub use fields::{SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
 pub use lists::{ListRow, Table, Tabs};
+pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
 pub use overlays::{Dialog, Menu, MenuItem, Paper, Popover, SecondaryTone, Tip, with_tip};
 pub use typography::{Variant, link, text};
 

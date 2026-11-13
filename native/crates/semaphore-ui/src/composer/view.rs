@@ -21,6 +21,8 @@ use super::rules::{
     MentionTrigger, collapse_whitespace, format_role_list, format_time_left, get_current_mention,
     insert_mention, marker_for_shortcut, resolve_mentions, wrap_selection,
 };
+use crate::kit::LiveElement;
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::Button;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{
@@ -985,10 +987,12 @@ impl Composer {
             None => copy.clone(),
         };
         observed(
+            // The web's `ComposerUnavailableNotice` is `role="status"`: polite.
             div()
                 .id("composer-unavailable")
                 .role(Role::Status)
                 .aria_label(label)
+                .aria_live(Live::Polite)
                 .w_full()
                 .p(px(16.))
                 // The composer's height, borders included, so the chat doesn't jump when the state changes.
@@ -1642,10 +1646,12 @@ impl Render for Composer {
             })
             .when_some(self.error.clone(), |root, error| {
                 root.child(observed(
+                    // The web reports a failed send through a toast (`role="alert"`): assertive.
                     div()
                         .id("composer-error")
                         .role(Role::Alert)
                         .aria_label(error.clone())
+                        .aria_live(Live::Assertive)
                         .mx(px(8.))
                         .mb(px(4.))
                         .text_size(px(12.))

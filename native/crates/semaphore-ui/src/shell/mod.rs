@@ -19,10 +19,12 @@ pub mod stories_impl;
 
 pub use source::{CoreSource, Load, MemberRow, RailCounts, ShellSource};
 
+use crate::kit::LiveElement;
 use crate::kit::{Button, Chip, Icon, IconButton, Paper, Spinner, Variant, on_core_event, text};
 use crate::nav::{NavModel, Route};
 use crate::theme::{FONT_FAMILY, SemTheme};
 pub(crate) use faces::{community_avatar, user_avatar};
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::{ResizableState, h_resizable, resizable_panel};
 use gpui_kit::prelude::*;
@@ -685,11 +687,13 @@ impl Shell {
         };
         let warning = sem.warning;
         Some(
+            // The web's `OfflineBanner`/connection strip is `role="status"`: polite.
             div()
                 .id("connection-banner")
                 .test_support()
                 .role(Role::Status)
                 .aria_label(label)
+                .aria_live(Live::Polite)
                 .child(
                     Chip::new(label)
                         .icon(Spinner::new("connection-spinner").size(14.).color(warning))

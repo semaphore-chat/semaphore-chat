@@ -3,8 +3,11 @@
 //! states of the same card; success leads back to sign-in with the new password.
 
 use super::{PASSWORD_MAX, PASSWORD_MIN, card, event_link, page};
-use crate::kit::{Alert, Button, Icon, Severity, TextField, Variant, spacing, text, text_state};
+use crate::kit::{
+    Alert, Button, Icon, LiveElement, Severity, TextField, Variant, spacing, text, text_state,
+};
 use crate::theme::SemTheme;
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -274,10 +277,12 @@ impl Render for ResetPasswordScreen {
                     )
             }))
             .children(self.error.clone().map(|message| {
+                // `ResetPasswordPage`'s refusal is `role="alert"`: assertive.
                 div()
                     .id("reset-password-error")
                     .test_support()
                     .role(Role::Alert)
+                    .aria_live(Live::Assertive)
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(

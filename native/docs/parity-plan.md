@@ -73,7 +73,7 @@ States: **done**, **partial** (what's missing), **not started**, **unknown** (no
 | Webhook messages | `components/Message/MessageComponent.tsx` | done (`WebhookView`) |
 | Typing indicators (send and show) | `hooks/useTypingEmitter.ts`, `components/Message/TypingIndicator.tsx` | done |
 | Mark read; unread divider; DM "seen by" | `hooks/useReadReceipts.ts`, `components/Message/UnreadMessageDivider.tsx`, `SeenByTooltip.tsx`, `hooks/useDmPeerReads.ts` | done (`Core::mark_read` and `unread_marker`; "Seen by" from `Core::seen_by` through `conversation/seen.rs` and `messages/seen.rs`) |
-| Screen-reader announcements of new messages | `hooks/useMessageListAnnouncer.ts` | not started: rows carry accessible names (`messages/row.rs`), but nothing announces new messages; no live region is used anywhere, and `useMessageListAnnouncer.ts` has no counterpart |
+| Screen-reader announcements of new messages | `hooks/useMessageListAnnouncer.ts` | done (`ui/src/messages/announce.rs` decides which rows qualify, `view.rs` flushes after the web's 2 s window and draws a hidden polite node; `ui/src/kit/live.rs` is the live property and the nodes; shortcut feedback in `app/src/root/u9.rs` and `app/src/conversation.rs`, "Marked as read" and the navigation words; `scripts/desktop-probe.sh` proves the AT-SPI `Announcement`) |
 
 ### DMs, groups and friends
 
@@ -224,7 +224,7 @@ PWA install prompt and settings (`components/PWA/`, `hooks/useInstallPrompt.ts`,
 |---|---|---|---|---|
 | Auth and onboarding | 9 | 0 | 0 | 0 |
 | Communities and channels | 10 | 0 | 0 | 0 |
-| Messaging | 26 | 0 | 1 | 0 |
+| Messaging | 27 | 0 | 0 | 0 |
 | DMs, groups, friends | 5 | 0 | 0 | 0 |
 | Voice, video, replay | 22 | 1 | 0 | 0 |
 | Presence | 3 | 0 | 0 | 0 |
@@ -233,7 +233,7 @@ PWA install prompt and settings (`components/PWA/`, `hooks/useInstallPrompt.ts`,
 | Community settings, roles, moderation | 14 | 0 | 0 | 0 |
 | Instance admin | 7 | 0 | 1 | 0 |
 | Electron-only | 13 | 0 | 0 | 0 |
-| **Total** | **122** | **1** | **2** | **0** |
+| **Total** | **123** | **1** | **1** | **0** |
 
 (n/a rows are left out: the first-run wizard, Web Push and auto-start at login, three rows.) These
 counts were taken on 2026-11-13 by re-reading every row against the code, after the UA/UG/UM/UV/
@@ -692,7 +692,7 @@ invite preview's `reason`). Another repin follows when the open backend PRs land
 | Crash reporting | none (no `crashReporter`) | **Built**: a panic hook keeps the default stderr output and writes `crash-<time>-<pid>.txt` beside the logs (time, version, platform, thread, message and location, backtrace; no environment or user data; the newest 10 kept). The next start logs that a report exists; nothing is sent anywhere | S |
 | Logging | `electron/voiceLog.ts` writes voice events to a log file; console otherwise | **Built**: size-capped rotating files under `<data dir>/logs` (5 × 2 MiB app, 3 × 512 KiB voice), `SEMAPHORE_LOG` picks the level (info in a packaged build, warn from a checkout), every line redacted, stderr unchanged; "Open log folder" in the Desktop App tab | S |
 | Localisation | none (no i18n library in `frontend/src`) | none for parity; keep strings in one place per UI module | n/a |
-| Accessibility | MUI/ARIA, `useMessageListAnnouncer`, shortcut sheet | Orca pass done (T5); each UI unit keeps labels; a Windows Narrator pass is not done (unknown) | M |
+| Accessibility | MUI/ARIA, `useMessageListAnnouncer`, shortcut sheet | Live regions now exist where the web has them (`ui/src/kit/live.rs`: message arrivals, shortcut feedback, alerts and status nodes), proved headless through AT-SPI (`scripts/desktop-probe.sh`); each UI unit keeps labels. Hearing Orca and Windows Narrator read them (and Narrator's `LiveRegionChanged`) is still a person's check | S |
 | Telemetry | none found (backend `metrics` is server-side; voice diagnostics upload is a feature, W4) | none | n/a |
 | CI on main | `native-spike.yml` runs `verify.sh`, the core mobile checks and the Windows build/link on PRs touching `native/**` and on `main` | `native-package.yml` builds and verifies the Linux packages, the Windows portable zip and the Windows NSIS installer on PRs touching packaging and on dispatch; artifacts only, never a release. `native-e2e.yml` runs the default `slice-e2e.sh` suite nightly and on dispatch, uploading the run directories when it fails; PRs keep the faster gates | S |
 | Settings migration from Electron | `userData/settings.json` (`closeToTray`), window state file, safeStorage-encrypted refresh token, renderer `localStorage` (voice settings, volumes, device ids, server URL, drafts) | **Built** for what `settings.json` holds: on a first run only (no native `settings.json`), `closeToTray` becomes `close_to_tray`; Electron's file is only read. The token is encrypted and the server URL, volumes, devices and drafts are in Chromium's LevelDB, so they are not imported: the server URL stays unset until the first sign-in | S |

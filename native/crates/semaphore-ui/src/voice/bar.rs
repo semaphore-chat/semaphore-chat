@@ -8,7 +8,8 @@ use super::model::{
 use super::soundboard::{SoundboardActions, SoundboardBar, soundboard_popover};
 use super::stage::quality_bars;
 use super::theme::{self, alpha};
-use crate::kit::{Icon, with_tip};
+use crate::kit::{Icon, LiveElement, with_tip};
+use gpui_kit::accesskit::Live;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{ReplayState, VoiceStatus};
@@ -293,7 +294,12 @@ pub(super) fn voice_bar(
 
     let status = reconnecting.map(|attempt| {
         let leave = controller.clone();
+        // The web's `voice-reconnecting` is `role="status"`: polite.
         div()
+            .id("voice-reconnecting")
+            .role(Role::Status)
+            .aria_label(format!("Reconnecting voice ({attempt})\u{2026}"))
+            .aria_live(Live::Polite)
             .flex()
             .items_center()
             .gap(px(4.))
@@ -599,6 +605,10 @@ pub(super) fn voice_bar(
         reconnecting.map(|attempt| {
             let leave = controller.clone();
             div()
+                .id("voice-reconnecting-touch")
+                .role(Role::Status)
+                .aria_label(format!("Reconnecting voice ({attempt})\u{2026}"))
+                .aria_live(Live::Polite)
                 .flex()
                 .items_center()
                 .gap(px(4.))

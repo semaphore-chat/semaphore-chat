@@ -13,6 +13,7 @@ use semaphore_ui::composer::{
     ReplyTarget,
 };
 use semaphore_ui::emoji::{EmojiPick, EmojiPicker, EmojiPickerEvent};
+use semaphore_ui::kit::LiveElement;
 use semaphore_ui::kit::{Button, Snackbar};
 use semaphore_ui::messages::MessageListEvent;
 use semaphore_ui::theme::SemTheme as _;
@@ -109,10 +110,12 @@ impl ConversationPane {
         let notice = self.notice.clone()?;
         let dismiss = cx.entity().downgrade();
         Some(
+            // A refusal the server sent: the web shows it as a toast (`role="alert"`).
             div()
                 .id("pane-notice")
                 .role(Role::Alert)
                 .aria_label(notice.clone())
+                .aria_live(gpui_kit::accesskit::Live::Assertive)
                 .flex_shrink_0()
                 .flex()
                 .justify_center()

@@ -1,5 +1,6 @@
-# W2-desktop: the pinned build image plus a headless Wayland compositor (weston) and a session
-# D-Bus, from the same archive snapshot, for rig-window-hide's Wayland case and the tray tests.
+# W2-desktop: the pinned build image plus a headless Wayland compositor (weston), a session
+# D-Bus and the AT-SPI bus launcher, from the same archive snapshot, for rig-window-hide's Wayland
+# case, the tray tests and the announcement probe.
 # Dockerfile.build stays unchanged so its tag, and everything that depends on it, doesn't move.
 #
 # Built by scripts/desktop-probe.sh, which passes BASE (the build image's tag).
@@ -8,6 +9,6 @@ FROM ${BASE}
 ARG HOST_UID=1000
 
 # dbus-daemon looks its user up and won't start for a uid that isn't in /etc/passwd.
-RUN pacman -S --noconfirm --needed weston \
+RUN pacman -S --noconfirm --needed weston at-spi2-core \
  && rm -rf /var/cache/pacman/pkg/* \
  && echo "builder:x:${HOST_UID}:${HOST_UID}:builder:/cache/home:/bin/sh" >> /etc/passwd

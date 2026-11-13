@@ -9,6 +9,7 @@ use crate::runtime::Activity;
 use crate::services::{self, Services, StartOptions};
 use crate::settings::SettingsStore;
 use crate::voice::{AppVoice, VoiceRequest};
+use gpui_kit::accesskit::Live;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -1947,6 +1948,7 @@ impl Render for AppRoot {
                     root.child(self.picker_dialog(&picker, cx))
                 })
                 .children(self.viewer_overlay(cx))
+                .children(self.u9.announce.node("shortcut-announcer", Live::Polite))
                 .when_some(self.about.clone(), |root, about| root.child(about));
         }
         if let Some(page) = self.onboarding_page() {
