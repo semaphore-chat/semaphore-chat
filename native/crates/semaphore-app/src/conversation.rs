@@ -65,6 +65,8 @@ pub enum PaneEvent {
     PinnedCount(u32),
     /// An author or a mention was clicked: their profile.
     OpenProfile { user_id: String },
+    /// A list's "Load" card: turn the third-party media switch on (`AppRoot::media_set_third_party`).
+    EnableThirdPartyMedia,
 }
 
 /// Which of the pane's lists something happened in.
@@ -370,8 +372,10 @@ impl ConversationPane {
         };
         let (time, scrollbar) = (self.time, self.scrollbar);
         let media: Rc<dyn semaphore_ui::messages::MediaSource> = self.media.clone();
+        // The third-party media switch, as the preview fetcher has it (`media.rs`).
+        let third_party = self.media.previews.allowed();
         cx.new(|cx| {
-            MessageList::new(
+            let mut list = MessageList::new(
                 ListData {
                     me_id,
                     rows,
@@ -387,7 +391,9 @@ impl ConversationPane {
                     ..ListOptions::default()
                 },
                 cx,
-            )
+            );
+            list.set_third_party_media(third_party, cx);
+            list
         })
     }
 

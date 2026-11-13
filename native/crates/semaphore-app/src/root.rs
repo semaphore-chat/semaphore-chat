@@ -1149,6 +1149,7 @@ impl AppRoot {
                 cx.notify();
             }),
             PaneEvent::OpenProfile { .. } => {}
+            PaneEvent::EnableThirdPartyMedia => self.media_set_third_party(true, cx),
         }
     }
 

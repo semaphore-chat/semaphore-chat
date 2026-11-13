@@ -1,2 +1,114 @@
-# UM GIF embeds, Load cards and seen-by in the message list. Empty in the UI freeze: the lane adds every story here, at 1280x800 dark and 390x844 light.
+# UM GIF embeds, Load cards and seen-by in the message list: every story at 1280x800 dark and 390x844 light.
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/um-message-media.steps
+story um-gif-allowed 1280 800 dark-blue-balanced
+wait idle
+shot um-gif-allowed-desktop
+story um-gif-allowed 390 844 light-blue-balanced
+wait idle
+shot um-gif-allowed-phone
+story um-gif-blocked 1280 800 dark-blue-balanced
+wait idle
+shot um-gif-blocked-desktop
+story um-gif-blocked 390 844 light-blue-balanced
+wait idle
+shot um-gif-blocked-phone
+story um-gif-blocked-long-host 1280 800 dark-blue-balanced
+wait idle
+shot um-gif-blocked-long-host-desktop
+story um-gif-blocked-long-host 390 844 light-blue-balanced
+wait idle
+shot um-gif-blocked-long-host-phone
+story um-gif-failed 1280 800 dark-blue-balanced
+wait idle
+shot um-gif-failed-desktop
+story um-gif-failed 390 844 light-blue-balanced
+wait idle
+shot um-gif-failed-phone
+story um-gif-wide 1280 800 dark-blue-balanced
+wait idle
+shot um-gif-wide-desktop
+story um-gif-wide 390 844 light-blue-balanced
+wait idle
+shot um-gif-wide-phone
+story um-gif-tall 1280 800 dark-blue-balanced
+wait idle
+shot um-gif-tall-desktop
+story um-gif-tall 390 844 light-blue-balanced
+wait idle
+shot um-gif-tall-phone
+story um-preview-image-blocked 1280 800 dark-blue-balanced
+wait idle
+shot um-preview-image-blocked-desktop
+story um-preview-image-blocked 390 844 light-blue-balanced
+wait idle
+shot um-preview-image-blocked-phone
+story um-preview-image-allowed 1280 800 dark-blue-balanced
+wait idle
+shot um-preview-image-allowed-desktop
+story um-preview-image-allowed 390 844 light-blue-balanced
+wait idle
+shot um-preview-image-allowed-phone
+story um-preview-long-host 1280 800 dark-blue-balanced
+wait idle
+shot um-preview-long-host-desktop
+story um-preview-long-host 390 844 light-blue-balanced
+wait idle
+shot um-preview-long-host-phone
+story um-seen-dm-one 1280 800 dark-blue-balanced
+wait idle
+shot um-seen-dm-one-desktop
+story um-seen-dm-one 390 844 light-blue-balanced
+wait idle
+shot um-seen-dm-one-phone
+story um-seen-group-two 1280 800 dark-blue-balanced
+wait idle
+shot um-seen-group-two-desktop
+story um-seen-group-two 390 844 light-blue-balanced
+wait idle
+shot um-seen-group-two-phone
+story um-seen-group-many 1280 800 dark-blue-balanced
+wait idle
+shot um-seen-group-many-desktop
+story um-seen-group-many 390 844 light-blue-balanced
+wait idle
+shot um-seen-group-many-phone
+story um-seen-nobody 1280 800 dark-blue-balanced
+wait idle
+shot um-seen-nobody-desktop
+story um-seen-nobody 390 844 light-blue-balanced
+wait idle
+shot um-seen-nobody-phone
+story um-seen-loading 1280 800 dark-blue-balanced
+wait idle
+shot um-seen-loading-desktop
+story um-seen-loading 390 844 light-blue-balanced
+wait idle
+shot um-seen-loading-phone
+story um-seen-not-latest 1280 800 dark-blue-balanced
+wait idle
+shot um-seen-not-latest-desktop
+story um-seen-not-latest 390 844 light-blue-balanced
+wait idle
+shot um-seen-not-latest-phone
+story um-mixed 1280 800 dark-blue-balanced
+wait idle
+shot um-mixed-desktop
+story um-mixed 390 844 light-blue-balanced
+wait idle
+shot um-mixed-phone
+story um-mixed-blocked 1280 800 dark-blue-balanced
+wait idle
+shot um-mixed-blocked-desktop
+story um-mixed-blocked 390 844 light-blue-balanced
+wait idle
+shot um-mixed-blocked-phone
+story um-seen-group-many 1280 800 dark-blue-balanced
+wait idle
+hover message-seen-by
+wait idle
+shot um-seen-tooltip-desktop
+story um-seen-group-many 390 844 light-blue-balanced
+wait idle
+hover message-seen-by
+wait idle
+shot um-seen-tooltip-phone

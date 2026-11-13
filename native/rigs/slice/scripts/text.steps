@@ -28,9 +28,12 @@ expect label "Couch Co-op"
 expect label "Members"
 wait idle
 shot 03-general
+# Third-party pictures are off: kwam3's GIF is a Load card, and nothing was fetched for it.
+expect label "GIF from media.gifs.example"
 
-# 3. Select across rows and copy.
-drag 420 168 575 322
+# 3. Select across rows and copy. Aimed at the rows' text, so a taller row above (a GIF card)
+# can't move the selection.
+drag-text "are we doing friday or not" "are" "yeah i'll bring it friday" "friday"
 press ctrl-c
 expect clipboard "are we doing friday or not"
 expect clipboard "yeah i'll bring it friday"
