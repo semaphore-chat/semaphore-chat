@@ -232,8 +232,8 @@ PWA install prompt and settings (`components/PWA/`, `hooks/useInstallPrompt.ts`,
 | Profile and settings | 7 | 1 | 0 | 0 |
 | Community settings, roles, moderation | 14 | 0 | 0 | 0 |
 | Instance admin | 7 | 0 | 1 | 0 |
-| Electron-only | 12 | 1 | 0 | 0 |
-| **Total** | **119** | **4** | **2** | **0** |
+| Electron-only | 13 | 0 | 0 | 0 |
+| **Total** | **120** | **3** | **2** | **0** |
 
 (n/a rows are left out: the first-run wizard, Web Push and auto-start at login, three rows.) These
 counts were taken on 2026-11-13 by re-reading every row against the code, after the UA/UG/UM/UV/
