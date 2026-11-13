@@ -56,6 +56,30 @@ click voice-camera
 wait core voice camera off within 15
 wait core label "Turn on camera"
 
+# The settings page's camera test: the selected camera's picture in the preview, nothing published,
+# then Stop lets the camera go.
+click rail-account
+wait core label "Settings"
+click account-settings
+click settings-tab-voice
+wait core route settings/voice
+# A wheel over the page (not the call's float card, which takes the wheel where it covers the
+# page) scrolls it down to the camera test.
+scroll voice-mic-test 0 -700
+wait idle
+click voice-camera-test
+wait core camera-test running
+wait core camera-test device default
+wait core camera-test frames 1 within 15
+# The preview surface draws those frames, as a call's own camera tile does.
+wait core element voice-camera-preview within 15
+expect core voice camera off
+click voice-camera-test
+wait core camera-test stopped
+wait core camera-test released
+click settings-close
+wait core label "Turn on camera"
+
 # A camera that won't open: the bar says why, and clicking again retries.
 video fail-next camera "the camera is in use by another application"
 click voice-camera

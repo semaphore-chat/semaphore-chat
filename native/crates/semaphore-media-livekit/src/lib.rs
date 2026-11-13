@@ -2,6 +2,7 @@
 //! and the UI stay free of the SDK and a mobile build can bring its own.
 
 pub mod audio;
+mod camera_test;
 mod diagnostics;
 mod engine;
 mod input_test;
@@ -11,6 +12,7 @@ pub mod soundboard;
 pub mod testing;
 mod video;
 
+pub use camera_test::CameraTest;
 pub use engine::{
     ConnectionQualityView, EngineChoices, EngineOptions, LiveKitEngine, MediaSnapshot, MicPreset,
     RejoinPolicy, TokenSource,

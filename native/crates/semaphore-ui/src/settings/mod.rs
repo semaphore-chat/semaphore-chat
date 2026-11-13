@@ -5,8 +5,9 @@
 //! - `SettingsScreen`: the nav column and the open tab (a list to tap into on a phone). It creates
 //!   every tab and hands them out, so the owner feeds each one and listens to it.
 //! - `VoiceVideoSettings` (`AudioVideoSettingsPanel.tsx`): input mode and the push-to-talk key,
-//!   processing, mic quality, devices, the mic test meter, camera and screen share quality. Every
-//!   change goes out at once as the whole new `VoiceVideoState`; there is no Save.
+//!   processing, mic quality, devices, the mic test meter, the camera test and its preview, and
+//!   screen share quality. Every change goes out at once as the whole new `VoiceVideoState`; there
+//!   is no Save.
 //! - `AppearanceSettings` (the appearance card in `SettingsPage.tsx`): dark or light, the accent,
 //!   the intensity, and a live preview.
 //! - `SessionsSettings` (`SessionsSettings.tsx`): this account's signed-in devices.
@@ -16,6 +17,7 @@
 //! Like every view here they emit what the user asked for; the owner calls core.
 
 mod appearance;
+mod camera_test;
 mod desktop;
 pub mod key_capture;
 mod sessions;
@@ -27,6 +29,7 @@ mod tests;
 mod voice;
 
 pub use appearance::{accent_name, theme_choice};
+pub use camera_test::{CameraTestEvent, CameraTestState};
 pub use key_capture::{Capture, ptt_key_from, ptt_key_label};
 pub use sessions::{session_details, session_device_name};
 pub use voice::{mic_quality_label, share_size_label};
@@ -41,6 +44,7 @@ use gpui_kit::*;
 use semaphore_core::model::{
     AppearancePatch, AppearanceView, LoadState, SessionsView, ShareResolution,
 };
+use std::sync::Arc;
 
 type Choices = Entity<SelectState<Vec<SharedString>>>;
 
@@ -261,6 +265,10 @@ pub enum VoiceSettingsEvent {
     StartMicTest,
     /// "Stop": the owner closes it and calls `set_mic_level(None)`.
     StopMicTest,
+    /// "Test camera": the owner opens the selected camera and feeds `camera_test_event(Frame)`.
+    StartCameraTest,
+    /// "Stop": the owner closes the camera and sends `camera_test_event(Stop)`.
+    StopCameraTest,
     PlayTestSound,
     /// The refresh button, or Try again after the device list failed.
     RefreshDevices,
@@ -278,6 +286,10 @@ pub struct VoiceVideoSettings {
     limits: VoiceLimits,
     devices: DeviceLists,
     mic_level: Option<f32>,
+    /// The camera test's state, and where its picture is drawn.
+    camera_test: CameraTestState,
+    camera_published: bool,
+    frames: Option<Arc<crate::voice::VideoFrames>>,
     /// The voice-activity threshold to go back to after push to talk.
     last_threshold: u8,
     capturing: bool,

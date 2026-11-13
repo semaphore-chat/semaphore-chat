@@ -97,6 +97,76 @@ impl VideoSources for NoVideoSources {
 const PREVIEW_MAX_WIDTH: u32 = 640;
 const PREVIEW_INTERVAL: Duration = Duration::from_millis(1000 / 15);
 
+/// The small NV12 picture our own tile draws, at most 15 a second. Shared by a published camera
+/// or screen (under the publication's sid) and the settings page's camera test (under
+/// `CAMERA_TEST_TRACK_SID`), so both reach a tile the same way.
+pub(crate) struct PreviewFrame {
+    last: Option<Instant>,
+    y: Vec<u8>,
+    uv: Vec<u8>,
+}
+
+impl PreviewFrame {
+    pub(crate) fn new() -> Self {
+        Self {
+            last: None,
+            y: Vec::new(),
+            uv: Vec::new(),
+        }
+    }
+
+    /// Sends `buffer` to `sink` as `sid`, scaled and converted to NV12. False when the frame came
+    /// too soon after the last one and was dropped.
+    pub(crate) fn send(&mut self, sink: &dyn VideoSink, sid: &str, buffer: &I420Buffer) -> bool {
+        let now = Instant::now();
+        if self.last.is_some_and(|last| now - last < PREVIEW_INTERVAL) {
+            return false;
+        }
+        self.last = Some(now);
+        let (width, height) = preview_size(buffer.width(), buffer.height());
+        let mut scaled;
+        let small = if (width, height) == (buffer.width(), buffer.height()) {
+            buffer
+        } else {
+            // `scale` takes `&mut self` but leaves the source as it was.
+            scaled = clone_i420(buffer);
+            scaled = scaled.scale(width as i32, height as i32);
+            &scaled
+        };
+        let (y, u, v) = small.data();
+        let (stride_y, stride_u, stride_v) = small.strides();
+        let uv_stride = width.div_ceil(2) * 2;
+        self.y.resize((width * height) as usize, 0);
+        self.uv.resize((uv_stride * height.div_ceil(2)) as usize, 0);
+        yuv_helper::i420_to_nv12(
+            y,
+            stride_y,
+            u,
+            stride_u,
+            v,
+            stride_v,
+            &mut self.y,
+            width,
+            &mut self.uv,
+            uv_stride,
+            width as i32,
+            height as i32,
+        );
+        sink.on_frame(
+            sid,
+            &VideoFrameRef {
+                width,
+                height,
+                y: &self.y,
+                y_stride: width,
+                uv: &self.uv,
+                uv_stride,
+            },
+        );
+        true
+    }
+}
+
 /// Turns frames into what is sent, at `target` (even, never larger than the frame).
 pub(crate) struct FramePipeline {
     target: (u32, u32),
@@ -105,9 +175,7 @@ pub(crate) struct FramePipeline {
     /// Our publication's sid once published: the preview goes to the sink under it.
     sid: Arc<Mutex<Option<String>>>,
     epoch: Instant,
-    last_preview: Option<Instant>,
-    preview_y: Vec<u8>,
-    preview_uv: Vec<u8>,
+    preview_picture: PreviewFrame,
 }
 
 impl FramePipeline {
@@ -130,9 +198,7 @@ impl FramePipeline {
             preview,
             sid,
             epoch: Instant::now(),
-            last_preview: None,
-            preview_y: Vec::new(),
-            preview_uv: Vec::new(),
+            preview_picture: PreviewFrame::new(),
         }
     }
 
@@ -157,58 +223,10 @@ impl FramePipeline {
         let Some(sink) = &self.preview else {
             return;
         };
-        let now = Instant::now();
-        if self
-            .last_preview
-            .is_some_and(|last| now - last < PREVIEW_INTERVAL)
-        {
-            return;
-        }
         let Some(sid) = self.sid.lock().unwrap_or_else(|p| p.into_inner()).clone() else {
             return;
         };
-        self.last_preview = Some(now);
-        let (width, height) = preview_size(buffer.width(), buffer.height());
-        let mut scaled;
-        let small = if (width, height) == (buffer.width(), buffer.height()) {
-            buffer
-        } else {
-            // `scale` takes `&mut self` but leaves the source as it was.
-            scaled = clone_i420(buffer);
-            scaled = scaled.scale(width as i32, height as i32);
-            &scaled
-        };
-        let (y, u, v) = small.data();
-        let (stride_y, stride_u, stride_v) = small.strides();
-        let uv_stride = width.div_ceil(2) * 2;
-        self.preview_y.resize((width * height) as usize, 0);
-        self.preview_uv
-            .resize((uv_stride * height.div_ceil(2)) as usize, 0);
-        yuv_helper::i420_to_nv12(
-            y,
-            stride_y,
-            u,
-            stride_u,
-            v,
-            stride_v,
-            &mut self.preview_y,
-            width,
-            &mut self.preview_uv,
-            uv_stride,
-            width as i32,
-            height as i32,
-        );
-        sink.on_frame(
-            &sid,
-            &VideoFrameRef {
-                width,
-                height,
-                y: &self.preview_y,
-                y_stride: width,
-                uv: &self.preview_uv,
-                uv_stride,
-            },
-        );
+        self.preview_picture.send(sink.as_ref(), &sid, buffer);
     }
 }
 

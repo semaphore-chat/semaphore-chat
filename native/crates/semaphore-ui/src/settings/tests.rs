@@ -3,7 +3,7 @@
 
 use super::desktop::link_status;
 use super::voice::{device_rows, transmitting};
-use super::*;
+use super::{camera_test, *};
 use crate::dms::rig::{Rig, rig};
 use crate::theme::ThemeChoice;
 use core::prelude::v1::test;
@@ -177,6 +177,97 @@ fn the_gate_opens_above_the_threshold() {
     assert!(!transmitting(1.0, 100));
 }
 
+// ---- The camera test's states, the pure part. ----
+
+fn camera_state(name: &str) -> CameraTestState {
+    match name {
+        "idle" => CameraTestState::Idle,
+        "starting" => CameraTestState::Starting,
+        "running" => CameraTestState::Running,
+        "failed" => CameraTestState::Failed {
+            reason: "the camera is in use by another application".into(),
+        },
+        other => panic!("no state {other}"),
+    }
+}
+
+fn camera_event(name: &str) -> CameraTestEvent {
+    match name {
+        "start" => CameraTestEvent::Start,
+        "frame" => CameraTestEvent::Frame,
+        "stop" => CameraTestEvent::Stop,
+        "failed" => CameraTestEvent::Failed {
+            reason: "the camera is in use by another application".into(),
+        },
+        other => panic!("no event {other}"),
+    }
+}
+
+/// Every state against every event: Test starts, a frame only turns the spinner into a picture,
+/// Stop always empties it, and a refusal is shown only for a test that was started.
+#[test]
+fn the_camera_test_transitions_by_table() {
+    let table = [
+        ("idle", "start", "starting", "Test camera"),
+        ("idle", "frame", "idle", "a stray frame draws nothing"),
+        ("idle", "stop", "idle", "Stop with nothing running"),
+        (
+            "idle",
+            "failed",
+            "idle",
+            "a refusal after a stop isn't shown",
+        ),
+        (
+            "starting",
+            "start",
+            "starting",
+            "pressed again before a frame",
+        ),
+        ("starting", "frame", "running", "the first frame"),
+        ("starting", "stop", "idle", "cancelled while opening"),
+        ("starting", "failed", "failed", "the camera wouldn't open"),
+        (
+            "running",
+            "start",
+            "starting",
+            "a changed camera restarts it",
+        ),
+        ("running", "frame", "running", "every frame after the first"),
+        ("running", "stop", "idle", "Stopped"),
+        ("running", "failed", "failed", "the camera was unplugged"),
+        ("failed", "start", "starting", "Try again"),
+        (
+            "failed",
+            "frame",
+            "failed",
+            "a late frame doesn't revive it",
+        ),
+        ("failed", "stop", "idle", "dismissed"),
+        ("failed", "failed", "failed", "a second reason replaces it"),
+    ];
+    for (from, on, to, why) in table {
+        assert_eq!(
+            camera_test::next(&camera_state(from), &camera_event(on)),
+            camera_state(to),
+            "{from} + {on}: {why}"
+        );
+    }
+}
+
+#[test]
+fn the_camera_button_says_stop_only_while_a_test_is_in_flight() {
+    assert!(!CameraTestState::Idle.is_active());
+    assert!(CameraTestState::Starting.is_active());
+    assert!(CameraTestState::Running.is_active());
+    assert!(
+        !CameraTestState::Failed {
+            reason: "no camera".into()
+        }
+        .is_active(),
+        "a failed test can be retried"
+    );
+}
+
 // ---- Sessions, the pure parts. ----
 
 fn row(id: &str) -> SessionRow {
@@ -294,7 +385,7 @@ where
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: Point::default(),
-            size: size(px(900.), px(2400.)),
+            size: size(px(900.), px(3000.)),
         })),
         ..Default::default()
     };
@@ -471,6 +562,132 @@ fn the_buttons_ask_the_owner(cx: &mut TestAppContext) {
             VoiceSettingsEvent::StopMicTest,
         ]
     );
+}
+
+/// The voice tab with a window's frames and the given devices, for the camera test's states.
+fn camera_voice(
+    cx: &mut TestAppContext,
+    devices: DeviceLists,
+) -> Rig<VoiceVideoSettings, VoiceSettingsEvent> {
+    tall_rig(cx, move |window, cx| {
+        let mut voice = VoiceVideoSettings::new(window, cx);
+        voice.set_devices(devices, window, cx);
+        voice.set_state(VoiceVideoState::default(), window, cx);
+        voice.set_frames(crate::voice::VideoFrames::for_window(window), cx);
+        voice
+    })
+}
+
+fn camera_test_state(
+    rig: &Rig<VoiceVideoSettings, VoiceSettingsEvent>,
+    cx: &mut TestAppContext,
+) -> CameraTestState {
+    rig.with(cx, |view, _, cx| view.read(cx).camera_test_state().clone())
+}
+
+#[gpui_kit::test]
+fn the_camera_test_shows_each_state(cx: &mut TestAppContext) {
+    let rig = camera_voice(cx, devices());
+    assert!(rig.has(cx, "voice-camera-test-idle"));
+    assert!(!rig.has(cx, "voice-camera-preview"));
+
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(
+        rig.events(),
+        [VoiceSettingsEvent::StartCameraTest],
+        "Test camera"
+    );
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Start, cx)
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-test-starting"), "opening");
+    assert!(!rig.has(cx, "voice-camera-test-idle"));
+
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Frame, cx)
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-preview"), "the picture");
+    assert!(!rig.has(cx, "voice-camera-test-starting"));
+    assert_eq!(camera_test_state(&rig, cx), CameraTestState::Running);
+
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(
+        rig.events().last(),
+        Some(&VoiceSettingsEvent::StopCameraTest),
+        "the button says Stop"
+    );
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Stop, cx)
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-test-idle"));
+    assert!(!rig.has(cx, "voice-camera-preview"), "the picture empties");
+}
+
+#[gpui_kit::test]
+fn a_camera_that_wont_open_shows_why_and_offers_a_retry(cx: &mut TestAppContext) {
+    let rig = camera_voice(cx, devices());
+    let reason = "the camera is in use by another application";
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| {
+            voice.camera_test_event(CameraTestEvent::Start, cx);
+            voice.camera_test_event(
+                CameraTestEvent::Failed {
+                    reason: reason.into(),
+                },
+                cx,
+            );
+        })
+    });
+    assert!(rig.has(cx, "voice-camera-test-failed-block"), "the reason");
+    assert_eq!(
+        camera_test_state(&rig, cx),
+        CameraTestState::Failed {
+            reason: reason.into()
+        }
+    );
+    rig.click(cx, "voice-camera-test-failed");
+    assert_eq!(
+        rig.events(),
+        [VoiceSettingsEvent::StartCameraTest],
+        "Try again"
+    );
+}
+
+#[gpui_kit::test]
+fn no_camera_disables_the_test_and_says_so(cx: &mut TestAppContext) {
+    let rig = camera_voice(
+        cx,
+        DeviceLists {
+            state: LoadState::Ready,
+            inputs: vec![device("mic-a", "Mic A", true)],
+            outputs: vec![device("out-a", "Speakers", true)],
+            cameras: Vec::new(),
+        },
+    );
+    assert!(rig.has(cx, "voice-camera-test-no-camera"));
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(rig.events(), [], "a disabled button sends nothing");
+}
+
+#[gpui_kit::test]
+fn a_published_camera_blocks_the_test(cx: &mut TestAppContext) {
+    let rig = camera_voice(cx, devices());
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| voice.set_camera_published(true, cx))
+    });
+    assert!(rig.has(cx, "voice-camera-test-blocked"), "why it can't");
+    rig.click(cx, "voice-camera-test");
+    assert_eq!(rig.events(), [], "a disabled button sends nothing");
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |voice, cx| voice.set_camera_published(false, cx))
+    });
+    assert!(rig.has(cx, "voice-camera-test-idle"));
 }
 
 #[gpui_kit::test]
