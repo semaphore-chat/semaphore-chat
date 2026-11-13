@@ -90,6 +90,20 @@ describe('MessageComponent webhook rendering', () => {
     expect(screen.queryByRole('button', { name: 'CI Bot' })).not.toBeInTheDocument();
   });
 
+  it('loads the webhook avatar (any host) without sending a Referer', () => {
+    const message = createMessage({
+      authorId: null,
+      webhook: { id: 'wh-1', name: 'CI Bot', avatarUrl: 'https://example.com/bot.png' },
+      spans: [{ type: SpanType.PLAINTEXT, text: 'build passed' }],
+    });
+
+    const { container } = renderWithProviders(<MessageComponent message={message} />);
+
+    const avatar = container.querySelector('img[src="https://example.com/bot.png"]');
+    expect(avatar).not.toBeNull();
+    expect(avatar).toHaveAttribute('referrerpolicy', 'no-referrer');
+  });
+
   it('does not fetch the author or render UserAvatar for webhook messages', () => {
     const message = createMessage({
       authorId: null,
