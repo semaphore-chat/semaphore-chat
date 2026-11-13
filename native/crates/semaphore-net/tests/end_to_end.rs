@@ -8,7 +8,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use semaphore_core::backend::{SearchBackend, SessionBackend, ThreadsBackend};
 use semaphore_core::lifecycle::ConnectionState;
 use semaphore_core::model::{
-    Conversation, ListOp, LoadState, MessageDraft, MessageRow, SearchScope, SendState, SessionState,
+    Conversation, DraftFile, ListOp, LoadState, MessageDraft, MessageRow, SearchScope, SendState,
+    SessionState,
 };
 use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, SecretStore};
 use semaphore_core::{Core, Services};
@@ -958,4 +959,68 @@ async fn a_message_link_opens_the_message_and_its_thread() {
         matches!(&error, CoreError::Failed { message } if message.starts_with("NOT_FOUND")),
         "{error:?}"
     );
+}
+
+/// An uploaded picture's measurements travel over the real HTTP upload and the socket's
+/// `updateMessage` into the row, and the thumbnail route answers what the row says exists.
+#[tokio::test]
+async fn an_uploaded_large_image_comes_back_measured_on_its_message() {
+    const PORTRAIT: &[u8] = include_bytes!("../../../rigs/slice/fixtures/portrait.png");
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+    let conversation = Conversation::Channel { id: CHANNEL.into() };
+    rig.core
+        .open_conversation(conversation.clone())
+        .await
+        .unwrap();
+    let nonce = rig
+        .core
+        .send_message(
+            conversation.clone(),
+            MessageDraft {
+                text: "a portrait".into(),
+                files: vec![DraftFile {
+                    name: "portrait.png".into(),
+                    mime_type: "image/png".into(),
+                    bytes: PORTRAIT.to_vec(),
+                }],
+                ..MessageDraft::default()
+            },
+        )
+        .await
+        .unwrap();
+    until("the picture attached and acked", || {
+        rows(&rig.events, &conversation).iter().any(|row| {
+            row.client_nonce.as_deref() == Some(nonce.as_str())
+                && row.send_state == SendState::Sent
+                && row.attachments.len() == 1
+                && row.attachments[0].has_thumbnail
+        })
+    })
+    .await;
+    let row = rows(&rig.events, &conversation)
+        .into_iter()
+        .find(|row| row.client_nonce.as_deref() == Some(nonce.as_str()))
+        .expect("the sent row");
+    let attachment = &row.attachments[0];
+    assert_eq!(attachment.filename, "portrait.png");
+    assert_eq!(
+        (attachment.width, attachment.height),
+        (Some(600), Some(1200))
+    );
+
+    let thumbnail = rig
+        .core
+        .file(attachment.file_id.clone(), true)
+        .await
+        .unwrap();
+    assert_eq!(&thumbnail[..8], b"\x89PNG\r\n\x1a\n");
+    assert!(rig.server.requests().iter().any(|record| matches!(
+        record,
+        Record::Http {
+            operation: Some("FileController_getFileThumbnail"),
+            status: 200,
+            ..
+        }
+    )));
 }

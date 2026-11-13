@@ -18,6 +18,7 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
         .route("/api/messages/{id}/attachments", post(add_attachment))
         .route("/__fixtures/{name}", get(fixture_image))
         .route("/api/file/{id}", get(get_file))
+        .route("/api/file/{id}/metadata", get(get_file_metadata))
         .route("/api/file/{id}/thumbnail", get(get_file_thumbnail))
 }
 
@@ -28,6 +29,7 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
         // Not the backend's: a stand-in third-party site, recorded so a test can see it was asked.
         ("GET", "/__fixtures/{name}") => "Fixture_image",
         ("GET", "/api/file/{id}") => "FileController_getFile",
+        ("GET", "/api/file/{id}/metadata") => "FileController_getFileMetadata",
         ("GET", "/api/file/{id}/thumbnail") => "FileController_getFileThumbnail",
         _ => return None,
     })
@@ -116,7 +118,73 @@ fn parse_range(value: &str) -> Option<(u64, Option<u64>)> {
 }
 
 async fn get_file_thumbnail(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {
-    stored_or_image(&inner, &id, "thumbnail")
+    let (stored, thumbnail) = {
+        let data = lock(&inner.data);
+        match data.files.get(&id) {
+            Some(file) => (true, file.thumbnail.clone()),
+            None => (false, None),
+        }
+    };
+    if !stored {
+        // Every id the fake never stored gets the generated image the file route stands in with.
+        return image_response(&id, "thumbnail");
+    }
+    let Some(thumbnail) = thumbnail else {
+        return inner.error(
+            404,
+            "NOT_FOUND",
+            "No thumbnail available for this file",
+            false,
+        );
+    };
+    let mut response = Response::new(axum::body::Body::from(thumbnail));
+    // The backend's thumbnail is a JPEG. This build has only the PNG codec, so the fake
+    // produces PNGs and says so.
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=86400"),
+    );
+    response.headers_mut().insert(
+        header::HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("cross-origin"),
+    );
+    response
+}
+
+/// `GET /api/file/{id}/metadata`: the `FileMetadataResponseDto` the backend builds.
+async fn get_file_metadata(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {
+    let stored = {
+        let data = lock(&inner.data);
+        data.files.get(&id).map(|file| {
+            (
+                file.filename.clone(),
+                file.mime_type.clone(),
+                file.bytes.len(),
+                file.width,
+                file.height,
+                file.has_thumbnail(),
+            )
+        })
+    };
+    let Some((filename, mime_type, size, width, height, has_thumbnail)) = stored else {
+        return inner.error(404, "NOT_FOUND", "File not found", false);
+    };
+    json_response(
+        StatusCode::OK,
+        json!({
+            "id": id,
+            "filename": filename,
+            "mimeType": mime_type,
+            "fileType": messages::file_type_for(&mime_type).as_str(),
+            "size": size,
+            "hasThumbnail": has_thumbnail,
+            "width": width,
+            "height": height,
+        }),
+    )
 }
 
 /// Unauthenticated images at a plain URL, standing in for a third-party site's link-preview image.
@@ -149,6 +217,9 @@ async fn upload_file(
                             filename,
                             mime_type,
                             bytes: bytes.to_vec(),
+                            width: None,
+                            height: None,
+                            thumbnail: None,
                         });
                     }
                     Err(_) => return invalid("the file didn't arrive whole"),
@@ -176,18 +247,30 @@ async fn upload_file(
         _ => (None, None, None),
     };
     file.community_id = file_community_id.clone();
+    // `MediaDimensionsService.read` then `ThumbnailService.generateImageThumbnail`: best-effort,
+    // and only raster images are measured (videos keep the nulls the fake always gave them).
+    let dimensions = crate::media::dimensions(&file.mime_type, &file.bytes);
+    file.width = dimensions.map(|(width, _)| i64::from(width));
+    file.height = dimensions.map(|(_, height)| i64::from(height));
+    file.thumbnail = dimensions
+        .filter(|dimensions| crate::media::wants_thumbnail(&file.mime_type, Some(*dimensions)))
+        .and_then(|dimensions| crate::media::thumbnail(&file.bytes, dimensions));
     // Deterministic, so a run's screenshots and logs repeat: the nth upload's id is always the same.
     let next = lock(&inner.data).files.len() as u128 + 1;
     let id = uuid::Uuid::from_u128(0x0000_f11e_0000_4000_8000_0000_0000_0000 | next).to_string();
     let file_type = messages::file_type_for(&file.mime_type)
         .as_str()
         .into_owned();
+    let thumbnail_path = file
+        .has_thumbnail()
+        .then(|| format!("fake/{id}/thumbnail.jpg"));
     let record = json!({
         "id": id, "checksum": "fake", "deletedAt": null, "fileCommunityId": file_community_id,
         "fileMessageId": file_message_id, "fileType": file_type, "fileUserId": file_user_id,
         "filename": file.filename, "mimeType": file.mime_type, "resourceType": resource_type,
         "size": file.bytes.len(), "storagePath": format!("fake/{id}"), "storageType": "LOCAL",
-        "thumbnailPath": null, "uploadedAt": inner.now(), "uploadedById": uploader,
+        "hasThumbnail": file.has_thumbnail(), "height": file.height, "width": file.width,
+        "thumbnailPath": thumbnail_path, "uploadedAt": inner.now(), "uploadedById": uploader,
     });
     lock(&inner.data).files.insert(id, file);
     json_response(StatusCode::CREATED, record)

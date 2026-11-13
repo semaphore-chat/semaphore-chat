@@ -245,7 +245,19 @@ pub(crate) fn span_from(send: &SendSpan) -> SpanDto {
     }
 }
 
-fn attachment_from(id: &str) -> AttachmentDto {
+fn attachment_from(data: &crate::Data, id: &str) -> AttachmentDto {
+    if let Some(file) = data.files.get(id) {
+        return AttachmentDto {
+            file_type: file_type_for(&file.mime_type),
+            filename: file.filename.clone(),
+            has_thumbnail: file.has_thumbnail(),
+            height: file.height,
+            id: id.to_owned(),
+            mime_type: file.mime_type.clone(),
+            size: file.bytes.len() as i64,
+            width: file.width,
+        };
+    }
     AttachmentDto {
         file_type: FileType::Document,
         filename: id.to_owned(),
@@ -377,7 +389,7 @@ pub(crate) fn send(
         attachments: body
             .attachments
             .iter()
-            .map(|id| attachment_from(id))
+            .map(|id| attachment_from(&data, id))
             .collect(),
         author_id: Some(author.clone()),
         channel_id,
@@ -646,16 +658,16 @@ pub(crate) fn add_attachment(
     let mut data = lock(&inner.data);
     let attachment = match file_id {
         Some(file_id) => {
-            let file = data.files.get(file_id)?.clone();
+            let file = data.files.get(file_id)?;
             Some(AttachmentDto {
                 file_type: file_type_for(&file.mime_type),
-                filename: file.filename,
-                has_thumbnail: false,
-                height: None,
+                filename: file.filename.clone(),
+                has_thumbnail: file.has_thumbnail(),
+                height: file.height,
                 id: file_id.to_owned(),
-                mime_type: file.mime_type,
+                mime_type: file.mime_type.clone(),
                 size: file.bytes.len() as i64,
-                width: None,
+                width: file.width,
             })
         }
         None => None,
