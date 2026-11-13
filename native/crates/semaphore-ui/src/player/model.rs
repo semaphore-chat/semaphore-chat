@@ -286,21 +286,6 @@ pub fn video_box(width: Option<u32>, height: Option<u32>) -> (f32, f32) {
     }
 }
 
-/// The file card's size label, as the message list writes it.
-pub fn file_size(bytes: u64) -> String {
-    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    let mut value = bytes as f64 / 1024.0;
-    let mut unit = 0;
-    while value >= 1024.0 && unit + 1 < UNITS.len() {
-        value /= 1024.0;
-        unit += 1;
-    }
-    format!("{value:.1} {}", UNITS[unit])
-}
-
 /// The surface key the call tiles' `VideoFrames` holds this attachment's frames under.
 pub fn surface_key(file_id: &str) -> String {
     format!("player:{file_id}")

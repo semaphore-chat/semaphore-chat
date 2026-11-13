@@ -463,6 +463,14 @@ pub fn stories() -> Vec<Story> {
         shell_story!("shell-long-content-expanded", edit: long_names, expanded: true),
         shell_story!("shell-voice-connected", edit: connect_hangout),
         shell_story!("shell-voice-server-muted", edit: connect_hangout_moderated),
+        // A voice channel's header: the voice icon and the name, as the web's pre-join, in both
+        // the desktop header and the phone app bar.
+        shell_story!("shell-voice-channel", channel: Some("Hangout")),
+        shell_story!(
+            "shell-voice-channel-phone",
+            channel: Some("Hangout"),
+            phone_content: true
+        ),
         shell_story!("shell-empty-user", scenario: "empty-user", channel: None),
         shell_story!(
             "shell-empty-community",

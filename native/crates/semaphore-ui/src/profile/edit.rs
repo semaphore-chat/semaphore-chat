@@ -116,15 +116,6 @@ pub fn validate_profile(draft: &ProfileDraft) -> Vec<(ProfileField, String)> {
     errors
 }
 
-fn megabytes(bytes: u64) -> String {
-    let mb = bytes as f64 / (1024. * 1024.);
-    if mb >= 10. || mb.fract() < 0.05 {
-        format!("{mb:.0} MB")
-    } else {
-        format!("{mb:.1} MB")
-    }
-}
-
 /// Whether a picked file can be an avatar or banner: PNG, JPEG, GIF or WebP, within the server's
 /// size limit.
 pub fn check_image(file: &DraftFile, max_bytes: Option<u64>) -> Result<(), String> {
@@ -137,8 +128,8 @@ pub fn check_image(file: &DraftFile, max_bytes: Option<u64>) -> Result<(), Strin
     {
         return Err(format!(
             "That image is {}; the limit is {}",
-            megabytes(size),
-            megabytes(max)
+            crate::format::file_size(size),
+            crate::format::file_size(max)
         ));
     }
     Ok(())

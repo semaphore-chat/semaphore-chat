@@ -8,6 +8,7 @@ pub mod community_settings;
 pub mod composer;
 pub mod dms;
 pub mod emoji;
+pub mod format;
 pub mod friends;
 pub mod gifs;
 pub mod home;

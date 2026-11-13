@@ -476,7 +476,7 @@ impl VideoPlayer {
                 .text_color(white())
                 .child(text(
                     Variant::Xs,
-                    model::file_size(self.playback.source.size),
+                    crate::format::file_size(self.playback.source.size),
                 ))
         });
         div()

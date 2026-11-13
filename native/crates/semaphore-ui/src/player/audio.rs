@@ -249,12 +249,10 @@ impl Render for AudioPlayer {
                             .font_weight(FontWeight::MEDIUM),
                     ),
             )
-            .child(
-                div()
-                    .flex_none()
-                    .text_color(text_secondary)
-                    .child(text(Variant::Caption, model::file_size(source.size))),
-            );
+            .child(div().flex_none().text_color(text_secondary).child(text(
+                Variant::Caption,
+                crate::format::file_size(source.size),
+            )));
         let lower =
             match failure {
                 Some(failure) => self.failure_line(failure, narrow, cx).into_any_element(),

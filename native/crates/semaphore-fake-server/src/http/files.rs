@@ -59,6 +59,143 @@ fn stored_or_image(inner: &Inner, id: &str, variant: &str) -> Response {
     }
 }
 
+/// Where a message lives: the conversation the backend reads off its row.
+enum Conversation {
+    Channel(String),
+    DmGroup(String),
+}
+
+/// The conversation of a stored message, as the backend's `message.channelId` /
+/// `message.directMessageGroupId` say.
+fn message_context(inner: &Inner, message_id: &str) -> Option<Conversation> {
+    let data = lock(&inner.data);
+    let message = messages::find_message(&data, message_id)?;
+    if let Some(channel) = message.channel_id {
+        return Some(Conversation::Channel(channel));
+    }
+    data.dm_messages
+        .iter()
+        .find(|(_, rows)| rows.iter().any(|row| row.id == message_id))
+        .map(|(group, _)| Conversation::DmGroup(group.clone()))
+}
+
+/// Whether the user is in a DM group, as `DirectMessageGroupMember` answers.
+fn dm_member(inner: &Inner, group_id: &str, user_id: &str) -> bool {
+    crate::social::dm_member_ids(&lock(&inner.data), group_id)
+        .is_some_and(|members| members.iter().any(|member| member == user_id))
+}
+
+/// The ids of the messages that carry this file as an attachment.
+fn messages_carrying(inner: &Inner, file_id: &str) -> Vec<String> {
+    let data = lock(&inner.data);
+    data.channel_messages
+        .values()
+        .chain(data.dm_messages.values())
+        .chain(data.threads.values())
+        .flatten()
+        .filter(|message| {
+            message
+                .attachments
+                .iter()
+                .any(|attachment| attachment.id == file_id)
+        })
+        .map(|message| message.id.clone())
+        .collect()
+}
+
+/// Whether the user may read a message, which is what a clip shared into one needs.
+fn reads_message(inner: &Inner, message_id: &str, user_id: &str) -> bool {
+    match message_context(inner, message_id) {
+        Some(Conversation::Channel(channel)) => crate::admin::can_view(inner, &channel, user_id),
+        Some(Conversation::DmGroup(group)) => dm_member(inner, &group, user_id),
+        None => false,
+    }
+}
+
+/// `FileAccessGuard`'s answer for one file, with the backend's status and message when it says no.
+///
+/// Profile images are public to anyone signed in; a community's assets need its membership; a
+/// message's attachment needs the channel viewable or the DM group joined; a replay clip is for
+/// its owner, everyone once it is public, or whoever can read a message it was shared into.
+/// An id the fake never stored is one of the scenario's pictures, served as the stand-in image
+/// to anyone signed in, as it always was.
+fn authorize(inner: &Inner, id: &str, headers: &axum::http::HeaderMap) -> Result<(), Response> {
+    let file = lock(&inner.data).files.get(id).cloned();
+    let Some(file) = file else {
+        return Ok(());
+    };
+    let user = inner.user_of(super::bearer_token(headers));
+    let forbidden = |message: &str| inner.error(403, "FORBIDDEN", message, false);
+    match file.resource_type.as_str() {
+        // `PublicAccessStrategy`: no session needed beyond the route's own bearer.
+        "USER_AVATAR" | "USER_BANNER" => Ok(()),
+        "COMMUNITY_AVATAR" | "COMMUNITY_BANNER" | "CUSTOM_EMOJI" | "SOUNDBOARD_SOUND" => {
+            let Some(community) = file.community_id.as_deref() else {
+                // Only the public resource types may go without a resource FK.
+                return Err(forbidden("Access denied"));
+            };
+            if crate::admin::is_member(inner, community, &user) {
+                Ok(())
+            } else {
+                Err(forbidden(
+                    "You must be a member of this community to access this file",
+                ))
+            }
+        }
+        "MESSAGE_ATTACHMENT" => {
+            // The backend reads `File.fileMessageId` and nothing else: a file not attached yet
+            // has none, and only the public resource types may go without a resource.
+            let Some(message) = file.message_id.clone() else {
+                return Err(forbidden("Access denied"));
+            };
+            match message_context(inner, &message) {
+                None => Err(inner.error(404, "NOT_FOUND", "Message not found", false)),
+                Some(Conversation::Channel(channel)) => {
+                    if crate::admin::can_view(inner, &channel, &user) {
+                        Ok(())
+                    } else {
+                        Err(forbidden(
+                            "You must be able to view this channel to access this file",
+                        ))
+                    }
+                }
+                Some(Conversation::DmGroup(group)) => {
+                    if dm_member(inner, &group, &user) {
+                        Ok(())
+                    } else {
+                        Err(forbidden(
+                            "You must be a member of this conversation to access this file",
+                        ))
+                    }
+                }
+            }
+        }
+        "REPLAY_CLIP" => {
+            let clip = lock(&inner.calls)
+                .clips
+                .iter()
+                .find(|clip| clip.file_id == id)
+                .cloned();
+            if clip
+                .as_ref()
+                .is_some_and(|clip| clip.user_id == user || clip.is_public)
+            {
+                return Ok(());
+            }
+            // `ReplayClipAccessStrategy`'s third check: a message the clip was shared into.
+            if messages_carrying(inner, id)
+                .iter()
+                .any(|message| reads_message(inner, message, &user))
+            {
+                Ok(())
+            } else {
+                Err(forbidden("Access denied"))
+            }
+        }
+        _ => Err(forbidden("Access denied")),
+    }
+}
+
 /// `GET /api/file/{id}`, with `Range` as the backend's `FileController.getFile` serves it:
 /// `bytes=start-end` or `bytes=start-` answers 206 with `Content-Range` (the end clamped to the
 /// file), a start past the end or after the end answers 416 with `Content-Range: bytes */size`,
@@ -69,6 +206,9 @@ async fn get_file(
     Path(id): Path<String>,
     headers: axum::http::HeaderMap,
 ) -> Response {
+    if let Err(refusal) = authorize(&inner, &id, &headers) {
+        return refusal;
+    }
     let mut response = stored_or_image(&inner, &id, "file");
     response
         .headers_mut()
@@ -117,7 +257,14 @@ fn parse_range(value: &str) -> Option<(u64, Option<u64>)> {
     Some((start, end))
 }
 
-async fn get_file_thumbnail(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {
+async fn get_file_thumbnail(
+    State(inner): State<Arc<Inner>>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if let Err(refusal) = authorize(&inner, &id, &headers) {
+        return refusal;
+    }
     let (stored, thumbnail) = {
         let data = lock(&inner.data);
         match data.files.get(&id) {
@@ -155,7 +302,14 @@ async fn get_file_thumbnail(State(inner): State<Arc<Inner>>, Path(id): Path<Stri
 }
 
 /// `GET /api/file/{id}/metadata`: the `FileMetadataResponseDto` the backend builds.
-async fn get_file_metadata(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {
+async fn get_file_metadata(
+    State(inner): State<Arc<Inner>>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    if let Err(refusal) = authorize(&inner, &id, &headers) {
+        return refusal;
+    }
     let stored = {
         let data = lock(&inner.data);
         data.files.get(&id).map(|file| {
@@ -214,6 +368,7 @@ async fn upload_file(
                             uploaded_by: String::new(),
                             resource_type: String::new(),
                             community_id: None,
+                            message_id: None,
                             filename,
                             mime_type,
                             bytes: bytes.to_vec(),
@@ -247,6 +402,7 @@ async fn upload_file(
         _ => (None, None, None),
     };
     file.community_id = file_community_id.clone();
+    file.message_id = file_message_id.clone();
     // `MediaDimensionsService.read` then `ThumbnailService.generateImageThumbnail`: best-effort,
     // and only raster images are measured (videos keep the nulls the fake always gave them).
     let dimensions = crate::media::dimensions(&file.mime_type, &file.bytes);

@@ -779,6 +779,7 @@ pub(crate) fn store_clip(
             uploaded_by: user_id.to_owned(),
             resource_type: "REPLAY_CLIP".to_owned(),
             community_id: None,
+            message_id: None,
             filename: filename.clone(),
             mime_type: "video/mp4".to_owned(),
             bytes: CLIP_MP4.to_vec(),

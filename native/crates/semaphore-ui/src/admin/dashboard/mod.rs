@@ -10,6 +10,7 @@
 
 use crate::community_settings::common::{locked_button, locked_note, page, phone};
 use crate::community_settings::rules::needs;
+use crate::format::file_size;
 use crate::kit::{Button, Skeleton, Variant, link, spacing, text, with_tip};
 use crate::panel::common::{design_icon, error_block};
 use crate::theme::SemTheme;
@@ -643,24 +644,24 @@ impl DashboardPage {
                 "Files stored",
                 format!(
                     "{} in {} files",
-                    bytes_label(storage.total_used_bytes),
+                    file_size(storage.total_used_bytes),
                     grouped(storage.total_files)
                 ),
                 cx,
             ))
             .child(info_row(
                 "Avg per user",
-                bytes_label(storage.average_per_user_bytes),
+                file_size(storage.average_per_user_bytes),
                 cx,
             ))
             .child(info_row(
                 "Default quota",
-                bytes_label(storage.default_quota_bytes),
+                file_size(storage.default_quota_bytes),
                 cx,
             ))
             .child(info_row(
                 "Max file size",
-                bytes_label(storage.max_file_bytes),
+                file_size(storage.max_file_bytes),
                 cx,
             ))
             .child(info_row(
@@ -679,11 +680,7 @@ impl DashboardPage {
                     .children(storage.by_kind.iter().map(|kind| {
                         info_row(
                             kind.kind.replace('_', " ").to_lowercase(),
-                            format!(
-                                "{} · {} files",
-                                bytes_label(kind.bytes),
-                                grouped(kind.count)
-                            ),
+                            format!("{} · {} files", file_size(kind.bytes), grouped(kind.count)),
                             cx,
                         )
                     }))
@@ -760,7 +757,7 @@ fn usage_bar(
         .flex_col()
         .child(info_row(
             label,
-            format!("{} / {} ({shown}%)", bytes_label(used), bytes_label(total)),
+            format!("{} / {} ({shown}%)", file_size(used), file_size(total)),
             cx,
         ))
         .child(
@@ -856,21 +853,6 @@ fn uptime_label(seconds: u64) -> String {
     } else {
         format!("{minutes}m")
     }
-}
-
-/// The web's `formatFileSize`: 1024-based units, at most two decimals, "0 Bytes" for nothing.
-fn bytes_label(bytes: u64) -> String {
-    const UNITS: [&str; 6] = ["Bytes", "KB", "MB", "GB", "TB", "PB"];
-    if bytes == 0 {
-        return "0 Bytes".into();
-    }
-    let value = bytes as f64;
-    let mut unit = 0;
-    while unit + 1 < UNITS.len() && value >= 1024f64.powi(unit as i32 + 1) {
-        unit += 1;
-    }
-    let scaled = (value / 1024f64.powi(unit as i32) * 100.).round() / 100.;
-    format!("{scaled} {}", UNITS[unit])
 }
 
 impl Render for DashboardPage {

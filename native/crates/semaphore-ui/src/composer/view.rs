@@ -836,10 +836,10 @@ impl Composer {
             file.size_bytes
                 .is_some_and(|size| size > self.max_file_bytes)
         }) {
-            let limit = self.max_file_bytes as f64 / (1024. * 1024.);
             return Some(format!(
-                "File \"{}\" exceeds the {limit:.0} MB size limit",
-                big.name
+                "File \"{}\" exceeds the {} size limit",
+                big.name,
+                crate::format::file_size(self.max_file_bytes)
             ));
         }
         (self.attachments.len() + files.len() > MAX_FILES)

@@ -9,6 +9,7 @@ use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use semaphore_core::model::ChannelKind;
 use semaphore_design::Icon as IconName;
 
 impl Shell {
@@ -23,9 +24,16 @@ impl Shell {
             self.nav.current(),
             Route::DirectMessages | Route::DirectMessage { .. }
         );
+        // A voice channel's title is its name after the voice icon, as the web's pre-join; a text
+        // channel keeps its hash.
+        let voice = in_content
+            && channel
+                .as_ref()
+                .is_some_and(|c| c.kind == ChannelKind::Voice);
         let bar_title = if in_content {
-            let name = channel.as_ref().map(|c| c.name.clone()).unwrap_or_default();
-            format!("# {name}")
+            channel.as_ref().map_or_else(String::new, |channel| {
+                super::header_title(channel.kind, &channel.name)
+            })
         } else if in_dms {
             "Direct Messages".to_owned()
         } else {
@@ -87,12 +95,25 @@ impl Shell {
                 },
             )
             .child(
-                div().flex_1().min_w_0().child(
-                    text(Variant::H6, bar_title)
-                        .text_size(px(18.))
-                        .font_weight(FontWeight(600.))
-                        .truncate(),
-                ),
+                div()
+                    .flex()
+                    .flex_1()
+                    .items_center()
+                    .gap(spacing(0.5))
+                    .min_w_0()
+                    .when(voice, |title| {
+                        title.child(
+                            Icon::new(IconName::VolumeUp)
+                                .size(20.)
+                                .color(sem.text_secondary),
+                        )
+                    })
+                    .child(
+                        text(Variant::H6, bar_title)
+                            .text_size(px(18.))
+                            .font_weight(FontWeight(600.))
+                            .truncate(),
+                    ),
             )
             .when_some(
                 self.header_accessory.clone().filter(|_| in_content),

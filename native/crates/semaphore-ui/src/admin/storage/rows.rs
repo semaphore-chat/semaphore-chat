@@ -5,7 +5,8 @@
 
 use super::{COLUMNS, StorageEvent, StoragePage, quota_action, recalc_action};
 use crate::community_settings::common::{card, empty_line, loading_rows};
-use crate::community_settings::rules::{failure, running, size_label};
+use crate::community_settings::rules::{failure, running};
+use crate::format::file_size;
 use crate::kit::{Alert, Button, ButtonSize, Chip, SelectField, Severity, Variant, spacing, text};
 use crate::theme::{Sem, SemTheme};
 use gpui_kit::base::TestSupportExt as _;
@@ -182,10 +183,10 @@ impl StoragePage {
             .font_weight(FontWeight::BOLD)
             .whitespace_nowrap()
             .text_color(color);
-        let used = text(Variant::Caption, size_label(row.used_bytes))
+        let used = text(Variant::Caption, file_size(row.used_bytes))
             .whitespace_nowrap()
             .text_color(sem.text_secondary);
-        let quota_label = text(Variant::Caption, size_label(row.quota_bytes))
+        let quota_label = text(Variant::Caption, file_size(row.quota_bytes))
             .whitespace_nowrap()
             .text_color(sem.text_secondary);
         let files = text(Variant::Body2, row.file_count.to_string())
@@ -247,8 +248,8 @@ impl StoragePage {
                             Variant::Caption,
                             format!(
                                 "{} of {}",
-                                size_label(row.used_bytes),
-                                size_label(row.quota_bytes)
+                                file_size(row.used_bytes),
+                                file_size(row.quota_bytes)
                             ),
                         )
                         .truncate()
