@@ -174,10 +174,17 @@ jobs:
           Get-Item $zip | Format-List Name, Length
       - name: Check NSIS is available
         shell: bash
-        # The runner image installs NSIS 3.10 with Chocolatey and puts
-        # C:\Program Files (x86)\NSIS on PATH (actions/runner-images,
-        # images/windows/scripts/build/Install-NSIS.ps1), so there is nothing to install here.
-        run: makensis -VERSION
+        # The runner image installs NSIS 3.10 with Chocolatey under C:\Program Files (x86)\NSIS
+        # (actions/runner-images, images/windows/scripts/build/Install-NSIS.ps1), but Git Bash
+        # does not get it on PATH: add it for the later steps, and install it if the image ever
+        # drops it.
+        run: |
+          nsis="/c/Program Files (x86)/NSIS"
+          if [ ! -x "$nsis/makensis.exe" ]; then
+            choco install nsis --version=3.10 -y --no-progress
+          fi
+          cygpath -w "$nsis" >> "$GITHUB_PATH"
+          "$nsis/makensis.exe" -VERSION
       - name: Build the NSIS installer
         shell: bash
         # PACKAGE_VERSION was written to $GITHUB_ENV above; the script reads it (or
