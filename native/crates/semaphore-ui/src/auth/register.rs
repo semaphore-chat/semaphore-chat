@@ -38,8 +38,12 @@ fn looks_like_email(email: &str) -> bool {
         && !email.chars().any(char::is_whitespace)
 }
 
-/// What's wrong with each field, in the server's words.
-pub fn validate_register(form: &RegisterForm) -> Vec<(RegisterField, String)> {
+/// What's wrong with each field, in the server's words. An invite-only server needs a code;
+/// an open one takes an empty code.
+pub fn validate_register(
+    form: &RegisterForm,
+    invite_required: bool,
+) -> Vec<(RegisterField, String)> {
     let mut errors = Vec::new();
     let username = form.username.trim();
     let length = username.chars().count();
@@ -84,7 +88,7 @@ pub fn validate_register(form: &RegisterForm) -> Vec<(RegisterField, String)> {
             format!("Password must be at most {PASSWORD_MAX} characters"),
         ));
     }
-    if form.invite_code.trim().is_empty() {
+    if invite_required && form.invite_code.trim().is_empty() {
         errors.push((
             RegisterField::InviteCode,
             "An invite code is required".to_owned(),
@@ -220,13 +224,18 @@ impl RegisterScreen {
         cx.notify();
     }
 
+    /// An invite-only server needs a code; an open one takes an account without it.
+    fn invite_required(&self) -> bool {
+        self.mode == RegistrationMode::InviteOnly
+    }
+
     pub(crate) fn submit(&mut self, cx: &mut Context<Self>) {
         if self.busy || self.mode == RegistrationMode::Closed {
             return;
         }
         self.tried = true;
         let form = self.form(cx);
-        if validate_register(&form).is_empty() {
+        if validate_register(&form, self.invite_required()).is_empty() {
             cx.emit(RegisterEvent::Submit(form));
         }
         cx.notify();
@@ -294,8 +303,9 @@ impl RegisterScreen {
     fn form_body(&self, cx: &mut Context<Self>) -> Div {
         let sem = cx.sem().clone();
         let form = self.form(cx);
+        let invite_required = self.invite_required();
         let errors = if self.tried {
-            validate_register(&form)
+            validate_register(&form, invite_required)
         } else {
             Vec::new()
         };
@@ -315,13 +325,15 @@ impl RegisterScreen {
         );
         let code_helper = if self.code_locked {
             "From your invite link".to_owned()
+        } else if invite_required {
+            "This server is invite-only: enter the code you were given".to_owned()
         } else {
-            match self.mode {
-                RegistrationMode::Open => {
-                    "Ask someone on this server for an invite code".to_owned()
-                }
-                _ => "This server is invite-only: enter the code you were given".to_owned(),
-            }
+            "Optional: ask someone on this server for an invite code".to_owned()
+        };
+        let code_label = if invite_required || self.code_locked {
+            "Invite code"
+        } else {
+            "Invite code (optional)"
         };
         div()
             .w_full()
@@ -383,8 +395,8 @@ impl RegisterScreen {
                     .surface(sem.background_default),
             ))
             .child(field(
-                TextField::new("register-code", &self.code, "Invite code")
-                    .required(true)
+                TextField::new("register-code", &self.code, code_label)
+                    .required(invite_required)
                     .disabled(busy || self.code_locked)
                     .error(code_error.is_some())
                     .helper(code_error.unwrap_or(code_helper))
@@ -460,6 +472,24 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
         }),
         Story::new("auth-register-invite-only", |_, window, cx| {
             screen(RegistrationMode::InviteOnly, window, cx, |_, _, _| {})
+        }),
+        Story::new("auth-register-invite-required", |_, window, cx| {
+            screen(
+                RegistrationMode::InviteOnly,
+                window,
+                cx,
+                |screen, window, cx| {
+                    screen.preset(
+                        "ava_chen",
+                        "ava@example.com",
+                        "hunter2hunter2",
+                        "",
+                        window,
+                        cx,
+                    );
+                    screen.tried = true;
+                },
+            )
         }),
         Story::new("auth-register-closed", |_, window, cx| {
             screen(RegistrationMode::Closed, window, cx, |_, _, _| {})
