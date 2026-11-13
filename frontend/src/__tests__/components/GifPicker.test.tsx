@@ -34,10 +34,18 @@ function makeGif(overrides: Partial<GifResultDto> = {}): GifResultDto {
   return {
     id: 'gif-1',
     title: 'Cat jumping',
-    url: 'https://media.tenor.com/1/cat.gif',
-    previewUrl: 'https://media.tenor.com/1/cat-tiny.gif',
+    url: 'https://media.giphy.com/1/cat.gif',
+    previewUrl: 'https://media.giphy.com/1/cat-tiny.gif',
     width: 220,
     height: 140,
+    mediumUrl: 'https://media.giphy.com/1/cat-medium.gif',
+    mediumWidth: 160,
+    mediumHeight: 102,
+    mediumSizeBytes: 1048576,
+    originalSizeBytes: 5242880,
+    previewWidth: 100,
+    previewHeight: 64,
+    previewSizeBytes: 262144,
     ...overrides,
   };
 }
@@ -139,7 +147,7 @@ describe('GifPickerPopover', () => {
     ).toBeInTheDocument();
   });
 
-  it('calls onSelect with the clicked gif', async () => {
+  it('calls onSelect with the clicked gif, rendition fields included', async () => {
     const { user, onSelect } = setup();
 
     const gifButton = await screen.findByRole('button', { name: 'Featured GIF' });
@@ -147,7 +155,14 @@ describe('GifPickerPopover', () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'featured-1', title: 'Featured GIF' }),
+      expect.objectContaining({
+        id: 'featured-1',
+        title: 'Featured GIF',
+        mediumUrl: 'https://media.giphy.com/1/cat-medium.gif',
+        mediumWidth: 160,
+        mediumHeight: 102,
+        mediumSizeBytes: 1048576,
+      }),
     );
   });
 });

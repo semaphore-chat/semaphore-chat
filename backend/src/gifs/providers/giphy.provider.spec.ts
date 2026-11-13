@@ -126,7 +126,18 @@ describe('GiphyProvider', () => {
   });
 
   describe('response mapping', () => {
-    it('maps Giphy results to the slim DTO shape, parsing string dims', async () => {
+    /** Maps the single item Giphy returns to `data` through search(). */
+    async function mapOne(images: Record<string, unknown> | undefined) {
+      mockFetchResponse({
+        data: [{ id: 'gif-1', title: 'Cat jumping', images }],
+        pagination: { offset: 0, count: 1, total_count: 100 },
+      });
+
+      const result = await provider.search('cat', 20);
+      return result.results[0];
+    }
+
+    it('maps Giphy results to the slim DTO shape, parsing string dims and sizes', async () => {
       mockFetchResponse({
         data: [
           {
@@ -137,11 +148,25 @@ describe('GiphyProvider', () => {
                 url: 'https://media.giphy.com/1/cat.gif',
                 width: '220',
                 height: '140',
+                size: '5242880',
+              },
+              downsized_medium: {
+                url: 'https://media.giphy.com/1/cat-medium.gif',
+                width: '160',
+                height: '102',
+                size: '1048576',
+              },
+              downsized: {
+                url: 'https://media.giphy.com/1/cat-downsized.gif',
+                width: '100',
+                height: '64',
+                size: '524288',
               },
               fixed_height: {
                 url: 'https://media.giphy.com/1/cat-fh.gif',
                 width: '200',
                 height: '200',
+                size: '262144',
               },
             },
           },
@@ -159,6 +184,14 @@ describe('GiphyProvider', () => {
           previewUrl: 'https://media.giphy.com/1/cat-fh.gif',
           width: 220,
           height: 140,
+          mediumUrl: 'https://media.giphy.com/1/cat-medium.gif',
+          mediumWidth: 160,
+          mediumHeight: 102,
+          mediumSizeBytes: 1048576,
+          originalSizeBytes: 5242880,
+          previewWidth: 200,
+          previewHeight: 200,
+          previewSizeBytes: 262144,
         },
       ]);
     });
@@ -293,6 +326,169 @@ describe('GiphyProvider', () => {
       const result = await provider.search('nothing', 20);
 
       expect(result.results).toEqual([]);
+    });
+
+    describe('medium and preview renditions', () => {
+      const original = {
+        url: 'https://media.giphy.com/original.gif',
+        width: '480',
+        height: '270',
+        size: '4194304',
+      };
+
+      it('falls back to downsized when downsized_medium is absent', async () => {
+        const gif = await mapOne({
+          original,
+          downsized: {
+            url: 'https://media.giphy.com/downsized.gif',
+            width: '320',
+            height: '180',
+            size: '1048576',
+          },
+        });
+
+        expect(gif).toMatchObject({
+          mediumUrl: 'https://media.giphy.com/downsized.gif',
+          mediumWidth: 320,
+          mediumHeight: 180,
+          mediumSizeBytes: 1048576,
+        });
+      });
+
+      it('falls back to the original for the medium and preview renditions when Giphy offers no smaller ones', async () => {
+        const gif = await mapOne({ original });
+
+        expect(gif).toMatchObject({
+          url: 'https://media.giphy.com/original.gif',
+          previewUrl: 'https://media.giphy.com/original.gif',
+          mediumUrl: 'https://media.giphy.com/original.gif',
+          width: 480,
+          height: 270,
+          mediumWidth: 480,
+          mediumHeight: 270,
+          mediumSizeBytes: 4194304,
+          previewWidth: 480,
+          previewHeight: 270,
+          previewSizeBytes: 4194304,
+          originalSizeBytes: 4194304,
+        });
+      });
+
+      it.each([
+        ['missing', undefined],
+        ['empty', ''],
+        ['whitespace', '   '],
+        ['non-numeric', 'not-a-number'],
+        ['negative', '-1'],
+        ['zero', '0'],
+        ['fractional', '1048576.5'],
+        ['exponent', '1e6'],
+        ['absurdly large', '999999999999999999999'],
+      ])(
+        'omits a byte size that is %s instead of returning NaN',
+        async (_label, size) => {
+          const rendition: Record<string, string> = {
+            url: 'https://media.giphy.com/medium.gif',
+            width: '160',
+            height: '90',
+          };
+          if (size !== undefined) rendition.size = size;
+
+          const gif = await mapOne({ original, downsized_medium: rendition });
+
+          expect(gif.mediumSizeBytes).toBeUndefined();
+          // The usable fields on the same rendition are still parsed
+          expect(gif.mediumWidth).toBe(160);
+          expect(gif.mediumHeight).toBe(90);
+        },
+      );
+
+      it('omits dimensions that are missing, zero or absurd instead of returning NaN', async () => {
+        const gif = await mapOne({
+          original,
+          downsized_medium: {
+            url: 'https://media.giphy.com/medium.gif',
+            width: '0',
+            height: '100001',
+          },
+          fixed_height: {
+            url: 'https://media.giphy.com/preview.gif',
+            width: 'not-a-number',
+            height: '',
+          },
+        });
+
+        expect(gif.mediumWidth).toBeUndefined();
+        expect(gif.mediumHeight).toBeUndefined();
+        expect(gif.previewWidth).toBeUndefined();
+        expect(gif.previewHeight).toBeUndefined();
+      });
+
+      it('drops a medium rendition whose URL is on a host that is not allowed', async () => {
+        const gif = await mapOne({
+          original,
+          downsized_medium: {
+            url: 'https://evil.example/cat.gif',
+            width: '160',
+            height: '90',
+          },
+          downsized: {
+            url: 'https://media2.giphy.com/downsized.gif',
+            width: '320',
+            height: '180',
+          },
+        });
+
+        expect(gif.mediumUrl).toBe('https://media2.giphy.com/downsized.gif');
+      });
+
+      it('drops a medium rendition served over plain http', async () => {
+        const gif = await mapOne({
+          original,
+          downsized_medium: {
+            url: 'http://media.giphy.com/medium.gif',
+            width: '160',
+            height: '90',
+          },
+        });
+
+        expect(gif.mediumUrl).toBe('https://media.giphy.com/original.gif');
+      });
+
+      it('drops a preview rendition on a host that is not allowed and falls back to the original', async () => {
+        const gif = await mapOne({
+          original,
+          fixed_height: {
+            url: 'https://media.giphy.com.evil.example/preview.gif',
+            width: '200',
+            height: '200',
+          },
+        });
+
+        expect(gif.previewUrl).toBe('https://media.giphy.com/original.gif');
+        expect(gif.previewWidth).toBe(480);
+        expect(gif.previewHeight).toBe(270);
+      });
+
+      it('skips a result whose original URL is on a host that is not allowed', async () => {
+        mockFetchResponse({
+          data: [
+            {
+              id: 'gif-evil',
+              images: { original: { url: 'https://evil.example/cat.gif' } },
+            },
+            {
+              id: 'gif-ok',
+              images: { original: { url: 'https://media.giphy.com/ok.gif' } },
+            },
+          ],
+          pagination: { offset: 0, count: 2 },
+        });
+
+        const result = await provider.search('cat', 20);
+
+        expect(result.results.map((gif) => gif.id)).toEqual(['gif-ok']);
+      });
     });
   });
 

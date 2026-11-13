@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An invite link now works for someone who already has an account: a signed-in visitor to the join page adds their account to the invite's communities instead of registering again, and the API reports which communities were joined or skipped. (#589)
 - Image and video attachments now report their display `width` and `height` in pixels, so clients can reserve space before the file loads. (#715)
 - Image attachments now get a JPEG thumbnail (longest side at most 480 px, EXIF orientation applied, metadata stripped) generated at upload and served from the same `/api/file/:id/thumbnail` route as video thumbnails, with the same access checks and cache headers. The web client shows the thumbnail in message lists and keeps the original for the lightbox. Animated GIF, APNG and WebP thumbnails are their first frame. Images already within 480 px and SVGs get no thumbnail, so clients use the original; generation is best-effort and existing images are not backfilled. Upload responses now report `hasThumbnail`. (#715)
+- GIF search and trending results now also report a medium rendition (Giphy's `downsized_medium`, else `downsized`, else the original) with the width, height and byte size of the original, medium and preview renditions, so clients can pick the lighter file and reserve its box before it loads. URLs are only passed through when they are https on a Giphy media host, and unusable sizes are omitted rather than `NaN`. (#745)
 
 ### Changed
 
@@ -34,9 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Marking notifications read (read-all, dismissing one, or reading a channel or direct message) now updates the badge and the list on your other devices. (#647)
 - A change to your own instance roles now updates what your client lets you do, such as creating a community or opening the admin page, without a reload. (#654)
 - Soundboard sounds now have a 30-second length limit at upload, so a small low-bitrate file can no longer play for minutes. (#677)
+- The web client's GIF picker now sends the medium rendition of a picked GIF (falling back to the original when the server offers none), so a picked GIF message no longer downloads a multi-megabyte original. (#745)
 
 ### Fixed
 
+- The web register page now follows the server's registration mode: closed shows a "registration is closed" message with a link back to sign in (and the sign-in page hides its register link), open makes the invite code optional, and invite-only still requires it. (#733)
 - The incoming-call banner now stops ringing when you decline or answer on another device, and when the caller hangs up before anyone answers. (#638)
 - Banning, kicking and timing out a member now work for the instance owner moderating a community they hold no role in, as unbanning, lifting a timeout and removing a member already did; the owner still can't moderate themselves. (#679)
 - Community administrators can create, list and delete invites for the community they run without an instance role; an invite naming another community, or none, still needs instance invite authority. (#685)

@@ -12,8 +12,12 @@ import {
 import { styled } from "@mui/system";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { setAccessToken, storeElectronRefreshToken } from "../utils/tokenService";
-import { useMutation } from "@tanstack/react-query";
-import { userControllerRegisterMutation, authControllerLoginMutation } from "../api-client/@tanstack/react-query.gen";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  userControllerRegisterMutation,
+  authControllerLoginMutation,
+  instanceControllerGetPublicSettingsOptions,
+} from "../api-client/@tanstack/react-query.gen";
 
 const FormContainer = styled(Box)({
   display: "flex",
@@ -51,11 +55,17 @@ const RegisterPage: React.FC = () => {
   const { mutateAsync: register, isPending: isLoading, error } = useMutation(userControllerRegisterMutation());
   const { mutateAsync: login, isPending: isLoginLoading } = useMutation(authControllerLoginMutation());
   const navigate = useNavigate();
+  const { data: publicSettings, isPending: isSettingsPending } = useQuery(
+    instanceControllerGetPublicSettingsOptions(),
+  );
+  // If the settings request fails (e.g. an older server) fall back to requiring a code.
+  const registrationMode = publicSettings?.registrationMode ?? "INVITE_ONLY";
+  const codeRequired = registrationMode !== "OPEN";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await register({ body: { username, email, password, code } });
+      await register({ body: { username, email, password, code: code.trim() || undefined } });
       const response = await login({ body: { username, password } });
       setAccessToken(response.accessToken);
       if (response.refreshToken) {
@@ -66,6 +76,40 @@ const RegisterPage: React.FC = () => {
       logger.error("Registration failed:", err);
     }
   };
+
+  if (isSettingsPending) {
+    return (
+      <FormContainer>
+        <CircularProgress aria-label="Loading registration settings" />
+      </FormContainer>
+    );
+  }
+
+  if (registrationMode === "CLOSED") {
+    return (
+      <FormContainer>
+        <FormBox aria-labelledby="register-title">
+          <Typography
+            id="register-title"
+            variant="h5"
+            component="h1"
+            sx={{ marginBottom: 2 }}
+          >
+            Registration is closed
+          </Typography>
+          <Alert severity="info" sx={{ width: "100%", marginBottom: 2 }}>
+            Registration is closed on this server. Ask an administrator for an account.
+          </Alert>
+          <Typography variant="body2" color="textSecondary">
+            Already have an account?{" "}
+            <Link component={RouterLink} underline="hover" to="/login" aria-label="Go to login page">
+              Login here
+            </Link>
+          </Typography>
+        </FormBox>
+      </FormContainer>
+    );
+  }
 
   return (
     <FormContainer>
@@ -126,13 +170,13 @@ const RegisterPage: React.FC = () => {
         />
         <TextField
           id="code"
-          label="Code"
+          label={codeRequired ? "Code" : "Code (optional)"}
           variant="outlined"
           fullWidth
           value={code}
           onChange={(e) => setCode(e.target.value)}
           sx={{ marginBottom: 2 }}
-          required
+          required={codeRequired}
         />
         <Button
           type="submit"

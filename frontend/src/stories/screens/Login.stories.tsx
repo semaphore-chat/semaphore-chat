@@ -106,3 +106,19 @@ const ChangingServer: LadleStoryComponent = () => (
 ChangingServer.msw = Login.msw;
 export const DesktopLoginChangeServer = asElectron(ChangingServer);
 DesktopLoginChangeServer.meta = { viewports: ['tablet', 'desktop'] };
+
+/** Registration is closed on this server: no "Register here" link. */
+export const LoginRegistrationClosed: LadleStoryComponent = () => <Login />;
+LoginRegistrationClosed.msw = [
+  http.get('/api/instance/settings/public', () =>
+    HttpResponse.json({
+      name: bigCommunityScenario.instanceName,
+      registrationMode: 'CLOSED',
+      maxFileSizeBytes: 25 * 1024 * 1024,
+      gifSearchEnabled: false,
+      passwordResetEnabled: true,
+      desktopBrowserLogin: true,
+    }),
+  ),
+  ...(Login.msw ?? []),
+];

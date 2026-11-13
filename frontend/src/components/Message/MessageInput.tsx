@@ -602,11 +602,13 @@ export default function MessageInput({
   };
 
   // Selecting a GIF sends it immediately as its own message (Discord
-  // behavior) — the composer's text/files are left untouched.
+  // behavior) — the composer's text/files are left untouched. Send the
+  // medium rendition when the provider offers one: the original is often
+  // several megabytes. Older servers omit `mediumUrl`.
   const handleGifSelect = useCallback(
     (gif: GifResultDto) => {
       setGifAnchorEl(null);
-      void sendMessageContent(gif.url, []);
+      void sendMessageContent(gif.mediumUrl || gif.url, []);
     },
     [sendMessageContent],
   );
