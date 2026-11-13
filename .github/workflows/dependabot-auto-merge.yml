@@ -47,6 +47,7 @@ jobs:
         if: >-
           github.actor == 'dependabot[bot]' &&
           github.triggering_actor == 'dependabot[bot]' &&
+          steps.metadata.outputs.package-ecosystem == 'npm_and_yarn' &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor')
         continue-on-error: true
@@ -55,6 +56,10 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Only the npm ecosystem is auto-approved and auto-merged. GitHub Actions,
+      # Docker and pip updates (a new action or base image runs in jobs that
+      # hold publish credentials) always wait for a human review.
+      #
       # Auto-merge is performed later by GitHub as whoever enabled it. If that
       # is github-actions (GITHUB_TOKEN), the resulting push to main is a
       # GITHUB_TOKEN event, and those never trigger workflows, so none of
@@ -78,7 +83,10 @@ jobs:
       # Actions secret), fall back to GITHUB_TOKEN so the PR still merges, and
       # warn that main's post-merge workflows won't run for this merge.
       - name: Enable auto-merge for patch and minor updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        if: >-
+          steps.metadata.outputs.package-ecosystem == 'npm_and_yarn' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor')
         run: |
           if [ "$HAS_AUTOMERGE_TOKEN" != "true" ]; then
             echo "::warning::AUTOMERGE_TOKEN secret is missing or unavailable to this run; enabling auto-merge with GITHUB_TOKEN instead. main's push workflows (tests, E2E, Docker publish) will NOT run for this merge. Store AUTOMERGE_TOKEN as both an Actions and a Dependabot secret."

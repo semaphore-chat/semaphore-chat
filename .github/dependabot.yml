@@ -97,6 +97,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    # Hold new releases for a week so a compromised release is usually
+    # yanked before it reaches a PR. Security updates skip the cooldown.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:
@@ -115,6 +119,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    # Hold new releases for a week so a compromised release is usually
+    # yanked before it reaches a PR. Security updates skip the cooldown.
+    cooldown:
+      default-days: 7
     ignore:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
