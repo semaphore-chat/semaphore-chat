@@ -5,7 +5,7 @@ name: Native packages
 # an image or writes to a registry, and it does not run on tag pushes.
 #
 # Linux packages are linked on Debian 12 (glibc 2.36) by native/docker/Dockerfile.package, then
-# installed and started in Debian 12, Ubuntu 24.04, Fedora 45 and a FUSE-less AppImage container
+# installed and started in Debian 13, Ubuntu 24.04, Fedora 45 and a FUSE-less AppImage container
 # by native/scripts/test-packages.sh.
 
 on:

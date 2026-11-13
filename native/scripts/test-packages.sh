@@ -112,6 +112,8 @@ install_and_check() { # <image> <package-manager> <package path> <label>
       check_file "/usr/share/metainfo/$APP_ID.metainfo.xml"
       check_file "/usr/share/doc/$PACKAGE/THIRD-PARTY-LICENCES.txt"
       check_file "/usr/share/doc/$PACKAGE/LICENSE.md"
+      check_file "/usr/share/doc/$PACKAGE/LICENSE_COM.md"
+      check_file "/usr/share/doc/$PACKAGE/copyright"
       for size in $ICON_SIZES; do
         check_file "/usr/share/icons/hicolor/${size}x${size}/apps/$APP_ID.png"
       done
