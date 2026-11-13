@@ -212,9 +212,7 @@ fn a_video_box_keeps_the_frame_inside_the_webs_limits() {
 }
 
 #[test]
-fn sizes_and_surface_keys() {
-    assert_eq!(file_size(512), "512 B");
-    assert_eq!(file_size(3_350_000), "3.2 MB");
+fn surface_keys() {
     assert_eq!(surface_key("abc"), "player:abc");
 }
 

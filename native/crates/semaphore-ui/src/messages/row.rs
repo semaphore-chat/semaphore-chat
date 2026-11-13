@@ -5,7 +5,7 @@
 use super::actions::{
     ListPermissions, UnreadDivider, render_reaction_tooltip, render_toolbar, render_unread_divider,
 };
-use super::format::{TimeFormat, file_size};
+use super::format::TimeFormat;
 use super::icons::{self, Glyph, glyph as icon};
 use super::media::{CacheKind, Media, MediaRef, MediaState, contain};
 use super::palette::*;
@@ -16,6 +16,7 @@ use super::text::{self, BlockKind};
 use super::text_element::{BlockGeom, MessageText};
 use super::third_party::{self, ThirdParty};
 use super::view::{MessageList, MessageListEvent};
+use crate::format::file_size;
 use crate::kit::{Button as KitButton, ButtonSize};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;

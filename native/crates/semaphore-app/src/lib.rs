@@ -11,6 +11,7 @@
 pub mod conversation;
 pub mod desktop;
 pub mod files;
+pub mod menu;
 pub mod notifier;
 pub mod player;
 pub mod root;
@@ -18,6 +19,10 @@ pub mod runtime;
 pub mod services;
 pub mod settings;
 pub mod sounds;
+pub mod version;
+
+pub use version::version;
+
 pub mod voice;
 
 use gpui_kit::component::Root;
@@ -166,6 +171,7 @@ pub fn init(cx: &mut App) {
     semaphore_ui::theme::init(cx);
     semaphore_ui::messages::init(cx);
     root::calls::init(cx);
+    menu::init(cx);
 }
 
 /// What every window that shows the app needs: lists and video are read in unfocused windows, so

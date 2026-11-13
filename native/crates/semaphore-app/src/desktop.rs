@@ -207,11 +207,58 @@ impl DesktopShell {
     pub fn is_hidden(&self) -> bool {
         self.hidden.get()
     }
+
+    /// Closes the window as the title bar's button does: hides it when close to tray is on (and a
+    /// tray can bring it back), otherwise closes it, which quits. The menu's Close Window and its
+    /// Ctrl+W use this, so both ways end the same.
+    pub fn close_window(cx: &mut App) {
+        let Some(shell) = cx.try_global::<DesktopShell>() else {
+            return;
+        };
+        let (window, app, tray, hidden) = (
+            shell.window,
+            shell.app.clone(),
+            shell.tray.clone(),
+            shell.hidden.clone(),
+        );
+        let _ = window.update(cx, |_, window, cx| {
+            if close_or_hide(&app, tray.as_deref(), &hidden, window, cx) {
+                window.remove_window();
+            }
+        });
+    }
 }
 
 /// Whether closing the window should hide it rather than quit.
 pub fn hides_on_close(setting: bool, tray_on_a_panel: bool, platform_can_hide: bool) -> bool {
     setting && tray_on_a_panel && platform_can_hide
+}
+
+/// Closes the window the way its title bar does: saved bounds, then hide when close to tray is on
+/// and a tray can bring it back, otherwise close. Returns true when the window should close; the
+/// menu's Close Window calls this and then removes the window itself.
+pub fn close_or_hide(
+    app: &WeakEntity<AppRoot>,
+    tray: Option<&DesktopTray>,
+    hidden: &Cell<bool>,
+    window: &mut Window,
+    cx: &mut App,
+) -> bool {
+    let setting = app
+        .update(cx, |root, _| {
+            root.save_window_state(window);
+            root.settings().close_to_tray
+        })
+        .unwrap_or(false);
+    let available = tray.is_some_and(|tray| tray.available());
+    if hides_on_close(setting, available, window.can_hide_window())
+        && window.set_window_visible(false)
+    {
+        hidden.set(true);
+        app.update(cx, |root, cx| root.check_idle(cx)).ok();
+        return false;
+    }
+    true
 }
 
 /// Wires the window to the desktop: close to tray, the event channel, the taskbar dot. Call once,
@@ -245,21 +292,7 @@ pub fn attach(services: DesktopServices, app: &Entity<AppRoot>, window: &mut Win
     let close_tray = tray.clone();
     let close_hidden = hidden.clone();
     window.on_window_should_close(cx, move |window, cx| {
-        let setting = close_app
-            .update(cx, |root, _| {
-                root.save_window_state(window);
-                root.settings().close_to_tray
-            })
-            .unwrap_or(false);
-        let available = close_tray.as_ref().is_some_and(|tray| tray.available());
-        if hides_on_close(setting, available, window.can_hide_window())
-            && window.set_window_visible(false)
-        {
-            close_hidden.set(true);
-            close_app.update(cx, |root, cx| root.check_idle(cx)).ok();
-            return false;
-        }
-        true
+        close_or_hide(&close_app, close_tray.as_deref(), &close_hidden, window, cx)
     });
 
     cx.spawn(async move |cx| {
@@ -307,9 +340,7 @@ fn handle(event: DesktopEvent, cx: &mut App) {
             });
         }
         DesktopEvent::SetCloseToTray(on) => {
-            let _ = app.update(cx, |root, _| {
-                root.update_settings(|settings| settings.close_to_tray = on)
-            });
+            let _ = app.update(cx, |root, cx| root.set_close_to_tray(on, cx));
         }
         DesktopEvent::Quit => cx.quit(),
         DesktopEvent::Opened {

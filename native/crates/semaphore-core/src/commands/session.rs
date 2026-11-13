@@ -129,7 +129,7 @@ impl Core {
             state.reading.server_url = Some(server_url.clone());
             state.use_server(&server_url);
         });
-        services.backend.set_server_url(server_url);
+        services.backend.set_server_url(server_url.clone());
         if !services.backend.has_stored_session() {
             return Ok(RestoreOutcome::NoSession);
         }
@@ -149,6 +149,15 @@ impl Core {
         match restored {
             Ok((refreshed, profile)) => {
                 self.signed_in(&services, &refreshed.access_token, profile);
+                // Nothing has asked this server about itself: the sign-in screen's probe never
+                // ran. Ask now, so the settings (its name, file limit, registration mode and the
+                // rest) that capabilities and screens read are there for the whole session. As
+                // best-effort as the sign-in screen's: a failure leaves the restored session
+                // exactly as it is, and an answer that arrives after the session ended writes
+                // nothing (`probe_server` checks the epoch).
+                if let Err(error) = self.probe_server(server_url.clone()).await {
+                    log::info!("probing the restored server: {error}");
+                }
                 Ok(RestoreOutcome::SignedIn)
             }
             Err(error) => {

@@ -25,8 +25,9 @@ mod stories;
 mod tests;
 mod video;
 
+pub use crate::format::file_size;
 pub use audio::AudioPlayer;
-pub use model::{Phase, file_size, surface_key, video_box};
+pub use model::{Phase, surface_key, video_box};
 pub use registry::{AttachmentPlayer, ListPlayers, Players, PosterResolver};
 pub use session::{FactoryOpener, PlayerOpener, PlayerSurface};
 pub use video::VideoPlayer;

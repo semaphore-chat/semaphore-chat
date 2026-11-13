@@ -27,6 +27,9 @@ struct Upload<'a> {
     filename: &'a str,
     mime_type: &'a str,
     bytes: &'a [u8],
+    /// The message the file is for (`resourceId`), as the app names it when it uploads an
+    /// attachment: the file's `fileMessageId`, which its download's access check reads.
+    resource_id: Option<&'a str>,
 }
 
 /// `POST /api/file-upload` with one file, answering its status and record.
@@ -38,6 +41,14 @@ async fn upload(server: &FakeServer, file: Upload<'_>) -> (u16, Value) {
         )
         .as_bytes(),
     );
+    if let Some(resource_id) = file.resource_id {
+        body.extend_from_slice(
+            format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"resourceId\"\r\n\r\n{resource_id}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
     body.extend_from_slice(
         format!(
             "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{}\"\r\nContent-Type: {}\r\n\r\n",
@@ -91,6 +102,7 @@ async fn an_upload_reports_the_size_of_a_large_image_and_makes_a_thumbnail() {
             filename: "portrait.png",
             mime_type: "image/png",
             bytes: &picture,
+            resource_id: Some("msg-14"),
         },
     )
     .await;
@@ -117,6 +129,7 @@ async fn a_small_image_reports_its_size_and_has_no_thumbnail() {
             filename: "tiny.png",
             mime_type: "image/png",
             bytes: &picture,
+            resource_id: Some("msg-14"),
         },
     )
     .await;
@@ -136,6 +149,7 @@ async fn a_non_image_has_no_dimensions_and_no_thumbnail() {
             filename: "notes.txt",
             mime_type: "text/plain",
             bytes: b"plain words",
+            resource_id: Some("msg-14"),
         },
     )
     .await;
@@ -158,6 +172,7 @@ async fn a_message_attachment_carries_the_stored_dimensions() {
             filename: "panorama.png",
             mime_type: "image/png",
             bytes: &picture,
+            resource_id: None,
         },
     )
     .await;
@@ -216,6 +231,7 @@ async fn file_metadata_reports_the_size_and_whether_a_thumbnail_exists() {
             filename: "portrait.png",
             mime_type: "image/png",
             bytes: &png(600, 1200),
+            resource_id: Some("msg-14"),
         },
     )
     .await;
@@ -243,6 +259,7 @@ async fn the_thumbnail_route_fits_the_box_and_keeps_the_aspect() {
             filename: "portrait.png",
             mime_type: "image/png",
             bytes: &png(600, 1200),
+            resource_id: Some("msg-14"),
         },
     )
     .await;
@@ -268,6 +285,7 @@ async fn a_file_without_a_thumbnail_answers_the_backends_404() {
             filename: "tiny.png",
             mime_type: "image/png",
             bytes: &png(64, 64),
+            resource_id: Some("msg-14"),
         },
     )
     .await;
@@ -289,6 +307,7 @@ async fn the_thumbnail_route_refuses_what_the_file_route_refuses() {
             filename: "portrait.png",
             mime_type: "image/png",
             bytes: &png(600, 1200),
+            resource_id: Some("msg-14"),
         },
     )
     .await;
@@ -300,19 +319,4 @@ async fn the_thumbnail_route_refuses_what_the_file_route_refuses() {
     assert_eq!(thumbnail.2, file.2, "the same refusal body");
     let body: Value = serde_json::from_slice(&file.2).expect("a JSON error");
     assert_eq!(body["errorCode"], "UNAUTHENTICATED");
-
-    // A bearer token for someone else is treated exactly as it is on the file route: the fake
-    // models no per-file ACL, so the two routes always agree.
-    let other = "Bearer someone-else";
-    let mut request = http()
-        .get(format!("{}/api/file/{file_id}", server.base_url()))
-        .header("Authorization", other);
-    assert_eq!(request.send().await.unwrap().status().as_u16(), 200);
-    request = http()
-        .get(format!(
-            "{}/api/file/{file_id}/thumbnail",
-            server.base_url()
-        ))
-        .header("Authorization", other);
-    assert_eq!(request.send().await.unwrap().status().as_u16(), 200);
 }

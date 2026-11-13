@@ -340,7 +340,9 @@ async fn served(file: &str) -> (FakeServer, HttpBackend, String, u64) {
                 mime_type: "video/webm".into(),
                 bytes: Arc::new(bytes),
                 resource_type: semaphore_wire::enums::ResourceType::MessageAttachment,
-                resource_id: None,
+                // As the app uploads an attachment: for the message it belongs to, which is what
+                // the file routes' access check reads.
+                resource_id: Some("msg-14".into()),
             },
             Arc::new(|_| {}),
         )

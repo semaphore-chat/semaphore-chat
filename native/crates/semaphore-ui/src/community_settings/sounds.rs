@@ -8,7 +8,7 @@ use super::common::{
 };
 use super::rules::{
     Outcome, Pending, act, check_sound_emoji, check_sound_file, check_sound_name, failure,
-    failure_of, needs, running, size_label, sound_name_from_file, state_of,
+    failure_of, needs, running, sound_name_from_file, state_of,
 };
 use crate::kit::{Button, ButtonSize, Dialog, TextField, Variant, spacing, text, text_state};
 use crate::panel::common::{design_icon, error_block};
@@ -214,7 +214,13 @@ impl SoundboardTab {
         let picked = self
             .picked
             .as_ref()
-            .map(|file| format!("{} ({})", file.name, size_label(file.bytes.len() as u64)))
+            .map(|file| {
+                format!(
+                    "{} ({})",
+                    file.name,
+                    crate::format::file_size(file.bytes.len() as u64)
+                )
+            })
             .unwrap_or_else(|| "No file chosen".to_owned());
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();

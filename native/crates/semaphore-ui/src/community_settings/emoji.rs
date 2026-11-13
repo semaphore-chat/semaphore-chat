@@ -8,7 +8,7 @@ use super::common::{
 };
 use super::rules::{
     Outcome, Pending, act, check_emoji_file, check_emoji_name, failure_of, needs, running,
-    shortcode, size_label, state_of,
+    shortcode, state_of,
 };
 use crate::kit::{Button, ButtonSize, TextField, Variant, spacing, text, text_state};
 use crate::panel::common::{design_icon, error_block};
@@ -171,7 +171,13 @@ impl EmojiTab {
         let picked = self
             .picked
             .as_ref()
-            .map(|file| format!("{} ({})", file.name, size_label(file.bytes.len() as u64)))
+            .map(|file| {
+                format!(
+                    "{} ({})",
+                    file.name,
+                    crate::format::file_size(file.bytes.len() as u64)
+                )
+            })
             .unwrap_or_else(|| "No file chosen".to_owned());
         div()
             .flex()

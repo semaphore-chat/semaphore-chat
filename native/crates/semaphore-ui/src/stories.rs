@@ -38,6 +38,7 @@ impl StoryEnv {
 
 pub fn all() -> Vec<Story> {
     [
+        crate::about::stories(),
         crate::shell::stories(),
         crate::theme::stories(),
         crate::kit::stories(),

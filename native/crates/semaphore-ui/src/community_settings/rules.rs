@@ -1,6 +1,7 @@
 //! What the tabs check before they send, and the labels they draw, with no GPUI in them. Lengths
 //! are counted as the web and the server's `class-validator` count them: UTF-16 code units.
 
+use crate::format::file_size;
 use crate::messages::TimeFormat;
 use semaphore_core::model::{
     AdminAction, AdminActionKind, AdminActionState, AdminOp, ChannelPreset, CommunityCaps,
@@ -192,8 +193,8 @@ pub fn check_image(file: &DraftFile, max_bytes: Option<u64>) -> Result<(), Strin
     {
         return Err(format!(
             "That image is {}; the limit is {}",
-            size_label(file.bytes.len() as u64),
-            size_label(max)
+            file_size(file.bytes.len() as u64),
+            file_size(max)
         ));
     }
     Ok(())
@@ -210,30 +211,6 @@ pub fn grouped(n: u64) -> String {
         out.push(digit);
     }
     out
-}
-
-/// "256 KB", "1.5 MB", "50 GB": 1024 steps up to PB. Below 1 MB it counts whole KB (rounded up,
-/// so nothing reads "0 KB" unless it is empty); from there a whole number prints bare and anything
-/// else with one decimal, in the largest unit that keeps the number under 1024.
-pub fn size_label(bytes: u64) -> String {
-    const KB: f64 = 1024.;
-    const UNITS: [&str; 4] = ["MB", "GB", "TB", "PB"];
-    let value = bytes as f64;
-    if value < KB * KB {
-        return format!("{} KB", (value / KB).ceil() as u64);
-    }
-    let mut unit = 0;
-    let mut scaled = value / (KB * KB);
-    // 1023.96 would round to "1024.0": it belongs to the next unit up.
-    while unit + 1 < UNITS.len() && scaled >= KB - 0.05 {
-        scaled /= KB;
-        unit += 1;
-    }
-    if (scaled - scaled.round()).abs() < 0.05 {
-        format!("{} {}", scaled.round() as u64, UNITS[unit])
-    } else {
-        format!("{scaled:.1} {}", UNITS[unit])
-    }
 }
 
 // ---- Invites. ----

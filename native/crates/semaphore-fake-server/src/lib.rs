@@ -130,6 +130,9 @@ pub(crate) struct StoredFile {
     /// (`COMMUNITY_AVATAR`, `COMMUNITY_BANNER`, `CUSTOM_EMOJI`, `SOUNDBOARD_SOUND`): the backend's
     /// `File.fileCommunityId`.
     pub community_id: Option<String>,
+    /// The message the upload named as its `resourceId` (`MESSAGE_ATTACHMENT`): the backend's
+    /// `File.fileMessageId`, which the file routes resolve access through.
+    pub message_id: Option<String>,
     pub filename: String,
     pub mime_type: String,
     pub bytes: Vec<u8>,
