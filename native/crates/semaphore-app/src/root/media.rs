@@ -18,6 +18,28 @@ use semaphore_ui::nav::Route;
 pub struct MediaArea {}
 
 impl AppRoot {
+    /// The one third-party media switch ("Load images from other sites"), from the settings tab
+    /// or a message list's Load card: the settings store, the preview fetcher, core (whose views
+    /// say whether GIFs may load) and the conversation pane's lists all follow it.
+    ///
+    /// UM wired only this. WM still owns the rest of this file: GIF fetching (the app's
+    /// `MediaSource::gif`, the GIF picker's previews), and the frame and pixel budget for
+    /// animated images.
+    pub(super) fn media_set_third_party(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.update_settings(|settings| settings.third_party_media = on);
+        if let Some(media) = &self.media {
+            media.previews.set_allowed(on);
+        }
+        if let Some(core) = self.core() {
+            core.set_third_party_media(on);
+        }
+        if let Some(pane) = self.pane.clone() {
+            pane.update(cx, |pane, cx| pane.media_third_party(on, cx));
+        }
+        self.refresh_desktop_tab(cx);
+        cx.refresh_windows();
+    }
+
     pub(super) fn media_on_core(&mut self, _event: &CoreEvent, _cx: &mut Context<Self>) {}
 
     pub(super) fn media_navigated(

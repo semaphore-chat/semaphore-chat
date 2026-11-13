@@ -825,7 +825,7 @@ impl AppRoot {
             .map(|screen| screen.read(cx).desktop())
     }
 
-    fn refresh_desktop_tab(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn refresh_desktop_tab(&mut self, cx: &mut Context<Self>) {
         let Some(tab) = self.desktop_tab(cx) else {
             return;
         };
@@ -891,17 +891,8 @@ impl AppRoot {
                 self.refresh_desktop_tab(cx);
             }
             DesktopAppEvent::SetLinkPreviewImages(on) => {
-                // The one third-party media switch: what the preview fetcher loads and what core's
-                // views say about GIFs both follow it.
-                self.update_settings(|settings| settings.third_party_media = on);
-                if let Some(media) = &self.media {
-                    media.previews.set_allowed(on);
-                }
-                if let Some(core) = self.core() {
-                    core.set_third_party_media(on);
-                }
-                self.refresh_desktop_tab(cx);
-                cx.refresh_windows();
+                // The one third-party media switch (`root/media.rs`).
+                self.media_set_third_party(on, cx);
             }
             DesktopAppEvent::RegisterLinkHandler => {
                 let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services)
