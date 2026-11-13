@@ -4,7 +4,7 @@
 
 use super::shell::{info_row, section, switch_row, tab_page};
 use super::{DesktopAppEvent, DesktopAppSettings, LinkHandler};
-use crate::kit::{Button, ButtonSize, Switch, Variant, spacing, text};
+use crate::kit::{Button, ButtonSize, Severity, Switch, Variant, spacing, text};
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -154,6 +154,51 @@ impl Render for DesktopAppSettings {
                         ),
                 ),
             );
+        let (severity, summary) = state.update.summary();
+        let (icon, tone) = match severity {
+            Severity::Error => (DesignIcon::ErrorOutline, sem.error),
+            Severity::Warning => (DesignIcon::WarningAmber, sem.warning),
+            Severity::Info => (DesignIcon::InfoOutlined, sem.info),
+            Severity::Success => (DesignIcon::CheckCircleOutline, sem.success),
+        };
+        let updates = section("Updates", cx)
+            .child(
+                div()
+                    .id("desktop-update-status")
+                    .test_support()
+                    .role(Role::Status)
+                    .aria_label(SharedString::from(summary.clone()))
+                    .flex()
+                    .items_start()
+                    .gap(spacing(1.))
+                    .child(div().pt(px(2.)).child(design_icon(icon, 18., tone)))
+                    .child(
+                        text(Variant::Body2, summary)
+                            .flex_1()
+                            .min_w_0()
+                            .text_color(sem.text_primary),
+                    ),
+            )
+            .child(
+                div().flex().child(
+                    Button::new("desktop-check-updates", "Check for updates")
+                        .outlined()
+                        .size(ButtonSize::Small)
+                        .start_icon(DesignIcon::Refresh)
+                        .disabled(!state.update_enabled || state.update.busy())
+                        .on_click(
+                            cx.listener(|_, _, _, cx| cx.emit(DesktopAppEvent::CheckForUpdates)),
+                        ),
+                ),
+            )
+            .children(state.update_note.clone().map(|note| {
+                div()
+                    .id("desktop-update-note")
+                    .test_support()
+                    .role(Role::Note)
+                    .aria_label(SharedString::from(note.clone()))
+                    .child(text(Variant::Caption, note).text_color(sem.text_secondary))
+            }));
         let about = section("About", cx)
             .child(info_row("App Version:", state.app_version.clone(), cx))
             .child(info_row(
@@ -176,6 +221,7 @@ impl Render for DesktopAppSettings {
                 .child(tray)
                 .child(links)
                 .child(previews)
+                .child(updates)
                 .child(server)
                 .child(about),
             cx,

@@ -48,6 +48,7 @@ pub mod prejoin;
 pub mod replay;
 pub mod roles;
 pub mod u9;
+pub mod update;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
@@ -135,6 +136,8 @@ pub struct AppRoot {
     roles: roles::Roles,
     /// W5: the moderation menu, dialogs, tab, removal notice and timeout timers (`moderation`).
     moderation: moderation::Moderation,
+    /// W13: the updater, the update card and the settings row (`update`).
+    updates: update::Updates,
     /// What the server said about itself when it was last probed.
     server_info: Option<semaphore_core::model::ServerInfo>,
     window: AnyWindowHandle,
@@ -255,6 +258,7 @@ impl AppRoot {
             prejoin: prejoin::PreJoinArea::default(),
             roles: roles::Roles::default(),
             moderation: moderation::Moderation::default(),
+            updates: update::Updates::default(),
             server_info: None,
             window: window.window_handle(),
             _subscriptions: vec![activation, keys],
@@ -309,6 +313,7 @@ impl AppRoot {
 
     /// Ends core and the socket. The stored session stays.
     pub fn shutdown(&mut self) {
+        self.stop_updates();
         if let Some(services) = &mut self.services {
             services.shutdown();
         }
@@ -400,6 +405,7 @@ impl AppRoot {
         self.voice = Some(voice);
         let audio = services.audio.clone();
         self.services = Some(services);
+        self.start_updates(window, cx);
         self.start_inbox(audio, cx);
         if self.config.watch_os {
             let handle = self.services.as_ref().map(|services| services.exec.clone());
@@ -1080,6 +1086,7 @@ impl AppRoot {
         );
         let connection = core.connection();
         let route_sidebar = self.build_inbox(window, cx);
+        let root_update_banner = self.update_banner_slot();
         let bar_root = cx.entity().downgrade();
         let shell = cx.new(|cx| {
             // The call's bar under the columns, wherever the user is but the call's own channel.
@@ -1113,6 +1120,7 @@ impl AppRoot {
             )
             .with_voice_bar(bar)
             .with_route_sidebar(route_sidebar)
+            .with_update_banner(root_update_banner)
         });
         self._subscriptions
             .push(cx.subscribe_in(&shell, window, Self::on_shell_event));

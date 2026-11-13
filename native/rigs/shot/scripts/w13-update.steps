@@ -1,0 +1,96 @@
+# W13: the update card in each state, in the shell's notice corner, and the settings row's
+# states, at desktop and phone width.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w13-update.steps
+story shell-update-available 1280 800 dark-blue-balanced
+wait idle
+shot w13-shell-update-available-desktop
+story shell-update-available 390 844 light-blue-balanced
+wait idle
+shot w13-shell-update-available-phone
+story shell-update-available-manual 1280 800 dark-blue-balanced
+wait idle
+shot w13-shell-update-available-manual-desktop
+story shell-update-available-manual 390 844 light-blue-balanced
+wait idle
+shot w13-shell-update-available-manual-phone
+story shell-update-downloading 1280 800 dark-blue-balanced
+wait idle
+shot w13-shell-update-downloading-desktop
+story shell-update-downloading 390 844 light-blue-balanced
+wait idle
+shot w13-shell-update-downloading-phone
+story shell-update-ready-appimage 1280 800 dark-blue-balanced
+wait idle
+shot w13-shell-update-ready-appimage-desktop
+story shell-update-ready-appimage 390 844 light-blue-balanced
+wait idle
+shot w13-shell-update-ready-appimage-phone
+story shell-update-ready-package 1280 800 dark-blue-balanced
+wait idle
+shot w13-shell-update-ready-package-desktop
+story shell-update-ready-package 390 844 light-blue-balanced
+wait idle
+shot w13-shell-update-ready-package-phone
+story shell-update-failed 1280 800 dark-blue-balanced
+wait idle
+shot w13-shell-update-failed-desktop
+story shell-update-failed 390 844 light-blue-balanced
+wait idle
+shot w13-shell-update-failed-phone
+# The connection chip stacks above the card in the same corner.
+story shell-update-over-offline 1280 800 dark-blue-balanced
+wait idle
+shot w13-shell-update-over-offline-desktop
+story shell-update-over-offline 390 844 light-blue-balanced
+wait idle
+shot w13-shell-update-over-offline-phone
+# The settings row, whole pages so the sections around it are reviewed too.
+story settings-desktop-update-available 1280 1900 dark-blue-balanced
+wait idle
+shot w13-settings-update-available-desktop
+story settings-desktop-update-available 390 2600 light-blue-balanced
+wait idle
+shot w13-settings-update-available-phone
+story settings-desktop-update-checking 1280 800 dark-blue-balanced
+wait idle
+shot w13-settings-update-checking-desktop
+story settings-desktop-update-checking 390 844 light-blue-balanced
+wait idle
+shot w13-settings-update-checking-phone
+story settings-desktop-update-downloading 1280 800 dark-blue-balanced
+wait idle
+shot w13-settings-update-downloading-desktop
+story settings-desktop-update-downloading 390 844 light-blue-balanced
+wait idle
+shot w13-settings-update-downloading-phone
+story settings-desktop-update-ready 1280 800 dark-blue-balanced
+wait idle
+shot w13-settings-update-ready-desktop
+story settings-desktop-update-ready 390 844 light-blue-balanced
+wait idle
+shot w13-settings-update-ready-phone
+story settings-desktop-update-failed 1280 800 dark-blue-balanced
+wait idle
+shot w13-settings-update-failed-desktop
+story settings-desktop-update-failed 390 844 light-blue-balanced
+wait idle
+shot w13-settings-update-failed-phone
+story settings-desktop-update-off 1280 800 dark-blue-balanced
+wait idle
+shot w13-settings-update-off-desktop
+story settings-desktop-update-off 390 844 light-blue-balanced
+wait idle
+shot w13-settings-update-off-phone
+story settings-desktop-update-dev-build 1280 800 dark-blue-balanced
+wait idle
+shot w13-settings-update-dev-build-desktop
+story settings-desktop-update-dev-build 390 844 light-blue-balanced
+wait idle
+shot w13-settings-update-dev-build-phone
+# Up to date: no card, and the settings row says so.
+story settings-desktop-registered 1280 800 dark-blue-balanced
+wait idle
+shot w13-settings-update-uptodate-desktop
+story settings-desktop-registered 390 844 light-blue-balanced
+wait idle
+shot w13-settings-update-uptodate-phone

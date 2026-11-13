@@ -82,21 +82,26 @@ elif [ "${1:-}" = "--player" ]; then
   shift
 fi
 out_dir="${1:-results/slice/e2e}"
-# Each entry is "steps-file|run-dir". text.steps keeps the original <out-dir>/run-N layout.
+# Each entry is "steps-file|run-dir|rig flags". text.steps keeps the original <out-dir>/run-N
+# layout. w13-update.steps gets --update: the rig hosts a release feed on loopback for it.
 suites=()
 if $voice; then
-  suites=("rigs/slice/scripts/voice.steps|$out_dir" "rigs/slice/scripts/voice-w4.steps|$out_dir/voice-w4" "rigs/slice/scripts/voice-w9.steps|$out_dir/voice-w9")
+  suites=("rigs/slice/scripts/voice.steps|$out_dir|" "rigs/slice/scripts/voice-w4.steps|$out_dir/voice-w4|" "rigs/slice/scripts/voice-w9.steps|$out_dir/voice-w9|")
 elif $player; then
-  suites=("rigs/slice/scripts/w3-player-wire.steps|$out_dir/w3-player-wire")
+  suites=("rigs/slice/scripts/w3-player-wire.steps|$out_dir/w3-player-wire|")
 elif [ -n "${2:-}" ]; then
-  suites=("$2|$out_dir")
+  flags=""
+  [ "$(basename "$2" .steps)" = w13-update ] && flags=--update
+  suites=("$2|$out_dir|$flags")
 else
   for f in rigs/slice/scripts/*.steps; do
     name="$(basename "$f" .steps)"
     # voice.steps needs --voice; real.steps a real backend (scripts/slice-real.sh); w3-player-wire
     # the player feature (--player).
     case "$name" in voice | voice-w4 | voice-w9 | real | w3-player-wire) continue ;; esac
-    if [ "$name" = text ]; then suites+=("$f|$out_dir"); else suites+=("$f|$out_dir/$name"); fi
+    flags=""
+    [ "$name" = w13-update ] && flags=--update
+    if [ "$name" = text ]; then suites+=("$f|$out_dir|$flags"); else suites+=("$f|$out_dir/$name|$flags"); fi
   done
 fi
 scenario=showcase
@@ -151,8 +156,9 @@ start_server() {
 total_different=0
 total_compared=0
 for suite in "${suites[@]}"; do
-  steps="${suite%%|*}"
-  suite_dir="${suite#*|}"
+  IFS='|' read -r steps suite_dir suite_flags <<<"$suite"
+  suite_args=()
+  [ -n "$suite_flags" ] && suite_args=($suite_flags)
   echo "== $steps" >&2
   for run in 1 2; do
     dir="$suite_dir/run-$run"
@@ -167,7 +173,7 @@ for suite in "${suites[@]}"; do
       --server "http://127.0.0.1:$port" \
       --scenario "fixtures/scenarios/$scenario.json" \
       --script "$steps" \
-      --out "$dir" ${rig_args[@]+"${rig_args[@]}"} 2> >(tee "$dir/rig.log" >&2); } | tee "$dir/steps.log" >&2
+      --out "$dir" ${rig_args[@]+"${rig_args[@]}"} ${suite_args[@]+"${suite_args[@]}"} 2> >(tee "$dir/rig.log" >&2); } | tee "$dir/steps.log" >&2
     echo "run $run: $(( $(date +%s%3N) - run_started )) ms" >&2
     stop_server
   done

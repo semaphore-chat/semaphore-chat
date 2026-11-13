@@ -5,11 +5,13 @@ use gpui_kit::*;
 use semaphore_app::AppConfig;
 use semaphore_app::desktop::DesktopServices;
 use semaphore_core::platform::AppPaths as _;
+use semaphore_platform_desktop::update::InstallKind;
 use semaphore_platform_desktop::{
     DesktopEvent, DesktopPaths, KeyringSecrets, SystemClock, instance, links,
 };
 use semaphore_ui::messages::TimeFormat;
 use std::process::ExitCode;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// `semaphore-app --probe-media <url> <token>`: join a LiveKit room, leave, exit.
@@ -162,6 +164,10 @@ fn main() -> ExitCode {
     };
     register_scheme();
 
+    // Set when "Restart to update" is chosen; read after the event loop, when the
+    // single-instance lock the running app held is free.
+    let pending_restart: Arc<std::sync::Mutex<Option<std::path::PathBuf>>> = Arc::default();
+    let restart_slot = pending_restart.clone();
     gpui_kit::application()
         .with_assets(semaphore_app::files::AppAssets)
         .run(move |cx| {
@@ -169,6 +175,16 @@ fn main() -> ExitCode {
             // Before any window or notification: Windows' toasts need the AppUserModelID.
             cx.set_app_identity(links::APP_ID, "Semaphore");
             let settings = semaphore_app::settings::SettingsStore::load(&data_dir);
+            // W13: the updater runs only if this build has a feed and this install can update;
+            // `update` also carries why not, for the settings row.
+            let update = semaphore_app::update::start();
+            let restart_path = match &update {
+                semaphore_app::update::UpdateStart::On(options) => match &options.install {
+                    InstallKind::AppImage { path } => Some(path.clone()),
+                    _ => None,
+                },
+                semaphore_app::update::UpdateStart::Off(_) => None,
+            };
             let desktop = DesktopServices::start(settings.get().close_to_tray, true, cx);
             if let Some(primary) = primary {
                 let sink = desktop.sink.clone();
@@ -181,6 +197,15 @@ fn main() -> ExitCode {
             }
             let cold_start_links = desktop.sink.clone();
             let config = AppConfig {
+                update,
+                restart: Some(Rc::new(move |cx: &mut App| {
+                    if let Some(path) = &restart_path {
+                        *restart_slot
+                            .lock()
+                            .unwrap_or_else(|poison| poison.into_inner()) = Some(path.clone());
+                    }
+                    cx.quit();
+                })),
                 secrets: Arc::new(KeyringSecrets::new()),
                 clock: Arc::new(SystemClock),
                 server_url,
@@ -240,5 +265,19 @@ fn main() -> ExitCode {
                 .detach();
             }
         });
+    // The update is in place and the app quit to apply it: the lock is free now, so this launch
+    // is the new build.
+    let restarting = pending_restart
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .take();
+    if let Some(path) = restarting
+        && let Err(error) = std::process::Command::new(&path).spawn()
+    {
+        eprintln!(
+            "semaphore-app: the update is installed but {} could not be started: {error}",
+            path.display()
+        );
+    }
     ExitCode::SUCCESS
 }

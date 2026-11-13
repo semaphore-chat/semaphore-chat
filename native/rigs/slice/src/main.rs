@@ -98,6 +98,7 @@
 //! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
 mod thumbs;
+mod w13;
 mod w5;
 mod w6;
 mod w7;
@@ -367,6 +368,8 @@ enum Condition {
     W7T(thumbs::Thumbs),
     W9(w9::W9),
     W9v(w9v::W9V),
+    /// W13's (`w13.rs`, `w13_holds`): the updater.
+    W13(w13::W13),
 }
 
 /// W4's conditions.
@@ -702,6 +705,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["w7t", rest @ ..] => Condition::W7T(thumbs::parse(rest)?),
         ["w9", rest @ ..] => Condition::W9(w9::parse(rest)?),
         ["w9v", rest @ ..] => Condition::W9v(w9v::parse(rest)?),
+        ["w13", rest @ ..] => Condition::W13(w13::parse(rest)?),
         ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
         ["ringing", dm] => Condition::W4(W4::RingingFor((*dm).into())),
         ["ring", state @ ("looping" | "stopped")] => {
@@ -1081,6 +1085,8 @@ struct Rig {
     keep_awake: Arc<RigKeepAwake>,
     /// `mic tone on`: the virtual mic plays a tone instead of silence.
     tone: Arc<std::sync::atomic::AtomicBool>,
+    /// W13: the loopback update feed, when the run was started with `--update`.
+    update: Option<w13::UpdateFeed>,
 }
 
 /// The link handler in the rig: not registered until asked, then registered. Touches nothing.
@@ -1198,6 +1204,7 @@ impl Rig {
         data_dir: PathBuf,
         livekit: Option<LiveKit>,
         heartbeat: Duration,
+        update: Option<w13::UpdateFeed>,
     ) -> Self {
         let mut driver = Driver::new(Arc::new(semaphore_app::files::AppAssets));
         driver.cx.update(|cx| {
@@ -1230,6 +1237,7 @@ impl Rig {
             clock_started: Instant::now(),
             keep_awake: Arc::default(),
             tone: Arc::default(),
+            update,
         }
     }
 
@@ -1359,6 +1367,22 @@ impl Rig {
             links: Some(self.links.clone()),
             // Never the machine's sleep inhibitor: one that only remembers.
             keep_awake: Some(self.keep_awake.clone()),
+            // W13: the loopback feed, or nothing to check (the shipped default).
+            update: match &self.update {
+                Some(feed) => semaphore_app::update::UpdateStart::On(Box::new(
+                    feed.options(self.data_dir.join("cache")),
+                )),
+                None => semaphore_app::update::UpdateStart::Off(
+                    semaphore_app::update::WhyNoUpdates::NoFeed,
+                ),
+            },
+            // The restart seam: records that it was asked, and opens no process.
+            restart: self.update.as_ref().map(|feed| {
+                let restarts = feed.restarts();
+                Rc::new(move |_: &mut App| {
+                    restarts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }) as semaphore_app::RestartApp
+            }),
         };
         let mut app = None;
         let (handle, _) = self.driver.cx.update(|cx| {
@@ -1694,6 +1718,9 @@ impl Rig {
         if let Some(answer) = self.w3_holds(condition)? {
             return Ok(answer);
         }
+        if let Condition::W13(w13) = condition {
+            return self.w13_holds(w13);
+        }
         if let Condition::W4(w4) = condition {
             return self.w4_holds(w4);
         }
@@ -1812,7 +1839,8 @@ impl Rig {
             | Condition::W7(_)
             | Condition::W7T(_)
             | Condition::W9(_)
-            | Condition::W9v(_) => unreachable!("answered above"),
+            | Condition::W9v(_)
+            | Condition::W13(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -2724,6 +2752,8 @@ fn main() -> Result<()> {
             .transpose()?
             .unwrap_or(30_000),
     );
+    let update = args.iter().any(|arg| arg == "--update");
+    args.retain(|arg| arg != "--update");
     let livekit = match (
         optional_flag(&mut args, "--livekit-http")?,
         optional_flag(&mut args, "--livekit-key")?,
@@ -2751,7 +2781,12 @@ fn main() -> Result<()> {
     if data_dir.exists() {
         std::fs::remove_dir_all(&data_dir)?;
     }
-    let mut rig = Rig::new(server, now_ms, data_dir, livekit, heartbeat);
+    let update = if update {
+        Some(w13::start(&data_dir)?)
+    } else {
+        None
+    };
+    let mut rig = Rig::new(server, now_ms, data_dir, livekit, heartbeat, update);
     let result = rig.run(&steps, &out_dir);
     if let Some(app) = rig.app.clone() {
         rig.driver

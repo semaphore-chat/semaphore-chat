@@ -233,7 +233,7 @@ impl Shell {
                     .flex_1()
                     .min_h_0()
                     .child(pane)
-                    .children(self.connection_banner(cx)),
+                    .children(self.notices(window, cx)),
             )
             .child(nav_bar)
             .when_some(rail, |shell, rail| {

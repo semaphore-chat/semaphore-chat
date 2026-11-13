@@ -195,6 +195,8 @@ pub(crate) struct Options {
     pub dm_route: bool,
     /// A stand-in in the channel header's level button slot.
     pub header_accessory: bool,
+    /// W13: the update card over the bottom-left notice corner.
+    pub update: Option<AnyView>,
     /// Real views in place of the stand-ins, for the W2 stories that show them in the shell.
     pub route_sidebar: Option<RouteSidebarSlot>,
     pub accessory: Option<AnyView>,
@@ -216,6 +218,7 @@ impl Default for Options {
             side_panel: false,
             dm_route: false,
             header_accessory: false,
+            update: None,
             route_sidebar: None,
             accessory: None,
             content: None,
@@ -290,10 +293,17 @@ pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyV
             .then(|| Rc::new(placeholder_sidebar) as RouteSidebarSlot)
     });
     let content: ContentSlot = options.content.unwrap_or_else(|| Rc::new(stub_rows));
+    let update: Option<UpdateBannerSlot> = options.update.map(|banner| {
+        Rc::new(move |_: &mut Window, _: &mut App| Some(banner.clone().into_any_element()))
+            as UpdateBannerSlot
+    });
     cx.new(|cx| {
         let mut shell = Shell::new(source, route, content, connection, cx);
         if let Some(slot) = route_sidebar {
             shell = shell.with_route_sidebar(slot);
+        }
+        if let Some(slot) = update {
+            shell = shell.with_update_banner(slot);
         }
         shell.header_accessory = accessory;
         shell.rail_expanded = expanded;
@@ -435,6 +445,33 @@ fn connect_hangout(fixture: &mut Fixture) {
     }
 }
 
+/// W13: the update card in a given state, as the app hands it over.
+fn update_card(status: crate::update::UpdateStatus, manual: bool, cx: &mut App) -> AnyView {
+    cx.new(|cx| {
+        let mut banner = crate::update::UpdateBanner::new(cx);
+        banner.set_manual(manual, cx);
+        banner.set_status(Some(status), cx);
+        banner
+    })
+    .into()
+}
+
+fn ready_appimage() -> crate::update::UpdateStatus {
+    crate::update::UpdateStatus::Ready {
+        version: "1.4.0".into(),
+        how: crate::update::ReadyHow::Restart,
+    }
+}
+
+fn ready_package() -> crate::update::UpdateStatus {
+    crate::update::UpdateStatus::Ready {
+        version: "1.4.0".into(),
+        how: crate::update::ReadyHow::Package {
+            command: "sudo dpkg -i '/home/mike/.cache/semaphore/updates/semaphore-chat-native_1.4.0_amd64.deb'".into(),
+        },
+    }
+}
+
 macro_rules! shell_story {
     ($name:literal, $($field:ident: $value:expr),* $(,)?) => {
         Story::new($name, |env, _, cx| {
@@ -451,6 +488,114 @@ pub fn stories() -> Vec<Story> {
             shell_view(env, Options::default(), cx)
         }),
         shell_story!("shell-offline", connection: ConnectionState::Offline),
+        // W13: the update card beside the connection chip's corner; the settings row draws "up to
+        // date" (there is no card for it).
+        Story::new("shell-update-available", |env, _, cx| {
+            shell_view(
+                env,
+                Options {
+                    update: Some(update_card(
+                        crate::update::UpdateStatus::Available {
+                            version: "1.4.0".into(),
+                            notes_url: Some(
+                                "https://github.com/semaphore-chat/semaphore-chat/releases/tag/v1.4.0"
+                                    .into(),
+                            ),
+                        },
+                        false,
+                        cx,
+                    )),
+                    phone_content: true,
+                    ..Options::default()
+                },
+                cx,
+            )
+        }),
+        Story::new("shell-update-downloading", |env, _, cx| {
+            shell_view(
+                env,
+                Options {
+                    update: Some(update_card(
+                        crate::update::UpdateStatus::Downloading {
+                            received: 12_138_288,
+                            total: 30_345_720,
+                        },
+                        false,
+                        cx,
+                    )),
+                    ..Options::default()
+                },
+                cx,
+            )
+        }),
+        Story::new("shell-update-ready-appimage", |env, _, cx| {
+            shell_view(
+                env,
+                Options {
+                    update: Some(update_card(ready_appimage(), false, cx)),
+                    ..Options::default()
+                },
+                cx,
+            )
+        }),
+        Story::new("shell-update-ready-package", |env, _, cx| {
+            shell_view(
+                env,
+                Options {
+                    update: Some(update_card(ready_package(), false, cx)),
+                    ..Options::default()
+                },
+                cx,
+            )
+        }),
+        Story::new("shell-update-failed", |env, _, cx| {
+            shell_view(
+                env,
+                Options {
+                    update: Some(update_card(
+                        crate::update::UpdateStatus::Failed {
+                            message: "The download didn't match the release's SHA-256, so it was discarded.".into(),
+                            retryable: true,
+                        },
+                        false,
+                        cx,
+                    )),
+                    ..Options::default()
+                },
+                cx,
+            )
+        }),
+        Story::new("shell-update-available-manual", |env, _, cx| {
+            shell_view(
+                env,
+                Options {
+                    update: Some(update_card(
+                        crate::update::UpdateStatus::Available {
+                            version: "1.4.0".into(),
+                            notes_url: Some(
+                                "https://github.com/semaphore-chat/semaphore-chat/releases/tag/v1.4.0"
+                                    .into(),
+                            ),
+                        },
+                        true,
+                        cx,
+                    )),
+                    ..Options::default()
+                },
+                cx,
+            )
+        }),
+        Story::new("shell-update-over-offline", |env, _, cx| {
+            shell_view(
+                env,
+                Options {
+                    connection: ConnectionState::Offline,
+                    update: Some(update_card(ready_appimage(), false, cx)),
+                    ..Options::default()
+                },
+                cx,
+            )
+        }),
         shell_story!("shell-reconnecting", connection: ConnectionState::Disconnected),
         shell_story!("shell-unread", edit: mark_unread),
         shell_story!("shell-rail-expanded", expanded: true),

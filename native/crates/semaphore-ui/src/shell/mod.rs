@@ -53,6 +53,8 @@ pub const DOCKED_PANEL: f32 = 1200.;
 pub type ContentSlot = Rc<dyn Fn(&ContentProps, &mut Window, &mut App) -> AnyElement>;
 /// Draws under the columns when there's something to show: the voice bar (U11).
 pub type VoiceBarSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
+/// Draws the update card over the bottom-left corner, when there's an update to talk about.
+pub type UpdateBannerSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
 
 /// Draws the sidebar column for a route outside a community: the DM list and friends on
 /// `/direct-messages`. `None` leaves the route without one. On a phone the shell shows what it
@@ -145,6 +147,8 @@ pub struct Shell {
     pub(crate) focus_content: Cell<bool>,
     pub(crate) content: ContentSlot,
     pub(crate) voice_bar: Option<VoiceBarSlot>,
+    /// The update card, drawn over the connection chip (W13).
+    pub(crate) update_banner: Option<UpdateBannerSlot>,
     /// How many pinned messages the header's badge shows. Fed by the owner.
     pub pinned_count: u32,
     /// Pins, search or a thread, beside the messages. Set by the owner.
@@ -186,6 +190,7 @@ impl Shell {
             focus_content: Cell::new(true),
             content,
             voice_bar: None,
+            update_banner: None,
             pinned_count: 0,
             side_panel: None,
             route_sidebar: None,
@@ -204,6 +209,12 @@ impl Shell {
 
     pub fn with_route_sidebar(mut self, slot: RouteSidebarSlot) -> Self {
         self.route_sidebar = Some(slot);
+        self
+    }
+
+    /// The update card in the bottom-left notice corner, above the connection chip.
+    pub fn with_update_banner(mut self, slot: UpdateBannerSlot) -> Self {
+        self.update_banner = Some(slot);
         self
     }
 
@@ -623,7 +634,38 @@ impl Shell {
             )
     }
 
-    pub(crate) fn connection_banner(&self, cx: &App) -> Option<impl IntoElement + use<>> {
+    /// The bottom-left corner's notices, stacked: the update card (when there is one), then the
+    /// connection chip. One column, so the two never overlap.
+    pub(crate) fn notices(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let update = self
+            .update_banner
+            .as_ref()
+            .and_then(|slot| slot(window, cx));
+        let connection = self.connection_chip(cx);
+        if update.is_none() && connection.is_none() {
+            return None;
+        }
+        Some(
+            div()
+                .absolute()
+                .left(px(16.))
+                .right(px(16.))
+                .bottom(px(16.))
+                .flex()
+                .flex_col()
+                .items_start()
+                .gap(px(8.))
+                .children(update)
+                .children(connection)
+                .into_any_element(),
+        )
+    }
+
+    fn connection_chip(&self, cx: &App) -> Option<AnyElement> {
         let sem = cx.sem();
         let label = match self.connection {
             ConnectionState::Connected | ConnectionState::Suspended => return None,
@@ -637,14 +679,12 @@ impl Shell {
                 .test_support()
                 .role(Role::Status)
                 .aria_label(label)
-                .absolute()
-                .left(px(16.))
-                .bottom(px(16.))
                 .child(
                     Chip::new(label)
                         .icon(Spinner::new("connection-spinner").size(14.).color(warning))
                         .colors(sem.paper, warning, warning),
-                ),
+                )
+                .into_any_element(),
         )
     }
 
@@ -760,7 +800,7 @@ impl Render for Shell {
                     .when(overlay_members, |this| this.child(self.members_drawer(cx)))
                     .children(drawer)
                     // In here, so it always clears the voice bar, as `BottomChromeContext` does.
-                    .children(self.connection_banner(cx)),
+                    .children(self.notices(window, cx)),
             )
             .children(voice_bar)
             .into_any_element()
