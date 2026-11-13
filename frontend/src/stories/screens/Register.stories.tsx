@@ -4,6 +4,7 @@ import { makeHandlers } from '../fixtures/handlers';
 import { bigCommunityScenario } from '../fixtures/scenarios';
 import type { LadleStoryComponent } from '../fixtures/screenStory';
 import { http, HttpResponse } from 'msw';
+import { withHangingEndpoint } from '../fixtures/edge/states';
 
 const Register: LadleStoryComponent = () => (
   <PublicShell path="/register">
@@ -39,6 +40,6 @@ RegisterClosed.msw = withMode('CLOSED');
 /** The registration mode is still loading. */
 export const RegisterLoading: LadleStoryComponent = () => <Register />;
 RegisterLoading.msw = [
-  http.get('/api/instance/settings/public', () => new Promise<Response>(() => {})),
+  withHangingEndpoint('get', '/api/instance/settings/public'),
   ...makeHandlers(bigCommunityScenario),
 ];
