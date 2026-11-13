@@ -190,40 +190,51 @@ describe('StorageQuotaService', () => {
     });
   });
 
+  describe('reserveStorage', () => {
+    it('adds the bytes in one conditional update and reports success', async () => {
+      mockDatabase.$executeRaw.mockResolvedValue(1);
+
+      await expect(service.reserveStorage('user-123', 5000)).resolves.toBe(
+        true,
+      );
+
+      expect(mockDatabase.$executeRaw).toHaveBeenCalledTimes(1);
+      const [sql, ...values] = mockDatabase.$executeRaw.mock.calls[0] as [
+        TemplateStringsArray,
+        ...unknown[],
+      ];
+      const text = sql.join('?');
+      expect(text).toContain('"storageUsedBytes" = "storageUsedBytes" + ?');
+      expect(text).toContain('"storageUsedBytes" + ? <= "storageQuotaBytes"');
+      expect(values).toEqual([BigInt(5000), 'user-123', BigInt(5000)]);
+      // No read-then-write: the check and the add are the same statement
+      expect(mockDatabase.user.findUnique).not.toHaveBeenCalled();
+      expect(mockDatabase.user.update).not.toHaveBeenCalled();
+    });
+
+    it('reports failure when the bytes do not fit (no row updated)', async () => {
+      mockDatabase.$executeRaw.mockResolvedValue(0);
+
+      await expect(service.reserveStorage('user-123', 5000)).resolves.toBe(
+        false,
+      );
+    });
+  });
+
   describe('decrementUserStorage', () => {
-    it('should decrement storage by given bytes', async () => {
-      mockDatabase.user.findUnique.mockResolvedValue({
-        storageUsedBytes: BigInt(10000),
-      });
-      mockDatabase.user.update.mockResolvedValue({});
+    it('subtracts in one statement, never below zero', async () => {
+      mockDatabase.$executeRaw.mockResolvedValue(1);
 
       await service.decrementUserStorage('user-123', 5000);
 
-      expect(mockDatabase.user.update).toHaveBeenCalledWith({
-        where: { id: 'user-123' },
-        data: { storageUsedBytes: 5000 },
-      });
-    });
-
-    it('should not go below zero', async () => {
-      mockDatabase.user.findUnique.mockResolvedValue({
-        storageUsedBytes: BigInt(3000),
-      });
-      mockDatabase.user.update.mockResolvedValue({});
-
-      await service.decrementUserStorage('user-123', 5000);
-
-      expect(mockDatabase.user.update).toHaveBeenCalledWith({
-        where: { id: 'user-123' },
-        data: { storageUsedBytes: 0 },
-      });
-    });
-
-    it('should do nothing when user not found', async () => {
-      mockDatabase.user.findUnique.mockResolvedValue(null);
-
-      await service.decrementUserStorage('nonexistent', 5000);
-
+      const [sql, ...values] = mockDatabase.$executeRaw.mock.calls[0] as [
+        TemplateStringsArray,
+        ...unknown[],
+      ];
+      expect(sql.join('?')).toContain(
+        '"storageUsedBytes" = GREATEST(0, "storageUsedBytes" - ?)',
+      );
+      expect(values).toEqual([BigInt(5000), 'user-123']);
       expect(mockDatabase.user.update).not.toHaveBeenCalled();
     });
   });

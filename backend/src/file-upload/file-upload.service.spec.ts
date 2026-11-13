@@ -10,6 +10,7 @@ import { MediaDimensionsService } from '@/file/media-dimensions.service';
 import {
   BadRequestException,
   ForbiddenException,
+  PayloadTooLargeException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PermissionsService } from '@/roles/permissions.service';
@@ -107,7 +108,8 @@ describe('FileUploadService', () => {
       requestedBytes: 1024,
       remainingBytes: 999998976,
     });
-    storageQuotaService.incrementUserStorage.mockResolvedValue(undefined);
+    storageQuotaService.reserveStorage.mockResolvedValue(true);
+    storageQuotaService.decrementUserStorage.mockResolvedValue(undefined);
 
     // Mock crypto
     const mockHash = {
@@ -440,6 +442,88 @@ describe('FileUploadService', () => {
         '/tmp/test-123.png',
       );
       expect(databaseService.file.create).not.toHaveBeenCalled();
+    });
+
+    describe('quota reservation', () => {
+      const createDto = {
+        resourceType: ResourceType.MESSAGE_ATTACHMENT,
+        resourceId: 'msg-123',
+      };
+      const validatorPasses = (valid = true) => {
+        const {
+          ResourceTypeFileValidator,
+        } = require('./validators/resource-type-file.validator');
+        ResourceTypeFileValidator.mockImplementation(() => ({
+          isValid: jest.fn().mockResolvedValue(valid),
+          buildErrorMessage: jest.fn().mockReturnValue('invalid'),
+        }));
+      };
+
+      it('reserves the file size once, with no separate increment', async () => {
+        validatorPasses();
+        databaseService.file.create.mockResolvedValue({ id: 'f1' } as any);
+
+        await service.uploadFile(mockFile, createDto, mockUser);
+
+        expect(storageQuotaService.reserveStorage).toHaveBeenCalledWith(
+          mockUser.id,
+          mockFile.size,
+        );
+        expect(storageQuotaService.incrementUserStorage).not.toHaveBeenCalled();
+        expect(storageQuotaService.decrementUserStorage).not.toHaveBeenCalled();
+      });
+
+      it('answers 413 and stores nothing when the reservation does not fit', async () => {
+        validatorPasses();
+        storageQuotaService.reserveStorage.mockResolvedValue(false);
+
+        await expect(
+          service.uploadFile(mockFile, createDto, mockUser),
+        ).rejects.toThrow(PayloadTooLargeException);
+
+        expect(storageService.deleteFile).toHaveBeenCalledWith(mockFile.path);
+        expect(databaseService.file.create).not.toHaveBeenCalled();
+        expect(storageQuotaService.decrementUserStorage).not.toHaveBeenCalled();
+      });
+
+      it('reserves nothing for a file that fails validation', async () => {
+        validatorPasses(false);
+
+        await expect(
+          service.uploadFile(mockFile, createDto, mockUser),
+        ).rejects.toThrow(UnprocessableEntityException);
+
+        expect(storageQuotaService.reserveStorage).not.toHaveBeenCalled();
+      });
+
+      it('releases the reservation when the database insert fails', async () => {
+        validatorPasses();
+        databaseService.file.create.mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.uploadFile(mockFile, createDto, mockUser),
+        ).rejects.toThrow('db down');
+
+        expect(storageQuotaService.decrementUserStorage).toHaveBeenCalledWith(
+          mockUser.id,
+          mockFile.size,
+        );
+      });
+
+      it('releases the reservation when the S3 upload fails', async () => {
+        validatorPasses();
+        storageService.getDefaultStorageType.mockReturnValue(StorageType.S3);
+        mockS3Provider.writeStream.mockRejectedValue(new Error('S3 down'));
+
+        await expect(
+          service.uploadFile(mockFile, createDto, mockUser),
+        ).rejects.toThrow('S3 down');
+
+        expect(storageQuotaService.decrementUserStorage).toHaveBeenCalledWith(
+          mockUser.id,
+          mockFile.size,
+        );
+      });
     });
 
     it('should cleanup file if database insert fails', async () => {
@@ -1238,7 +1322,7 @@ describe('FileUploadService', () => {
       );
 
     afterEach(() => {
-      expect(storageQuotaService.incrementUserStorage).not.toHaveBeenCalled();
+      expect(storageQuotaService.reserveStorage).not.toHaveBeenCalled();
       expect(storageService.deleteFile).toHaveBeenCalledWith(mockFile.path);
     });
 
