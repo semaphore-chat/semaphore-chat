@@ -1,0 +1,29 @@
+# NSIS environment for the Windows installer: compile and inspect it on Linux.
+#
+# This image is only for native/scripts/package-windows.sh (its --in-image mode, used by
+# native/scripts/test-package-windows.sh) and never produces a Windows binary: the exe comes
+# from the Windows CI job, which runs the same script natively against the runner image's NSIS
+# (3.10, installed by actions/runner-images with Chocolatey and on PATH).
+#
+# Debian 12's `nsis` package is the stock compiler with its stock plug-ins (System, nsExec,
+# FileFunc, LogicLib, MUI2, ...). It is zlib-licensed; see packaging.md, "Licences of the
+# installer itself". No third-party NSIS plug-in is used, so nothing else is installed.
+#
+# Base digest: debian:12-slim @ 2026-11-12 (the same base as Dockerfile.package).
+FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+
+# nsis: makensis and its stock plug-ins. p7zip-full: `7z l` lists what an NSIS installer carries.
+# file: identify the compiled installer. coreutils (sha256sum) is in the base image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      nsis \
+      p7zip-full \
+      file \
+ && rm -rf /var/lib/apt/lists/*
+
+# makensis itself needs no HOME, but NSIS writes its temp files under $TMPDIR; keep them in /tmp.
+ENV TMPDIR=/tmp
+
+WORKDIR /work

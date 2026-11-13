@@ -1,8 +1,10 @@
 # Packaging the native client
 
 Linux packages are built by `native/scripts/package-linux.sh` and installed, checked and started
-by `native/scripts/test-packages.sh`. CI (`.github/workflows/native-package.yml`) runs both and
-uploads the artifacts; it never publishes a release or a repository.
+by `native/scripts/test-packages.sh`. The Windows installer is built by
+`native/scripts/package-windows.sh` and compiled and checked on Linux by
+`native/scripts/test-package-windows.sh`. CI (`.github/workflows/native-package.yml`) runs all
+of them and uploads the artifacts; it never publishes a release or a repository.
 
 The Electron app remains the reference for names and desktop integration: `Semaphore Chat`, the
 `semaphore://` scheme, `Network;InstantMessaging;AudioVideo;` and the same user-facing
@@ -216,6 +218,136 @@ upstream sources and the LiveKit prebuilt; a release that ships these packages s
 LGPL written offer (or ship the relinkable objects) and have that reviewed. This is listed under
 "Known gaps" below.
 
+## Windows installer
+
+`native/scripts/package-windows.sh` compiles `native/packaging/windows/installer.nsi` into
+`Semaphore-Chat-Native-Setup-<version>-x64.exe` and writes the matching
+`...x64.exe.sha256` (`sha256sum` format: `<hash>  <name>`). The Windows job of
+`native-package.yml` runs it on the runner image's NSIS (3.10, installed with Chocolatey and on
+`PATH`; see `actions/runner-images`, `images/windows/scripts/build/Install-NSIS.ps1`) after the
+dist exe is built, and uploads the installer and its hash next to the portable zip. The version
+comes from `PACKAGE_VERSION`; `--version` / `SEMAPHORE_VERSION` override it. The four-part
+file-version resource is derived from it (`1.2.3-rc.1` becomes `1.2.3.0`).
+
+The reference is the Electron installer, `frontend/electron-builder.yml` lines 54-66
+(`oneClick: false`, `allowToChangeInstallationDirectory: true`, `createDesktopShortcut`,
+`createStartMenuShortcut`, `shortcutName: Semaphore Chat`, `installerIcon`/`uninstallerIcon:
+build/icon.ico`) and electron-builder's NSIS templates; its behaviour is summarised below.
+
+| | Electron (electron-builder) | Native |
+|---|---|---|
+| Mode | assisted; per-user by default, an all-users option elevates through UAC | assisted; **per-user only**, `RequestExecutionLevel user`, never elevates |
+| Install directory | `%LOCALAPPDATA%\Programs\Semaphore Chat`, changeable on the directory page | the same |
+| Shortcuts | Start menu (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Semaphore Chat.lnk`) and desktop (`%USERPROFILE%\Desktop\Semaphore Chat.lnk`) | the same names and targets |
+| Add/Remove Programs | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<GUID>`: DisplayName `Semaphore Chat <version>`, DisplayVersion, Publisher, DisplayIcon, UninstallString, QuietUninstallString, EstimatedSize, NoModify/NoRepair | `HKCU\...\Uninstall\app.semaphorechat.semaphore` with the same value set |
+| `semaphore://` | `HKCU\Software\Classes\semaphore`: `URL Protocol`, `DefaultIcon`, `shell\open\command` = `"<exe>" "%1"` | the same values the app writes itself (`semaphore-platform-desktop/src/links.rs::registry_values`), so its own status check recognises the registration |
+| Run after finish | finish-page "Run" checkbox | the same |
+| Upgrade | closes the running app, runs the previous version's uninstaller silently, then installs | the same (`/S _?=<old dir>`) |
+| Compression | electron-builder's default (7z/LZMA) | solid LZMA (`SetCompressor /SOLID lzma`) |
+| Icon | `frontend/build/icon.ico` | the same file, copied unchanged to `native/packaging/windows/semaphore-chat.ico` (the Rust exe has no embedded icon resource) |
+| App id | `com.semaphorechat.app` | `app.semaphorechat.semaphore`, the native client's own id, so both apps can be installed side by side |
+
+The installer also:
+
+- closes the running `semaphore-app.exe` of the current user before touching its files: an
+  interactive install asks first and aborts with exit code 2 on Cancel; `/S` closes it without
+  asking; a graceful `taskkill` is retried, then a forced one, then it refuses with a message;
+- removes the previous version by running its uninstaller from `%TEMP%` with
+  `/S _?=<old install dir>`, and aborts with a clear message if that fails;
+- deletes the `semaphore://` key on uninstall **only** when it points at the installed exe, so
+  uninstalling the native client does not break an Electron install that owns the scheme;
+- never deletes the user's data directory (settings, session): Electron's
+  `deleteAppDataOnUninstall` defaults to false and this installer has no switch for it;
+- adds no services, scheduled tasks, firewall rules or `%PATH%` entries.
+
+### Silent switches
+
+| Switch | Effect |
+|---|---|
+| `/S` | Silent install or uninstall (no pages, no prompts; a running app is closed without asking) |
+| `/D=<dir>` | Install directory (NSIS convention: last argument, unquoted, absolute) |
+| `/currentuser` | Ignored (unknown switches are ignored); there is no all-users mode |
+| `Uninstall Semaphore Chat.exe /S` | Silent uninstall (`QuietUninstallString` points here) |
+
+There is no license page, matching the commented-out `license` option in
+`frontend/electron-builder.yml`; the third-party licences are installed as
+`THIRD-PARTY-LICENCES.txt` next to the exe (the zip and the Linux packages carry the same file).
+
+### Not done
+
+- **Signing.** The installer and the exe are unsigned, so SmartScreen warns and no auto-updater
+  can trust them. One clearly marked placeholder step in the workflow shows where `signtool`
+  goes (on the exe before packaging and on the installer after).
+- **Auto-update hook.** There is no `--updated` handling and no update manifest; `/S` is the
+  switch a future updater would use to install silently.
+- **MSI.** Not built. NSIS is what the Electron app ships, and WiX would need a second toolchain
+  for no user-visible gain.
+- **Per-machine install, AUMI, components page.** Electron's installer offers an all-users mode
+  by elevating; the native one is per-user only. electron-builder sets the AppUserModelID on the
+  shortcuts with the third-party `WinShell` plug-in; this installer uses stock NSIS only and does
+  not. There is no components page (Electron has none either without custom NSIS code).
+
+### Licences of the installer itself
+
+NSIS is zlib-licensed (`COPYING` in the NSIS distribution; Debian's `nsis` 3.08-3+deb12u1
+lists `Zlib` as its main licence). The script uses only the compiler's stock headers and
+plug-ins: `MUI2`, `LogicLib`, `x64`, `FileFunc`, `System.dll` and `nsExec.dll`, plus NSIS's own
+wizard bitmap. The solid-LZMA compressor is the LZMA SDK, covered by the package's
+`lzma-cpl-exception` stanza (the package also lists bzip2, Expat, NTP and wxWindows for other
+bundled pieces). These are compiler/runtime terms and add nothing to the installer or to the
+application it installs. No third-party NSIS plug-in (`nsProcess`, `WinShell`, `StdUtils`,
+`SpiderBanner`, ...) is used, so nothing else adds terms.
+`native/scripts/test-package-windows.sh` fails if one appears. The icon is the repository's own
+(`frontend/build/icon.ico`, the Electron installer's), not a new asset.
+
+### Verifying it on Linux
+
+`native/scripts/test-package-windows.sh` runs in `native/docker/Dockerfile.nsis` (Debian 12,
+stock NSIS 3.08, `7z`) with no network:
+
+- compiles the script with `-WX` (warnings are errors) for `0.10.0` and a prerelease
+  `1.2.3-rc.1`;
+- checks the artifact name, the `.sha256` content and `sha256sum -c`;
+- lists the installer with `7z` and requires the exe, `THIRD-PARTY-LICENCES.txt` and
+  `Uninstall Semaphore Chat.exe` inside, solid LZMA and NSIS-3 Unicode;
+- from the script text: every registry key written by the install section is deleted by the
+  uninstall section (directly or through a parent key), every `CreateShortCut` has a matching
+  `Delete`, each installed file has its own `Delete` and the directory is removed only if empty, `%APPDATA%` is never touched,
+  `semaphore://` has `"%1"`, and the Add/Remove Programs values exist.
+
+This proves the installer compiles and describes what it will do; it cannot install, start or
+uninstall it. That needs Windows.
+
+### After merge: check on the Windows runner
+
+The workflow uploads `native-windows-installer`; run these against a Windows machine (or a
+disposable VM) with the artifact from the *next* `native-package` run:
+
+1. Run `Semaphore-Chat-Native-Setup-<version>-x64.exe` interactively. The directory page shows
+   `%LOCALAPPDATA%\Programs\Semaphore Chat`; no UAC prompt; the finish-page Run box starts the
+   app; both shortcuts exist.
+2. Sign in, then open `semaphore://join/<code>` from `Start > Run`: the running app (or a fresh
+   one) receives the link. `reg query HKCU\Software\Classes\semaphore\shell\open\command`
+   shows `"<install dir>\semaphore-app.exe" "%1"`.
+3. Settings > Apps lists `Semaphore Chat <version>` with the icon, publisher and a non-zero
+   estimated size.
+4. Upgrade: install an older build, start it, then run the newer installer. The app closes
+   (after the OK prompt when interactive), the upgrade completes, there is still exactly one
+   entry in Settings > Apps, and the shortcuts still work.
+5. Silent: `Semaphore-Chat-Native-Setup-<version>-x64.exe /S /D=C:\Temp\sc-test`, exit code 0,
+   no window; then `"C:\Temp\sc-test\Uninstall Semaphore Chat.exe" /S`, exit code 0; the
+   directory, shortcuts, ARP entry and `HKCU\Software\app.semaphorechat.semaphore` are gone and
+   the app's data directory is still there.
+6. If the Electron app is installed too: note which app opens `semaphore://` after each install,
+   then uninstall the native client and confirm the Electron registration still works.
+
+### Known limits
+
+`windows-latest` currently runs two image generations (Windows Server 2022 and 2025), both
+listing NSIS 3.10; the job asserts `makensis -VERSION` before building. Debian's NSIS is 3.08,
+older than the runner's; the script uses only long-standing NSIS 3 features, and the `-WX`
+compile on both versions is the guard.
+
 ## CI
 
 `.github/workflows/native-package.yml` has two jobs:
@@ -226,20 +358,23 @@ LGPL written offer (or ship the relinkable objects) and have that reviewed. This
   `fxc.exe` and vendored-renderer checks as `native-spike.yml`, `cargo build --locked --profile
   dist -p semaphore-app` with `SEMAPHORE_PACKAGED=1`, `dumpbin /dependents` (fails if a
   non-system DLL is needed), and a zip with the exe, both licence files, the generated
-  third-party list and a README, uploaded as `native-windows-portable`.
+  third-party list and a README, uploaded as `native-windows-portable`. Then it asserts
+  `makensis -VERSION`, runs `scripts/package-windows.sh` (the installer and its `.sha256`) and
+  uploads them as `native-windows-installer`. Signing is a clearly marked placeholder step, not
+  a build step (see "Windows installer", "Not done").
 
 Triggers: `workflow_dispatch` (optional `version` input) and pull requests whose paths match the
-packaging scripts, the package Dockerfile, this document, the app crate, the workspace manifests
-or the workflow itself. There is no `push`/tag trigger. Workflow permissions are
-`contents: read`, and the jobs only upload artifacts: no release, tag, registry push or publish
-step. Actions are pinned to full commit SHAs (`actions/checkout` v7 and
-`actions/upload-artifact` v7).
+packaging scripts, the package Dockerfiles, the NSIS script and its icon, this document, the app
+crate, the workspace manifests, the app's `semaphore://` registration or the workflow itself.
+There is no `push`/tag trigger. Workflow permissions are `contents: read`, and the jobs only
+upload artifacts: no release, tag, registry push or publish step. Actions are pinned to full
+commit SHAs (`actions/checkout` v7 and `actions/upload-artifact` v7).
 
 ## Known gaps
 
 - **Code signing.** Linux packages and the AppImage are unsigned; there is no apt/rpm repository
-  or signed AppImage. The Windows exe is unsigned, so SmartScreen will warn; the RPM test installs with
-  `--nogpgcheck` for the same reason. A release needs a signing key and a signed update manifest
+  or signed AppImage. The Windows exe and the NSIS installer are unsigned, so SmartScreen will
+  warn; the RPM test installs with `--nogpgcheck` for the same reason. A release needs a signing key and a signed update manifest
   before auto-update can be safe.
 - **Auto-update.** Not implemented. The Electron app uses electron-updater against GitHub
   Releases; the native client would need a signed manifest plus per-format installation.
@@ -247,16 +382,20 @@ step. Actions are pinned to full commit SHAs (`actions/checkout` v7 and
   Linux and Windows only.
 - **Flatpak.** Not built. It would need a manifest, the PipeWire and screen-capture portal
   permissions, and a keyring path that works inside the sandbox.
-- **Windows installer.** The workflow produces a portable zip, not an MSI/NSIS installer. An
-  installer needs WiX (or `cargo-wix`) or NSIS, Start menu and desktop shortcuts, the
-  `semaphore://` registry keys (the app already writes them on first start when
-  `SEMAPHORE_PACKAGED=1`), and Authenticode signing. No paid tool is required.
+- **Windows installer signing, MSI and update hook.** The NSIS installer is built and checked,
+  but it is unsigned (SmartScreen warns; no updater can trust it), there is no MSI and no
+  auto-update integration beyond `/S`. It is per-user only: there is no elevated all-users mode,
+  and no AppUserModelID on the shortcuts (that needs a third-party NSIS plug-in). See "Windows
+  installer", "Not done".
 - **Distribution.** The packages are artifacts only. There is no apt repository, no dnf
   repository, no GitHub Release and no AppImage update feed.
 - **Coexistence with Electron.** Both applications register `semaphore://` and install a
-  `.desktop` entry; whichever desktop environment chooses last wins. The native package's entry
-  is detected as packaged, so the app does not overwrite it in `~/.local/share`. The packages use
-  different ids, so both can be installed at once.
+  `.desktop` entry on Linux; whichever desktop environment chooses last wins. The native
+  package's entry is detected as packaged, so the app does not overwrite it in
+  `~/.local/share`. The packages use different ids, so both can be installed at once. On
+  Windows the native installer writes the same `HKCU\Software\Classes\semaphore` values the
+  app does, and its uninstaller removes that key only when it points at the native exe, so
+  uninstalling the native client leaves an Electron-owned registration intact.
 - **Older distributions.** The highest symbol version is `GLIBC_2.35`, so Ubuntu 22.04 (2.35)
   should work but is not in the test matrix; Ubuntu 20.04 and Debian 11 (2.31) are not
   supported. Supporting them needs an older build image (or a zig/musl build, which libwebrtc's
