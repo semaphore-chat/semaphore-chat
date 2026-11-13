@@ -78,6 +78,11 @@ wait core w7 picker results >= 20 within 10
 click gif-more
 wait core w7 picker results >= 30 within 10
 expect requests GifsController_featured >= 2
+# Escape still closes it after its own "Load more" was clicked (focus stays in the picker); reopen.
+press escape
+wait core w7 picker closed
+click composer-gif
+wait core w7 picker open
 
 # 7. Its close button closes it; opened again, Escape does, and the typing goes back to the
 # composer.

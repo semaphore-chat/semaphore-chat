@@ -6,6 +6,7 @@
 use super::DashboardPage;
 use super::fixtures::*;
 use crate::stories::{Story, StoryEnv};
+use crate::theme::SemTheme;
 use gpui_kit::*;
 use semaphore_core::model::{AdminDashboardView, AttentionSeverity, InstanceAdminCaps};
 
@@ -22,6 +23,63 @@ fn page(
         page
     })
     .into()
+}
+
+/// The dashboard in the column the admin shell gives it: 260 px of page list at the left, then a
+/// content column at most 1100 px wide, as `AdminShell` lays them out on a desktop.
+struct InShell {
+    list: AnyView,
+    page: AnyView,
+}
+
+impl Render for InShell {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sem = cx.sem().clone();
+        div()
+            .size_full()
+            .flex()
+            .bg(sem.background_default)
+            .child(
+                div()
+                    .w(px(super::SHELL_LIST))
+                    .flex_shrink_0()
+                    .h_full()
+                    .bg(sem.paper)
+                    .border_r_1()
+                    .border_color(sem.divider)
+                    .child(self.list.clone()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .w_full()
+                            .max_w(px(super::SHELL_CONTENT_MAX))
+                            .h_full()
+                            .child(self.page.clone()),
+                    ),
+            )
+    }
+}
+
+/// An empty stand-in for the page list.
+struct List;
+
+impl Render for List {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
+fn in_shell(view: AdminDashboardView, window: &mut Window, cx: &mut App) -> AnyView {
+    let page = page(owner(), view, window, cx);
+    let list: AnyView = cx.new(|_| List).into();
+    cx.new(|_| InShell { list, page }).into()
 }
 
 type Build = fn(&StoryEnv, &mut Window, &mut App) -> AnyView;
@@ -83,6 +141,16 @@ pub(super) fn stories() -> Vec<Story> {
         }),
         ("admin-dashboard-long", |_, w, cx| {
             page(owner(), long_view(), w, cx)
+        }),
+        ("admin-dashboard-in-shell", |_, w, cx| {
+            in_shell(
+                ready(Some(storage(42., 3)), vec![over_quota_item("3", false)]),
+                w,
+                cx,
+            )
+        }),
+        ("admin-dashboard-in-shell-long", |_, w, cx| {
+            in_shell(long_view(), w, cx)
         }),
         ("admin-dashboard-no-disk", |_, w, cx| {
             page(owner(), no_disk_view(), w, cx)
