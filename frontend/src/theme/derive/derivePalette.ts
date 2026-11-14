@@ -70,6 +70,12 @@ export function derivePalette(
   mode: ModeName,
   intensity: IntensityName,
 ): Palette {
+  if (!Object.prototype.hasOwnProperty.call(colourParams.modes, mode)) {
+    throw new RangeError(`unknown colour mode: ${String(mode)}`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(colourParams.intensity, intensity)) {
+    throw new RangeError(`unknown colour intensity: ${String(intensity)}`);
+  }
   const p = colourParams.modes[mode];
   const direction = mode === 'dark' ? 1 : -1;
   const [Lb, Cb, h] = toOklch(parseHex(base));

@@ -624,12 +624,26 @@ def _number_list(values: list[int | float]) -> str:
     return "[" + ", ".join(fmt_num(value) for value in values) + "]"
 
 
+def _rs_number_list(values: list[int | float]) -> str:
+    """An `[f64; N]` literal: every element a float, `[0.2, 0.0]`."""
+    return "[" + ", ".join(_rs_float(value) for value in values) + "]"
+
+
 def render_colour_params_ts(sources: dict) -> str:
     """Render the derivation parameters for the web client: tuples, `as const`."""
     colour = sources["colour"]
     lines = [COLOUR_HEADER, "", "export const colourRoles = ["]
     lines.extend(f"  {_ts_string(role)}," for role in ROLES)
-    lines.extend(["] as const;", "", "export const colourParams = {"])
+    lines.extend(["] as const;", ""])
+    lines.append(
+        "export const colourModes = [" + ", ".join(_ts_string(m) for m in COLOUR_MODES) + "] as const;"
+    )
+    lines.append(
+        "export const colourIntensities = ["
+        + ", ".join(_ts_string(i) for i in COLOUR_INTENSITIES)
+        + "] as const;"
+    )
+    lines.extend(["", "export const colourParams = {"])
     lines.append(f"  chromaReference: {fmt_num(colour['chromaReference'])},")
     lines.append("  intensity: {")
     lines.extend(
@@ -693,8 +707,8 @@ def _rs_rgba(value: str) -> str:
 def render_colour_params_rs(sources: dict) -> str:
     """Render the derivation parameters for the Rust client: `f64`, `u32` hex."""
     colour = sources["colour"]
-    ink = _number_list(colour["ink"])
-    paper = _number_list(colour["paper"])
+    ink = _rs_number_list(colour["ink"])
+    paper = _rs_number_list(colour["paper"])
     status = ", ".join(_rs_rgb(colour["status"][name]) for name in COLOUR_STATUS)
     lines = [
         COLOUR_HEADER,
@@ -741,7 +755,7 @@ def render_colour_params_rs(sources: dict) -> str:
             ]
         )
         lines.extend(
-            f"    {field}: {_number_list(mode[source])}," for field, source, _ in RS_MODE_PARAMS
+            f"    {field}: {_rs_number_list(mode[source])}," for field, source, _ in RS_MODE_PARAMS
         )
         lines.append("};")
     return "\n".join(lines) + "\n"

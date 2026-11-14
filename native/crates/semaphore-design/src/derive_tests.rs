@@ -37,7 +37,18 @@ fn derive_default_is_the_approved_palette() {
 fn derive_parse_base_accepts_only_rrggbb() {
     assert_eq!(parse_base("#8e75ff"), Some(Rgba(0x8E75FFFF)));
     assert_eq!(parse_base("#8E75FF"), Some(Rgba(0x8E75FFFF)));
-    for bad in ["", "#fff", "red", "#8E75FF00", "8E75FF", "#8E75FG"] {
+    for bad in [
+        "",
+        "#fff",
+        "red",
+        "#8E75FF00",
+        "8E75FF",
+        "#8E75FG",
+        "#8E75FF ",
+        " #8E75FF",
+        "#8E75Fé",
+        "#€5FF",
+    ] {
         assert_eq!(parse_base(bad), None, "{bad}");
     }
 }

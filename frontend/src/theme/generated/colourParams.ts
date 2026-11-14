@@ -20,6 +20,9 @@ export const colourRoles = [
   'scrim',
 ] as const;
 
+export const colourModes = ['dark', 'light'] as const;
+export const colourIntensities = ['minimal', 'balanced', 'vibrant'] as const;
+
 export const colourParams = {
   chromaReference: 0.197,
   intensity: {

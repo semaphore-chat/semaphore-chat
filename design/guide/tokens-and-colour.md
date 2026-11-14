@@ -181,9 +181,10 @@ hairline. At minimal they are close to plain grey. At vibrant they carry a
 clear tint of the base colour. The tint multipliers are 1 for minimal, 2.5 for
 balanced and 5 for vibrant.
 
-Intensity does not change text, textSecondary, textDim, the accent or the
-status colours. Those keep their own lightness. (A very dull base colour
-gives less tint at every intensity.)
+Intensity tints only ground, surface, fill and hairline. The other roles keep
+their own lightness, nudged only as far as needed to keep their contrast on the
+tinted backgrounds. (A very dull base colour gives less tint at every
+intensity.)
 
 ## Rules
 

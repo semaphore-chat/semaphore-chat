@@ -428,6 +428,13 @@ class RenderColourParamsTsTest(unittest.TestCase):
         self.assertIn("scrim: [0.142, 0.0178, 0.6],", self.rendered)
         self.assertTrue(self.rendered.endswith("} as const;\n"))
 
+    def test_ts_params_export_the_valid_mode_and_intensity_names(self):
+        self.assertIn("export const colourModes = ['dark', 'light'] as const;", self.rendered)
+        self.assertIn(
+            "export const colourIntensities = ['minimal', 'balanced', 'vibrant'] as const;",
+            self.rendered,
+        )
+
     def test_ts_params_are_deterministic(self):
         self.assertEqual(self.rendered, gen.render_colour_params_ts(self.sources))
 
@@ -506,6 +513,17 @@ class RenderColourVectorsRsTest(unittest.TestCase):
             "&[(&str, crate::Mode, crate::Intensity, [u32; 16])] = &[",
             self.rendered,
         )
+
+
+class RenderColourParamsRsWholeNumberTest(TempSource):
+    def test_whole_numbers_render_as_rust_floats(self):
+        self.edit_colour(set_value("ink", [0.2, 0]))
+        self.edit_colour(set_value("modes.dark.scrim", [0.142, 0.0178, 1]))
+        rendered = gen.render_colour_params_rs(
+            {"tokens": gen.load(REAL), "colour": self.load_colour()}
+        )
+        self.assertIn("pub const INK: [f64; 2] = [0.2, 0.0];", rendered)
+        self.assertIn("scrim: [0.142, 0.0178, 1.0],", rendered)
 
 
 class RenderColourParamsRsTest(unittest.TestCase):

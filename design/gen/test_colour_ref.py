@@ -64,7 +64,7 @@ INTENSITIES = ("minimal", "balanced", "vibrant")
 
 
 def _hex(rgb: tuple[float, float, float]) -> str:
-    """An HSV triple from `colorsys` as `#rrggbb`, rounded like the reference."""
+    """An HSV triple from `colorsys` as `#rrggbb`, converted with `round()`."""
     channels = (int(round(value * 255)) for value in rgb)
     return "#%02x%02x%02x" % tuple(channels)
 
@@ -132,6 +132,9 @@ class ContrastRulesTest(unittest.TestCase):
                     for background in ("ground", "surface"):
                         check("textDim", background, 4.5)
                         check("accent", background, 3.0)
+                    for background in ("ground", "surface", "fill"):
+                        check("accentText", background, ref.PARAMS["accentTextContrast"])
+                        check("focus", background, 3.0)
                     check("onAccent", "accent", 4.5)
                     check("onDanger", "danger", 4.5)
 

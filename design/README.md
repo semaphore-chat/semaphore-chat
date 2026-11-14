@@ -18,6 +18,9 @@ every registered output through the `OUTPUTS` mapping:
 |`native/crates/semaphore-design/src/lounge.rs`|Rust client (`semaphore_design::lounge`)|
 |`design/vectors/colour.json`|the shared palette vectors, the contract for the ports|
 |`frontend/src/theme/generated/colourVectors.ts`|web client (`export const colourVectors`, the same vectors)|
+|`frontend/src/theme/generated/colourParams.ts`|web client (`colourParams`, `colourRoles`, `colourModes`, `colourIntensities`: the derivation parameters)|
+|`native/crates/semaphore-design/src/colour_params.rs`|Rust client (the derivation parameters as `f64` constants)|
+|`native/crates/semaphore-design/src/colour_vectors.rs`|Rust client (the shared vectors, test-only)|
 
 ## Units
 

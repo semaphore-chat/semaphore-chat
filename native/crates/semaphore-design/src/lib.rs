@@ -6,6 +6,9 @@
 //! `assets/` by hand.
 //!
 //! `lounge` is generated from `design/tokens.json`, not from the web client at the pin.
+//! `colour_params` and the test-only `colour_vectors` are generated from `design/` by
+//! `design/gen/gen_tokens.py` too. `derive` is the hand-written palette derivation, a port of
+//! `design/gen/colour_ref.py`.
 //!
 //! No dependencies, and no GPUI: this is the data, not the mapping onto a renderer (see unit U8).
 //! See `native/docs/slice-units/U2-design.md`.

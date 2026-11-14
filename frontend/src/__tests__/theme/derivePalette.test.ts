@@ -1,4 +1,5 @@
 import { it, expect } from 'vitest';
+import { colourIntensities, colourModes } from '../../theme/generated/colourParams';
 import { colourVectors } from '../../theme/generated/colourVectors';
 import { derivePalette } from '../../theme/derive/derivePalette';
 import type { ColourRole } from '../../theme/derive/derivePalette';
@@ -104,4 +105,17 @@ it('keeps text readable for every hue', () => {
       }
     }
   }
+});
+
+it('rejects a mode that is not a colour mode', () => {
+  expect(() => derivePalette('#8E75FF', 'sepia' as never, 'minimal')).toThrow(RangeError);
+});
+
+it('rejects an intensity that is not a colour intensity', () => {
+  expect(() => derivePalette('#8E75FF', 'dark', 'loud' as never)).toThrow(RangeError);
+});
+
+it('exports the valid colour mode and intensity names', () => {
+  expect(colourModes).toEqual(['dark', 'light']);
+  expect(colourIntensities).toEqual(['minimal', 'balanced', 'vibrant']);
 });
