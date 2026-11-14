@@ -196,7 +196,13 @@ export class FileUploadService {
           );
 
       // Generate checksum (streamed — never buffers the whole file)
-      const checksum = await this.generateChecksum(file.path);
+      let checksum: string;
+      try {
+        checksum = await this.generateChecksum(file.path);
+      } catch (checksumError) {
+        await releaseReservation();
+        throw checksumError;
+      }
 
       // Determine file type from MIME type
       const fileType = this.getFileTypeFromMimeType(file.mimetype);
