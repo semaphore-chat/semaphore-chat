@@ -367,7 +367,10 @@ is shorter than 32 characters
 {{- fail (printf "semaphore-chat: secrets.jwtSecret and secrets.jwtRefreshSecret are the same value; they must differ. %s" $fix) -}}
 {{- end -}}
 {{- end -}}
-{{- if and .Values.redis.bundled .Values.redis.auth.enabled (has (toString .Values.redis.auth.password) (list "" "changeme-redis-password")) -}}
+{{- /* Both passwords kept in Secrets (the backend's REDIS_PASSWORD in
+secrets.existingSecret, Bitnami's in redis.auth.existingSecret): nothing to check */ -}}
+{{- $redisInSecrets := and .Values.secrets.existingSecret .Values.redis.auth.existingSecret -}}
+{{- if and .Values.redis.bundled .Values.redis.auth.enabled (not $redisInSecrets) (has (toString .Values.redis.auth.password) (list "" "changeme-redis-password")) -}}
 {{- fail "semaphore-chat: redis.auth.password is empty or the old default; anyone in the cluster could use the bundled Redis. Generate one with: openssl rand -hex 24" -}}
 {{- end -}}
 {{- if and .Values.postgresql.bundled (not .Values.postgresql.auth.password) -}}

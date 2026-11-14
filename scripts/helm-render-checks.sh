@@ -137,6 +137,14 @@ expect_fail "default Redis password fails" 'redis.auth.password' \
   $VALID --set redis.auth.password=changeme-redis-password
 expect_fail "empty Redis password fails" 'redis.auth.password' $VALID --set redis.auth.password=
 expect_ok "Redis auth off needs no password" $VALID --set redis.auth.enabled=false --set redis.auth.password=
+expect_ok "Redis password in Secrets (secrets.existingSecret + redis.auth.existingSecret)" \
+  --set secrets.existingSecret=my-secrets --set redis.auth.existingSecret=redis-creds \
+  --set redis.auth.password= --set-string postgresql.auth.password=$PGPASS
+check "Redis existingSecret: Bitnami Redis reads it" has "$(echo "$OUT" | doc StatefulSet -redis-master)" 'name: redis-creds'
+expect_fail "redis.auth.existingSecret alone still needs the backend's password" 'redis.auth.password' \
+  $VALID --set redis.auth.existingSecret=redis-creds --set redis.auth.password=
+expect_fail "secrets.existingSecret alone still checks the bundled Redis password" 'redis.auth.password' \
+  --set secrets.existingSecret=my-secrets --set redis.auth.password= --set-string postgresql.auth.password=$PGPASS
 expect_fail "empty bundled PostgreSQL password fails" 'postgresql.auth.password' \
   $VALID --set-string postgresql.auth.password=
 expect_ok "networkPolicy off renders no NetworkPolicy" $VALID

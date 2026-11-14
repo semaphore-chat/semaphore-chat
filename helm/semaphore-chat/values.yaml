@@ -331,6 +331,9 @@ redis:
   # Authentication
   # Rendering fails when auth is on and the password is empty or the old
   # default (changeme-redis-password). Generate one: openssl rand -hex 24
+  # To keep it out of values instead, set Bitnami's auth.existingSecret
+  # together with secrets.existingSecret (holding REDIS_PASSWORD for the
+  # backend); the password check is skipped then.
   auth:
     enabled: true
     password: ""
