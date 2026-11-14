@@ -1,10 +1,8 @@
 //! Fetching queries into the cache, and what a UI reads about their load state.
 
-use super::{
-    MAX_MEMBERS, MEMBER_PAGE_SIZE, MENTION_SEARCH_LIMIT, core_error_view, key_for, view_for,
-};
+use super::{MAX_MEMBERS, MEMBER_PAGE_SIZE, MENTION_SEARCH_LIMIT, core_error_view, key_for};
 use crate::cache::{CacheValue, MemberPages, QueryKey, keys};
-use crate::client::Core;
+use crate::client::{Core, State};
 use crate::model::{LoadState, SessionState, SignOutReason, ViewKey};
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
@@ -64,10 +62,10 @@ impl Core {
                     }
                 }
                 Err(error) => {
-                    let view = view_for(&key);
+                    let shown = State::shows_failure(&key);
                     let retry_at = state.failed_queries.record(
                         key.clone(),
-                        view.as_ref().map(|_| core_error_view(&error)),
+                        shown.then(|| core_error_view(&error)),
                         class,
                         now,
                         state.retry_seed,
@@ -77,7 +75,7 @@ impl Core {
                         state.failed_queries.attempts(&key),
                         retry_at.saturating_sub(now)
                     );
-                    if let Some(view) = view {
+                    for view in state.views_showing(&key) {
                         state.view_changed(view);
                     }
                 }

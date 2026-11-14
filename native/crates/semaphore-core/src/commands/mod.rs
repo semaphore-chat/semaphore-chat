@@ -79,6 +79,12 @@ fn jwt_expiry_ms(token: &str) -> Option<u64> {
     claims.get("exp")?.as_u64()?.checked_mul(1000)
 }
 
+/// Queries more than one view shows a loading or failed state for, rather than one [`view_for`]:
+/// the presence map, which every open members panel needs before it can say who is online.
+fn fans_out(key: &QueryKey) -> bool {
+    key.op() == keys::PRESENCE
+}
+
 /// The view that shows a query's data, for the queries a UI shows a loading or failed state for.
 fn view_for(key: &QueryKey) -> Option<ViewKey> {
     let id = || key.segments.get(1).cloned().unwrap_or_default();
@@ -212,10 +218,25 @@ impl State {
     /// showing. The rest go on their next read.
     pub(crate) fn retry_failed_queries(&mut self) {
         for key in self.failed_queries.drain_shown() {
-            if let Some(view) = view_for(&key) {
+            for view in self.views_showing(&key) {
                 self.view_changed(view);
             }
             self.ensure_query(key);
+        }
+    }
+
+    /// Whether a failure of this query is shown, and so kept as an error and retried by the timer.
+    pub(crate) fn shows_failure(key: &QueryKey) -> bool {
+        fans_out(key) || view_for(key).is_some()
+    }
+
+    /// The views that show this query's loading or failed state: its [`view_for`], or for a query
+    /// that fans out, every view reading it (the reconnect table's mapping).
+    pub(crate) fn views_showing(&self, key: &QueryKey) -> Vec<ViewKey> {
+        if fans_out(key) {
+            self.views_reading(key)
+        } else {
+            view_for(key).into_iter().collect()
         }
     }
 
