@@ -12,6 +12,10 @@ publish.workspace = true
 # builds, and install it in `install_crypto_provider`.
 reqwest = { workspace = true, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# The update feed's Ed25519 signature (`ed25519`). The ring rustls already builds, so nothing new
+# is compiled; it lives here rather than in semaphore-platform-desktop because ring needs MSVC
+# headers, which that crate's Windows check in the build image doesn't have.
+ring = "0.17"
 # REST and the socket share one rustls config over this, so they trust the same roots: the OS's.
 rustls-platform-verifier = "0.7"
 async-trait.workspace = true
@@ -26,6 +30,8 @@ uuid = { version = "1", features = ["v4"] }
 log.workspace = true
 
 [dev-dependencies]
+# The update-signature tests decode a signature to tamper with it.
+base64 = "0.22"
 semaphore-fake-server = { path = "../semaphore-fake-server" }
 # W3: sign in with browser end to end on the real loopback listener.
 semaphore-platform-desktop = { path = "../semaphore-platform-desktop" }

@@ -1,0 +1,2 @@
+# Signed bytes: never let git rewrite line endings.
+* -text

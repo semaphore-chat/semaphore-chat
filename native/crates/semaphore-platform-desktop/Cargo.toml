@@ -22,6 +22,10 @@ reqwest.workspace = true
 semver = "1"
 sha2 = "0.10"
 url = "2"
+# The update feed's signature file and an override public key are base64 (already in Cargo.lock).
+# The Ed25519 check itself is handed in by the app (`update::Ed25519Verify`): ring needs MSVC
+# headers, which this crate's Windows check in the build image doesn't have.
+base64 = "0.22"
 # The sign-in-with-browser listener (`loopback`). Not zbus: see the Linux section below.
 tokio = { workspace = true, features = ["io-util", "net", "rt", "time"] }
 

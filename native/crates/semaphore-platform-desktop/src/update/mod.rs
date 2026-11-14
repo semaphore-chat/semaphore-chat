@@ -13,6 +13,7 @@
 //!
 //! - [`version`]: what a release calls itself, and which of two is newer.
 //! - [`manifest`]: the JSON release document, validated strictly.
+//! - [`signature`]: the feed's Ed25519 signature, the keys it is checked against, and when.
 //! - [`install`]: what kind of install this is, from an injectable environment.
 //! - [`download`]: streaming to a temporary file, the SHA-256 check, and the AppImage swap.
 //! - [`state`]: [`state::UpdateState`], [`state::Updater`] and the check schedule.
@@ -25,6 +26,7 @@
 pub mod download;
 pub mod install;
 pub mod manifest;
+pub mod signature;
 pub mod state;
 pub mod version;
 
@@ -37,7 +39,11 @@ pub use download::{
 pub use install::{InstallEnv, InstallKind, PackageFamily, ReadyAction, RpmManager};
 pub use manifest::{
     Arch, Artifact, ArtifactKind, MAX_ARTIFACT_SIZE, MAX_MANIFEST_BYTES, ManifestError,
-    ReleaseManifest, Sha256Digest, feed_url_is_trusted, is_trusted_url, verify_signature,
+    ReleaseManifest, Sha256Digest, feed_url_is_trusted, is_trusted_url,
+};
+pub use signature::{
+    BadOverrideKey, Ed25519Verify, FeedSource, MAX_SIGNATURE_BYTES, PublicKey, SignatureCheck,
+    SignatureError, TrustedKeys, signature_policy, signature_url, verify_signature,
 };
 pub use state::{Schedule, UpdateConfig, UpdateSink, UpdateState, Updater, drive};
 pub use version::{VersionError, is_newer, parse_version};
