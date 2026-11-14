@@ -213,8 +213,8 @@ importers:
         specifier: ^3.1.0
         version: 3.1.0(jest@30.5.2(@types/node@24.19.1)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.16.13)(@types/node@24.19.1)(typescript@5.9.3)))
       '@suites/unit':
-        specifier: ^3.1.1
-        version: 3.1.1
+        specifier: ^4.1.2
+        version: 4.1.2
       '@swc/cli':
         specifier: ^0.8.1
         version: 0.8.1(@swc/core@1.16.13)(chokidar@5.0.0)
@@ -3818,6 +3818,10 @@ packages:
     resolution: {integrity: sha512-2aG83BiIuOOVwu8Joisi4soSMI2isYBR8wJXWq+jInWOFCtQq+6cFwhXmpqRheMX0aKk7kb14HpclclMvpK3nQ==}
     engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
 
+  '@suites/core.unit@4.1.2':
+    resolution: {integrity: sha512-1/AC1/wudDfp+EM5ocKrf7UGNI41SWDqu7deVWDTW85HZFf6nvuc1CVXZcnMYmCHC4GduZM7y0pMloJv3GhYRw==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
+
   '@suites/di.nestjs@3.1.0':
     resolution: {integrity: sha512-SKPdfqZRqjDKRfte8Id1xvmhCNOSSnDSFS68Qcw04IirnUEAAm/wjJBv3Bo8tH/YjzlZkAjzpapZTiWePSM9qg==}
     engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
@@ -3835,16 +3839,28 @@ packages:
     resolution: {integrity: sha512-4OW/FKP78HZiUjSeAq6ix/lj2s4vEU4IqFr09LLmQC77v1Rv5vEW1LZLxrRVlP2jeWsxuVka6WX2k7k3HJDu9A==}
     engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
 
+  '@suites/types.common@4.0.2':
+    resolution: {integrity: sha512-z4mF2AK0Daf/YCfranmJqiRGNze1vmVbJXuD5rDZnT8MdPbQ/9dDWRrcp6qchiS36BGA8+rcfYqvQKHrAOjSgg==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
+
   '@suites/types.di@3.1.0':
     resolution: {integrity: sha512-ng/so6i2dbvSUyCAN/UhLO0N/72B08XycXBCUGmE6CK2OgzNGPjTjcIN1moljyUzZQBYHvYSdUju2aZ6Fh2tOA==}
     engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
 
+  '@suites/types.di@4.1.2':
+    resolution: {integrity: sha512-Gq7gAM0HPqJXTMjB2EClpqg/dpOWI6tTKNUFBMkqQBG+1UgpJkqxOpA6IhWp9o3VROaCRc5y35x6tcme/xLvYg==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
+
   '@suites/types.doubles@3.1.0':
     resolution: {integrity: sha512-VhEtcgUPYe1L0xLie2VrqO8b+EPCdVnU30qS//nQA9UtRYA3dRqENNGI6ktmfKAvUKC9ToJdwE/B/TohZt290A==}
 
-  '@suites/unit@3.1.1':
-    resolution: {integrity: sha512-gHnAj4Xx5ckFjpo8jhHyriiqdpDXjFmwBTDht1T/czhTv1P3U2rZdEtwyWQISkgJFvxQjC6hfS7GftAKYgehjA==}
-    engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
+  '@suites/types.doubles@4.0.2':
+    resolution: {integrity: sha512-/fV95V6EZojcZoTXscuMbgbwIoieNXdGD6x3omTRwpaP+sjLSwpxrQjqTB1YepML5kEmZaor+ZeVOxwkpVDufQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
+
+  '@suites/unit@4.1.2':
+    resolution: {integrity: sha512-TLyiOXa4myRQXI0FyaX3/3c6D18ai3zepL6h3fQrEUjrL4s6S2Yn3VEjPVxC7OOPdPGMB+uqaFPqADtyr1onPQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
 
   '@swc/cli@0.8.1':
     resolution: {integrity: sha512-L+ACCGHCiS0VqHVep/INLVnvRvJ2XooQFLZq4L8snhxw1jsqz+XRcY313UsyPVturPPE1shW3jic7rt3qEQTSQ==}
@@ -13654,6 +13670,12 @@ snapshots:
       '@suites/types.di': 3.1.0
       '@suites/types.doubles': 3.1.0
 
+  '@suites/core.unit@4.1.2':
+    dependencies:
+      '@suites/types.common': 4.0.2
+      '@suites/types.di': 4.1.2
+      '@suites/types.doubles': 4.0.2
+
   '@suites/di.nestjs@3.1.0(@nestjs/common@12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)':
     dependencies:
       '@nestjs/common': 12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -13671,20 +13693,30 @@ snapshots:
 
   '@suites/types.common@3.1.0': {}
 
+  '@suites/types.common@4.0.2': {}
+
   '@suites/types.di@3.1.0':
     dependencies:
       '@suites/types.common': 3.1.0
+
+  '@suites/types.di@4.1.2':
+    dependencies:
+      '@suites/types.common': 4.0.2
 
   '@suites/types.doubles@3.1.0':
     dependencies:
       '@suites/types.common': 3.1.0
 
-  '@suites/unit@3.1.1':
+  '@suites/types.doubles@4.0.2':
     dependencies:
-      '@suites/core.unit': 3.1.0
-      '@suites/types.common': 3.1.0
-      '@suites/types.di': 3.1.0
-      '@suites/types.doubles': 3.1.0
+      '@suites/types.common': 4.0.2
+
+  '@suites/unit@4.1.2':
+    dependencies:
+      '@suites/core.unit': 4.1.2
+      '@suites/types.common': 4.0.2
+      '@suites/types.di': 4.1.2
+      '@suites/types.doubles': 4.0.2
 
   '@swc/cli@0.8.1(@swc/core@1.16.13)(chokidar@5.0.0)':
     dependencies:
