@@ -9,12 +9,13 @@ import type {
 import ButtonBase from '@mui/material/ButtonBase';
 import CircularProgress from '@mui/material/CircularProgress';
 import { styled } from '@mui/material/styles';
-import type { Palette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
+import { buttonLook, type ButtonVariant } from './buttonLook';
 
-export type ButtonVariant = 'primary' | 'soft' | 'ghost' | 'danger' | 'quietDanger' | 'text';
+export type { ButtonVariant } from './buttonLook';
+
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps {
@@ -36,69 +37,6 @@ export interface ButtonProps {
   'aria-controls'?: AriaAttributes['aria-controls'];
   'aria-pressed'?: AriaAttributes['aria-pressed'];
   children: ReactNode;
-}
-
-/** A variant's paint: the resting fill and label, plus the tint and alphas of its states. */
-export interface ButtonLook {
-  background: string;
-  label: string;
-  stateBase: string;
-  hover: number;
-  pressed: number;
-}
-
-/**
- * The six variants' colours. `stateBase` is what hover and pressed tint: the
- * resting fill, or for a transparent fill the surface behind it.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- exported for the unit test; not re-exported from the kit index.
-export function buttonLook(palette: Palette, variant: ButtonVariant): ButtonLook {
-  const { state } = tokens;
-  const looks: Record<ButtonVariant, ButtonLook> = {
-    primary: {
-      background: palette.accent,
-      label: palette.onAccent,
-      stateBase: palette.accent,
-      hover: state.hoverOnFill,
-      pressed: state.pressedOnFill,
-    },
-    danger: {
-      background: palette.danger,
-      label: palette.onDanger,
-      stateBase: palette.danger,
-      hover: state.hoverOnFill,
-      pressed: state.pressedOnFill,
-    },
-    soft: {
-      background: palette.fill,
-      label: palette.text,
-      stateBase: palette.fill,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-    quietDanger: {
-      background: palette.fill,
-      label: palette.danger,
-      stateBase: palette.fill,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-    ghost: {
-      background: 'transparent',
-      label: palette.textSecondary,
-      stateBase: palette.surface,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-    text: {
-      background: 'transparent',
-      label: palette.accentText,
-      stateBase: palette.surface,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-  };
-  return looks[variant];
 }
 
 const PADDING: Record<ButtonSize, number> = {

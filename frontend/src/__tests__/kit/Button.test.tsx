@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import userEvent from '@testing-library/user-event';
 import { screen } from '@testing-library/react';
 import { Button, type ButtonVariant } from '../../kit';
-import { buttonLook } from '../../kit/controls/Button';
+import { buttonLook } from '../../kit/controls/buttonLook';
 import { derivePalette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
