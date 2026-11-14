@@ -177,6 +177,33 @@ def validate(data: object) -> dict:
     return data
 
 
+class _Object(dict):
+    """A parsed JSON object that remembers the keys it repeated."""
+
+    repeated: list
+
+
+def _object(pairs: list[tuple[str, object]]) -> dict:
+    """`object_pairs_hook`: a repeated key would silently keep only the last value."""
+    result = _Object()
+    result.repeated = []
+    for key, value in pairs:
+        if key in result:
+            result.repeated.append(key)
+        result[key] = value
+    return result
+
+
+def _reject_duplicates(value: object, path: str = "") -> None:
+    """Raise for the first repeated key, naming its dotted path."""
+    if not isinstance(value, _Object):
+        return
+    for key in value.repeated:
+        _fail(f"{path}{key}", "duplicate key")
+    for key, child in value.items():
+        _reject_duplicates(child, f"{path}{key}.")
+
+
 def load(path: Path) -> dict:
     """Parse and validate `design/tokens.json`; raise `TokenError` when it is wrong."""
     try:
@@ -184,11 +211,12 @@ def load(path: Path) -> dict:
     except OSError as error:
         raise TokenError(f"{path}: cannot read: {error.strerror}") from error
     try:
-        data = json.loads(text)
+        data = json.loads(text, object_pairs_hook=_object)
     except json.JSONDecodeError as error:
         raise TokenError(
             f"{path}:{error.lineno}:{error.colno}: invalid JSON: {error.msg}"
         ) from error
+    _reject_duplicates(data)
     return validate(data)
 
 
@@ -417,7 +445,11 @@ def main(argv: list[str]) -> int:
     if argv not in ([], ["--check"]):
         print(USAGE, file=sys.stderr)
         return 2
-    return run(ROOT, check=bool(argv))
+    try:
+        return run(ROOT, check=bool(argv))
+    except (TokenError, OSError, OverflowError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

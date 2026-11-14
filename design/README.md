@@ -17,7 +17,8 @@ registered output through the `OUTPUTS` mapping:
 
 ## Units
 
-- Everything is px, except:
+Everything is px, except:
+
 - `motion`: milliseconds.
 - `text.*.weight`: font weight, one of 400, 500, 600, 700.
 - `shadow.*.alpha`: opacity of black, 0 to 1.
@@ -32,8 +33,9 @@ python3 design/gen/gen_tokens.py          # rewrite every output
 python3 design/gen/gen_tokens.py --check  # verify, print stale/missing, exit 1
 ```
 
-Validation failures print a `TokenError` naming the dotted path (for
-example `text.body.font: unknown font 'bodyy'`) and nothing is written.
+A validation failure prints one line starting with `error:` that names the
+dotted path (for example `error: text.body.font: unknown font 'bodyy'`),
+exits 1, and writes nothing.
 
 Tests for the generator and its renderers:
 
