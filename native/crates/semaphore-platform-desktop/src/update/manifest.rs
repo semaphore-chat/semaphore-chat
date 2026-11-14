@@ -18,11 +18,10 @@
 //! for this build must have every field, a trusted URL, a 64-hex SHA-256 and a size that isn't
 //! absurd. Two artifacts for the same kind and arch are refused: there is no honest way to pick.
 //!
-//! **Trust.** For now it is the transport plus the hash, as with electron-updater: the manifest is
-//! read over HTTPS (or plain HTTP to a loopback address, which is how tests and rigs serve one),
-//! and the artifact must hash to the SHA-256 the manifest names. [`verify_signature`] is the one
-//! seam where a signed manifest would be checked, before any field is trusted; it is
-//! deliberately empty until there is a key to verify against.
+//! **Trust.** The manifest is read over HTTPS (or plain HTTP to a loopback address, which is how
+//! tests and rigs serve one), its detached Ed25519 signature is checked against the build's keys
+//! before this parser sees it ([`crate::update::signature`]), and the artifact must hash to the
+//! SHA-256 the manifest names.
 
 use crate::update::version::parse_version;
 use semver::Version;
@@ -44,6 +43,10 @@ pub enum ArtifactKind {
     Deb,
     Rpm,
     WindowsZip,
+    /// The NSIS installer (`Semaphore-Chat-Native-Setup-<version>-x64.exe`). Listed so the feed
+    /// describes every published file; no install kind downloads it yet (Windows is announced
+    /// only, and running the installer silently with `/S` is a later step).
+    WindowsNsis,
 }
 
 impl ArtifactKind {
@@ -54,6 +57,7 @@ impl ArtifactKind {
             "deb" => Some(Self::Deb),
             "rpm" => Some(Self::Rpm),
             "windows-zip" => Some(Self::WindowsZip),
+            "windows-nsis" => Some(Self::WindowsNsis),
             _ => None,
         }
     }
@@ -64,6 +68,7 @@ impl ArtifactKind {
             Self::Deb => "deb",
             Self::Rpm => "rpm",
             Self::WindowsZip => "windows-zip",
+            Self::WindowsNsis => "windows-nsis",
         }
     }
 
@@ -74,6 +79,7 @@ impl ArtifactKind {
             Self::Deb => "deb",
             Self::Rpm => "rpm",
             Self::WindowsZip => "zip",
+            Self::WindowsNsis => "exe",
         }
     }
 }
@@ -421,18 +427,6 @@ impl fmt::Display for ManifestError {
 
 impl std::error::Error for ManifestError {}
 
-/// The seam a signed manifest would be verified at.
-///
-/// Today trust is the transport (HTTPS, or loopback HTTP in a test) plus the SHA-256 the manifest
-/// names for the artifact, which is electron-updater's model with the GitHub provider. A signature
-/// (a minisign signature or a detached OpenPGP one, published next to the manifest) would be
-/// verified **here**, against `body` exactly as received and the URL it came from, before
-/// [`ReleaseManifest::parse`] trusts a single field. Nothing is implemented, and no key is
-/// invented: a signed release feed is a later decision, recorded in `docs/packaging.md`.
-pub fn verify_signature(_body: &[u8], _manifest_url: &str) -> Result<(), ManifestError> {
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -727,6 +721,33 @@ mod tests {
         ] {
             assert!(!feed_url_is_trusted(refused), "{refused}");
         }
+    }
+
+    /// The release feed lists both Windows files; the installer is a kind of its own.
+    #[test]
+    fn both_windows_kinds_parse() {
+        let artifacts = [
+            good("windows-zip", "x86_64"),
+            good("windows-nsis", "x86_64"),
+        ]
+        .join(",");
+        let manifest = ReleaseManifest::parse(document("1.4.0", &artifacts).as_bytes()).unwrap();
+        assert_eq!(manifest.artifacts.len(), 2);
+        assert!(
+            manifest
+                .artifact_for(ArtifactKind::WindowsNsis, Arch::X86_64)
+                .is_some()
+        );
+        for kind in [
+            ArtifactKind::AppImage,
+            ArtifactKind::Deb,
+            ArtifactKind::Rpm,
+            ArtifactKind::WindowsZip,
+            ArtifactKind::WindowsNsis,
+        ] {
+            assert_eq!(ArtifactKind::parse(kind.name()), Some(kind));
+        }
+        assert_eq!(ArtifactKind::WindowsNsis.extension(), "exe");
     }
 
     #[test]

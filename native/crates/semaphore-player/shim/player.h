@@ -22,6 +22,9 @@
 #define SP_E_ARG (-7)                   /* bad stream index, or a stream not enabled */
 #define SP_E_PIXEL_FORMAT (-8)          /* decoded, but not 8-bit 4:2:0 */
 
+/* FFmpeg's AV_PROFILE_UNKNOWN: the demuxer or decoder has not said which profile this is. */
+#define SP_PROFILE_UNKNOWN (-99)
+
 #define SP_KIND_OTHER 0
 #define SP_KIND_VIDEO 1
 #define SP_KIND_AUDIO 2
@@ -56,6 +59,9 @@ typedef struct sp_stream_info {
   int sample_rate;
   int channels;
   int64_t duration_us; /* -1 when the container doesn't say */
+  /* The demuxer's codec profile (FFmpeg's AVCodecParameters.profile: AAC-LC is 1, HE-AAC 4);
+   * SP_PROFILE_UNKNOWN when it says nothing. */
+  int profile;
 } sp_stream_info;
 
 /* Valid until the next sp_next_frame or sp_close on the same media. */
@@ -73,6 +79,8 @@ typedef struct sp_frame {
   int channels;
   int sample_rate;
   const float *pcm;
+  /* The decoder's profile for this frame (FFmpeg's AVCodecContext.profile). */
+  int profile;
 } sp_frame;
 
 typedef struct sp_media sp_media;
@@ -86,6 +94,13 @@ int sp_stream_count(const sp_media *media);
 int sp_stream_info_get(const sp_media *media, int index, sp_stream_info *out);
 /* Opens the stream's decoder. Frames come only from enabled streams. */
 int sp_enable(sp_media *media, int index);
+/* The stream's extradata (an AAC track's AudioSpecificConfig): 0, *data NULL and *size 0 when it
+ * has none. Valid while the media is open. */
+int sp_stream_extradata(const sp_media *media, int index, const uint8_t **data, int *size);
+/* The enabled decoder's profile (FFmpeg's AV_PROFILE_*), SP_PROFILE_UNKNOWN before it decides. */
+int sp_stream_profile(const sp_media *media, int index);
+/* Stops a stream's decoder for good: its packets are dropped from the next sp_next_frame on. */
+void sp_disable(sp_media *media, int index);
 /* The next decoded frame of any enabled stream, in demux order: SP_OK, SP_EOF or an error.
  * A packet a decoder rejects (corrupt) is skipped and counted; many in a row is SP_E_DECODE. */
 int sp_next_frame(sp_media *media, sp_frame *out);
@@ -111,6 +126,8 @@ int sp_decoder_receive(sp_decoder *decoder, sp_frame *out);
 /* Drops buffered input and output, as before a seek. */
 void sp_decoder_flush(sp_decoder *decoder);
 uint64_t sp_decoder_skipped(const sp_decoder *decoder);
+/* The decoder's profile once open (FFmpeg's AV_PROFILE_*), SP_PROFILE_UNKNOWN when unknown. */
+int sp_decoder_profile(const sp_decoder *decoder);
 
 int sp_i420_to_nv12(const sp_frame *frame, uint8_t *y, int y_stride, uint8_t *uv, int uv_stride);
 

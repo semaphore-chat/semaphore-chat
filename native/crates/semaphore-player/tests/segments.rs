@@ -2,7 +2,9 @@
 //! fixtures/gen.sh) served by a fake [`SegmentFetch`], decoded by [`Media::open_segments`] and
 //! played by [`DesktopPlayers`] into the virtual audio device. Three 10 s segments: red with a
 //! 440 Hz tone, green with 660 Hz, blue with 880 Hz; a keyframe every 2 s. Run with and without
-//! `--features aac`: without it the AAC stream is refused and video plays alone.
+//! the `aac` feature (on by default; `--no-default-features` turns it off): without it the AAC
+//! stream is refused and video plays alone. A segment whose ADTS headers say AAC Main (not LC)
+//! is refused the same way, with the video alone.
 
 use semaphore_core::player::{
     MediaPlayer, PlaybackSource, PlaybackState, PlayerError, PlayerEvent,
@@ -368,6 +370,66 @@ fn opus_in_ts_is_listed_and_refused_while_the_video_plays() {
 }
 
 #[test]
+fn aac_main_in_ts_is_listed_and_refused_while_the_video_plays() {
+    // The ADTS headers say Main (object type 1), which no build may decode (docs/player.md).
+    let fetch = Segments::new(vec![Ok(fixture("h264-aac-main.ts"))]);
+    let mut media =
+        Media::open_segments(fetch, vec![2 * S], Duration::ZERO, Cancel::default(), None).unwrap();
+    let streams = media.streams();
+    assert_eq!(
+        (streams[0].kind, streams[0].codec),
+        (Kind::Video, Codec::H264)
+    );
+    assert_eq!(
+        (streams[1].kind, streams[1].codec),
+        (Kind::Audio, Codec::Aac)
+    );
+    assert_eq!(media.enable(1), Err(Error::UnsupportedCodec));
+    assert!(media.enable(0).is_ok());
+    let out = decode(&mut media, 1000);
+    assert_eq!(out.video.len(), 20, "the video still plays");
+    assert!(out.audio.is_empty());
+    assert_eq!(colour_at(&out.video, Duration::ZERO), Some(Colour::Red));
+    assert_eq!(
+        colour_at(&out.video, Duration::from_millis(1500)),
+        Some(Colour::Blue)
+    );
+}
+
+#[test]
+fn the_engine_says_a_main_preview_has_no_sound() {
+    let fetch = Segments::new(vec![Ok(fixture("h264-aac-main.ts"))]);
+    let (players, speaker) = players_for(fetch, Duration::ZERO, vec![2 * S]);
+    let surface = Arc::new(Surface::default());
+    let (events, rx) = events();
+    let player = players.open_with_sink(
+        source(),
+        events,
+        Some(surface.clone() as Arc<dyn VideoSink>),
+    );
+    let seen = until(&rx, "metadata", |e| matches!(e, PlayerEvent::Metadata(_)));
+    let metadata = seen
+        .iter()
+        .find_map(|e| match e {
+            PlayerEvent::Metadata(m) => Some(m.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert!(metadata.has_video);
+    assert!(!metadata.has_audio, "AAC Main is not decodable sound");
+    player.play();
+    until(&rx, "the end", |e| {
+        *e == PlayerEvent::State(PlaybackState::Ended)
+    });
+    assert!(surface.uploads.lock().unwrap().len() >= 19);
+    assert_eq!(
+        speaker.lock().unwrap().len(),
+        0,
+        "nothing reaches the speaker"
+    );
+}
+
+#[test]
 fn an_unreadable_segment_is_skipped_and_a_truncated_one_plays_what_it_has() {
     let garbage = vec![0x5Au8; 50_000];
     let fetch = Segments::new(vec![
@@ -466,6 +528,14 @@ fn source() -> PlaybackSource {
 }
 
 fn players(fetch: Arc<Segments>, start: Duration) -> (DesktopPlayers, Arc<Mutex<Vec<i16>>>) {
+    players_for(fetch, start, vec![10 * S; 3])
+}
+
+fn players_for(
+    fetch: Arc<Segments>,
+    start: Duration,
+    durations: Vec<Duration>,
+) -> (DesktopPlayers, Arc<Mutex<Vec<i16>>>) {
     let io = VirtualIo::new();
     let speaker = Arc::new(Mutex::new(Vec::new()));
     let heard = speaker.clone();
@@ -476,7 +546,7 @@ fn players(fetch: Arc<Segments>, start: Duration) -> (DesktopPlayers, Arc<Mutex<
         move |_: &PlaybackSource, _: &Cancel, _: &semaphore_player::BufferedReport| {
             Ok(Opened::Segments {
                 fetch: fetch.clone(),
-                durations: vec![10 * S; 3],
+                durations: durations.clone(),
                 start,
             })
         },

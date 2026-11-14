@@ -29,42 +29,6 @@ None left: every partial feature the audit found is closed (see the list under C
 - **Size:** M (buy/obtain a certificate, wire the CI step, verify).
 - **Depends:** product/ops decision (certificate) and CI secrets.
 
-### C2. Update manifest signing
-
-- **Web/Electron:** electron-updater checks signatures only when a publisher name is configured.
-- **Native:** `native/crates/semaphore-platform-desktop/src/update/manifest.rs:432`
-  `verify_signature` is a no-op returning `Ok(())`; trust today is HTTPS plus the manifest's
-  SHA-256.
-- **Missing:** a real signature scheme (minisign/ed25519 or similar) and its verification, plus the
-  key handling in packaging.
-- **Size:** M.
-- **Depends:** decision + key management.
-
-### C3. A published update feed
-
-- **Web/Electron:** electron-updater reads the GitHub Release for the tag (`frontend/electron/main.ts`,
-  published by `.github/workflows/electron-build.yml`).
-- **Native:** `BUILD_FEED` is `option_env!("SEMAPHORE_UPDATE_MANIFEST_URL")`, empty today
-  (`native/crates/semaphore-app/src/update.rs:27`); a build with no feed starts no schedule and
-  says "Updates aren't checked in this build" in settings.
-- **Missing:** the hosted `latest.json` (the format is written by `scripts/package-linux.sh`) and a
-  release job that publishes it with the artifacts.
-- **Size:** S (build/hosting), plus C1/C2 for trust.
-- **Depends:** publishing (C4), signing (C2).
-
-### C4. Publishing the packages, and Flatpak
-
-- **Web/Electron:** `.github/workflows/electron-build.yml` attaches the Windows installer and the
-  Linux AppImage, `.deb` and `.rpm` to the GitHub Release of a `v*` tag.
-- **Native:** the Windows zip, NSIS installer, AppImage, `.deb` and `.rpm` are built and verified by
-  `native/scripts/package-*.sh` and `native-package.yml`, which explicitly never creates a release.
-  Flatpak doesn't exist for Electron either, so it isn't a parity gap; it would be a new
-  distribution channel (the AppStream metainfo and icons are already there).
-- **Missing:** a release lane that attaches the artifacts (and the feed from C3) to a tag, plus the
-  version bumping the Electron release lane does.
-- **Size:** M.
-- **Depends:** release/product decision; C1 and C2 for a trustworthy first release.
-
 ### C9. macOS
 
 - **Web/Electron:** ships none (docs-site `desktop-app.md`: "macOS builds are not yet available").
@@ -105,7 +69,8 @@ These are proofs, not code. Each is a release checklist item.
    (`native/scripts/test-package-windows.sh` inspects it only).
 6. **Auto-update end to end.** A published feed, an installed older build updating itself (AppImage
    replace and restart, `.deb`/`.rpm` hand-off to the package manager) and a dismissed card staying
-   dismissed. Needs C3/C4 first.
+   dismissed. The release lane and the signed feed exist (`native-release.yml`, closed C2-C4); this
+   needs the first `native-v*` release and an older preview installed to update from.
 7. **Link handling with both apps installed.** Which app wins, whether a forwarded link focuses the
    first instance, and whether the installer/desktop registration survives the other app's
    uninstall.
@@ -163,7 +128,7 @@ Not listed: "Copy message link" from W1's defaults is not a gap — the web has 
 |---|---|
 | A. Missing features | 0 |
 | B. Partial features | 0 |
-| C. Platform and distribution | 5 |
+| C. Platform and distribution | 2 |
 | D. Only a person can check | 10 |
 | E. Decided not to build | 10 |
 
@@ -176,12 +141,20 @@ URL lives in browser storage and cannot be), C7 (the "Open semaphore:// links wi
 setting) and C8 (the end-to-end suite as a nightly CI job). What each builds is spelled out in
 `docs/parity-plan.md`'s rows.
 
+Closed on 2026-11-13 by the release lane: C2 (the update manifest is signed: Ed25519 over
+`latest.json`, `latest.json.sig` beside it, verified before parsing against the build's
+`TRUSTED_UPDATE_KEYS`, required for the build's feed), C3 (the feed is published: the fixed
+`native-preview-feed` pre-release, compiled into release builds only) and C4 (a `native-vX.Y.Z` tag
+publishes every package as a GitHub pre-release; the version comes from the tag, so there is no
+bump commit). See `docs/packaging.md`, "Releasing a native preview" and "Trust: the signed feed".
+Flatpak stays a possible new channel, not a parity gap (Electron has none).
+
 The inventory itself (128 rows, 11 tables) now reads: 123 done, 1 partial, 1 not started, 3 n/a.
 
 ## The gaps that matter most for a first usable release
 
-1. **A published, signed update feed (C1-C4).** An installed desktop app that can't be replaced or
-   patched is a dead end on the first bug; the updater is built, only trust and hosting are missing.
+1. **The first preview release (D6).** The signed feed and the release lane are built; cutting
+   `native-v*` once, and an older preview updating itself from it, is what proves them.
 2. **Windows code signing (C1).** SmartScreen's "unknown publisher" wall stops ordinary users before
    the app ever runs, and it is the cheapest of the distribution items to fix.
 3. **Real Wayland and Windows capture checks (D1, D2).** Screen share is the feature that sells a

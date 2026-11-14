@@ -1,6 +1,7 @@
 //! Transport: the Socket.IO session in [`socket`], and the generated REST client later.
 
 pub mod backend;
+pub mod ed25519;
 pub mod realtime;
 pub mod socket;
 

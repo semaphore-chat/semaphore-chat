@@ -7,8 +7,9 @@
 //! - **The selection's end** is core's rule ([`selection_step`]): at each position while playing,
 //!   within 0.1 s of the end, loop back to the start or pause.
 //! - **States:** loading (a spinner on the black box), failed (the web's "Could not load the video
-//!   preview. Please try again." and Retry), and a build that doesn't decode the preview's sound
-//!   (AAC is behind a feature): video only, said under the controls.
+//!   preview. Please try again." and Retry), and a recording with no sound this player can decode
+//!   (no audio track, or unsupported audio: only AAC-LC is decoded, docs/player.md): video only,
+//!   said under the controls.
 //! - **Refresh** is the timeline's: it takes the buffer's new length and reopens here, at the
 //!   playhead, so the newest segments are listed.
 

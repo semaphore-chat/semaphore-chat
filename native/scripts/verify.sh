@@ -38,6 +38,8 @@ step "vendored crates match series" "$NATIVE_DIR/third_party/vendor.sh" --check
 step "contract matches PIN" "$NATIVE_DIR/scripts/pin-contract.sh" --check
 step "cargo build --workspace" "$IN_IMAGE" cargo build --locked --workspace
 step "cargo test --workspace" "$IN_IMAGE" cargo test --locked --workspace
+# The player without AAC: the shipped default has it (docs/player.md), the refusal paths need both.
+step "player without AAC" "$IN_IMAGE" cargo test --locked -p semaphore-player --no-default-features
 step "cargo fmt --check" "$IN_IMAGE" cargo fmt --all --check
 step "cargo clippy" "$IN_IMAGE" cargo clippy --locked --workspace --all-targets -- -D warnings
 step "cargo deny check" "$IN_IMAGE" cargo deny check

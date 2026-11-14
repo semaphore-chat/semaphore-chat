@@ -49,6 +49,9 @@ Environment:
                         https://github.com/semaphore-chat/semaphore-chat/releases/download/v<version>
   SEMAPHORE_RELEASE_NOTES_URL
                         The release's notes page. Defaults to the matching GitHub release tag.
+  SEMAPHORE_UPDATE_MANIFEST_URL
+                        The update feed compiled into the binary. Empty (no update checks)
+                        unless the release workflow sets it (docs/packaging.md, "Auto-update").
 
 The build runs in native/docker/Dockerfile.package (Debian 12, clang 22, rustup) and writes
 into the named volumes semaphore-native-package-cargo and
@@ -82,10 +85,11 @@ in_image() {
   local release_date
   release_date="$(date -u -d "@$SOURCE_DATE_EPOCH" +%F)"
 
-  echo "== building semaphore-app $version (dist profile, SEMAPHORE_PACKAGED=1)"
+  echo "== building semaphore-app $version (dist profile, SEMAPHORE_PACKAGED=1, player)"
   # build.rs compiles this into the binary, so `--version` and the package version agree.
   export SEMAPHORE_VERSION="$version"
-  SEMAPHORE_PACKAGED=1 cargo build --locked --profile dist -p semaphore-app
+  # The shipped player, and with it AAC-LC decoding (docs/player.md): it is part of every package.
+  SEMAPHORE_PACKAGED=1 cargo build --locked --profile dist -p semaphore-app --features player
 
   local target_dir bin
   target_dir="$(cargo metadata --locked --no-deps --format-version 1 | jq -r .target_directory)"
@@ -226,7 +230,8 @@ SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[
 
 # The release manifest the updater reads. Its URLs are the names the artifacts will be published
 # under, not where they are now; the hashes and sizes are of the files just built. Nothing is
-# signed yet: the trust model is HTTPS plus these hashes (docs/packaging.md, "Auto-update").
+# signed here: the release workflow assembles and signs the published manifest from every
+# platform's packages (scripts/assemble-release.py; docs/packaging.md, "Releasing a preview").
 write_manifest() { # <deb> <rpm> <appimage> <version>
   local deb="$1" rpm="$2" appimage="$3" version="$4"
   # Every client would reject anything else (a "v0.10.0" from a tag, say) and never update.
@@ -556,6 +561,9 @@ exec docker run --rm --init \
   -e "SOURCE_DATE_EPOCH=$epoch" \
   -e "SEMAPHORE_VERSION=${SEMAPHORE_VERSION:-}" \
   -e "SEMAPHORE_PACKAGED=1" \
+  -e "SEMAPHORE_UPDATE_MANIFEST_URL=${SEMAPHORE_UPDATE_MANIFEST_URL:-}" \
+  -e "SEMAPHORE_UPDATE_BASE_URL=${SEMAPHORE_UPDATE_BASE_URL:-}" \
+  -e "SEMAPHORE_RELEASE_NOTES_URL=${SEMAPHORE_RELEASE_NOTES_URL:-}" \
   -e "CC=clang" -e "CXX=clang++" \
   -e "CARGO_TERM_COLOR=never" \
   "$IMAGE" "$NATIVE_DIR/scripts/package-linux.sh" --in-image

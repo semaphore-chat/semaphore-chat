@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """Check a release manifest (latest.json) against the packages it describes.
 
-    scripts/check-manifest.py <latest.json> <deb> <rpm> <appimage>
+    scripts/check-manifest.py [--base-url <url>] [--notes-url <url>] <latest.json> <file>...
 
 The same rules the native updater applies (crates/semaphore-platform-desktop/src/update/manifest.rs
 and version.rs), so a manifest every client would reject is never published: a semantic version
-(no "v", no leading zeros), an https notes URL, one x86_64 artifact of each kind with an https URL,
-a 64-hex SHA-256 and a positive size; and each file's hash, size and name must match. Run by
-scripts/test-packages.sh; standard library only.
+(no "v", no leading zeros), an https notes URL, at most one x86_64 artifact of each kind with an
+https URL, a 64-hex SHA-256 and a positive size, and always the three Linux kinds; and each file's
+hash, size and name must match, with the files and the manifest naming the same kinds.
+
+Files are told apart by suffix: .AppImage, .deb, .rpm, .zip (windows-zip) and .exe (windows-nsis).
+--base-url requires every artifact URL to be <url>/<file name>, --notes-url the notes link to be
+exactly <url>: the release workflow passes its tag's download and release-page URLs. Run by
+scripts/test-packages.sh (the Linux manifest), the release workflow and
+scripts/test-release-assembly.sh (the release's); standard library only.
 """
 import hashlib
 import json
@@ -23,7 +29,20 @@ SEMVER = re.compile(
     re.ASCII,
 )
 
-manifest_path, *paths = sys.argv[1:]
+KINDS = ("appimage", "deb", "rpm", "windows-zip", "windows-nsis")
+REQUIRED = ("appimage", "deb", "rpm")
+SUFFIXES = {"AppImage": "appimage", "deb": "deb", "rpm": "rpm", "zip": "windows-zip", "exe": "windows-nsis"}
+
+arguments = sys.argv[1:]
+options = {}
+while arguments and arguments[0] in ("--base-url", "--notes-url"):
+    if len(arguments) < 2:
+        sys.exit(f"{arguments[0]} needs a value")
+    options[arguments[0]] = arguments[1]
+    arguments = arguments[2:]
+if not arguments:
+    sys.exit(__doc__)
+manifest_path, *paths = arguments
 try:
     with open(manifest_path, encoding="utf-8") as handle:
         manifest = json.load(handle)
@@ -42,6 +61,8 @@ if not SEMVER.match(manifest["version"]):
 notes = manifest.get("notes_url")
 if not isinstance(notes, str) or not notes.startswith("https://"):
     fail(f"notes_url {notes!r} is not an https URL")
+if "--notes-url" in options and notes != options["--notes-url"]:
+    fail(f"notes_url {notes!r} is not {options['--notes-url']!r}")
 artifacts = manifest.get("artifacts")
 if not isinstance(artifacts, list):
     fail("no artifacts")
@@ -49,7 +70,7 @@ if not isinstance(artifacts, list):
 by_kind = {}
 for artifact in artifacts:
     kind = artifact.get("kind")
-    if kind not in ("appimage", "deb", "rpm"):
+    if kind not in KINDS:
         fail(f"unknown kind {kind!r}")
     if kind in by_kind:
         fail(f"two {kind} artifacts")
@@ -63,16 +84,20 @@ for artifact in artifacts:
     if not isinstance(artifact.get("size"), int) or artifact["size"] <= 0:
         fail(f"{kind} size {artifact.get('size')!r} is not a positive integer")
     by_kind[kind] = artifact
-missing = [kind for kind in ("appimage", "deb", "rpm") if kind not in by_kind]
+missing = [kind for kind in REQUIRED if kind not in by_kind]
 if missing:
     fail(f"no {', '.join(missing)} artifact")
 
 kinds = []
 for path in paths:
-    kind = {"AppImage": "appimage", "deb": "deb", "rpm": "rpm"}.get(path.rsplit(".", 1)[-1])
+    kind = SUFFIXES.get(path.rsplit(".", 1)[-1])
     if kind is None:
         fail(f"which artifact is {path}?")
+    if kind in kinds:
+        fail(f"two {kind} files given")
     kinds.append(kind)
+    if kind not in by_kind:
+        fail(f"{path} is a {kind} file, which the manifest does not list")
     artifact = by_kind[kind]
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -85,6 +110,10 @@ for path in paths:
         fail(f"{kind} size {artifact['size']} is not {path}'s {size}")
     if not artifact["url"].endswith("/" + os.path.basename(path)):
         fail(f"{kind} url does not name {os.path.basename(path)}")
+    if "--base-url" in options:
+        expected = options["--base-url"].rstrip("/") + "/" + os.path.basename(path)
+        if artifact["url"] != expected:
+            fail(f"{kind} url {artifact['url']!r} is not {expected!r}")
     print(f"  {kind:<8} {size:>10} bytes  {artifact['sha256'][:16]}...  {artifact['url']}")
 if sorted(kinds) != sorted(by_kind):
     fail(f"the manifest and the files disagree: {sorted(by_kind)} against {sorted(kinds)}")

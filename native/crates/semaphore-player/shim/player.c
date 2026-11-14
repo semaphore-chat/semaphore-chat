@@ -234,6 +234,7 @@ int sp_stream_info_get(const sp_media *media, int index, sp_stream_info *out) {
   out->channels = par->ch_layout.nb_channels;
   out->duration_us =
       stream->duration == AV_NOPTS_VALUE ? -1 : to_us(stream->duration, stream->time_base);
+  out->profile = par->profile;
   return SP_OK;
 }
 
@@ -302,6 +303,26 @@ int sp_enable(sp_media *media, int index) {
   d->av = av;
   d->type = DEC_FFMPEG;
   return SP_OK;
+}
+
+int sp_stream_extradata(const sp_media *media, int index, const uint8_t **data, int *size) {
+  if (index < 0 || index >= media->count) return SP_E_ARG;
+  const AVCodecParameters *par = media->format->streams[index]->codecpar;
+  *data = par->extradata;
+  *size = par->extradata_size;
+  return SP_OK;
+}
+
+int sp_stream_profile(const sp_media *media, int index) {
+  if (index < 0 || index >= media->count) return SP_PROFILE_UNKNOWN;
+  const decoder *d = &media->decoders[index];
+  return d->av ? d->av->profile : SP_PROFILE_UNKNOWN;
+}
+
+void sp_disable(sp_media *media, int index) {
+  if (index < 0 || index >= media->count) return;
+  decoder_close(&media->decoders[index]);
+  if (media->current == index) media->current = -1;
 }
 
 /* A packet the decoder rejected: skipped, unless too many in a row. */
@@ -373,6 +394,7 @@ static float sample_at(const AVFrame *f, int channel, int index, int channels) {
 static int fill_ffmpeg(common *c, decoder *d, sp_frame *out) {
   const AVFrame *f = d->frame;
   out->pts_us = to_us(f->best_effort_timestamp, d->time_base);
+  out->profile = d->av->profile;
   if (d->av->codec_type == AVMEDIA_TYPE_VIDEO) {
     if (f->format != AV_PIX_FMT_YUV420P && f->format != AV_PIX_FMT_YUVJ420P) return SP_E_PIXEL_FORMAT;
     out->kind = SP_KIND_VIDEO;
@@ -661,6 +683,10 @@ void sp_decoder_flush(sp_decoder *dec) {
 }
 
 uint64_t sp_decoder_skipped(const sp_decoder *dec) { return dec->common.skipped; }
+
+int sp_decoder_profile(const sp_decoder *dec) {
+  return dec->d.av ? dec->d.av->profile : SP_PROFILE_UNKNOWN;
+}
 
 /* libyuv, in the same archive; C linkage on every platform. Declared here so the shim needs no
  * libyuv headers (they pull C++ on some configurations). */
