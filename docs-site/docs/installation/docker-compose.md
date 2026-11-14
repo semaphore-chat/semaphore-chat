@@ -273,7 +273,10 @@ Copy the Compose file for your chosen setup:
         image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
         restart: unless-stopped
         ports:
-          - "5173:5173"
+          # Localhost only: your reverse proxy on this host forwards to it. Its
+          # X-Forwarded-For is trusted (TRUSTED_PROXIES, private ranges by default),
+          # so it must be the only way in.
+          - "127.0.0.1:5173:5173"
         environment:
           BACKEND_URL: http://backend:3000
         depends_on:
@@ -434,7 +437,10 @@ Copy the Compose file for your chosen setup:
         image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
         restart: unless-stopped
         ports:
-          - "5173:5173"
+          # Localhost only: your reverse proxy on this host forwards to it. Its
+          # X-Forwarded-For is trusted (TRUSTED_PROXIES, private ranges by default),
+          # so it must be the only way in.
+          - "127.0.0.1:5173:5173"
         environment:
           BACKEND_URL: http://backend:3000
         depends_on:
@@ -678,7 +684,7 @@ If you chose the "With Caddy" setup, this is already handled. For the other setu
 - Ensure WebSocket upgrade headers are forwarded for LiveKit
 - Have the proxy send `X-Forwarded-Proto` (Caddy, Traefik and ingress-nginx do by default; plain nginx needs `proxy_set_header X-Forwarded-Proto $scheme;`). The backend marks its sign-in cookies `Secure` when it says `https` (`COOKIE_SECURE=auto`, see [Configuration](configuration.md#core)). A plain-HTTP install on your LAN works too: its cookies just aren't `Secure`.
 
-Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`), so the backend sees every client as your reverse proxy's address. For real client IPs (per-client rate limiting, session IPs), also route `/api` and `/socket.io` straight to the backend (port 3000), as in the diagram above, and have your proxy set `X-Forwarded-For`. Keep `TRUST_PROXY` equal to the real number of hops. The examples bind the backend to `127.0.0.1` so that only a proxy on the same host can reach it. Never publish port 3000 beyond that: a client that reaches the backend directly can spoof its IP. See [Reverse proxy](configuration.md#reverse-proxy).
+Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`). nginx takes the client address from your proxy's `X-Forwarded-For` when the proxy connects from a private or loopback address (`TRUSTED_PROXIES`, see [Reverse proxy](configuration.md#reverse-proxy)) and passes it on, so rate limits and session IPs are per client. Have your proxy set `X-Forwarded-For` (Caddy, Traefik and ingress-nginx do). The examples publish port 5173 on `127.0.0.1` for a proxy on the same host; if clients reach port 5173 directly instead, set `TRUSTED_PROXIES: ""` on the frontend. You can also route `/api` and `/socket.io` straight to the backend (port 3000), as in the diagram above. Keep `TRUST_PROXY` equal to the real number of hops. The examples bind the backend to `127.0.0.1` so that only a proxy on the same host can reach it. Never publish port 3000 beyond that: a client that reaches the backend directly can spoof its IP. See [Reverse proxy](configuration.md#reverse-proxy).
 
 ### Data persistence
 

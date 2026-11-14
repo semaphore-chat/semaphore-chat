@@ -181,6 +181,12 @@ frontend:
     # Backend URL (internal service URL). Empty = this release's backend Service.
     backendUrl: ""
 
+  # Addresses/CIDRs whose X-Forwarded-For the frontend's nginx believes
+  # (TRUSTED_PROXIES): its rate limits then count per client, not per ingress
+  # pod. Unset (null) = the image default, private ranges and loopback, which
+  # covers in-cluster ingress controllers. "" = trust nobody.
+  trustedProxies: null
+
   # Extra environment variables for the frontend container
   # These are injected at runtime (useful for feature flags, etc.)
   # Example:

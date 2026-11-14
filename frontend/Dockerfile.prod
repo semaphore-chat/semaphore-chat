@@ -87,25 +87,9 @@ RUN mkdir -p /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/ngi
     chown -R nginx:nginx /usr/share/nginx/html && \
     chown -R nginx:nginx /etc/nginx/nginx.conf.template
 
-# Create a startup script that works without root
-RUN printf '#!/bin/sh\n\
-set -e\n\
-\n\
-# Replace placeholders in JS files with runtime env vars\n\
-for file in /usr/share/nginx/html/assets/*.js; do\n\
-  if [ -f "$file" ]; then\n\
-    sed -i "s|__VITE_APP_VERSION__|${VITE_APP_VERSION:-1.0.0}|g" "$file"\n\
-  fi\n\
-done\n\
-\n\
-# Substitute nginx environment variables\n\
-export BACKEND_URL=${BACKEND_URL:-http://backend:3000}\n\
-envsubst "\$BACKEND_URL" < /etc/nginx/nginx.conf.template > /tmp/nginx.conf\n\
-\n\
-# Run nginx from /tmp config (non-root friendly)\n\
-exec nginx -c /tmp/nginx.conf -g "daemon off; pid /tmp/nginx.pid;"\n' > /docker-entrypoint.sh && \
-    chmod +x /docker-entrypoint.sh && \
-    chown nginx:nginx /docker-entrypoint.sh
+# Startup script (works without root): runtime env vars, the trusted-proxy
+# list (TRUSTED_PROXIES) and the nginx config
+COPY --chown=nginx:nginx --chmod=755 frontend/nginx-entrypoint.sh /docker-entrypoint.sh
 
 # Switch to nginx user for security
 USER nginx

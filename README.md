@@ -340,7 +340,9 @@ services:
     image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      # Localhost only: your reverse proxy on this host forwards to it (its
+      # X-Forwarded-For is trusted: TRUSTED_PROXIES, private ranges by default)
+      - "127.0.0.1:5173:5173"
     environment:
       BACKEND_URL: http://backend:3000
     depends_on:
@@ -455,7 +457,7 @@ The frontend's built-in nginx already proxies `/api` and `/socket.io` to the bac
 | `your-domain.com` | `localhost:5173` | Frontend (handles `/api` and `/socket.io` internally) |
 | `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade headers are forwarded |
 
-Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`), so the backend sees every client as your reverse proxy's address. For real client IPs (per-client rate limiting, session IPs), also route `/api` and `/socket.io` on `your-domain.com` straight to `localhost:3000`, and have your proxy set `X-Forwarded-For`. Keep `TRUST_PROXY` equal to the real number of hops, and never publish port 3000 beyond localhost: a client that reaches the backend directly can spoof its IP.
+Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`). nginx takes the client address from your proxy's `X-Forwarded-For` (the proxy connects from a private or loopback address: `TRUSTED_PROXIES`) and passes it on, so rate limits and session IPs are per client. Have your proxy set `X-Forwarded-For`; if clients reach port 5173 directly instead, set `TRUSTED_PROXIES: ""` on the frontend. Keep `TRUST_PROXY` equal to the real number of hops, and never publish port 3000 beyond localhost: a client that reaches the backend directly can spoof its IP.
 
 #### Download the IP watcher script
 
