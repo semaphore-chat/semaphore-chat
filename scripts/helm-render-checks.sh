@@ -117,6 +117,8 @@ for mode in install upgrade; do
   check "$mode: migration job reads DATABASE_URL from the Secret" has "$job" 'name: t-semaphore-chat-database'
   check "$mode: migration job needs no non-hook ConfigMap/Secret" lacks "$job" 'configMapRef|secretRef'
 done
+expect_ok "bundled DB password with a space, @, / and +" $VALID --set-string "postgresql.auth.password=pa ss@w/rd+x"
+check "space encoded as %20 (not +), + as %2B" has "$(echo "$OUT" | doc Secret -database)" 'DATABASE_URL: "postgresql://semaphore:pa%20ss%40w%2Frd%2Bx@t-semaphore-chat-postgresql:5432/semaphore"'
 expect_ok "secrets.existingSecret still gets the database Secret" \
   --set secrets.existingSecret=my-secrets --set-string postgresql.auth.password=$PGPASS --set redis.auth.password=$REDISPASS
 check "existingSecret: database Secret rendered" has "$(echo "$OUT" | doc Secret -database)" 'DATABASE_URL'

@@ -92,12 +92,14 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-PostgreSQL URI - either from bundled or external. The password is URL-encoded.
+PostgreSQL URI - either from bundled or external. The password is URL-encoded:
+urlquery turns a space into "+", which userinfo reads as a literal plus, so
+it becomes %20 (a real "+" is already %2B).
 Only ever rendered into a Secret (templates/backend/database-secret.yaml).
 */}}
 {{- define "semaphore-chat.postgresql.uri" -}}
 {{- if .Values.postgresql.bundled -}}
-postgresql://{{ .Values.postgresql.auth.username | urlquery }}:{{ .Values.postgresql.auth.password | toString | urlquery }}@{{ include "semaphore-chat.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}
+postgresql://{{ .Values.postgresql.auth.username | urlquery | replace "+" "%20" }}:{{ .Values.postgresql.auth.password | toString | urlquery | replace "+" "%20" }}@{{ include "semaphore-chat.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}
 {{- else -}}
 {{ .Values.postgresql.external.uri }}
 {{- end -}}
