@@ -205,7 +205,9 @@ Electron app's electron-updater is the reference for the states, the wording and
 
 ### The release manifest
 
-`scripts/package-linux.sh` writes it next to the packages it built:
+The release workflow assembles it from every platform's packages (`scripts/assemble-release.py`;
+see "Releasing a native preview" below), and `scripts/package-linux.sh` writes a Linux-only one
+next to the packages it built, which `scripts/test-packages.sh` checks:
 
 ```json
 {
@@ -225,7 +227,9 @@ Electron app's electron-updater is the reference for the states, the wording and
   version newer. **A stable build ignores pre-release versions** in the feed; a pre-release build
   (`2.0.0-beta.1`) accepts them.
 - `notes_url` is optional; the update card links it when it is there.
-- `kind` is `appimage`, `deb`, `rpm` or `windows-zip`. A kind this build doesn't know, or another
+- `kind` is `appimage`, `deb`, `rpm`, `windows-zip` or `windows-nsis` (the installer, listed so
+  the feed describes every published file; no install downloads it yet). A kind this build
+  doesn't know, or another
   `arch` (`x86_64`, `aarch64`), is ignored, so a future macOS artifact doesn't stop today's
   client. Two artifacts for the same kind and architecture are refused.
 - Every artifact must have `url`, `sha256` (64 hex digits) and `size` (1 byte to 512 MiB).
@@ -242,11 +246,47 @@ SHA-256 and size against the file on disk. To test just that step on any three f
 `SEMAPHORE_PACKAGES_DIR=<dir> scripts/package-linux.sh --finish-artifacts <deb> <rpm> <AppImage> <version>`
 then `scripts/check-manifest.py <dir>/latest.json <deb> <rpm> <AppImage>` (no build, no image).
 
-### Trust, and the signature seam
+### Trust: the signed feed
 
-For now the updater trusts the transport and the hash, the same model as electron-updater with the
-GitHub provider: the manifest and the artifact are fetched over HTTPS (or loopback in a test), and
-the artifact must hash to the SHA-256 the manifest names.
+The manifest is signed. A release publishes `latest.json` and next to it `latest.json.sig`: one
+line of base64 (no newline), the detached **Ed25519** signature of the manifest's exact bytes, as
+`openssl pkeyutl -sign -inkey <key> -rawin -in latest.json | base64 -w0` writes it
+(`scripts/manifest-signature.sh`, which CI and the local test both run). The updater fetches the
+manifest, then the signature from the same URL with `.sig` appended, under the same redirect,
+https, timeout (one 30 s deadline for both) and size rules (the signature is capped at 1 KiB),
+and verifies before `ReleaseManifest::parse` reads a single field. A missing (404/410),
+malformed or wrong signature is a failure without Retry ("The update was refused: ... Nothing
+was downloaded."), and nothing is downloaded; the next hourly check reads the feed again. A
+signature host answering 5xx is a network fault like the manifest's, and retryable. Then, as
+before, the artifact must hash to the SHA-256 the signed manifest names.
+
+**Which keys.** `TRUSTED_UPDATE_KEYS` in `crates/semaphore-app/src/update.rs` lists the public keys
+a build accepts (base64 of the raw 32 bytes); any one verifying is enough, which is what makes
+rotation possible. The first key's PEM is committed as `packaging/update-signing-key.pub.pem`
+(CI verifies with it, and a test checks it is in the list). The private key is the repository
+secret `NATIVE_UPDATE_SIGNING_KEY` and exists nowhere else in the repository.
+
+**When a signature is required** (`signature_policy` in
+`crates/semaphore-platform-desktop/src/update/signature.rs`, every cell unit-tested):
+
+| Feed | `SEMAPHORE_UPDATE_PUBLIC_KEY` | Check |
+|---|---|---|
+| the build's own (`SEMAPHORE_UPDATE_MANIFEST_URL`) | ignored | required, against `TRUSTED_UPDATE_KEYS` |
+| `SEMAPHORE_UPDATE_URL`, https | not set | required, against `TRUSTED_UPDATE_KEYS` |
+| `SEMAPHORE_UPDATE_URL`, https | set | required, against that key only |
+| `SEMAPHORE_UPDATE_URL`, loopback | not set | none: transport plus hash (the w13 rig, tests) |
+| `SEMAPHORE_UPDATE_URL`, loopback | set | required, against that key only |
+| `SEMAPHORE_UPDATE_URL`, either | set, not a key | updates off ("The update signing key this build was given isn't one.") |
+
+`SEMAPHORE_UPDATE_PUBLIC_KEY` takes a PEM `PUBLIC KEY` block, the base64 of its DER, or the base64
+of the raw 32 bytes. So a remote feed is never unchecked; only a loopback one without a key is.
+
+**Where the maths is.** The Ed25519 check is ring's (`semaphore_net::ed25519::verify`), already in
+the graph through rustls; the policy and the fetch are in `semaphore-platform-desktop`, which is
+handed the function (`update::Ed25519Verify`) because ring needs MSVC headers that crate's
+Windows check in the build image doesn't have. Its tests use a SHA-256 stand-in for the plumbing;
+`semaphore-net`'s tests verify a signature OpenSSL made (`fixtures/update-signature/`: a manifest,
+its signature and the throwaway key's public half only).
 
 **Redirects.** The updater has its own HTTP client (the app's TLS trust, its own rules): every
 redirect hop is checked before it is followed, and must be `https` without a user name or password.
@@ -255,21 +295,17 @@ a loopback address (the rig, the tests); an https release host can never send th
 `http://127.0.0.1:…`. At most 10 hops. Where the response finally came from is checked again by
 the same rule. A refused redirect is a refusal (not retried as a network fault).
 
-A signed manifest is a later decision, and no key is invented here. The seam is
-`semaphore_platform_desktop::update::verify_signature(body, manifest_url)`
-(`crates/semaphore-platform-desktop/src/update/manifest.rs`): it runs on the manifest's bytes as
-received, before the parser trusts a single field. A signature (minisign, or a detached OpenPGP
-one published next to `latest.json`) would be checked there, and the key would have to ship in the
-binary and be rotated with a release.
-
 ### Where the feed comes from
 
 The app checks only when it was built with a feed and this copy can update:
 
-- the build-time constant `SEMAPHORE_UPDATE_MANIFEST_URL`, which is **empty today**: nothing is
-  published yet, so a shipped app has nothing to check and its settings say so;
+- the build-time constant `SEMAPHORE_UPDATE_MANIFEST_URL`, which only `native-release.yml` sets,
+  to `https://github.com/semaphore-chat/semaphore-chat/releases/download/native-preview-feed/latest.json`
+  (the feed release, below). Local, pull-request and `native-package.yml` builds leave it empty,
+  so they have nothing to check and their settings say so;
 - `SEMAPHORE_UPDATE_URL` overrides it at run time and is held to the same rule (HTTPS, or loopback
-  for a test), so an override cannot point the app at a plain-HTTP feed;
+  for a test), so an override cannot point the app at a plain-HTTP feed; its signature check is
+  the table above;
 - if this build's version isn't a semantic version, or its architecture isn't `x86_64`/`aarch64`,
   the updater stays off.
 
@@ -307,7 +343,7 @@ minute is given up.
 | AppImage | downloads beside the running file (`<file>.part`, created new, 0600, no symlink followed), reads it back and checks its size and SHA-256, gives it the replaced file's permission bits, keeps the old file as `<file>.old`, renames the new one into place, and offers "Restart to update" (see "Restarting" below) | `AppImageUpdater.doInstall` deletes the running file (`unlinkSync`) and moves the download into its place, then starts it |
 | `.deb` | downloads to `<cache>/updates/`, then shows the folder and `sudo apt install '<path>'` (apt, not `dpkg -i`, so a release with a new dependency installs). It does not elevate or install | `DebUpdater` runs `dpkg -i` (and `apt-get -f -y` on failure) through `pkexec`/`sudo` |
 | `.rpm` | the same, with `sudo dnf install '<path>'` or `sudo zypper install '<path>'` | `RpmUpdater` runs `dnf`/`zypper` through `pkexec`/`sudo` |
-| Windows zip | announces the version and opens the release page; nothing is downloaded | n/a (electron-builder ships NSIS/MSI) |
+| Windows (zip or installer) | announces the version; the card's Release notes link is the manifest's `notes_url`, the versioned release's page with both Windows files; nothing is downloaded. Running the installer silently (`/S`) is a later step | n/a (electron-builder ships NSIS/MSI) |
 
 Native never asks for elevated rights: installing a package is left to the user's package manager.
 That is a deliberate difference from Electron, which installs `.deb`/`.rpm` under `pkexec` (see
@@ -611,6 +647,10 @@ compile on both versions is the guard.
   uploads them as `native-windows-installer`. Signing is a clearly marked placeholder step, not
   a build step (see "Windows installer", "Not done").
 
+`native-release.yml` calls it (`workflow_call`, inputs `version`, `update_feed_url`, `release`):
+that is the only build that compiles a feed in, and with `release` the Windows job also checks
+`semaphore-app.exe --version` prints the release version. See "Releasing a native preview".
+
 Triggers: `workflow_dispatch` (optional `version` input) and pull requests whose paths match the
 packaging scripts, the package Dockerfiles, the NSIS script and its icon, this document, the app
 crate, the workspace manifests, the app's `semaphore://` registration or the workflow itself.
@@ -618,18 +658,103 @@ There is no `push`/tag trigger. Workflow permissions are `contents: read`, and t
 upload artifacts: no release, tag, registry push or publish step. Actions are pinned to full
 commit SHAs (`actions/checkout` v7 and `actions/upload-artifact` v7).
 
+## Releasing a native preview
+
+The native client ships as a **preview channel** next to the Electron releases: GitHub
+pre-releases tagged `native-vX.Y.Z`, built by `.github/workflows/native-release.yml`. The Electron
+lane (`v*` and `electron-v*` tags, `electron-build.yml`) is untouched, and no native tag matches
+its patterns or the Docker and Helm ones.
+
+### What a release publishes
+
+1. **`native-vX.Y.Z`**, a pre-release (never "Latest"), with: the AppImage, `.deb`, `.rpm`, the
+   Windows zip and installer (unsigned: SmartScreen warns), `SHA256SUMS`, `latest.json` and
+   `latest.json.sig`. Notes: a short header plus the commits touching `native/` since the previous
+   `native-v*` tag (`scripts/release-notes.sh`).
+2. **`native-preview-feed`**, a fixed pre-release whose only assets are `latest.json` and
+   `latest.json.sig`, replaced by each release **after** the versioned release is published and
+   every file the manifest names is checked to be there. Installed copies read
+   `.../releases/download/native-preview-feed/latest.json`; the artifact URLs inside point at the
+   versioned release.
+
+**Why a feed release.** GitHub's `releases/latest` (and `releases/latest/download/<asset>`) skips
+pre-releases, so it would never see a preview, and making previews full releases would make them
+the repository's "Latest", which the Electron app's electron-updater reads. A release at a fixed
+tag has a fixed asset URL whatever its status, and as a pre-release it can never become "Latest"
+either. The feed never moves backwards: re-running an older tag leaves a newer feed alone. The
+two feed files are replaced in one upload call, not atomically: a client that reads the old
+manifest and the new signature in between fails that check without retry and succeeds an hour
+later.
+
+Versions are plain `X.Y.Z` (the Windows package step takes no `-rc.1`), validated before anything
+builds; the packages are built as that version, the release job refuses a file whose name
+carries another one, `test-packages.sh` checks each Linux binary's `--version` against its
+package, and the Windows job checks the exe's.
+
+### Procedure (owner)
+
+1. **Dry run first**, from the commit you mean to release: Actions > Native release > Run
+   workflow, `version` = `X.Y.Z`, `dry_run` ticked (the default). It builds and tests every
+   package with the feed URL compiled in, assembles and validates `latest.json`, writes the notes
+   into the run summary, proves the signing commands with a throwaway key, and uploads
+   `native-release-X.Y.Z` (the release directory and `notes.md`) as a workflow artifact. It uses no
+   secret and creates no tag or release. (CLI: `gh workflow run native-release.yml -f version=X.Y.Z`.)
+2. Check the artifact: install a package, `semaphore-app --version`, read `notes.md`.
+3. **Publish** by pushing the tag on that commit:
+   `git tag -a native-vX.Y.Z -m "native-vX.Y.Z" && git push origin native-vX.Y.Z`.
+   (Or dispatch again with `dry_run` unticked: allowed from the default branch only, refused if
+   the tag exists, and it creates the tag at the dispatched commit.)
+4. The run signs `latest.json` with `NATIVE_UPDATE_SIGNING_KEY` in the `assemble` job (read-only
+   token; the key is written to a mode-600 file under `$RUNNER_TEMP` and removed in an `always()`
+   step), verifies it with `packaging/update-signing-key.pub.pem`, and the `publish` job (the only
+   one with `contents: write`, which never sees the key) verifies again, creates the draft
+   pre-release with every asset, publishes it, checks the assets, and updates the feed last.
+5. Verify: `gh release view native-vX.Y.Z`, and that
+   `curl -sL https://github.com/semaphore-chat/semaphore-chat/releases/download/native-preview-feed/latest.json`
+   shows the new version; an installed older preview offers the update within an hour (or at once
+   from Settings > Desktop app > Check for updates).
+
+A failed run publishes nothing it shouldn't: before `publish` nothing is written, and the
+versioned release is a draft until all its assets are uploaded. If `publish` fails after the
+release is out but before the feed moved, re-run the failed job (the release exists, so delete
+the draft or release first if `gh release create` refuses).
+
+### Key rotation
+
+1. Generate the new pair offline: `openssl genpkey -algorithm ed25519 -out new.pem` and
+   `openssl pkey -in new.pem -pubout`.
+2. Add the new public key (base64 of the raw 32 bytes: the last 32 bytes of the PEM's DER,
+   `openssl pkey -pubin -in new.pub.pem -outform DER | tail -c 32 | base64`) to
+   `TRUSTED_UPDATE_KEYS`, keep the old one, and release that build **signed with the old key**:
+   every installed copy trusts only the old key.
+3. Once that release is out, replace `NATIVE_UPDATE_SIGNING_KEY` with the new private key and
+   `packaging/update-signing-key.pub.pem` with the new public key (the test requires it to be
+   listed), and sign from then on with the new key.
+4. Remove the old key from the list after the copies that only know it are no longer expected to
+   update (they keep working until then).
+
+### If the key is lost or leaks
+
+- **Lost** (the secret deleted, no copy): installed copies can never verify another release, so
+  they never update again. Ship a release with a new key in `TRUSTED_UPDATE_KEYS` and tell preview
+  users to install it by hand from the release page; from then on rotate as above. Keep an offline
+  copy of the private key to avoid this.
+- **Leaked**: anyone with it can sign a feed that installed copies accept, but the artifact still
+  has to come from an https URL and match the hash in that manifest. Rotate at once: a release
+  that adds the new key and *removes* the leaked one, signed with the leaked key one last time
+  (that is the only key the installed copies have), then the new secret and PEM. Copies that
+  never take that release remain exposed; say so in the release notes.
+
 ## Known gaps
 
 - **Code signing.** Linux packages and the AppImage are unsigned; there is no apt/rpm repository
   or signed AppImage. The Windows exe and the NSIS installer are unsigned, so SmartScreen will
-  warn; the RPM test installs with `--nogpgcheck` for the same reason. Auto-update today trusts
-  HTTPS and the manifest's SHA-256 only; a signing key and a signed manifest are what
-  `verify_signature` waits for.
+  warn; the RPM test installs with `--nogpgcheck` for the same reason. The update feed itself is
+  signed (Ed25519, above), so auto-update trusts the signed manifest's SHA-256, not just HTTPS.
 - **Auto-update.** Implemented against `latest.json` (above): AppImage replaces itself and
   restarts; `.deb`/`.rpm` are downloaded and the user installs them; Windows is announced only.
-  Missing before a release can rely on it: a published feed (`SEMAPHORE_UPDATE_MANIFEST_URL`
-  is empty), a **signed** manifest (the seam is `verify_signature`; no key exists), and running
-  the NSIS installer (`/S`) for the Windows case.
+  The feed is signed and published by `native-release.yml` (above). Still missing: running the
+  NSIS installer (`/S`) for the Windows case, and a first real release proving it end to end.
 - **macOS.** Not built. GPUI's macOS support exists, but our vendored video-surface patches are
   Linux and Windows only.
 - **Flatpak.** Not built. It would need a manifest, the PipeWire and screen-capture portal
@@ -639,8 +764,8 @@ commit SHAs (`actions/checkout` v7 and `actions/upload-artifact` v7).
   auto-update integration beyond `/S`. It is per-user only: there is no elevated all-users mode,
   and no AppUserModelID on the shortcuts (that needs a third-party NSIS plug-in). See "Windows
   installer", "Not done".
-- **Distribution.** The packages are artifacts only. There is no apt repository, no dnf
-  repository, no GitHub Release and no AppImage update feed.
+- **Distribution.** Preview releases go to GitHub Releases (`native-v*` pre-releases, above).
+  There is no apt or dnf repository.
 - **Coexistence with Electron.** Both applications register `semaphore://` and install a
   `.desktop` entry on Linux; whichever desktop environment chooses last wins. The native
   package's entry is detected as packaged, so the app does not overwrite it in

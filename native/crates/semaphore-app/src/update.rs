@@ -1,19 +1,23 @@
 //! Where the release feed comes from, what this install is, and how the updater's state becomes
 //! what the UI draws.
 //!
-//! **The feed is a build-time constant that is empty today**: `SEMAPHORE_UPDATE_MANIFEST_URL`
-//! is not set by any build in this repository yet, so a shipped app has nothing to check and
-//! says so in its settings. A release build sets it (the packaging pipeline publishes the
-//! manifest `scripts/package-linux.sh` writes; see `docs/packaging.md`). `SEMAPHORE_UPDATE_URL`
-//! overrides it at run time, which is how the end-to-end rig points the app at a manifest served
-//! from loopback; the override is held to the same rule as the build's URL, so it can only reach
-//! HTTPS or a loopback address.
+//! **The feed is a build-time constant**: `SEMAPHORE_UPDATE_MANIFEST_URL`, set only by the release
+//! workflow (`.github/workflows/native-release.yml`) to the preview feed release's `latest.json`.
+//! Local and pull-request builds leave it empty, so they have nothing to check and say so in
+//! their settings. `SEMAPHORE_UPDATE_URL` overrides it at run time, which is how testing points
+//! the app at another feed; the override is held to the same rule as the build's URL, so it can
+//! only reach HTTPS or a loopback address.
+//!
+//! **The feed is signed.** [`TRUSTED_UPDATE_KEYS`] are the keys the build's own feed must be
+//! signed with; `SEMAPHORE_UPDATE_PUBLIC_KEY` names another key for an overridden feed. Which
+//! check applies when is [`signature_policy`]'s table (`docs/packaging.md`, "Auto-update").
 //!
 //! Nothing here starts a download: [`start`] only decides whether this build and install can
 //! update at all, and why not when it can't (the settings row shows that reason).
 
 use semaphore_platform_desktop::update::{
-    Arch, InstallEnv, InstallKind, ReadyAction, Schedule, UpdateState, feed_url_is_trusted,
+    Arch, FeedSource, InstallEnv, InstallKind, PublicKey, ReadyAction, Schedule, SignatureCheck,
+    UpdateState, feed_url_is_trusted, signature_policy,
 };
 use semaphore_ui::update::{ReadyHow, UpdateStatus};
 use std::ffi::{OsStr, OsString};
@@ -21,6 +25,33 @@ use std::path::{Path, PathBuf};
 
 /// The run-time override of the build's feed. Only tests and rigs set it.
 pub const FEED_URL_ENV: &str = "SEMAPHORE_UPDATE_URL";
+
+/// The public key an overridden feed is checked against (PEM, or base64 of the raw 32 bytes).
+/// Ignored for the build's own feed.
+pub const UPDATE_KEY_ENV: &str = "SEMAPHORE_UPDATE_PUBLIC_KEY";
+
+/// The Ed25519 public keys the release feed may be signed with, as base64 of the raw 32 bytes
+/// (the last 32 bytes of the PEM's DER). Any one of them verifying is enough.
+///
+/// **Rotating the key**: add the new key here, ship a release signed with the OLD key (every
+/// installed build trusts only the old one), then sign releases with the new key and, once
+/// builds without it are no longer expected to update, remove the old one. A key that may have
+/// leaked is removed in that same release, which is still signed with it. The committed PEM of
+/// the current key is `packaging/update-signing-key.pub.pem`; a test checks it is listed here.
+/// See `docs/packaging.md`, "Key rotation".
+pub const TRUSTED_UPDATE_KEYS: &[&str] = &[
+    // 2026-11: the first release key (repository secret NATIVE_UPDATE_SIGNING_KEY).
+    "npKGI6KciDhyJ24dpEeOaehvJuJv8TeZCnzch3tEbKk=",
+];
+
+/// [`TRUSTED_UPDATE_KEYS`], parsed. An entry that doesn't parse is a build error caught by the
+/// tests, and is skipped here rather than trusted.
+pub fn trusted_update_keys() -> Vec<PublicKey> {
+    TRUSTED_UPDATE_KEYS
+        .iter()
+        .filter_map(|text| PublicKey::parse(text))
+        .collect()
+}
 
 /// The feed a release build is compiled with. Empty until releases are published, which is why
 /// the shipped app never checks.
@@ -40,6 +71,8 @@ pub enum WhyNoUpdates {
     UnsupportedInstall,
     /// The build's version isn't a semantic version, so nothing can be compared with a release.
     BadVersion,
+    /// `SEMAPHORE_UPDATE_PUBLIC_KEY` is set to something that isn't an Ed25519 public key.
+    BadKey,
 }
 
 impl WhyNoUpdates {
@@ -52,6 +85,7 @@ impl WhyNoUpdates {
                 "Updates aren't available for the way this copy was installed."
             }
             Self::BadVersion => "This build's version can't be compared with a release.",
+            Self::BadKey => "The update signing key this build was given isn't one.",
         }
     }
 }
@@ -63,6 +97,8 @@ pub struct UpdateOptions {
     pub install: InstallKind,
     pub cache_dir: PathBuf,
     pub schedule: Schedule,
+    /// Whether, and against which keys, the feed's signature is checked.
+    pub signature: SignatureCheck,
 }
 
 /// Whether this build checks, and why not.
@@ -72,19 +108,43 @@ pub enum UpdateStart {
     Off(WhyNoUpdates),
 }
 
-/// The feed to read: `SEMAPHORE_UPDATE_URL` when set, else the build's constant.
-pub fn feed_url() -> Option<String> {
+/// The feed to read: `SEMAPHORE_UPDATE_URL` when set, else the build's constant; and which.
+pub fn feed_url() -> Option<(String, FeedSource)> {
     feed_from(std::env::var(FEED_URL_ENV).ok(), BUILD_FEED)
 }
 
 /// [`feed_url`]'s decision, so a test doesn't have to set the process's environment.
-fn feed_from(from_env: Option<String>, build: &str) -> Option<String> {
+fn feed_from(from_env: Option<String>, build: &str) -> Option<(String, FeedSource)> {
     let from_env = from_env
         .map(|url| url.trim().to_owned())
-        .filter(|url| !url.is_empty());
+        .filter(|url| !url.is_empty())
+        .map(|url| (url, FeedSource::Override));
     from_env.or_else(|| {
         let build = build.trim();
-        (!build.is_empty()).then(|| build.to_owned())
+        (!build.is_empty()).then(|| (build.to_owned(), FeedSource::BuiltIn))
+    })
+}
+
+/// The signature check for `url`, from the build's keys and `override_key` (the text of
+/// `SEMAPHORE_UPDATE_PUBLIC_KEY`). Public for rigs, which build their options themselves.
+pub fn signature_for(
+    url: &str,
+    source: FeedSource,
+    override_key: Option<&str>,
+) -> Result<SignatureCheck, WhyNoUpdates> {
+    if source == FeedSource::BuiltIn && override_key.is_some_and(|key| !key.trim().is_empty()) {
+        log::info!("updates: {UPDATE_KEY_ENV} is ignored for the build's own feed");
+    }
+    signature_policy(
+        source,
+        url,
+        override_key,
+        &trusted_update_keys(),
+        semaphore_net::ed25519::verify,
+    )
+    .map_err(|error| {
+        log::warn!("updates are off: {UPDATE_KEY_ENV}: {error}");
+        WhyNoUpdates::BadKey
     })
 }
 
@@ -101,12 +161,20 @@ pub fn current_version() -> Result<semver::Version, WhyNoUpdates> {
 /// `install` is passed in so a rig can say what install to pretend to be; the app passes what
 /// [`InstallEnv::current`] finds.
 pub fn start_for(install: InstallKind, cache_dir: Option<PathBuf>) -> UpdateStart {
-    let Some(url) = feed_url() else {
+    let Some((url, source)) = feed_url() else {
         return UpdateStart::Off(WhyNoUpdates::NoFeed);
     };
     if !feed_url_is_trusted(&url) {
         log::warn!("updates are off: {url} is not an https feed address");
         return UpdateStart::Off(WhyNoUpdates::BadFeed);
+    }
+    let override_key = std::env::var(UPDATE_KEY_ENV).ok();
+    let signature = match signature_for(&url, source, override_key.as_deref()) {
+        Ok(signature) => signature,
+        Err(why) => return UpdateStart::Off(why),
+    };
+    if signature == SignatureCheck::Off {
+        log::info!("updates: {url} is a loopback feed with no key: its signature isn't checked");
     }
     if current_version().is_err() {
         return UpdateStart::Off(WhyNoUpdates::BadVersion);
@@ -125,6 +193,7 @@ pub fn start_for(install: InstallKind, cache_dir: Option<PathBuf>) -> UpdateStar
         install,
         cache_dir,
         schedule: Schedule::default(),
+        signature,
     }))
 }
 
@@ -320,26 +389,77 @@ mod tests {
 
     #[test]
     fn the_environment_names_a_feed_only_when_the_build_has_none() {
+        let built = |url: &str| Some((url.to_owned(), FeedSource::BuiltIn));
+        let over = |url: &str| Some((url.to_owned(), FeedSource::Override));
         assert_eq!(feed_from(None, ""), None);
         assert_eq!(
             feed_from(None, "https://example.org/latest.json"),
-            Some("https://example.org/latest.json".into())
+            built("https://example.org/latest.json")
         );
         assert_eq!(
             feed_from(Some("http://127.0.0.1:9/latest.json".into()), ""),
-            Some("http://127.0.0.1:9/latest.json".into())
+            over("http://127.0.0.1:9/latest.json")
         );
         // The override replaces the build's feed, even a blank one.
         assert_eq!(
             feed_from(Some("   ".into()), "https://example.org/latest.json"),
-            Some("https://example.org/latest.json".into())
+            built("https://example.org/latest.json")
         );
         assert_eq!(
             feed_from(
                 Some("https://staging.example.org/latest.json".into()),
                 "https://example.org/latest.json"
             ),
-            Some("https://staging.example.org/latest.json".into())
+            over("https://staging.example.org/latest.json")
+        );
+    }
+
+    const RELEASE_PEM: &str = include_str!("../../../packaging/update-signing-key.pub.pem");
+
+    /// Every listed key parses, and the committed PEM (what CI verifies with) is one of them.
+    #[test]
+    fn the_trusted_keys_include_the_committed_release_key() {
+        assert!(!TRUSTED_UPDATE_KEYS.is_empty());
+        assert_eq!(trusted_update_keys().len(), TRUSTED_UPDATE_KEYS.len());
+        let committed = PublicKey::parse(RELEASE_PEM).expect("the committed PEM is a key");
+        assert!(trusted_update_keys().contains(&committed));
+    }
+
+    /// The app's half of the policy table: the build's feed always gets the build's keys and
+    /// the real verifier; a bad override key turns updates off.
+    #[test]
+    fn the_signature_check_follows_the_feed() {
+        use semaphore_platform_desktop::update::TrustedKeys;
+        let builds = SignatureCheck::Required(TrustedKeys::new(
+            trusted_update_keys(),
+            semaphore_net::ed25519::verify,
+        ));
+        let https = "https://example.org/latest.json";
+        let loopback = "http://127.0.0.1:9/latest.json";
+        assert_eq!(
+            signature_for(https, FeedSource::BuiltIn, None),
+            Ok(builds.clone())
+        );
+        assert_eq!(
+            signature_for(https, FeedSource::BuiltIn, Some("junk")),
+            Ok(builds.clone())
+        );
+        assert_eq!(signature_for(https, FeedSource::Override, None), Ok(builds));
+        assert_eq!(
+            signature_for(loopback, FeedSource::Override, None),
+            Ok(SignatureCheck::Off)
+        );
+        let fixture_key = include_str!("../../../fixtures/update-signature/throwaway.pub.pem");
+        assert_eq!(
+            signature_for(loopback, FeedSource::Override, Some(fixture_key)),
+            Ok(SignatureCheck::Required(TrustedKeys::new(
+                vec![PublicKey::parse(fixture_key).unwrap()],
+                semaphore_net::ed25519::verify,
+            )))
+        );
+        assert_eq!(
+            signature_for(https, FeedSource::Override, Some("junk")),
+            Err(WhyNoUpdates::BadKey)
         );
     }
 
@@ -441,6 +561,10 @@ mod tests {
         assert_eq!(
             WhyNoUpdates::UnsupportedInstall.note(),
             "Updates aren't available for the way this copy was installed."
+        );
+        assert_eq!(
+            WhyNoUpdates::BadKey.note(),
+            "The update signing key this build was given isn't one."
         );
     }
 }

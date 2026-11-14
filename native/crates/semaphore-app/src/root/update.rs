@@ -124,6 +124,7 @@ impl AppRoot {
             cache_dir: options.cache_dir.clone(),
             arch,
             user_agent: format!("Semaphore-Chat-Native/{}", env!("SEMAPHORE_VERSION")),
+            signature: options.signature.clone(),
         };
         let updater = match Updater::new(config, builder) {
             Ok(updater) => updater,

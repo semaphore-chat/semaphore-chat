@@ -60,6 +60,14 @@ impl UpdateFeed {
                 settle: Duration::ZERO,
                 interval: Duration::from_secs(60 * 60),
             },
+            // A loopback override with no key: the policy's unchecked cell, as the app would
+            // decide for `SEMAPHORE_UPDATE_URL=http://127.0.0.1:…`.
+            signature: semaphore_app::update::signature_for(
+                &self.manifest_url,
+                semaphore_platform_desktop::update::FeedSource::Override,
+                None,
+            )
+            .expect("no override key to reject"),
         }
     }
 
