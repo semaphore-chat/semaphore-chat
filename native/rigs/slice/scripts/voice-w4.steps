@@ -226,20 +226,23 @@ wait core label "Replay clip downloaded successfully!"
 tick 5000
 wait core no-element replay-toast
 
-# W14: the trim's preview plays the buffer (the fake server's six 10 s segments; this build has no
-# AAC, so video only). It opens paused at the selection's start (0:00 of 1:00).
+# W14: the trim's preview plays the buffer (the fake server's six 10 s segments) with its sound:
+# this build has the player, and with it AAC-LC. It opens paused at the selection's start (0:00 of
+# 1:00), and playing it is heard on the virtual speaker.
 click voice-capture
 wait core dialog capture open
 expect core preview-players 0
 click capture-trim
 wait core preview paused within 30
 wait core preview-frames within 15
-expect core preview-sound no
-wait core element trim-preview-video-only
+expect core preview-sound yes
+wait core no-element trim-preview-video-only
 expect core preview-players 1
+forget sounds
 click trim-play-selection
 wait core preview playing within 15
 wait core preview-at above 0.5 within 15
+wait core sound heard within 15
 # Loop on: from a second before the end, the playhead wraps to the start and plays on.
 click trim-loop
 click trim-jump-end

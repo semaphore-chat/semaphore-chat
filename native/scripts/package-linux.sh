@@ -82,10 +82,11 @@ in_image() {
   local release_date
   release_date="$(date -u -d "@$SOURCE_DATE_EPOCH" +%F)"
 
-  echo "== building semaphore-app $version (dist profile, SEMAPHORE_PACKAGED=1)"
+  echo "== building semaphore-app $version (dist profile, SEMAPHORE_PACKAGED=1, player)"
   # build.rs compiles this into the binary, so `--version` and the package version agree.
   export SEMAPHORE_VERSION="$version"
-  SEMAPHORE_PACKAGED=1 cargo build --locked --profile dist -p semaphore-app
+  # The shipped player, and with it AAC-LC decoding (docs/player.md): it is part of every package.
+  SEMAPHORE_PACKAGED=1 cargo build --locked --profile dist -p semaphore-app --features player
 
   local target_dir bin
   target_dir="$(cargo metadata --locked --no-deps --format-version 1 | jq -r .target_directory)"

@@ -182,8 +182,9 @@ jobs:
       - name: Player fixtures decode (FFmpeg, libvpx, dav1d in libwebrtc)
         shell: bash
         run: |
+          # AAC is on by default now; the second run is the same tests without it (refusals).
           cargo test --locked --release -p semaphore-player
-          cargo test --locked --release -p semaphore-player --features aac
+          cargo test --locked --release -p semaphore-player --no-default-features
       # For a real Windows GPU: the hosted runner only has the software adapter.
       - uses: actions/upload-artifact@v7
         with:

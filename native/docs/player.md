@@ -26,8 +26,8 @@ VP8 and VP9 decode with the archive's libvpx, AV1 with its dav1d, both through t
 `crates/semaphore-player` wraps all of it in a small C shim (`shim/player.c`, compiled by its
 `build.rs` against the prebuilt's headers), so Rust never sees FFmpeg's structs.
 
-**What plays:** MP4, MOV and M4A with H.264 and AAC; WebM and MKV with VP8, VP9 or AV1 and Vorbis
-or Opus; Ogg Vorbis and Opus; MP3; WAV; FLAC. That is Chromium's set. **What doesn't:** AVI (no
+**What plays:** MP4, MOV and M4A with H.264 and AAC (AAC-LC only, below); WebM and MKV with VP8,
+VP9 or AV1 and Vorbis or Opus; Ogg Vorbis and Opus; MP3; WAV; FLAC. That is Chromium's set. **What doesn't:** AVI (no
 demuxer: `UnsupportedContainer`), HEVC (the iPhone camera's default) and Theora (no decoder:
 `UnsupportedCodec`, other streams still play). Chrome and Electron refuse the same, except HEVC
 where a hardware decoder exists. Owner decision (2026-11-11): these show "can't play this here"
@@ -50,11 +50,39 @@ binary (an unstripped debug build of `semaphore-app`) defines `LK_ff_h264_decode
   ([size.md](size.md) section 1, "ffmpeg: H.264 decoder"). `cargo deny` can't see it: it is inside
   the prebuilt archive of `webrtc-sys`, whose crate licence is Apache-2.0. This is true whatever
   the player does.
-- **The AAC decoder already ships**, as unreachable code until the player uses it. The `aac`
-  feature of `semaphore-player` decides whether the player decodes AAC, not whether the bytes are
-  in the binary.
+- **The AAC decoder already ships**, as unreachable code until the player uses it. It decodes in
+  every shipped build now (the `aac` feature is on by default); it only ever decodes AAC-LC.
 - What the player adds is the demuxer side (libavformat and the seven demuxers), the shim and
   its Rust.
+
+## AAC: LC only, in every shipped build
+
+Owner decision (2026-11-13): AAC decoding ships enabled, restricted to the AAC-LC profile. The
+decoder is FFmpeg's native one (already linked, above), which also carries HE-AAC's SBR and PS and
+turns them on by itself when a stream carries them implicitly. Only AAC-LC may decode: it is the
+profile whose patents have mostly expired, while HE-AAC's (2003) run longer (below).
+
+**Features.** `semaphore-player`'s `aac` feature is a default feature, and `semaphore-app`'s
+`player` enables it (`semaphore-player/aac`). The packaged builds pass `--features player`
+(`scripts/package-linux.sh`, `native-package.yml`'s Windows job), so the Linux packages, the
+Windows zip and the installer all decode AAC-LC. The player without AAC still exists for tests and
+is how the refusal paths are proven: `cargo test -p semaphore-player --no-default-features` (Linux
+in `scripts/verify.sh`, Windows in `native-spike.yml`). `player-aac` is gone.
+
+**Where it is enforced** (four layers, so no path reaches the decoder unchecked):
+
+| Path | Check | Where |
+|---|---|---|
+| ADTS in the replay buffer's MPEG-TS | Every frame's header must say profile LC (object type 2). Otherwise the stream is listed as audio, `enable` returns `Error::UnsupportedCodec` (exactly as Opus-in-TS), and the video plays. Each segment loaded later is scanned the same way, and a stream that turns bad mid-play has its decoder dropped. | `src/ts.rs` (`AdtsHeader::is_lc`), `src/segments.rs` (`adts_units_lc`, `note_aac_profiles`, `enable`) |
+| Any demuxed container (MP4/M4A/MOV, MKV, raw ADTS) | The demuxer's extradata is the `AudioSpecificConfig`. It is hand-parsed: object type 2 only, no explicit SBR/PS — object types 5 and 29, the 0x2b7 sync extension announcing SBR, and the 0x548 one announcing PS are all refused, as is anything truncated or reserved. A raw ADTS file has no config; the demuxer's profile, when it has one, is checked instead. | `src/aac.rs` (`parse`, `Config::is_plain_lc`), `src/lib.rs` (`FfmpegMedia::check_aac_config`) |
+| After the decoder opens | The decoder's profile must be LC, or not decided yet. | `sp_stream_profile` / `sp_decoder_profile` in the shim, checked in `FfmpegMedia::enable` and `SegmentedMedia::enable` |
+| Every decoded AAC frame | The decoder's profile must still be LC and the frame's rate must equal the stream header's (an SBR stream doubles it, and FFmpeg sets profile HE-AAC/HE-AACv2 implicitly on the first SBR frame). Otherwise the frame is discarded, the stream is stopped, and the player reports unsupported audio: `Media::refused_audio()` reaches the engine, which drops the sound, tells the UI (`Metadata` with `has_audio: false`) and plays the video on the wall clock. The soundboard's `decode_audio` returns `UnsupportedCodec`. | `src/aac.rs` (`decoder_is_lc`), `src/lib.rs`, `src/segments.rs`, `src/engine.rs` (`stop_refused_audio`), `src/decode.rs` |
+
+The shim's FFmpeg API has no "do not apply SBR" switch reachable through libavcodec (SBR is part
+of the decoder's profile selection), so the policy is enforced around it: refuse the config, stop
+the decoder, and drop its frames. An ADTS header can only say Main, LC, SSR or LTP, so a stream
+carrying implicit SBR looks like LC until its first SBR frame; that is what the per-frame check is
+for.
 
 ## What each licence edition needs (owner question)
 
@@ -82,8 +110,8 @@ Nothing here was checked against a source in this work; treat it as a list of qu
   already ships an H.264 decoder (for peers who publish H.264), so the player adds a use, not a new
   decoder. The last pool patents expire around 2027 to 2030, varying by country.
 - **AAC:** a separate Via LA pool, also per unit. Many AAC-LC patents (1997 standard) have expired;
-  HE-AAC (2003) ones run longer. The decoder is in the binary already (above); decoding with it is
-  behind the `aac` feature until the owner decides.
+  HE-AAC (2003) ones run longer. The decoder is in the binary already (above); it decodes now, and
+  only the LC profile (the owner's decision, above).
 - **MP3:** the last patents expired in 2017.
 - **VP8, VP9, AV1, Opus, Vorbis, FLAC:** published royalty-free (Google's VP8/VP9 grants, the AOM
   licence for AV1, the Opus IPR declarations). Sisvel runs pools claiming VP9 and AV1 patents;
@@ -95,23 +123,39 @@ Nothing here was checked against a source in this work; treat it as a list of qu
 
 - `crates/semaphore-player`: the shim, `build.rs` with the `args.gn` and component checks, and a
   Rust API: `Media::open(Read + Seek)`, `streams()`, `duration()`, `enable(stream)`,
-  `next_frame()` giving 8-bit I420 video or interleaved `f32` audio. Feature `aac`.
-- `semaphore-app` feature `player` (plus `player-aac`), **off by default**. With it off the crate
-  is not in the app's dependency graph and the release binary is byte-for-byte unchanged (below).
+  `next_frame()` giving 8-bit I420 video or interleaved `f32` audio. Feature `aac`, on by default.
+- `semaphore-app` feature `player`, which enables `aac`, **off by default in the crate**. The
+  packaged builds turn it on (above). With it off the crate is not in the app's dependency graph
+  and the release binary is byte-for-byte unchanged (below).
 - Fixtures: `crates/semaphore-player/fixtures/`, made by `fixtures/gen.sh` in the video rig's
-  image: 64x64, 10 fps, 2 s, red then blue, with a 440 Hz tone; 16 files, 167 KB.
-- Tests (`tests/fixtures.rs`): every playable fixture opens from memory with its container,
-  duration, streams and codecs; decodes exactly 20 video frames with rising timestamps, first red
-  and last blue; audio has the right rate, sample count and 880 zero crossings a second. The
-  truncated MP4 is `Invalid`, the AVI `UnsupportedContainer`, plain text `UnsupportedContainer`;
-  HEVC and Theora `UnsupportedCodec` while Theora's Vorbis still plays; a media moves to another
-  thread. Run on Linux in the image, with and without `aac`, and on Windows in `windows-link`.
+  image: 64x64, 10 fps, 2 s, red then blue, with a 440 Hz tone. Plus the AAC refusal fixtures:
+  `h264-aac-he.mp4` (an MP4 whose config says explicit HE-AAC) and `ts/h264-aac-main.ts` (ADTS
+  headers saying AAC Main), both made by `fixtures/aac_fixtures.py` from LC encodes, since the
+  image's ffmpeg (no libfdk_aac) cannot encode either profile. The player's tests read the files,
+  never the scripts.
+- Tests (`tests/fixtures.rs`, `tests/segments.rs`): every playable fixture opens from memory with
+  its container, duration, streams and codecs; decodes exactly 20 video frames with rising
+  timestamps, first red and last blue; audio has the right rate, sample count and 880 zero
+  crossings a second. An LC stream plays with sound in MP4 (`h264-aac.mp4`) and in TS
+  (`fixtures/ts/seg0.ts`); the explicit HE-AAC MP4 and the Main-profile TS are
+  `UnsupportedCodec` for the audio while the video plays. The truncated MP4 is `Invalid`, the AVI
+  `UnsupportedContainer`, plain text `UnsupportedContainer`; HEVC and Theora `UnsupportedCodec`
+  while Theora's Vorbis still plays; a media moves to another thread. `src/aac_tests.rs` covers
+  the AudioSpecificConfig parser bit by bit (escapes, PCE, both sync extensions, truncated,
+  reserved and hostile inputs) and the per-frame decision (LC at the header's rate, HE/HEv2,
+  doubled rate). Run on Linux in the image with and without `aac`, and on Windows in
+  `windows-link`.
+- **What is not covered by a fixture**: no encoder in the toolchain writes implicit SBR (FFmpeg's
+  native AAC encoder is LC-only; HE-AAC needs libfdk_aac, absent), so the implicit-SBR runtime
+  path is covered by the `aac::decoder_is_lc` unit tests and the code path above, not by a
+  committed HE-AAC ADTS stream. The header-level refusals have real fixtures.
 
 ### Size (measured 2026-11-11, Linux x86_64, in the build image)
 
 The method from [size.md](size.md): one target directory, `cargo build --locked --release` and
-`--profile dist` of `-p semaphore-app`, compressed with `xz -T1 -6`. "On" is `--features player-aac`
-plus a temporary `main.rs` hook (not committed) that calls `open_bytes`, `streams`, `enable` and
+`--profile dist` of `-p semaphore-app`, compressed with `xz -T1 -6`. "On" is the player
+(`--features player`, then called `player-aac`: AAC now comes with it) plus a temporary `main.rs`
+hook (not committed) that calls `open_bytes`, `streams`, `enable` and
 `next_frame`, so the linker keeps everything the player will reach; without a caller the
 crate isn't linked at all. Bytes, MB = 10^6:
 
@@ -119,10 +163,10 @@ crate isn't linked at all. Bytes, MB = 10^6:
 |---|---:|---:|---|
 | `release`, before (`48508690`) | 82,747,824 | 21,783,532 | `3affa7f23e5da168` |
 | `release`, feature off (this commit) | 82,747,824 | 21,783,532 | `3affa7f23e5da168` |
-| `release`, `player-aac` on | 83,218,992 | 21,978,220 | `27d6686d45977292` |
+| `release`, player (AAC) on | 83,218,992 | 21,978,220 | `27d6686d45977292` |
 | `dist`, before | 67,843,088 | 20,082,248 | `e9971cfeb232333a` |
 | `dist`, feature off | 67,843,088 | 20,082,248 | `e9971cfeb232333a` |
-| `dist`, `player-aac` on | 68,312,208 | 20,276,664 | `8b340c1e0d458b1f` |
+| `dist`, player (AAC) on | 68,312,208 | 20,276,664 | `8b340c1e0d458b1f` |
 
 - **Off is byte-for-byte unchanged** in both profiles (same sha256), though cargo rebuilt
   `semaphore-app` for its manifest change.
@@ -181,8 +225,8 @@ demuxer, so:
   split and timed. H.264 (0x1B) and AAC (0x0F) are read; Opus in TS (0x06 with an `Opus`
   registration) and anything else is listed and refused. A continuity gap drops the PES it broke.
 - **The shim's `sp_decoder`** decodes those units with the same FFmpeg decoders (Annex B H.264,
-  ADTS AAC, parameters in band). AAC stays behind the `aac` feature: without it the preview is
-  video only.
+  ADTS AAC, parameters in band). AAC-LC decodes (in every shipped build, above); a segment whose
+  ADTS profile is not LC is audio this player refuses, so the preview is video only.
 - **`src/segments.rs`** (`Media::open_segments`, or `Opened::Segments` from an `Opener`): segment
   `i` starts at the sum of the `#EXTINF` lengths before it and time inside it counts from its
   first video PTS, the model the backend captures with. A seek decodes from the segment's last
@@ -207,10 +251,11 @@ demuxer, so:
   segments); `selection_step` on every position while playing. The timeline draws the playhead; a
   press on a handle drags it, anywhere else seeks; a start dragged past the playhead takes it
   along; Refresh reopens the preview at the playhead with the newest playlist. States: loading,
-  "Could not load the video preview. Please try again." with Retry, and "Video only" when no
-  sound track is decoded (no `aac`). Stories `replay-preview-*` (`rigs/shot/scripts/
-  w14-trim-preview.steps`); `rigs/slice/scripts/voice-w4.steps` plays it against the fake
-  server's segments (video only: the `--voice` build has no AAC).
+  "Could not load the video preview. Please try again." with Retry, and "Video only" only when
+  the recording has no sound this player can decode (no audio track, or unsupported audio such as
+  a non-LC AAC profile); the wording is the web's. Stories `replay-preview-*` (`rigs/shot/
+  scripts/w14-trim-preview.steps`); `rigs/slice/scripts/voice-w4.steps` plays it against the fake
+  server's segments and asserts the sound is heard on the virtual speaker.
 - **Not verified yet** against a segment LiveKit egress wrote (raw and remuxed), nor which audio
   codec egress uses when it falls back to its `H264_1080P_30` preset.
 

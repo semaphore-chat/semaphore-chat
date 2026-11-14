@@ -110,7 +110,8 @@ jobs:
         shell: bash
         env:
           SEMAPHORE_PACKAGED: '1'
-        run: cargo build --locked --profile dist -p semaphore-app
+        # The attachment player is part of every package, and with it AAC-LC (docs/player.md).
+        run: cargo build --locked --profile dist -p semaphore-app --features player
       - name: Collect the portable tree
         shell: pwsh
         run: |

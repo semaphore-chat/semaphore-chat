@@ -13,10 +13,11 @@ path = "src/lib.rs"
 name = "semaphore-app"
 path = "src/main.rs"
 
-# W3-player spike (docs/player.md): off until W3-app wires the player in.
+# The attachment player (docs/player.md), off by default in this crate. The packaged builds enable
+# it (scripts/package-*, native-package.yml), and with it AAC: LC only, enforced in
+# semaphore-player. Building the player without AAC is `-p semaphore-player --no-default-features`.
 [features]
-player = ["dep:semaphore-player"]
-player-aac = ["player", "semaphore-player/aac"]
+player = ["dep:semaphore-player", "semaphore-player/aac"]
 
 [dependencies]
 async-channel = "2"
