@@ -228,6 +228,11 @@ pub struct FakeBackend {
     pub endless_member_pages: Mutex<bool>,
     pub member_search_requests: AtomicU64,
     pub bulk_presence: Mutex<HashMap<String, bool>>,
+    /// What the bulk presence read fails with, while set.
+    pub presence_error: Mutex<Option<BackendError>>,
+    /// Holds the next bulk presence answer (taken as the request arrives) until it's released.
+    pub presence_gate: Mutex<Option<oneshot::Receiver<()>>>,
+    pub bulk_presence_requests: AtomicU64,
     pub notification_count: Mutex<i64>,
     pub notification_requests: AtomicU64,
     pub capabilities: Mutex<Option<Value>>,
@@ -515,9 +520,16 @@ impl CommunitiesBackend for FakeBackend {
     async fn presence_controller_get_bulk_presence(
         &self,
     ) -> BackendResult<wire::BulkPresenceResponseDto> {
-        Ok(wire::BulkPresenceResponseDto {
-            presence: self.bulk_presence.lock().unwrap().clone(),
-        })
+        self.bulk_presence_requests.fetch_add(1, Ordering::SeqCst);
+        if let Some(error) = self.presence_error.lock().unwrap().clone() {
+            return Err(error);
+        }
+        let presence = self.bulk_presence.lock().unwrap().clone();
+        let gate = self.presence_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        Ok(wire::BulkPresenceResponseDto { presence })
     }
 
     async fn notifications_controller_get_unread_count(

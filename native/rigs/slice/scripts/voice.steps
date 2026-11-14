@@ -44,6 +44,22 @@ wait core voice undeafened
 click voice-mic
 wait core voice unmuted
 
+# Our own speaking ring is worked out from our own mic, as the web's is: the virtual mic's tone
+# lights it on our row in the channel list, a mute puts it out at once, and so does silence after
+# the gate's 300 ms hold.
+wait core voice self-quiet within 5
+mic tone on
+wait core voice self-speaking within 5
+wait core element voice-user-speaking-$ID(me)
+click voice-mic
+wait core voice muted
+wait core voice self-quiet
+click voice-mic
+wait core voice unmuted
+wait core voice self-speaking within 5
+mic tone off
+wait core voice self-quiet within 5
+
 # The camera: on, our own preview on the stage, then off.
 wait core label "Turn on camera"
 click voice-camera
