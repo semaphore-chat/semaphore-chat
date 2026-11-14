@@ -195,8 +195,13 @@ mod tests {
         io.set_speaker(Box::new(move |frame| speaker.push(frame)));
         let engine = engine(&io);
         let test = engine.start_input_test(true).unwrap();
-        eventually("the speaker plays the mic", || tap.rms_at(440.0) > 2000.0);
-        assert!(tap.share_at(440.0) > 0.5);
+        // The loudest the output gets is the mic's own tone; wait until a whole window of it is
+        // the tone (a run under load can start the speaker clock before the mic's, and a stalled
+        // speaker drops samples, so early windows hold clicks and gaps at the same loudness).
+        eventually("the speaker plays the mic's tone", || {
+            tap.tone_at(440.0)
+                .is_some_and(|(rms, share)| rms > 2000.0 && share > 0.5)
+        });
         assert_eq!(io.open_streams(), 2);
         drop(test);
         eventually("both devices close", || io.open_streams() == 0);

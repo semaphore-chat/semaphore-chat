@@ -86,9 +86,18 @@ impl SpeakerTap {
         tone_rms(&samples, hz)
     }
 
-    pub fn share_at(&self, hz: f64) -> f64 {
+    /// The window's RMS at `hz` and the share of its energy there, from one read of it: `None`
+    /// until the window is full. Both together, so a caller can't compare one sample's RMS with
+    /// the next one's share.
+    pub fn tone_at(&self, hz: f64) -> Option<(f64, f64)> {
         let samples = self.samples.lock().unwrap_or_else(|p| p.into_inner());
-        tone_share(&samples, hz)
+        if samples.len() < self.window {
+            return None;
+        }
+        let energy: f64 = samples.iter().map(|sample| sample * sample).sum();
+        let share = tone_share(&samples, hz);
+        let rms = (share * energy / samples.len() as f64).sqrt();
+        Some((rms, share))
     }
 }
 

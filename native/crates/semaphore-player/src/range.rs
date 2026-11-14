@@ -5,7 +5,8 @@
 //!   next [`READ_AHEAD`] in the background, on the app's tokio runtime.
 //! - **Retries.** A retryable failure (network, 5xx, 429) is retried 3 times with backoff
 //!   (250, 500, 1000 ms); anything else fails the read at once, and the player reports a
-//!   network error.
+//!   network error. A block that used up its retries has failed the read that was waiting for it:
+//!   that read fails without fetching it again, and a later read is a fresh attempt at it.
 //! - **Memory only.** Blocks live in a [`BlockCache`]: at most 16 MiB per player and 32 MiB in
 //!   all, least recently used out first, apart from the 64 MiB image cache so a long video can't
 //!   evict avatars. Nothing is written to disk.
@@ -413,17 +414,19 @@ impl RangeSource {
         self.size.div_ceil(BLOCK as u64)
     }
 
-    /// Starts fetching `index` unless it is cached or already on its way.
+    /// Starts fetching `index` unless it is cached, already on its way, or has already failed for
+    /// the read that is waiting: a block that used up its retries failed that read, so a read which
+    /// finds the failure a moment too late (just before the fetch recorded it) can't start a
+    /// second round of them.
     fn request(&mut self, index: u64) {
         if index >= self.blocks() || self.cache.get(&self.file, index).is_some() {
             return;
         }
         {
             let mut flight = self.shared.flight();
-            if !flight.pending.insert(index) {
+            if flight.failed.contains_key(&index) || !flight.pending.insert(index) {
                 return;
             }
-            flight.failed.remove(&index);
         }
         let start = index * BLOCK as u64;
         let end = (start + BLOCK as u64).min(self.size) - 1;
@@ -461,8 +464,7 @@ impl RangeSource {
             if let Some(block) = self.cache.get(&self.file, index) {
                 return Ok(block);
             }
-            let failed = self.shared.flight().failed.remove(&index);
-            if let Some(error) = failed {
+            if let Some(error) = self.shared.flight().failed.get(&index).cloned() {
                 return Err(io::Error::other(error.message));
             }
             self.request(index);
@@ -532,6 +534,11 @@ impl Read for RangeSource {
             return Ok(0);
         }
         let index = self.position / BLOCK as u64;
+        // A read is a fresh attempt at the block it needs: a fetch that used up its retries failed
+        // that read, not the source (the server may answer in full now, as `range_edges` expects).
+        // Kept for the rest of this read: `request` won't fetch a block that has failed and `block`
+        // returns the error, so one read never starts a second round of retries.
+        self.shared.flight().failed.remove(&index);
         for ahead in index + 1..=index + READ_AHEAD {
             self.request(ahead);
         }
