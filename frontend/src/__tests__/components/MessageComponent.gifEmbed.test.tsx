@@ -70,6 +70,8 @@ describe('MessageComponent GIF embed rendering', () => {
     const img = screen.getByRole('img', { name: 'GIF' }) as HTMLImageElement;
     expect(img).toBeInTheDocument();
     expect(img.src).toBe(gifUrl);
+    // Third-party host: don't tell it which page (instance) the reader is on
+    expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
 
     // Raw URL text is not shown anywhere.
     expect(screen.queryByText(gifUrl)).not.toBeInTheDocument();

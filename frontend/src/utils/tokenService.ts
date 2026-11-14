@@ -6,7 +6,7 @@
  */
 
 import axios from "axios";
-import { getApiUrl } from "../config/env";
+import { getApiBaseUrl, getApiUrl, normalizeUrlForComparison } from "../config/env";
 import { isElectron } from "./platform";
 import { getElectronAPI } from "./electronBridge";
 import { logger } from "./logger";
@@ -300,10 +300,52 @@ export function notifyAuthFailure(reason?: SignOutReason): void {
  * Perform the actual token refresh
  */
 /**
- * Read the Electron refresh token from secure storage, falling back to
- * localStorage for backward compatibility with older Electron builds.
+ * A stored refresh token is bound to the API base URL of the server that
+ * issued it, so it is never sent to another server (e.g. after the active
+ * server's URL changes). Stored as JSON; a plain string is an older, unbound
+ * token.
  */
-export async function getElectronRefreshToken(): Promise<string | null> {
+interface BoundRefreshToken {
+  v: 1;
+  api: string;
+  token: string;
+}
+
+function currentApiKey(): string {
+  return normalizeUrlForComparison(getApiBaseUrl());
+}
+
+function bindRefreshToken(token: string): string {
+  const bound: BoundRefreshToken = { v: 1, api: currentApiKey(), token };
+  return JSON.stringify(bound);
+}
+
+/**
+ * The token in a stored value, or null when it was issued by another server.
+ * An older unbound token is accepted for the current server; the next
+ * refresh stores its successor bound.
+ */
+function unbindRefreshToken(stored: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    return stored;
+  }
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    (parsed as BoundRefreshToken).v !== 1 ||
+    typeof (parsed as BoundRefreshToken).token !== "string" ||
+    typeof (parsed as BoundRefreshToken).api !== "string"
+  ) {
+    return stored;
+  }
+  const bound = parsed as BoundRefreshToken;
+  return normalizeUrlForComparison(bound.api) === currentApiKey() ? bound.token : null;
+}
+
+async function readStoredRefreshToken(): Promise<string | null> {
   // Try secure storage first
   try {
     const electronAPI = getElectronAPI();
@@ -321,10 +363,33 @@ export async function getElectronRefreshToken(): Promise<string | null> {
 }
 
 /**
- * Store the Electron refresh token in secure storage.
- * Also cleans up the legacy localStorage entry if present.
+ * Read the Electron refresh token from secure storage, falling back to
+ * localStorage for backward compatibility with older Electron builds.
+ * Returns null (and deletes the stored token) when the token was issued by a
+ * server other than the active one.
  */
-export async function storeElectronRefreshToken(token: string): Promise<void> {
+export async function getElectronRefreshToken(): Promise<string | null> {
+  const stored = await readStoredRefreshToken();
+  if (!stored) return null;
+  const token = unbindRefreshToken(stored);
+  if (token === null) {
+    logger.warn("[TokenService] Stored refresh token belongs to another server; discarding it");
+    localStorage.removeItem("refreshToken");
+    try {
+      await getElectronAPI()?.deleteRefreshToken?.();
+    } catch {
+      /* nothing more to do */
+    }
+  }
+  return token;
+}
+
+/**
+ * Store the Electron refresh token in secure storage, bound to the active
+ * server's API base URL (see BoundRefreshToken). Also cleans up the legacy localStorage entry if present.
+ */
+export async function storeElectronRefreshToken(rawToken: string): Promise<void> {
+  const token = bindRefreshToken(rawToken);
   try {
     const electronAPI = getElectronAPI();
     if (electronAPI?.storeRefreshToken) {

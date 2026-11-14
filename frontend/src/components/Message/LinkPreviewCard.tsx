@@ -98,6 +98,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
               <Favicon
                 src={preview.faviconUrl}
                 alt=""
+                referrerPolicy="no-referrer"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
@@ -158,6 +159,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
             <BannerImage
               src={preview.imageUrl}
               alt={preview.title || ""}
+              referrerPolicy="no-referrer"
               onError={() => setImageError(true)}
               sx={{ borderRadius: 0.75 }}
             />

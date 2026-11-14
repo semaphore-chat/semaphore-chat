@@ -8,6 +8,7 @@ import { AppChrome } from "./components/PWA/AppChrome";
 import { hasServers } from "./utils/serverStorage";
 import { isElectron } from "./utils/platform";
 import { useDeepLinks } from "./hooks/useDeepLinks";
+import { useBlockWindowDrops } from "./hooks/useBlockWindowDrops";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppErrorFallback } from "./components/AppErrorFallback";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
@@ -22,6 +23,8 @@ function App() {
   // AuthGate/Layout) so it's alive on public routes and before a server is
   // configured too. See hooks/useDeepLinks.ts for the full seam rationale.
   useDeepLinks();
+  // Desktop: a file dropped outside the message box must not open in the window
+  useBlockWindowDrops();
 
   return (
     <ThemeProvider>
