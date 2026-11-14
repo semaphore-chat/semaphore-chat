@@ -51,6 +51,12 @@ pub const SPACE_2XL: f32 = 32.0;
 /// `space.3xl`, px.
 pub const SPACE_3XL: f32 = 48.0;
 
+/// `radius.sm`, px.
+pub const RADIUS_SM: f32 = 6.0;
+
+/// `radius.md`, px.
+pub const RADIUS_MD: f32 = 10.0;
+
 /// `radius.field`, px.
 pub const RADIUS_FIELD: f32 = 14.0;
 
@@ -187,3 +193,45 @@ pub const LAYOUT_RIGHT_COLUMN: f32 = 264.0;
 
 /// `layout.dock`, px.
 pub const LAYOUT_DOCK: f32 = 60.0;
+
+/// `icon.xs`, px.
+pub const ICON_XS: f32 = 14.0;
+
+/// `icon.sm`, px.
+pub const ICON_SM: f32 = 16.0;
+
+/// `icon.md`, px.
+pub const ICON_MD: f32 = 18.0;
+
+/// `icon.lg`, px.
+pub const ICON_LG: f32 = 20.0;
+
+/// `icon.xl`, px.
+pub const ICON_XL: f32 = 24.0;
+
+/// `border.hairline`, px.
+pub const BORDER_HAIRLINE: f32 = 1.0;
+
+/// `border.selected`, px.
+pub const BORDER_SELECTED: f32 = 2.0;
+
+/// `border.focus`, px.
+pub const BORDER_FOCUS: f32 = 2.0;
+
+/// `border.focusOffset`, px.
+pub const BORDER_FOCUS_OFFSET: f32 = 2.0;
+
+/// `state.hover`, alpha, 0 to 1.
+pub const STATE_HOVER: f32 = 0.04;
+
+/// `state.pressed`, alpha, 0 to 1.
+pub const STATE_PRESSED: f32 = 0.08;
+
+/// `state.hoverOnFill`, alpha, 0 to 1.
+pub const STATE_HOVER_ON_FILL: f32 = 0.16;
+
+/// `state.pressedOnFill`, alpha, 0 to 1.
+pub const STATE_PRESSED_ON_FILL: f32 = 0.24;
+
+/// `state.disabled`, alpha, 0 to 1.
+pub const STATE_DISABLED: f32 = 0.5;

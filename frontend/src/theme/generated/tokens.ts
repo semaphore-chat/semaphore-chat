@@ -14,6 +14,8 @@ export const tokens = {
     '3xl': 48,
   },
   radius: {
+    sm: 6,
+    md: 10,
     field: 14,
     card: 18,
     island: 24,
@@ -69,6 +71,26 @@ export const tokens = {
     leftColumn: 288,
     rightColumn: 264,
     dock: 60,
+  },
+  icon: {
+    xs: 14,
+    sm: 16,
+    md: 18,
+    lg: 20,
+    xl: 24,
+  },
+  border: {
+    hairline: 1,
+    selected: 2,
+    focus: 2,
+    focusOffset: 2,
+  },
+  state: {
+    hover: 0.04,
+    pressed: 0.08,
+    hoverOnFill: 0.16,
+    pressedOnFill: 0.24,
+    disabled: 0.5,
   },
 } as const;
 

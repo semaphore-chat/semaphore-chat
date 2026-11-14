@@ -91,6 +91,28 @@ class RealFileTest(unittest.TestCase):
         self.assertEqual(t["radius"]["island"], 24)
         self.assertEqual(list(t["space"])[:3], ["none", "2xs", "xs"])  # source order kept
 
+    def test_load_real_file_kit_groups(self):
+        # The kit's groups: small radii, icon sizes, border widths, state alphas.
+        t = gen.load(REAL)
+        self.assertEqual(list(t["radius"]), ["sm", "md", "field", "card", "island", "full"])
+        self.assertEqual(t["radius"]["sm"], 6)
+        self.assertEqual(t["radius"]["md"], 10)
+        self.assertEqual(t["icon"], {"xs": 14, "sm": 16, "md": 18, "lg": 20, "xl": 24})
+        self.assertEqual(
+            t["border"], {"hairline": 1, "selected": 2, "focus": 2, "focusOffset": 2}
+        )
+        self.assertEqual(
+            t["state"],
+            {
+                "hover": 0.04,
+                "pressed": 0.08,
+                "hoverOnFill": 0.16,
+                "pressedOnFill": 0.24,
+                "disabled": 0.5,
+            },
+        )
+        self.assertEqual(list(t)[-3:], ["icon", "border", "state"])  # after the old groups
+
 
 class RolesTest(unittest.TestCase):
     def test_generator_roles_match_the_reference(self):
@@ -208,6 +230,26 @@ class LoadValidationTest(TempSource):
         self.edit(set_value("motion.fast", 4294967295))
         self.assertEqual(self.load()["motion"]["fast"], 4294967295)
 
+    def test_state_alpha_out_of_range(self):
+        self.edit(set_value("state.hover", 1.5))
+        with self.assertRaisesRegex(gen.TokenError, r"^state\.hover"):
+            self.load()
+
+    def test_state_alpha_must_be_a_number(self):
+        self.edit(set_value("state.hover", "x"))
+        with self.assertRaisesRegex(gen.TokenError, r"^state\.hover"):
+            self.load()
+
+    def test_negative_icon_size_rejected(self):
+        self.edit(set_value("icon.md", -1))
+        with self.assertRaisesRegex(gen.TokenError, r"^icon\.md"):
+            self.load()
+
+    def test_negative_border_width_rejected(self):
+        self.edit(set_value("border.hairline", -1))
+        with self.assertRaisesRegex(gen.TokenError, r"^border\.hairline"):
+            self.load()
+
     def test_duplicate_key_rejected(self):
         text = REAL.read_text(encoding="utf-8")
         self.assertIn('"md"', text)
@@ -286,6 +328,15 @@ class RenderTsTest(unittest.TestCase):
         tokens["shadow"]["island"]["y"] = -2
         self.assertIn("css: '0 -2px 24px rgba(0, 0, 0, 0.35)'", gen.render_ts(tokens))
 
+    def test_ts_renders_kit_tokens(self):
+        out = gen.render_ts(gen.load(REAL))
+        self.assertIn("  radius: {\n    sm: 6,\n    md: 10,\n    field: 14,", out)
+        self.assertIn("hoverOnFill: 0.16,", out)
+        self.assertIn("focusOffset: 2,", out)
+        # The new groups follow the old ones, in source order.
+        for earlier, later in (("layout", "icon"), ("icon", "border"), ("border", "state")):
+            self.assertLess(out.index(f"  {earlier}: {{"), out.index(f"  {later}: {{"))
+
     def test_ts_is_deterministic_and_headed(self):
         a = gen.render_ts(gen.load(REAL)); b = gen.render_ts(gen.load(REAL))
         self.assertEqual(a, b)
@@ -304,6 +355,17 @@ class RenderRsTest(unittest.TestCase):
         out = gen.render_rs(gen.load(REAL))
         self.assertIn("pub const TEXT_BODY_STRONG: TextStyle = TextStyle {", out)
         self.assertIn("alpha: 0.35,", out)
+
+    def test_rs_kit_constants(self):
+        out = gen.render_rs(gen.load(REAL))
+        for line in (
+            "pub const STATE_HOVER: f32 = 0.04;",
+            "pub const BORDER_FOCUS_OFFSET: f32 = 2.0;",
+            "pub const ICON_XL: f32 = 24.0;",
+            "pub const RADIUS_SM: f32 = 6.0;",
+        ):
+            self.assertIn(line, out)
+        self.assertIn("/// `state.hover`, alpha, 0 to 1.", out)
 
     def test_rs_is_deterministic_and_headed(self):
         a = gen.render_rs(gen.load(REAL))

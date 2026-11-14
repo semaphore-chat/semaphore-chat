@@ -27,3 +27,10 @@ The guide is written in chapters. Only one chapter exists so far.
 3. **Examples are the live stories.** The examples to copy are the working
    stories in the code (`frontend/src/stories/`), not pictures in a document.
    A picture goes out of date. A story is built from the real code.
+
+## Loading is not disabled
+
+A control that is busy stays focusable and reachable by keyboard. It exposes
+`aria-busy` and `aria-disabled`, and it ignores activation: clicking it or
+pressing Enter does not fire its action. Only `disabled` takes a control out
+of the tab order.
