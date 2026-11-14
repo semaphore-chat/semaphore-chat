@@ -208,10 +208,10 @@ impl State {
         }
     }
 
-    /// Forgets which queries failed and fetches again the ones a view is showing.
+    /// Forgets which queries failed, and their waits, and fetches again the ones a view is
+    /// showing. The rest go on their next read.
     pub(crate) fn retry_failed_queries(&mut self) {
-        let keys: Vec<QueryKey> = self.failed_queries.drain().map(|(key, _)| key).collect();
-        for key in keys {
+        for key in self.failed_queries.drain_shown() {
             if let Some(view) = view_for(&key) {
                 self.view_changed(view);
             }

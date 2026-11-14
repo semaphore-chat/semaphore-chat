@@ -1385,14 +1385,19 @@ pub mod types {
         pub channel_id: ::std::string::String,
         ///Connect to voice and listen (kept during a timeout).
         pub connect: bool,
-        ///Delete other members' messages here.
-        #[serde(rename = "deleteAny")]
-        pub delete_any: bool,
+        ///Delete other members' messages here. Missing on a server older than this field (below the contract's floor): None.
+        #[serde(
+            rename = "deleteAny",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub delete_any: ::std::option::Option<bool>,
         ///Edit this channel's permission overwrites.
         #[serde(rename = "managePermissions")]
         pub manage_permissions: bool,
-        ///Pin messages here.
-        pub pin: bool,
+        ///Pin messages here. Missing on a server older than this field (below the contract's floor): None.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
+        pub pin: ::std::option::Option<bool>,
         ///Send messages.
         pub post: bool,
         /**Roles whose holders can post here, by rank (names only), for the
@@ -1401,9 +1406,13 @@ pub mod types {
         pub posting_role_names: ::std::vec::Vec<::std::string::String>,
         ///Add reactions.
         pub react: bool,
-        ///Keep seeing the text of messages removed by a moderator here.
-        #[serde(rename = "seeRemoved")]
-        pub see_removed: bool,
+        ///Keep seeing the text of messages removed by a moderator here. Missing on a server older than this field (below the contract's floor): None.
+        #[serde(
+            rename = "seeRemoved",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub see_removed: ::std::option::Option<bool>,
         ///Share the screen.
         pub share: bool,
         ///Publish the microphone.
@@ -3283,9 +3292,13 @@ pub mod types {
         pub file_user_id: ::std::option::Option<::std::string::String>,
         pub filename: ::std::string::String,
         /**Whether a thumbnail was generated for this file. Clients fetch it from
-        `GET /file/:id/thumbnail`.*/
-        #[serde(rename = "hasThumbnail")]
-        pub has_thumbnail: bool,
+        `GET /file/:id/thumbnail`. Missing on a server older than this field (below the contract's floor): None.*/
+        #[serde(
+            rename = "hasThumbnail",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub has_thumbnail: ::std::option::Option<bool>,
         ///Display height in pixels, for images and videos; null when unknown.
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub height: ::std::option::Option<i64>,

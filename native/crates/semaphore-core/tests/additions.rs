@@ -780,6 +780,8 @@ async fn a_channel_row_has_slowmode_and_permissions_once_they_load() {
     *rig.backend.capabilities.lock().unwrap() = Some(json!({
         "communityId": "comm", "channels": [capability("a", false)],
     }));
+    // The 404 is asked again once its wait is over, not on the next read.
+    rig.clock.advance(semaphore_core::retry::PERMANENT_MS);
     rig.core.channels("comm".into());
     let events = rig.settle().await;
     assert!(view_changed(

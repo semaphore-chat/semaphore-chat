@@ -20,6 +20,7 @@ pub mod player;
 pub mod realtime;
 pub mod redact;
 pub mod resync;
+pub mod retry;
 #[cfg(feature = "fixtures")]
 pub mod scenario;
 pub mod send;

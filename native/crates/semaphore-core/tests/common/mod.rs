@@ -231,6 +231,9 @@ pub struct FakeBackend {
     pub notification_count: Mutex<i64>,
     pub notification_requests: AtomicU64,
     pub capabilities: Mutex<Option<Value>>,
+    /// What the capabilities read fails with, while set (before `capabilities` is looked at).
+    pub capabilities_error: Mutex<Option<BackendError>>,
+    pub capability_requests: AtomicU64,
     pub voice_users: Mutex<Vec<Value>>,
     pub tokens_minted: AtomicU64,
     /// What each voice presence call was, in order: `join`, `refresh`, `leave`, `deafen`.
@@ -470,6 +473,10 @@ impl CommunitiesBackend for FakeBackend {
         &self,
         _: String,
     ) -> BackendResult<wire::CommunityChannelCapabilitiesDto> {
+        self.capability_requests.fetch_add(1, Ordering::SeqCst);
+        if let Some(error) = self.capabilities_error.lock().unwrap().clone() {
+            return Err(error);
+        }
         match self.capabilities.lock().unwrap().clone() {
             Some(capabilities) => decoded(capabilities),
             None => Err(not_found()),

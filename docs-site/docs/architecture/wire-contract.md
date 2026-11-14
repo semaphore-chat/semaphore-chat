@@ -74,6 +74,11 @@ RUSTUP_TOOLCHAIN=nightly cargo-progenitor progenitor -i spec.json -o out -n semc
 !!! warning "Unknown enum values"
     The generated enums are closed: an unknown `SpanType` fails to decode the **whole message**, which breaks rule 3. A Rust client has to handle this itself. Unknown fields are fine.
 
+!!! warning "Fields missing on an older server"
+    Progenitor makes every required field a plain, non-optional field, so a field added after the server you talk to was released fails the **whole response** (rule 4). A v0.9.0 server's `ChannelCapabilitiesDto`, for example, has no `pin`, `deleteAny` or `seeRemoved`. Generate against the oldest server you support as well, and make the required fields that it doesn't have optional.
+
+    The native client does this with a **floor**: `native/contract/floor-openapi.json` is `backend/openapi.json` from the oldest supported release (pinned in `native/contract/FLOOR` by `native/scripts/pin-contract.sh --floor <tag>`; v0.8.0 today). `tools/gen-api` turns each required, non-nullable field that the floor's schema lacks into `Option<T>` with `#[serde(default)]`, and code that reads one falls back when it's `None`. Move the floor only to a released tag, and only when dropping support for the releases below it: the fields then become required again, and an older server fails to decode. Regenerate with `native/scripts/gen-api.sh` after moving it.
+
 ### Swift and Kotlin (openapi-generator)
 
 Tested for generation only, with 7.17.0 and the `swift6` and `kotlin` generators. Pass `--additional-properties=enumUnknownDefaultCase=true` for rule 3.
