@@ -33,7 +33,7 @@ Copy `backend/env.sample` to `backend/.env` to get started.
 
 | Variable | Description | Default |
 |----------|------------|---------|
-| `REQUIRE_SETUP_TOKEN` | `true`: the setup wizard asks for the setup token printed in the backend log (one line containing `Setup token:`), and the API never returns it. `false`: the wizard gets the token from the API (only for instances nobody else can reach) | `true` |
+| `REQUIRE_SETUP_TOKEN` | `true`: the setup wizard asks for the setup token printed in the backend log (one line containing `Setup token:`), and the API never returns it. `false`: the wizard gets the token from the API (only for instances nobody else can reach), unless `SETUP_TOKEN` is set: a configured token is never returned | `true` |
 | `SETUP_TOKEN` | Choose the setup token yourself, for unattended installs (16+ characters). It is never printed | unset (a random token is made and logged) |
 
 The token is printed on every backend start while the instance needs setup, and never once setup is done. See [First Run](first-run.md).

@@ -128,4 +128,39 @@ describe('Onboarding setup token (e2e)', () => {
       .send({ ...setupBody, setupToken: body.setupToken })
       .expect(200);
   });
+
+  it('never returns a configured SETUP_TOKEN, even with REQUIRE_SETUP_TOKEN=false', async () => {
+    process.env.REQUIRE_SETUP_TOKEN = 'false';
+    process.env.SETUP_TOKEN = 'operator-chosen-token-123';
+
+    const res = await request(app.getHttpServer())
+      .get('/api/onboarding/status')
+      .expect(200);
+
+    expect(res.body).toEqual({
+      needsSetup: true,
+      hasUsers: false,
+      setupTokenRequired: true,
+    });
+  });
+
+  it('replaces a token an older version stored (with its 15-minute expiry)', async () => {
+    // The old version's token: its status endpoint returned it to anyone
+    await redis.set('onboarding:setup-token', 'old-public-token', 'EX', 900);
+
+    await request(app.getHttpServer()).get('/api/onboarding/status');
+
+    const token = await redis.get('onboarding:setup-token');
+    expect(token).toBeTruthy();
+    expect(token).not.toBe('old-public-token');
+    expect(await redis.ttl('onboarding:setup-token')).toBe(-1);
+    await request(app.getHttpServer())
+      .post('/api/onboarding/setup')
+      .send({ ...setupBody, setupToken: 'old-public-token' })
+      .expect(409);
+    await request(app.getHttpServer())
+      .post('/api/onboarding/setup')
+      .send({ ...setupBody, setupToken: token })
+      .expect(200);
+  });
 });

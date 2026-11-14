@@ -44,6 +44,9 @@ describe('OnboardingService', () => {
     (mockRedis as unknown as { persist: jest.Mock }).persist = jest
       .fn()
       .mockResolvedValue(1);
+    (mockRedis as unknown as { eval: jest.Mock }).eval = jest
+      .fn()
+      .mockResolvedValue(1);
     delete process.env.REQUIRE_SETUP_TOKEN;
     delete process.env.SETUP_TOKEN;
 
@@ -699,6 +702,20 @@ describe('OnboardingService', () => {
       expect(status.setupToken).toBe('mock-uuid-123');
     });
 
+    it('never returns a configured SETUP_TOKEN, even with REQUIRE_SETUP_TOKEN=false', async () => {
+      process.env.REQUIRE_SETUP_TOKEN = 'false';
+      process.env.SETUP_TOKEN = 'operator-chosen-token-123';
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+
+      const status = await service.getStatus();
+
+      expect(status.needsSetup).toBe(true);
+      expect(status.setupTokenRequired).toBe(true);
+      expect(status).not.toHaveProperty('setupToken');
+      expect(JSON.stringify(status)).not.toContain('operator-chosen-token');
+    });
+
     it('should return needsSetup false when users exist', async () => {
       mockDatabase.user.count.mockResolvedValue(1);
 
@@ -730,6 +747,54 @@ describe('OnboardingService', () => {
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining('Setup token: existing-token'),
       );
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+
+    it('replaces a token minted by an older version (it still has an expiry): it may have been handed out', async () => {
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      mockRedis.get.mockResolvedValueOnce('old-public-token');
+      mockRedis.ttl.mockResolvedValueOnce(600);
+      mockRedis.set.mockResolvedValue('OK');
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await service.onApplicationBootstrap();
+
+      // Deleted only while it still has its expiry (atomic: never a new
+      // token another replica just stored), then a new one minted
+      const evalMock = (mockRedis as unknown as { eval: jest.Mock }).eval;
+      expect(evalMock).toHaveBeenCalledWith(
+        expect.stringContaining('ttl'),
+        1,
+        'onboarding:setup-token',
+      );
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'onboarding:setup-token',
+        'mock-uuid-123',
+        'NX',
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Setup token: mock-uuid-123'),
+      );
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('old-public-token'),
+      );
+      expect(
+        (mockRedis as unknown as { persist: jest.Mock }).persist,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('keeps a token without an expiry (minted by this version)', async () => {
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      mockRedis.get.mockResolvedValue('current-token');
+      mockRedis.ttl.mockResolvedValue(-1);
+
+      await service.onApplicationBootstrap();
+
+      expect(
+        (mockRedis as unknown as { eval: jest.Mock }).eval,
+      ).not.toHaveBeenCalled();
       expect(mockRedis.set).not.toHaveBeenCalled();
     });
 

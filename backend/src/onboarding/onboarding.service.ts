@@ -26,19 +26,30 @@ import { SetupInstanceDto } from './dto/setup-instance.dto';
  */
 const SETUP_ADVISORY_LOCK_KEY = 73_150_001;
 
-/**
- * REQUIRE_SETUP_TOKEN (default on): the setup token is never returned by the
- * public status endpoint. The backend logs it and the operator pastes it into
- * the setup wizard. `false` keeps the old flow, where the wizard receives it.
- */
-function isSetupTokenRequired(): boolean {
-  return process.env.REQUIRE_SETUP_TOKEN?.trim().toLowerCase() !== 'false';
-}
-
 /** SETUP_TOKEN: an operator-chosen token for unattended installs. */
 function configuredSetupToken(): string | undefined {
   return process.env.SETUP_TOKEN?.trim() || undefined;
 }
+
+/**
+ * REQUIRE_SETUP_TOKEN (default on): the setup token is never returned by the
+ * public status endpoint. The backend logs it and the operator pastes it into
+ * the setup wizard. `false` keeps the old flow, where the wizard receives it,
+ * except with a configured SETUP_TOKEN: that one is never handed out.
+ */
+function isSetupTokenRequired(): boolean {
+  if (configuredSetupToken()) return true;
+  return process.env.REQUIRE_SETUP_TOKEN?.trim().toLowerCase() !== 'false';
+}
+
+/**
+ * Delete the key only while it still has an expiry, atomically. Older
+ * versions stored the setup token with a 15-minute TTL (and their public
+ * status endpoint returned it to anyone); this version stores it without
+ * one, so a replica never deletes a token another one just minted.
+ */
+const DELETE_IF_EXPIRING =
+  "if redis.call('ttl', KEYS[1]) > 0 then return redis.call('del', KEYS[1]) end return 0";
 
 /** Constant-time string comparison (hashing first equalises the lengths). */
 function tokensMatch(a: string, b: string): boolean {
@@ -151,9 +162,12 @@ export class OnboardingService implements OnApplicationBootstrap {
 
     const existing = await this.redis.get(this.SETUP_TOKEN_KEY);
     if (existing) {
-      // Drop a TTL left by older versions, which expired tokens after 15 min
-      await this.redis.persist(this.SETUP_TOKEN_KEY);
-      return { token: existing, created: false };
+      if ((await this.redis.ttl(this.SETUP_TOKEN_KEY)) <= 0) {
+        return { token: existing, created: false };
+      }
+      // Minted by an older version (it has their 15-minute TTL), whose
+      // status endpoint may have handed it out: replace it with a new one
+      await this.redis.eval(DELETE_IF_EXPIRING, 1, this.SETUP_TOKEN_KEY);
     }
 
     const candidate = randomUUID();
