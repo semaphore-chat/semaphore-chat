@@ -12,6 +12,15 @@ fn lounge_shape_and_layout_values() {
 }
 
 #[test]
+fn lounge_kit_tokens() {
+    assert_eq!(RADIUS_SM, 6.0);
+    assert_eq!(ICON_MD, 18.0);
+    assert_eq!(BORDER_FOCUS_OFFSET, 2.0);
+    assert_eq!(STATE_HOVER, 0.04);
+    assert_eq!(STATE_PRESSED_ON_FILL, 0.24);
+}
+
+#[test]
 fn lounge_text_and_shadow() {
     assert_eq!(
         TEXT_TITLE,

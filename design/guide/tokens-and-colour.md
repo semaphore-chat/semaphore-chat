@@ -34,6 +34,8 @@ How round a corner is.
 
 |Token|px|Use it for|
 |---|---|---|
+|sm|6|Small controls, such as tags and chips|
+|md|10|Buttons and small panels|
 |field|14|Text fields|
 |card|18|Cards|
 |island|24|Islands, the large panels that sit on the ground colour|
@@ -109,6 +111,44 @@ The Layouts chapter, which says what changes at each width, is not written yet.
 |leftColumn|288|Width of the left column|
 |rightColumn|264|Width of the right column|
 |dock|60|Height of the dock, the rounded bar of pinned communities|
+
+### Icon sizes
+
+The size of an icon, in px. Pick the size that matches the text beside it.
+
+|Token|px|Use it for|
+|---|---|---|
+|xs|14|Icons inside tags and the densest rows|
+|sm|16|Icons beside small text|
+|md|18|Default icons beside text and inside buttons|
+|lg|20|Icons in toolbars and section headings|
+|xl|24|Large icons, such as in an empty state or a navigation item|
+
+### Borders and rings
+
+The width of a border, and of the focus ring, in px.
+
+|Token|px|Use it for|
+|---|---|---|
+|hairline|1|The thin line around islands, cards and fields|
+|selected|2|The border of a selected item|
+|focus|2|The focus ring, which shows where the keyboard is|
+|focusOffset|2|The gap between a control and its focus ring|
+
+### State layers
+
+Hover and pressed are not separate colours. A control shows them by mixing
+the text colour over its own background at the alpha in the table: use
+hoverOnFill and pressedOnFill when the background is accent or danger.
+Disabled is the opacity of a disabled control.
+
+|Token|Alpha|Use it for|
+|---|---|---|
+|hover|0.04|A pointer resting over a control|
+|pressed|0.08|A control being pressed|
+|hoverOnFill|0.16|A pointer over a control filled with accent or danger|
+|pressedOnFill|0.24|A control filled with accent or danger, being pressed|
+|disabled|0.5|A disabled control|
 
 ## Colour
 

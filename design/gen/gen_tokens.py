@@ -2,10 +2,11 @@
 """Generate the design token outputs from `design/tokens.json` and `design/colour.json`.
 
 `design/tokens.json` is the single source of truth for spacing, radii,
-control sizes, fonts, text styles, shadows, motion, breakpoints and layout;
-`design/colour.json` holds the parameters of the palette derivation. This
-program validates both and renders every registered output. Generated files
-are never edited by hand: fix the source or the renderer and re-run
+control sizes, fonts, text styles, shadows, motion, breakpoints, layout, icon
+sizes, border widths and state alphas; `design/colour.json` holds the
+parameters of the palette derivation. This program validates both and renders
+every registered output. Generated files are never edited by hand: fix the
+source or the renderer and re-run
 
     python3 design/gen/gen_tokens.py
 
@@ -65,8 +66,21 @@ GROUPS = (
     "motion",
     "breakpoint",
     "layout",
+    "icon",
+    "border",
+    "state",
 )
-SCALAR_GROUPS = ("space", "radius", "control", "motion", "breakpoint", "layout")
+SCALAR_GROUPS = (
+    "space",
+    "radius",
+    "control",
+    "motion",
+    "breakpoint",
+    "layout",
+    "icon",
+    "border",
+    "state",
+)
 TEXT_FIELDS = ("font", "size", "line", "weight")
 SHADOW_FIELDS = ("x", "y", "blur", "alpha")
 WEIGHTS = (400, 500, 600, 700)
@@ -226,6 +240,9 @@ def _scalar_group(name: str, group: object) -> None:
         _key(path, key)
         if name == "motion":
             _number(path, value, maximum=MOTION_MAX, integer=True)
+        elif name == "state":
+            # A state layer is an alpha, from clear to solid.
+            _number(path, value, maximum=1)
         else:
             _number(path, value)
 
@@ -455,6 +472,9 @@ RS_UNITS = {
     "motion": "ms",
     "breakpoint": "px",
     "layout": "px",
+    "icon": "px",
+    "border": "px",
+    "state": "alpha, 0 to 1",
 }
 RS_STRUCTS = """\
 /// A text style: the resolved font family, px size and line height, and weight.
