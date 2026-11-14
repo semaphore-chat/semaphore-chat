@@ -27,6 +27,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 GEN_DIR = REPO / "design" / "gen"
 REAL = REPO / "design" / "tokens.json"
 REAL_COLOUR = REPO / "design" / "colour.json"
+REAL_ICONS = REPO / "design" / "icons"
 
 
 def set_value(path: str, value: object):
@@ -67,6 +68,8 @@ class TempSource(unittest.TestCase):
         self.source.write_text(REAL.read_text(encoding="utf-8"), encoding="utf-8")
         self.colour_source = self.root / "design" / "colour.json"
         self.colour_source.write_text(REAL_COLOUR.read_text(encoding="utf-8"), encoding="utf-8")
+        shutil.copytree(REAL_ICONS, self.root / "design" / "icons")
+        self.icons_source = self.root / "design" / "icons" / "icons.json"
 
     def edit(self, change) -> None:
         data = json.loads(self.source.read_text(encoding="utf-8"))
@@ -83,6 +86,13 @@ class TempSource(unittest.TestCase):
 
     def load_colour(self) -> dict:
         return gen.load_colour(self.colour_source)
+
+    def remove_icon(self, name: str) -> None:
+        """Drop one icon from the set: its entry and its source file."""
+        document = json.loads(self.icons_source.read_text(encoding="utf-8"))
+        file = document["icons"].pop(name)
+        self.icons_source.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        (self.root / "design" / "icons" / "lucide" / f"{file}.svg").unlink()
 
 
 class RealFileTest(unittest.TestCase):
@@ -673,6 +683,23 @@ class RunTest(TempSource):
             gen.run(self.root, check=False)
         self.assertFalse((self.root / "out.txt").exists())
 
+    def test_removed_icon_leaves_a_stale_asset(self):
+        self.assertEqual(gen.run(self.root, check=False), 0)
+        asset = self.root / "native/crates/semaphore-design/assets/lucide/mic.svg"
+        self.assertTrue(asset.is_file())
+
+        self.remove_icon("Mic")
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(gen.run(self.root, check=True), 1)
+        self.assertIn(
+            "stale: native/crates/semaphore-design/assets/lucide/mic.svg", stderr.getvalue()
+        )
+        self.assertTrue(asset.is_file())  # check writes nothing
+
+        self.assertEqual(gen.run(self.root, check=False), 0)
+        self.assertFalse(asset.exists())
+
 
 class MainTest(TempSource):
     def run_main(self, argv):
@@ -722,7 +749,7 @@ class BrokenColourSourceTest(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = pathlib.Path(temporary.name)
         (self.root / "design" / "gen").mkdir(parents=True)
-        for name in ("gen_tokens.py", "colour_ref.py"):
+        for name in ("gen_tokens.py", "gen_error.py", "colour_ref.py"):
             shutil.copy(GEN_DIR / name, self.root / "design" / "gen" / name)
         shutil.copy(REAL, self.root / "design" / "tokens.json")
         self.colour = self.root / "design" / "colour.json"

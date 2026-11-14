@@ -10,6 +10,9 @@
 //! `design/gen/gen_tokens.py` too. `derive` is the hand-written palette derivation, a port of
 //! `design/gen/colour_ref.py`.
 //!
+//! `lounge_icons` is the shared Lucide set from `design/icons/icons.json`, with one SVG asset per
+//! icon below `assets/lucide/`.
+//!
 //! No dependencies, and no GPUI: this is the data, not the mapping onto a renderer (see unit U8).
 //! See `native/docs/slice-units/U2-design.md`.
 
@@ -21,6 +24,9 @@ pub mod derive;
 mod derive_tests;
 mod generated;
 pub mod lounge;
+pub mod lounge_icons;
+#[cfg(test)]
+mod lounge_icons_tests;
 #[cfg(test)]
 mod lounge_tests;
 #[cfg(test)]
@@ -29,6 +35,7 @@ pub mod type_scale;
 
 pub use derive::{Palette, derive_palette};
 pub use generated::{Accent, Icon, Intensity, Mode, Tokens, tokens};
+pub use lounge_icons::LoungeIcon;
 
 /// A colour as the web resolves it, packed `0xRRGGBBAA`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
