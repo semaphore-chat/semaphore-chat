@@ -87,9 +87,24 @@ do nothing and return false, so macOS and the test platform are unchanged.
   toplevel, which xdg-shell allows, gets no configure from weston 15, so the role objects are made
   again, as GTK does. `activate_with_token` calls `xdg_activation_v1.activate`.
 
+**Callbacks are called with `callbacks` released.** Close to tray hides the window from inside
+the should-close callback, so on Wayland a compositor close (Hyprland's `killactive`, a title bar's
+close button) reached `report_visibility` while the `xdg_toplevel` close handler still held
+`callbacks`, and panicked with "RefCell already borrowed" (the first desktop run, twice). Every
+place that held the borrow across a callback now takes the callback out, calls it, and puts it
+back, as upstream already does for most of them: on Wayland the close event's should-close, the
+frame callback, the configure's appearance change and `close`; on X11 should-close, `close`,
+resize and move, and the decoration change. `set_visible` on Wayland also no longer reports
+visibility on the spot: it runs inside app code, where the report could never reach the window
+(the `App` is borrowed, so it was logged and dropped). `schedule_visibility_report` reports it on
+the next idle turn of the event loop, and `visibility()` reads `Hidden` while the window is hidden.
+
 `scripts/desktop-probe.sh` (in `verify.sh`) proves it on Xvfb and headless weston: the X11 map
-state, no frames while hidden on Wayland, frames again after each show, and a hidden window closed
-without a protocol error. A real compositor (Hyprland, KDE, GNOME) is on the manual checklist in
+state, no frames while hidden on Wayland, its visibility `Hidden` then `Visible`, frames again
+after each show, and a hidden window closed without a protocol error. On headless sway,
+`swaymsg kill` sends the compositor's close request: `rig-window-hide close-request hide` hides
+from the should-close callback twice and shows again (without the fix it panics at the same line
+as the crash report), and `close-request quit` closes and the app goes on. A real compositor (Hyprland, KDE, GNOME) is on the manual checklist in
 `docs/slice-app.md`. If a GPUI bump changes `WaylandWindowState` or the frame loop, port this and
 rerun the probe.
 

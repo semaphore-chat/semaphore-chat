@@ -1050,10 +1050,12 @@ impl X11Window {
 
 impl X11WindowStatePtr {
     pub fn should_close(&self) -> bool {
-        let mut cb = self.callbacks.borrow_mut();
-        if let Some(mut should_close) = cb.should_close.take() {
+        // Semaphore patch: `callbacks` is released while should-close runs (close to tray hides
+        // the window from it), as the Wayland backend now does.
+        let callback = self.callbacks.borrow_mut().should_close.take();
+        if let Some(mut should_close) = callback {
             let result = (should_close)();
-            cb.should_close = Some(should_close);
+            self.callbacks.borrow_mut().should_close = Some(should_close);
             result
         } else {
             true
@@ -1175,8 +1177,9 @@ impl X11WindowStatePtr {
             }
         }
 
-        let mut callbacks = self.callbacks.borrow_mut();
-        if let Some(fun) = callbacks.close.take() {
+        // Semaphore patch: called with `callbacks` released, as elsewhere.
+        let callback = self.callbacks.borrow_mut().close.take();
+        if let Some(fun) = callback {
             fun()
         }
     }
@@ -1320,13 +1323,19 @@ impl X11WindowStatePtr {
             result
         };
 
-        let mut callbacks = self.callbacks.borrow_mut();
-        if let Some(ref mut fun) = callbacks.resize {
-            fun(content_size, scale_factor)
+        // Semaphore patch: each callback is called with `callbacks` released, as elsewhere.
+        let callback = self.callbacks.borrow_mut().resize.take();
+        if let Some(mut fun) = callback {
+            fun(content_size, scale_factor);
+            self.callbacks.borrow_mut().resize = Some(fun);
         }
 
-        if !is_resize && let Some(ref mut fun) = callbacks.moved {
-            fun();
+        if !is_resize {
+            let callback = self.callbacks.borrow_mut().moved.take();
+            if let Some(mut fun) = callback {
+                fun();
+                self.callbacks.borrow_mut().moved = Some(fun);
+            }
         }
 
         Ok(())
@@ -2007,9 +2016,11 @@ impl PlatformWindow for X11Window {
         }
 
         drop(state);
-        let mut callbacks = self.0.callbacks.borrow_mut();
-        if let Some(appearance_changed) = callbacks.appearance_changed.as_mut() {
-            appearance_changed();
+        // Semaphore patch: called with `callbacks` released, as elsewhere.
+        let callback = self.0.callbacks.borrow_mut().appearance_changed.take();
+        if let Some(mut fun) = callback {
+            fun();
+            self.0.callbacks.borrow_mut().appearance_changed = Some(fun);
         }
     }
 

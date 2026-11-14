@@ -982,8 +982,10 @@ impl WaylandWindowStatePtr {
         let require_presentation = state.presentation.requires_presentation();
         drop(state);
 
-        let mut callbacks = self.callbacks.borrow_mut();
-        let Some(request_frame_callback) = callbacks.request_frame.as_mut() else {
+        // Semaphore patch: the callback is taken out, so app code it runs (effects flushed after
+        // the draw) can reach this window's other callbacks without a `RefCell` panic.
+        let Some(mut request_frame_callback) = self.callbacks.borrow_mut().request_frame.take()
+        else {
             self.frame_loop.set(FrameLoop::Parked);
             return;
         };
@@ -993,8 +995,8 @@ impl WaylandWindowStatePtr {
             signal_at,
             signal_source,
         });
+        self.callbacks.borrow_mut().request_frame = Some(request_frame_callback);
         self.update_ime_enabled();
-        drop(callbacks);
 
         self.complete_frame();
     }
@@ -1130,9 +1132,11 @@ impl WaylandWindowStatePtr {
                     state.window_controls = window_controls;
 
                     drop(state);
-                    let mut callbacks = self.callbacks.borrow_mut();
-                    if let Some(appearance_changed) = callbacks.appearance_changed.as_mut() {
-                        appearance_changed();
+                    // Semaphore patch: called with `callbacks` released, as elsewhere.
+                    let callback = self.callbacks.borrow_mut().appearance_changed.take();
+                    if let Some(mut fun) = callback {
+                        fun();
+                        self.callbacks.borrow_mut().appearance_changed = Some(fun);
                     }
                 }
             }
@@ -1315,12 +1319,14 @@ impl WaylandWindowStatePtr {
                 false
             }
             xdg_toplevel::Event::Close => {
-                let mut cb = self.callbacks.borrow_mut();
-                if let Some(mut should_close) = cb.should_close.take() {
+                // Semaphore patch: `callbacks` is released while should-close runs. Close to tray
+                // hides the window from it, and that once reported visibility (borrowing
+                // `callbacks` again) and panicked with "RefCell already borrowed".
+                let callback = self.callbacks.borrow_mut().should_close.take();
+                if let Some(mut should_close) = callback {
                     let result = (should_close)();
-                    cb.should_close = Some(should_close);
+                    self.callbacks.borrow_mut().should_close = Some(should_close);
                     if result {
-                        drop(cb);
                         self.close();
                     }
                     result
@@ -1602,8 +1608,9 @@ impl WaylandWindowStatePtr {
                 }
             }
         }
-        let mut callbacks = self.callbacks.borrow_mut();
-        if let Some(fun) = callbacks.close.take() {
+        // Semaphore patch: called with `callbacks` released, as elsewhere.
+        let callback = self.callbacks.borrow_mut().close.take();
+        if let Some(fun) = callback {
             fun()
         }
     }
@@ -1682,6 +1689,22 @@ impl WaylandWindowStatePtr {
             callback(visibility);
             self.callbacks.borrow_mut().visibility_change = Some(callback);
         }
+    }
+
+    /// Semaphore patch: what `visibility()` answers. A window hidden by `set_visible(false)` is
+    /// hidden whatever its last configure said (it gets no configures while hidden).
+    fn current_visibility(&self) -> WindowVisibility {
+        let state = self.state.borrow();
+        if state.hidden_by_client {
+            WindowVisibility::Hidden
+        } else {
+            state.visibility
+        }
+    }
+
+    /// Semaphore patch: the visibility report `set_visible` defers to an idle turn of the loop.
+    pub fn report_current_visibility(&self) {
+        self.report_visibility(self.current_visibility());
     }
 
     pub fn set_appearance(&mut self, appearance: WindowAppearance) {
@@ -1821,12 +1844,12 @@ impl PlatformWindow for WaylandWindow {
             }
             state.surface_state.destroy();
         }
+        // Reported on the next idle turn, not here: this runs inside app code (an `App` update,
+        // where the visibility callback can't update the window, or the should-close callback).
+        let client = state.client.clone();
+        let surface_id = state.surface.id();
         drop(state);
-        self.0.report_visibility(if visible {
-            WindowVisibility::Visible
-        } else {
-            WindowVisibility::Hidden
-        });
+        client.schedule_visibility_report(&surface_id);
         true
     }
 
@@ -2016,7 +2039,8 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn visibility(&self) -> WindowVisibility {
-        self.borrow().visibility
+        // Semaphore patch: hidden while `set_visible(false)` holds.
+        self.0.current_visibility()
     }
 
     fn is_hovered(&self) -> bool {

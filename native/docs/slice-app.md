@@ -167,8 +167,9 @@ Please report anything that looks wrong with a screenshot, and the terminal outp
 ## Desktop integration: what only a person can check
 
 The tray, close to tray, single instance, `semaphore://` links and window restore (W2-desktop).
-`scripts/desktop-probe.sh` proves hide/show on Xvfb and headless weston and the tray on a private
-bus, and the notifier on a private bus with a fake `org.freedesktop.Notifications` (replace by tag,
+`scripts/desktop-probe.sh` proves hide/show on Xvfb and headless weston, a compositor close request
+(headless sway's `swaymsg kill`) answered by close to tray's hide or by closing, and the tray on a
+private bus, and the notifier on a private bus with a fake `org.freedesktop.Notifications` (replace by tag,
 click with its activation token, closed cleanup, withdraw); everything below needs a real panel,
 compositor, notification daemon or Windows.
 
