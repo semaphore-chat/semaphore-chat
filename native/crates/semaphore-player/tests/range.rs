@@ -150,9 +150,15 @@ fn a_retryable_failure_is_retried_and_three_retries_is_the_limit() {
     let file = MemoryFile::new(BLOCK);
     file.fail(4, true);
     let cache = Arc::new(BlockCache::default());
+    // One read: the failure it meets is kept for the rest of it, so it cannot start a second
+    // round of retries (a read after it is a fresh attempt, as `range_edges` expects).
     let error = source(&file, &cache, &rt, Cancel::default()).read(&mut buf);
     assert!(error.is_err());
-    assert_eq!(file.calls_for(0), 4, "one try and three retries");
+    assert_eq!(
+        file.calls_for(0),
+        4,
+        "one try and three retries, in one read"
+    );
 }
 
 #[test]
