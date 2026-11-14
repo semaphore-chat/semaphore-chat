@@ -6,3 +6,7 @@ export { Text } from './typography/Text';
 export type { TextProps, TextTone, TextVariant } from './typography/Text';
 export { Button } from './controls/Button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './controls/Button';
+export { Icon } from './display/Icon';
+export type { IconProps, IconSize, IconTone } from './display/Icon';
+export { iconNames } from './icons/generated';
+export type { IconName } from './icons/generated';
