@@ -8,6 +8,7 @@ import { LivekitService } from '@/livekit/livekit.service';
 import { createMockDatabase } from '@/test-utils';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { publishGrantFor } from '@/livekit/publish-grant.util';
 
 describe('RoomSubscriptionHandler', () => {
   let handler: RoomSubscriptionHandler;
@@ -34,6 +35,8 @@ describe('RoomSubscriptionHandler', () => {
 
     // Default: user not in any voice channel
     voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+    // Default: LiveKit reports the user in no room
+    livekitService.listParticipantRooms.mockResolvedValue([]);
     // Default: community has no alias groups
     mockDatabase.aliasGroup.findMany.mockResolvedValue([]);
   });
@@ -229,6 +232,38 @@ describe('RoomSubscriptionHandler', () => {
       // Should not query for community voice channels
       expect(mockDatabase.channel.findMany).toHaveBeenCalledTimes(1);
       expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+    });
+
+    it('removes a user still connected to LiveKit after clearing their presence', async () => {
+      const userId = 'user-123';
+      const communityId = 'community-456';
+
+      mockDatabase.channel.findMany
+        .mockResolvedValueOnce([{ id: 'channel-1' }, { id: 'voice-1' }])
+        .mockResolvedValueOnce([{ id: 'voice-1' }]);
+      // They called the REST leave: the presence index is empty...
+      voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+      // ...but LiveKit still has them in the call
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'voice-1', attributes: {} },
+        { roomName: 'dm-call', attributes: {} },
+      ]);
+
+      await handler.onUserBanned({ userId, communityId });
+
+      expect(mockDatabase.channel.findMany).toHaveBeenLastCalledWith({
+        where: {
+          communityId,
+          type: 'VOICE',
+          id: { in: ['voice-1', 'dm-call'] },
+        },
+        select: { id: true },
+      });
+      expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+        'voice-1',
+        userId,
+      );
+      expect(livekitService.removeParticipant).toHaveBeenCalledTimes(1);
     });
 
     it('should not throw when voice cleanup fails', async () => {
@@ -604,6 +639,26 @@ describe('RoomSubscriptionHandler', () => {
         'voice-1',
         'user-1',
         { canPublish: true },
+      );
+    });
+
+    it('clamps a user still connected to LiveKit after clearing their presence', async () => {
+      voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'voice-1', attributes: {} },
+      ]);
+      mockDatabase.channel.findMany.mockResolvedValue([{ id: 'voice-1' }]);
+      channelAccessService.channelCapabilities.mockResolvedValue(caps);
+
+      await handler.onTimeoutChanged({
+        userId: 'user-1',
+        communityId: 'community-456',
+      });
+
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        { canPublish: false },
       );
     });
 
@@ -1339,6 +1394,217 @@ describe('RoomSubscriptionHandler', () => {
   // =========================================================================
   // Instance Roles
   // =========================================================================
+
+  describe('voice grants follow role and channel permission changes', () => {
+    const caps = (over: Partial<Record<string, boolean>> = {}) => ({
+      channelId: 'voice-1',
+      view: true,
+      post: true,
+      attach: true,
+      react: true,
+      threadReply: true,
+      connect: true,
+      speak: true,
+      video: true,
+      share: true,
+      managePermissions: false,
+      pin: false,
+      deleteAny: false,
+      seeRemoved: false,
+      timedOutUntil: null,
+      postingRoleNames: [],
+      ...over,
+    });
+
+    beforeEach(() => {
+      mockDatabase.channel.findMany.mockResolvedValue([{ id: 'voice-1' }]);
+      voicePresenceService.getChannelPresence.mockResolvedValue([]);
+      voicePresenceService.isServerMuted.mockResolvedValue(false);
+      livekitService.listParticipantIdentities.mockResolvedValue(['user-1']);
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { userId: 'user-1' },
+      ]);
+    });
+
+    it('ROLE_UNASSIGNED re-clamps what the user may publish in the call', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue(
+        caps({ speak: false }),
+      );
+
+      await handler.onRoleUnassigned({
+        communityId: 'community-456',
+        userId: 'user-1',
+        roleId: 'role-1',
+      });
+
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
+        where: { communityId: 'community-456', type: 'VOICE' },
+        select: { id: true },
+      });
+      expect(channelAccessService.channelCapabilities).toHaveBeenCalledWith(
+        'user-1',
+        'voice-1',
+      );
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        publishGrantFor({ speak: false, video: true, share: true }),
+      );
+    });
+
+    it('keeps a server mute when re-clamping', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue(caps());
+      voicePresenceService.isServerMuted.mockResolvedValue(true);
+
+      await handler.onRoleAssigned({
+        communityId: 'community-456',
+        userId: 'user-1',
+        roleId: 'role-1',
+        roleName: 'Speaker',
+      });
+
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        publishGrantFor({ speak: true, video: true, share: true }, true),
+      );
+    });
+
+    it('removes a user who lost JOIN_CHANNEL from the call', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue(
+        caps({ connect: false, speak: false, video: false, share: false }),
+      );
+
+      await handler.onRoleUnassigned({
+        communityId: 'community-456',
+        userId: 'user-1',
+        roleId: 'role-1',
+      });
+
+      expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+      );
+      expect(voicePresenceService.leaveVoiceChannel).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+      );
+      expect(livekitService.updatePublishPermissions).not.toHaveBeenCalled();
+    });
+
+    it("ROLE_UNASSIGNED leaves the call's other participants alone", async () => {
+      livekitService.listParticipantIdentities.mockResolvedValue([
+        'user-1',
+        'user-2',
+      ]);
+      channelAccessService.channelCapabilities.mockResolvedValue(caps());
+
+      await handler.onRoleUnassigned({
+        communityId: 'community-456',
+        userId: 'user-1',
+        roleId: 'role-1',
+      });
+
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledTimes(1);
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        expect.anything(),
+      );
+    });
+
+    it.each(['onRoleUpdated', 'onRoleDeleted'] as const)(
+      '%s re-clamps every member in the community calls, never a non-member (egress)',
+      async (method) => {
+        livekitService.listParticipantIdentities.mockResolvedValue([
+          'user-1',
+          'EG_replay',
+        ]);
+        voicePresenceService.getChannelPresence.mockResolvedValue([
+          { id: 'user-2' } as never,
+        ]);
+        mockDatabase.membership.findMany.mockResolvedValue([
+          { userId: 'user-1' },
+          { userId: 'user-2' },
+        ]);
+        channelAccessService.channelCapabilities.mockResolvedValue(caps());
+
+        await handler[method]({
+          communityId: 'community-456',
+          roleId: 'role-1',
+          roleName: 'Role',
+        });
+
+        expect(mockDatabase.membership.findMany).toHaveBeenCalledWith({
+          where: {
+            communityId: 'community-456',
+            userId: { in: ['user-2', 'user-1', 'EG_replay'] },
+          },
+          select: { userId: true },
+        });
+        expect(livekitService.updatePublishPermissions).toHaveBeenCalledTimes(
+          2,
+        );
+        expect(
+          livekitService.updatePublishPermissions,
+        ).not.toHaveBeenCalledWith('voice-1', 'EG_replay', expect.anything());
+        expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+      },
+    );
+
+    it('a channel permission change re-clamps the viewers still in its call', async () => {
+      channelAccessService.roomPlan.mockResolvedValue({
+        everyone: true,
+        communityId: 'community-456',
+      });
+      channelAccessService.channelCapabilities.mockResolvedValue(
+        caps({ video: false, share: false }),
+      );
+
+      await handler.onChannelVisibilityChanged({
+        channelId: 'voice-1',
+        communityId: 'community-456',
+      });
+
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
+        where: {
+          communityId: 'community-456',
+          type: 'VOICE',
+          id: { in: ['voice-1'] },
+        },
+        select: { id: true },
+      });
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        publishGrantFor({ speak: true, video: false, share: false }),
+      );
+    });
+
+    it('never throws: a LiveKit failure for one participant is logged', async () => {
+      livekitService.listParticipantIdentities.mockResolvedValue([
+        'user-1',
+        'user-2',
+      ]);
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { userId: 'user-1' },
+        { userId: 'user-2' },
+      ]);
+      channelAccessService.channelCapabilities.mockResolvedValue(caps());
+      livekitService.updatePublishPermissions.mockRejectedValueOnce(
+        new Error('participant left'),
+      );
+
+      await expect(
+        handler.onRoleUpdated({
+          communityId: 'community-456',
+          roleId: 'role-1',
+          roleName: 'Role',
+        }),
+      ).resolves.toBeUndefined();
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledTimes(2);
+    });
+  });
 
   describe('onInstanceRolesUpdated', () => {
     it("tells the user's own sessions which role changed", () => {

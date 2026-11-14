@@ -4,6 +4,7 @@ import { LivekitAccessService } from './livekit-access.service';
 import { DatabaseService } from '@/database/database.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { createMockConfigService } from '@/test-utils';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
   LIVEKIT_SESSION_ATTRIBUTE,
@@ -17,7 +18,12 @@ describe('LivekitAccessService', () => {
   const cutoff = 1_760_000_000_000;
 
   const mockRedis = { get: jest.fn(), set: jest.fn(), mget: jest.fn() };
-  const mockDatabase = { user: { findUnique: jest.fn() } };
+  const mockDatabase = {
+    user: { findUnique: jest.fn() },
+    directMessageGroup: { findUnique: jest.fn() },
+    userBlock: { findFirst: jest.fn() },
+  };
+  let channelAccessService: { channelCapabilities: jest.Mock };
 
   const attrs = (identity: string, issuedAtMs: number) => ({
     [LIVEKIT_ISSUED_AT_ATTRIBUTE]: signIssuedAt(secret, identity, issuedAtMs),
@@ -29,7 +35,7 @@ describe('LivekitAccessService', () => {
     mockRedis.mget.mockResolvedValue([null, null]);
     mockDatabase.user.findUnique.mockResolvedValue({ banned: false });
 
-    const { unit } = await TestBed.solitary(LivekitAccessService)
+    const { unit, unitRef } = await TestBed.solitary(LivekitAccessService)
       .mock(ConfigService)
       .final(createMockConfigService({ LIVEKIT_API_SECRET: secret }))
       .mock(DatabaseService)
@@ -39,6 +45,42 @@ describe('LivekitAccessService', () => {
       .compile();
 
     service = unit;
+    channelAccessService = unitRef.get(ChannelAccessService);
+  });
+
+  describe('checkRoomAccess (DM rooms)', () => {
+    beforeEach(() => {
+      mockDatabase.user.findUnique.mockResolvedValue({ id: 'user-1' });
+      // Not a channel
+      channelAccessService.channelCapabilities.mockResolvedValue(null);
+      mockDatabase.directMessageGroup.findUnique.mockImplementation(
+        (args: { select: { isGroup?: true } }) =>
+          Promise.resolve(
+            args.select.isGroup
+              ? {
+                  isGroup: false,
+                  members: [{ userId: 'user-1' }, { userId: 'user-2' }],
+                }
+              : { members: [{ id: 'member-1' }] },
+          ),
+      );
+    });
+
+    it('lets a member of an unblocked 1:1 DM in', async () => {
+      mockDatabase.userBlock.findFirst.mockResolvedValue(null);
+
+      await expect(service.checkRoomAccess('user-1', 'dm-1')).resolves.toBe(
+        null,
+      );
+    });
+
+    it('removes a member blocked by (or blocking) the other side', async () => {
+      mockDatabase.userBlock.findFirst.mockResolvedValue({ id: 'block-1' });
+
+      await expect(service.checkRoomAccess('user-1', 'dm-1')).resolves.toBe(
+        'DM_BLOCKED',
+      );
+    });
   });
 
   describe('revokeTokensIssuedBefore', () => {

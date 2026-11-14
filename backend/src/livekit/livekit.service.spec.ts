@@ -91,6 +91,7 @@ describe('LivekitService', () => {
           identity: createTokenDto.identity,
           name: createTokenDto.name,
           ttl: 3600, // Default 1 hour
+          metadata: '{"isDeafened":false}',
           attributes: {
             [LIVEKIT_ISSUED_AT_ATTRIBUTE]: expect.any(String),
           },
@@ -181,6 +182,31 @@ describe('LivekitService', () => {
       );
     });
 
+    it("doesn't let the participant change their own name, metadata or attributes, or send data", async () => {
+      await service.generateToken({ identity: 'user-123', roomId: 'room-456' });
+
+      const mockAccessTokenInstance = (AccessToken as jest.Mock).mock.results[
+        (AccessToken as jest.Mock).mock.results.length - 1
+      ].value;
+      const grant = mockAccessTokenInstance.addGrant.mock.calls[0][0];
+      expect(grant.canUpdateOwnMetadata).toBeFalsy();
+      expect(grant.canPublishData).toBeFalsy();
+    });
+
+    it('presets the deafen metadata older clients set on join', async () => {
+      await service.generateToken({ identity: 'user-123', roomId: 'room-456' });
+
+      // Byte for byte what a client's JSON.stringify({ isDeafened: false })
+      // makes: their setMetadata then resolves without the (refused) update
+      expect(AccessToken).toHaveBeenCalledWith(
+        mockConfig.LIVEKIT_API_KEY,
+        mockConfig.LIVEKIT_API_SECRET,
+        expect.objectContaining({
+          metadata: JSON.stringify({ isDeafened: false }),
+        }),
+      );
+    });
+
     it('should grant room permissions', async () => {
       const createTokenDto = {
         identity: 'user-123',
@@ -200,8 +226,6 @@ describe('LivekitService', () => {
         roomJoin: true,
         canPublish: true,
         canSubscribe: true,
-        canPublishData: true,
-        canUpdateOwnMetadata: true,
       });
     });
 
@@ -233,8 +257,6 @@ describe('LivekitService', () => {
           roomJoin: true,
           ...expected,
           canSubscribe: true,
-          canPublishData: true,
-          canUpdateOwnMetadata: true,
         });
       },
     );
@@ -576,6 +598,42 @@ describe('LivekitService', () => {
     });
   });
 
+  describe('isParticipantInRoom', () => {
+    it('is true when LiveKit has the participant', async () => {
+      mockRoomServiceClient.getParticipant.mockResolvedValueOnce({
+        identity: 'user-1',
+      });
+
+      await expect(service.isParticipantInRoom('dm-1', 'user-1')).resolves.toBe(
+        true,
+      );
+      expect(mockRoomServiceClient.getParticipant).toHaveBeenCalledWith(
+        'dm-1',
+        'user-1',
+      );
+    });
+
+    it('is false when LiveKit says not found', async () => {
+      mockRoomServiceClient.getParticipant.mockRejectedValueOnce(
+        Object.assign(new Error('participant not found'), { status: 404 }),
+      );
+
+      await expect(service.isParticipantInRoom('dm-1', 'user-1')).resolves.toBe(
+        false,
+      );
+    });
+
+    it("is null when LiveKit can't tell", async () => {
+      mockRoomServiceClient.getParticipant.mockRejectedValueOnce(
+        new Error('connect ECONNREFUSED'),
+      );
+
+      await expect(service.isParticipantInRoom('dm-1', 'user-1')).resolves.toBe(
+        null,
+      );
+    });
+  });
+
   describe('listParticipantRooms', () => {
     it('returns the rooms the identity is in', async () => {
       mockRoomServiceClient.listRooms.mockResolvedValue([
@@ -636,6 +694,42 @@ describe('LivekitService', () => {
     });
   });
 
+  describe('setDeafenMetadata', () => {
+    it("sets the participant's deafen metadata through the admin API", async () => {
+      mockRoomServiceClient.updateParticipant.mockResolvedValueOnce({});
+
+      await expect(
+        service.setDeafenMetadata('room-1', 'user-1', true),
+      ).resolves.toBe(true);
+
+      expect(mockRoomServiceClient.updateParticipant).toHaveBeenCalledWith(
+        'room-1',
+        'user-1',
+        { metadata: JSON.stringify({ isDeafened: true }) },
+      );
+    });
+
+    it("is false for someone who isn't in the room, without throwing", async () => {
+      mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
+        Object.assign(new Error('participant not found'), { status: 404 }),
+      );
+
+      await expect(
+        service.setDeafenMetadata('room-1', 'user-1', true),
+      ).resolves.toBe(false);
+    });
+
+    it('is false when LiveKit fails, without throwing', async () => {
+      mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
+        new Error('down'),
+      );
+
+      await expect(
+        service.setDeafenMetadata('room-1', 'user-1', false),
+      ).resolves.toBe(false);
+    });
+  });
+
   describe('updatePublishPermissions', () => {
     it('makes a connected participant listen-only', async () => {
       await service.updatePublishPermissions('room-1', 'user-1', {
@@ -648,12 +742,23 @@ describe('LivekitService', () => {
         undefined,
         {
           canSubscribe: true,
-          canPublishData: true,
-          canUpdateMetadata: true,
           canPublish: false,
           canPublishSources: [],
         },
       );
+    });
+
+    it('never grants metadata updates or data, and carries no metadata (deafen survives)', async () => {
+      await service.updatePublishPermissions('room-1', 'user-1', {
+        canPublish: true,
+      });
+
+      const [, , metadata, permission] =
+        mockRoomServiceClient.updateParticipant.mock.calls[0];
+      // LiveKit leaves the metadata alone when the request's is empty
+      expect(metadata).toBeUndefined();
+      expect(permission.canUpdateMetadata).toBeFalsy();
+      expect(permission.canPublishData).toBeFalsy();
     });
 
     it('passes the allowed sources through', async () => {
