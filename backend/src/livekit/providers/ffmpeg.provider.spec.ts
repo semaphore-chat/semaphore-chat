@@ -1,5 +1,9 @@
 import { execFile } from 'child_process';
+import * as fluentFfmpeg from 'fluent-ffmpeg';
 import { FfmpegProvider } from './ffmpeg.provider';
+import { MEDIA_MAX_PIXELS } from '@/common/constants/media-limits.constant';
+
+jest.mock('fluent-ffmpeg', () => ({ ffprobe: jest.fn() }));
 
 // The provider runs ffprobe itself so the time limit can kill it; mocking
 // execFile keeps these tests independent of the real binary.
@@ -27,6 +31,25 @@ describe('FfmpegProvider', () => {
 
   afterEach(() => {
     delete process.env.FFPROBE_PATH;
+  });
+
+  describe('ffprobe', () => {
+    it('passes the pixel cap so a huge frame is never decoded', async () => {
+      const ffprobeMock = fluentFfmpeg.ffprobe as unknown as jest.Mock;
+      ffprobeMock.mockImplementation(
+        (_file: string, _options: string[], cb: (e: null, m: object) => void) =>
+          cb(null, { format: { duration: 3 } }),
+      );
+
+      await expect(provider.ffprobe('/uploads/sound.ogg')).resolves.toEqual({
+        format: { duration: 3 },
+      });
+      expect(ffprobeMock).toHaveBeenCalledWith(
+        '/uploads/sound.ogg',
+        ['-max_pixels', String(MEDIA_MAX_PIXELS)],
+        expect.any(Function),
+      );
+    });
   });
 
   describe('probeStreams', () => {
@@ -62,6 +85,8 @@ describe('FfmpegProvider', () => {
           '-print_format',
           'json',
           '-show_streams',
+          '-max_pixels',
+          String(MEDIA_MAX_PIXELS),
           '/uploads/clip.mp4',
         ],
         expect.objectContaining({
