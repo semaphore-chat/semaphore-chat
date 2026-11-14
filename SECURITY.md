@@ -2,10 +2,8 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+The latest 0.x minor release is supported and receives security fixes. Older
+minor releases are not supported: please upgrade to the latest release.
 
 ## Reporting a Vulnerability
 
@@ -37,6 +35,7 @@ The following are in scope:
 - Semaphore Chat backend API
 - Semaphore Chat frontend application
 - Electron desktop application
+- Native desktop client (`native/`)
 - Docker images and Helm charts
 - Authentication and authorization flaws
 - Data exposure vulnerabilities

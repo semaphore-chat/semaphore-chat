@@ -31,6 +31,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Same pinned image and the same script as local runs.
       - name: Verify
         run: native/scripts/verify.sh
@@ -51,6 +53,8 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Deliberately outside the image and with no NDK or Xcode: rustup's targets alone must
       # be enough. If core gains a C build this fails, as the boundary check does.
       - name: Install the toolchain from rust-toolchain.toml
@@ -71,6 +75,8 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Install the toolchain from rust-toolchain.toml
         run: rustup toolchain install
       # gpui-pre-windows is our patched copy, so the release build below compiles the video

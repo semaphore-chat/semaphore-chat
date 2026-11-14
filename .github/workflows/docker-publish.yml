@@ -61,6 +61,9 @@ env:
 #   layers changed) is paid on main pushes only, off the PR critical path.
 # - ignore-error=true: a cache-service hiccup must never fail a publish.
 
+permissions:
+  contents: read
+
 jobs:
   # PRs only. Pushes to main, release tags and manual dispatch are unfiltered:
   # `changes` is skipped, its outputs are empty, and both images build, scan
@@ -86,7 +89,7 @@ jobs:
       # Lists the PR's files through the API (up to 3000), so no checkout is
       # needed.
       - name: Filter image-relevant paths
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           # A file counts if it matches a pattern and none of the '!' ones.
@@ -122,6 +125,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Extract version from tag
         id: version
@@ -147,19 +152,11 @@ jobs:
           cd backend && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Extract metadata for Backend
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
           tags: |
@@ -171,33 +168,14 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      # Push on main branch, release tags, and manual dispatch. Skipped on PRs,
-      # which build exactly once (the load-only step below) and scan that.
-      - name: Build and push Backend image
-        id: push-backend
-        if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./backend/Dockerfile.prod
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha,scope=backend-prod
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=backend-prod,mode=max,ignore-error=true' || '' }}
-          no-cache-filters: production
-          build-args: |
-            GITHUB_REPOSITORY=${{ github.repository }}
-            BUILD_DATE=${{ steps.meta.outputs.created }}
-
-      # Local single-platform image for the Trivy scan. On PRs this is the only
-      # build (reads main's cache, exports nothing). After a publish the
-      # builder stage is a local cache hit and the production stage is rebuilt
-      # fresh the same way as the push step (same no-cache-filters), seconds
-      # later, so the scan never checks staler Alpine packages than were pushed.
+      # The Trivy gate runs BEFORE the GHCR login and the push: nothing is
+      # published unless this scan passes. Local single-platform image; on PRs
+      # this is the only build (reads main's cache, exports nothing). The push
+      # build below rebuilds the production stage the same way (same
+      # no-cache-filters) right after, so the scan never checks staler Alpine
+      # packages than are pushed.
       - name: Build Backend image for scan
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./backend/Dockerfile.prod
@@ -212,7 +190,7 @@ jobs:
             BUILD_DATE=${{ steps.meta.outputs.created }}
 
       - name: Scan Backend image with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: scan-target-backend:latest
           format: table
@@ -221,6 +199,34 @@ jobs:
           ignore-unfixed: true
           # Pre-existing baseline is grandfathered; new findings still fail.
           trivyignores: .trivyignore
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push on main branch, release tags, and manual dispatch, only after the
+      # scan above passed. Skipped on PRs, which build once (the scan build).
+      - name: Build and push Backend image
+        id: push-backend
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=backend-prod
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=backend-prod,mode=max,ignore-error=true' || '' }}
+          no-cache-filters: production
+          build-args: |
+            GITHUB_REPOSITORY=${{ github.repository }}
+            BUILD_DATE=${{ steps.meta.outputs.created }}
 
   build-frontend:
     name: Build Frontend Image
@@ -237,6 +243,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Extract version from tag
         id: version
@@ -262,19 +270,11 @@ jobs:
           cd frontend && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Extract metadata for Frontend
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
           tags: |
@@ -286,35 +286,14 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      # Push on main branch, release tags, and manual dispatch. Skipped on PRs,
-      # which build exactly once (the load-only step below) and scan that.
-      - name: Build and push Frontend image
-        id: push-frontend
-        if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./frontend/Dockerfile.prod
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha,scope=frontend-prod
-          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=frontend-prod,mode=max,ignore-error=true' || '' }}
-          no-cache-filters: production
-          build-args: |
-            GITHUB_REPOSITORY=${{ github.repository }}
-            BUILD_DATE=${{ steps.meta.outputs.created }}
-            VITE_API_URL=/api
-            VITE_WS_URL=
-
-      # Local single-platform image for the Trivy scan. On PRs this is the only
-      # build (reads main's cache, exports nothing). After a publish the
-      # builder stage is a local cache hit and the production stage is rebuilt
-      # fresh the same way as the push step (same no-cache-filters), seconds
-      # later, so the scan never checks staler Alpine packages than were pushed.
+      # The Trivy gate runs BEFORE the GHCR login and the push: nothing is
+      # published unless this scan passes. Local single-platform image; on PRs
+      # this is the only build (reads main's cache, exports nothing). The push
+      # build below rebuilds the production stage the same way (same
+      # no-cache-filters) right after, so the scan never checks staler Alpine
+      # packages than are pushed.
       - name: Build Frontend image for scan
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./frontend/Dockerfile.prod
@@ -331,7 +310,7 @@ jobs:
             VITE_WS_URL=
 
       - name: Scan Frontend image with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: scan-target-frontend:latest
           format: table
@@ -340,6 +319,36 @@ jobs:
           ignore-unfixed: true
           # Pre-existing baseline is grandfathered; new findings still fail.
           trivyignores: .trivyignore
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push on main branch, release tags, and manual dispatch, only after the
+      # scan above passed. Skipped on PRs, which build once (the scan build).
+      - name: Build and push Frontend image
+        id: push-frontend
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./frontend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=frontend-prod
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=frontend-prod,mode=max,ignore-error=true' || '' }}
+          no-cache-filters: production
+          build-args: |
+            GITHUB_REPOSITORY=${{ github.repository }}
+            BUILD_DATE=${{ steps.meta.outputs.created }}
+            VITE_API_URL=/api
+            VITE_WS_URL=
 
   summary:
     name: Build Summary
