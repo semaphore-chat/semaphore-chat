@@ -2,3 +2,7 @@ export { KitProvider, KitRoot, kitTheme } from './theme/KitProvider';
 export type { KitProviderProps } from './theme/KitProvider';
 export { mix } from './theme/mix';
 export type { LoungeTheme } from './theme/createLoungeTheme';
+export { Text } from './typography/Text';
+export type { TextProps, TextTone, TextVariant } from './typography/Text';
+export { Button } from './controls/Button';
+export type { ButtonProps, ButtonSize, ButtonVariant } from './controls/Button';
