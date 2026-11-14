@@ -207,8 +207,8 @@ importers:
         specifier: ^12.1.2
         version: 12.1.2(@nestjs/common@12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.1.3)(@nestjs/platform-express@12.1.3)
       '@suites/di.nestjs':
-        specifier: ^3.1.0
-        version: 3.1.0(@nestjs/common@12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
+        specifier: ^4.0.3
+        version: 4.0.3(@nestjs/common@12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
       '@suites/doubles.jest':
         specifier: ^3.1.0
         version: 3.1.0(jest@30.5.2(@types/node@24.19.1)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.16.13)(@types/node@24.19.1)(typescript@5.9.3)))
@@ -3818,11 +3818,11 @@ packages:
     resolution: {integrity: sha512-2aG83BiIuOOVwu8Joisi4soSMI2isYBR8wJXWq+jInWOFCtQq+6cFwhXmpqRheMX0aKk7kb14HpclclMvpK3nQ==}
     engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
 
-  '@suites/di.nestjs@3.1.0':
-    resolution: {integrity: sha512-SKPdfqZRqjDKRfte8Id1xvmhCNOSSnDSFS68Qcw04IirnUEAAm/wjJBv3Bo8tH/YjzlZkAjzpapZTiWePSM9qg==}
-    engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
+  '@suites/di.nestjs@4.0.3':
+    resolution: {integrity: sha512-ria91/viZptew8TGv6hJEcO4BgKnglWkcNA4HKbZfN1ZnJVqeWPo1xh/6CDAVuYCu9vRvnb0rOSC3ZoVjkozoA==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
     peerDependencies:
-      '@nestjs/common': '>= 8.0'
+      '@nestjs/common': ^10.0.0 || ^11.0.0 || ^12.0.1
       reflect-metadata: <1.0.0
 
   '@suites/doubles.jest@3.1.0':
@@ -3835,9 +3835,17 @@ packages:
     resolution: {integrity: sha512-4OW/FKP78HZiUjSeAq6ix/lj2s4vEU4IqFr09LLmQC77v1Rv5vEW1LZLxrRVlP2jeWsxuVka6WX2k7k3HJDu9A==}
     engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
 
+  '@suites/types.common@4.0.2':
+    resolution: {integrity: sha512-z4mF2AK0Daf/YCfranmJqiRGNze1vmVbJXuD5rDZnT8MdPbQ/9dDWRrcp6qchiS36BGA8+rcfYqvQKHrAOjSgg==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
+
   '@suites/types.di@3.1.0':
     resolution: {integrity: sha512-ng/so6i2dbvSUyCAN/UhLO0N/72B08XycXBCUGmE6CK2OgzNGPjTjcIN1moljyUzZQBYHvYSdUju2aZ6Fh2tOA==}
     engines: {node: ^16.10.0 || ^18.12.0 || >=20.0.0}
+
+  '@suites/types.di@4.1.2':
+    resolution: {integrity: sha512-Gq7gAM0HPqJXTMjB2EClpqg/dpOWI6tTKNUFBMkqQBG+1UgpJkqxOpA6IhWp9o3VROaCRc5y35x6tcme/xLvYg==}
+    engines: {node: ^22.22.2 || ^24.15.0 || ^26.0.0}
 
   '@suites/types.doubles@3.1.0':
     resolution: {integrity: sha512-VhEtcgUPYe1L0xLie2VrqO8b+EPCdVnU30qS//nQA9UtRYA3dRqENNGI6ktmfKAvUKC9ToJdwE/B/TohZt290A==}
@@ -13654,11 +13662,11 @@ snapshots:
       '@suites/types.di': 3.1.0
       '@suites/types.doubles': 3.1.0
 
-  '@suites/di.nestjs@3.1.0(@nestjs/common@12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)':
+  '@suites/di.nestjs@4.0.3(@nestjs/common@12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)':
     dependencies:
       '@nestjs/common': 12.1.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@suites/types.common': 3.1.0
-      '@suites/types.di': 3.1.0
+      '@suites/types.common': 4.0.2
+      '@suites/types.di': 4.1.2
       reflect-metadata: 0.2.2
 
   '@suites/doubles.jest@3.1.0(jest@30.5.2(@types/node@24.19.1)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.16.13)(@types/node@24.19.1)(typescript@5.9.3)))':
@@ -13671,9 +13679,15 @@ snapshots:
 
   '@suites/types.common@3.1.0': {}
 
+  '@suites/types.common@4.0.2': {}
+
   '@suites/types.di@3.1.0':
     dependencies:
       '@suites/types.common': 3.1.0
+
+  '@suites/types.di@4.1.2':
+    dependencies:
+      '@suites/types.common': 4.0.2
 
   '@suites/types.doubles@3.1.0':
     dependencies:
