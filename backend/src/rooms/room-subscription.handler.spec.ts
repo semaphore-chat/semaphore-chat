@@ -1552,6 +1552,70 @@ describe('RoomSubscriptionHandler', () => {
       },
     );
 
+    it('coalesces a burst of ROLE_UPDATED (a role reorder) into at most two resyncs per community', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue(caps());
+      const fullResyncs = () =>
+        mockDatabase.channel.findMany.mock.calls.filter(
+          ([args]) => !(args as { where: { id?: unknown } }).where.id,
+        ).length;
+
+      // 30 roles reordered: one event each, emitted without awaiting
+      const events = Array.from({ length: 30 }, (_, i) =>
+        handler.onRoleUpdated({
+          communityId: 'community-456',
+          roleId: `role-${i}`,
+          roleName: `Role ${i}`,
+        }),
+      );
+      // Another community's resync is not held back by this one
+      const other = handler.onRoleDeleted({
+        communityId: 'community-other',
+        roleId: 'role-x',
+      });
+      await Promise.all([...events, other]);
+
+      // The first runs; the other 29 queue one more behind it
+      expect(fullResyncs()).toBe(3);
+      expect(livekitService.listParticipantIdentities).toHaveBeenCalledTimes(3);
+      // Every event was still broadcast
+      expect(websocketService.sendToRoom).toHaveBeenCalledTimes(31);
+
+      // Once idle, the next change resyncs again
+      await handler.onRoleUpdated({
+        communityId: 'community-456',
+        roleId: 'role-0',
+        roleName: 'Role 0',
+      });
+      expect(fullResyncs()).toBe(4);
+    });
+
+    it('a change during a running resync is applied by one queued resync after it', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue(caps());
+      let release!: () => void;
+      livekitService.listParticipantIdentities.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(['user-1']);
+          }),
+      );
+      const first = handler.onRoleUpdated({
+        communityId: 'community-456',
+        roleId: 'role-1',
+        roleName: 'Role',
+      });
+      await new Promise(setImmediate);
+      // Arrives while the first is in flight: must not be lost
+      const second = handler.onRoleUpdated({
+        communityId: 'community-456',
+        roleId: 'role-2',
+        roleName: 'Role',
+      });
+      release();
+      await Promise.all([first, second]);
+
+      expect(livekitService.listParticipantIdentities).toHaveBeenCalledTimes(2);
+    });
+
     it('a channel permission change re-clamps the viewers still in its call', async () => {
       channelAccessService.roomPlan.mockResolvedValue({
         everyone: true,

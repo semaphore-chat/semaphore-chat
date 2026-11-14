@@ -425,6 +425,44 @@ export class RoomSubscriptionHandler {
   }
 
   /**
+   * Community-wide resyncs running now, per community; `dirty` = another
+   * change arrived meanwhile, so one more pass runs after this one.
+   */
+  private readonly communityResyncs = new Map<
+    string,
+    { running: Promise<void>; dirty: boolean }
+  >();
+
+  /**
+   * resyncVoiceGrants for the whole community, coalesced: at most one runs
+   * per community at a time, and at most one more is queued behind it. A
+   * role reorder emits ROLE_UPDATED once per role; without this each would
+   * start a full resync (LiveKit calls per voice channel and participant)
+   * at once. A queued pass reads the state after every change it covers.
+   * Per process: each replica coalesces its own events.
+   */
+  private resyncCommunityVoiceGrants(communityId: string): Promise<void> {
+    const current = this.communityResyncs.get(communityId);
+    if (current) {
+      current.dirty = true;
+      return current.running;
+    }
+    const entry = { running: Promise.resolve(), dirty: true };
+    this.communityResyncs.set(communityId, entry);
+    entry.running = (async () => {
+      try {
+        while (entry.dirty) {
+          entry.dirty = false;
+          await this.resyncVoiceGrants(communityId);
+        }
+      } finally {
+        this.communityResyncs.delete(communityId);
+      }
+    })();
+    return entry.running;
+  }
+
+  /**
    * Re-apply each connected participant's voice grant from their current
    * channel capabilities (roles, overwrites, timeout, server mute): clamp
    * what they may publish, or remove them from the call when they lost
@@ -977,7 +1015,7 @@ export class RoomSubscriptionHandler {
       `Role ${event.roleId} updated in community ${event.communityId}`,
     );
     // What they may publish in calls, or whether they may stay
-    await this.resyncVoiceGrants(event.communityId);
+    await this.resyncCommunityVoiceGrants(event.communityId);
   }
 
   @OnEvent(RoomEvents.ROLE_DELETED)
@@ -991,7 +1029,7 @@ export class RoomSubscriptionHandler {
       `Role ${event.roleId} deleted from community ${event.communityId}`,
     );
     // What they may publish in calls, or whether they may stay
-    await this.resyncVoiceGrants(event.communityId);
+    await this.resyncCommunityVoiceGrants(event.communityId);
   }
 
   @OnEvent(RoomEvents.ROLE_ASSIGNED)
