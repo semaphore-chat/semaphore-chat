@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { Button, type ButtonSize, type ButtonVariant } from '../../kit';
 import { KitStage, Row } from '../fixtures/kitStory';
 
@@ -55,11 +55,13 @@ export const States = () => (
   </KitStage>
 );
 
-/** A 60-character label inside a 240px box, and a fullWidth button: one line, ellipsis, never wider than the box. */
+/** A label longer than 60 characters inside a 240px box: one line, ellipsis, never wider than the box. */
 export const LongLabel = () => (
   <KitStage mode="dark">
     <div style={{ width: 240 }}>
-      <Button variant="primary">A very long label that goes on and on and on for sixty</Button>
+      <Button variant="primary">
+        A very long label that goes on and on and on, well past sixty characters
+      </Button>
     </div>
     <div style={{ width: 240 }}>
       <Button variant="soft" fullWidth>
@@ -99,33 +101,54 @@ export const VariantsTinted = () => (
   </KitStage>
 );
 
-function FocusFirst({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
+/** Focuses the element it is attached to on mount: only one element can hold focus per story. */
+function useFocusedRef<T extends HTMLElement>(): RefObject<T | null> {
+  const ref = useRef<T>(null);
   useEffect(() => {
-    ref.current?.querySelector('button')?.focus();
+    ref.current?.focus();
   }, []);
-  return <div ref={ref}>{children}</div>;
+  return ref;
 }
 
-/** Keyboard focus ring on the primary button (only one element can hold focus per story). */
-export const Focused = () => (
-  <KitStage mode="dark">
-    <FocusFirst>
+/** Keyboard focus ring on the primary button. */
+export const Focused = () => {
+  const ref = useFocusedRef<HTMLButtonElement>();
+  return (
+    <KitStage mode="dark">
       <Row label="primary, focused">
-        <Button variant="primary">Join room</Button>
+        <Button ref={ref} variant="primary">
+          Join room
+        </Button>
       </Row>
-    </FocusFirst>
-    <VariantGrid />
-  </KitStage>
-);
+      <VariantGrid />
+    </KitStage>
+  );
+};
 
 /** Keyboard focus ring on a ghost button, where the ring has no fill to sit against. */
-export const FocusedGhost = () => (
-  <KitStage mode="dark">
-    <FocusFirst>
+export const FocusedGhost = () => {
+  const ref = useFocusedRef<HTMLButtonElement>();
+  return (
+    <KitStage mode="dark">
       <Row label="ghost, focused">
-        <Button variant="ghost">Cancel</Button>
+        <Button ref={ref} variant="ghost">
+          Cancel
+        </Button>
       </Row>
-    </FocusFirst>
-  </KitStage>
-);
+    </KitStage>
+  );
+};
+
+/** Keyboard focus ring on a danger button, against the strongest fill. */
+export const FocusedDanger = () => {
+  const ref = useFocusedRef<HTMLButtonElement>();
+  return (
+    <KitStage mode="dark">
+      <Row label="danger, focused">
+        <Button ref={ref} variant="danger">
+          Delete room
+        </Button>
+      </Row>
+    </KitStage>
+  );
+};

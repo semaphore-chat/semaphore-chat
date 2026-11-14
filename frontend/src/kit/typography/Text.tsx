@@ -1,4 +1,4 @@
-import type { ElementType, JSX, ReactNode } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -6,17 +6,20 @@ import { kitTheme } from '../theme/KitProvider';
 export type TextVariant = keyof typeof tokens.text;
 export type TextTone = 'default' | 'secondary' | 'dim' | 'accent' | 'danger';
 
+/** The elements kit text may render as. */
+type TextElement = 'span' | 'p' | 'div' | 'label' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+
 export interface TextProps {
   variant?: TextVariant;
   tone?: TextTone;
-  as?: ElementType;
+  as?: TextElement;
   truncate?: boolean;
   children: ReactNode;
 }
 
 const FALLBACK_FONTS = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
-const DEFAULT_ELEMENT: Partial<Record<TextVariant, ElementType>> = {
+const DEFAULT_ELEMENT: Partial<Record<TextVariant, TextElement>> = {
   title: 'h2',
   section: 'h3',
 };

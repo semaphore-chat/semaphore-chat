@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from 'react';
-import { KitProvider, KitRoot } from '../../kit';
+import { KitProvider, KitRoot, Text } from '../../kit';
 import type { IntensityName, ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 
@@ -43,7 +43,11 @@ export function KitStage({
 export function Row({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
     <div>
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: tokens.space.sm }}>{label}</div>
+      <div style={{ marginBottom: tokens.space.sm }}>
+        <Text variant="small" tone="secondary">
+          {label}
+        </Text>
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: tokens.space.md, alignItems: 'center' }}>
         {children}
       </div>

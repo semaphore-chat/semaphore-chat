@@ -16,6 +16,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
+// The config is plain JavaScript outside the app's TypeScript project, so it has no types.
+// @ts-expect-error -- TS7016: no declaration file for the plain-JS ESLint config.
+import eslintConfig from '../../../eslint.config.js';
 import allowListSource from '../../../eslint/mui-allowlist.json?raw';
 
 const { files: allowList } = JSON.parse(allowListSource) as { files: string[] };
@@ -118,6 +121,14 @@ describe('MUI allow-list', () => {
 
     it('allows it for an allow-listed file', async () => {
       expect(await lint(BOX_IMPORT, allowList[0])).toEqual([]);
+    });
+
+    it('exempts only the kit, the tests and the allow-list, with no extra globs', () => {
+      const muiBlock = (eslintConfig as Array<{ rules?: object; ignores?: string[] }>).find(
+        (block) => block.rules !== undefined && 'no-restricted-imports' in block.rules,
+      );
+
+      expect(muiBlock?.ignores).toEqual(['src/kit/**', 'src/__tests__/**', ...allowList]);
     });
   });
 });

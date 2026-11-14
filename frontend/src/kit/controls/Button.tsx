@@ -1,10 +1,18 @@
-import type { JSX, MouseEventHandler, ReactNode } from 'react';
+import type {
+  AriaAttributes,
+  JSX,
+  MouseEvent,
+  MouseEventHandler,
+  ReactNode,
+  Ref,
+} from 'react';
 import ButtonBase from '@mui/material/ButtonBase';
 import CircularProgress from '@mui/material/CircularProgress';
 import { styled } from '@mui/material/styles';
+import type { Palette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
-import { mix } from '../theme/mix';
+import { interactiveStates } from '../theme/states';
 
 export type ButtonVariant = 'primary' | 'soft' | 'ghost' | 'danger' | 'quietDanger' | 'text';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -18,7 +26,79 @@ export interface ButtonProps {
   disabled?: boolean;
   type?: 'button' | 'submit';
   onClick?: MouseEventHandler<HTMLButtonElement>;
+  /** React 19 plain prop, so a component can anchor a menu or tooltip to the button. */
+  ref?: Ref<HTMLButtonElement>;
+  id?: string;
+  title?: string;
+  'aria-label'?: AriaAttributes['aria-label'];
+  'aria-expanded'?: AriaAttributes['aria-expanded'];
+  'aria-haspopup'?: AriaAttributes['aria-haspopup'];
+  'aria-controls'?: AriaAttributes['aria-controls'];
+  'aria-pressed'?: AriaAttributes['aria-pressed'];
   children: ReactNode;
+}
+
+/** A variant's paint: the resting fill and label, plus the tint and alphas of its states. */
+export interface ButtonLook {
+  background: string;
+  label: string;
+  stateBase: string;
+  hover: number;
+  pressed: number;
+}
+
+/**
+ * The six variants' colours. `stateBase` is what hover and pressed tint: the
+ * resting fill, or for a transparent fill the surface behind it.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- exported for the unit test; not re-exported from the kit index.
+export function buttonLook(palette: Palette, variant: ButtonVariant): ButtonLook {
+  const { state } = tokens;
+  const looks: Record<ButtonVariant, ButtonLook> = {
+    primary: {
+      background: palette.accent,
+      label: palette.onAccent,
+      stateBase: palette.accent,
+      hover: state.hoverOnFill,
+      pressed: state.pressedOnFill,
+    },
+    danger: {
+      background: palette.danger,
+      label: palette.onDanger,
+      stateBase: palette.danger,
+      hover: state.hoverOnFill,
+      pressed: state.pressedOnFill,
+    },
+    soft: {
+      background: palette.fill,
+      label: palette.text,
+      stateBase: palette.fill,
+      hover: state.hover,
+      pressed: state.pressed,
+    },
+    quietDanger: {
+      background: palette.fill,
+      label: palette.danger,
+      stateBase: palette.fill,
+      hover: state.hover,
+      pressed: state.pressed,
+    },
+    ghost: {
+      background: 'transparent',
+      label: palette.textSecondary,
+      stateBase: palette.surface,
+      hover: state.hover,
+      pressed: state.pressed,
+    },
+    text: {
+      background: 'transparent',
+      label: palette.accentText,
+      stateBase: palette.surface,
+      hover: state.hover,
+      pressed: state.pressed,
+    },
+  };
+  return looks[variant];
 }
 
 const PADDING: Record<ButtonSize, number> = {
@@ -31,25 +111,13 @@ interface RootProps {
   $variant: ButtonVariant;
   $size: ButtonSize;
   $fullWidth: boolean;
-  $loading: boolean;
 }
 
 const Root = styled(ButtonBase, {
   shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
-})<RootProps>(({ theme, $variant, $size, $fullWidth, $loading }) => {
+})<RootProps>(({ theme, $variant, $size, $fullWidth }) => {
   const { palette } = kitTheme(theme);
-  const { state } = tokens;
-
-  // [background, label, resting-under-state colour, hover alpha, pressed alpha]
-  const looks: Record<ButtonVariant, [string, string, string, number, number]> = {
-    primary: [palette.accent, palette.onAccent, palette.accent, state.hoverOnFill, state.pressedOnFill],
-    danger: [palette.danger, palette.onDanger, palette.danger, state.hoverOnFill, state.pressedOnFill],
-    soft: [palette.fill, palette.text, palette.fill, state.hover, state.pressed],
-    quietDanger: [palette.fill, palette.danger, palette.fill, state.hover, state.pressed],
-    ghost: ['transparent', palette.textSecondary, palette.surface, state.hover, state.pressed],
-    text: ['transparent', palette.accentText, palette.surface, state.hover, state.pressed],
-  };
-  const [background, label, under, hover, pressed] = looks[$variant];
+  const look = buttonLook(palette, $variant);
   const type = $size === 'sm' ? tokens.text.meta : tokens.text.bodyStrong;
 
   return {
@@ -65,8 +133,8 @@ const Root = styled(ButtonBase, {
     padding: `0 ${PADDING[$size]}px`,
     border: 'none',
     borderRadius: `${tokens.radius.full}px`,
-    background,
-    color: label,
+    background: look.background,
+    color: look.label,
     fontFamily: theme.typography.fontFamily,
     fontSize: `${type.size}px`,
     lineHeight: `${type.line}px`,
@@ -74,17 +142,22 @@ const Root = styled(ButtonBase, {
     textTransform: 'none',
     whiteSpace: 'nowrap',
     transition: `background-color ${tokens.motion.fast}ms`,
-    '&:hover': { background: mix(palette.text, under, hover) },
-    '&:active': { background: mix(palette.text, under, pressed) },
-    '&:focus-visible': {
-      outline: `${tokens.border.focus}px solid ${palette.focus}`,
-      outlineOffset: `${tokens.border.focusOffset}px`,
-    },
-    '&.Mui-disabled': {
-      opacity: $loading ? undefined : state.disabled,
+    ...interactiveStates({
+      palette,
+      under: look.stateBase,
+      hover: look.hover,
+      pressed: look.pressed,
+    }),
+    '&:disabled': {
+      opacity: tokens.state.disabled,
       pointerEvents: 'none',
     },
-    '&.Mui-disabled:hover, &.Mui-disabled:active': { background },
+    // Busy is an ARIA state, not `disabled`: the button keeps focus and its
+    // name, so it must not paint a hover or pressed layer while it works.
+    '&[aria-busy="true"]': {
+      cursor: 'progress',
+      '&:hover, &:active': { background: look.background },
+    },
   };
 });
 
@@ -115,13 +188,15 @@ const SpinnerOverlay = styled('span')({
 });
 
 function Spinner(): JSX.Element {
+  // thickness is an SVG stroke ratio (of the circle's radius), not a pixel size.
   return <CircularProgress aria-hidden="true" color="inherit" size={tokens.icon.sm} thickness={5} />;
 }
 
 /**
- * Pill button. While `loading` it is busy and unclickable: the spinner takes the
- * icon's place, or covers the (invisible but still named) label, so the width
- * never changes.
+ * Pill button. While `loading` it is busy: it keeps focus and its accessible
+ * name, ignores clicks and Enter (so a `type="submit"` button cannot submit
+ * its form), and shows a spinner in the icon's place, or over the label, so
+ * the width never changes. Only `disabled` takes it out of the tab order.
  */
 export function Button({
   variant = 'soft',
@@ -132,21 +207,49 @@ export function Button({
   disabled = false,
   type = 'button',
   onClick,
+  ref,
+  id,
+  title,
+  'aria-label': ariaLabel,
+  'aria-expanded': ariaExpanded,
+  'aria-haspopup': ariaHaspopup,
+  'aria-controls': ariaControls,
+  'aria-pressed': ariaPressed,
   children,
 }: ButtonProps): JSX.Element {
+  const busy = loading && !disabled;
   const spinnerInIconSlot = loading && startIcon !== undefined;
   const spinnerOverLabel = loading && startIcon === undefined;
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    if (busy) {
+      // Cancelling the click also cancels the submit a type="submit" button
+      // would trigger, by mouse or by Enter in a field of the same form.
+      event.preventDefault();
+      return;
+    }
+    onClick?.(event);
+  };
+
   return (
     <Root
+      ref={ref}
       type={type}
-      disabled={disabled || loading}
-      onClick={onClick}
-      aria-busy={loading ? true : undefined}
+      disabled={disabled}
+      onClick={handleClick}
+      aria-disabled={busy || undefined}
+      aria-busy={busy || undefined}
+      aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+      aria-haspopup={ariaHaspopup}
+      aria-controls={ariaControls}
+      aria-pressed={ariaPressed}
+      id={id}
+      title={title}
       disableRipple
       $variant={variant}
       $size={size}
       $fullWidth={fullWidth}
-      $loading={loading && !disabled}
     >
       {startIcon !== undefined && (
         <IconSlot>{spinnerInIconSlot ? <Spinner /> : startIcon}</IconSlot>

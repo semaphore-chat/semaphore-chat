@@ -70,9 +70,10 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-          # The MUI allow-list check below diffs against the base branch, which
-          # needs the merge base.
-          fetch-depth: 0
+          # The MUI allow-list check below diffs the pull request's merge
+          # commit (the default checkout) against its first parent, the base
+          # branch tip, so two commits are enough.
+          fetch-depth: 2
 
       - name: Setup pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -107,24 +108,22 @@ jobs:
 
       # The allow-list may only shrink: its point is that MUI imports leave the
       # old screens, never that new code gets an entry. A Vitest test keeps it
-      # in step with the tree, but only the diff against the base branch can
-      # tell growth from a rename. The PR that introduces the file skips this,
-      # because the base branch has nothing to add lines to.
+      # in step with the tree; this step checks the pull request's own diff. A
+      # renamed allow-listed file adds a line and fails on purpose: convert the
+      # file to the kit when you move it. The PR that introduces the file skips
+      # this, because the base branch has nothing to add lines to.
       - name: MUI allow-list may only shrink
         if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags origin "$BASE_REF"
-          if ! git cat-file -e "origin/$BASE_REF:frontend/eslint/mui-allowlist.json" 2>/dev/null; then
-            echo "frontend/eslint/mui-allowlist.json does not exist on origin/$BASE_REF: this PR introduces it."
+          if ! git cat-file -e HEAD^1:frontend/eslint/mui-allowlist.json 2>/dev/null; then
+            echo "frontend/eslint/mui-allowlist.json does not exist on HEAD^1: this PR introduces it."
             exit 0
           fi
-          added=$(git diff --unified=0 "origin/$BASE_REF...HEAD" -- frontend/eslint/mui-allowlist.json | grep -c '^+  *"' || true)
+          added=$(git diff --unified=0 HEAD^1 HEAD -- frontend/eslint/mui-allowlist.json | grep -c '^+  *"' || true)
           echo "Added allow-list lines: $added"
           if [ "$added" -ne 0 ]; then
-            echo "::error file=frontend/eslint/mui-allowlist.json::The MUI allow-list may only shrink: $added line(s) added relative to origin/$BASE_REF. Import from src/kit instead of @mui/*."
-            git diff --unified=0 "origin/$BASE_REF...HEAD" -- frontend/eslint/mui-allowlist.json
+            echo "::error file=frontend/eslint/mui-allowlist.json::The MUI allow-list may only shrink: $added line(s) added relative to the base branch. Import from src/kit instead of @mui/*."
+            git diff --unified=0 HEAD^1 HEAD -- frontend/eslint/mui-allowlist.json
             exit 1
           fi
 
