@@ -17,6 +17,7 @@ import { DatabaseService } from '@/database/database.service';
 import { CommunityService } from '@/community/community.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { isPrismaError } from '@/common/utils/prisma.utils';
+import { isBlockedWithAny } from '@/common/utils/user-block.utils';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
@@ -48,8 +49,13 @@ export class MembershipService {
     private readonly inviteService: InviteService,
   ) {}
 
+  /**
+   * `actorId`: the member adding someone else (POST /membership). A block in
+   * either direction between the two refuses it.
+   */
   async create(
     createMembershipDto: CreateMembershipDto,
+    actorId?: string,
   ): Promise<MembershipResponseDto> {
     const { userId, communityId } = createMembershipDto;
 
@@ -80,6 +86,14 @@ export class MembershipService {
         throw new ConflictException(
           'User is already a member of this community',
         );
+      }
+
+      if (
+        actorId &&
+        actorId !== userId &&
+        (await isBlockedWithAny(this.databaseService, actorId, [userId]))
+      ) {
+        throw new ForbiddenException('You cannot add this user');
       }
 
       // Check if user is banned from this community
@@ -387,7 +401,15 @@ export class MembershipService {
     return new MembershipResponseDto(membership);
   }
 
-  async remove(userId: string, communityId: string): Promise<void> {
+  /**
+   * Leaving (or being removed). The last holder of the community's top role
+   * can't go, unless `allowLastTopHolder` (the instance owner removing them).
+   */
+  async remove(
+    userId: string,
+    communityId: string,
+    allowLastTopHolder = false,
+  ): Promise<void> {
     try {
       // Check if membership exists
       await this.databaseService.membership.findUniqueOrThrow({
@@ -400,6 +422,14 @@ export class MembershipService {
       });
 
       await this.databaseService.$transaction(async (tx) => {
+        if (!allowLastTopHolder) {
+          await this.communityRolesService.assertKeepsTopHolder(
+            tx,
+            userId,
+            communityId,
+          );
+        }
+
         // Remove user from all channels in the community
         await tx.channelMembership.deleteMany({
           where: {
@@ -488,7 +518,7 @@ export class MembershipService {
       );
     }
 
-    await this.remove(userId, communityId);
+    await this.remove(userId, communityId, actor.role === InstanceRole.OWNER);
 
     await this.databaseService.moderationLog.create({
       data: {
@@ -499,16 +529,16 @@ export class MembershipService {
       },
     });
 
-    const payload = { communityId, userId, moderatorId: actor.id };
+    // As for a kick: who removed them goes to the target only
     this.websocketService.sendToRoom(
       RoomName.user(userId),
       ServerEvents.USER_KICKED,
-      payload,
+      { communityId, userId, moderatorId: actor.id },
     );
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.USER_KICKED,
-      payload,
+      { communityId, userId },
     );
   }
 

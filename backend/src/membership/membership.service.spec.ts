@@ -1,4 +1,6 @@
 import { TestBed } from '@suites/unit';
+import { ServerEvents } from '@semaphore-chat/shared';
+import { WebsocketService } from '@/websocket/websocket.service';
 import type { Mocked } from '@suites/doubles.jest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MembershipService } from './membership.service';
@@ -35,6 +37,7 @@ describe('MembershipService', () => {
   let eventEmitter: Mocked<EventEmitter2>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
   let inviteService: Mocked<InviteService>;
+  let websocketServiceMock: Mocked<WebsocketService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -50,6 +53,7 @@ describe('MembershipService', () => {
     eventEmitter = unitRef.get(EventEmitter2);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
     inviteService = unitRef.get(InviteService);
+    websocketServiceMock = unitRef.get(WebsocketService);
   });
 
   afterEach(() => {
@@ -349,6 +353,58 @@ describe('MembershipService', () => {
       await expect(service.create(createDto)).rejects.toThrow(
         'User or community not found',
       );
+    });
+  });
+
+  // AUTHZ-6: adding someone needs no consent, but a block in either
+  // direction refuses it
+  describe('create on behalf of another member (blocks)', () => {
+    const dto = { userId: 'target-1', communityId: 'community-1' };
+
+    beforeEach(() => {
+      mockDatabase.community.findUniqueOrThrow.mockResolvedValue({});
+      mockDatabase.user.findUniqueOrThrow.mockResolvedValue({ id: 'target-1' });
+      mockDatabase.membership.findUnique.mockResolvedValue(null);
+      mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+      mockDatabase.membership.create.mockResolvedValue(
+        MembershipFactory.build(dto),
+      );
+      mockDatabase.channel.findMany.mockResolvedValue([]);
+      communityRolesService.getCommunityMemberRole.mockResolvedValue(
+        RoleFactory.build({ name: 'Member' }),
+      );
+    });
+
+    it.each([
+      ['the target blocked the caller', { blockerId: 'target-1' }],
+      ['the caller blocked the target', { blockerId: 'actor-1' }],
+    ])('refuses when %s', async (_label, block) => {
+      mockDatabase.userBlock.findFirst.mockResolvedValue({
+        id: 'b-1',
+        ...block,
+      });
+
+      await expect(service.create(dto, 'actor-1')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockDatabase.membership.create).not.toHaveBeenCalled();
+      expect(mockDatabase.userBlock.findFirst).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { blockerId: 'actor-1', blockedId: { in: ['target-1'] } },
+            { blockerId: { in: ['target-1'] }, blockedId: 'actor-1' },
+          ],
+        },
+        select: { id: true },
+      });
+    });
+
+    it('adds them when there is no block', async () => {
+      mockDatabase.userBlock.findFirst.mockResolvedValue(null);
+
+      await service.create(dto, 'actor-1');
+
+      expect(mockDatabase.membership.create).toHaveBeenCalled();
     });
   });
 
@@ -938,6 +994,103 @@ describe('MembershipService', () => {
       expect(permissionsCacheService.bumpUserEpoch).toHaveBeenCalledWith(
         user.id,
       );
+    });
+
+    // AUTHZ-4: the last holder of the top role can't leave
+    describe('last top-role holder', () => {
+      const removalTx = () => ({
+        threadSubscriber: { deleteMany: jest.fn() },
+        channelMembership: { deleteMany: jest.fn() },
+        aliasGroupMember: { deleteMany: jest.fn() },
+        userRoles: { deleteMany: jest.fn() },
+        membership: { delete: jest.fn() },
+      });
+
+      it('refuses leaving, inside the removal transaction', async () => {
+        const tx = removalTx();
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(tx));
+        communityRolesService.assertKeepsTopHolder.mockRejectedValue(
+          new ForbiddenException('last'),
+        );
+
+        await expect(service.remove('admin-1', 'community-1')).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(communityRolesService.assertKeepsTopHolder).toHaveBeenCalledWith(
+          tx,
+          'admin-1',
+          'community-1',
+        );
+        expect(tx.membership.delete).not.toHaveBeenCalled();
+        expect(tx.userRoles.deleteMany).not.toHaveBeenCalled();
+      });
+
+      it('applies to removing yourself through DELETE_MEMBER', async () => {
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(removalTx()));
+        communityRolesService.assertKeepsTopHolder.mockRejectedValue(
+          new ForbiddenException('last'),
+        );
+
+        await expect(
+          service.removeByActor(
+            { id: 'admin-1', role: 'USER' },
+            'admin-1',
+            'community-1',
+          ),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('does not apply to the instance owner removing someone else', async () => {
+        const tx = removalTx();
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(tx));
+        mockDatabase.moderationLog.create.mockResolvedValue({});
+        communityRolesService.assertKeepsTopHolder.mockRejectedValue(
+          new ForbiddenException('last'),
+        );
+
+        await service.removeByActor(
+          { id: 'owner-1', role: 'OWNER' },
+          'admin-1',
+          'community-1',
+        );
+
+        expect(
+          communityRolesService.assertKeepsTopHolder,
+        ).not.toHaveBeenCalled();
+        expect(tx.membership.delete).toHaveBeenCalled();
+      });
+
+      // RT-4: who removed them goes to the target only
+      it('tells the community who was removed, not by whom', async () => {
+        mockDatabase.membership.findUniqueOrThrow.mockResolvedValue({});
+        mockDatabase.$transaction.mockImplementation((cb) => cb(removalTx()));
+        mockDatabase.moderationLog.create.mockResolvedValue({});
+        const websocketService = websocketServiceMock;
+
+        await service.removeByActor(
+          { id: 'owner-1', role: 'OWNER' },
+          'member-1',
+          'community-1',
+        );
+
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'community:community-1',
+          ServerEvents.USER_KICKED,
+          { communityId: 'community-1', userId: 'member-1' },
+        );
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'user:member-1',
+          ServerEvents.USER_KICKED,
+          {
+            communityId: 'community-1',
+            userId: 'member-1',
+            moderatorId: 'owner-1',
+          },
+        );
+      });
     });
 
     it('should throw NotFoundException when membership not found', async () => {

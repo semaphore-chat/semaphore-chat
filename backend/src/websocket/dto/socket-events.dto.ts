@@ -268,7 +268,12 @@ export class ChannelDeletedPayloadDto {
 export class UserBannedPayloadDto {
   communityId: string;
   userId: string;
-  moderatorId: string;
+  /**
+   * Who acted: sent only to the target (the community room gets the event
+   * without it; the moderation log has it for those who may read it).
+   */
+  @ApiPropertyOptional()
+  moderatorId?: string;
   @ApiPropertyOptional()
   reason?: string;
   @ApiPropertyOptional({ type: String, format: 'date-time' })
@@ -278,13 +283,23 @@ export class UserBannedPayloadDto {
 export class UserUnbannedPayloadDto {
   communityId: string;
   userId: string;
-  moderatorId: string;
+  /**
+   * Who acted: sent only to the target (the community room gets the event
+   * without it; the moderation log has it for those who may read it).
+   */
+  @ApiPropertyOptional()
+  moderatorId?: string;
 }
 
 export class UserKickedPayloadDto {
   communityId: string;
   userId: string;
-  moderatorId: string;
+  /**
+   * Who acted: sent only to the target (the community room gets the event
+   * without it; the moderation log has it for those who may read it).
+   */
+  @ApiPropertyOptional()
+  moderatorId?: string;
   @ApiPropertyOptional()
   reason?: string;
 }
@@ -292,7 +307,12 @@ export class UserKickedPayloadDto {
 export class UserTimedOutPayloadDto {
   communityId: string;
   userId: string;
-  moderatorId: string;
+  /**
+   * Who acted: sent only to the target (the community room gets the event
+   * without it; the moderation log has it for those who may read it).
+   */
+  @ApiPropertyOptional()
+  moderatorId?: string;
   @ApiPropertyOptional()
   reason?: string;
   @ApiProperty({ type: 'integer' })
@@ -304,7 +324,12 @@ export class UserTimedOutPayloadDto {
 export class TimeoutRemovedPayloadDto {
   communityId: string;
   userId: string;
-  moderatorId: string;
+  /**
+   * Who acted: sent only to the target (the community room gets the event
+   * without it; the moderation log has it for those who may read it).
+   */
+  @ApiPropertyOptional()
+  moderatorId?: string;
   @ApiPropertyOptional()
   reason?: string;
   /**

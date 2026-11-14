@@ -41,6 +41,9 @@ describe('CommunityRolesService', () => {
     unitRef
       .get(PermissionsService)
       .getRank.mockResolvedValue({ best: 10, isTop: true });
+    unitRef
+      .get(PermissionsService)
+      .instanceOwnerIds.mockResolvedValue(new Set());
   });
 
   afterEach(() => {
@@ -804,10 +807,228 @@ describe('CommunityRolesService', () => {
         },
       ]);
 
+      mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([]);
+
       await expect(
         service.assignRoleAsActor(actor, 'target-1', communityId, role.id),
       ).rejects.toThrow(ForbiddenException);
       expect(mockDatabase.userRoles.create).not.toHaveBeenCalled();
+    });
+
+    // AUTHZ-1: a role's channel-overwrite allows are part of what it grants
+    describe('channel overwrites', () => {
+      const communityId = 'community-123';
+      const actor = { id: 'actor-1', role: 'USER' };
+      const role = RoleFactory.build({
+        communityId,
+        position: 60,
+        isDefault: false,
+        actions: [RbacActions.READ_MESSAGE],
+      });
+
+      beforeEach(() => {
+        mockDatabase.role.findUnique.mockResolvedValue(role);
+        mockDatabase.membership.findUnique.mockResolvedValue({ id: 'm-1' });
+        mockDatabase.communityBan.findUnique.mockResolvedValue(null);
+        const actorRole = RoleFactory.build({
+          communityId,
+          position: 40,
+          actions: [
+            RbacActions.READ_MESSAGE,
+            RbacActions.CREATE_MESSAGE,
+            RbacActions.UPDATE_MEMBER,
+          ],
+        });
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          {
+            userId: actor.id,
+            communityId,
+            roleId: actorRole.id,
+            isInstanceRole: false,
+            role: actorRole,
+          },
+        ]);
+      });
+
+      it('refuses a role whose overwrite allows an action the actor lacks (self)', async () => {
+        mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([
+          { allow: [RbacActions.DELETE_ANY_MESSAGE] },
+        ]);
+
+        await expect(
+          service.assignRoleAsActor(actor, actor.id, communityId, role.id),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.userRoles.create).not.toHaveBeenCalled();
+        expect(
+          mockDatabase.channelPermissionOverwrite.findMany,
+        ).toHaveBeenCalledWith({
+          where: { roleId: role.id },
+          select: { allow: true },
+        });
+      });
+
+      it('assigns when the actor holds every overwrite allow', async () => {
+        mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([
+          { allow: [RbacActions.CREATE_MESSAGE] },
+        ]);
+        mockDatabase.userRoles.create.mockResolvedValue({});
+
+        await service.assignRoleAsActor(actor, actor.id, communityId, role.id);
+
+        expect(mockDatabase.userRoles.create).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('removeRoleAsActor', () => {
+    const communityId = 'community-123';
+    const actor = { id: 'actor-1', role: 'USER' };
+    let permissionsService: Mocked<PermissionsService>;
+
+    beforeEach(async () => {
+      const { unit, unitRef } = await TestBed.solitary(CommunityRolesService)
+        .mock(DatabaseService)
+        .final(mockDatabase)
+        .compile();
+      service = unit;
+      permissionsService = unitRef.get(PermissionsService);
+      permissionsService.instanceOwnerIds.mockResolvedValue(new Set());
+      mockDatabase.role.findUnique.mockResolvedValue({
+        communityId,
+        position: 60,
+      });
+      mockDatabase.userRoles.findFirst.mockResolvedValue({ id: 'ur-1' });
+      mockDatabase.userRoles.delete.mockResolvedValue({});
+      mockDatabase.$queryRaw.mockResolvedValue([]);
+    });
+
+    // AUTHZ-1: a restriction role can't be dropped by the restricted member
+    it('refuses removing a role with a deny overwrite from yourself', async () => {
+      permissionsService.getRank.mockResolvedValue({ best: 40, isTop: false });
+      mockDatabase.userRoles.findMany.mockResolvedValue([]);
+      mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([
+        { deny: [RbacActions.CREATE_MESSAGE] },
+      ]);
+
+      await expect(
+        service.removeRoleAsActor(actor, actor.id, communityId, 'role-r'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockDatabase.userRoles.delete).not.toHaveBeenCalled();
+    });
+
+    it('lets you remove a role without deny overwrites from yourself', async () => {
+      permissionsService.getRank.mockResolvedValue({ best: 40, isTop: false });
+      mockDatabase.userRoles.findMany.mockResolvedValue([]);
+      mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([
+        { deny: [] },
+      ]);
+
+      await service.removeRoleAsActor(actor, actor.id, communityId, 'role-r');
+
+      expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+    });
+
+    // AUTHZ-3: not even the community's top role outranks the instance owner
+    it("refuses a top-role holder stripping the instance owner's role", async () => {
+      permissionsService.getRank.mockResolvedValue({ best: 10, isTop: true });
+      permissionsService.instanceOwnerIds.mockResolvedValue(
+        new Set(['owner-1']),
+      );
+      mockDatabase.userRoles.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.removeRoleAsActor(actor, 'owner-1', communityId, 'role-r'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockDatabase.userRoles.delete).not.toHaveBeenCalled();
+    });
+
+    // AUTHZ-4: the community keeps at least one holder of its top role
+    describe('last top-role holder', () => {
+      beforeEach(() => {
+        permissionsService.getRank.mockResolvedValue({ best: 10, isTop: true });
+        mockDatabase.userRoles.findMany.mockResolvedValue([]);
+        mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([]);
+      });
+
+      it('refuses removing the top role from its last holder', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: actor.id, roleId: 'role-top' },
+        ]);
+
+        await expect(
+          service.removeRoleAsActor(actor, actor.id, communityId, 'role-top'),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.userRoles.delete).not.toHaveBeenCalled();
+      });
+
+      it('refuses a co-admin stripping the last other holder', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: 'admin-2', roleId: 'role-top' },
+        ]);
+
+        await expect(
+          service.removeRoleAsActor(actor, 'admin-2', communityId, 'role-top'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows it while another member holds the top role', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: actor.id, roleId: 'role-top' },
+          { userId: 'admin-2', roleId: 'role-top' },
+        ]);
+
+        await service.removeRoleAsActor(
+          actor,
+          actor.id,
+          communityId,
+          'role-top',
+        );
+
+        expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+      });
+
+      it('allows it when the member keeps another top-ranked role', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: actor.id, roleId: 'role-top' },
+          { userId: actor.id, roleId: 'role-top-2' },
+        ]);
+
+        await service.removeRoleAsActor(
+          actor,
+          actor.id,
+          communityId,
+          'role-top',
+        );
+
+        expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+      });
+
+      it('lets the instance owner strip the last holder', async () => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { userId: 'admin-2', roleId: 'role-top' },
+        ]);
+
+        await service.removeRoleAsActor(
+          { id: 'owner-1', role: 'OWNER' },
+          'admin-2',
+          communityId,
+          'role-top',
+        );
+
+        expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
+      });
+    });
+
+    it('lets a top-role holder remove a deny role from themselves', async () => {
+      permissionsService.getRank.mockResolvedValue({ best: 10, isTop: true });
+      mockDatabase.userRoles.findMany.mockResolvedValue([]);
+      mockDatabase.channelPermissionOverwrite.findMany.mockResolvedValue([
+        { deny: [RbacActions.CREATE_MESSAGE] },
+      ]);
+
+      await service.removeRoleAsActor(actor, actor.id, communityId, 'role-r');
+
+      expect(mockDatabase.userRoles.delete).toHaveBeenCalled();
     });
   });
 

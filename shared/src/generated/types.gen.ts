@@ -562,20 +562,20 @@ export type UserBannedPayloadDto = {
     expiresAt?: string;
     communityId: string;
     userId: string;
-    moderatorId: string;
+    moderatorId?: string;
 };
 
 export type UserUnbannedPayloadDto = {
     communityId: string;
     userId: string;
-    moderatorId: string;
+    moderatorId?: string;
 };
 
 export type UserKickedPayloadDto = {
     reason?: string;
     communityId: string;
     userId: string;
-    moderatorId: string;
+    moderatorId?: string;
 };
 
 export type UserTimedOutPayloadDto = {
@@ -584,7 +584,7 @@ export type UserTimedOutPayloadDto = {
     expiresAt: string;
     communityId: string;
     userId: string;
-    moderatorId: string;
+    moderatorId?: string;
 };
 
 export type TimeoutRemovedPayloadDto = {
@@ -596,7 +596,7 @@ export type TimeoutRemovedPayloadDto = {
     expired?: boolean;
     communityId: string;
     userId: string;
-    moderatorId: string;
+    moderatorId?: string;
 };
 
 export type MemberAddedToCommunityPayloadDto = {

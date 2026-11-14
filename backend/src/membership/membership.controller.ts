@@ -49,8 +49,9 @@ export class MembershipController {
   })
   create(
     @Body() createMembershipDto: CreateMembershipDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<MembershipResponseDto> {
-    return this.membershipService.create(createMembershipDto);
+    return this.membershipService.create(createMembershipDto, req.user.id);
   }
 
   @Get('/community/:communityId')
