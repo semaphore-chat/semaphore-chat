@@ -1172,6 +1172,26 @@ fn render_gif_card(shared: &Rc<Shared>, seq: i64, host: &SharedString) -> AnyEle
         .into_any_element()
 }
 
+/// A box of `width` x `height` in a flex column (a row's body) that narrows with a column
+/// narrower than that, keeping its shape, and is never taller than the box itself.
+///
+/// Taffy applies `aspect_ratio` to the preferred width before `max_w` clamps it, so with
+/// `w_full` + `max_w(width)` alone the flex base size is the column's whole width over the ratio
+/// (W25: a 400x225 GIF in a 1900 px list made an 1100 px row with the picture at its top, and a
+/// GIF still loading a 1450 px one; after Load every GIF in the list loads at once, and the list
+/// drew rows of nothing). `max_h(height)` clamps that height in proportion with the width. The
+/// item must also stay shrinkable, unlike `flex_none`: when the column measures its content,
+/// Taffy takes an unshrinkable item's flex base size as its minimum, and the minimum wins over
+/// `max_h`. In a list the column has no fixed height, so nothing ever shrinks it.
+pub(crate) fn fitted_frame(width: f32, height: f32) -> Div {
+    div()
+        .w_full()
+        .max_w(px(width))
+        .max_h(px(height))
+        .flex_grow_0()
+        .aspect_ratio(width / height)
+}
+
 /// A GIF message's picture, as the web's `GifEmbed`: its own shape inside 400x300, never wider
 /// than the column, opening its URL on a click. `None` when it failed: the row falls back to the
 /// URL and its preview, as the web's `onError` does.
@@ -1201,14 +1221,8 @@ fn render_gif(
             (width, height, Some(image))
         }
     };
-    // Full width up to its own: a fixed width clamped by `max_w_full` would keep the height of
-    // the unclamped width on a phone and leave a gap under the picture.
-    let frame = div()
+    let frame = fitted_frame(width, height)
         .mt(px(4.))
-        .w_full()
-        .max_w(px(width))
-        .flex_none()
-        .aspect_ratio(width / height)
         .rounded(px(4.))
         .overflow_hidden();
     Some(match image {

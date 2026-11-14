@@ -1,0 +1,92 @@
+# W25: "Load" on a GIF at the bottom of a channel whose history holds many GIFs, against the
+# showcase scenario, as alexk in Couch Co-op's #general. On the owner's desktop the whole message
+# list went black on that press: Load turns pictures from other sites on for every row, and each
+# GIF's row took its height from the list's width (Taffy applied the frame's aspect ratio before
+# `max_w`), so every GIF row was mostly empty and, in a wide window, taller than the list. This
+# keeps the rows around the bottom drawn: the GIFs above the one pressed must be laid out in view.
+# - Thirty messages from priya, every third a GIF from the fake server's `/__fixtures/` (a real
+#   four-frame 200x150 GIF), arriving while the channel is open at its bottom, so the list follows
+#   them there (as w24-gif-load.steps posts its GIFs).
+# - The ids name the rows' seqs, which a fresh showcase server gives the same every run: message N
+#   of these is seq (14 + N) * 1048576, so the GIFs drawn at the bottom are messages 30
+#   (46137344), 27 (42991616) and 24 (39845888), and message 21 (36700160) once scrolled up.
+#   Before the fix the 1280x800 window held only the rows from message 27 down, 27's picture
+#   scrolled out of view, so message 24's GIF was never laid out.
+
+app 1280 800
+window activate
+wait idle
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+
+# 1. Thirty messages, every third a GIF; the list follows them to the bottom, all Load cards.
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 1\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 2\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-3.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 4\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 5\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-6.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 7\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 8\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-9.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 10\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 11\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-12.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 13\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 14\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-15.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 16\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 17\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-18.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 19\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 20\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-21.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 22\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 23\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-24.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 25\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 26\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-27.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 28\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"history 29\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/history-30.gif\"}"
+wait core text "history 29" within 15
+wait idle
+wait core element message-gif-blocked-46137344
+wait core element message-gif-blocked-39845888
+shot 01-history-blocked
+
+# 2. Load on the last GIF: every GIF loads, and the rows above it are still drawn in view.
+w7 mark
+click message-gif-load-46137344
+wait core w7 third-party on
+expect settings /third_party_media true
+wait core element message-gif-46137344 within 10
+wait core element message-gif-42991616 within 10
+wait core element message-gif-39845888 within 5
+wait idle
+expect core w7 new-requests Fixture_image >= 3
+shot 02-loaded
+
+# 3. Later on the rig's clock: the GIFs animate and the rows stay where they were.
+tick 250
+wait idle
+wait core element message-gif-39845888
+shot 03-animated
+
+# 4. Scrolled up past them: the GIF above draws in its own row too.
+scroll message-gif-39845888 0 300
+wait idle
+wait core element message-gif-36700160 within 5
+shot 04-scrolled-up
