@@ -4,6 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
 import tseslint from 'typescript-eslint'
+import muiAllowlist from './eslint/mui-allowlist.json' with { type: 'json' }
 
 // jsx-a11y's own "recommended" preset ships most rules at 'error'. This repo
 // runs it at 'warn' (downgrade every enabled rule's severity but keep each
@@ -84,6 +85,34 @@ export default tseslint.config(
             "VariableDeclarator[init.name=/^(window|globalThis|self)$/] > ObjectPattern > Property[key.name='electronAPI']",
           message:
             'Use getElectronAPI() (utils/electronBridge) or useElectronAPI() (contexts/ElectronContext) instead of destructuring electronAPI from window.',
+        },
+      ],
+    },
+  },
+  // MUI is the kit's implementation detail: src/kit builds the Lounge design
+  // system on it, and everything else imports from the kit. The allow-list in
+  // eslint/mui-allowlist.json is the old screens and stories that still import
+  // MUI directly; it may only shrink (src/__tests__/lint/muiAllowlist.test.ts
+  // keeps it in step with the tree, and CI rejects additions). Tests are
+  // exempt: they build the old themes and renderWithProviders.
+  //
+  // Use no-restricted-imports, not no-restricted-syntax: a second
+  // no-restricted-syntax config object would replace the Electron selectors
+  // above for every file it matches.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/kit/**', 'src/__tests__/**', ...muiAllowlist.files],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@mui/*', '@mui/**', '@emotion/*'],
+              message:
+                'Import from src/kit. MUI is used only inside the kit (design/guide).',
+            },
+          ],
         },
       ],
     },
