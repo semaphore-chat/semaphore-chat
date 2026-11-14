@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Slider, type SliderProps } from '../../kit';
+import { derivePalette } from '../../theme/derive/derivePalette';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 let consoleError: MockInstance;
@@ -114,5 +115,18 @@ describe('Slider', () => {
       <Slider label="V" value={1} onChange={() => {}} className="x" />,
     );
     expect(screen.getByRole('slider')).toBeInTheDocument();
+  });
+
+  it('draws the unfilled rail in hairline, not fill, and the filled part in accent', () => {
+    renderWithKit(<Controlled />, { base: '#8E75FF', mode: 'dark', intensity: 'minimal' });
+    const palette = derivePalette('#8E75FF', 'dark', 'minimal');
+    const css = Array.from(document.querySelectorAll('style'))
+      .map((node) => node.textContent ?? '')
+      .join('\n')
+      .toLowerCase();
+    const rail = css.split('}').find((rule) => rule.includes('slider-runnable-track')) ?? '';
+    expect(rail).toContain(palette.hairline.toLowerCase());
+    expect(rail).toContain(palette.accent.toLowerCase());
+    expect(rail).not.toContain(palette.fill.toLowerCase());
   });
 });

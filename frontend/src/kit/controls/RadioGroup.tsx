@@ -3,8 +3,9 @@ import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { mix } from '../theme/mix';
+import { FieldLabelText } from '../fields/fieldLabel';
 import { ChoiceText } from './choiceParts';
-import { ChoiceRow, firstLineOffset } from './choiceStyle';
+import { ChoiceRow, firstLineOffset, visuallyHidden } from './choiceStyle';
 
 export interface RadioOption {
   value: string;
@@ -14,8 +15,10 @@ export interface RadioOption {
 }
 
 export interface RadioGroupProps {
-  /** Names the group. */
+  /** Names the group; shown above the options unless `labelHidden`. */
   label: string;
+  /** Hides the label visually; it still names the group. */
+  labelHidden?: boolean;
   value: string;
   onChange: (value: string) => void;
   options: RadioOption[];
@@ -23,6 +26,22 @@ export interface RadioGroupProps {
   disabled?: boolean;
   id?: string;
 }
+
+const Root = styled('div')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: `${tokens.space.xs}px`,
+  maxWidth: '100%',
+  minWidth: 0,
+});
+
+const GroupLabel = styled('span', {
+  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+})<{ $hidden: boolean }>(({ $hidden }) => ({
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+  ...($hidden && visuallyHidden),
+}));
 
 const Group = styled('div', {
   shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
@@ -98,6 +117,7 @@ const Ring = styled('span', {
  */
 export function RadioGroup({
   label,
+  labelHidden = false,
   value,
   onChange,
   options,
@@ -106,6 +126,7 @@ export function RadioGroup({
   id,
 }: RadioGroupProps): JSX.Element {
   const uid = useId();
+  const groupLabelId = `${uid}-group-label`;
   const groupRef = useRef<HTMLDivElement>(null);
   const enabled = options.filter((option) => !option.disabled);
 
@@ -134,11 +155,15 @@ export function RadioGroup({
   };
 
   return (
+    <Root>
+      <GroupLabel id={groupLabelId} $hidden={labelHidden}>
+        <FieldLabelText>{label}</FieldLabelText>
+      </GroupLabel>
     <Group
       ref={groupRef}
       id={id}
       role="radiogroup"
-      aria-label={label}
+      aria-labelledby={groupLabelId}
       onKeyDown={handleKeyDown}
       $horizontal={orientation === 'horizontal'}
     >
@@ -173,5 +198,6 @@ export function RadioGroup({
         );
       })}
     </Group>
+    </Root>
   );
 }

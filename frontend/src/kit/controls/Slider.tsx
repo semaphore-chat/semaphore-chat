@@ -61,7 +61,7 @@ const Input = styled('input', {
     boxSizing: 'border-box',
     height: `${RAIL}px`,
     borderRadius: `${tokens.radius.full}px`,
-    background: `linear-gradient(to right, ${palette.accent} ${fillEnd}, ${palette.fill} ${fillEnd})`,
+    background: `linear-gradient(to right, ${palette.accent} ${fillEnd}, ${palette.hairline} ${fillEnd})`,
     border: 'none',
   } as const;
   const thumb = {

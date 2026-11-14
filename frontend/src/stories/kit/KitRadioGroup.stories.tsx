@@ -20,7 +20,7 @@ function Demo({
   initial,
   focusFirst,
   ...rest
-}: { options: RadioOption[]; initial: string; focusFirst?: boolean; orientation?: 'vertical' | 'horizontal'; disabled?: boolean }) {
+}: { options: RadioOption[]; initial: string; focusFirst?: boolean; orientation?: 'vertical' | 'horizontal'; disabled?: boolean; labelHidden?: boolean }) {
   const [value, setValue] = useState(initial);
   useEffect(() => {
     if (focusFirst) {
@@ -50,6 +50,9 @@ export const States = () => (
       <div style={{ width: 320 }}>
         <Demo options={DESCRIBED} initial="all" />
       </div>
+    </Row>
+    <Row label="label hidden (still names the group)">
+      <Demo options={OPTIONS.slice(0, 2)} initial="all" labelHidden />
     </Row>
     <Row label="group disabled">
       <Demo options={OPTIONS} initial="mentions" disabled />

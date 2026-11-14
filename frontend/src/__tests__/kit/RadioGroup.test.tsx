@@ -127,4 +127,23 @@ describe('RadioGroup', () => {
     );
     expect(screen.getByRole('radiogroup')).toBeInTheDocument();
   });
+
+  it('shows the group label by default and it names the group', () => {
+    renderWithKit(<Controlled />);
+    const text = screen.getByText('Notify me');
+    expect(text).toBeInTheDocument();
+    const group = screen.getByRole('radiogroup', { name: 'Notify me' });
+    expect(group).toHaveAttribute('aria-labelledby');
+    expect(document.getElementById(group.getAttribute('aria-labelledby') ?? '')).toContainElement(text);
+    expect(screen.getAllByText('Notify me')).toHaveLength(1);
+  });
+
+  it('labelHidden hides the label visually but keeps the accessible name', () => {
+    renderWithKit(
+      <RadioGroup label="Notify me" labelHidden options={OPTIONS} value="all" onChange={() => {}} />,
+    );
+    expect(screen.getByRole('radiogroup', { name: 'Notify me' })).toBeInTheDocument();
+    const hidden = screen.getByText('Notify me').closest('[id]') as HTMLElement;
+    expect(hidden).toHaveStyle({ position: 'absolute', overflow: 'hidden' });
+  });
 });
