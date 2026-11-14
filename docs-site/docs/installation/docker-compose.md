@@ -34,13 +34,6 @@ Three options depending on your existing infrastructure:
 mkdir semaphore-chat && cd semaphore-chat
 ```
 
-Download the IP watcher script (used by the "With Caddy" and "Batteries included" setups to restart LiveKit when your public IP changes):
-
-```bash
-mkdir -p scripts
-curl -fsSL https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/main/scripts/livekit-ip-watcher.sh -o scripts/livekit-ip-watcher.sh
-```
-
 Copy the Compose file for your chosen setup:
 
 === "With Caddy"
@@ -48,7 +41,7 @@ Copy the Compose file for your chosen setup:
     ```yaml title="docker-compose.yml"
     services:
       caddy:
-        image: caddy:latest
+        image: caddy:2.11
         restart: unless-stopped
         ports:
           - "443:443"
@@ -68,8 +61,9 @@ Copy the Compose file for your chosen setup:
         image: ghcr.io/semaphore-chat/semaphore-chat-backend:latest
         restart: unless-stopped
         environment:
-          DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
+          DATABASE_URL: postgresql://semaphore:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/semaphore
           REDIS_HOST: redis
+          REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
           JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
           JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
           LIVEKIT_URL: wss://lk.${HOST:?Set HOST in .env}
@@ -113,6 +107,7 @@ Copy the Compose file for your chosen setup:
               use_external_ip: true
             redis:
               address: redis:6379
+              password: ${REDIS_PASSWORD}
             keys:
               ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
             webhook:
@@ -143,6 +138,7 @@ Copy the Compose file for your chosen setup:
             ws_url: ws://livekit:7880
             redis:
               address: redis:6379
+              password: ${REDIS_PASSWORD}
         volumes:
           - egress-data:/out
         depends_on:
@@ -153,26 +149,13 @@ Copy the Compose file for your chosen setup:
           redis:
             condition: service_healthy
 
-      livekit-ip-watcher:
-        image: alpine:latest
-        restart: unless-stopped
-        command: sh /scripts/livekit-ip-watcher.sh
-        environment:
-          CHECK_INTERVAL: 300
-          LIVEKIT_CONTAINER: livekit
-        volumes:
-          - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
-          - /var/run/docker.sock:/var/run/docker.sock
-        depends_on:
-          livekit:
-            condition: service_started
 
       postgres:
         image: postgres:17-alpine
         restart: unless-stopped
         environment:
           POSTGRES_USER: semaphore
-          POSTGRES_PASSWORD: semaphore
+          POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
           POSTGRES_DB: semaphore
         healthcheck:
           test: ["CMD-SHELL", "pg_isready -U semaphore"]
@@ -183,8 +166,11 @@ Copy the Compose file for your chosen setup:
           - pgdata:/var/lib/postgresql/data
 
       redis:
-        image: redis:latest
+        image: redis:7.4-alpine
         restart: unless-stopped
+        command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+        environment:
+          REDISCLI_AUTH: ${REDIS_PASSWORD}  # for the healthcheck's redis-cli
         healthcheck:
           test: ["CMD", "redis-cli", "ping"]
           interval: 5s
@@ -244,8 +230,9 @@ Copy the Compose file for your chosen setup:
           # or they can spoof their IP with an X-Forwarded-For header.
           - "127.0.0.1:3000:3000"
         environment:
-          DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
+          DATABASE_URL: postgresql://semaphore:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/semaphore
           REDIS_HOST: redis
+          REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
           JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
           JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
           LIVEKIT_URL: wss://lk.${HOST:?Set HOST in .env}
@@ -294,6 +281,7 @@ Copy the Compose file for your chosen setup:
               use_external_ip: true
             redis:
               address: redis:6379
+              password: ${REDIS_PASSWORD}
             keys:
               ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
             webhook:
@@ -325,6 +313,7 @@ Copy the Compose file for your chosen setup:
             ws_url: ws://livekit:7880
             redis:
               address: redis:6379
+              password: ${REDIS_PASSWORD}
         volumes:
           - egress-data:/out
         depends_on:
@@ -335,26 +324,13 @@ Copy the Compose file for your chosen setup:
           redis:
             condition: service_healthy
 
-      livekit-ip-watcher:
-        image: alpine:latest
-        restart: unless-stopped
-        command: sh /scripts/livekit-ip-watcher.sh
-        environment:
-          CHECK_INTERVAL: 300
-          LIVEKIT_CONTAINER: livekit
-        volumes:
-          - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
-          - /var/run/docker.sock:/var/run/docker.sock
-        depends_on:
-          livekit:
-            condition: service_started
 
       postgres:
         image: postgres:17-alpine
         restart: unless-stopped
         environment:
           POSTGRES_USER: semaphore
-          POSTGRES_PASSWORD: semaphore
+          POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
           POSTGRES_DB: semaphore
         healthcheck:
           test: ["CMD-SHELL", "pg_isready -U semaphore"]
@@ -365,8 +341,11 @@ Copy the Compose file for your chosen setup:
           - pgdata:/var/lib/postgresql/data
 
       redis:
-        image: redis:latest
+        image: redis:7.4-alpine
         restart: unless-stopped
+        command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+        environment:
+          REDISCLI_AUTH: ${REDIS_PASSWORD}  # for the healthcheck's redis-cli
         healthcheck:
           test: ["CMD", "redis-cli", "ping"]
           interval: 5s
@@ -406,8 +385,9 @@ Copy the Compose file for your chosen setup:
           # or they can spoof their IP with an X-Forwarded-For header.
           - "127.0.0.1:3000:3000"
         environment:
-          DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
+          DATABASE_URL: postgresql://semaphore:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/semaphore
           REDIS_HOST: redis
+          REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
           JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
           JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
           # Must equal the number of proxy hops in front of the backend. See "Reverse proxy and HTTPS".
@@ -451,7 +431,7 @@ Copy the Compose file for your chosen setup:
         restart: unless-stopped
         environment:
           POSTGRES_USER: semaphore
-          POSTGRES_PASSWORD: semaphore
+          POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
           POSTGRES_DB: semaphore
         healthcheck:
           test: ["CMD-SHELL", "pg_isready -U semaphore"]
@@ -462,8 +442,11 @@ Copy the Compose file for your chosen setup:
           - pgdata:/var/lib/postgresql/data
 
       redis:
-        image: redis:latest
+        image: redis:7.4-alpine
         restart: unless-stopped
+        command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+        environment:
+          REDISCLI_AUTH: ${REDIS_PASSWORD}  # for the healthcheck's redis-cli
         healthcheck:
           test: ["CMD", "redis-cli", "ping"]
           interval: 5s
@@ -493,6 +476,8 @@ Create a `.env` file next to your `docker-compose.yml`:
     HOST=semaphore.example.com
     JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
     JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    POSTGRES_PASSWORD=$(openssl rand -hex 24)
+    REDIS_PASSWORD=$(openssl rand -hex 24)
     LIVEKIT_API_KEY=API$(openssl rand -hex 6)
     LIVEKIT_API_SECRET=$(openssl rand -hex 32)
     EOF
@@ -507,6 +492,8 @@ Create a `.env` file next to your `docker-compose.yml`:
     HOST=semaphore.example.com
     JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
     JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    POSTGRES_PASSWORD=$(openssl rand -hex 24)
+    REDIS_PASSWORD=$(openssl rand -hex 24)
     LIVEKIT_API_KEY=API$(openssl rand -hex 6)
     LIVEKIT_API_SECRET=$(openssl rand -hex 32)
     EOF
@@ -518,6 +505,8 @@ Create a `.env` file next to your `docker-compose.yml`:
     cat > .env <<EOF
     JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
     JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    POSTGRES_PASSWORD=$(openssl rand -hex 24)
+    REDIS_PASSWORD=$(openssl rand -hex 24)
     
     # Uncomment and fill in to enable voice/video (all three or none):
     # LIVEKIT_URL=wss://your-livekit-server.com
@@ -530,6 +519,9 @@ Replace `semaphore.example.com` with your domain.
 
 !!! warning "Security"
     Every secret needs its own random value. The backend refuses to start with an empty, placeholder (`replace-with-...`, `CHANGE-ME-...`, `your-...`) or reused secret, a secret shorter than 32 characters, or LiveKit's `devkey` sample pair, and its log names the variable to fix. To make one by hand: `openssl rand -base64 64 | tr -d '\n'`.
+
+!!! note "Database and Redis passwords on an existing install"
+    `POSTGRES_PASSWORD` only takes effect when the database volume is first created. If you set up Semaphore Chat with the older examples (`POSTGRES_PASSWORD: semaphore`), either keep `POSTGRES_PASSWORD=semaphore` in `.env`, or change it in the database first: `docker compose exec postgres psql -U semaphore -c "ALTER USER semaphore PASSWORD '<new password>'"`, then put the new value in `.env` and run `docker compose up -d`. Redis keeps no password on disk, so `REDIS_PASSWORD` takes effect on the next `docker compose up -d`.
 
 See the [Configuration](configuration.md) page for the full environment variable reference.
 
@@ -739,12 +731,42 @@ volumes:
 
 If your server has a dynamic public IP (common with residential ISPs), voice and video will break when the IP changes. LiveKit resolves its external IP once at startup via STUN and bakes it into WebRTC ICE candidates — there is no periodic re-resolution.
 
-The "With Caddy" and "Batteries included" setups already include the `livekit-ip-watcher` service, which monitors your public IP and restarts LiveKit when it changes. No additional setup is needed.
+With the bundled LiveKit ("With Caddy" and "Batteries included"), restart it when the IP changes. Pick one:
+
+**A host cron job (recommended).** It runs on the host with your own Docker access, and no container gets the Docker socket. Every 5 minutes, from the directory with your `docker-compose.yml`:
+
+```bash
+( crontab -l 2>/dev/null; echo '*/5 * * * * cd /path/to/semaphore-chat && ip=$(curl -fsS --max-time 10 https://api.ipify.org) && [ -n "$ip" ] && [ "$ip" != "$(cat .public-ip 2>/dev/null)" ] && echo "$ip" > .public-ip && docker compose restart livekit' ) | crontab -
+```
+
+**Or the watcher container (opt-in).** Download the script and add this service to your `docker-compose.yml`:
+
+```bash
+mkdir -p scripts
+curl -fsSL https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/main/scripts/livekit-ip-watcher.sh -o scripts/livekit-ip-watcher.sh
+```
+
+```yaml
+  livekit-ip-watcher:
+    # Pinned by digest: this container can control Docker (see the warning)
+    image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
+    restart: unless-stopped
+    command: sh /scripts/livekit-ip-watcher.sh
+    environment:
+      CHECK_INTERVAL: 300
+      LIVEKIT_CONTAINER: livekit
+    volumes:
+      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      livekit:
+        condition: service_started
+```
+
+!!! danger "The Docker socket is root on the host"
+    A container with `/var/run/docker.sock` can start privileged containers and take over the host. Read the script before you run it, keep the image pinned by digest as above (a moved tag can't swap the code), and prefer the cron job when you can.
 
 If you're using the "Bring your own LiveKit" setup with a self-hosted LiveKit server, you'll need to handle IP changes on your LiveKit server separately.
-
-!!! warning "Docker socket security"
-    The IP watcher mounts `/var/run/docker.sock` to restart the LiveKit container. This grants it full Docker API access. Only use this on hosts where you trust all running containers.
 
 ## Updating
 
