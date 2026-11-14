@@ -611,7 +611,7 @@ pub(crate) fn announce_read(
         return Err("Message not found in the specified channel or DM group");
     }
 
-    let receipt = messages::mark_read(inner, channel, group, last);
+    let receipt = messages::mark_read(inner, user, channel, group, last);
     let (channel_id, group_id) = (channel.map(str::to_owned), group.map(str::to_owned));
     let reader = {
         let mut data = lock(&inner.data);
