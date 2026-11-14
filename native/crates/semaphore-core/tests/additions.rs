@@ -3,6 +3,7 @@
 mod common;
 
 use common::*;
+use semaphore_core::cache::keys;
 use semaphore_core::model::{Conversation, LoadState, SendState, ViewKey};
 use semaphore_core::platform::CoreEvent;
 use semaphore_core::realtime::RealtimeError;
@@ -651,6 +652,83 @@ async fn members_without_the_presence_map_are_not_ready() {
     rig.settle().await;
     assert_eq!(rig.core.members_presence(), LoadState::Ready);
     assert!(rig.core.members("comm".into()).unwrap().members[1].online);
+}
+
+fn bulk_presence_requests(rig: &Rig) -> u64 {
+    rig.backend.bulk_presence_requests.load(Ordering::SeqCst)
+}
+
+/// Waits out the presence read's backoff and lets the host's retry timer fire once.
+async fn presence_timer_fires(rig: &mut Rig) -> Vec<CoreEvent> {
+    let at = rig
+        .core
+        .query_retry_at(&keys::op(keys::PRESENCE))
+        .expect("presence is waiting out a failure");
+    let now = rig.clock.0.load(Ordering::SeqCst);
+    rig.clock.advance(at.saturating_sub(now));
+    rig.sync();
+    rig.core.retry_due_queries();
+    rig.settle().await
+}
+
+/// A 429 on the presence read fails the panel, the timer retries it with no read, and the panel
+/// recovers by itself when the server answers again.
+#[tokio::test]
+async fn a_rate_limited_presence_fails_the_panel_and_recovers_on_the_timer() {
+    let mut rig = Rig::new().signed_in().await;
+    let panel = ViewKey::Members {
+        community_id: "comm".into(),
+    };
+    set_members(&rig, 2);
+    rig.backend
+        .bulk_presence
+        .lock()
+        .unwrap()
+        .insert("user-1".into(), true);
+    *rig.backend.presence_error.lock().unwrap() = Some(presence_error(429));
+    read_members(&mut rig).await;
+    assert!(matches!(
+        rig.core.members_presence(),
+        LoadState::Failed { .. }
+    ));
+    let before = bulk_presence_requests(&rig);
+
+    // Still refused: the timer's retry fails again, and the open panel is told.
+    let events = presence_timer_fires(&mut rig).await;
+    assert_eq!(bulk_presence_requests(&rig), before + 1);
+    assert!(view_changed(&events, panel.clone()));
+    assert!(matches!(
+        rig.core.members_presence(),
+        LoadState::Failed { .. }
+    ));
+
+    // The server answers: the timer alone brings the panel back, and tells it.
+    *rig.backend.presence_error.lock().unwrap() = None;
+    let events = presence_timer_fires(&mut rig).await;
+    assert_eq!(bulk_presence_requests(&rig), before + 2);
+    assert!(view_changed(&events, panel));
+    assert_eq!(rig.core.members_presence(), LoadState::Ready);
+    assert!(rig.core.members("comm".into()).unwrap().members[1].online);
+    assert_eq!(rig.core.query_retry_at(&keys::op(keys::PRESENCE)), None);
+}
+
+/// Members in, the presence map still on its way: the panel is loading, not "everyone offline".
+#[tokio::test]
+async fn members_loaded_with_presence_on_its_way_are_loading() {
+    let rig = Rig::new().signed_in().await;
+    set_members(&rig, 2);
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *rig.backend.presence_gate.lock().unwrap() = Some(gate);
+    assert_eq!(rig.core.members("comm".into()), None);
+    let core = rig.core.clone();
+    let settle = tokio::spawn(async move { core.run_until_idle().await });
+    while bulk_presence_requests(&rig) == 0 || rig.core.members("comm".into()).is_none() {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(rig.core.members_presence(), LoadState::Loading);
+    release.send(()).unwrap();
+    settle.await.unwrap();
+    assert_eq!(rig.core.members_presence(), LoadState::Ready);
 }
 
 /// An event that comes while the map is on its way goes on top of the answer, which is older.
