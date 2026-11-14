@@ -38,11 +38,13 @@ Optional: **cert-manager** for automatic TLS, **metrics-server** for autoscaling
 ### 1. Generate secrets
 
 ```bash
-export JWT_SECRET=$(openssl rand -base64 32)
-export JWT_REFRESH_SECRET=$(openssl rand -base64 32)
-export POSTGRES_PASSWORD=$(openssl rand -base64 32)
-export REDIS_PASSWORD=$(openssl rand -base64 32)
+export JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+export JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+export POSTGRES_PASSWORD=$(openssl rand -hex 24)
+export REDIS_PASSWORD=$(openssl rand -hex 24)
 ```
+
+The chart refuses to render (`helm install`/`upgrade` fails before changing anything) when a JWT or LiveKit secret is empty, a placeholder (`CHANGE-ME-...`, `your-...`), shorter than 32 characters, or the two JWT secrets are equal, and when the bundled PostgreSQL or Redis password is empty or the old default. The chart doesn't generate secrets: a value generated at render time would change on every `helm template`/GitOps sync and sign everyone out.
 
 ### 2. Install the chart
 
@@ -52,12 +54,12 @@ The simplest install uses bundled PostgreSQL and Redis:
 helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set secrets.jwtSecret="$JWT_SECRET" \
   --set secrets.jwtRefreshSecret="$JWT_REFRESH_SECRET" \
-  --set postgresql.auth.postgresPassword="$POSTGRES_PASSWORD" \
+  --set postgresql.auth.password="$POSTGRES_PASSWORD" \
   --set redis.auth.password="$REDIS_PASSWORD" \
   --set ingress.hosts[0].host=semaphore.yourdomain.com \
   --set livekit.url=wss://your-livekit-server.com \
-  --set livekit.apiKey=YOUR_KEY \
-  --set livekit.apiSecret=YOUR_SECRET \
+  --set livekit.apiKey="$LIVEKIT_API_KEY" \
+  --set livekit.apiSecret="$LIVEKIT_API_SECRET" \
   --namespace semaphore-chat \
   --create-namespace
 ```
@@ -100,11 +102,11 @@ secrets:
   jwtSecret: ""      # Set via --set or use existingSecret
   jwtRefreshSecret: ""
 
-# --- LiveKit ---
+# --- LiveKit (optional: all three or none) ---
 livekit:
   url: "wss://your-livekit-server.com"
-  apiKey: "your-api-key"
-  apiSecret: "your-api-secret"
+  apiKey: ""      # your LiveKit server's key
+  apiSecret: ""   # its secret, 32+ characters
 
 # --- Ingress ---
 ingress:
@@ -225,8 +227,8 @@ Semaphore Chat requires a LiveKit server for voice and video. The chart doesn't 
 ```yaml
 livekit:
   url: "wss://your-livekit-server.com"
-  apiKey: "your-api-key"
-  apiSecret: "your-api-secret"
+  apiKey: "<your LiveKit key>"
+  apiSecret: "<its secret, 32+ characters>"
 ```
 
 Configure your LiveKit server to send webhooks to `https://your-domain.com/api/livekit/webhook` for voice presence tracking:

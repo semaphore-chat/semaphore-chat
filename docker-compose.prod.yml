@@ -1,7 +1,10 @@
 # Production Docker Compose for Semaphore Chat
 #
 # Usage:
-#   1. Copy backend/env.sample to .env.prod — fill in JWT secrets, LiveKit config, etc.
+#   1. Copy backend/env.sample to .env.prod — replace JWT_SECRET, JWT_REFRESH_SECRET
+#      and the LiveKit pair with your own (`openssl rand -base64 64` each): the
+#      backend refuses to start with the sample values, LiveKit's devkey pair,
+#      or secrets under 32 characters.
 #   2. Add these extra vars to .env.prod for the database and cache:
 #        POSTGRES_PASSWORD=<strong-password>
 #        REDIS_PASSWORD=<strong-password>

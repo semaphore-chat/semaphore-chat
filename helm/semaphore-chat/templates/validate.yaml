@@ -1,0 +1,2 @@
+{{- /* Renders nothing: fails the release on unsafe values (see _helpers.tpl). */ -}}
+{{- include "semaphore-chat.validateSecrets" . -}}

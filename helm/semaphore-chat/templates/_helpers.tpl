@@ -296,3 +296,49 @@ Frontend image
 {{- printf "%s:%s" $repository $tag }}
 {{- end }}
 {{- end }}
+
+{{/*
+Refuse to render with unsafe secrets: anyone who knows a placeholder or
+default value can sign a session for any user (JWT) or join every voice
+room (LiveKit). The backend refuses the same values at startup; failing here
+stops `helm install/upgrade` before anything changes. Secrets are not
+generated: `lookup` returns nothing under `helm template` and GitOps tools,
+which would rotate them (signing everyone out) on every sync.
+*/}}
+{{- define "semaphore-chat.secretProblem" -}}
+{{- $value := .value | default "" | toString -}}
+{{- if not $value -}}
+is empty
+{{- else if regexMatch "(?i)change[-_ ]?me|replace[-_ ]?with|your[-_ ]|example|devkey|secret-that-is-at-least|elaborate secret" $value -}}
+is a published placeholder
+{{- else if lt (len $value) 32 -}}
+is shorter than 32 characters
+{{- end -}}
+{{- end }}
+
+{{- define "semaphore-chat.validateSecrets" -}}
+{{- $fix := "Generate it with: openssl rand -base64 64 | tr -d '\\n' (a different value for each secret), or set secrets.existingSecret." -}}
+{{- if not .Values.secrets.existingSecret -}}
+{{- range $key := list "jwtSecret" "jwtRefreshSecret" -}}
+{{- $problem := include "semaphore-chat.secretProblem" (dict "value" (index $.Values.secrets $key)) -}}
+{{- if $problem -}}
+{{- fail (printf "semaphore-chat: secrets.%s %s. %s" $key $problem $fix) -}}
+{{- end -}}
+{{- end -}}
+{{- if eq (toString .Values.secrets.jwtSecret) (toString .Values.secrets.jwtRefreshSecret) -}}
+{{- fail (printf "semaphore-chat: secrets.jwtSecret and secrets.jwtRefreshSecret are the same value; they must differ. %s" $fix) -}}
+{{- end -}}
+{{- end -}}
+{{- $lk := .Values.livekit -}}
+{{- if or $lk.url $lk.apiKey $lk.apiSecret -}}
+{{- if or (not $lk.url) (not $lk.apiKey) -}}
+{{- fail "semaphore-chat: voice/video needs livekit.url, livekit.apiKey and livekit.apiSecret together (or none of them)." -}}
+{{- end -}}
+{{- if not .Values.secrets.existingSecret -}}
+{{- $problem := include "semaphore-chat.secretProblem" (dict "value" $lk.apiSecret) -}}
+{{- if $problem -}}
+{{- fail (printf "semaphore-chat: livekit.apiSecret %s. Use your LiveKit server's real key pair (generate a secret with: openssl rand -hex 32), or set secrets.existingSecret." $problem) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}

@@ -335,21 +335,26 @@ redis:
 # LiveKit Configuration (External Only)
 # ============================================
 livekit:
-  # LiveKit server URL (WebSocket endpoint)
-  url: "wss://livekit.example.com"
+  # Voice/video is optional: set url, apiKey and apiSecret together, or none.
+  # LiveKit server URL (WebSocket endpoint), e.g. wss://livekit.example.com
+  url: ""
 
   # LiveKit API credentials. The secret also verifies incoming webhook
-  # signatures (WebhookReceiver), so it must be at least 32 characters.
-  apiKey: "your-livekit-api-key"
-  apiSecret: "your-livekit-api-secret"
+  # signatures (WebhookReceiver): at least 32 random characters. Rendering
+  # fails on an empty, short or placeholder secret.
+  apiKey: ""
+  apiSecret: ""
 
 # ============================================
 # Application Secrets
 # ============================================
 secrets:
-  # JWT secrets for authentication
-  jwtSecret: "CHANGE-ME-long-random-secret-for-jwt-signing"
-  jwtRefreshSecret: "CHANGE-ME-different-long-random-secret-for-refresh-tokens"
+  # JWT secrets for authentication. Required (unless existingSecret is set):
+  # rendering fails when either is empty, a placeholder, shorter than 32
+  # characters, or both are the same. Generate each with:
+  #   openssl rand -base64 64 | tr -d '\n'
+  jwtSecret: ""
+  jwtRefreshSecret: ""
 
   # Create secrets from existing Kubernetes secret
   # If true, the above values are ignored and you must create a secret manually

@@ -482,46 +482,48 @@ Create a `.env` file next to your `docker-compose.yml`:
 
     Your domain needs two DNS records pointing to your server — `HOST` and `lk.HOST` (e.g. `semaphore.example.com` and `lk.semaphore.example.com`), or a wildcard `*.semaphore.example.com`.
 
-    ```env title=".env"
+    ```bash
+    cat > .env <<EOF
     HOST=semaphore.example.com
-    JWT_SECRET=replace-with-a-long-random-string
-    JWT_REFRESH_SECRET=replace-with-a-different-long-random-string
-    LIVEKIT_API_KEY=replace-with-a-key-name
-    LIVEKIT_API_SECRET=replace-with-a-secret-at-least-32-characters
+    JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    LIVEKIT_API_KEY=API$(openssl rand -hex 6)
+    LIVEKIT_API_SECRET=$(openssl rand -hex 32)
+    EOF
     ```
 
 === "Batteries included"
 
     Your domain needs two DNS records pointing to your server — `HOST` and `lk.HOST` (e.g. `semaphore.example.com` and `lk.semaphore.example.com`), or a wildcard `*.semaphore.example.com`.
 
-    ```env title=".env"
+    ```bash
+    cat > .env <<EOF
     HOST=semaphore.example.com
-    JWT_SECRET=replace-with-a-long-random-string
-    JWT_REFRESH_SECRET=replace-with-a-different-long-random-string
-    LIVEKIT_API_KEY=replace-with-a-key-name
-    LIVEKIT_API_SECRET=replace-with-a-secret-at-least-32-characters
+    JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    LIVEKIT_API_KEY=API$(openssl rand -hex 6)
+    LIVEKIT_API_SECRET=$(openssl rand -hex 32)
+    EOF
     ```
 
 === "Bring your own LiveKit"
 
-    ```env title=".env"
-    JWT_SECRET=replace-with-a-long-random-string
-    JWT_REFRESH_SECRET=replace-with-a-different-long-random-string
-
-    # Uncomment to enable voice/video:
+    ```bash
+    cat > .env <<EOF
+    JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+    
+    # Uncomment and fill in to enable voice/video (all three or none):
     # LIVEKIT_URL=wss://your-livekit-server.com
-    # LIVEKIT_API_KEY=your-api-key
-    # LIVEKIT_API_SECRET=your-api-secret
+    # LIVEKIT_API_KEY=
+    # LIVEKIT_API_SECRET=
+    EOF
     ```
 
-Generate strong secrets with:
-
-```bash
-openssl rand -base64 32
-```
+Replace `semaphore.example.com` with your domain.
 
 !!! warning "Security"
-    Never use the default secrets in production. Generate unique values for each secret.
+    Every secret needs its own random value. The backend refuses to start with an empty, placeholder (`replace-with-...`, `CHANGE-ME-...`, `your-...`) or reused secret, a secret shorter than 32 characters, or LiveKit's `devkey` sample pair, and its log names the variable to fix. To make one by hand: `openssl rand -base64 64 | tr -d '\n'`.
 
 See the [Configuration](configuration.md) page for the full environment variable reference.
 
@@ -674,6 +676,7 @@ If you chose the "With Caddy" setup, this is already handled. For the other setu
 - Proxy `your-domain.com` to the frontend (port 5173) — the frontend's nginx handles `/api` and `/socket.io` routing to the backend internally
 - Proxy `lk.your-domain.com` to LiveKit signaling (port 7880)
 - Ensure WebSocket upgrade headers are forwarded for LiveKit
+- Have the proxy send `X-Forwarded-Proto` (Caddy, Traefik and ingress-nginx do by default; plain nginx needs `proxy_set_header X-Forwarded-Proto $scheme;`). The backend marks its sign-in cookies `Secure` when it says `https` (`COOKIE_SECURE=auto`, see [Configuration](configuration.md#core)). A plain-HTTP install on your LAN works too: its cookies just aren't `Secure`.
 
 Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`), so the backend sees every client as your reverse proxy's address. For real client IPs (per-client rate limiting, session IPs), also route `/api` and `/socket.io` straight to the backend (port 3000), as in the diagram above, and have your proxy set `X-Forwarded-For`. Keep `TRUST_PROXY` equal to the real number of hops. The examples bind the backend to `127.0.0.1` so that only a proxy on the same host can reach it. Never publish port 3000 beyond that: a client that reaches the backend directly can spoof its IP. See [Reverse proxy](configuration.md#reverse-proxy).
 

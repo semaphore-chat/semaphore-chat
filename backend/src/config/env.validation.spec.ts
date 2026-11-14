@@ -61,6 +61,47 @@ describe('validateEnv', () => {
     });
   });
 
+  describe('Test 3b: LiveKit is optional in production (all or none)', () => {
+    it('passes when NODE_ENV=production and no LiveKit variable is set', () => {
+      const config = {
+        ...BASE_CONFIG,
+        NODE_ENV: Environment.Production,
+        JWT_SECRET: 'secret',
+        JWT_REFRESH_SECRET: 'refresh',
+      };
+
+      expect(() => validateEnv(config)).not.toThrow();
+    });
+
+    it('throws when only LIVEKIT_URL is set in production', () => {
+      const config = {
+        ...BASE_CONFIG,
+        NODE_ENV: Environment.Production,
+        ...PROD_REQUIRED,
+        LIVEKIT_API_KEY: undefined,
+        LIVEKIT_API_SECRET: undefined,
+      };
+
+      expect(() => validateEnv(config)).toThrow(
+        /LIVEKIT_API_KEY[\s\S]*LIVEKIT_API_SECRET/,
+      );
+    });
+  });
+
+  describe('Test 3c: COOKIE_SECURE', () => {
+    it.each(['auto', 'true', 'false'])('accepts %s', (value) => {
+      expect(() =>
+        validateEnv({ ...BASE_CONFIG, COOKIE_SECURE: value }),
+      ).not.toThrow();
+    });
+
+    it('rejects anything else', () => {
+      expect(() =>
+        validateEnv({ ...BASE_CONFIG, COOKIE_SECURE: 'yes' }),
+      ).toThrow(/COOKIE_SECURE/);
+    });
+  });
+
   describe('Test 4: NODE_ENV=test with only base vars passes', () => {
     it('passes when NODE_ENV=test with DATABASE_URL, REDIS_HOST, JWT_SECRET, JWT_REFRESH_SECRET only', () => {
       const config = {
@@ -317,9 +358,8 @@ describe('validateEnv', () => {
       // All production-required vars must appear in the error
       expect(error!.message).toMatch(/JWT_SECRET/);
       expect(error!.message).toMatch(/JWT_REFRESH_SECRET/);
-      expect(error!.message).toMatch(/LIVEKIT_URL/);
-      expect(error!.message).toMatch(/LIVEKIT_API_KEY/);
-      expect(error!.message).toMatch(/LIVEKIT_API_SECRET/);
+      // LiveKit is optional: absent altogether is not an error
+      expect(error!.message).not.toMatch(/LIVEKIT/);
     });
   });
 });

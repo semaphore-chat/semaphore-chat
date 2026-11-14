@@ -1,11 +1,10 @@
 /**
  * Schema-based environment validation (structural presence check).
  *
- * Division of labour with main.ts validateSecrets():
- *   - main.ts validateSecrets(): runs FIRST, before NestFactory.create().
- *     Detects known-weak *values* (e.g. sample JWT secrets) and warns/errors
- *     accordingly. Also enforces production presence of JWT secrets directly
- *     from process.env.
+ * Division of labour with config/secret-checks.ts validateSecrets():
+ *   - validateSecrets(): runs FIRST (main.ts), before NestFactory.create().
+ *     Refuses placeholder, short or reused secrets outside development/test,
+ *     and missing JWT secrets.
  *   - THIS FILE: runs SECOND, during ConfigModule.forRoot() initialization
  *     (i.e. when Nest is already being assembled). Performs structural presence
  *     validation for the full env-var inventory and rejects partial VAPID pairs.
@@ -63,6 +62,13 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   LIVEKIT_API_SECRET?: string;
+
+  // Auth cookies' Secure flag: auto (per request scheme), true or false
+  @IsOptional()
+  @IsIn(['auto', 'true', 'false'], {
+    message: 'COOKIE_SECURE must be auto, true or false',
+  })
+  COOKIE_SECURE?: string;
 
   // Optional pair ---------------------------------------------------------
 
@@ -198,9 +204,10 @@ export class EnvironmentVariables {
  * Variables that must be present when NODE_ENV === 'production'.
  * Checked imperatively to keep error messages simple and aggregated.
  */
-const REQUIRED_IN_PRODUCTION = [
-  'JWT_SECRET',
-  'JWT_REFRESH_SECRET',
+const REQUIRED_IN_PRODUCTION = ['JWT_SECRET', 'JWT_REFRESH_SECRET'] as const;
+
+/** Voice/video is optional: in production, all of these or none. */
+const LIVEKIT_VARS = [
   'LIVEKIT_URL',
   'LIVEKIT_API_KEY',
   'LIVEKIT_API_SECRET',
@@ -234,6 +241,15 @@ export function validateEnv(
     for (const key of REQUIRED_IN_PRODUCTION) {
       if (!config[key]) {
         errors.push(`${key} is required in production`);
+      }
+    }
+    if (LIVEKIT_VARS.some((key) => config[key])) {
+      for (const key of LIVEKIT_VARS) {
+        if (!config[key]) {
+          errors.push(
+            `${key} is required in production when LiveKit is configured (set all of ${LIVEKIT_VARS.join(', ')} or none)`,
+          );
+        }
       }
     }
   }

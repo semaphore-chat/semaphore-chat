@@ -11,9 +11,11 @@ Copy `backend/env.sample` to `backend/.env` to get started.
 | Variable | Description | Default |
 |----------|------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://semaphore:semaphore@postgres:5432/semaphore` |
-| `JWT_SECRET` | Secret key for signing access tokens | *(must change)* |
-| `JWT_REFRESH_SECRET` | Secret key for signing refresh tokens | *(must change)* |
+| `JWT_SECRET` | Secret key for signing access tokens (32+ characters, random) | *(required)* |
+| `JWT_REFRESH_SECRET` | Secret key for signing refresh tokens (32+ characters, random, different from `JWT_SECRET`) | *(required)* |
 | `REDIS_HOST` | Redis hostname | `redis` |
+| `NODE_ENV` | `production` (set by the published backend image), `development` or `test`. Anything but `development`/`test` gets the production checks below | `production` in the image |
+| `COOKIE_SECURE` | `Secure` flag on the auth cookies: `auto` (Secure when the request came over HTTPS, as the trusted proxy reports in `X-Forwarded-Proto`), `true` or `false` | `auto` |
 
 !!! note "`DATABASE_URL` options: SSL and connection pool"
     The backend connects through node-postgres (`pg`), which reads the options in the URL differently from the Prisma 6 query engine that earlier releases used:
@@ -21,10 +23,10 @@ Copy `backend/env.sample` to `backend/.env` to get started.
     - **SSL certificates are verified.** `sslmode=require`, `prefer` and `verify-ca` behave like `verify-full`: the server certificate must chain to a trusted CA and match the hostname. Before, `sslmode=require` encrypted without checking the certificate. If your database uses a self-signed or private-CA certificate, mount the CA certificate into the container and add `sslrootcert=/path/to/ca.pem` to the URL; the certificate must also name the host in the URL. To check the CA but not the hostname, use `uselibpqcompat=true&sslmode=verify-ca&sslrootcert=/path/to/ca.pem`. To encrypt without verifying (the old behaviour, not recommended), use `sslmode=no-verify`.
     - **Pool:** each backend process opens at most 10 connections. The backend no longer reads `connection_limit`, `pool_timeout`, `sslaccept` or `schema` from the URL. Keep the tables in the default `public` schema.
 
-!!! danger "Change the JWT secrets"
-    The default secrets in `env.sample` are placeholders. Always generate strong random values for production:
+!!! danger "Secrets are checked at startup"
+    Unless `NODE_ENV` is `development` or `test`, the backend refuses to start when `JWT_SECRET`, `JWT_REFRESH_SECRET` or `LIVEKIT_API_SECRET` is empty, shorter than 32 characters or a published placeholder (the `env.sample` values, `replace-with-...`, `CHANGE-ME-...`, `your-...`, LiveKit's `devkey` sample pair), or when the two JWT secrets are equal. The log names each variable to fix. Generate each value with:
     ```bash
-    openssl rand -base64 32
+    openssl rand -base64 64 | tr -d '\n'
     ```
 
 ### File storage
@@ -82,8 +84,10 @@ The LiveKit server must be version **1.7 or later** (see [Connecting your LiveKi
 |----------|------------|---------|
 | `LIVEKIT_URL` | LiveKit server URL returned to the browser for WebRTC connections | `wss://your-livekit-server.com` |
 | `LIVEKIT_INTERNAL_URL` | *(Optional)* Internal URL for server-to-server LiveKit API calls. Falls back to `LIVEKIT_URL` if not set. Useful when LiveKit is on a Docker network (e.g., `http://livekit:7880`) while browsers need a different URL. | `http://livekit:7880` |
-| `LIVEKIT_API_KEY` | LiveKit API key | `your-api-key` |
-| `LIVEKIT_API_SECRET` | LiveKit API secret (also used to verify webhook signatures — must be at least 32 characters) | `your-api-secret` |
+| `LIVEKIT_API_KEY` | LiveKit API key | `APIa1b2c3d4e5f6` |
+| `LIVEKIT_API_SECRET` | LiveKit API secret (also used to verify webhook signatures — at least 32 random characters, e.g. `openssl rand -hex 32`) | *(random)* |
+
+Voice/video is optional: set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` together, or none of them.
 
 ### Replay buffer
 

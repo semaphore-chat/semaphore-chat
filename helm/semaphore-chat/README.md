@@ -20,11 +20,15 @@ This will deploy Semaphore Chat with bundled PostgreSQL and Redis:
 helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set ingress.hosts[0].host=semaphore.local \
   --set livekit.url=wss://your-livekit-server.com \
-  --set livekit.apiKey=YOUR_LIVEKIT_API_KEY \
-  --set livekit.apiSecret=YOUR_LIVEKIT_API_SECRET \
+  --set livekit.apiKey="$LIVEKIT_API_KEY" \
+  --set livekit.apiSecret="$LIVEKIT_API_SECRET" \
   --set secrets.jwtSecret="$(openssl rand -base64 32)" \
-  --set secrets.jwtRefreshSecret="$(openssl rand -base64 32)"
+  --set secrets.jwtRefreshSecret="$(openssl rand -base64 32)" \
+  --set postgresql.auth.password="$(openssl rand -hex 24)" \
+  --set redis.auth.password="$(openssl rand -hex 24)"
 ```
+
+The chart refuses to render with an empty, placeholder (`CHANGE-ME-...`, `your-...`) or shorter-than-32-character JWT or LiveKit secret, equal JWT secrets, or an empty/default bundled PostgreSQL or Redis password. Keep the values you install with (a values file or a Secret via `secrets.existingSecret`): every upgrade needs the same ones.
 
 ### Upgrade an Existing Release
 
@@ -119,16 +123,16 @@ helm uninstall semaphore-chat
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `livekit.url` | LiveKit WebSocket URL | `wss://livekit.example.com` |
-| `livekit.apiKey` | LiveKit API key | Required |
-| `livekit.apiSecret` | LiveKit API secret. Also verifies incoming webhook signatures, so it must match the key LiveKit signs with (and be ≥ 32 characters) | Required |
+| `livekit.url` | LiveKit WebSocket URL (voice/video is optional: set all three or none) | `""` |
+| `livekit.apiKey` | LiveKit API key | `""` |
+| `livekit.apiSecret` | LiveKit API secret. Also verifies incoming webhook signatures, so it must match the key LiveKit signs with (and be ≥ 32 characters, not a placeholder) | `""` |
 
 ### Secrets Configuration
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `secrets.jwtSecret` | JWT signing secret | `CHANGE-ME-...` |
-| `secrets.jwtRefreshSecret` | JWT refresh token secret | `CHANGE-ME-...` |
+| `secrets.jwtSecret` | JWT signing secret (required unless `existingSecret`; 32+ random characters) | `""` |
+| `secrets.jwtRefreshSecret` | JWT refresh token secret (required; different from `jwtSecret`) | `""` |
 | `secrets.existingSecret` | Use existing Kubernetes secret | `""` |
 
 ## Deployment Scenarios
@@ -140,9 +144,10 @@ Everything bundled, minimal configuration:
 ```bash
 helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set ingress.hosts[0].host=semaphore.local \
-  --set livekit.url=wss://livekit.example.com \
-  --set livekit.apiKey=key \
-  --set livekit.apiSecret=secret
+  --set secrets.jwtSecret="$(openssl rand -base64 32)" \
+  --set secrets.jwtRefreshSecret="$(openssl rand -base64 32)" \
+  --set postgresql.auth.password="$(openssl rand -hex 24)" \
+  --set redis.auth.password="$(openssl rand -hex 24)"
 ```
 
 Add to `/etc/hosts`:

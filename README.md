@@ -478,19 +478,17 @@ curl -fsSL https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/main/
 
 Create a `.env` file next to your `docker-compose.yml`. Your domain needs two DNS records pointing to your server — `HOST` and `lk.HOST` (e.g. `semaphore.example.com` and `lk.semaphore.example.com`), or a wildcard `*.semaphore.example.com`.
 
-```env
-HOST=semaphore.example.com
-JWT_SECRET=replace-with-a-long-random-string
-JWT_REFRESH_SECRET=replace-with-a-different-long-random-string
-LIVEKIT_API_KEY=replace-with-a-key-name
-LIVEKIT_API_SECRET=replace-with-a-secret-at-least-32-characters
-```
-
-Generate secrets with:
-
 ```bash
-openssl rand -base64 32
+cat > .env <<EOF
+HOST=semaphore.example.com
+JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+LIVEKIT_API_KEY=API$(openssl rand -hex 6)
+LIVEKIT_API_SECRET=$(openssl rand -hex 32)
+EOF
 ```
+
+Every secret gets its own random value: the backend refuses to start with an empty, placeholder or reused secret, or one shorter than 32 characters. Replace `semaphore.example.com` with your domain.
 
 ### 3. Start
 

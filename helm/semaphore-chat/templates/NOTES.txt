@@ -70,15 +70,6 @@ LiveKit:
 
 ⚠️  SECURITY REMINDERS
 
-{{- if eq .Values.secrets.jwtSecret "CHANGE-ME-long-random-secret-for-jwt-signing" }}
-
-🚨 CRITICAL: You are using default JWT secrets!
-   Please set custom values:
-
-   --set secrets.jwtSecret="your-random-secret" \
-   --set secrets.jwtRefreshSecret="your-different-random-secret"
-
-{{- end }}
 
 {{- if .Values.postgresql.bundled }}
 {{- if eq .Values.postgresql.auth.password "" }}
