@@ -349,21 +349,20 @@ pub fn first_frame_png(bytes: &[u8], format: Format) -> Result<Vec<u8>, String> 
 }
 
 /// What the store keeps of any picture (first-party or from another site): the bytes, frame 0
-/// alone, or nothing. Reads only headers and block structure unless frame 0 must be re-encoded.
-pub fn within_budget(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+/// alone, or nothing, and which of the first two it was ([`Plan::Keep`] or [`Plan::FirstFrame`]).
+/// Reads only headers and block structure unless frame 0 must be re-encoded. Logs nothing: the
+/// caller writes one line per fetch, with what it knows of where the bytes came from.
+pub fn within_budget(bytes: Vec<u8>) -> Result<(Vec<u8>, Plan), String> {
     let header = animation_cost(&bytes).map_err(|error| format!("{error:?}"))?;
     match plan(&header) {
-        Plan::Keep => Ok(bytes),
+        Plan::Keep => Ok((bytes, Plan::Keep)),
         Plan::FirstFrame => {
-            log::info!(
-                "{}x{} x {} frames is over the animation budget: first frame only",
-                header.width,
-                header.height,
-                header.frames
-            );
-            first_frame_png(&bytes, header.format)
+            first_frame_png(&bytes, header.format).map(|png| (png, Plan::FirstFrame))
         }
-        Plan::Refuse => Err(format!("over the frame budget: {header:?}")),
+        Plan::Refuse => Err(format!(
+            "over the frame budget: {}x{} x {} frames",
+            header.width, header.height, header.frames
+        )),
     }
 }
 
