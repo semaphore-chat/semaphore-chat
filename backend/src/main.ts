@@ -12,7 +12,10 @@ import { createOpenApiDocument } from './common/openapi/create-document';
 import { configureBodyParsers } from './common/http/body-parsers';
 import { pinClientAddress } from './common/http/pin-client-address';
 import { buildCorsOptions } from './common/http/cors-options';
-import { validateSecrets } from './config/secret-checks';
+import {
+  validateSecrets,
+  warnCookieSecureWithoutTrustProxy,
+} from './config/secret-checks';
 
 /**
  * Parse the TRUST_PROXY env var into the type Express expects.
@@ -33,6 +36,7 @@ function parseTrustProxy(value: string): boolean | number | string {
 
 async function bootstrap() {
   validateSecrets();
+  warnCookieSecureWithoutTrustProxy();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: new ConsoleLogger({

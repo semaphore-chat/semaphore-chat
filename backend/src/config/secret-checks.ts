@@ -102,3 +102,25 @@ export function validateSecrets(
     `\n⚠️  WARNING: unsafe secrets (allowed only because NODE_ENV=development):\n${detail}\n${FIX_HINT}\n`,
   );
 }
+
+/**
+ * Startup warning for COOKIE_SECURE=auto (the default) without TRUST_PROXY,
+ * outside development and test: auth cookies are Secure only when the
+ * request counts as HTTPS (req.secure), which behind a TLS-terminating
+ * proxy needs TRUST_PROXY to believe its X-Forwarded-Proto. Without it the
+ * cookies go out without Secure on an HTTPS site.
+ */
+export function warnCookieSecureWithoutTrustProxy(
+  env: NodeJS.ProcessEnv = process.env,
+  warn: (message: string) => void = console.warn,
+): void {
+  if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') return;
+  const mode = (env.COOKIE_SECURE ?? 'auto').toLowerCase();
+  if (mode !== 'auto' || env.TRUST_PROXY) return;
+  warn(
+    '\n⚠️  WARNING: COOKIE_SECURE is auto and TRUST_PROXY is not set: behind an ' +
+      'HTTPS reverse proxy the auth cookies will not be marked Secure, because ' +
+      'the backend cannot tell the request was HTTPS. Set TRUST_PROXY to the ' +
+      'number of proxy hops (usually 1), or set COOKIE_SECURE=true.\n',
+  );
+}

@@ -1,4 +1,7 @@
-import { validateSecrets } from './secret-checks';
+import {
+  validateSecrets,
+  warnCookieSecureWithoutTrustProxy,
+} from './secret-checks';
 
 const STRONG_A = 'q7Vx2mK9pL4nR8sT1wY6zB3cD5fG0hJ2kM4nP6rS8tU=';
 const STRONG_B = 'Z9yX8wV7uT6sR5qP4oN3mL2kJ1iH0gF9eD8cB7aZ6yX=';
@@ -164,5 +167,38 @@ describe('validateSecrets', () => {
       ).not.toThrow();
       expect(warn).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('warnCookieSecureWithoutTrustProxy', () => {
+  const run = (env: Record<string, string | undefined>) => {
+    const warn = jest.fn();
+    warnCookieSecureWithoutTrustProxy(env, warn);
+    return warn;
+  };
+
+  it.each([
+    ['production, COOKIE_SECURE unset', { NODE_ENV: 'production' }],
+    ['NODE_ENV unset, COOKIE_SECURE=auto', { COOKIE_SECURE: 'auto' }],
+    ['COOKIE_SECURE=AUTO', { NODE_ENV: 'production', COOKIE_SECURE: 'AUTO' }],
+  ])(
+    'warns once when cookies follow the scheme but no proxy is trusted (%s)',
+    (_, env) => {
+      const warn = run(env);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toMatch(/TRUST_PROXY/);
+      expect(warn.mock.calls[0][0]).toMatch(/COOKIE_SECURE=true/);
+      expect(warn.mock.calls[0][0]).toMatch(/Secure/);
+    },
+  );
+
+  it.each([
+    ['TRUST_PROXY set', { NODE_ENV: 'production', TRUST_PROXY: '1' }],
+    ['COOKIE_SECURE=true', { NODE_ENV: 'production', COOKIE_SECURE: 'true' }],
+    ['COOKIE_SECURE=false', { NODE_ENV: 'production', COOKIE_SECURE: 'false' }],
+    ['development', { NODE_ENV: 'development' }],
+    ['test', { NODE_ENV: 'test' }],
+  ])('stays quiet when %s', (_, env) => {
+    expect(run(env)).not.toHaveBeenCalled();
   });
 });

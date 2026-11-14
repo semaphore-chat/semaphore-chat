@@ -15,7 +15,7 @@ Copy `backend/env.sample` to `backend/.env` to get started.
 | `JWT_REFRESH_SECRET` | Secret key for signing refresh tokens (32+ characters, random, different from `JWT_SECRET`) | *(required)* |
 | `REDIS_HOST` | Redis hostname | `redis` |
 | `NODE_ENV` | `production` (set by the published backend image), `development` or `test`. Anything but `development`/`test` gets the production checks below | `production` in the image |
-| `COOKIE_SECURE` | `Secure` flag on the auth cookies: `auto` (Secure when the request came over HTTPS, as the trusted proxy reports in `X-Forwarded-Proto`), `true` or `false` | `auto` |
+| `COOKIE_SECURE` | `Secure` flag on the auth cookies: `auto` (Secure when the request came over HTTPS, as the trusted proxy reports in `X-Forwarded-Proto`), `true` or `false`. Behind an HTTPS proxy, `auto` needs `TRUST_PROXY` set, or the cookies are not marked Secure; the backend logs a warning at startup when `TRUST_PROXY` is unset (set `COOKIE_SECURE=true` if all access is HTTPS) | `auto` |
 
 !!! note "`DATABASE_URL` options: SSL and connection pool"
     The backend connects through node-postgres (`pg`), which reads the options in the URL differently from the Prisma 6 query engine that earlier releases used:
