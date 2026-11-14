@@ -828,3 +828,30 @@ async fn custom_emojis_read_with_their_file_ids() {
     assert_eq!(emojis[0].file_id, "f1");
     assert_eq!(emojis[0].name, "wave");
 }
+
+/// NAT-3: a preview's link is opened with the OS handler on click, so only http(s) links stay;
+/// a server can't make a card open a share, a file or a protocol handler.
+#[tokio::test]
+async fn previews_whose_link_is_not_http_are_dropped() {
+    let mut message = rich_message("previews");
+    message["linkPreviews"] = json!([
+        { "url": "https://example.com/a", "title": "kept" },
+        { "url": "\\\\attacker.example\\share\\update.exe", "title": "unc" },
+        { "url": "file://attacker/share/x.exe", "title": "file" },
+        { "url": "search-ms:query=x&crumb=location:\\\\attacker\\share", "title": "search" },
+        { "url": "ms-msdt:/id PCWDiagnostic", "title": "msdt" },
+        { "url": "javascript:alert(1)", "title": "js" },
+        { "url": " https://example.com/lead", "title": "leading space" },
+        { "url": "HTTP://EXAMPLE.COM/b", "title": "kept upper" },
+    ]);
+    let dto: semaphore_wire::types::MessageDto = serde_json::from_value(message).unwrap();
+    let mut rig = Rig::new().signed_in().await.open_channel(vec![dto]).await;
+    rig.settle().await;
+    let row = rig.row("previews");
+    let titles: Vec<_> = row
+        .link_previews
+        .iter()
+        .map(|preview| preview.title.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(titles, ["kept", "kept upper"]);
+}

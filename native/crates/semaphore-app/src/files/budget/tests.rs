@@ -2,7 +2,7 @@ use super::*;
 use std::prelude::rust_2024::test;
 
 /// A GIF whose structure is real but whose image data is filler: enough for the header walk.
-fn gif_shape(width: u16, height: u16, frames: usize, trailer: bool) -> Vec<u8> {
+pub(crate) fn gif_shape(width: u16, height: u16, frames: usize, trailer: bool) -> Vec<u8> {
     let mut bytes = b"GIF89a".to_vec();
     bytes.extend_from_slice(&width.to_le_bytes());
     bytes.extend_from_slice(&height.to_le_bytes());
@@ -32,7 +32,7 @@ fn gif_shape(width: u16, height: u16, frames: usize, trailer: bool) -> Vec<u8> {
 }
 
 /// A real, decodable GIF with `frames` frames of `width` x `height`.
-fn real_gif(width: u16, height: u16, frames: usize) -> Vec<u8> {
+pub(crate) fn real_gif(width: u16, height: u16, frames: usize) -> Vec<u8> {
     let mut bytes = Vec::new();
     {
         let mut encoder = image::codecs::gif::GifEncoder::new(&mut bytes);
@@ -49,7 +49,7 @@ fn real_gif(width: u16, height: u16, frames: usize) -> Vec<u8> {
     bytes
 }
 
-fn riff(chunks: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
+pub(crate) fn riff(chunks: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
     let mut body = b"WEBP".to_vec();
     for (fourcc, payload) in chunks {
         body.extend_from_slice(*fourcc);
@@ -65,7 +65,7 @@ fn riff(chunks: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
     bytes
 }
 
-fn vp8x(width: u32, height: u32, animated: bool) -> Vec<u8> {
+pub(crate) fn vp8x(width: u32, height: u32, animated: bool) -> Vec<u8> {
     let mut payload = vec![if animated { 0x02 } else { 0 }, 0, 0, 0];
     payload.extend_from_slice(&(width - 1).to_le_bytes()[..3]);
     payload.extend_from_slice(&(height - 1).to_le_bytes()[..3]);
@@ -370,4 +370,116 @@ fn a_real_still_webp_is_kept_and_its_first_frame_decodes() {
     assert_eq!(within_budget(bytes.clone()).unwrap(), bytes);
     let png = first_frame_png(&bytes, Format::WebP).unwrap();
     assert_eq!(image::load_from_memory(&png).unwrap().width(), 8);
+}
+
+/// A GIF on a `width` x `height` screen whose frames have the given descriptors
+/// (left, top, width, height), each with filler image data.
+pub(crate) fn gif_frames(width: u16, height: u16, frames: &[(u16, u16, u16, u16)]) -> Vec<u8> {
+    let mut bytes = b"GIF89a".to_vec();
+    bytes.extend_from_slice(&width.to_le_bytes());
+    bytes.extend_from_slice(&height.to_le_bytes());
+    bytes.extend_from_slice(&[0x80, 0, 0]);
+    bytes.extend_from_slice(&[0, 0, 0, 255, 255, 255]);
+    for (left, top, frame_width, frame_height) in frames {
+        bytes.push(0x2C);
+        for field in [left, top, frame_width, frame_height] {
+            bytes.extend_from_slice(&field.to_le_bytes());
+        }
+        bytes.push(0);
+        bytes.push(2);
+        bytes.extend_from_slice(&[3, 0x44, 0x01, 0x00]);
+        bytes.push(0);
+    }
+    bytes.push(0x3B);
+    bytes
+}
+
+/// An animated WebP on a `width` x `height` canvas whose `ANMF` frames have the given
+/// (x, y, width, height); x and y are stored halved, as the format does.
+fn webp_frames(width: u32, height: u32, frames: &[(u32, u32, u32, u32)]) -> Vec<u8> {
+    let mut chunks: Vec<(&[u8; 4], Vec<u8>)> = vec![(b"VP8X", vp8x(width, height, true))];
+    chunks.push((b"ANIM", vec![0; 6]));
+    for (x, y, frame_width, frame_height) in frames {
+        let mut payload = Vec::new();
+        for field in [x / 2, y / 2, frame_width - 1, frame_height - 1] {
+            payload.extend_from_slice(&field.to_le_bytes()[..3]);
+        }
+        payload.extend_from_slice(&[0; 5]);
+        chunks.push((b"ANMF", payload));
+    }
+    riff(&chunks)
+}
+
+/// NAT-2: a frame is decoded at its own size before it is placed on the canvas, so a frame
+/// bigger than the canvas (or off its edge) costs what the canvas check never saw.
+#[test]
+fn gif_frames_that_leave_the_canvas_are_refused() {
+    // On the edge, and wholly inside: fine.
+    for frames in [
+        vec![(0, 0, 10, 10)],
+        vec![(5, 5, 5, 5)],
+        vec![(0, 0, 1, 1), (9, 9, 1, 1)],
+        vec![(0, 9, 10, 1)],
+    ] {
+        let header = animation_cost(&gif_frames(10, 10, &frames)).unwrap();
+        assert_eq!(header.frames, frames.len() as u64, "{frames:?}");
+    }
+    // Past an edge by one, far past it, or huge on a tiny screen.
+    for frames in [
+        vec![(0, 0, 11, 10)],
+        vec![(0, 0, 10, 11)],
+        vec![(5, 0, 6, 1)],
+        vec![(0, 5, 1, 6)],
+        vec![(10, 0, 1, 1)],
+        vec![(0, 10, 1, 1)],
+        vec![(0, 0, 65535, 65535)],
+        vec![(65535, 65535, 1, 1)],
+        vec![(0, 0, 1, 1), (0, 0, 65535, 2)],
+    ] {
+        assert_eq!(
+            animation_cost(&gif_frames(10, 10, &frames)),
+            Err(HeaderError::Malformed),
+            "{frames:?}"
+        );
+        assert!(
+            within_budget(gif_frames(10, 10, &frames)).is_err(),
+            "{frames:?}"
+        );
+    }
+    // A screen of zero is refused by the plan already; a zero-sized frame inside it isn't a
+    // cost, and fits.
+    assert!(animation_cost(&gif_frames(10, 10, &[(3, 3, 0, 0)])).is_ok());
+}
+
+#[test]
+fn webp_frames_that_leave_the_canvas_are_refused() {
+    for frames in [
+        vec![(0, 0, 10, 10)],
+        vec![(4, 4, 6, 6)],
+        vec![(0, 0, 1, 1), (8, 8, 2, 2)],
+    ] {
+        let header = animation_cost(&webp_frames(10, 10, &frames)).unwrap();
+        assert_eq!(header.frames, frames.len() as u64, "{frames:?}");
+    }
+    for frames in [
+        vec![(0, 0, 11, 10)],
+        vec![(0, 0, 10, 11)],
+        vec![(2, 0, 9, 1)],
+        vec![(10, 0, 1, 1)],
+        vec![(0, 0, 1 << 24, 1 << 24)],
+        vec![(0, 0, 1, 1), (0, 0, 4000, 4000)],
+    ] {
+        assert_eq!(
+            animation_cost(&webp_frames(10, 10, &frames)),
+            Err(HeaderError::Malformed),
+            "{frames:?}"
+        );
+    }
+    // An ANMF too short to hold its frame header is malformed, not a frame of size zero.
+    let short = riff(&[
+        (b"VP8X", vp8x(10, 10, true)),
+        (b"ANIM", vec![0; 6]),
+        (b"ANMF", vec![0; 11]),
+    ]);
+    assert_eq!(animation_cost(&short), Err(HeaderError::Malformed));
 }

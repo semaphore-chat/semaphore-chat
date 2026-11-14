@@ -1093,7 +1093,7 @@ impl AppRoot {
                 // The app's open seam, so tests and rigs record it instead of opening anything.
                 let dir = crate::logging::logs_dir(&self.config.data_dir);
                 let _ = std::fs::create_dir_all(&dir);
-                crate::open_url(&dir.to_string_lossy(), cx);
+                crate::open_path(&dir, cx);
             }
             // Another server: sign out here, then the server step.
             DesktopAppEvent::ChangeServer => {

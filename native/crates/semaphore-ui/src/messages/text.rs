@@ -134,8 +134,7 @@ pub fn mention_at(row: &MessageRow, byte: u32) -> Option<&str> {
 /// Whether a link may leave the app. The web client only ever links `http(s)` URLs, and a span's
 /// target comes from another user.
 pub fn is_openable_url(url: &str) -> bool {
-    let lower = url.get(..8).unwrap_or(url).to_ascii_lowercase();
-    lower.starts_with("https://") || lower.starts_with("http://")
+    semaphore_core::links::is_web_url(url)
 }
 
 /// Whether the row addresses this user, which highlights it. Alias mentions are left out: whether

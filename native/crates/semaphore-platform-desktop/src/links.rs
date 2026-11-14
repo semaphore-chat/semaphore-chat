@@ -137,12 +137,15 @@ pub enum Unregistered {
 }
 
 /// Rewrites a registration this app wrote in an older form (Windows: an open command without
-/// `--`) to the current one. True if it rewrote something. Only a registration that is this
-/// executable's is touched; everywhere else, and when it's current, nothing is written.
+/// `--`; Linux: an `Exec` line without `--` before `%u`) to the current one. True if it rewrote
+/// something. Only a registration that is this executable's is touched; everywhere else, and
+/// when it's current, nothing is written.
 pub fn upgrade(target: &RegisterTarget) -> Result<bool, CoreError> {
     #[cfg(windows)]
     return windows::upgrade(target);
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    return linux::upgrade(target);
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = target;
         Ok(false)
@@ -230,7 +233,7 @@ pub fn desktop_entry(exe: &Path) -> Option<String> {
          Type=Application\n\
          Name=Semaphore\n\
          Comment=Voice and text chat\n\
-         Exec={exec} %u\n\
+         Exec={exec} -- %u\n\
          Icon={APP_ID}\n\
          Terminal=false\n\
          Categories=Network;Chat;InstantMessaging;\n\
@@ -402,17 +405,46 @@ mod linux {
         // Our id is the default: ours if the entry starts this executable.
         let entry = std::fs::read_to_string(target.data_home.join("applications").join(&file_name))
             .unwrap_or_default();
-        let wanted = desktop_entry(&target.exe).unwrap_or_default();
-        let exec = |text: &str| {
-            text.lines()
-                .find(|line| line.starts_with("Exec="))
-                .map(str::to_owned)
-        };
-        Ok(if exec(&entry).is_some() && exec(&entry) == exec(&wanted) {
+        Ok(if exec_form(&entry, &target.exe).is_some() {
             LinkStatus::Ours
         } else {
             LinkStatus::Another(file_name)
         })
+    }
+
+    /// Whether a desktop entry's `Exec` line is ours for `exe`, and in which form: the current
+    /// one (`"exe" -- %u`) or the one older builds wrote (`"exe" %u`), still ours.
+    fn exec_form(entry: &str, exe: &Path) -> Option<CommandForm> {
+        let exec = entry.lines().find(|line| line.starts_with("Exec="))?;
+        let wanted = desktop_entry(exe)?;
+        let current = wanted.lines().find(|line| line.starts_with("Exec="))?;
+        if exec == current {
+            Some(CommandForm::Current)
+        } else if Some(exec)
+            == current
+                .strip_suffix(" -- %u")
+                .map(|head| format!("{head} %u"))
+                .as_deref()
+        {
+            Some(CommandForm::Legacy)
+        } else {
+            None
+        }
+    }
+
+    /// An entry this executable wrote in the old form (no `--` before `%u`): written again in the
+    /// current one.
+    pub fn upgrade(target: &RegisterTarget) -> Result<bool, CoreError> {
+        let file_name = format!("{APP_ID}.desktop");
+        let entry = std::fs::read_to_string(target.data_home.join("applications").join(&file_name))
+            .unwrap_or_default();
+        if exec_form(&entry, &target.exe) != Some(CommandForm::Legacy)
+            || status(target)? != LinkStatus::Ours
+        {
+            return Ok(false);
+        }
+        register(target)?;
+        Ok(true)
     }
 
     /// Takes the default and our own files away; a package's entry (which `status` reports as
@@ -861,7 +893,7 @@ mod tests {
     fn the_desktop_entry_claims_the_scheme() {
         let entry = desktop_entry(Path::new("/usr/bin/semaphore-app")).unwrap();
         assert!(
-            entry.contains("Exec=\"/usr/bin/semaphore-app\" %u\n"),
+            entry.contains("Exec=\"/usr/bin/semaphore-app\" -- %u\n"),
             "{entry}"
         );
         assert!(
@@ -1021,6 +1053,39 @@ mod tests {
             root
         }
 
+        /// NAT-7: an entry an older build wrote (`"exe" %u`, no `--`) is still ours, and the
+        /// next start rewrites it to `"exe" -- %u`; another program's entry is never touched.
+        #[test]
+        fn an_old_entry_is_ours_and_is_rewritten_with_the_separator() {
+            let root = temp_root("legacy");
+            let target = target(&root);
+            assert_eq!(register(&target).unwrap(), Registered::Ours);
+            let entry_path = root.join("data/applications/app.semaphorechat.semaphore.desktop");
+            let current = std::fs::read_to_string(&entry_path).unwrap();
+            assert!(!upgrade(&target).unwrap(), "already current");
+            let legacy = current.replace(" -- %u", " %u");
+            assert_ne!(legacy, current);
+            std::fs::write(&entry_path, &legacy).unwrap();
+            assert_eq!(status(&target).unwrap(), LinkStatus::Ours);
+            assert!(upgrade(&target).unwrap());
+            assert_eq!(std::fs::read_to_string(&entry_path).unwrap(), current);
+            assert!(!upgrade(&target).unwrap());
+            // Extra arguments, or another executable: not ours, and left alone.
+            for other in [
+                current.replace(" -- %u", " --server x %u"),
+                current.replace("/opt/semaphore/semaphore-app", "/usr/bin/other"),
+            ] {
+                std::fs::write(&entry_path, &other).unwrap();
+                assert_eq!(
+                    status(&target).unwrap(),
+                    LinkStatus::Another("app.semaphorechat.semaphore.desktop".into())
+                );
+                assert!(!upgrade(&target).unwrap());
+                assert_eq!(std::fs::read_to_string(&entry_path).unwrap(), other);
+            }
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+
         #[test]
         fn registering_writes_the_entry_icon_and_default_then_nothing() {
             let root = temp_root("fresh");
@@ -1028,7 +1093,7 @@ mod tests {
             assert_eq!(register(&target).unwrap(), Registered::Ours);
             let entry_path = root.join("data/applications/app.semaphorechat.semaphore.desktop");
             let entry = std::fs::read_to_string(&entry_path).unwrap();
-            assert!(entry.contains("Exec=\"/opt/semaphore/semaphore-app\" %u"));
+            assert!(entry.contains("Exec=\"/opt/semaphore/semaphore-app\" -- %u"));
             assert!(
                 root.join("data/icons/hicolor/512x512/apps/app.semaphorechat.semaphore.png")
                     .is_file()

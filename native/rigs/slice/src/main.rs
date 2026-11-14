@@ -1444,6 +1444,16 @@ impl Rig {
                 let opened = self.opened.clone();
                 Rc::new(move |url: &str, _: &mut App| opened.borrow_mut().push(url.to_owned()))
             }),
+            // Paths the app opens (the logs folder, an attachment opened externally) land in the
+            // same list, so `expect opened-url` sees them.
+            open_path: Some({
+                let opened = self.opened.clone();
+                Rc::new(move |path: &std::path::Path, _: &mut App| {
+                    opened
+                        .borrow_mut()
+                        .push(path.to_string_lossy().into_owned())
+                })
+            }),
             save_path: Some({
                 let saves = self.saves.clone();
                 Rc::new(move |_: &str, _: &mut App| Task::ready(saves.borrow_mut().pop_front()))
@@ -1458,6 +1468,8 @@ impl Rig {
             links: Some(self.links.clone()),
             // Never the machine's sleep inhibitor: one that only remembers.
             keep_awake: Some(self.keep_awake.clone()),
+            // The scenario's link images come from the fake server on 127.0.0.1.
+            media_allow_private: true,
             // W13: the loopback feed, or nothing to check (the shipped default).
             update: match &self.update {
                 Some(feed) => semaphore_app::update::UpdateStart::On(Box::new(

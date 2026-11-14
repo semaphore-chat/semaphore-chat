@@ -13,13 +13,16 @@
 //!   through one entry point, [`third_party`], which refuses while the "Load images from other
 //!   sites" setting is off before it looks anywhere: no request, nothing served from the store.
 //!   Turning the setting off drops what was kept ([`set_third_party`]) and any fetch still on its
-//!   way. Animated ones pass the frame budget ([`budget`]) before they're kept.
+//!   way.
+//! - **Every image passes the frame budget** ([`budget`]) in [`FileStore::finish`] before it's
+//!   kept: GPUI decodes every frame of a GIF or WebP up front, whoever sent it.
 //! - **Video posters** are the server's thumbnails, through the same store ([`poster_resolver`]).
 //! - **Saving** a download asks where with the system's save dialog ([`ask_save_path`]), then
 //!   writes off the UI thread ([`write_file`]). The rigs' headless platform never answers that
 //!   dialog, so nothing is saved, or shown, on the machine running them.
 
 pub mod budget;
+pub mod destinations;
 
 use crate::runtime::Exec;
 use gpui_kit::{AssetSource, Resource, SharedString};
@@ -131,12 +134,17 @@ impl FileStore {
         true
     }
 
-    /// Takes a fetch's answer, refusing an image that's too big to decode.
+    /// Takes a fetch's answer, refusing an image that's too big to decode and passing every image
+    /// (avatars, custom emoji, attachments, pictures from other sites) through the frame budget
+    /// ([`budget::within_budget`]): kept, frame 0 alone, or refused. Reads headers only, unless
+    /// frame 0 must be re-encoded: call it off the async workers.
     pub fn finish(&self, path: &str, fetched: Result<Vec<u8>, String>) {
-        let accepted = fetched.and_then(|bytes| match decodable(&bytes) {
-            Ok(()) => Ok(bytes),
-            Err(refusal) => Err(format!("{refusal:?}")),
-        });
+        let accepted = fetched
+            .and_then(|bytes| match decodable(&bytes) {
+                Ok(()) => Ok(bytes),
+                Err(refusal) => Err(format!("{refusal:?}")),
+            })
+            .and_then(budget::within_budget);
         let mut inner = self.lock();
         match accepted {
             Ok(bytes) => {
@@ -380,7 +388,7 @@ pub fn third_party(
                 .spawn_blocking(move || {
                     if previews.allowed() {
                         // The budget reads the header, and may decode one frame: off the workers.
-                        store.finish(&path, fetched.and_then(budget::within_budget));
+                        store.finish(&path, fetched);
                     } else {
                         store.forget(&path);
                     }
@@ -413,6 +421,8 @@ pub struct PreviewFetcher {
     allowed: std::sync::atomic::AtomicBool,
     pub requests: AtomicUsize,
     client: OnceLock<Option<reqwest::Client>>,
+    /// Where it may connect: public addresses only, but in the rig ([`destinations`]).
+    destinations: destinations::Destinations,
 }
 
 /// What a preview fetch may take.
@@ -430,11 +440,19 @@ pub const PREVIEW_TIMEOUT: Duration = Duration::from_secs(10);
 pub const PREVIEW_MAX_REDIRECTS: usize = 3;
 
 impl PreviewFetcher {
+    /// A fetcher that reaches public addresses only.
     pub fn new(allowed: bool) -> Self {
+        Self::with_destinations(allowed, destinations::Destinations::PublicOnly)
+    }
+
+    /// A fetcher with its own destination rule: `AlsoPrivate` only for the rig
+    /// (`AppConfig::media_allow_private`).
+    pub fn with_destinations(allowed: bool, destinations: destinations::Destinations) -> Self {
         Self {
             allowed: std::sync::atomic::AtomicBool::new(allowed),
             requests: AtomicUsize::new(0),
             client: OnceLock::new(),
+            destinations,
         }
     }
 
@@ -451,12 +469,19 @@ impl PreviewFetcher {
         self.client
             .get_or_init(|| {
                 let tls = semaphore_net::tls_client_config().ok()?;
+                let destinations = self.destinations.clone();
                 reqwest::Client::builder()
                     .tls_backend_preconfigured(rustls::ClientConfig::clone(&tls))
                     .user_agent("Mozilla/5.0 (compatible; link preview)")
-                    .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                    // Names resolve to allowed addresses only, and reqwest connects to exactly
+                    // those. The environment's proxy is kept: through one, the proxy resolves
+                    // names, so only IP literals are filtered (by the checks on each URL).
+                    .dns_resolver(destinations::resolver(self.destinations.clone()))
+                    .redirect(reqwest::redirect::Policy::custom(move |attempt| {
                         if !fetchable_url(attempt.url()) {
                             attempt.error("a redirect left http(s) or went nowhere")
+                        } else if !destinations.allows_url(attempt.url()) {
+                            attempt.error("a redirect went to a private address")
                         } else if attempt.previous().len() > PREVIEW_MAX_REDIRECTS {
                             attempt.error("too many redirects")
                         } else {
@@ -483,7 +508,7 @@ impl PreviewFetcher {
             return Err("link preview images are off".into());
         }
         let parsed = reqwest::Url::parse(url).map_err(|error| error.to_string())?;
-        if !fetchable_url(&parsed) {
+        if !fetchable_url(&parsed) || !self.destinations.allows_url(&parsed) {
             return Err(format!("not fetching {parsed}"));
         }
         let client = self.client().ok_or("no HTTP client")?;
@@ -690,30 +715,50 @@ pub fn ask_save_path(
     crate::ask_save_path(name, cx)
 }
 
-/// Writes a download where the user chose, on a blocking thread of the net runtime.
+/// Writes a download where the user chose, on a blocking thread of the net runtime, and marks it
+/// as downloaded from the internet (Windows' Mark-of-the-Web), as a browser does. A volume that
+/// can't hold the mark (FAT32) keeps the file: the user chose where it goes, and nothing opens it
+/// from here.
 pub async fn write_file(path: std::path::PathBuf, bytes: Vec<u8>) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || std::fs::write(&path, bytes).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
+    tokio::task::spawn_blocking(move || {
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        if let Err(error) = semaphore_platform_desktop::download_mark::mark_downloaded(&path) {
+            log::warn!(
+                "{} is saved without its downloaded mark: {error}",
+                path.display()
+            );
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-/// File types the OS would run, install or follow rather than show: never handed to its opener.
-/// One list for every platform, since a file can come from anyone.
-const RUN_NOT_SHOWN: &[&str] = &[
-    "exe", "msi", "bat", "cmd", "com", "scr", "pif", "ps1", "vbs", "js", "jse", "wsf", "hta",
-    "lnk", "url", "reg", "jar", "sh", "run", "bin", "appimage", "desktop", "deb", "rpm",
+/// What "Open externally" may hand to the OS's default app: audio and video, the only kinds the
+/// player offers it for. An allowlist, not a denylist: Windows runs, loads or follows far more
+/// kinds of file on "open" than any list of them stays complete for (`.cpl`, `.chm`, `.msc`,
+/// `.appref-ms`, `.rdp`, `.iso`, `.search-ms` ...). Anything else is saved instead.
+pub const MEDIA_EXTENSIONS: &[&str] = &[
+    "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "mpg", "mpeg", "ogv", "ogg", "oga", "opus",
+    "mp3", "m4a", "aac", "wav", "flac",
 ];
 
-/// Whether an attachment called `name` may go to the OS's default app. Programs, scripts,
-/// installers and shortcuts may not, and nor may a name with no extension, which the OS would
-/// judge by content: those are saved instead. Judged on the name as it would be written, so
-/// trailing dots and direction marks can't hide the real extension.
+/// The file name "Open externally" writes under the app's `open` folder for an attachment:
+/// `<id>-<name>`, both made safe. [`may_open_with_the_os`] judges this name, the one the OS sees.
+pub fn open_externally_name(file_id: &str, filename: &str) -> String {
+    format!("{}-{}", safe_file_name(file_id), safe_file_name(filename))
+}
+
+/// Whether a file called `name` may go to the OS's default app: only audio and video
+/// ([`MEDIA_EXTENSIONS`]). Judged on the name as it would be written ([`safe_file_name`]), so
+/// trailing dots, stream names and direction marks can't hide the real extension; callers pass
+/// the name actually written to disk ([`open_externally_name`]).
 pub fn may_open_with_the_os(name: &str) -> bool {
     let safe = safe_file_name(name);
     match safe.rsplit_once('.') {
         Some((stem, extension)) if !stem.is_empty() && !extension.is_empty() => {
             let extension = extension.to_ascii_lowercase();
-            !RUN_NOT_SHOWN.contains(&extension.as_str())
+            MEDIA_EXTENSIONS.contains(&extension.as_str())
         }
         _ => false,
     }
@@ -873,6 +918,58 @@ mod tests {
         assert_eq!(store.bytes(), 0);
     }
 
+    /// NAT-2: avatars, custom emoji and full-size attachments pass the frame budget as well,
+    /// not only pictures from other sites.
+    #[test]
+    fn every_image_the_store_keeps_passes_the_frame_budget() {
+        use budget::tests::{gif_frames, gif_shape, real_gif};
+        let store = FileStore::default();
+        for path in [
+            "semaphore-file/f/avatar",
+            "semaphore-file/f/emoji",
+            "semaphore-file/t/thumb",
+        ] {
+            // 2000x2000 x 10,000 frames: 160 GB decoded from a quarter of a megabyte. Not even
+            // one frame of it is drawn from filler data, so nothing is kept.
+            store.begin(path);
+            store.finish(path, Ok(gif_shape(2000, 2000, 10_000, true)));
+            match store.get(path) {
+                None => assert_eq!(store.have(path), Have::Unavailable, "{path}"),
+                Some(kept) => assert_eq!(
+                    budget::animation_cost(&kept).unwrap().frames,
+                    1,
+                    "{path} kept every frame"
+                ),
+            }
+        }
+
+        // Over the budget but drawable: frame 0 alone, as a PNG.
+        store.begin("semaphore-file/f/long");
+        store.finish("semaphore-file/f/long", Ok(real_gif(600, 600, 30)));
+        let kept = store
+            .get("semaphore-file/f/long")
+            .expect("first frame kept");
+        assert_eq!(image::guess_format(&kept).unwrap(), image::ImageFormat::Png);
+        assert_eq!(budget::animation_cost(&kept).unwrap().frames, 1);
+
+        // Inside the budget: kept as sent, and still animated.
+        let small = real_gif(32, 32, 5);
+        store.begin("semaphore-file/f/small");
+        store.finish("semaphore-file/f/small", Ok(small.clone()));
+        assert_eq!(
+            store.get("semaphore-file/f/small").unwrap().as_slice(),
+            small
+        );
+
+        // A frame bigger than its screen: refused.
+        store.begin("semaphore-file/f/wide");
+        store.finish(
+            "semaphore-file/f/wide",
+            Ok(gif_frames(10, 10, &[(0, 0, 65535, 65535)])),
+        );
+        assert_eq!(store.have("semaphore-file/f/wide"), Have::Unavailable);
+    }
+
     #[test]
     fn save_names_lose_paths_dots_and_length() {
         assert_eq!(safe_file_name("../../etc/passwd"), "passwd");
@@ -945,21 +1042,35 @@ mod tests {
     }
 
     #[test]
-    fn only_documents_and_media_open_with_the_os() {
+    fn only_media_open_with_the_os() {
         for name in [
-            "report.pdf",
-            "photo.JPG",
-            "a.exe.pdf",
             "song.mp3",
-            "notes.txt",
             "clip.webm",
+            "CLIP.MP4",
+            "a.exe.mp4",
+            "film.mkv",
+            "film.Mov",
+            "voice.opus",
+            "track.flac",
         ] {
             assert!(may_open_with_the_os(name), "{name:?} was refused");
         }
+        for extension in MEDIA_EXTENSIONS {
+            assert!(may_open_with_the_os(&format!("x.{extension}")));
+            assert!(may_open_with_the_os(&format!(
+                "x.{}",
+                extension.to_ascii_uppercase()
+            )));
+        }
         for name in [
+            // Documents and pictures: the button is only offered for audio and video.
+            "report.pdf",
+            "photo.JPG",
+            "notes.txt",
             "setup.exe",
             "SETUP.EXE",
             "a.pdf.exe",
+            "a.mp4.exe",
             "installer.msi",
             "x.bat",
             "x.cmd",
@@ -984,15 +1095,94 @@ mod tests {
             "pkg.deb",
             "pkg.rpm",
             "noextension",
+            "mp4",
+            ".mp4",
             ".exe",
             "x.",
             "trailing.exe.",
             "trailing.exe .",
+            "trailing.mp4.exe.",
+            "invoice\u{202E}4pm.exe",
             "invoice\u{202E}fdp.exe",
             "CON.exe",
+            "clip.mp4:Zone.Identifier",
+            "clip.mp4:evil.exe",
         ] {
             assert!(!may_open_with_the_os(name), "{name:?} would be opened");
         }
+    }
+
+    /// NAT-1: every kind of file Windows runs, loads or follows on "open" that the old denylist
+    /// missed.
+    #[test]
+    fn programs_the_denylist_missed_are_not_opened() {
+        for ext in [
+            "cpl",
+            "vbe",
+            "wsh",
+            "chm",
+            "msc",
+            "appref-ms",
+            "application",
+            "py",
+            "pyw",
+            "rdp",
+            "search-ms",
+            "library-ms",
+            "iso",
+            "img",
+            "vhd",
+            "vhdx",
+            "xll",
+            "msp",
+            "msix",
+            "appx",
+            "appinstaller",
+            "diagcab",
+            "jnlp",
+            "settingcontent-ms",
+            "website",
+            "theme",
+        ] {
+            assert!(!may_open_with_the_os(&format!("clip.{ext}")), "{ext}");
+            assert!(!may_open_with_the_os(&format!("clip.mp4.{ext}")), "{ext}");
+        }
+    }
+
+    /// The check runs on the name written to disk, which is what the OS sees.
+    #[test]
+    fn the_name_on_disk_is_the_one_judged() {
+        assert_eq!(open_externally_name("f1", "clip.mp4"), "f1-clip.mp4");
+        assert!(may_open_with_the_os(&open_externally_name(
+            "f1", "clip.mp4"
+        )));
+        // A path in the name is cut to its last part; what's left decides.
+        assert_eq!(
+            open_externally_name("f1", "clip.mp4/evil.cpl"),
+            "f1-evil.cpl"
+        );
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "f1",
+            "clip.mp4/evil.cpl"
+        )));
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "f1",
+            "a.mp4\\b.cpl"
+        )));
+        // Trailing dots and spaces are dropped as Windows would.
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "f1",
+            "a.mp4.cpl. . "
+        )));
+        // A name with no extension can't borrow one from the id.
+        assert!(!may_open_with_the_os(&open_externally_name(
+            "x.mp4", "noext"
+        )));
+        // A server id can't smuggle a separator or a stream name.
+        assert_eq!(open_externally_name("../x:y", "a.mp4"), "xy-a.mp4");
+        // An extension too long to keep is cut with the rest: never opened.
+        let long = format!("clip.mp4{}", "4".repeat(300));
+        assert!(!may_open_with_the_os(&open_externally_name("f", &long)));
     }
 
     /// One canned HTTP answer per connection, for the fetcher's limits.
@@ -1020,6 +1210,84 @@ mod tests {
         (format!("http://{address}"), hits)
     }
 
+    /// The same, listening on another loopback address (Linux routes all of 127/8).
+    async fn serve_at(ip: &str, answers: Vec<String>) -> (String, Arc<AtomicUsize>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind((ip, 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counted = hits.clone();
+        tokio::spawn(async move {
+            for answer in answers {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                counted.fetch_add(1, Ordering::SeqCst);
+                let mut buffer = [0u8; 4096];
+                let _ = stream.read(&mut buffer).await;
+                let _ = stream.write_all(answer.as_bytes()).await;
+            }
+        });
+        (format!("http://{address}"), hits)
+    }
+
+    /// A fetcher that may also reach the tests' own server on 127.0.0.1, and nothing else
+    /// private.
+    fn local_fetcher(allowed: bool) -> PreviewFetcher {
+        PreviewFetcher::with_destinations(
+            allowed,
+            destinations::Destinations::PublicAnd(vec!["127.0.0.1".parse().unwrap()]),
+        )
+    }
+
+    /// NAT-6: with the switch on, nothing on the viewer's own machine or network is asked for:
+    /// not by literal address, not by a name that resolves there.
+    #[tokio::test]
+    async fn the_fetcher_never_reaches_loopback_or_private_addresses() {
+        semaphore_net::install_crypto_provider();
+        let (url, hits) = serve(vec![answer("200 OK", "image/png", "x"); 4]).await;
+        let port = url.rsplit(':').next().unwrap().to_owned();
+        let fetcher = PreviewFetcher::new(true);
+        for target in [
+            format!("{url}/a.png"),
+            format!("http://localhost:{port}/a.png"),
+            format!("http://[::ffff:127.0.0.1]:{port}/a.png"),
+            format!("http://2130706433:{port}/a.png"),
+        ] {
+            assert!(fetcher.fetch(&target).await.is_err(), "{target}");
+        }
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+    }
+
+    /// Every redirect hop is checked: an allowed server can't send the fetch on to a private one.
+    #[tokio::test]
+    async fn a_redirect_into_a_private_address_is_not_followed() {
+        semaphore_net::install_crypto_provider();
+        let (private, private_hits) =
+            serve_at("127.0.0.2", vec![answer("200 OK", "image/png", "x"); 2]).await;
+        let redirect = format!(
+            "HTTP/1.1 302 Found\r\nLocation: {private}/a.png\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let (allowed, allowed_hits) = serve(vec![redirect]).await;
+        let fetcher = local_fetcher(true);
+        assert!(
+            fetcher
+                .fetch(&format!("{allowed}/start.png"))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            allowed_hits.load(Ordering::SeqCst),
+            1,
+            "the first hop was asked"
+        );
+        assert_eq!(
+            private_hits.load(Ordering::SeqCst),
+            0,
+            "the second never was"
+        );
+    }
+
     fn answer(status: &str, content_type: &str, body: &str) -> String {
         format!(
             "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -1039,7 +1307,7 @@ mod tests {
     #[tokio::test]
     async fn only_http_images_under_the_cap_come_back() {
         semaphore_net::install_crypto_provider();
-        let fetcher = PreviewFetcher::new(true);
+        let fetcher = local_fetcher(true);
         assert!(fetcher.fetch("data:image/png;base64,AAAA").await.is_err());
         assert!(fetcher.fetch("file:///etc/passwd").await.is_err());
         assert_eq!(
@@ -1092,7 +1360,7 @@ mod tests {
                 let _ = stream.write_all(answer.as_bytes()).await;
             }
         });
-        let fetcher = PreviewFetcher::new(true);
+        let fetcher = local_fetcher(true);
         assert!(fetcher.fetch(&format!("{base}/start")).await.is_err());
         assert_eq!(hops.load(Ordering::SeqCst), PREVIEW_MAX_REDIRECTS + 1);
     }
@@ -1140,7 +1408,7 @@ mod tests {
             semaphore_net::install_crypto_provider();
             let (arrived, landed) = async_channel::unbounded();
             Self {
-                previews: Arc::new(PreviewFetcher::new(on)),
+                previews: Arc::new(local_fetcher(on)),
                 store: Arc::default(),
                 exec: Exec::new(tokio::runtime::Handle::current(), Arc::default()),
                 arrived,
@@ -1280,7 +1548,7 @@ mod tests {
     #[test]
     fn turning_off_purges_third_party_pictures_but_keeps_files() {
         let store = FileStore::default();
-        let previews = PreviewFetcher::new(true);
+        let previews = local_fetcher(true);
         let file = file_path("abc", false);
         let gif = third_party_path(ThirdPartyKind::Gif, "http://a/x.gif");
         let link = third_party_path(ThirdPartyKind::LinkImage, "http://a/x.png");
@@ -1427,7 +1695,7 @@ mod tests {
             binary_answer("image/gif", &six_mib),
         ])
         .await;
-        let fetcher = PreviewFetcher::new(true);
+        let fetcher = local_fetcher(true);
         let url = format!("{base}/big.gif");
         assert!(
             fetcher.fetch(&url).await.is_err(),

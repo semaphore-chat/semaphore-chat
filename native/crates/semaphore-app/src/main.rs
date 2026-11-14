@@ -300,12 +300,15 @@ fn main() -> ExitCode {
                 heartbeat: semaphore_app::voice::HEARTBEAT,
                 notifier: desktop.notifier.clone(),
                 open_url: None,
+                open_path: None,
                 pick_files: None,
                 save_path: None,
                 links: Some(Arc::new(semaphore_app::desktop::DesktopLinks::from_env())),
                 keep_awake: Some(Arc::new(
                     semaphore_platform_desktop::keep_awake::DesktopKeepAwake::new(),
                 )),
+                // Pictures from other sites never load from private addresses in the app.
+                media_allow_private: false,
             };
             let bounds =
                 semaphore_app::desktop::opening_bounds(config.settings.get().window.as_ref(), cx);

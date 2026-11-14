@@ -3,6 +3,7 @@
 //! ([`links`]), one running app per user ([`instance`]), the tray ([`tray`]) and auto-update
 //! ([`update`]).
 
+pub mod download_mark;
 pub mod icon;
 pub mod instance;
 pub mod keep_awake;

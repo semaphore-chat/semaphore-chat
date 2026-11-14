@@ -247,13 +247,9 @@ impl AppRoot {
                     ..
                 } = &self.updates.state
                 {
-                    let folder = path.parent().unwrap_or(path);
-                    match reqwest::Url::from_directory_path(folder) {
-                        Ok(url) => crate::open_url(url.as_str(), cx),
-                        Err(()) => {
-                            log::warn!("cannot open {}: not an absolute path", folder.display())
-                        }
-                    }
+                    // The folder, not the package: the user installs it from there.
+                    let folder = path.parent().unwrap_or(path).to_owned();
+                    crate::open_path(&folder, cx);
                 }
             }
             UpdateBannerEvent::ReleaseNotes => {

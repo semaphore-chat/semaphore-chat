@@ -1001,6 +1001,8 @@ pub fn project(
         .link_previews
         .iter()
         .flatten()
+        // A card's click hands its link to the OS: only http(s) links are kept.
+        .filter(|preview| crate::links::is_web_url(&preview.url))
         .map(|preview| LinkPreviewView {
             url: preview.url.clone(),
             title: preview.title.clone(),

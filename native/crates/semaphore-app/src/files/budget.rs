@@ -1,4 +1,5 @@
-//! WM: the frame and pixel budget for animated pictures from other sites (GIFs, animated WebP).
+//! WM: the frame and pixel budget for animated pictures (GIFs, animated WebP): every image the
+//! store keeps passes it ([`super::FileStore::finish`]), first-party or from another site.
 //!
 //! GPUI decodes every frame of an animation up front, each to the full canvas in RGBA, so one GIF
 //! costs `frames x width x height x 4` bytes however small its file is. Before such bytes reach the
@@ -186,7 +187,7 @@ fn gif(bytes: &[u8]) -> Result<Header, HeaderError> {
                 Err(HeaderError::Truncated)
             };
         }
-        match gif_block(&mut reader) {
+        match gif_block(&mut reader, width, height) {
             Ok(GifBlock::Frame) => frames += 1,
             Ok(GifBlock::Other) => {}
             // Whatever follows the trailer is ignored, as decoders do.
@@ -205,10 +206,20 @@ enum GifBlock {
     Trailer,
 }
 
-fn gif_block(reader: &mut Reader<'_>) -> Result<GifBlock, HeaderError> {
+/// One block. A frame must lie on the logical screen (`width` x `height`): decoders decode each
+/// frame at its own size before placing it, so a frame bigger than the screen, or off its edge,
+/// would cost what the canvas check never saw.
+fn gif_block(reader: &mut Reader<'_>, width: u32, height: u32) -> Result<GifBlock, HeaderError> {
     match reader.byte()? {
         0x2C => {
             let descriptor = reader.take(9)?;
+            let (left, top) = (u16_le(&descriptor[0..2]), u16_le(&descriptor[2..4]));
+            let (frame_width, frame_height) =
+                (u16_le(&descriptor[4..6]), u16_le(&descriptor[6..8]));
+            // u16 + u16 fits u32.
+            if left + frame_width > width || top + frame_height > height {
+                return Err(HeaderError::Malformed);
+            }
             let local = descriptor[8];
             if local & 0x80 != 0 {
                 reader.take(3 << ((local & 0x07) + 1))?;
@@ -234,6 +245,8 @@ fn webp(bytes: &[u8]) -> Result<Header, HeaderError> {
     let mut canvas: Option<(u32, u32, bool)> = None;
     let mut frames: u64 = 0;
     let mut simple: Option<(u32, u32)> = None;
+    // Checked once the canvas is known: VP8X comes first in a valid file, but don't rely on it.
+    let mut frame_rects: Vec<(u32, u32, u32, u32)> = Vec::new();
     while !reader.done() {
         let head = reader.take(8)?;
         let (fourcc, size) = (&head[0..4], u32_le(&head[4..8]) as usize);
@@ -253,7 +266,17 @@ fn webp(bytes: &[u8]) -> Result<Header, HeaderError> {
                     animated,
                 ));
             }
-            b"ANMF" => frames += 1,
+            b"ANMF" => {
+                // X/2, Y/2, width-1, height-1 (24 bits each), then duration and flags.
+                if payload.len() < 16 {
+                    return Err(HeaderError::Malformed);
+                }
+                let (x, y) = (u24_le(&payload[0..3]) * 2, u24_le(&payload[3..6]) * 2);
+                let (frame_width, frame_height) =
+                    (u24_le(&payload[6..9]) + 1, u24_le(&payload[9..12]) + 1);
+                frame_rects.push((x, y, frame_width, frame_height));
+                frames += 1;
+            }
             b"VP8 " => {
                 if payload.len() < 10 || payload[3..6] != [0x9d, 0x01, 0x2a] {
                     return Err(HeaderError::Malformed);
@@ -281,6 +304,14 @@ fn webp(bytes: &[u8]) -> Result<Header, HeaderError> {
     };
     if frames == 0 {
         return Err(HeaderError::Truncated);
+    }
+    // Each frame must lie on the canvas: it is decoded at its own size before it is placed.
+    // u24 * 2 and u24 + 1 fit u32, and so do their sums.
+    if frame_rects
+        .iter()
+        .any(|&(x, y, w, h)| x + w > width || y + h > height)
+    {
+        return Err(HeaderError::Malformed);
     }
     Ok(Header {
         format: Format::WebP,
@@ -317,7 +348,8 @@ pub fn first_frame_png(bytes: &[u8], format: Format) -> Result<Vec<u8>, String> 
     Ok(png)
 }
 
-/// What the store keeps of a third-party picture: the bytes, frame 0 alone, or nothing.
+/// What the store keeps of any picture (first-party or from another site): the bytes, frame 0
+/// alone, or nothing. Reads only headers and block structure unless frame 0 must be re-encoded.
 pub fn within_budget(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     let header = animation_cost(&bytes).map_err(|error| format!("{error:?}"))?;
     match plan(&header) {
@@ -336,4 +368,4 @@ pub fn within_budget(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

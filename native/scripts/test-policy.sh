@@ -112,6 +112,22 @@ expect "boundary rejects a desktop-only crate" 'livekit-fake: desktop-only crate
 expect "boundary accepts the real core" 'boundary ok' pass \
   python3 scripts/check-core-boundary.py
 
+# --- libwebrtc prebuilt: checked against its pinned sha256 (third_party/patches/webrtc-sys-build.patch).
+# Tested from a copy, so vendor/ gets no Cargo.lock change or target directory.
+cp -r "$NATIVE_DIR/third_party/vendor/webrtc-sys-build" "$TMP/wsb"
+expect "webrtc prebuilt pins: a corrupted download is refused" 'test result: ok' pass \
+  env CARGO_TARGET_DIR="$TMP/wsb-target" cargo test -q --manifest-path "$TMP/wsb/Cargo.toml" --lib pin_tests
+cp -r "$TMP/wsb" "$TMP/wsb-unchecked"
+python3 - "$TMP/wsb-unchecked/src/lib.rs" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+text = text.replace("    if actual != expected {", "    if false && actual != expected {", 1)
+open(path, "w").write(text)
+PY
+expect "webrtc prebuilt pins: the tests catch a check that accepts anything" 'test result: FAILED' fail \
+  env CARGO_TARGET_DIR="$TMP/wsb-target" cargo test -q --manifest-path "$TMP/wsb-unchecked/Cargo.toml" --lib pin_tests
+
 # --- Results: the validator must reject a result the schema forbids.
 if [ -n "${RESULT_SCHEMA:-}" ]; then
   echo '{"schema_version": 1, "client": "native"}' >"$TMP/bad.json"

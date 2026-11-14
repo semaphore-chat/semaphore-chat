@@ -74,6 +74,9 @@ pub struct AppConfig {
     /// Opens a web address in the system's browser (browser sign-in): `cx.open_url` when `None`,
     /// a recorder in the rig.
     pub open_url: Option<OpenUrl>,
+    /// Opens a file or folder the app wrote itself (an attachment opened externally, the logs
+    /// folder) with the OS's default app: `cx.open_with_system` when `None`, a recorder in the rig.
+    pub open_path: Option<OpenPath>,
     /// The system's file picker (the portal's on Linux, the common dialog on Windows) when `None`;
     /// the rig answers from a queue.
     pub pick_files: Option<PickFiles>,
@@ -92,10 +95,17 @@ pub struct AppConfig {
     /// (`DesktopKeepAwake`) in the app, a recorder in the rig, `None` for none. Never the
     /// desktop's in tests or rigs.
     pub keep_awake: Option<Arc<dyn semaphore_core::platform::KeepAwake>>,
+    /// Lets pictures from other sites load from loopback and private addresses. Only the slice
+    /// rig sets it (its fake server, which serves the scenario's link images, is on 127.0.0.1);
+    /// `main` always passes `false`, and no setting or environment variable reaches it.
+    pub media_allow_private: bool,
 }
 
 /// `AppConfig::open_url`.
 pub type OpenUrl = std::rc::Rc<dyn Fn(&str, &mut App)>;
+
+/// `AppConfig::open_path`.
+pub type OpenPath = std::rc::Rc<dyn Fn(&std::path::Path, &mut App)>;
 
 /// What a file pick is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +132,7 @@ pub struct Seams {
     pub pick_files: PickFiles,
     pub save_path: SavePath,
     pub open_url: OpenUrl,
+    pub open_path: OpenPath,
 }
 
 impl Global for Seams {}
@@ -156,11 +167,31 @@ pub fn system_save_path() -> SavePath {
     })
 }
 
-/// Opens `url` in the browser the config chose.
+/// Opens `url` in the browser the config chose: http(s) links only
+/// ([`semaphore_core::links::is_web_url`]). Anything else (a share, a file, a protocol handler)
+/// is refused here, whoever supplied it; local paths the app wrote itself go through
+/// [`open_path`].
 pub fn open_url(url: &str, cx: &mut App) {
+    if !semaphore_core::links::is_web_url(url) {
+        log::warn!("not opening {url:?}: only http(s) links are opened");
+        return;
+    }
     match cx.try_global::<Seams>().map(|seams| seams.open_url.clone()) {
         Some(open) => open(url, cx),
         None => cx.open_url(url),
+    }
+}
+
+/// Opens a local `path` the app wrote itself with the OS's default app (or file manager, for a
+/// folder), through the config's seam. The OS gets the path itself, never a `file://` string, so
+/// `#` or `%` in a name can't be read as anything else.
+pub fn open_path(path: &std::path::Path, cx: &mut App) {
+    match cx
+        .try_global::<Seams>()
+        .map(|seams| seams.open_path.clone())
+    {
+        Some(open) => open(path, cx),
+        None => cx.open_with_system(path),
     }
 }
 
@@ -206,4 +237,68 @@ pub fn build_root(
     let app = cx.new(|cx| AppRoot::new(config, window, cx));
     let root = cx.new(|cx| Root::new(app.clone(), window, cx));
     (root, app)
+}
+
+#[cfg(test)]
+mod open_tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::prelude::rust_2024::test;
+    use std::rc::Rc;
+
+    type Recorded<T> = Rc<RefCell<Vec<T>>>;
+
+    /// Installs seams that record what reaches the OS opener.
+    fn recording(cx: &mut App) -> (Recorded<String>, Recorded<PathBuf>) {
+        let (urls, paths) = (
+            Rc::new(RefCell::new(Vec::new())),
+            Rc::new(RefCell::new(Vec::new())),
+        );
+        let (u, p) = (urls.clone(), paths.clone());
+        cx.set_global(Seams {
+            pick_files: Rc::new(|_, _| Task::ready(None)),
+            save_path: Rc::new(|_, _| Task::ready(None)),
+            open_url: Rc::new(move |url: &str, _: &mut App| u.borrow_mut().push(url.to_owned())),
+            open_path: Rc::new(move |path: &std::path::Path, _: &mut App| {
+                p.borrow_mut().push(path.to_owned())
+            }),
+        });
+        (urls, paths)
+    }
+
+    /// NAT-3: whatever a server or a message supplies, only http(s) reaches the OS's URL opener;
+    /// shares, files and protocol handlers never do.
+    #[gpui_kit::test]
+    fn only_web_links_reach_the_url_opener(cx: &mut gpui_kit::TestAppContext) {
+        cx.update(|cx| {
+            let (urls, paths) = recording(cx);
+            for refused in [
+                "file:///etc/passwd",
+                "\\\\h\\s\\x.exe",
+                "search-ms:query=x&crumb=location:\\\\attacker\\share",
+                "ms-msdt:/id PCWDiagnostic",
+                "javascript:alert(1)",
+                " https://example.com",
+                "ht\ttps://example.com",
+                "http:example.com",
+                "/home/u/.local/share/semaphore/logs",
+            ] {
+                open_url(refused, cx);
+            }
+            assert!(urls.borrow().is_empty(), "opened {:?}", urls.borrow());
+            open_url("https://example.com/a", cx);
+            assert_eq!(*urls.borrow(), ["https://example.com/a"]);
+            assert!(paths.borrow().is_empty());
+        });
+    }
+
+    #[gpui_kit::test]
+    fn local_paths_go_to_the_path_opener(cx: &mut gpui_kit::TestAppContext) {
+        cx.update(|cx| {
+            let (urls, paths) = recording(cx);
+            open_path(std::path::Path::new("/data/open/f1-a#b%20.mp4"), cx);
+            assert_eq!(*paths.borrow(), [PathBuf::from("/data/open/f1-a#b%20.mp4")]);
+            assert!(urls.borrow().is_empty());
+        });
+    }
 }
