@@ -1,7 +1,9 @@
 //! Crash reports: a panic hook that writes a small report beside the logs.
 //!
-//! - The default hook still prints to stderr; the file is written after it, inside `catch_unwind`,
-//!   so a report that can't be written never turns one panic into two.
+//! - The default hook still prints to stderr; the file is written after it. A panic inside a panic
+//!   hook aborts the process (`catch_unwind` can't stop that), so the report writer has no
+//!   `unwrap`, `expect` or indexing: every failure (no folder, a full disk) just means no report.
+//! - The folder is private to the user (0700) and each report 0600, on Unix, like the logs.
 //! - A report has the time, the version, the platform, the thread, the panic message and location,
 //!   and a backtrace when one is available. It has no environment dump and no user data; the
 //!   message goes through the same redaction as a log line.
@@ -22,14 +24,13 @@ pub const PREFIX: &str = "crash-";
 /// the newest [`KEPT`] reports.
 pub fn install(dir: &Path) {
     let dir = dir.to_path_buf();
-    let _ = std::fs::create_dir_all(&dir);
+    let _ = crate::logging::create_private_dir(&dir);
     prune(&dir, KEPT);
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic| {
         // The default hook's stderr line stays, exactly as before.
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| default(panic)));
-        let _ =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| write_report(&dir, panic)));
+        default(panic);
+        write_report(&dir, panic);
     }));
 }
 
@@ -120,7 +121,7 @@ fn create(dir: &Path, stamp: &str, pid: u32) -> Option<(PathBuf, std::fs::File)>
             format!("{PREFIX}{stamp}-{pid}-{suffix}.txt")
         };
         let path = dir.join(name);
-        match std::fs::OpenOptions::new()
+        match crate::logging::private_file_options()
             .write(true)
             .create_new(true)
             .open(&path)
@@ -239,6 +240,13 @@ mod tests {
         let found = reports_in(&dir.0);
         assert_eq!(found.len(), 1, "{found:?}");
         let report = fs::read_to_string(&found[0]).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode(&found[0]), 0o600, "the report is private");
+            assert_eq!(mode(&dir.0), 0o700, "the folder is private");
+        }
         assert!(
             report.starts_with("Semaphore Chat crash report\n"),
             "{report}"

@@ -16,7 +16,7 @@ use crate::audio::vad::{VadGate, VoiceLevel};
 use crate::audio::{
     AudioDevices, AudioIo, AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES, SAMPLE_RATE,
 };
-use crate::camera_test::{CameraTestSetup, CameraTestShared};
+use crate::camera_test::{CAMERA_IN_USE, CameraTestSetup, CameraTestShared};
 use crate::diagnostics::{self, Totals};
 use crate::input_test::TestShared;
 use crate::soundboard::{self, SoundCache, SoundDecoder};
@@ -56,7 +56,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
@@ -302,6 +302,9 @@ struct Inner {
     input_test: Mutex<Option<std::sync::Weak<TestShared>>>,
     /// The settings page's camera test while it runs: a call sending the camera stops it.
     camera_test: Mutex<Option<std::sync::Weak<CameraTestShared>>>,
+    /// `set_camera(true)` calls under way (waiting their turn or opening the camera): the camera
+    /// is the call's from the moment it is asked for, before `camera` is set.
+    camera_starting: AtomicUsize,
     /// What we last asked of the mic's publication: muted or not.
     mic_asked_muted: AtomicBool,
 }
@@ -438,6 +441,7 @@ impl LiveKitEngine {
                 server_muted: AtomicBool::new(false),
                 input_test: Mutex::new(None),
                 camera_test: Mutex::new(None),
+                camera_starting: AtomicUsize::new(0),
                 mic_asked_muted: AtomicBool::new(false),
             }),
             runtime: Some(runtime),
@@ -676,8 +680,8 @@ impl LiveKitEngine {
     /// source for it. Stops a test already running first, so its camera is free before the next
     /// opens. Fails while the call sends the camera, or when there is no surface to draw on.
     pub(crate) fn camera_test_setup(&self) -> Result<CameraTestSetup, String> {
-        if lock(&self.inner.camera).is_some() {
-            return Err("the camera is in use by the call".into());
+        if self.inner.call_wants_camera() {
+            return Err(CAMERA_IN_USE.into());
         }
         let older = lock(&self.inner.camera_test).take();
         if let Some(older) = older.and_then(|older| older.upgrade()) {
@@ -699,9 +703,28 @@ impl LiveKitEngine {
         })
     }
 
-    /// Remembers the camera test now running, for a call sending the camera to stop.
-    pub(crate) fn track_camera_test(&self, test: &Arc<CameraTestShared>) {
-        *lock(&self.inner.camera_test) = Some(Arc::downgrade(test));
+    /// Remembers the camera test about to open its camera, for a call sending the camera to stop,
+    /// unless the call has the camera or is asking for it. Checked and registered under one lock,
+    /// which `set_camera` takes after announcing itself, so one of the two always sees the other.
+    pub(crate) fn track_camera_test(&self, test: &Arc<CameraTestShared>) -> Result<(), String> {
+        let mut current = lock(&self.inner.camera_test);
+        if self.inner.call_wants_camera() {
+            return Err(CAMERA_IN_USE.into());
+        }
+        *current = Some(Arc::downgrade(test));
+        Ok(())
+    }
+
+    /// A `set_camera(true)` is waiting or opening the camera.
+    #[cfg(test)]
+    pub(crate) fn camera_start_pending(&self) -> bool {
+        self.inner.camera_starting.load(Ordering::SeqCst) > 0
+    }
+
+    /// Holds the camera and screen operations' turn, so a `set_camera` waits for it.
+    #[cfg(test)]
+    pub(crate) fn hold_local_ops(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.inner.local_ops.try_lock().expect("local ops free")
     }
 
     pub fn output_latency_ms(&self) -> u32 {
@@ -2243,15 +2266,40 @@ impl Inner {
     }
 }
 
+/// Counts a `set_camera(true)` as under way until it returns, however it returns.
+struct CameraStarting<'a>(&'a AtomicUsize);
+
+impl<'a> CameraStarting<'a> {
+    fn new(count: &'a AtomicUsize) -> Self {
+        count.fetch_add(1, Ordering::SeqCst);
+        Self(count)
+    }
+}
+
+impl Drop for CameraStarting<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// Our camera and screen share.
 impl Inner {
+    /// The call sends the camera, or a `set_camera(true)` is on its way to: no camera test then.
+    fn call_wants_camera(&self) -> bool {
+        self.camera_starting.load(Ordering::SeqCst) > 0 || lock(&self.camera).is_some()
+    }
+
     async fn set_camera(self: Arc<Self>, on: bool) -> Result<(), String> {
+        // Announced before waiting for our turn: a camera test starting meanwhile is refused.
+        let _starting = on.then(|| CameraStarting::new(&self.camera_starting));
         let _one_at_a_time = self.local_ops.lock().await;
         if on {
-            // A settings-page test lets the camera go before the call opens it.
+            // A settings-page test lets the camera go before the call opens it, and one still
+            // opening its camera finishes (and closes it) first: the two never hold it at once.
             let test = lock(&self.camera_test).take();
             if let Some(test) = test.and_then(|test| test.upgrade()) {
                 test.stop();
+                let _ = tokio::task::spawn_blocking(move || test.wait_started()).await;
             }
         }
         if !on {

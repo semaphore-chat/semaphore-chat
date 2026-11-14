@@ -183,6 +183,12 @@ impl DesktopTray {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let _ = commands.send(command);
+        drop(commands);
+        // Windows' tray thread sleeps in its message loop, not on the channel: wake it, or the
+        // command waits there until some unrelated message arrives (it never does).
+        if let Some(wake) = self.shared.waker.get() {
+            wake();
+        }
     }
 }
 
@@ -202,6 +208,46 @@ impl Tray for DesktopTray {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sending_a_command_wakes_the_tray_thread_after_queueing_it() {
+        let shared = Arc::new(Shared {
+            status: Mutex::new(TrayStatus::Shown),
+            waker: std::sync::OnceLock::new(),
+        });
+        let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+        let woken = Arc::new(Mutex::new(Vec::new()));
+        {
+            let (receiver, woken) = (receiver.clone(), woken.clone());
+            // Like the Windows thread: on a wake it drains the channel.
+            shared.set_waker(Box::new(move || {
+                let receiver = receiver.lock().unwrap();
+                while let Ok(command) = receiver.try_recv() {
+                    woken.lock().unwrap().push(match command {
+                        Command::Updates(on) => format!("updates {on}"),
+                        Command::Unread(count) => format!("unread {count}"),
+                        Command::CloseToTray(on) => format!("close {on}"),
+                        Command::TaskbarWindow(_) => "taskbar".into(),
+                        Command::Shutdown => "shutdown".into(),
+                    });
+                }
+            }));
+        }
+        let tray = DesktopTray {
+            shared,
+            commands: Mutex::new(sender),
+        };
+        tray.set_updates_enabled(true);
+        tray.set_unread(2).unwrap();
+        tray.set_close_to_tray(false);
+        assert_eq!(
+            *woken.lock().unwrap(),
+            ["updates true", "unread 2", "close false"]
+        );
+        drop(tray);
+        assert_eq!(woken.lock().unwrap().last().unwrap(), "shutdown");
+    }
 
     #[test]
     fn the_tooltip_carries_the_count() {

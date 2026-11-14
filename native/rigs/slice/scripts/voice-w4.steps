@@ -115,6 +115,62 @@ snap 04b-live-ptt-held
 key-up f13
 wait core engine ptt-pressed off
 
+# W19: the root takes the key in the capture phase, before the focused element sees it. Space as
+# the key (recorded by the settings' key box, which the root leaves every key to while it listens).
+click rail-account
+click account-settings
+click settings-tab-voice
+wait core route settings/voice
+click voice-ptt-change
+press space
+expect settings /voice/push_to_talk_key "space"
+click settings-close
+wait core no-element voice-ptt-key
+# The image viewer is a focused clickable (a click closes it), and GPUI turns a focused clickable's
+# Space release into a click: holding and releasing the key talks and leaves the viewer open. (The
+# picture is clicked near its corner: the call's float covers its middle.)
+click channel-$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core float shown
+attach rigs/slice/fixtures/sketch.png
+type "ptt picture"
+press enter
+wait core sent "ptt picture"
+wait core attachments "ptt picture" 1 within 15
+wait core pending-files "ptt picture" 0 within 15
+click-row image "ptt picture" 0 at 8 8
+wait core viewer open
+key-down space
+wait core engine ptt-pressed on
+key-down space repeat
+key-up space
+wait core engine ptt-pressed off
+expect core viewer open
+# Held while Escape closes the viewer: its focus is gone with it, and the release still reaches the
+# root (before, it went to the window's root node, outside the app, and the mic stayed open).
+key-down space
+wait core engine ptt-pressed on
+press escape
+wait core viewer closed
+key-up space
+wait core engine ptt-pressed off
+# And the key still works once the viewer is gone, with nothing clicked since.
+key-down space
+wait core engine ptt-pressed on
+key-up space
+wait core engine ptt-pressed off
+# Closed by a click outside the picture this time: the same.
+click-row image "ptt picture" 0 at 8 8
+wait core viewer open
+click image-viewer 4 4
+wait core viewer closed
+key-down space
+wait core engine ptt-pressed on
+key-up space
+wait core engine ptt-pressed off
+click channel-$ID(vc-squad)
+wait core element tile-demo-peer-camera
+
 # 6. The participant menu on demo-peer's tile: muted for me (saved), then, as the community's
 # owner, a server mute.
 right-click tile-demo-peer-camera
@@ -222,7 +278,8 @@ wait core channel $ID(cc-general)
 type "my clip"
 press enter
 wait core sent "my clip"
-click-row message-author "my clip"
+# (My "ptt picture" from step 5 heads the group "my clip" joins, so its row has the author.)
+click-row message-author "ptt picture"
 wait core profile-open $ID(me)
 click profile-view-page
 wait core route profile/$ID(me)

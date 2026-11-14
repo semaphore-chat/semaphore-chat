@@ -598,30 +598,153 @@ fn invite_reason_sentences() {
 
 #[test]
 fn a_pasted_reset_link_yields_its_token() {
+    let server = Some("https://chat.example.com");
+    let token = |t: &str| PastedReset::Token(t.into());
     for (input, want) in [
+        // The mail's link, as PUBLIC_APP_URL builds it, with the app at the root, under a path,
+        // or behind a hash route, and the same origin spelled differently.
         (
             "https://chat.example.com/reset-password?token=aB3x9Q2w",
-            Some("aB3x9Q2w"),
+            token("aB3x9Q2w"),
         ),
         (
             "https://chat.example.com/#/reset-password?token=aB3x9Q2w",
-            Some("aB3x9Q2w"),
+            token("aB3x9Q2w"),
         ),
-        ("  aB3_-x  ", Some("aB3_-x")),
-        ("a%2Db", Some("a-b")),
-        ("", None),
-        ("https://chat.example.com/login", None),
-        ("has space", None),
-        ("a/b", None),
-        ("a?b", None),
+        (
+            "https://chat.example.com/chat/reset-password?token=aB3x9Q2w",
+            token("aB3x9Q2w"),
+        ),
+        (
+            "https://chat.example.com/chat/#/reset-password?x=1&token=aB3x9Q2w",
+            token("aB3x9Q2w"),
+        ),
+        (
+            "HTTPS://Chat.Example.COM:443/reset-password?token=aB3x9Q2w#top",
+            token("aB3x9Q2w"),
+        ),
+        (
+            "https://chat.example.com./reset-password?token=a%2Db",
+            token("a-b"),
+        ),
+        // No server in it: the reset card names where it posts.
+        (
+            "semaphore://reset-password?token=aB3x9Q2w",
+            token("aB3x9Q2w"),
+        ),
+        ("  aB3_-x  ", token("aB3_-x")),
+        ("a%2Db", token("a-b")),
+        // Not a reset link.
+        ("", PastedReset::NotALink),
+        ("https://chat.example.com/login", PastedReset::NotALink),
+        (
+            "https://chat.example.com/login?token=aB3x9Q2w",
+            PastedReset::NotALink,
+        ),
+        (
+            "https://chat.example.com/reset-password",
+            PastedReset::NotALink,
+        ),
+        (
+            "chat.example.com/reset-password?token=aB3x9Q2w",
+            PastedReset::NotALink,
+        ),
+        (
+            "ftp://chat.example.com/reset-password?token=x",
+            PastedReset::NotALink,
+        ),
+        ("semaphore://join/abc", PastedReset::NotALink),
+        ("has space", PastedReset::NotALink),
+        ("a/b", PastedReset::NotALink),
+        ("a?b", PastedReset::NotALink),
     ] {
-        assert_eq!(reset_token_from_input(input).as_deref(), want, "{input:?}");
+        assert_eq!(reset_from_input(input, server), want, "{input:?}");
     }
-    assert_eq!(reset_token_from_input(&"a".repeat(129)), None);
     assert_eq!(
-        reset_token_from_input(&"a".repeat(128)).as_deref(),
-        Some("a".repeat(128).as_str())
+        reset_from_input(&"a".repeat(129), server),
+        PastedReset::NotALink
     );
+    assert_eq!(
+        reset_from_input(&"a".repeat(128), server),
+        token(&"a".repeat(128))
+    );
+}
+
+#[test]
+fn a_reset_link_from_another_server_is_refused_naming_both() {
+    let wrong = |link: &str, server: &str| PastedReset::WrongServer {
+        link: link.into(),
+        server: server.into(),
+    };
+    for (input, server, want) in [
+        (
+            "https://chat.a.org/reset-password?token=tok",
+            "https://chat.b.org",
+            wrong("chat.a.org", "chat.b.org"),
+        ),
+        // Scheme and port are the origin too.
+        (
+            "http://chat.example.com/reset-password?token=tok",
+            "https://chat.example.com",
+            wrong("http://chat.example.com", "https://chat.example.com"),
+        ),
+        (
+            "https://chat.example.com:8443/reset-password?token=tok",
+            "https://chat.example.com",
+            wrong("chat.example.com:8443", "chat.example.com"),
+        ),
+        (
+            "https://chat.example.com/reset-password?token=tok",
+            "http://chat.example.com:8080/",
+            wrong("chat.example.com", "chat.example.com:8080"),
+        ),
+        // A look-alike: another host that ends in the server's name.
+        (
+            "https://chat.example.com.evil.net/reset-password?token=tok",
+            "https://chat.example.com",
+            wrong("chat.example.com.evil.net", "chat.example.com"),
+        ),
+        (
+            "https://[::1]:3000/reset-password?token=tok",
+            "http://[::1]:3000",
+            wrong("https://[::1]:3000", "http://[::1]:3000"),
+        ),
+    ] {
+        assert_eq!(reset_from_input(input, Some(server)), want, "{input:?}");
+    }
+    // Credentials or a backslash in the authority: not a link this server sends.
+    for input in [
+        "https://chat.example.com@evil.net/reset-password?token=tok",
+        "https://evil.net\\@chat.example.com/reset-password?token=tok",
+    ] {
+        assert_eq!(
+            reset_from_input(input, Some("https://chat.example.com")),
+            PastedReset::NotALink,
+            "{input:?}"
+        );
+    }
+    // Same origin, a default port written out, a path on the server's URL.
+    assert_eq!(
+        reset_from_input(
+            "http://chat.example.com:80/reset-password?token=tok",
+            Some("http://chat.example.com/app/")
+        ),
+        PastedReset::Token("tok".into())
+    );
+    // No server to compare with: a web link is refused; a bare token isn't.
+    assert_eq!(
+        reset_from_input("https://chat.example.com/reset-password?token=tok", None),
+        PastedReset::NoServer
+    );
+    assert_eq!(
+        reset_from_input("tok", None),
+        PastedReset::Token("tok".into())
+    );
+    assert_eq!(
+        server_host("https://chat.example.com:443/x"),
+        "chat.example.com"
+    );
+    assert_eq!(server_host("http://10.0.0.5:3000"), "10.0.0.5:3000");
 }
 
 #[test]
@@ -688,8 +811,24 @@ fn the_reset_fields_take_the_dtos_rules() {
 #[gpui_kit::test]
 fn the_reset_screen_sends_only_a_password_the_server_takes(cx: &mut TestAppContext) {
     let rig = rig(cx, 390., |window, cx| {
-        ResetPasswordScreen::new(Some("tok3n".into()), window, cx)
+        ResetPasswordScreen::new(
+            Some("tok3n".into()),
+            Some("chat.example.com".into()),
+            window,
+            cx,
+        )
     });
+    assert!(
+        rig.has(cx, "reset-password-target"),
+        "the card names the server"
+    );
+    rig.with(cx, |screen, _, cx| {
+        assert_eq!(screen.read(cx).server_host(), Some("chat.example.com"));
+    });
+    assert_eq!(
+        reset_target_line("chat.example.com"),
+        "This will reset your password on chat.example.com."
+    );
     rig.click(cx, "reset-password-submit");
     assert!(rig.events().is_empty(), "empty fields");
     rig.with(cx, |screen, window, cx| {
@@ -747,7 +886,7 @@ fn the_reset_screen_sends_only_a_password_the_server_takes(cx: &mut TestAppConte
 #[gpui_kit::test]
 fn a_reset_link_without_its_token_says_so(cx: &mut TestAppContext) {
     let rig = rig(cx, 390., |window, cx| {
-        ResetPasswordScreen::new(None, window, cx)
+        ResetPasswordScreen::new(None, Some("chat.example.com".into()), window, cx)
     });
     assert!(rig.has(cx, "reset-password-invalid"));
     assert!(!rig.has(cx, "reset-password-submit"));
@@ -759,10 +898,31 @@ fn a_reset_link_without_its_token_says_so(cx: &mut TestAppContext) {
 fn the_forgot_card_takes_a_pasted_reset_link(cx: &mut TestAppContext) {
     let rig = rig(cx, 390., ForgotPasswordScreen::new);
     rig.with(cx, |screen, _, cx| {
-        screen.update(cx, |screen, cx| screen.set_sent(true, cx))
+        screen.update(cx, |screen, cx| {
+            screen.set_sent(true, cx);
+            screen.set_server_url(Some("https://chat.example.com".into()), cx);
+        })
     });
     rig.click(cx, "forgot-reset-open");
     assert!(rig.events().is_empty(), "nothing pasted");
+    // Another server's link: refused, its token never handed on.
+    rig.with(cx, |screen, window, cx| {
+        screen.update(cx, |screen, cx| {
+            screen.preset_reset_link(
+                "https://chat.example.org/reset-password?token=aB3x9Q2w",
+                window,
+                cx,
+            )
+        })
+    });
+    rig.click(cx, "forgot-reset-open");
+    assert!(rig.events().is_empty(), "another server's link is refused");
+    rig.with(cx, |screen, _, cx| {
+        assert_eq!(
+            screen.read(cx).link_error(),
+            Some(wrong_server_message("chat.example.org", "chat.example.com").as_str())
+        );
+    });
     rig.with(cx, |screen, window, cx| {
         screen.update(cx, |screen, cx| {
             screen.preset_reset_link(

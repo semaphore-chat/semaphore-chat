@@ -208,6 +208,36 @@ wait core element home-invite-notice
 expect clipboard "/#/join/"
 wait idle
 shot 17b-home-invite
+# Its notice goes by itself after 3 s, as the web's snackbar; the code stays.
+tick 3000
+wait core no-element home-invite-notice
+expect core element home-invite-code
+# W19: an invite still on its way when I sign out (and back in) belongs to the old session: the new
+# Home shows no code and no notice when its answer lands.
+server delay_route "{\"operationId\": \"InviteController_createInvite\", \"ms\": 3000}"
+click home-invite-quick
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+wait idle
+navigate /
+wait core route home
+wait core element home-invite
+wait core requests InviteController_createInvite >= 2
+server idle
+server delay_route "{\"operationId\": \"InviteController_createInvite\", \"ms\": 0}"
+wait idle
+expect core no-element home-invite-code
+expect core no-element home-invite-notice
 
 # 10. Signed out: a forgotten password, then an invite link that registers someone new.
 server public_settings "{\"passwordResetEnabled\": true}"

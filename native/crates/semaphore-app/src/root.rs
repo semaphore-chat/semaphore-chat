@@ -9,6 +9,7 @@ use crate::runtime::Activity;
 use crate::services::{self, Services, StartOptions};
 use crate::settings::SettingsStore;
 use crate::voice::{AppVoice, VoiceRequest};
+use gpui_kit::accesskit::Live;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -228,6 +229,10 @@ impl AppRoot {
         // The app menu's actions act on this root, and its Close to Tray item starts checked.
         // Check for Updates starts disabled: the updater is started once the services are.
         crate::menu::target(cx);
+        let mut updates = update::Updates::default();
+        updates
+            .synced
+            .menu_changed(settings.get().close_to_tray, false);
         crate::menu::install(cx, settings.get().close_to_tray, false);
         // The theme this app last showed, until the server's appearance arrives.
         if let Some(choice) = settings
@@ -240,6 +245,23 @@ impl AppRoot {
         }
         // Any key in the window is input, for idle.
         let keys = cx.observe_keystrokes(|this, _, _, cx| this.input_seen(cx));
+        // The focused element went away (a closed viewer or dialog, a pane no longer shown): key
+        // dispatch falls back to the window's root node, outside this view, and push to talk goes
+        // deaf, or never hears the release of a key it holds. The focus comes back to the root.
+        // Only when the element that left the drawn tree is the one still focused: focus also
+        // moves to elements before they are first drawn (a thread's composer as its panel opens,
+        // which can take frames), and those keep it.
+        let root_focus = cx.focus_handle();
+        let focus_out = cx.on_focus_out(&root_focus, window, |this, event, window, cx| {
+            let Some(focused) = window.focused(cx) else {
+                // Nothing focused at all: `render` gives the root the focus.
+                return;
+            };
+            let gone = event.blurred == focused && !this.root_focus.contains_focused(window, cx);
+            if gone {
+                window.focus(&this.root_focus, cx);
+            }
+        });
         Self {
             settings,
             more_open: false,
@@ -281,13 +303,13 @@ impl AppRoot {
             prejoin: prejoin::PreJoinArea::default(),
             roles: roles::Roles::default(),
             moderation: moderation::Moderation::default(),
-            updates: update::Updates::default(),
+            updates,
             ptt_held: false,
             ptt_key_held: None,
-            root_focus: cx.focus_handle(),
+            root_focus,
             server_info: None,
             window: window.window_handle(),
-            _subscriptions: vec![activation, keys],
+            _subscriptions: vec![activation, keys, focus_out],
         }
     }
 
@@ -500,22 +522,27 @@ impl AppRoot {
     /// Push to talk is on in settings and this call supports it: the mode the key and the bar's
     /// hold button belong to.
     fn ptt_mode(&self) -> bool {
-        self.core().is_some_and(|core| {
-            self.settings.get().voice.input_mode == crate::settings::InputMode::PushToTalk
-                && core.voice().status == VoiceStatus::Connected
+        self.ptt_setting() && self.ptt_call().0
+    }
+
+    fn ptt_setting(&self) -> bool {
+        self.settings.get().voice.input_mode == crate::settings::InputMode::PushToTalk
+    }
+
+    /// What the rule needs from the call, from one read of core's voice view: connected, and
+    /// allowed to speak (server mute and a missing SPEAK both outrank the key, as on the web).
+    fn ptt_call(&self) -> (bool, bool) {
+        self.core().map_or((false, false), |core| {
+            let voice = core.voice();
+            (
+                voice.status == VoiceStatus::Connected,
+                !voice.server_muted && voice.local.may_speak,
+            )
         })
     }
 
     fn configured_ptt_key(&self) -> Option<String> {
         self.settings.get().voice.push_to_talk_key.clone()
-    }
-
-    /// Server mute and a missing SPEAK both outrank the key, as they do on the web.
-    fn ptt_may_speak(&self) -> bool {
-        self.core().is_some_and(|core| {
-            let voice = core.voice();
-            !voice.server_muted && voice.local.may_speak
-        })
     }
 
     /// One key event or focus loss through the web's rule, then its effect.
@@ -526,14 +553,12 @@ impl AppRoot {
         cx: &mut Context<Self>,
     ) -> PttAction {
         let key = self.configured_ptt_key();
+        let (connected, can_speak) = self.ptt_call();
         let context = PttContext {
             key: key.as_deref(),
-            connected: self
-                .core()
-                .is_some_and(|core| core.voice().status == VoiceStatus::Connected),
-            push_to_talk: self.settings.get().voice.input_mode
-                == crate::settings::InputMode::PushToTalk,
-            can_speak: self.ptt_may_speak(),
+            connected,
+            push_to_talk: self.ptt_setting(),
+            can_speak,
             editable,
             held: self.ptt_held,
         };
@@ -578,29 +603,55 @@ impl AppRoot {
         self.refresh_stage(cx);
     }
 
+    /// The key goes to a text field (one that is focused and drawn: a focused composer in a pane
+    /// no longer shown doesn't count), or to the settings' key capture, which is listening for a
+    /// new key. Either way a press types or is recorded; it doesn't transmit.
+    fn ptt_typing_target(&self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let capturing = self
+            .voice_tab(cx)
+            .is_some_and(|tab| tab.read(cx).capturing());
+        capturing || (self.root_focus.contains_focused(window, cx) && window.has_focused_input(cx))
+    }
+
+    /// Ours: the focused element must not see it at all. GPUI's clickables turn a Space or Enter
+    /// key-up into a click unless the default is prevented, and a focused list or slider could
+    /// stop a key-up before it bubbled back here.
+    fn ptt_swallow(window: &mut Window, cx: &mut Context<Self>) {
+        window.prevent_default();
+        cx.stop_propagation();
+    }
+
+    /// Capture phase on the root: this runs before the focused element sees the key.
     fn ptt_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.ptt_mode() {
+        let key = event.keystroke.key.to_lowercase();
+        // The held key's auto-repeat (or a press whose release was lost) is still the held key.
+        if self.ptt_held && self.ptt_key_held.as_deref() == Some(key.as_str()) {
+            Self::ptt_swallow(window, cx);
             return;
         }
-        let key = event.keystroke.key.to_lowercase();
-        let editable = window.has_focused_input(cx);
+        if !self.ptt_setting() {
+            return;
+        }
+        let editable = self.ptt_typing_target(window, cx);
         let input = PttInput::Down {
             key: &key,
             repeat: event.is_held,
         };
         if self.ptt_event(input, editable, cx) == PttAction::Start {
-            // The web's `preventDefault`: the key must not also type, or trigger a menu item.
-            cx.stop_propagation();
+            // The web's `preventDefault`: the key must not also type, click, or trigger a menu item.
+            Self::ptt_swallow(window, cx);
         }
     }
 
+    /// Capture phase too: nothing below can swallow the release of the key that holds the mic.
     fn ptt_key_up(&mut self, event: &KeyUpEvent, window: &mut Window, cx: &mut Context<Self>) {
         if !self.ptt_held {
             return;
         }
         let key = event.keystroke.key.to_lowercase();
-        let editable = window.has_focused_input(cx);
-        self.ptt_event(PttInput::Up { key: &key }, editable, cx);
+        if self.ptt_event(PttInput::Up { key: &key }, false, cx) == PttAction::Stop {
+            Self::ptt_swallow(window, cx);
+        }
     }
 
     fn refresh_stage(&mut self, cx: &mut Context<Self>) {
@@ -629,6 +680,7 @@ impl AppRoot {
         if let Some(tab) = self.voice_tab(cx) {
             tab.update(cx, |tab, cx| tab.set_camera_published(camera_published, cx));
         }
+        self.refresh_participant_menu(cx);
         let soundboard = self.soundboard_bar();
         if let Some(stage) = &self.stage {
             stage.update(cx, |stage, cx| {
@@ -698,6 +750,16 @@ impl AppRoot {
             return;
         }
         self.save_attachment(attachment, cx);
+    }
+
+    /// Closes the viewer and gives its focus back to the root, so window keys (push to talk) keep
+    /// reaching it: a focused element that is no longer drawn takes keys out of this view.
+    fn close_viewer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.viewer = None;
+        if self.viewer_focus.is_focused(window) {
+            window.focus(&self.root_focus, cx);
+        }
+        cx.notify();
     }
 
     /// Fetches the file into a folder under the app's own data directory (private to this user,
@@ -798,6 +860,7 @@ impl AppRoot {
         Some(
             div()
                 .id("image-viewer")
+                .test_support()
                 .track_focus(&self.viewer_focus)
                 .role(Role::Dialog)
                 .aria_label(attachment.filename.clone())
@@ -809,22 +872,16 @@ impl AppRoot {
                 .justify_center()
                 .bg(hsla(0., 0., 0., 0.85))
                 .text_color(gpui_kit::white())
-                .on_key_down(move |event, _, cx| {
+                .on_key_down(move |event, window, cx| {
                     if event.keystroke.key == "escape" {
                         escape
-                            .update(cx, |root, cx| {
-                                root.viewer = None;
-                                cx.notify();
-                            })
+                            .update(cx, |root, cx| root.close_viewer(window, cx))
                             .ok();
                     }
                 })
-                .on_click(move |_, _, cx| {
+                .on_click(move |_, window, cx| {
                     close
-                        .update(cx, |root, cx| {
-                            root.viewer = None;
-                            cx.notify();
-                        })
+                        .update(cx, |root, cx| root.close_viewer(window, cx))
                         .ok();
                 })
                 .child(picture)
@@ -1889,6 +1946,8 @@ impl Render for AppRoot {
         self.reconcile(window, cx);
         // Window keys (push to talk above all) dispatch along the focus path. Nothing focused means
         // the window's root node, outside this view: give the root the focus so they reach here.
+        // This covers the start (and a window that never had focus); a focused element that goes
+        // away is the root's `on_focus_out`'s (in `new`), since `focused` still names it then.
         if window.focused(cx).is_none() {
             window.focus(&self.root_focus, cx);
         }
@@ -1918,12 +1977,14 @@ impl Render for AppRoot {
             .on_mouse_move(cx.listener(|this, _, _, cx| this.input_seen(cx)))
             .on_scroll(cx.listener(|this, _, _, cx| this.input_seen(cx)))
             // Push to talk listens window-wide, as the web's `window` listeners do. The root holds
-            // the focus whenever nothing else does (`render`), so keys with no widget focused
-            // still travel through here; a text field's keys bubble through it too, and
-            // `has_focused_input` ignores those. Whether an event is ours is `voice::ptt::decide`.
+            // the focus whenever nothing else does (`render`, `on_focus_out`), so every key's
+            // dispatch path starts here. In the capture phase, so our key never reaches the
+            // focused element (no click on release, no list swallowing the release); a text
+            // field's own keys pass on (`ptt_typing_target`). Whether an event is ours is
+            // `voice::ptt::decide`.
             .track_focus(&self.root_focus)
-            .on_key_down(cx.listener(Self::ptt_key_down))
-            .on_key_up(cx.listener(Self::ptt_key_up));
+            .capture_key_down(cx.listener(Self::ptt_key_down))
+            .capture_key_up(cx.listener(Self::ptt_key_up));
         if let Some(shell) = &self.shell {
             let mut overlays = self.inbox_overlays(cx);
             overlays.extend(self.account_overlays(cx));
@@ -1947,6 +2008,7 @@ impl Render for AppRoot {
                     root.child(self.picker_dialog(&picker, cx))
                 })
                 .children(self.viewer_overlay(cx))
+                .children(self.u9.announce.node("shortcut-announcer", Live::Polite))
                 .when_some(self.about.clone(), |root, about| root.child(about));
         }
         if let Some(page) = self.onboarding_page() {

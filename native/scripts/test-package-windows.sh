@@ -11,7 +11,9 @@
 #   - 7z lists the exe, the third-party licences and the uninstaller inside the installer;
 #   - every registry key written by the install section is deleted by the uninstall section,
 #     every shortcut created is deleted, each installed file has its own Delete (never a recursive delete),
-#     the user's data directory is never touched, and semaphore:// is registered with "%1";
+#     the user's data directory is never touched, and semaphore:// is registered with -- "%1"
+#     (the same command as links.rs::open_command), the uninstaller recognising that form and the
+#     older "%1" one as its own;
 #   - the script uses only stock NSIS plug-ins (no nsProcess/WinShell/StdUtils/SpiderBanner).
 #
 # It cannot install or run the installer: that needs Windows, and is the checklist in
@@ -24,6 +26,7 @@ NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$(cd "$NATIVE_DIR/.." && pwd)"
 SCRIPT="$NATIVE_DIR/packaging/windows/installer.nsi"
 PACKAGE="$NATIVE_DIR/scripts/package-windows.sh"
+LINKS_RS="$NATIVE_DIR/crates/semaphore-platform-desktop/src/links.rs"
 
 die() { echo "test-package-windows: $*" >&2; exit 1; }
 
@@ -97,8 +100,19 @@ check "silent uninstall registered" grep -qE 'QuietUninstallString.*/S' "$SCRIPT
 check "upgrade closes the app" grep -qF 'CheckAppRunning inst' "$SCRIPT"
 check "uninstall closes the app" grep -qF 'CheckAppRunning un' "$SCRIPT"
 check "previous version removed first" grep -qF 'old-uninstaller.exe" /S _?=$R2' "$SCRIPT"
-check "semaphore:// open command takes %1" \
-  grep -qF '"$INSTDIR\${APP_EXE_NAME}" "%1"' "$SCRIPT"
+check "semaphore:// open command ends options before %1" \
+  grep -qF 'WriteRegStr HKCU "${PROTOCOL_BASE}\shell\open\command" "" '"'"'"$INSTDIR\${APP_EXE_NAME}" -- "%1"'"'" "$SCRIPT"
+if grep -v '^ *;' "$SCRIPT" | grep -F 'WriteRegStr' | grep -qF '${APP_EXE_NAME}" "%1"'; then
+  bad "the installer never writes the old command without --"
+else
+  ok "the installer never writes the old command without --"
+fi
+check "the app writes the same command (links.rs::open_command)" \
+  grep -qF 'format!("\"{exe}\" -- \"%1\"")' "$LINKS_RS"
+check "uninstall recognises the current registration" \
+  grep -qF '${If} $0 == '"'"'"$INSTDIR\${APP_EXE_NAME}" -- "%1"'"'" <<<"$section_uninstall"
+check "uninstall recognises the old registration as its own" \
+  grep -qF '${OrIf} $0 == '"'"'"$INSTDIR\${APP_EXE_NAME}" "%1"'"'" <<<"$section_uninstall"
 check "semaphore:// marked as a URL protocol" grep -qF 'URL Protocol' "$SCRIPT"
 
 if grep -v '^ *;' "$SCRIPT" | grep -qE 'nsProcess|WinShell|StdUtils|SpiderBanner|FileAssociation|UAC\.nsh'; then

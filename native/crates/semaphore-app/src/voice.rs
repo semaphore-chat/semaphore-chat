@@ -356,8 +356,21 @@ fn log_device(which: &str, id: Option<&str>) {
         target: "voice",
         "device-changed which={} device={}",
         which,
-        id.unwrap_or("system-default")
+        device_label(id)
     );
+}
+
+/// A device as the voice log names it: `system-default`, or a short hash of its id. The raw id is
+/// a stable hardware identifier (a serial number in some), and the log only needs to tell one
+/// change from the next.
+fn device_label(id: Option<&str>) -> String {
+    use std::hash::{Hash as _, Hasher as _};
+    let Some(id) = id else {
+        return "system-default".to_owned();
+    };
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    id.hash(&mut hasher);
+    format!("#{:08x}", hasher.finish() as u32)
 }
 
 /// The voice-activity threshold the engine gates the mic at, 0..=100.
@@ -425,5 +438,25 @@ mod settings_tests {
             chosen.processing.high_pass_filter,
             semaphore_media_livekit::audio::apm::AudioProcessing::default().high_pass_filter
         );
+    }
+}
+
+#[cfg(test)]
+mod device_label_tests {
+    use super::device_label;
+
+    #[test]
+    fn a_device_is_logged_by_a_short_hash_never_its_id() {
+        let id = "alsa_input.usb-Blue_Microphones_Yeti_Stereo_Microphone_REV8-00.analog-stereo";
+        let label = device_label(Some(id));
+        assert!(label.starts_with('#') && label.len() == 9, "{label}");
+        assert!(!label.contains("Yeti"));
+        assert_eq!(
+            device_label(Some(id)),
+            label,
+            "the same device, the same label"
+        );
+        assert_ne!(device_label(Some("another")), label);
+        assert_eq!(device_label(None), "system-default");
     }
 }

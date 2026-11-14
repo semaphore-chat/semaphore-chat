@@ -259,6 +259,8 @@ pub fn close_or_hide(
         })
         .unwrap_or(false);
     let available = tray.is_some_and(|tray| tray.available());
+    // Hidden or closing, nothing of a settings-page test may stay open behind it.
+    app.update(cx, |root, cx| root.window_hidden(cx)).ok();
     if hides_on_close(setting, available, window.can_hide_window())
         && window.set_window_visible(false)
     {
@@ -335,12 +337,13 @@ fn handle(event: DesktopEvent, cx: &mut App) {
     match event {
         DesktopEvent::ToggleWindow => {
             // As Electron: a visible window hides (when it can come back), a hidden one shows.
-            let _ = window.update(cx, |_, window, _| {
+            let _ = window.update(cx, |_, window, cx| {
                 let can_hide =
                     tray.as_ref().is_some_and(|tray| tray.available()) && window.can_hide_window();
                 if !hidden.get() && can_hide {
                     if window.set_window_visible(false) {
                         hidden.set(true);
+                        let _ = app.update(cx, |root, cx| root.window_hidden(cx));
                     }
                 } else {
                     show(window, &hidden, None);
@@ -419,6 +422,8 @@ pub fn link_action(open_links: bool, current: semaphore_ui::settings::LinkHandle
     use semaphore_ui::settings::LinkHandler;
     match (open_links, current) {
         (true, LinkHandler::Registered | LinkHandler::PackageOwned) => LinkAction::Nothing,
+        // Another tool manages the handler list: neither way is ours to change.
+        (_, LinkHandler::ManagedElsewhere) => LinkAction::Nothing,
         (true, _) => LinkAction::Register,
         (false, LinkHandler::Registered) => LinkAction::Unregister,
         (false, _) => LinkAction::Nothing,
@@ -485,6 +490,7 @@ pub fn link_handler(
         Ok(LinkStatus::Packaged(_)) => LinkHandler::PackageOwned,
         Ok(LinkStatus::Another(_)) => LinkHandler::AnotherApp,
         Ok(LinkStatus::NotRegistered) => LinkHandler::NotRegistered,
+        Ok(LinkStatus::ManagedElsewhere(_)) => LinkHandler::ManagedElsewhere,
         Err(error) => {
             log::info!("who opens semaphore:// links: {error}");
             LinkHandler::Unknown
@@ -668,7 +674,9 @@ mod tests {
         #[test]
         fn the_action_is_the_setting_and_who_owns_the_scheme_now() {
             use LinkAction::{Nothing, Register, Unregister};
-            use LinkHandler::{AnotherApp, NotRegistered, PackageOwned, Registered, Unknown};
+            use LinkHandler::{
+                AnotherApp, ManagedElsewhere, NotRegistered, PackageOwned, Registered, Unknown,
+            };
             let cases = [
                 (true, Registered, Nothing),
                 (true, PackageOwned, Nothing),
@@ -680,6 +688,8 @@ mod tests {
                 (false, AnotherApp, Nothing),
                 (false, NotRegistered, Nothing),
                 (false, Unknown, Nothing),
+                (true, ManagedElsewhere, Nothing),
+                (false, ManagedElsewhere, Nothing),
             ];
             for (open_links, current, expected) in cases {
                 assert_eq!(

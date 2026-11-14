@@ -515,7 +515,7 @@ impl Core {
             .inner
             .last_join_failure_report_ms
             .load(Ordering::Relaxed);
-        if last != 0 && now.saturating_sub(last) < INTERVAL_MS {
+        if !join_failure_report_due(last, now, INTERVAL_MS) {
             return false;
         }
         self.inner
@@ -788,4 +788,32 @@ pub(crate) fn token_needs_refresh(state: &State, now: u64) -> bool {
     state
         .token_expires_at_ms
         .is_some_and(|expiry| expiry <= now.saturating_add(TOKEN_REFRESH_MARGIN_MS))
+}
+
+/// Whether a join-failure report booked at `last` (0: never) leaves room for one at `now`. A
+/// booking in the future (the wall clock went back) has expired: otherwise reports would stop
+/// until the clock caught up again.
+fn join_failure_report_due(last: u64, now: u64, interval_ms: u64) -> bool {
+    last == 0 || now < last || now - last >= interval_ms
+}
+
+#[cfg(test)]
+mod join_failure_report_tests {
+    use super::join_failure_report_due;
+
+    #[test]
+    fn one_report_a_minute_and_a_clock_that_went_back_does_not_stop_them() {
+        const MINUTE: u64 = 60_000;
+        let booked = 1_800_000_000_000;
+        assert!(join_failure_report_due(0, booked, MINUTE), "never booked");
+        assert!(!join_failure_report_due(booked, booked, MINUTE));
+        assert!(!join_failure_report_due(
+            booked,
+            booked + MINUTE - 1,
+            MINUTE
+        ));
+        assert!(join_failure_report_due(booked, booked + MINUTE, MINUTE));
+        // The clock went back an hour: the future booking has expired.
+        assert!(join_failure_report_due(booked, booked - 3_600_000, MINUTE));
+    }
 }

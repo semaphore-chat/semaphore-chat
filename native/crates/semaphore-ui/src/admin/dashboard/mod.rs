@@ -11,9 +11,10 @@
 use crate::community_settings::common::{locked_button, locked_note, page, phone};
 use crate::community_settings::rules::needs;
 use crate::format::file_size;
-use crate::kit::{Button, Skeleton, Variant, link, spacing, text, with_tip};
+use crate::kit::{Button, LiveElement, Skeleton, Variant, link, spacing, text, with_tip};
 use crate::panel::common::{design_icon, error_block};
 use crate::theme::SemTheme;
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::progress::Progress as KitProgress;
 use gpui_kit::prelude::*;
@@ -246,11 +247,13 @@ impl DashboardPage {
                 .into_any_element();
         }
         if items.is_empty() {
+            // The web's `AttentionSection` says so in a `role="status"`: polite.
             return div()
                 .id("admin-attention-all-good")
                 .test_support()
                 .role(Role::Status)
                 .aria_label("All good: nothing needs attention.")
+                .aria_live(Live::Polite)
                 .flex()
                 .items_center()
                 .gap(spacing(1.))

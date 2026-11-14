@@ -7649,6 +7649,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-announce"
+version = "0.0.0"
+dependencies = [
+ "gpui-kit",
+ "semaphore-core",
+ "semaphore-ui",
+]
+
+[[package]]
 name = "rig-fake-camera"
 version = "0.0.0"
 dependencies = [
