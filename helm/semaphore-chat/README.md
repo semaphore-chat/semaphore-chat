@@ -92,7 +92,7 @@ helm uninstall semaphore-chat
 |-----------|-------------|---------|
 | `postgresql.bundled` | Deploy PostgreSQL with chart | `true` |
 | `postgresql.auth.username` | PostgreSQL username | `semaphore` |
-| `postgresql.auth.password` | PostgreSQL password | `""` (set via --set or secrets) |
+| `postgresql.auth.password` | PostgreSQL password (required when bundled) | `""` |
 | `postgresql.auth.database` | PostgreSQL database name | `semaphore` |
 | `postgresql.primary.persistence.size` | PostgreSQL PVC size | `10Gi` |
 | `postgresql.external.uri` | External PostgreSQL URI (if bundled=false); rendered into the `<release>-database` Secret | `""` |
@@ -104,7 +104,7 @@ helm uninstall semaphore-chat
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `redis.bundled` | Deploy Redis with chart | `true` |
-| `redis.auth.password` | Redis password | `changeme-redis-password` |
+| `redis.auth.password` | Redis password (required with `auth.enabled`; rendering fails on empty or the old default) | `""` |
 | `redis.master.persistence.size` | Redis PVC size | `8Gi` |
 | `redis.external.host` | External Redis host (if bundled=false) | `""` |
 
@@ -136,6 +136,14 @@ helm uninstall semaphore-chat
 | `secrets.jwtSecret` | JWT signing secret (required unless `existingSecret`; 32+ random characters) | `""` |
 | `secrets.jwtRefreshSecret` | JWT refresh token secret (required; different from `jwtSecret`) | `""` |
 | `secrets.existingSecret` | Use existing Kubernetes secret | `""` |
+
+### Network policies
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `networkPolicy.enabled` | Ingress-only NetworkPolicies: backend/frontend from the ingress controller, bundled PostgreSQL/Redis from the backend only. Also set `postgresql.primary.networkPolicy.allowExternal=false` and `redis.networkPolicy.allowExternal=false`, or the Bitnami subcharts' own policies keep admitting every pod | `false` |
+| `networkPolicy.ingressController.namespaceSelector` | Namespace of the ingress controller | `kubernetes.io/metadata.name: ingress-nginx` |
+| `networkPolicy.extraBackendFrom` | More `from` peers for the backend (Prometheus, LiveKit webhooks) | `[]` |
 
 ## Deployment Scenarios
 

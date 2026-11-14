@@ -176,7 +176,7 @@ The chart bundles a Bitnami PostgreSQL instance by default. For production, cons
     postgresql:
       bundled: true
       auth:
-        postgresPassword: "CHANGE-ME"
+        password: ""  # required: openssl rand -hex 24
       persistence:
         size: 50Gi
     ```
@@ -202,7 +202,7 @@ Same pattern — bundled or external:
     redis:
       bundled: true
       auth:
-        password: "CHANGE-ME"
+        password: ""  # required: openssl rand -hex 24
       master:
         persistence:
           size: 10Gi
@@ -410,6 +410,12 @@ secrets:
 ```
 
 The secret must contain: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `LIVEKIT_API_SECRET`, and `REDIS_PASSWORD` (if using Redis auth).
+
+### Network policies
+
+`networkPolicy.enabled=true` adds ingress-only NetworkPolicies: the backend and frontend accept traffic from the ingress controller's namespace (`networkPolicy.ingressController.namespaceSelector`, default `kubernetes.io/metadata.name: ingress-nginx`), the backend also from the frontend and any `networkPolicy.extraBackendFrom` peers (Prometheus, or LiveKit's webhook if it doesn't come through the ingress), and the bundled PostgreSQL and Redis only from the backend. Egress isn't restricted.
+
+NetworkPolicies add up, and the Bitnami PostgreSQL and Redis subcharts render their own, which admit every pod by default. To actually restrict the databases, also set `postgresql.primary.networkPolicy.allowExternal=false` and `redis.networkPolicy.allowExternal=false` (the install notes remind you).
 
 S3 credentials use a separate `fileStorage.s3.existingSecret` (see [S3 object storage](#s3-object-storage)) rather than this one, so you can manage/rotate them independently.
 

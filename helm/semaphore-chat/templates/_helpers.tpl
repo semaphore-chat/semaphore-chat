@@ -367,6 +367,12 @@ is shorter than 32 characters
 {{- fail (printf "semaphore-chat: secrets.jwtSecret and secrets.jwtRefreshSecret are the same value; they must differ. %s" $fix) -}}
 {{- end -}}
 {{- end -}}
+{{- if and .Values.redis.bundled .Values.redis.auth.enabled (has (toString .Values.redis.auth.password) (list "" "changeme-redis-password")) -}}
+{{- fail "semaphore-chat: redis.auth.password is empty or the old default; anyone in the cluster could use the bundled Redis. Generate one with: openssl rand -hex 24" -}}
+{{- end -}}
+{{- if and .Values.postgresql.bundled (not .Values.postgresql.auth.password) -}}
+{{- fail "semaphore-chat: postgresql.auth.password is required for the bundled PostgreSQL. Generate one with: openssl rand -hex 24" -}}
+{{- end -}}
 {{- $lk := .Values.livekit -}}
 {{- if or $lk.url $lk.apiKey $lk.apiSecret -}}
 {{- if or (not $lk.url) (not $lk.apiKey) -}}

@@ -132,6 +132,41 @@ check "external existingSecret: with its key" has "$(echo "$OUT" | doc Deploymen
 expect_fail "external DB without a URI or secret fails" 'postgresql.external.uri or postgresql.external.existingSecret' \
   $VALID --set postgresql.bundled=false
 
+# ---------------------------------------------------------------- OPS-12 hardening
+expect_fail "default Redis password fails" 'redis.auth.password' \
+  $VALID --set redis.auth.password=changeme-redis-password
+expect_fail "empty Redis password fails" 'redis.auth.password' $VALID --set redis.auth.password=
+expect_ok "Redis auth off needs no password" $VALID --set redis.auth.enabled=false --set redis.auth.password=
+expect_fail "empty bundled PostgreSQL password fails" 'postgresql.auth.password' \
+  $VALID --set-string postgresql.auth.password=
+expect_ok "networkPolicy off renders no NetworkPolicy" $VALID
+check "networkPolicy off: none of the chart's own" lacks "$OUT" 'name: t-semaphore-chat-[a-z]+-ingress$'
+expect_ok "networkPolicy on renders" $VALID --set networkPolicy.enabled=true
+np_backend=$(echo "$OUT" | doc NetworkPolicy -backend-ingress)
+np_pg=$(echo "$OUT" | doc NetworkPolicy -semaphore-chat-postgresql-ingress)
+np_redis=$(echo "$OUT" | doc NetworkPolicy -semaphore-chat-redis-ingress)
+check "networkPolicy: backend policy" has "$np_backend" 'app.kubernetes.io/component: backend'
+check "networkPolicy: backend admits the frontend" has "$np_backend" 'app.kubernetes.io/component: frontend'
+check "networkPolicy: backend admits the ingress namespace" has "$np_backend" 'kubernetes.io/metadata.name: ingress-nginx'
+check "networkPolicy: frontend policy" has "$(echo "$OUT" | doc NetworkPolicy -frontend-ingress)" 'port: 5173'
+check "networkPolicy: PostgreSQL only from the backend" has "$np_pg" 'port: 5432'
+check "networkPolicy: PostgreSQL policy selects its pods" has "$np_pg" 'app.kubernetes.io/name: postgresql'
+check "networkPolicy: Redis only from the backend" has "$np_redis" 'port: 6379'
+check "networkPolicy: ingress only (no egress rules)" lacks "$np_backend$np_pg$np_redis" 'Egress'
+expect_ok "networkPolicy with external DB/Redis" $VALID --set networkPolicy.enabled=true \
+  --set postgresql.bundled=false --set postgresql.external.uri=postgresql://a:b@db:5432/c \
+  --set redis.bundled=false --set redis.external.host=redis.internal
+check "external: no PostgreSQL/Redis policies" lacks "$OUT" 'name: t-semaphore-chat-(postgresql|redis)-ingress$'
+# NOTES.txt: helm template doesn't render it, so a copy as YAML comments does.
+sed 's/^/# /' chart/templates/NOTES.txt > chart/templates/zz-notes-check.yaml
+notes() { helm template t chart --show-only templates/zz-notes-check.yaml "$@" 2>&1; }
+OUT=$(notes $VALID --set networkPolicy.enabled=true)
+check "NOTES warn about Bitnami allowExternal" has "$OUT" 'allowExternal=false'
+OUT=$(notes $VALID --set networkPolicy.enabled=true \
+  --set postgresql.primary.networkPolicy.allowExternal=false --set redis.networkPolicy.allowExternal=false)
+check "NOTES quiet once allowExternal=false" lacks "$OUT" 'still admit every pod'
+check "NOTES render" has "$OUT" 'Thank you for installing'
+
 echo
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

@@ -274,7 +274,7 @@ postgresql:
 
   auth:
     username: semaphore
-    password: ""  # Set via --set or secrets
+    password: ""  # Required when bundled (rendering fails if empty): openssl rand -hex 24
     database: semaphore
 
   primary:
@@ -309,9 +309,11 @@ redis:
   architecture: standalone
 
   # Authentication
+  # Rendering fails when auth is on and the password is empty or the old
+  # default (changeme-redis-password). Generate one: openssl rand -hex 24
   auth:
     enabled: true
-    password: "changeme-redis-password"
+    password: ""
 
   # Persistence and resources for the bundled Redis master
   master:
@@ -386,11 +388,25 @@ podDisruptionBudget:
 # ============================================
 # Network Policies
 # ============================================
+# Ingress-only NetworkPolicies (templates/networkpolicy.yaml): backend and
+# frontend accept traffic from the ingress controller (backend also from the
+# frontend); bundled PostgreSQL/Redis only from the backend. Egress is not
+# restricted (DNS, LiveKit, SMTP, S3 and webhooks need it).
+# NetworkPolicies add up, and the Bitnami subcharts render their own, which
+# admit every pod by default. To restrict PostgreSQL/Redis, also set
+#   postgresql.primary.networkPolicy.allowExternal: false
+#   redis.networkPolicy.allowExternal: false
 networkPolicy:
   enabled: false
-  policyTypes:
-    - Ingress
-    - Egress
+  # Where the ingress controller's pods run (a NetworkPolicy peer).
+  ingressController:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: ingress-nginx
+    podSelector: {}
+  # More peers allowed to reach the backend (e.g. Prometheus for
+  # metrics, or LiveKit's webhook if it doesn't come through the ingress).
+  extraBackendFrom: []
 
 # ============================================
 # Metrics (Prometheus)
