@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { mix } from '../../kit/theme/mix';
+
+let consoleError: MockInstance;
+beforeEach(() => {
+  consoleError = vi.spyOn(console, 'error');
+});
+afterEach(() => {
+  expect(consoleError).not.toHaveBeenCalled();
+  consoleError.mockRestore();
+});
 
 describe('mix', () => {
   it('blends over into under on the 8-bit channels, rounded to nearest', () => {
@@ -18,5 +27,9 @@ describe('mix', () => {
       expect(() => mix(colour, '#ffffff', 0.5)).toThrow(RangeError);
     }
     expect(() => mix('#ffffff', '#fff', 0.5)).toThrow(RangeError);
+  });
+
+  it('rejects a NaN alpha', () => {
+    expect(() => mix('#ffffff', '#000000', NaN)).toThrow(RangeError);
   });
 });

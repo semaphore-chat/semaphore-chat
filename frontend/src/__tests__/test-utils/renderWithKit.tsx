@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, type RenderOptions } from '@testing-library/react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import { KitProvider } from '../../kit';
 import type { IntensityName, ModeName } from '../../theme/derive/derivePalette';
@@ -18,9 +19,11 @@ export function renderWithKit(ui: React.ReactElement, options: RenderWithKitOpti
 
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <KitProvider base={base} mode={mode} intensity={intensity}>
-        {children}
-      </KitProvider>
+      <ThemeProvider theme={createTheme()}>
+        <KitProvider base={base} mode={mode} intensity={intensity}>
+          {children}
+        </KitProvider>
+      </ThemeProvider>
     );
   }
 

@@ -26,16 +26,27 @@ export function createLoungeTheme(palette: Palette, mode: ModeName): Theme {
   // step is `none` and elevation reads as a hairline in components.
   const shadows = Array.from({ length: 25 }, () => 'none') as unknown as Shadows;
 
+  // Positive and warning have no on-colour in the palette: use the page colour
+  // that sits opposite the mode.
+  const onStatus = mode === 'dark' ? palette.ground : palette.surface;
+
   return createTheme({
     palette: {
       mode,
       primary: { main: palette.accent, contrastText: palette.onAccent },
+      secondary: { main: palette.accent, contrastText: palette.onAccent },
+      info: { main: palette.accent, contrastText: palette.onAccent },
+      success: { main: palette.positive, contrastText: onStatus },
+      warning: { main: palette.warning, contrastText: onStatus },
       error: { main: palette.danger },
       background: { default: palette.ground, paper: palette.surface },
       text: { primary: palette.text, secondary: palette.textSecondary },
       divider: palette.hairline,
     },
-    typography: { fontFamily: BODY_FONT_FAMILY },
+    typography: {
+      fontFamily: BODY_FONT_FAMILY,
+      button: { textTransform: 'none', letterSpacing: 'normal' },
+    },
     shape: { borderRadius: tokens.radius.field },
     shadows,
     components: {

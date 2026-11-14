@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import packageJson from '../../../package.json?raw';
 import fontsSource from '../../kit/fonts.ts?raw';
 import { tokens } from '../../theme/generated/tokens';
@@ -13,6 +13,15 @@ const WEIGHT_STYLESHEETS = [
   '@fontsource/figtree/600.css',
 ];
 const IMPORT_STATEMENT = /\bimport\s+(?:[^'"\n]*?\bfrom\s+)?['"]([^'"]+)['"];?/g;
+
+let consoleError: MockInstance;
+beforeEach(() => {
+  consoleError = vi.spyOn(console, 'error');
+});
+afterEach(() => {
+  expect(consoleError).not.toHaveBeenCalled();
+  consoleError.mockRestore();
+});
 
 describe('kit fonts', () => {
   it('pins both font packages to 5.3.0 in dependencies', () => {

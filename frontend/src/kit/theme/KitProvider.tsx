@@ -1,4 +1,4 @@
-import { useMemo, type HTMLAttributes, type JSX, type ReactNode } from 'react';
+import { useCallback, useMemo, type HTMLAttributes, type JSX, type ReactNode } from 'react';
 import { ThemeProvider, useTheme, type Theme } from '@mui/material/styles';
 import { derivePalette, type IntensityName, type ModeName } from '../../theme/derive/derivePalette';
 import { createLoungeTheme, type LoungeTheme } from './createLoungeTheme';
@@ -25,7 +25,8 @@ export function KitProvider({ base, mode, intensity, children }: KitProviderProp
     () => createLoungeTheme(derivePalette(base, mode, intensity), mode),
     [base, mode, intensity],
   );
-  return <ThemeProvider theme={() => theme}>{children}</ThemeProvider>;
+  const themeFn = useCallback(() => theme, [theme]);
+  return <ThemeProvider theme={themeFn}>{children}</ThemeProvider>;
 }
 
 /**

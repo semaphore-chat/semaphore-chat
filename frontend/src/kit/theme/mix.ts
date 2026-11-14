@@ -20,6 +20,9 @@ function channels(colour: string): [number, number, number] {
 }
 
 export function mix(over: string, under: string, alpha: number): string {
+  if (Number.isNaN(alpha)) {
+    throw new RangeError('mix() expects a numeric alpha, got NaN');
+  }
   const top = channels(over);
   const bottom = channels(under);
   const weight = Math.min(1, Math.max(0, alpha));
