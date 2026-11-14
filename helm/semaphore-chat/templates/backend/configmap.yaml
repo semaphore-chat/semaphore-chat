@@ -27,6 +27,9 @@ data:
   TRUST_PROXY: {{ .Values.backend.trustProxy | quote }}
   {{- end }}
 
+  # First-run setup: the wizard asks for the token printed in the backend log
+  REQUIRE_SETUP_TOKEN: {{ ne (toString .Values.backend.requireSetupToken) "false" | quote }}
+
   # File upload configuration
   FILE_UPLOAD_DEST: "/app/uploads"
 

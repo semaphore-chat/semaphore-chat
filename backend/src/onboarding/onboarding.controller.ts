@@ -36,7 +36,7 @@ export class OnboardingController {
   async setupInstance(
     @Body() dto: SetupInstanceDto,
   ): Promise<SetupResponseDto> {
-    if (!dto.setupToken) {
+    if (!dto.setupToken?.trim()) {
       throw new BadRequestException('Setup token is required');
     }
 

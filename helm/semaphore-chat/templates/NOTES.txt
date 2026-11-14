@@ -170,6 +170,12 @@ LiveKit:
    Backend:  $ kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=backend -f
    Frontend: $ kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=frontend -f
 
+{{- if ne (toString .Values.backend.requireSetupToken) "false" }}
+   First-run setup: the setup wizard asks for a setup token. Find it with:
+   $ kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "semaphore-chat.fullname" . }}-backend | grep "Setup token:"
+   (or enter the SETUP_TOKEN you configured)
+{{- end }}
+
 3. For production deployments:
    - Enable autoscaling (backend.autoscaling.enabled=true)
    - Configure resource limits

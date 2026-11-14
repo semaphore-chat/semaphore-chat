@@ -2,9 +2,26 @@
 
 After [installing](docker-compose.md) Semaphore Chat, follow these steps to set up your instance.
 
-## 1. Register your account
+## 1. Run the setup wizard
 
-Open [http://localhost:5173](http://localhost:5173) and create a new account. The first user registered on a fresh instance can be promoted to instance admin.
+Open your instance (for a local install, [http://localhost:5173](http://localhost:5173)). A fresh instance opens the setup wizard, which creates the owner account, names the instance and makes a first community.
+
+The last step asks for the **setup token**. The backend prints it in its log while the instance still needs setup, on one line containing `Setup token:`:
+
+```bash
+# Docker Compose
+docker compose logs backend | grep "Setup token:"
+
+# Kubernetes (Helm)
+kubectl logs -l app.kubernetes.io/component=backend --tail=-1 | grep "Setup token:"
+```
+
+Paste the token into the wizard. The token proves you can see the server, so a stranger who reaches a new instance before you can't make themselves its owner. It is printed again on every restart until setup is done, and never after.
+
+- **Unattended installs:** set `SETUP_TOKEN` (16 characters or more) to choose the token yourself. It is not printed; enter the value you set.
+- **Private networks:** `REQUIRE_SETUP_TOKEN=false` makes the wizard fetch the token itself, as older releases did. Only do this when nobody else can reach the instance before you finish setup.
+
+See [Configuration](configuration.md#first-run-setup).
 
 ## 2. Create a community
 

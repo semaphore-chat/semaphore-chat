@@ -18,6 +18,8 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -192,6 +194,21 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   REPLAY_ORPHAN_SWEEP_GRACE_HOURS?: string;
+
+  // First-run setup (OnboardingService) ------------------------------------
+  // REQUIRE_SETUP_TOKEN (default true): the setup token is printed in the
+  // backend log and must be entered in the setup wizard; it is never returned
+  // by the API. "false" hands it to the wizard (private networks only).
+  // SETUP_TOKEN: an operator-chosen token for unattended installs.
+  @IsOptional()
+  @IsIn(['true', 'false', 'TRUE', 'FALSE', 'True', 'False'])
+  REQUIRE_SETUP_TOKEN?: string;
+
+  // Empty counts as unset (a blank `SETUP_TOKEN=` line in an env file)
+  @ValidateIf((env: EnvironmentVariables) => !!env.SETUP_TOKEN?.trim())
+  @IsString()
+  @MinLength(16, { message: 'SETUP_TOKEN must be at least 16 characters' })
+  SETUP_TOKEN?: string;
 }
 
 /**

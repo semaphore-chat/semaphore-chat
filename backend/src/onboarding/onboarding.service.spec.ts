@@ -41,6 +41,11 @@ describe('OnboardingService', () => {
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
     mockRedis = createMockRedis();
+    (mockRedis as unknown as { persist: jest.Mock }).persist = jest
+      .fn()
+      .mockResolvedValue(1);
+    delete process.env.REQUIRE_SETUP_TOKEN;
+    delete process.env.SETUP_TOKEN;
 
     const mockCommunityRolesService = {
       createDefaultCommunityRoles: jest.fn(),
@@ -77,6 +82,8 @@ describe('OnboardingService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    delete process.env.REQUIRE_SETUP_TOKEN;
+    delete process.env.SETUP_TOKEN;
   });
 
   describe('needsSetup', () => {
@@ -126,11 +133,39 @@ describe('OnboardingService', () => {
       const token = await service.generateSetupToken();
 
       expect(token).toBe('mock-uuid-123');
+      // No TTL: the operator reads the token from the logs, maybe hours later
       expect(mockRedis.set).toHaveBeenCalledWith(
         'onboarding:setup-token',
         'mock-uuid-123',
-        'EX',
-        900,
+        'NX',
+      );
+    });
+
+    it('logs a newly created token on one greppable line', async () => {
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      mockRedis.get.mockResolvedValue(null);
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await service.generateSetupToken();
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Setup token: mock-uuid-123'),
+      );
+    });
+
+    it('uses SETUP_TOKEN from the environment instead of Redis', async () => {
+      process.env.SETUP_TOKEN = '  operator-chosen-token-123  ';
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      const token = await service.generateSetupToken();
+
+      expect(token).toBe('operator-chosen-token-123');
+      expect(mockRedis.set).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('operator-chosen-token-123'),
       );
     });
 
@@ -181,6 +216,28 @@ describe('OnboardingService', () => {
       const result = await service.validateSetupToken('any-token');
 
       expect(result).toBe(false);
+    });
+
+    it('trims whitespace around a pasted token', async () => {
+      mockRedis.get.mockResolvedValue('valid-token');
+
+      expect(await service.validateSetupToken('  valid-token\n')).toBe(true);
+    });
+
+    it('rejects an empty token', async () => {
+      mockRedis.get.mockResolvedValue('valid-token');
+
+      expect(await service.validateSetupToken('   ')).toBe(false);
+    });
+
+    it('checks against SETUP_TOKEN when it is set', async () => {
+      process.env.SETUP_TOKEN = 'operator-chosen-token-123';
+      mockRedis.get.mockResolvedValue('redis-token');
+
+      expect(await service.validateSetupToken('redis-token')).toBe(false);
+      expect(
+        await service.validateSetupToken('operator-chosen-token-123'),
+      ).toBe(true);
     });
   });
 
@@ -475,7 +532,7 @@ describe('OnboardingService', () => {
       );
       expect(ownersCreated).toBe(1);
       // The lock is taken inside the transaction, before the repeat check.
-      expect(raceTx.$queryRaw).toHaveBeenCalledTimes(2);
+      expect(raceTx.$executeRaw).toHaveBeenCalledTimes(2);
     });
 
     it('should throw ConflictException when setup token is invalid', async () => {
@@ -610,16 +667,35 @@ describe('OnboardingService', () => {
   });
 
   describe('getStatus', () => {
-    it('should return needsSetup true and generate token when setup is needed', async () => {
+    it('never returns the setup token by default, and says one is required', async () => {
       mockDatabase.user.count.mockResolvedValue(0);
       mockDatabase.instanceInvite.count.mockResolvedValue(0);
       mockRedis.get.mockResolvedValue(null);
-      mockRedis.set.mockResolvedValue(undefined);
 
       const status = await service.getStatus();
 
       expect(status.needsSetup).toBe(true);
       expect(status.hasUsers).toBe(false);
+      expect(status.setupTokenRequired).toBe(true);
+      expect(status).not.toHaveProperty('setupToken');
+      // The token still exists (it is in the logs) for the wizard to check
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'onboarding:setup-token',
+        'mock-uuid-123',
+        'NX',
+      );
+    });
+
+    it('returns the token as before when REQUIRE_SETUP_TOKEN=false', async () => {
+      process.env.REQUIRE_SETUP_TOKEN = 'false';
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      mockRedis.get.mockResolvedValue(null);
+
+      const status = await service.getStatus();
+
+      expect(status.needsSetup).toBe(true);
+      expect(status.setupTokenRequired).toBe(false);
       expect(status.setupToken).toBe('mock-uuid-123');
     });
 
@@ -639,6 +715,63 @@ describe('OnboardingService', () => {
       await service.getStatus();
 
       expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onApplicationBootstrap', () => {
+    it('logs the existing setup token on every boot while setup is needed', async () => {
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      mockRedis.get.mockResolvedValue('existing-token');
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await service.onApplicationBootstrap();
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Setup token: existing-token'),
+      );
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+
+    it('logs nothing about a token once setup is done', async () => {
+      mockDatabase.user.count.mockResolvedValue(1);
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await service.onApplicationBootstrap();
+
+      expect(warn).not.toHaveBeenCalled();
+      expect(mockRedis.set).not.toHaveBeenCalled();
+    });
+
+    it('points at SETUP_TOKEN without printing it', async () => {
+      process.env.SETUP_TOKEN = 'operator-chosen-token-123';
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await service.onApplicationBootstrap();
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('SETUP_TOKEN'));
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('operator-chosen-token-123'),
+      );
+    });
+
+    it('logs nothing when REQUIRE_SETUP_TOKEN=false', async () => {
+      process.env.REQUIRE_SETUP_TOKEN = 'false';
+      mockDatabase.user.count.mockResolvedValue(0);
+      mockDatabase.instanceInvite.count.mockResolvedValue(0);
+      const warn = jest.spyOn(service['logger'], 'warn');
+
+      await service.onApplicationBootstrap();
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('does not fail the boot when the database is unreachable', async () => {
+      mockDatabase.user.count.mockRejectedValue(new Error('db down'));
+
+      await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
     });
   });
 });

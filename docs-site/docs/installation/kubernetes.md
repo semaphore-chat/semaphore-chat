@@ -68,7 +68,7 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/s
 kubectl get pods -n semaphore-chat --watch
 ```
 
-Wait for all pods to show `Running`, then visit your domain.
+Wait for all pods to show `Running`, then visit your domain. The setup wizard asks for the setup token that the backend prints in its log: `kubectl logs -l app.kubernetes.io/component=backend --tail=-1 | grep "Setup token:"` (see [First Run](first-run.md)).
 
 ## Configuration
 

@@ -591,7 +591,7 @@ docker compose up -d
 
 ### 4. Open Semaphore Chat
 
-Visit your domain (or `http://localhost:5173` without Caddy) in your browser. You're ready to [create your first account](first-run.md).
+Visit your domain (or `http://localhost:5173` without Caddy) in your browser. You're ready to [run the setup wizard](first-run.md); it asks for the setup token from `docker compose logs backend | grep "Setup token:"`.
 
 ## Stopping and restarting
 
@@ -793,5 +793,5 @@ docker compose up -d
 ## Next steps
 
 - [Configuration](configuration.md) — Full environment variable reference
-- [First Run](first-run.md) — Create your first user, community, and channels
+- [First Run](first-run.md) — Run the setup wizard (with the setup token from the backend log), then create communities and channels
 - [Kubernetes](kubernetes.md) — Deploy to a Kubernetes cluster

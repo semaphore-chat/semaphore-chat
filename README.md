@@ -500,7 +500,7 @@ docker compose up -d
 
 ### 4. Open Semaphore Chat
 
-Visit `https://<your-domain>` and create your first account.
+Visit `https://<your-domain>` and run the setup wizard. It asks for the setup token the backend prints in its log: `docker compose logs backend | grep "Setup token:"` (see [First Run](https://docs.semaphorechat.app/installation/first-run/)).
 
 For more details, see the [full installation guide](https://docs.semaphorechat.app/installation/docker-compose/).
 

@@ -27,6 +27,15 @@ Copy `backend/env.sample` to `backend/.env` to get started.
     openssl rand -base64 32
     ```
 
+### First-run setup
+
+| Variable | Description | Default |
+|----------|------------|---------|
+| `REQUIRE_SETUP_TOKEN` | `true`: the setup wizard asks for the setup token printed in the backend log (one line containing `Setup token:`), and the API never returns it. `false`: the wizard gets the token from the API (only for instances nobody else can reach) | `true` |
+| `SETUP_TOKEN` | Choose the setup token yourself, for unattended installs (16+ characters). It is never printed | unset (a random token is made and logged) |
+
+The token is printed on every backend start while the instance needs setup, and never once setup is done. See [First Run](first-run.md).
+
 ### File storage
 
 File uploads (message attachments, avatars, banners, custom emoji, soundboard sounds) can be stored on the local filesystem or in an S3-compatible object store. Storage is resolved **per file record** — switching `STORAGE_TYPE` only affects where *new* uploads land; existing files keep working from wherever they were originally stored, so mixed-storage instances (e.g. after a mid-life migration to S3) work with zero migration.
