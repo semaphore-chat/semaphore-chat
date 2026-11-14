@@ -115,6 +115,20 @@ class LoadValidationTest(TempSource):
         with self.assertRaisesRegex(gen.TokenError, r"^shadow\.island\.blur"):
             self.load()
 
+    def test_motion_must_be_whole_milliseconds(self):
+        # The Rust renderer writes motion as u32: whole numbers, 0 to 2^32-1.
+        self.edit(set_value("motion.fast", 120.5))
+        with self.assertRaisesRegex(gen.TokenError, r"^motion\.fast"):
+            self.load()
+
+        self.edit(set_value("motion.fast", 2**32))
+        with self.assertRaisesRegex(gen.TokenError, r"^motion\.fast"):
+            self.load()
+
+    def test_motion_accepts_a_whole_float(self):
+        self.edit(set_value("motion.fast", 120.0))
+        self.assertEqual(self.load()["motion"]["fast"], 120.0)
+
     def test_font_name_with_control_character_rejected(self):
         self.edit(set_value("font.body", "Fig\ntree"))
         with self.assertRaisesRegex(gen.TokenError, r"^font\.body"):

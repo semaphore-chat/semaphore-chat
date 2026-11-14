@@ -41,6 +41,8 @@ SCALAR_GROUPS = ("space", "radius", "control", "motion", "breakpoint", "layout")
 TEXT_FIELDS = ("font", "size", "line", "weight")
 SHADOW_FIELDS = ("x", "y", "blur", "alpha")
 WEIGHTS = (400, 500, 600, 700)
+# Motion is written to Rust as `u32` milliseconds.
+MOTION_MAX = 2**32 - 1
 KEY = re.compile(r"[a-z0-9][A-Za-z0-9]*")
 
 USAGE = "usage: gen_tokens.py [--check]"
@@ -70,12 +72,20 @@ def _key(path: str, key: object) -> None:
 
 
 def _number(
-    path: str, value: object, *, signed: bool = False, maximum: float | None = None
+    path: str,
+    value: object,
+    *,
+    signed: bool = False,
+    maximum: float | None = None,
+    integer: bool = False,
 ) -> None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         _fail(path, f"expected a number, got {value!r}")
     if not math.isfinite(value):
         _fail(path, f"expected a finite number, got {value!r}")
+    # An int is whole by definition; only a float can carry a fraction.
+    if integer and isinstance(value, float) and not value.is_integer():
+        _fail(path, f"expected a whole number, got {value!r}")
     if not signed and value < 0:
         _fail(path, f"expected a non-negative number, got {value!r}")
     if maximum is not None and value > maximum:
@@ -94,7 +104,10 @@ def _scalar_group(name: str, group: object) -> None:
     for key, value in _mapping(name, group).items():
         path = f"{name}.{key}"
         _key(path, key)
-        _number(path, value)
+        if name == "motion":
+            _number(path, value, maximum=MOTION_MAX, integer=True)
+        else:
+            _number(path, value)
 
 
 def _font_group(group: object) -> None:

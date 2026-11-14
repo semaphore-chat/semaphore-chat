@@ -41,6 +41,14 @@ Tests for the generator and its renderers:
 python3 -m unittest discover -s design/gen -p 'test_*.py' -v
 ```
 
+## CI
+
+`.github/workflows/design-tokens.yml` runs the tests above and
+`gen_tokens.py --check` on every pull request and push to `main` that touches
+`design/**`, either generated file or the workflow itself. When it fails with
+`stale:` or `missing:` for an output, run `python3 design/gen/gen_tokens.py`,
+commit the regenerated file together with the change that caused it, and push.
+
 ## Never edit generated files by hand
 
 Every generated file starts with a header naming `design/tokens.json` and

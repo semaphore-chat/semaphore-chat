@@ -1,0 +1,46 @@
+name: Design tokens
+
+# Both clients read the generated token files, never design/tokens.json itself,
+# and those files are committed. A change to the source, the generator or a
+# generated file that was not regenerated leaves the clients out of step, so
+# this workflow fails when `gen_tokens.py --check` reports a stale or missing
+# output. It needs no dependency install: the generator is standard library only.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'design/**'
+      - 'frontend/src/theme/generated/**'
+      - 'native/crates/semaphore-design/src/lounge.rs'
+      - '.github/workflows/design-tokens.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'design/**'
+      - 'frontend/src/theme/generated/**'
+      - 'native/crates/semaphore-design/src/lounge.rs'
+      - '.github/workflows/design-tokens.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Generated tokens are up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test the generator
+        run: python3 -m unittest discover -s design/gen -p 'test_*.py' -v
+
+      - name: Check generated tokens are up to date
+        run: python3 design/gen/gen_tokens.py --check
