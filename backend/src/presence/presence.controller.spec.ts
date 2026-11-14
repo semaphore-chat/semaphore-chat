@@ -2,7 +2,12 @@ import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { PresenceController } from './presence.controller';
 import { PresenceService } from './presence.service';
+import { AuthenticatedRequest } from '@/types';
 import { UserFactory } from '@/test-utils';
+
+const VIEWER = {
+  user: { id: '00000000-0000-4000-a000-0000000000aa' },
+} as unknown as AuthenticatedRequest;
 
 describe('PresenceController', () => {
   let controller: PresenceController;
@@ -20,6 +25,10 @@ describe('PresenceController', () => {
 
     controller = unit;
     presenceService = unitRef.get(PresenceService);
+    // default: every target is visible to the viewer
+    presenceService.visibleUserIds.mockImplementation((_viewer, ids) =>
+      Promise.resolve(new Set(ids)),
+    );
   });
 
   afterEach(() => {
@@ -35,7 +44,7 @@ describe('PresenceController', () => {
       const userId = mockUsers[0].id;
       presenceService.isOnline.mockResolvedValue(true);
 
-      const result = await controller.getUserPresence(userId);
+      const result = await controller.getUserPresence(VIEWER, userId);
 
       expect(result).toEqual({
         userId,
@@ -48,7 +57,7 @@ describe('PresenceController', () => {
       const userId = mockUsers[0].id;
       presenceService.isOnline.mockResolvedValue(false);
 
-      const result = await controller.getUserPresence(userId);
+      const result = await controller.getUserPresence(VIEWER, userId);
 
       expect(result).toEqual({
         userId,
@@ -60,7 +69,7 @@ describe('PresenceController', () => {
       const userId = 'test-user-123';
       presenceService.isOnline.mockResolvedValue(true);
 
-      const result = await controller.getUserPresence(userId);
+      const result = await controller.getUserPresence(VIEWER, userId);
 
       expect(result.userId).toBe(userId);
     });
@@ -71,7 +80,7 @@ describe('PresenceController', () => {
       const onlineUserIds = [mockUsers[0].id, mockUsers[1].id];
       presenceService.getOnlineUsers.mockResolvedValue(onlineUserIds);
 
-      const result = await controller.getBulkPresence();
+      const result = await controller.getBulkPresence(VIEWER);
 
       expect(result.presence).toEqual({
         [onlineUserIds[0]]: true,
@@ -83,7 +92,7 @@ describe('PresenceController', () => {
     it('should return empty object when no users are online', async () => {
       presenceService.getOnlineUsers.mockResolvedValue([]);
 
-      const result = await controller.getBulkPresence();
+      const result = await controller.getBulkPresence(VIEWER);
 
       expect(result.presence).toEqual({});
     });
@@ -92,7 +101,7 @@ describe('PresenceController', () => {
       const onlineUserIds = [mockUsers[0].id, mockUsers[1].id, mockUsers[2].id];
       presenceService.getOnlineUsers.mockResolvedValue(onlineUserIds);
 
-      const result = await controller.getBulkPresence();
+      const result = await controller.getBulkPresence(VIEWER);
 
       // All users should be marked as true (online)
       expect(Object.values(result.presence).every((v) => v === true)).toBe(
@@ -112,7 +121,7 @@ describe('PresenceController', () => {
         [user2]: false,
       });
 
-      const result = await controller.getMultipleUserPresence(userIds);
+      const result = await controller.getMultipleUserPresence(VIEWER, userIds);
 
       expect(result.presence).toEqual({
         [user1]: true,
@@ -125,7 +134,7 @@ describe('PresenceController', () => {
       const userId = mockUsers[0].id;
       presenceService.areOnline.mockResolvedValue({ [userId]: true });
 
-      const result = await controller.getMultipleUserPresence(userId);
+      const result = await controller.getMultipleUserPresence(VIEWER, userId);
 
       expect(result.presence).toEqual({
         [userId]: true,
@@ -139,7 +148,7 @@ describe('PresenceController', () => {
 
       presenceService.areOnline.mockResolvedValue({ [validId]: true });
 
-      const result = await controller.getMultipleUserPresence(userIds);
+      const result = await controller.getMultipleUserPresence(VIEWER, userIds);
 
       expect(result.presence).toEqual({ [validId]: true });
       expect(presenceService.areOnline).toHaveBeenCalledWith([validId]);
@@ -157,7 +166,7 @@ describe('PresenceController', () => {
         [user3]: true,
       });
 
-      const result = await controller.getMultipleUserPresence(userIds);
+      const result = await controller.getMultipleUserPresence(VIEWER, userIds);
 
       expect(result.presence).toEqual({
         [user1]: true,
@@ -169,10 +178,58 @@ describe('PresenceController', () => {
     it('should handle empty user IDs gracefully', async () => {
       presenceService.areOnline.mockResolvedValue({});
 
-      const result = await controller.getMultipleUserPresence('');
+      const result = await controller.getMultipleUserPresence(VIEWER, '');
 
       expect(result.presence).toEqual({});
       expect(presenceService.areOnline).toHaveBeenCalledWith([]);
+    });
+  });
+
+  describe('visibility (strangers read as offline)', () => {
+    const stranger = mockUsers[0].id;
+    const mate = mockUsers[1].id;
+
+    beforeEach(() => {
+      presenceService.visibleUserIds.mockImplementation((_viewer, ids) =>
+        Promise.resolve(new Set(ids.filter((id) => id === mate))),
+      );
+    });
+
+    it('user/:userId reports a stranger as offline without reading presence', async () => {
+      presenceService.isOnline.mockResolvedValue(true);
+
+      const result = await controller.getUserPresence(VIEWER, stranger);
+
+      expect(result).toEqual({ userId: stranger, isOnline: false });
+      expect(presenceService.isOnline).not.toHaveBeenCalled();
+    });
+
+    it('user/:userId answers for a connected user', async () => {
+      presenceService.isOnline.mockResolvedValue(true);
+      expect(await controller.getUserPresence(VIEWER, mate)).toEqual({
+        userId: mate,
+        isOnline: true,
+      });
+    });
+
+    it('users/:userIds reports strangers as offline', async () => {
+      presenceService.areOnline.mockResolvedValue({ [mate]: true });
+
+      const result = await controller.getMultipleUserPresence(
+        VIEWER,
+        `${stranger},${mate}`,
+      );
+
+      expect(result.presence).toEqual({ [stranger]: false, [mate]: true });
+      expect(presenceService.areOnline).toHaveBeenCalledWith([mate]);
+    });
+
+    it('users/bulk returns only online users visible to the viewer', async () => {
+      presenceService.getOnlineUsers.mockResolvedValue([stranger, mate]);
+
+      const result = await controller.getBulkPresence(VIEWER);
+
+      expect(result.presence).toEqual({ [mate]: true });
     });
   });
 });
