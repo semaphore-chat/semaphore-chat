@@ -558,36 +558,57 @@ export type ChannelWebhookPayloadDto = {
 };
 
 export type UserBannedPayloadDto = {
+    /**
+     * Who acted: sent only to the target (the community room gets the event
+     * without it; the moderation log has it for those who may read it).
+     */
+    moderatorId?: string;
     reason?: string;
     expiresAt?: string;
     communityId: string;
     userId: string;
-    moderatorId: string;
 };
 
 export type UserUnbannedPayloadDto = {
+    /**
+     * Who acted: sent only to the target (the community room gets the event
+     * without it; the moderation log has it for those who may read it).
+     */
+    moderatorId?: string;
     communityId: string;
     userId: string;
-    moderatorId: string;
 };
 
 export type UserKickedPayloadDto = {
+    /**
+     * Who acted: sent only to the target (the community room gets the event
+     * without it; the moderation log has it for those who may read it).
+     */
+    moderatorId?: string;
     reason?: string;
     communityId: string;
     userId: string;
-    moderatorId: string;
 };
 
 export type UserTimedOutPayloadDto = {
+    /**
+     * Who acted: sent only to the target (the community room gets the event
+     * without it; the moderation log has it for those who may read it).
+     */
+    moderatorId?: string;
     reason?: string;
     durationSeconds: number;
     expiresAt: string;
     communityId: string;
     userId: string;
-    moderatorId: string;
 };
 
 export type TimeoutRemovedPayloadDto = {
+    /**
+     * Who acted: sent only to the target (the community room gets the event
+     * without it; the moderation log has it for those who may read it).
+     */
+    moderatorId?: string;
     reason?: string;
     /**
      * Set when the timeout ran out by itself, rather than being lifted by a
@@ -596,7 +617,6 @@ export type TimeoutRemovedPayloadDto = {
     expired?: boolean;
     communityId: string;
     userId: string;
-    moderatorId: string;
 };
 
 export type MemberAddedToCommunityPayloadDto = {

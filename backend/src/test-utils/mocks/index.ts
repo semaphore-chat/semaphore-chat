@@ -33,3 +33,5 @@ export {
   type MockWebsocketService,
   type MockSocket,
 } from './websocket.mock';
+
+export { createFakeRedis } from './attempt-redis.mock';

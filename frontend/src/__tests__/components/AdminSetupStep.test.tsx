@@ -13,6 +13,7 @@ const baseData: OnboardingData = {
   defaultCommunityName: 'General',
   createDefaultCommunity: true,
   setupToken: 'setup-token',
+  setupTokenRequired: false,
 };
 
 function renderStep(overrides: Partial<OnboardingData> = {}) {

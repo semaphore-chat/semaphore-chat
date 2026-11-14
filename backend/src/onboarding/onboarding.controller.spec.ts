@@ -31,6 +31,7 @@ describe('OnboardingController', () => {
       const mockStatus = {
         needsSetup: true,
         hasUsers: false,
+        setupTokenRequired: false,
         setupToken: 'token-123',
       };
 
@@ -46,6 +47,7 @@ describe('OnboardingController', () => {
       const mockStatus = {
         needsSetup: false,
         hasUsers: true,
+        setupTokenRequired: true,
         setupToken: undefined,
       };
 
@@ -62,6 +64,7 @@ describe('OnboardingController', () => {
       service.getStatus.mockResolvedValue({
         needsSetup: true,
         hasUsers: false,
+        setupTokenRequired: false,
         setupToken: 'token-123',
       });
 
@@ -150,6 +153,13 @@ describe('OnboardingController', () => {
       await expect(controller.setupInstance(dtoWithEmptyToken)).rejects.toThrow(
         BadRequestException,
       );
+      expect(service.completeSetup).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when setupToken is only whitespace', async () => {
+      await expect(
+        controller.setupInstance({ ...validSetupDto, setupToken: '  \n ' }),
+      ).rejects.toThrow('Setup token is required');
       expect(service.completeSetup).not.toHaveBeenCalled();
     });
 

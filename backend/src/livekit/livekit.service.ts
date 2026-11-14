@@ -65,6 +65,10 @@ export class LivekitService {
         identity,
         name: name || identity,
         ttl: tokenTtl,
+        // The server owns the metadata (setDeafenMetadata). This preset is
+        // byte for byte what clients before that set on join, so their
+        // setMetadata resolves at once instead of failing the join.
+        metadata: JSON.stringify({ isDeafened: false }),
         // Signed issue time and session, checked by the participant_joined
         // webhook (LivekitAccessService) against the user's revocation
         // cutoff and the revoked sessions, and used by session revocation
@@ -104,11 +108,10 @@ export class LivekitService {
         canPublish: publish.canPublish,
         ...(tokenSources?.length ? { canPublishSources: tokenSources } : {}),
         canSubscribe: true,
-        canPublishData: true,
-        // Allow participants to update their own metadata (for isDeafened
-        // state). This also lets them rewrite their attributes, which is why
-        // the issue-time attribute above is signed.
-        canUpdateOwnMetadata: true,
+        // No canUpdateOwnMetadata: it would let the participant rename
+        // themselves and rewrite the signed attributes above (session
+        // revocation finds participants by them). Deafen state is set by the
+        // server (setDeafenMetadata). No canPublishData: nothing uses it.
       });
 
       const jwt = await token.toJwt();
@@ -265,6 +268,33 @@ export class LivekitService {
   }
 
   /**
+   * Whether the identity is connected to the room right now: false when
+   * LiveKit says it isn't (404), null when LiveKit can't tell (unreachable,
+   * unconfigured), so callers can fail open on a LiveKit blip.
+   */
+  async isParticipantInRoom(
+    roomId: string,
+    identity: string,
+  ): Promise<boolean | null> {
+    if (!this.roomServiceClient) return null;
+    try {
+      await withTimeout(
+        this.roomServiceClient.getParticipant(roomId, identity),
+        `getParticipant ${roomId}/${identity}`,
+      );
+      return true;
+    } catch (error) {
+      if ((error as { status?: unknown } | null)?.status === 404) return false;
+      this.logger.warn(
+        `Could not ask LiveKit whether ${identity} is in room ${roomId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * The LiveKit rooms a participant identity is currently in, asked of
    * LiveKit itself (every room, then its participants), so it also finds
    * rooms no presence index knows about (e.g. DM calls whose presence
@@ -315,6 +345,38 @@ export class LivekitService {
   }
 
   /**
+   * Set a participant's `{ isDeafened }` metadata, which clients show on
+   * their tiles. Participants can't set their own (no canUpdateOwnMetadata),
+   * so they ask the server. False, never a throw, when they aren't in the
+   * room (LiveKit 404s) or LiveKit fails: the deafen itself is local.
+   */
+  async setDeafenMetadata(
+    roomId: string,
+    identity: string,
+    isDeafened: boolean,
+  ): Promise<boolean> {
+    if (!this.roomServiceClient) return false;
+    try {
+      await withTimeout(
+        this.roomServiceClient.updateParticipant(roomId, identity, {
+          metadata: JSON.stringify({ isDeafened }),
+        }),
+        `updateParticipant ${roomId}/${identity}`,
+      );
+      return true;
+    } catch (error) {
+      if ((error as { status?: unknown } | null)?.status !== 404) {
+        this.logger.warn(
+          `Could not set the deafen state of ${identity} in room ${roomId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      return false;
+    }
+  }
+
+  /**
    * Changes what a connected participant may publish (e.g. a timeout makes
    * them listen-only, a server mute takes the microphone). LiveKit
    * unpublishes tracks the new grant no longer allows.
@@ -332,10 +394,10 @@ export class LivekitService {
     if (!this.roomServiceClient) return;
     try {
       await withTimeout(
+        // No metadata (LiveKit keeps the current one, e.g. deafen state) and,
+        // as in the token, no canUpdateMetadata or canPublishData
         this.roomServiceClient.updateParticipant(roomId, identity, undefined, {
           canSubscribe: true,
-          canPublishData: true,
-          canUpdateMetadata: true,
           canPublish: publish.canPublish,
           canPublishSources: publish.canPublishSources ?? [],
         }),

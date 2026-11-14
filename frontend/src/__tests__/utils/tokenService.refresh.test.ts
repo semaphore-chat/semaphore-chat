@@ -99,7 +99,9 @@ describe('tokenService refresh outcome', () => {
       { refreshToken: 'plain-rt' },
       expect.anything(),
     );
-    expect(api.storeRefreshToken).toHaveBeenCalledWith('rotated-rt');
+    expect(api.storeRefreshToken).toHaveBeenCalledTimes(1);
+    const stored = vi.mocked(api.storeRefreshToken!).mock.calls[0][0];
+    expect((JSON.parse(stored) as { token: string }).token).toBe('rotated-rt');
     expect(localStorage.getItem('refreshToken')).toBeNull();
   });
 

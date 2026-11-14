@@ -495,4 +495,52 @@ describe('Removing members and lifting timeouts (e2e)', () => {
       ).toBe(0);
     });
   });
+
+  // AUTHZ-4: the community keeps a holder of its top role
+  describe('last top-role holder', () => {
+    /** A scene where only `admin` and `peer` hold Community Admin. */
+    async function twoAdmins() {
+      const c = await scene();
+      await f.db.userRoles.deleteMany({
+        where: {
+          communityId: c.id,
+          roleId: c.adminRole,
+          userId: { notIn: [f.id.admin, f.id.peer] },
+        },
+      });
+      return c;
+    }
+    const adminHolders = (communityId: string, roleId: string) =>
+      f.db.userRoles.count({ where: { communityId, roleId } });
+
+    it('two co-admins leaving at once: one goes, the other is refused', async () => {
+      const c = await twoAdmins();
+      const results = await Promise.all(
+        (['admin', 'peer'] as const).map((who) =>
+          f
+            .http()
+            .delete(`/api/membership/leave/${c.id}`)
+            .set('Authorization', f.bearer(who)),
+        ),
+      );
+      expect(results.map((r) => r.status).sort()).toEqual([204, 403]);
+      expect(await adminHolders(c.id, c.adminRole)).toBe(1);
+    });
+
+    it('two co-admins dropping the role at once: one keeps it', async () => {
+      const c = await twoAdmins();
+      const results = await Promise.all(
+        (['admin', 'peer'] as const).map((who) =>
+          f
+            .http()
+            .delete(
+              `/api/roles/community/${c.id}/users/${f.id[who]}/roles/${c.adminRole}`,
+            )
+            .set('Authorization', f.bearer(who)),
+        ),
+      );
+      expect(results.map((r) => r.status).sort()).toEqual([204, 403]);
+      expect(await adminHolders(c.id, c.adminRole)).toBe(1);
+    });
+  });
 });

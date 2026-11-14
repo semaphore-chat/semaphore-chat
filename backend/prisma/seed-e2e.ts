@@ -119,6 +119,7 @@ const TEST_COMMUNITIES = [
       { name: 'voice-matrix', type: 'VOICE' },
       { name: 'voice-perms', type: 'VOICE' },
       { name: 'voice-soundboard', type: 'VOICE' },
+      { name: 'voice-deafen', type: 'VOICE' },
       { name: 'voice-revoke-ban', type: 'VOICE' },
       { name: 'voice-revoke-session', type: 'VOICE' },
       { name: 'voice-revoke-session-2', type: 'VOICE' },

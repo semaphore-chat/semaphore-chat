@@ -92,14 +92,54 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-PostgreSQL URI - either from bundled or external
+PostgreSQL URI - either from bundled or external. The password is URL-encoded:
+urlquery turns a space into "+", which userinfo reads as a literal plus, so
+it becomes %20 (a real "+" is already %2B).
+Only ever rendered into a Secret (templates/backend/database-secret.yaml).
 */}}
 {{- define "semaphore-chat.postgresql.uri" -}}
 {{- if .Values.postgresql.bundled -}}
-postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "semaphore-chat.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}
+postgresql://{{ .Values.postgresql.auth.username | urlquery | replace "+" "%20" }}:{{ .Values.postgresql.auth.password | toString | urlquery | replace "+" "%20" }}@{{ include "semaphore-chat.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}
 {{- else -}}
 {{ .Values.postgresql.external.uri }}
 {{- end -}}
+{{- end }}
+
+{{/*
+Whether the chart renders its own <fullname>-database Secret: for the bundled
+database or an external one given as postgresql.external.uri.
+*/}}
+{{- define "semaphore-chat.database.chartSecret" -}}
+{{- if or .Values.postgresql.bundled (and (not .Values.postgresql.external.existingSecret) .Values.postgresql.external.uri) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+The DATABASE_URL env entry (backend and migration job): from the chart's
+database Secret, postgresql.external.existingSecret, or (external database,
+neither set) the DATABASE_URL key of secrets.existingSecret.
+*/}}
+{{- define "semaphore-chat.database.env" -}}
+{{- $name := printf "%s-database" (include "semaphore-chat.fullname" .) -}}
+{{- $key := "DATABASE_URL" -}}
+{{- if not .Values.postgresql.bundled -}}
+{{- if .Values.postgresql.external.existingSecret -}}
+{{- $name = .Values.postgresql.external.existingSecret -}}
+{{- $key = .Values.postgresql.external.existingSecretKey | default "DATABASE_URL" -}}
+{{- else if not .Values.postgresql.external.uri -}}
+{{- if .Values.secrets.existingSecret -}}
+{{- $name = .Values.secrets.existingSecret -}}
+{{- else -}}
+{{- fail "semaphore-chat: postgresql.bundled=false needs postgresql.external.uri or postgresql.external.existingSecret (a Secret holding the URL)." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ $name }}
+      key: {{ $key }}
 {{- end }}
 
 {{/*
@@ -295,4 +335,59 @@ Frontend image
 {{- else }}
 {{- printf "%s:%s" $repository $tag }}
 {{- end }}
+{{- end }}
+
+{{/*
+Refuse to render with unsafe secrets: anyone who knows a placeholder or
+default value can sign a session for any user (JWT) or join every voice
+room (LiveKit). The backend refuses the same values at startup; failing here
+stops `helm install/upgrade` before anything changes. Secrets are not
+generated: `lookup` returns nothing under `helm template` and GitOps tools,
+which would rotate them (signing everyone out) on every sync.
+*/}}
+{{- define "semaphore-chat.secretProblem" -}}
+{{- $value := .value | default "" | toString -}}
+{{- if not $value -}}
+is empty
+{{- else if regexMatch "(?i)change[-_ ]?me|replace[-_ ]?with|your[-_ ]|example|devkey|secret-that-is-at-least|elaborate secret" $value -}}
+is a published placeholder
+{{- else if lt (len $value) 32 -}}
+is shorter than 32 characters
+{{- end -}}
+{{- end }}
+
+{{- define "semaphore-chat.validateSecrets" -}}
+{{- $fix := "Generate it with: openssl rand -base64 64 | tr -d '\\n' (a different value for each secret), or set secrets.existingSecret." -}}
+{{- if not .Values.secrets.existingSecret -}}
+{{- range $key := list "jwtSecret" "jwtRefreshSecret" -}}
+{{- $problem := include "semaphore-chat.secretProblem" (dict "value" (index $.Values.secrets $key)) -}}
+{{- if $problem -}}
+{{- fail (printf "semaphore-chat: secrets.%s %s. %s" $key $problem $fix) -}}
+{{- end -}}
+{{- end -}}
+{{- if eq (toString .Values.secrets.jwtSecret) (toString .Values.secrets.jwtRefreshSecret) -}}
+{{- fail (printf "semaphore-chat: secrets.jwtSecret and secrets.jwtRefreshSecret are the same value; they must differ. %s" $fix) -}}
+{{- end -}}
+{{- end -}}
+{{- /* Both passwords kept in Secrets (the backend's REDIS_PASSWORD in
+secrets.existingSecret, Bitnami's in redis.auth.existingSecret): nothing to check */ -}}
+{{- $redisInSecrets := and .Values.secrets.existingSecret .Values.redis.auth.existingSecret -}}
+{{- if and .Values.redis.bundled .Values.redis.auth.enabled (not $redisInSecrets) (has (toString .Values.redis.auth.password) (list "" "changeme-redis-password")) -}}
+{{- fail "semaphore-chat: redis.auth.password is empty or the old default; anyone in the cluster could use the bundled Redis. Generate one with: openssl rand -hex 24" -}}
+{{- end -}}
+{{- if and .Values.postgresql.bundled (not .Values.postgresql.auth.password) -}}
+{{- fail "semaphore-chat: postgresql.auth.password is required for the bundled PostgreSQL. Generate one with: openssl rand -hex 24" -}}
+{{- end -}}
+{{- $lk := .Values.livekit -}}
+{{- if or $lk.url $lk.apiKey $lk.apiSecret -}}
+{{- if or (not $lk.url) (not $lk.apiKey) -}}
+{{- fail "semaphore-chat: voice/video needs livekit.url, livekit.apiKey and livekit.apiSecret together (or none of them)." -}}
+{{- end -}}
+{{- if not .Values.secrets.existingSecret -}}
+{{- $problem := include "semaphore-chat.secretProblem" (dict "value" $lk.apiSecret) -}}
+{{- if $problem -}}
+{{- fail (printf "semaphore-chat: livekit.apiSecret %s. Use your LiveKit server's real key pair (generate a secret with: openssl rand -hex 32), or set secrets.existingSecret." $problem) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end }}

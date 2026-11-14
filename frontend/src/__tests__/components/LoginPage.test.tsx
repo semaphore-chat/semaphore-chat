@@ -72,7 +72,8 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(getAccessToken()).toBe('mock-access-token');
     });
-    expect(localStorage.getItem('refreshToken')).toBe('mock-refresh-token');
+    // Stored bound to the server that issued it (JSON: { v, api, token })
+    expect(JSON.parse(localStorage.getItem('refreshToken')!)).toMatchObject({ token: 'mock-refresh-token' });
     expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 
@@ -288,7 +289,7 @@ describe('LoginPage', () => {
       // The verifier never went to main, and matches the challenge that did
       expect(await pkceChallenge(tokenBody!.codeVerifier)).toBe(request.codeChallenge);
       expect(getAccessToken()).toBe('desktop-access');
-      expect(api.storeRefreshToken).toHaveBeenCalledWith('desktop-refresh');
+      expect(api.storeRefreshToken).toHaveBeenCalledWith(expect.stringContaining('"token":"desktop-refresh"'));
     });
 
     it('can be cancelled while waiting', async () => {

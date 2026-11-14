@@ -7,6 +7,7 @@ import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { LivekitService } from '@/livekit/livekit.service';
 
 import { ServerEvents } from '@semaphore-chat/shared';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
@@ -17,6 +18,7 @@ describe('VoicePresenceService', () => {
   let websocketService: Mocked<WebsocketService>;
   let eventEmitter: Mocked<EventEmitter2>;
   let channelAccessService: Mocked<ChannelAccessService>;
+  let livekitService: Mocked<LivekitService>;
   let mockDatabaseService: any;
 
   const mockPipeline = {
@@ -68,6 +70,9 @@ describe('VoicePresenceService', () => {
       user: {
         findUnique: jest.fn(),
       },
+      userBlock: {
+        findFirst: jest.fn(),
+      },
     };
 
     const { unit, unitRef } = await TestBed.solitary(VoicePresenceService)
@@ -81,6 +86,9 @@ describe('VoicePresenceService', () => {
     websocketService = unitRef.get(WebsocketService);
     eventEmitter = unitRef.get(EventEmitter2);
     channelAccessService = unitRef.get(ChannelAccessService);
+    livekitService = unitRef.get(LivekitService);
+    // Default: whoever refreshes is connected to the LiveKit room
+    livekitService.isParticipantInRoom.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -626,6 +634,75 @@ describe('VoicePresenceService', () => {
       expect(mockRedis.pipeline).not.toHaveBeenCalled();
     });
 
+    it('refuses the blocked side of a 1:1 DM and rings nobody', async () => {
+      const dmGroupId = 'dm-group-123';
+      const userId = 'user-123';
+
+      mockRedis.expire.mockResolvedValue(0);
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue({
+        id: 'member-1',
+      });
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        isGroup: false,
+        members: [{ userId }, { userId: 'blocker-1' }],
+      });
+      mockDatabaseService.userBlock.findFirst.mockResolvedValue({
+        id: 'block-1',
+      });
+
+      await expect(
+        service.refreshDmPresence(dmGroupId, userId),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it("refuses with 409 to re-register a user who isn't in the LiveKit room", async () => {
+      const dmGroupId = 'dm-group-123';
+      const userId = 'user-123';
+
+      mockRedis.expire.mockResolvedValue(0);
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue({
+        id: 'member-1',
+      });
+      livekitService.isParticipantInRoom.mockResolvedValue(false);
+
+      await expect(
+        service.refreshDmPresence(dmGroupId, userId),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(livekitService.isParticipantInRoom).toHaveBeenCalledWith(
+        dmGroupId,
+        userId,
+      );
+      expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it("re-registers when LiveKit can't be asked (fails open)", async () => {
+      const dmGroupId = 'dm-group-123';
+      const userId = 'user-123';
+
+      mockRedis.expire.mockResolvedValue(0);
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue({
+        id: 'member-1',
+      });
+      livekitService.isParticipantInRoom.mockResolvedValue(null);
+      mockRedis.get.mockResolvedValue(null);
+      mockDatabaseService.user.findUnique.mockResolvedValue({
+        id: userId,
+        username: 'u',
+        displayName: null,
+        avatarUrl: null,
+      });
+      mockRedis.smembers.mockResolvedValue([]);
+
+      await service.refreshDmPresence(dmGroupId, userId);
+
+      expect(mockDatabaseService.user.findUnique).toHaveBeenCalled();
+    });
+
     it('surfaces a Redis failure instead of reporting success (#672)', async () => {
       const dmGroupId = 'dm-group-123';
       const userId = 'user-123';
@@ -775,7 +852,7 @@ describe('VoicePresenceService', () => {
       );
     });
 
-    it('should not update if user not found in channel', async () => {
+    it('should not update presence if user not found in channel', async () => {
       const channelId = 'channel-123';
       const userId = 'nonexistent-user';
 
@@ -785,6 +862,52 @@ describe('VoicePresenceService', () => {
 
       expect(mockRedis.set).not.toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('sets the LiveKit deafen metadata, even when the presence entry is gone', async () => {
+      mockRedis.get.mockResolvedValue(null);
+
+      await service.updateDeafenState('channel-123', 'user-123', true);
+
+      // Only a participant of the room gets it: LiveKit 404s anyone else
+      expect(livekitService.setDeafenMetadata).toHaveBeenCalledWith(
+        'channel-123',
+        'user-123',
+        true,
+      );
+    });
+  });
+
+  describe('updateDmDeafenState', () => {
+    it("checks membership, then sets the caller's deafen metadata in the call", async () => {
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue({
+        id: 'member-1',
+      });
+
+      await service.updateDmDeafenState('dm-1', 'user-1', true);
+
+      expect(
+        mockDatabaseService.directMessageGroupMember.findFirst,
+      ).toHaveBeenCalledWith({
+        where: { groupId: 'dm-1', userId: 'user-1' },
+        select: { id: true },
+      });
+      expect(livekitService.setDeafenMetadata).toHaveBeenCalledWith(
+        'dm-1',
+        'user-1',
+        true,
+      );
+    });
+
+    it('refuses a non-member', async () => {
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue(
+        null,
+      );
+
+      await expect(
+        service.updateDmDeafenState('dm-1', 'user-1', true),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(livekitService.setDeafenMetadata).not.toHaveBeenCalled();
     });
   });
 

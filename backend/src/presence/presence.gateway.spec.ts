@@ -89,6 +89,11 @@ describe('PresenceGateway', () => {
       } as any;
 
       presenceService.addConnection.mockResolvedValue(true); // User went online
+      presenceService.presenceAudienceRooms.mockResolvedValue([
+        'community:c1',
+        'dm:g1',
+        'user:f1',
+      ]);
 
       const result = await gateway.handleMessage(mockClient);
 
@@ -98,7 +103,8 @@ describe('PresenceGateway', () => {
         'socket-123',
         60,
       );
-      expect(websocketService.sendToAll).toHaveBeenCalledWith(
+      expect(websocketService.sendToRooms).toHaveBeenCalledWith(
+        ['community:c1', 'dm:g1', 'user:f1'],
         ServerEvents.USER_ONLINE,
         {
           userId: 'user-123',
@@ -107,6 +113,28 @@ describe('PresenceGateway', () => {
           avatarUrl: 'https://example.com/avatar.jpg',
         },
       );
+      expect(websocketService.sendToAll).not.toHaveBeenCalled();
+    });
+
+    it('should not emit when the user has no communities, friends or DMs', async () => {
+      const mockClient = {
+        id: 'socket-loner',
+        handshake: {
+          user: {
+            id: 'loner',
+            username: 'l',
+            displayName: 'L',
+            avatarUrl: null,
+          },
+        },
+      } as any;
+      presenceService.addConnection.mockResolvedValue(true);
+      presenceService.presenceAudienceRooms.mockResolvedValue([]);
+
+      await gateway.handleMessage(mockClient);
+
+      expect(websocketService.sendToRooms).not.toHaveBeenCalled();
+      expect(websocketService.sendToAll).not.toHaveBeenCalled();
     });
 
     it('should not broadcast when user already online', async () => {
@@ -133,6 +161,7 @@ describe('PresenceGateway', () => {
         60,
       );
       expect(websocketService.sendToAll).not.toHaveBeenCalled();
+      expect(websocketService.sendToRooms).not.toHaveBeenCalled();
     });
 
     it('should call setConnectionIdle with true when idle flag is true', async () => {
@@ -232,6 +261,7 @@ describe('PresenceGateway', () => {
         },
       } as any;
 
+      presenceService.presenceAudienceRooms.mockResolvedValue(['community:c1']);
       presenceService.addConnection
         .mockResolvedValueOnce(true) // First connection - goes online
         .mockResolvedValueOnce(false); // Second connection - already online
@@ -239,7 +269,8 @@ describe('PresenceGateway', () => {
       await gateway.handleMessage(mockClient1);
       await gateway.handleMessage(mockClient2);
 
-      expect(websocketService.sendToAll).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToRooms).toHaveBeenCalledTimes(1);
+      expect(websocketService.sendToAll).not.toHaveBeenCalled();
     });
   });
 
@@ -258,6 +289,7 @@ describe('PresenceGateway', () => {
       } as any;
 
       presenceService.removeConnection.mockResolvedValue(true); // User went offline
+      presenceService.presenceAudienceRooms.mockResolvedValue(['community:c1']);
 
       await gateway.handleDisconnect(mockClient);
 
@@ -265,7 +297,9 @@ describe('PresenceGateway', () => {
         'user-789',
         'socket-789',
       );
-      expect(websocketService.sendToAll).toHaveBeenCalledWith(
+      expect(websocketService.sendToAll).not.toHaveBeenCalled();
+      expect(websocketService.sendToRooms).toHaveBeenCalledWith(
+        ['community:c1'],
         ServerEvents.USER_OFFLINE,
         {
           userId: 'user-789',

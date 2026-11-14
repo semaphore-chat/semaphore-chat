@@ -1,10 +1,17 @@
 import { TestBed } from '@suites/unit';
 import { PresenceService } from './presence.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
+import { DatabaseService } from '@/database/database.service';
+import { RoomName } from '@/common/utils/room-name.util';
 
 describe('PresenceService', () => {
   let service: PresenceService;
   let mockRedis: Record<string, jest.Mock>;
+  let mockDb: {
+    membership: { findMany: jest.Mock };
+    directMessageGroupMember: { findMany: jest.Mock };
+    friendship: { findMany: jest.Mock };
+  };
 
   beforeEach(async () => {
     mockRedis = {
@@ -22,9 +29,17 @@ describe('PresenceService', () => {
       mget: jest.fn(),
     };
 
+    mockDb = {
+      membership: { findMany: jest.fn().mockResolvedValue([]) },
+      directMessageGroupMember: { findMany: jest.fn().mockResolvedValue([]) },
+      friendship: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+
     const { unit } = await TestBed.solitary(PresenceService)
       .mock(REDIS_CLIENT)
       .final(mockRedis)
+      .mock(DatabaseService)
+      .final(mockDb)
       .compile();
 
     service = unit;
@@ -492,6 +507,84 @@ describe('PresenceService', () => {
       await service.removeConnection('user-1', 'conn-1');
 
       expect(mockRedis.del).toHaveBeenCalledWith('presence:idle:user-1');
+    });
+  });
+
+  describe('presenceAudienceRooms', () => {
+    it('returns community, DM group and accepted-friend user rooms', async () => {
+      mockDb.membership.findMany.mockResolvedValue([{ communityId: 'c1' }]);
+      mockDb.directMessageGroupMember.findMany.mockResolvedValue([
+        { groupId: 'g1' },
+      ]);
+      mockDb.friendship.findMany.mockResolvedValue([
+        { userAId: 'me', userBId: 'f1' },
+        { userAId: 'f2', userBId: 'me' },
+      ]);
+
+      const rooms = await service.presenceAudienceRooms('me');
+
+      expect(rooms.sort()).toEqual(
+        [
+          RoomName.community('c1'),
+          RoomName.dmGroup('g1'),
+          RoomName.user('f1'),
+          RoomName.user('f2'),
+        ].sort(),
+      );
+      expect(mockDb.friendship.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'ACCEPTED' }),
+        }),
+      );
+    });
+
+    it('returns an empty list with no communities, friends or DMs', async () => {
+      expect(await service.presenceAudienceRooms('loner')).toEqual([]);
+    });
+  });
+
+  describe('visibleUserIds', () => {
+    const viewer = 'viewer';
+
+    it('includes self, shared-community users, accepted friends and DM partners; excludes strangers and pending friends', async () => {
+      mockDb.membership.findMany
+        .mockResolvedValueOnce([{ communityId: 'c1' }]) // viewer's communities
+        .mockResolvedValueOnce([{ userId: 'mate' }]); // targets in them
+      mockDb.directMessageGroupMember.findMany
+        .mockResolvedValueOnce([{ groupId: 'g1' }])
+        .mockResolvedValueOnce([{ userId: 'dm-partner' }]);
+      // the where clause filters ACCEPTED in the DB; a pending request is not returned
+      mockDb.friendship.findMany.mockResolvedValue([
+        { userAId: viewer, userBId: 'friend' },
+      ]);
+
+      const visible = await service.visibleUserIds(viewer, [
+        viewer,
+        'mate',
+        'friend',
+        'dm-partner',
+        'stranger',
+        'pending-friend',
+      ]);
+
+      expect([...visible].sort()).toEqual(
+        [viewer, 'mate', 'friend', 'dm-partner'].sort(),
+      );
+      expect(mockDb.friendship.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'ACCEPTED' }),
+        }),
+      );
+    });
+
+    it('returns only the viewer when nothing is shared', async () => {
+      const visible = await service.visibleUserIds(viewer, [viewer, 'x']);
+      expect([...visible]).toEqual([viewer]);
+    });
+
+    it('does no queries for an empty list', async () => {
+      expect((await service.visibleUserIds(viewer, [])).size).toBe(0);
+      expect(mockDb.membership.findMany).not.toHaveBeenCalled();
     });
   });
 });

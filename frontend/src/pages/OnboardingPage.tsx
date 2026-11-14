@@ -53,7 +53,8 @@ const OnboardingPage: React.FC = () => {
     return null;
   }
 
-  if (!status.setupToken) {
+  // Servers that require the token never send it: the operator pastes it
+  if (!status.setupTokenRequired && !status.setupToken) {
     return (
       <Box
         sx={{
@@ -75,6 +76,7 @@ const OnboardingPage: React.FC = () => {
     <Box sx={{ minHeight: 'var(--full-dvh)', bgcolor: 'background.canvas' }}>
       <OnboardingWizard
         setupToken={status.setupToken}
+        setupTokenRequired={status.setupTokenRequired}
         onComplete={handleComplete}
       />
     </Box>

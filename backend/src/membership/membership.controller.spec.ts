@@ -45,9 +45,12 @@ describe('MembershipController', () => {
 
       service.create.mockResolvedValue(mockMembership);
 
-      const result = await controller.create(createDto);
+      const result = await controller.create(createDto, {
+        user: { id: 'actor-1' },
+      } as never);
 
-      expect(service.create).toHaveBeenCalledWith(createDto);
+      // The caller's id goes along for the block check (AUTHZ-6)
+      expect(service.create).toHaveBeenCalledWith(createDto, 'actor-1');
       expect(result).toEqual(mockMembership);
     });
   });

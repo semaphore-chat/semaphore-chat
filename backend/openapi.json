@@ -4712,6 +4712,56 @@
         ]
       }
     },
+    "/api/dm-groups/{dmGroupId}/voice-presence/deafen": {
+      "post": {
+        "operationId": "DmVoicePresenceController_updateDmDeafenState",
+        "parameters": [
+          {
+            "name": "dmGroupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeafenStateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshDmPresenceResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "DmVoicePresence"
+        ]
+      }
+    },
     "/api/dm-groups/{dmGroupId}/voice-presence/decline": {
       "post": {
         "operationId": "DmVoicePresenceController_declineDmVoiceCall",
@@ -13026,7 +13076,8 @@
             "format": "uuid"
           },
           "emoji": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 64
           }
         },
         "required": [
@@ -13081,7 +13132,8 @@
             "format": "uuid"
           },
           "emoji": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 64
           }
         },
         "required": [
@@ -16142,13 +16194,19 @@
           "hasUsers": {
             "type": "boolean"
           },
+          "setupTokenRequired": {
+            "type": "boolean",
+            "description": "True (the default, REQUIRE_SETUP_TOKEN) when the operator must enter the\nsetup token printed in the backend logs: `setupToken` is then never sent."
+          },
           "setupToken": {
-            "type": "string"
+            "type": "string",
+            "description": "Only sent when REQUIRE_SETUP_TOKEN=false and setup is needed."
           }
         },
         "required": [
           "needsSetup",
-          "hasUsers"
+          "hasUsers",
+          "setupTokenRequired"
         ]
       },
       "SetupInstanceDto": {
@@ -16343,7 +16401,8 @@
             }
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "isGroup": {
             "type": "boolean"
@@ -18268,6 +18327,10 @@
       "UserBannedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18280,39 +18343,39 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "UserUnbannedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "communityId": {
             "type": "string"
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "UserKickedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18321,20 +18384,20 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "UserTimedOutPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18350,22 +18413,22 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "durationSeconds",
           "expiresAt",
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "TimeoutRemovedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18378,15 +18441,11 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "MemberAddedToCommunityPayloadDto": {

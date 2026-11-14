@@ -8,15 +8,21 @@ import {
   mergeOEmbedData,
   LinkPreviewData,
 } from './link-preview.utils';
-import { promises as dns } from 'dns';
+import * as dns from 'dns';
+import { createServer, type Server } from 'http';
+import type { AddressInfo } from 'net';
+import * as undici from 'undici';
 
 jest.mock('dns', () => ({
+  // The callback lookup is what the connection itself uses
+  lookup: jest.fn(),
   promises: {
     lookup: jest.fn(),
   },
 }));
 
-const mockLookup = dns.lookup as jest.Mock<any>;
+const mockLookup = dns.promises.lookup as jest.Mock<any>;
+const mockConnectLookup = dns.lookup as unknown as jest.Mock<any>;
 
 describe('link-preview.utils', () => {
   afterEach(() => {
@@ -519,13 +525,78 @@ describe('link-preview.utils', () => {
     ])('should not follow a redirect to %s', async (location) => {
       mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
       const fetchSpy = jest
-        .spyOn(global, 'fetch')
+        .spyOn(undici, 'fetch')
         .mockResolvedValue(
-          new Response(null, { status: 302, headers: { location } }),
+          new undici.Response(null, { status: 302, headers: { location } }),
         );
 
       expect(await fetchLinkMetadata('https://example.com/r')).toBeNull();
       expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('fetchLinkMetadata DNS rebinding', () => {
+    let server: Server;
+    let port: number;
+    let requests = 0;
+
+    beforeAll(async () => {
+      server = createServer((_req, res) => {
+        requests += 1;
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end('<html><head><title>internal</title></head></html>');
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      port = (server.address() as AddressInfo).port;
+    });
+
+    afterAll(async () => {
+      await new Promise((resolve) => server.close(resolve));
+    });
+
+    it('re-checks the address at connect time, so a name that passed the check cannot connect inside', async () => {
+      requests = 0;
+      // The check sees a public address; every later answer is loopback
+      // (TTL 0 rebinding). `localhost` makes a real connection reach the
+      // internal server if the connection does its own, unchecked lookup.
+      mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+      mockConnectLookup.mockImplementation(
+        (
+          _host: string,
+          options: { all?: boolean },
+          cb: (e: null, a: unknown, f?: number) => void,
+        ) =>
+          options?.all
+            ? cb(null, [{ address: '127.0.0.1', family: 4 }])
+            : cb(null, '127.0.0.1', 4),
+      );
+
+      await expect(
+        fetchLinkMetadata(`http://localhost:${port}/admin`),
+      ).resolves.toBeNull();
+      expect(requests).toBe(0);
+    });
+
+    it('connects to a name that stays public at connect time', async () => {
+      requests = 0;
+      mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+      const fetchSpy = jest.spyOn(undici, 'fetch').mockResolvedValue(
+        new undici.Response('<title>Example</title>', {
+          headers: { 'content-type': 'text/html' },
+        }),
+      );
+
+      await expect(
+        fetchLinkMetadata('https://example.com/'),
+      ).resolves.toMatchObject({ title: 'Example' });
+      // Every page fetch goes through the connect-time-checked dispatcher
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://example.com/',
+        expect.objectContaining({ dispatcher: expect.any(undici.Agent) }),
+      );
+      fetchSpy.mockRestore();
     });
   });
 });

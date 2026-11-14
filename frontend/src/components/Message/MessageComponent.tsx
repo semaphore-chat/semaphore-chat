@@ -406,6 +406,7 @@ function MessageComponentInner({
           {isWebhookMessage ? (
             <Avatar
               src={message.webhook?.avatarUrl ?? undefined}
+              slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
               sx={{ width: 32, height: 32 }}
             >
               {message.webhook!.name.charAt(0).toUpperCase()}

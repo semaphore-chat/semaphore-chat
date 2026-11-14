@@ -338,6 +338,21 @@ describe('RoomsGateway', () => {
       expect(connect(forged(99), 1)).toEqual([new Error('RATE_LIMITED')]);
     });
 
+    it('counts every address of an IPv6 /64 as one client', () => {
+      for (let i = 0; i < RoomsGateway.RATE_LIMIT_MAX; i++) {
+        expect(connect(connectingSocket(`2001:db8::${i + 1}`), 1)).toEqual([
+          undefined,
+        ]);
+      }
+      expect(connect(connectingSocket('2001:db8::ffff'), 1)).toEqual([
+        new Error('RATE_LIMITED'),
+      ]);
+      // Another /64 is another client
+      expect(connect(connectingSocket('2001:db8:0:1::1'), 1)).toEqual([
+        undefined,
+      ]);
+    });
+
     describe('WS_CONNECTION_RATE_LIMIT', () => {
       const original = process.env.WS_CONNECTION_RATE_LIMIT;
       afterEach(() => {

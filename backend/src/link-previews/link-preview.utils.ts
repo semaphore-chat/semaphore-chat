@@ -1,6 +1,21 @@
-import { isPrivateIp, isPublicUrl } from '@/common/utils/public-address.util';
+import {
+  isPrivateIp,
+  isPublicUrl,
+  publicOnlyLookup,
+} from '@/common/utils/public-address.util';
+import { Agent, fetch, type Response } from 'undici';
 
 export { isPrivateIp, isPublicUrl };
+
+/**
+ * Every link-preview request connects through this agent, whose lookup
+ * refuses non-public addresses at connection time. `isPublicUrl` alone checks
+ * one DNS answer and the connection makes another, so a name answering a
+ * public address first and an internal one next (DNS rebinding) would pass.
+ */
+const publicOnlyDispatcher = new Agent({
+  connect: { lookup: publicOnlyLookup },
+});
 
 export interface LinkPreviewData {
   url: string;
@@ -235,6 +250,7 @@ export async function fetchOEmbed(
   try {
     const oembedUrl = `${provider.endpoint}?url=${encodeURIComponent(url)}&format=json`;
     const response = await fetch(oembedUrl, {
+      dispatcher: publicOnlyDispatcher,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: { Accept: 'application/json' },
     });
@@ -346,6 +362,7 @@ async function fetchWithRedirectValidation(
 
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
     const response = await fetch(currentUrl, {
+      dispatcher: publicOnlyDispatcher,
       signal,
       redirect: 'manual',
       headers: FETCH_HEADERS,
@@ -429,7 +446,10 @@ async function fetchOgTags(
     if (!contentType.includes('text/html')) return null;
 
     // Read limited body
-    const reader = response.body?.getReader();
+    // undici types its body as a stream of `any`; fetch bodies are bytes
+    const reader = (
+      response.body as ReadableStream<Uint8Array> | null
+    )?.getReader();
     if (!reader) return null;
 
     let html = '';

@@ -37,6 +37,14 @@ backend:
   # See: https://expressjs.com/en/guide/behind-proxies.html
   trustProxy: "1"
 
+  # First-run setup: the backend prints "Setup token: <token>" in its log and
+  # the setup wizard asks for it (REQUIRE_SETUP_TOKEN). The token is never
+  # returned by the API, so whoever reaches a new instance first can't take it
+  # over. false = the wizard gets the token itself (private networks only).
+  # To choose the token yourself (unattended installs), set SETUP_TOKEN
+  # (16+ characters) through backend.extraEnv, e.g. from a Secret.
+  requireSetupToken: true
+
   # Database migrations (runs as a Helm pre-install/pre-upgrade hook Job)
   migrations:
     enabled: true  # Set false to manage migrations externally
@@ -181,6 +189,18 @@ frontend:
     # Backend URL (internal service URL). Empty = this release's backend Service.
     backendUrl: ""
 
+  # Addresses/CIDRs whose X-Forwarded-For the frontend's nginx believes
+  # (TRUSTED_PROXIES): its rate limits then count per client, not per ingress
+  # pod. Unset (null) = the private ranges (10.0.0.0/8 172.16.0.0/12
+  # 192.168.0.0/16 100.64.0.0/10 fc00::/7) when ingress.enabled is true and
+  # frontend.service.type is ClusterIP (only the in-cluster ingress controller
+  # reaches nginx), otherwise trust nobody. Trust nobody whenever clients can
+  # reach the frontend without the ingress (LoadBalancer/NodePort): with SNAT
+  # they arrive from a private node address and could spoof X-Forwarded-For.
+  # Trusting nobody behind a proxy puts every client in one rate-limit bucket.
+  # "" = trust nobody; any other string is passed on as is.
+  trustedProxies: null
+
   # Extra environment variables for the frontend container
   # These are injected at runtime (useful for feature flags, etc.)
   # Example:
@@ -274,7 +294,7 @@ postgresql:
 
   auth:
     username: semaphore
-    password: ""  # Set via --set or secrets
+    password: ""  # Required when bundled (rendering fails if empty): openssl rand -hex 24
     database: semaphore
 
   primary:
@@ -292,7 +312,10 @@ postgresql:
 
   # External PostgreSQL (when bundled is false)
   external:
-    uri: ""  # e.g., postgresql://user:pass@host:5432/semaphore
+    uri: ""  # e.g., postgresql://user:pass@host:5432/semaphore (stored in a Secret)
+    # Or a pre-created Secret holding the URL (takes precedence over uri)
+    existingSecret: ""
+    existingSecretKey: "DATABASE_URL"
 
 # ============================================
 # Redis Configuration
@@ -306,9 +329,14 @@ redis:
   architecture: standalone
 
   # Authentication
+  # Rendering fails when auth is on and the password is empty or the old
+  # default (changeme-redis-password). Generate one: openssl rand -hex 24
+  # To keep it out of values instead, set Bitnami's auth.existingSecret
+  # together with secrets.existingSecret (holding REDIS_PASSWORD for the
+  # backend); the password check is skipped then.
   auth:
     enabled: true
-    password: "changeme-redis-password"
+    password: ""
 
   # Persistence and resources for the bundled Redis master
   master:
@@ -335,21 +363,26 @@ redis:
 # LiveKit Configuration (External Only)
 # ============================================
 livekit:
-  # LiveKit server URL (WebSocket endpoint)
-  url: "wss://livekit.example.com"
+  # Voice/video is optional: set url, apiKey and apiSecret together, or none.
+  # LiveKit server URL (WebSocket endpoint), e.g. wss://livekit.example.com
+  url: ""
 
   # LiveKit API credentials. The secret also verifies incoming webhook
-  # signatures (WebhookReceiver), so it must be at least 32 characters.
-  apiKey: "your-livekit-api-key"
-  apiSecret: "your-livekit-api-secret"
+  # signatures (WebhookReceiver): at least 32 random characters. Rendering
+  # fails on an empty, short or placeholder secret.
+  apiKey: ""
+  apiSecret: ""
 
 # ============================================
 # Application Secrets
 # ============================================
 secrets:
-  # JWT secrets for authentication
-  jwtSecret: "CHANGE-ME-long-random-secret-for-jwt-signing"
-  jwtRefreshSecret: "CHANGE-ME-different-long-random-secret-for-refresh-tokens"
+  # JWT secrets for authentication. Required (unless existingSecret is set):
+  # rendering fails when either is empty, a placeholder, shorter than 32
+  # characters, or both are the same. Generate each with:
+  #   openssl rand -base64 64 | tr -d '\n'
+  jwtSecret: ""
+  jwtRefreshSecret: ""
 
   # Create secrets from existing Kubernetes secret
   # If true, the above values are ignored and you must create a secret manually
@@ -378,11 +411,25 @@ podDisruptionBudget:
 # ============================================
 # Network Policies
 # ============================================
+# Ingress-only NetworkPolicies (templates/networkpolicy.yaml): backend and
+# frontend accept traffic from the ingress controller (backend also from the
+# frontend); bundled PostgreSQL/Redis only from the backend. Egress is not
+# restricted (DNS, LiveKit, SMTP, S3 and webhooks need it).
+# NetworkPolicies add up, and the Bitnami subcharts render their own, which
+# admit every pod by default. To restrict PostgreSQL/Redis, also set
+#   postgresql.primary.networkPolicy.allowExternal: false
+#   redis.networkPolicy.allowExternal: false
 networkPolicy:
   enabled: false
-  policyTypes:
-    - Ingress
-    - Egress
+  # Where the ingress controller's pods run (a NetworkPolicy peer).
+  ingressController:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: ingress-nginx
+    podSelector: {}
+  # More peers allowed to reach the backend (e.g. Prometheus for
+  # metrics, or LiveKit's webhook if it doesn't come through the ingress).
+  extraBackendFrom: []
 
 # ============================================
 # Metrics (Prometheus)

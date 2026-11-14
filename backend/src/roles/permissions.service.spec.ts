@@ -1095,7 +1095,11 @@ describe('PermissionsService', () => {
       lower: [30, 50],
       mixed: [5, 90],
       norole: [],
+      owner: [100],
+      ownernorole: [],
     };
+    // AUTHZ-3: instance owners (whatever their community roles)
+    const instanceOwners = new Set(['owner', 'ownernorole']);
 
     beforeEach(() => {
       mockDatabase.userRoles.findMany.mockImplementation(
@@ -1115,6 +1119,14 @@ describe('PermissionsService', () => {
         },
       );
       mockDatabase.role.findFirst.mockResolvedValue({ position: 5 });
+      mockDatabase.user.findMany.mockImplementation(
+        (args: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            args.where.id.in
+              .filter((id) => instanceOwners.has(id))
+              .map((id) => ({ id })),
+          ),
+      );
     });
 
     const cases: [string, string, boolean][] = [
@@ -1127,6 +1139,10 @@ describe('PermissionsService', () => {
       ['norole', 'lower', false],
       ['norole', 'norole', false],
       ['higher', 'actor', true],
+      // AUTHZ-3: nobody outranks the instance owner, role or not
+      ['actor', 'owner', false],
+      ['actor', 'ownernorole', false],
+      ['higher', 'owner', false],
     ];
 
     it.each(cases)('%s vs %s: outranks is %s', async (actor, target, want) => {
@@ -1157,20 +1173,25 @@ describe('PermissionsService', () => {
     it('does not make more DB calls for more targets', async () => {
       const dbCalls = () =>
         mockDatabase.userRoles.findMany.mock.calls.length +
-        mockDatabase.role.findFirst.mock.calls.length;
+        mockDatabase.role.findFirst.mock.calls.length +
+        mockDatabase.user.findMany.mock.calls.length;
+      const clear = () => {
+        mockDatabase.userRoles.findMany.mockClear();
+        mockDatabase.role.findFirst.mockClear();
+        mockDatabase.user.findMany.mockClear();
+      };
 
-      mockDatabase.userRoles.findMany.mockClear();
-      mockDatabase.role.findFirst.mockClear();
+      clear();
       await service.outranksMany('actor', ['higher'], 'co-1');
       const forOne = dbCalls();
 
-      mockDatabase.userRoles.findMany.mockClear();
-      mockDatabase.role.findFirst.mockClear();
+      clear();
       const many = Array.from({ length: 50 }, (_, i) => `member-${i}`);
       await service.outranksMany('actor', many, 'co-1');
 
       expect(dbCalls()).toBe(forOne);
-      expect(forOne).toBe(3); // actor roles, community top role, all targets
+      // actor roles, community top role, all targets' roles, instance owners
+      expect(forOne).toBe(4);
     });
   });
 });

@@ -29,12 +29,11 @@ spec:
           image: {{ include "semaphore-chat.backend.image" . }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           command: ["/app/node_modules/.bin/prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
+          # `prisma migrate deploy` needs only DATABASE_URL, from a hook Secret
+          # (or a pre-created one): the chart's ConfigMap and other Secrets
+          # don't exist yet when this pre-install hook runs.
           env:
             - name: SKIP_PRISMA_MIGRATE
               value: "true"
-          envFrom:
-            - configMapRef:
-                name: {{ include "semaphore-chat.fullname" . }}-backend-config
-            - secretRef:
-                name: {{ if .Values.secrets.existingSecret }}{{ .Values.secrets.existingSecret }}{{ else }}{{ include "semaphore-chat.fullname" . }}-secrets{{ end }}
+            {{- include "semaphore-chat.database.env" . | nindent 12 }}
 {{- end }}

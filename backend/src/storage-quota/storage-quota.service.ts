@@ -157,25 +157,33 @@ export class StorageQuotaService {
   }
 
   /**
-   * Decrement user's storage usage after file deletion
+   * Add `bytes` to the user's usage only if they still fit the quota, as one
+   * conditional update, so concurrent uploads can't all pass a check made
+   * before any of them is counted. Release with decrementUserStorage if the
+   * upload then fails.
+   *
+   * @returns false when the bytes don't fit (or the user doesn't exist)
+   */
+  async reserveStorage(userId: string, bytes: number): Promise<boolean> {
+    const size = BigInt(bytes);
+    const updated = await this.db.$executeRaw`
+      UPDATE "User"
+      SET "storageUsedBytes" = "storageUsedBytes" + ${size}
+      WHERE "id" = ${userId}
+        AND "storageUsedBytes" + ${size} <= "storageQuotaBytes"`;
+    return updated > 0;
+  }
+
+  /**
+   * Decrement user's storage usage after file deletion (or to release a
+   * reservation). One statement, so it can't overwrite a concurrent change;
+   * never goes below zero.
    */
   async decrementUserStorage(userId: string, bytes: number): Promise<void> {
-    const user = await this.db.user.findUnique({
-      where: { id: userId },
-      select: { storageUsedBytes: true },
-    });
-
-    if (!user) return;
-
-    // Don't go negative
-    const newUsage = Math.max(0, Number(user.storageUsedBytes) - bytes);
-
-    await this.db.user.update({
-      where: { id: userId },
-      data: {
-        storageUsedBytes: newUsage,
-      },
-    });
+    await this.db.$executeRaw`
+      UPDATE "User"
+      SET "storageUsedBytes" = GREATEST(0, "storageUsedBytes" - ${BigInt(bytes)})
+      WHERE "id" = ${userId}`;
   }
 
   /**

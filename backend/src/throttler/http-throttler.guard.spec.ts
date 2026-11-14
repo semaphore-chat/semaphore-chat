@@ -48,4 +48,23 @@ describe('HttpThrottlerGuard', () => {
     await expect(guard.canActivate(contextOf('ws'))).resolves.toBe(true);
     expect(storage.increment).not.toHaveBeenCalled();
   });
+
+  describe('getTracker', () => {
+    const tracker = (ip: string) =>
+      (
+        guard as unknown as {
+          getTracker(req: Record<string, unknown>): Promise<string>;
+        }
+      ).getTracker({ ip });
+
+    it('counts every address of an IPv6 /64 as one client', async () => {
+      expect(await tracker('2001:db8::1')).toBe(await tracker('2001:db8::2'));
+    });
+
+    it('counts IPv4 addresses separately', async () => {
+      expect(await tracker('203.0.113.7')).not.toBe(
+        await tracker('203.0.113.8'),
+      );
+    });
+  });
 });

@@ -20,6 +20,7 @@ describe('ReactionsService', () => {
       findUnique: jest.fn(),
     },
     messageReaction: {
+      findMany: jest.fn(),
       upsert: jest.fn(),
       deleteMany: jest.fn(),
     },
@@ -49,6 +50,7 @@ describe('ReactionsService', () => {
     service = unit;
 
     jest.clearAllMocks();
+    mockDatabaseService.messageReaction.findMany.mockResolvedValue([]);
     // No DM group, no block: non-DM tests never reach these, and a DM test
     // only sees one when it sets them up itself.
     mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue(null);
@@ -204,6 +206,52 @@ describe('ReactionsService', () => {
       ).rejects.toThrow(NotFoundException);
 
       expect(mockDatabaseService.messageReaction.upsert).not.toHaveBeenCalled();
+    });
+
+    it('refuses a new distinct emoji once the message already has 50', async () => {
+      const message = {
+        id: messageId,
+        channelId: 'channel-1',
+        directMessageGroupId: null,
+      };
+      mockDatabaseService.message.findUnique.mockResolvedValue(message);
+      mockDatabaseService.messageReaction.findMany.mockResolvedValue(
+        Array.from({ length: 50 }, (_, i) => ({ emoji: `emoji-${i}` })),
+      );
+
+      await expect(
+        service.addReaction(messageId, '🎉', userId1),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockDatabaseService.messageReaction.upsert).not.toHaveBeenCalled();
+    });
+
+    it('still allows adding to an emoji already present at the 50 limit', async () => {
+      const message = {
+        id: messageId,
+        channelId: 'channel-1',
+        directMessageGroupId: null,
+      };
+      mockDatabaseService.message.findUnique
+        .mockResolvedValueOnce(message)
+        .mockResolvedValueOnce({ ...message, reactions: [] });
+      mockDatabaseService.messageReaction.findMany.mockResolvedValue([
+        ...Array.from({ length: 49 }, (_, i) => ({ emoji: `emoji-${i}` })),
+        { emoji: '👍' },
+      ]);
+      mockDatabaseService.messageReaction.upsert.mockResolvedValue({});
+
+      await expect(
+        service.addReaction(messageId, '👍', userId2),
+      ).resolves.toBeDefined();
+
+      expect(mockDatabaseService.messageReaction.upsert).toHaveBeenCalledWith({
+        where: {
+          messageId_emoji_userId: { messageId, emoji: '👍', userId: userId2 },
+        },
+        create: { messageId, emoji: '👍', userId: userId2 },
+        update: {},
+      });
     });
   });
 

@@ -29,6 +29,16 @@ describe('LinkPreviewCard', () => {
     vi.restoreAllMocks();
   });
 
+  it('loads the third-party banner and favicon without sending a Referer', () => {
+    const { container } = renderWithTheme(<LinkPreviewCard preview={makePreview()} />);
+    const imgs = Array.from(container.querySelectorAll('img'));
+    expect(imgs.map((img) => img.getAttribute('src'))).toEqual([
+      'https://example.com/favicon.ico',
+      'https://example.com/banner.jpg',
+    ]);
+    for (const img of imgs) expect(img).toHaveAttribute('referrerpolicy', 'no-referrer');
+  });
+
   it('renders title, description, and site name correctly', () => {
     renderWithTheme(<LinkPreviewCard preview={makePreview()} />);
 

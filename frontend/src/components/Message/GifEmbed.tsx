@@ -26,6 +26,7 @@ export const GifEmbed: React.FC<GifEmbedProps> = React.memo(({ url, onError }) =
       src={url}
       alt="GIF"
       loading="lazy"
+      referrerPolicy="no-referrer"
       onClick={handleClick}
       onError={onError}
       sx={{

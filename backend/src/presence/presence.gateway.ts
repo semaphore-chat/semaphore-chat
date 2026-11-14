@@ -73,15 +73,31 @@ export class PresenceGateway
 
     // Only broadcast if this is the user's first connection
     if (wentOnline) {
-      this.websocketService.sendToAll(ServerEvents.USER_ONLINE, {
-        userId,
-        username: client.handshake.user.username,
-        displayName: client.handshake.user.displayName,
-        avatarUrl: client.handshake.user.avatarUrl,
-      });
+      await this.broadcastPresence(
+        ServerEvents.USER_ONLINE,
+        client.handshake.user,
+      );
     }
 
     return 'ACK';
+  }
+
+  /**
+   * Presence goes only to people connected to the user (shared communities,
+   * DM groups, accepted friends), never to every socket on the instance.
+   */
+  private async broadcastPresence(
+    event: typeof ServerEvents.USER_ONLINE | typeof ServerEvents.USER_OFFLINE,
+    user: UserEntity,
+  ): Promise<void> {
+    const rooms = await this.presenceService.presenceAudienceRooms(user.id);
+    if (rooms.length === 0) return;
+    this.websocketService.sendToRooms(rooms, event, {
+      userId: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+    });
   }
 
   /**
@@ -103,12 +119,10 @@ export class PresenceGateway
 
       // Only broadcast if this was the user's last connection
       if (wentOffline) {
-        this.websocketService.sendToAll(ServerEvents.USER_OFFLINE, {
-          userId,
-          username: client.handshake.user.username,
-          displayName: client.handshake.user.displayName,
-          avatarUrl: client.handshake.user.avatarUrl,
-        });
+        await this.broadcastPresence(
+          ServerEvents.USER_OFFLINE,
+          client.handshake.user,
+        );
       }
     }
   }

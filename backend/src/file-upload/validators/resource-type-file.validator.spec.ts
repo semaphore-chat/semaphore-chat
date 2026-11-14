@@ -16,7 +16,7 @@ const EXE_HEADER = Buffer.from([
   0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00,
 ]);
 
-/** Valid magic-byte content for each image MIME type used in tests. */
+/** Valid magic-byte content for each media MIME type used in tests. */
 const VALID_IMAGE_CONTENT: Record<string, Buffer> = {
   'image/jpeg': JPEG_HEADER,
   'image/jpg': JPEG_HEADER,
@@ -24,10 +24,18 @@ const VALID_IMAGE_CONTENT: Record<string, Buffer> = {
   'image/gif': GIF_HEADER,
   'image/webp': WEBP_HEADER,
   'image/svg+xml': Buffer.from('<svg xmlns="ht', 'utf8'),
+  'video/mp4': Buffer.from('\x00\x00\x00\x20ftypisom', 'latin1'),
+  'video/webm': Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
+  'audio/mpeg': Buffer.from('ID3\x04\x00', 'latin1'),
+  'audio/wav': Buffer.from('RIFF\x24\x00\x00\x00WAVE', 'latin1'),
+  'audio/x-wav': Buffer.from('RIFF\x24\x00\x00\x00WAVE', 'latin1'),
+  'audio/ogg': Buffer.from('OggS', 'latin1'),
+  'audio/webm': Buffer.from([0x1a, 0x45, 0xdf, 0xa3]),
+  'audio/aac': Buffer.from([0xff, 0xf1, 0x50, 0x80]),
 };
 
 /**
- * Build a multer file. Image MIME types get matching magic-byte content by
+ * Build a multer file. Media MIME types get matching magic-byte content by
  * default (overridable via `buffer`) so the content check passes.
  */
 const makeFile = (
@@ -397,6 +405,57 @@ describe('ResourceTypeFileValidator', () => {
 
       expect(message).toContain('does not match the declared type');
       expect(message).toContain('image/png');
+    });
+
+    it('refuses an image over the pixel cap with a size message', async () => {
+      const ihdr = Buffer.alloc(33);
+      PNG_HEADER.copy(ihdr);
+      ihdr.writeUInt32BE(13, 8);
+      ihdr.write('IHDR', 12, 'latin1');
+      ihdr.writeUInt32BE(20000, 16);
+      ihdr.writeUInt32BE(20000, 20);
+
+      for (const resourceType of [
+        ResourceType.MESSAGE_ATTACHMENT,
+        ResourceType.USER_AVATAR,
+        ResourceType.CUSTOM_EMOJI,
+      ]) {
+        const validator = new ResourceTypeFileValidator({ resourceType });
+        const file = makeFile({ mimetype: 'image/png', buffer: ihdr });
+
+        expect(await validator.isValid(file)).toBe(false);
+        expect(validator.buildErrorMessage(file)).toContain(
+          'Image is too large (20000×20000)',
+        );
+      }
+    });
+
+    it('accepts an image whose size cannot be read (the decode cap still applies)', async () => {
+      const validator = new ResourceTypeFileValidator({
+        resourceType: ResourceType.MESSAGE_ATTACHMENT,
+      });
+      // A bare PNG signature: valid magic bytes, no IHDR
+      expect(await validator.isValid(makeFile({ mimetype: 'image/png' }))).toBe(
+        true,
+      );
+    });
+
+    it('refuses an executable declared as a video or audio attachment', async () => {
+      for (const mimetype of ['video/x-msvideo', 'video/mp4', 'audio/mpeg']) {
+        const validator = new ResourceTypeFileValidator({
+          resourceType: ResourceType.MESSAGE_ATTACHMENT,
+        });
+        const file = makeFile({
+          originalname: 'holiday-video.cpl',
+          mimetype,
+          buffer: EXE_HEADER,
+        });
+
+        expect(await validator.isValid(file)).toBe(false);
+        expect(validator.buildErrorMessage(file)).toContain(
+          'does not match the declared type',
+        );
+      }
     });
 
     it('should build error message for invalid resource type', () => {

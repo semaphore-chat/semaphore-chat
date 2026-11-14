@@ -69,6 +69,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Build AppImage, .deb and .rpm
         env:
           SEMAPHORE_VERSION: ${{ inputs.version }}
@@ -92,6 +94,8 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Install the toolchain from rust-toolchain.toml
         run: rustup toolchain install
       # gpui-pre-windows compiles its D3D11 shaders with fxc in release, as in native-spike.yml.

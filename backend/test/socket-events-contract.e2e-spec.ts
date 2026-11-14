@@ -198,12 +198,33 @@ describe('Socket event contract (e2e)', () => {
   });
 
   it('presence: USER_ONLINE and USER_OFFLINE', async () => {
-    const extra = await connect('extra', token.extra);
-    await extra.timeout(5000).emitWithAck(ClientEvents.PRESENCE_ONLINE, {});
-    await seen(ServerEvents.USER_ONLINE, (p) => p.userId === account.extra.id);
+    // Presence only goes to people connected to the user (a shared
+    // community, a DM, or an accepted friendship): make `extra` the owner's
+    // friend for this test, so a watching socket is in the audience.
+    const database = app.get(DatabaseService);
+    const friendship = await database.friendship.create({
+      data: {
+        userAId: account.owner.id,
+        userBId: account.extra.id,
+        status: 'ACCEPTED',
+      },
+    });
+    try {
+      const extra = await connect('extra', token.extra);
+      await extra.timeout(5000).emitWithAck(ClientEvents.PRESENCE_ONLINE, {});
+      await seen(
+        ServerEvents.USER_ONLINE,
+        (p) => p.userId === account.extra.id,
+      );
 
-    extra.close();
-    await seen(ServerEvents.USER_OFFLINE, (p) => p.userId === account.extra.id);
+      extra.close();
+      await seen(
+        ServerEvents.USER_OFFLINE,
+        (p) => p.userId === account.extra.id,
+      );
+    } finally {
+      await database.friendship.delete({ where: { id: friendship.id } });
+    }
   });
 
   it('typing: USER_TYPING', async () => {
