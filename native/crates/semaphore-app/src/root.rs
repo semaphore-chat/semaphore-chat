@@ -396,8 +396,13 @@ impl AppRoot {
             core: core.clone(),
             exec: services.exec.clone(),
             store: files::store(),
-            previews: Arc::new(PreviewFetcher::new(
+            previews: Arc::new(PreviewFetcher::with_destinations(
                 self.config.settings.get().third_party_media,
+                if self.config.media_allow_private {
+                    files::destinations::Destinations::AlsoPrivate
+                } else {
+                    files::destinations::Destinations::PublicOnly
+                },
             )),
             arrived,
             community: std::cell::RefCell::new(None),

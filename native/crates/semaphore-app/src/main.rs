@@ -307,6 +307,8 @@ fn main() -> ExitCode {
                 keep_awake: Some(Arc::new(
                     semaphore_platform_desktop::keep_awake::DesktopKeepAwake::new(),
                 )),
+                // Pictures from other sites never load from private addresses in the app.
+                media_allow_private: false,
             };
             let bounds =
                 semaphore_app::desktop::opening_bounds(config.settings.get().window.as_ref(), cx);

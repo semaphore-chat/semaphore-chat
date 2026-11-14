@@ -1468,6 +1468,8 @@ impl Rig {
             links: Some(self.links.clone()),
             // Never the machine's sleep inhibitor: one that only remembers.
             keep_awake: Some(self.keep_awake.clone()),
+            // The scenario's link images come from the fake server on 127.0.0.1.
+            media_allow_private: true,
             // W13: the loopback feed, or nothing to check (the shipped default).
             update: match &self.update {
                 Some(feed) => semaphore_app::update::UpdateStart::On(Box::new(

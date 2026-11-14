@@ -22,6 +22,7 @@
 //!   dialog, so nothing is saved, or shown, on the machine running them.
 
 pub mod budget;
+pub mod destinations;
 
 use crate::runtime::Exec;
 use gpui_kit::{AssetSource, Resource, SharedString};
@@ -420,6 +421,8 @@ pub struct PreviewFetcher {
     allowed: std::sync::atomic::AtomicBool,
     pub requests: AtomicUsize,
     client: OnceLock<Option<reqwest::Client>>,
+    /// Where it may connect: public addresses only, but in the rig ([`destinations`]).
+    destinations: destinations::Destinations,
 }
 
 /// What a preview fetch may take.
@@ -437,11 +440,19 @@ pub const PREVIEW_TIMEOUT: Duration = Duration::from_secs(10);
 pub const PREVIEW_MAX_REDIRECTS: usize = 3;
 
 impl PreviewFetcher {
+    /// A fetcher that reaches public addresses only.
     pub fn new(allowed: bool) -> Self {
+        Self::with_destinations(allowed, destinations::Destinations::PublicOnly)
+    }
+
+    /// A fetcher with its own destination rule: `AlsoPrivate` only for the rig
+    /// (`AppConfig::media_allow_private`).
+    pub fn with_destinations(allowed: bool, destinations: destinations::Destinations) -> Self {
         Self {
             allowed: std::sync::atomic::AtomicBool::new(allowed),
             requests: AtomicUsize::new(0),
             client: OnceLock::new(),
+            destinations,
         }
     }
 
@@ -458,12 +469,19 @@ impl PreviewFetcher {
         self.client
             .get_or_init(|| {
                 let tls = semaphore_net::tls_client_config().ok()?;
+                let destinations = self.destinations.clone();
                 reqwest::Client::builder()
                     .tls_backend_preconfigured(rustls::ClientConfig::clone(&tls))
                     .user_agent("Mozilla/5.0 (compatible; link preview)")
-                    .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                    // Names resolve to allowed addresses only, and reqwest connects to exactly
+                    // those. The environment's proxy is kept: through one, the proxy resolves
+                    // names, so only IP literals are filtered (by the checks on each URL).
+                    .dns_resolver(destinations::resolver(self.destinations.clone()))
+                    .redirect(reqwest::redirect::Policy::custom(move |attempt| {
                         if !fetchable_url(attempt.url()) {
                             attempt.error("a redirect left http(s) or went nowhere")
+                        } else if !destinations.allows_url(attempt.url()) {
+                            attempt.error("a redirect went to a private address")
                         } else if attempt.previous().len() > PREVIEW_MAX_REDIRECTS {
                             attempt.error("too many redirects")
                         } else {
@@ -490,7 +508,7 @@ impl PreviewFetcher {
             return Err("link preview images are off".into());
         }
         let parsed = reqwest::Url::parse(url).map_err(|error| error.to_string())?;
-        if !fetchable_url(&parsed) {
+        if !fetchable_url(&parsed) || !self.destinations.allows_url(&parsed) {
             return Err(format!("not fetching {parsed}"));
         }
         let client = self.client().ok_or("no HTTP client")?;
@@ -1192,6 +1210,84 @@ mod tests {
         (format!("http://{address}"), hits)
     }
 
+    /// The same, listening on another loopback address (Linux routes all of 127/8).
+    async fn serve_at(ip: &str, answers: Vec<String>) -> (String, Arc<AtomicUsize>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind((ip, 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counted = hits.clone();
+        tokio::spawn(async move {
+            for answer in answers {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                counted.fetch_add(1, Ordering::SeqCst);
+                let mut buffer = [0u8; 4096];
+                let _ = stream.read(&mut buffer).await;
+                let _ = stream.write_all(answer.as_bytes()).await;
+            }
+        });
+        (format!("http://{address}"), hits)
+    }
+
+    /// A fetcher that may also reach the tests' own server on 127.0.0.1, and nothing else
+    /// private.
+    fn local_fetcher(allowed: bool) -> PreviewFetcher {
+        PreviewFetcher::with_destinations(
+            allowed,
+            destinations::Destinations::PublicAnd(vec!["127.0.0.1".parse().unwrap()]),
+        )
+    }
+
+    /// NAT-6: with the switch on, nothing on the viewer's own machine or network is asked for:
+    /// not by literal address, not by a name that resolves there.
+    #[tokio::test]
+    async fn the_fetcher_never_reaches_loopback_or_private_addresses() {
+        semaphore_net::install_crypto_provider();
+        let (url, hits) = serve(vec![answer("200 OK", "image/png", "x"); 4]).await;
+        let port = url.rsplit(':').next().unwrap().to_owned();
+        let fetcher = PreviewFetcher::new(true);
+        for target in [
+            format!("{url}/a.png"),
+            format!("http://localhost:{port}/a.png"),
+            format!("http://[::ffff:127.0.0.1]:{port}/a.png"),
+            format!("http://2130706433:{port}/a.png"),
+        ] {
+            assert!(fetcher.fetch(&target).await.is_err(), "{target}");
+        }
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+    }
+
+    /// Every redirect hop is checked: an allowed server can't send the fetch on to a private one.
+    #[tokio::test]
+    async fn a_redirect_into_a_private_address_is_not_followed() {
+        semaphore_net::install_crypto_provider();
+        let (private, private_hits) =
+            serve_at("127.0.0.2", vec![answer("200 OK", "image/png", "x"); 2]).await;
+        let redirect = format!(
+            "HTTP/1.1 302 Found\r\nLocation: {private}/a.png\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let (allowed, allowed_hits) = serve(vec![redirect]).await;
+        let fetcher = local_fetcher(true);
+        assert!(
+            fetcher
+                .fetch(&format!("{allowed}/start.png"))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            allowed_hits.load(Ordering::SeqCst),
+            1,
+            "the first hop was asked"
+        );
+        assert_eq!(
+            private_hits.load(Ordering::SeqCst),
+            0,
+            "the second never was"
+        );
+    }
+
     fn answer(status: &str, content_type: &str, body: &str) -> String {
         format!(
             "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -1211,7 +1307,7 @@ mod tests {
     #[tokio::test]
     async fn only_http_images_under_the_cap_come_back() {
         semaphore_net::install_crypto_provider();
-        let fetcher = PreviewFetcher::new(true);
+        let fetcher = local_fetcher(true);
         assert!(fetcher.fetch("data:image/png;base64,AAAA").await.is_err());
         assert!(fetcher.fetch("file:///etc/passwd").await.is_err());
         assert_eq!(
@@ -1264,7 +1360,7 @@ mod tests {
                 let _ = stream.write_all(answer.as_bytes()).await;
             }
         });
-        let fetcher = PreviewFetcher::new(true);
+        let fetcher = local_fetcher(true);
         assert!(fetcher.fetch(&format!("{base}/start")).await.is_err());
         assert_eq!(hops.load(Ordering::SeqCst), PREVIEW_MAX_REDIRECTS + 1);
     }
@@ -1312,7 +1408,7 @@ mod tests {
             semaphore_net::install_crypto_provider();
             let (arrived, landed) = async_channel::unbounded();
             Self {
-                previews: Arc::new(PreviewFetcher::new(on)),
+                previews: Arc::new(local_fetcher(on)),
                 store: Arc::default(),
                 exec: Exec::new(tokio::runtime::Handle::current(), Arc::default()),
                 arrived,
@@ -1452,7 +1548,7 @@ mod tests {
     #[test]
     fn turning_off_purges_third_party_pictures_but_keeps_files() {
         let store = FileStore::default();
-        let previews = PreviewFetcher::new(true);
+        let previews = local_fetcher(true);
         let file = file_path("abc", false);
         let gif = third_party_path(ThirdPartyKind::Gif, "http://a/x.gif");
         let link = third_party_path(ThirdPartyKind::LinkImage, "http://a/x.png");
@@ -1599,7 +1695,7 @@ mod tests {
             binary_answer("image/gif", &six_mib),
         ])
         .await;
-        let fetcher = PreviewFetcher::new(true);
+        let fetcher = local_fetcher(true);
         let url = format!("{base}/big.gif");
         assert!(
             fetcher.fetch(&url).await.is_err(),

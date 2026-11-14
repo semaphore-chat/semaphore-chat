@@ -95,6 +95,10 @@ pub struct AppConfig {
     /// (`DesktopKeepAwake`) in the app, a recorder in the rig, `None` for none. Never the
     /// desktop's in tests or rigs.
     pub keep_awake: Option<Arc<dyn semaphore_core::platform::KeepAwake>>,
+    /// Lets pictures from other sites load from loopback and private addresses. Only the slice
+    /// rig sets it (its fake server, which serves the scenario's link images, is on 127.0.0.1);
+    /// `main` always passes `false`, and no setting or environment variable reaches it.
+    pub media_allow_private: bool,
 }
 
 /// `AppConfig::open_url`.
