@@ -72,7 +72,7 @@ describe('ModerationService', () => {
   });
 
   /** The payload of the `event` sent to `room`, if any. */
-  const sentTo = (room: string, event: string) =>
+  const sentTo = (room: string, event: ServerEvents) =>
     websocketService.sendToRoom.mock.calls.find(
       ([r, e]) => r === room && e === event,
     )?.[2];
@@ -491,7 +491,14 @@ describe('ModerationService', () => {
         return Promise.resolve([]);
       });
 
-      await service.banUser(communityId, userId, moderatorId, 'spam');
+      const banExpiresAt = new Date('2026-10-06T13:00:00.000Z');
+      await service.banUser(
+        communityId,
+        userId,
+        moderatorId,
+        'spam',
+        banExpiresAt,
+      );
 
       expect(mockTx.communityBan.upsert).toHaveBeenCalled();
       expect(mockTx.membership.delete).toHaveBeenCalled();
@@ -523,9 +530,19 @@ describe('ModerationService', () => {
         expect.objectContaining({ communityId, userId }),
       );
       // RT-4: the community hears who, not by whom or why; the target does
-      expect(sentTo(RoomName.community(communityId), ServerEvents.USER_BANNED)).toEqual({ communityId, userId, expiresAt: undefined });
+      expect(
+        sentTo(RoomName.community(communityId), ServerEvents.USER_BANNED),
+      ).toEqual({
+        communityId,
+        userId,
+        expiresAt: banExpiresAt.toISOString(),
+      });
       expect(sentTo(RoomName.user(userId), ServerEvents.USER_BANNED)).toEqual(
-        expect.objectContaining({ moderatorId, reason: 'spam' }),
+        expect.objectContaining({
+          moderatorId,
+          reason: 'spam',
+          expiresAt: banExpiresAt.toISOString(),
+        }),
       );
       // removeMemberInternal removes role assignments via a raw
       // tx.userRoles.deleteMany, bypassing CommunityRolesService — banUser must
@@ -846,7 +863,9 @@ describe('ModerationService', () => {
         expect.objectContaining({ communityId, userId }),
       );
       // RT-4: the community hears who, not by whom or why; the target does
-      expect(sentTo(RoomName.community(communityId), ServerEvents.USER_KICKED)).toEqual({ communityId, userId });
+      expect(
+        sentTo(RoomName.community(communityId), ServerEvents.USER_KICKED),
+      ).toEqual({ communityId, userId });
       expect(sentTo(RoomName.user(userId), ServerEvents.USER_KICKED)).toEqual(
         expect.objectContaining({ moderatorId, reason: 'rule violation' }),
       );
@@ -905,15 +924,17 @@ describe('ModerationService', () => {
         expect.objectContaining({ communityId, userId }),
       );
       // RT-4: the community hears who, not by whom or why; the target does
-      expect(sentTo(RoomName.community(communityId), ServerEvents.USER_TIMED_OUT)).toEqual({
+      expect(
+        sentTo(RoomName.community(communityId), ServerEvents.USER_TIMED_OUT),
+      ).toEqual({
         communityId,
         userId,
         durationSeconds: 600,
         expiresAt: expect.any(String),
       });
-      expect(sentTo(RoomName.user(userId), ServerEvents.USER_TIMED_OUT)).toEqual(
-        expect.objectContaining({ moderatorId, reason: 'cool down' }),
-      );
+      expect(
+        sentTo(RoomName.user(userId), ServerEvents.USER_TIMED_OUT),
+      ).toEqual(expect.objectContaining({ moderatorId, reason: 'cool down' }));
       // Timeouts don't touch UserRoles/Role and aren't consulted by
       // PermissionsService — no epoch bump is expected.
       expect(permissionsCacheService.bumpUserEpoch).not.toHaveBeenCalled();
@@ -1008,7 +1029,7 @@ describe('ModerationService', () => {
       mockDatabase.communityTimeout.delete.mockResolvedValue({} as any);
       mockDatabase.moderationLog.create.mockResolvedValue({} as any);
 
-      await service.removeTimeout(communityId, userId, moderatorId);
+      await service.removeTimeout(communityId, userId, moderatorId, 'mistake');
 
       expect(mockDatabase.communityTimeout.delete).toHaveBeenCalled();
       // The pending expiry job is no longer needed
@@ -1033,10 +1054,12 @@ describe('ModerationService', () => {
         expect.objectContaining({ communityId, userId }),
       );
       // RT-4: the community hears who, not by whom or why; the target does
-      expect(sentTo(RoomName.community(communityId), ServerEvents.TIMEOUT_REMOVED)).toEqual({ communityId, userId });
-      expect(sentTo(RoomName.user(userId), ServerEvents.TIMEOUT_REMOVED)).toEqual(
-        expect.objectContaining({ moderatorId }),
-      );
+      expect(
+        sentTo(RoomName.community(communityId), ServerEvents.TIMEOUT_REMOVED),
+      ).toEqual({ communityId, userId });
+      expect(
+        sentTo(RoomName.user(userId), ServerEvents.TIMEOUT_REMOVED),
+      ).toEqual(expect.objectContaining({ moderatorId, reason: 'mistake' }));
     });
 
     it('should throw NotFoundException when timeout does not exist', async () => {
