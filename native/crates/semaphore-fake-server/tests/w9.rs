@@ -460,3 +460,52 @@ async fn marking_a_dm_read_records_a_watermark_the_readers_route_sees() {
     assert_eq!(readers.len(), 1, "{body}");
     assert_eq!(readers[0].user_id, semaphore_fake_server::entity_uuid("me"));
 }
+
+/// A script can sign in as someone else (`sign_in_as`). Their read is then *their* watermark: a
+/// mark recorded against the scenario's own user would name someone who never read, and would make
+/// a "Seen by" that a client asks for at the same moment depend on which request the server
+/// happened to answer first (w5 did, and it flaked).
+#[tokio::test]
+async fn marking_a_channel_read_records_the_callers_watermark() {
+    let (server, client, base) = showcase().await;
+    let channel = semaphore_fake_server::entity_uuid("cc-general");
+    let message = semaphore_fake_server::message_uuid("sc-msg-11");
+    let pri = semaphore_fake_server::entity_uuid("u-priya");
+
+    server.sign_in_as("pri", &pri);
+    let (status, login) = call_as(
+        &client,
+        reqwest::Method::POST,
+        &base,
+        "/api/auth/login",
+        Some(json!({ "username": "pri", "password": "Password123!" })),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{login}");
+    let token = login["accessToken"].as_str().expect("a token").to_owned();
+    let (status, receipt) = call_as(
+        &client,
+        reqwest::Method::POST,
+        &base,
+        "/api/read-receipts/mark-read",
+        Some(json!({ "lastReadMessageId": message, "channelId": channel })),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, 200, "{receipt}");
+    assert_eq!(receipt["userId"], pri);
+
+    // `me` asking who has read it names pri.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/api/read-receipts/message/{message}/readers?channelId={channel}"),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let readers: Vec<wire::MessageReaderDto> = decode(&body);
+    assert_eq!(readers.len(), 1, "{body}");
+    assert_eq!(readers[0].user_id, pri);
+    assert_eq!(readers[0].username, "pri");
+}

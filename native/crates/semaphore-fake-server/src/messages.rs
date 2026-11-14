@@ -866,12 +866,12 @@ pub(crate) fn unread_counts(inner: &Inner) -> Value {
 
 pub(crate) fn mark_read(
     inner: &Inner,
+    user: &str,
     channel_id: Option<&str>,
     dm_id: Option<&str>,
     last_read_message_id: &str,
 ) -> Value {
     let now = inner.now();
-    let user = inner.scenario.me.id.clone();
     let context = channel_id.or(dm_id);
     {
         let mut data = lock(&inner.data);
@@ -879,9 +879,10 @@ pub(crate) fn mark_read(
             if let Some(counts) = data.unread.get_mut(context) {
                 *counts = (0, 0);
             }
-            // The watermark the readers routes compare with: `markAsRead` stamps the receipt.
+            // The watermark the readers routes compare with: `markAsRead` stamps the caller's
+            // receipt, as the backend's does (a script may sign in as anyone, `sign_in_as`).
             data.receipts
-                .insert((context.to_owned(), user.clone()), now);
+                .insert((context.to_owned(), user.to_owned()), now);
         }
     }
     let mut body = json!({

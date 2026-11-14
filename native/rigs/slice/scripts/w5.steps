@@ -19,6 +19,10 @@ server act_as "{\"communityId\": \"$ID(c-couch)\", \"roleIds\": [\"$ID(role-mode
 server act_as "{\"communityId\": \"$ID(c-couch)\", \"roleIds\": [\"$ID(role-community-admin-c-couch)\"]}"
 server sign_in_as "{\"username\": \"dropbear\", \"userId\": \"$ID(u-marcus)\"}"
 server sign_in_as "{\"username\": \"pri\", \"userId\": \"$ID(u-priya)\"}"
+# alexk has read #general: "Seen by alexk" under Marcus's message is data, so it is in the first
+# readers answer whatever order this client's own mark-as-read lands in (a channel's receipts stay
+# private, so nothing tells the app to ask again). W9's channel step plants its receipt the same way.
+server read_receipt "{\"channelId\": \"$ID(cc-general)\", \"userId\": \"$ID(me)\", \"at\": \"2030-01-01T00:00:00Z\"}"
 click auth-connect
 wait core session signed-out within 5
 wait idle

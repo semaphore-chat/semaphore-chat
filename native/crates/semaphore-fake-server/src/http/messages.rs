@@ -1,6 +1,8 @@
 //! Message pages, sends, reactions and read receipts.
 
-use super::{failure_response, invalid, json_response, limit_query, page_query, parse, typed};
+use super::{
+    bearer_token, failure_response, invalid, json_response, limit_query, page_query, parse, typed,
+};
 use crate::messages::{self, SendBody, SendTarget};
 use crate::{Inner, lock};
 use axum::Router;
@@ -304,7 +306,7 @@ async fn remove_reaction(State(inner): State<Arc<Inner>>, body: Bytes) -> Respon
     }
 }
 
-async fn mark_read(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
+async fn mark_read(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: Bytes) -> Response {
     let Ok(value) = parse(&body) else {
         return invalid("The request body is not valid JSON");
     };
@@ -314,8 +316,9 @@ async fn mark_read(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     let channel = value.get("channelId").and_then(Value::as_str);
     let group = value.get("directMessageGroupId").and_then(Value::as_str);
     // As the backend's `markReadAndAnnounce`: notifications of the context are read and the
-    // receipt goes out over the socket.
-    match crate::socket::announce_read(&inner, &inner.scenario.me.id, channel, group, last_read) {
+    // receipt goes out over the socket. The receipt is the caller's.
+    let user = inner.user_of(bearer_token(&headers));
+    match crate::socket::announce_read(&inner, &user, channel, group, last_read) {
         Ok(receipt) => json_response(StatusCode::OK, receipt),
         Err(message) => inner.error(400, "BAD_REQUEST", message, false),
     }
