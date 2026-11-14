@@ -17,6 +17,7 @@ describe('WebsocketService', () => {
     setServer: (server: unknown) => void;
     sendToRoom: (room: string, event: string, payload: unknown) => boolean;
     sendToAll: (event: string, payload: unknown) => boolean;
+    sendToRooms: (rooms: string[], event: string, payload: unknown) => boolean;
     joinSocketsToRoom: (source: string, rooms: string | string[]) => void;
     removeSocketsFromRoom: (source: string, rooms: string | string[]) => void;
   };
@@ -62,6 +63,28 @@ describe('WebsocketService', () => {
 
       expect(mockServer1.emit).toHaveBeenCalledWith('event1', {});
       expect(mockServer2.emit).toHaveBeenCalledWith('event2', {});
+    });
+  });
+
+  describe('sendToRooms', () => {
+    it('emits once to the union of rooms', () => {
+      const mockEmit = jest.fn();
+      const mockTo = jest.fn().mockReturnValue({ emit: mockEmit });
+      service.setServer({ to: mockTo } as any);
+
+      expect(looseService.sendToRooms(['a', 'b'], 'ev', { x: 1 })).toBe(true);
+
+      expect(mockTo).toHaveBeenCalledTimes(1);
+      expect(mockTo).toHaveBeenCalledWith(['a', 'b']);
+      expect(mockEmit).toHaveBeenCalledWith('ev', { x: 1 });
+    });
+
+    it('does nothing for an empty list', () => {
+      const mockTo = jest.fn();
+      service.setServer({ to: mockTo } as any);
+
+      expect(looseService.sendToRooms([], 'ev', {})).toBe(false);
+      expect(mockTo).not.toHaveBeenCalled();
     });
   });
 

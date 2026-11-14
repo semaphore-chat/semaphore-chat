@@ -34,6 +34,7 @@ export type MockWebsocketService = {
   joinSocketsToRoom: jest.Mock;
   setServer: jest.Mock;
   sendToAll: jest.Mock;
+  sendToRooms: jest.Mock;
 };
 
 export function createMockWebsocketService(): MockWebsocketService {
@@ -96,6 +97,7 @@ export function createMockWebsocketService(): MockWebsocketService {
     joinSocketsToRoom: jest.fn().mockResolvedValue(undefined),
     setServer: jest.fn(),
     sendToAll: jest.fn(),
+    sendToRooms: jest.fn(),
   };
 }
 

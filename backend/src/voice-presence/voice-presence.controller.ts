@@ -194,6 +194,31 @@ export class DmVoicePresenceController {
     };
   }
 
+  @Post('deafen')
+  @RequiredActions(RbacActions.READ_MESSAGE)
+  @RbacResource({
+    type: RbacResourceType.DM_GROUP,
+    idKey: 'dmGroupId',
+    source: ResourceIdSource.PARAM,
+  })
+  @ApiCreatedResponse({ type: RefreshDmPresenceResponseDto })
+  async updateDmDeafenState(
+    @Param('dmGroupId') dmGroupId: string,
+    @Body() body: UpdateDeafenStateDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<RefreshDmPresenceResponseDto> {
+    await this.voicePresenceService.updateDmDeafenState(
+      dmGroupId,
+      req.user.id,
+      body.isDeafened,
+    );
+    return {
+      success: true,
+      message: `Deafen state updated to ${body.isDeafened}`,
+      dmGroupId,
+    };
+  }
+
   @Post('decline')
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({

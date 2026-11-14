@@ -1,0 +1,85 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- /*
+Ingress-only policies: the backend and frontend accept traffic from the
+ingress controller (and the backend from the frontend), the bundled
+PostgreSQL and Redis only from the backend (its pods and migration Job).
+NetworkPolicies add up: the Bitnami subcharts render their own policies,
+which by default admit every pod (allowExternal: true). Set
+postgresql.primary.networkPolicy.allowExternal=false and
+redis.networkPolicy.allowExternal=false for these to restrict anything.
+*/ -}}
+{{- $fullname := include "semaphore-chat.fullname" . }}
+{{- $ingressPeer := dict "namespaceSelector" .Values.networkPolicy.ingressController.namespaceSelector }}
+{{- with .Values.networkPolicy.ingressController.podSelector }}
+{{- $_ := set $ingressPeer "podSelector" . }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-backend-ingress
+  labels:
+    {{- include "semaphore-chat.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "semaphore-chat.backend.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - {{- toYaml $ingressPeer | nindent 10 }}
+        - podSelector:
+            matchLabels:
+              {{- include "semaphore-chat.frontend.selectorLabels" . | nindent 14 }}
+        {{- with .Values.networkPolicy.extraBackendFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - port: 3000
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-frontend-ingress
+  labels:
+    {{- include "semaphore-chat.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "semaphore-chat.frontend.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - {{- toYaml $ingressPeer | nindent 10 }}
+      ports:
+        - port: 5173
+          protocol: TCP
+{{- range $component := list "postgresql" "redis" }}
+{{- if (index $.Values $component).bundled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-{{ $component }}-ingress
+  labels:
+    {{- include "semaphore-chat.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $component }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "semaphore-chat.backend.selectorLabels" $ | nindent 14 }}
+      ports:
+        - port: {{ if eq $component "postgresql" }}5432{{ else }}6379{{ end }}
+          protocol: TCP
+{{- end }}
+{{- end }}
+{{- end }}

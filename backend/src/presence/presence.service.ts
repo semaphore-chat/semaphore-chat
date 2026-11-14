@@ -1,6 +1,8 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import Redis from 'ioredis';
+import { DatabaseService } from '@/database/database.service';
+import { RoomName } from '@/common/utils/room-name.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 const ONLINE_USERS_SET = 'presence:online-users';
@@ -11,7 +13,107 @@ const DEFAULT_TTL_SECONDS = 60; // 1 minute, can be adjusted
 
 @Injectable()
 export class PresenceService {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly databaseService: DatabaseService,
+  ) {}
+
+  /**
+   * Rooms that receive a user's online/offline events: every community the
+   * user belongs to, every DM group they are in, and the personal room of
+   * each accepted friend. Ids only.
+   */
+  async presenceAudienceRooms(userId: string): Promise<string[]> {
+    const [memberships, dms, friendships] = await Promise.all([
+      this.databaseService.membership.findMany({
+        where: { userId },
+        select: { communityId: true },
+      }),
+      this.databaseService.directMessageGroupMember.findMany({
+        where: { userId },
+        select: { groupId: true },
+      }),
+      this.databaseService.friendship.findMany({
+        where: {
+          status: 'ACCEPTED',
+          OR: [{ userAId: userId }, { userBId: userId }],
+        },
+        select: { userAId: true, userBId: true },
+      }),
+    ]);
+
+    const rooms = new Set<string>();
+    for (const m of memberships) rooms.add(RoomName.community(m.communityId));
+    for (const d of dms) rooms.add(RoomName.dmGroup(d.groupId));
+    for (const f of friendships) {
+      rooms.add(RoomName.user(f.userAId === userId ? f.userBId : f.userAId));
+    }
+    return [...rooms];
+  }
+
+  /**
+   * The ids among `userIds` whose presence `viewerId` may see: the viewer,
+   * users sharing a community, accepted friends and DM-group partners.
+   */
+  async visibleUserIds(
+    viewerId: string,
+    userIds: string[],
+  ): Promise<Set<string>> {
+    const visible = new Set<string>();
+    if (userIds.length === 0) return visible;
+    if (userIds.includes(viewerId)) visible.add(viewerId);
+    const others = userIds.filter((id) => id !== viewerId);
+    if (others.length === 0) return visible;
+
+    const [myCommunities, myDmGroups, friendships] = await Promise.all([
+      this.databaseService.membership.findMany({
+        where: { userId: viewerId },
+        select: { communityId: true },
+      }),
+      this.databaseService.directMessageGroupMember.findMany({
+        where: { userId: viewerId },
+        select: { groupId: true },
+      }),
+      this.databaseService.friendship.findMany({
+        where: {
+          status: 'ACCEPTED',
+          OR: [
+            { userAId: viewerId, userBId: { in: others } },
+            { userBId: viewerId, userAId: { in: others } },
+          ],
+        },
+        select: { userAId: true, userBId: true },
+      }),
+    ]);
+
+    for (const f of friendships) {
+      visible.add(f.userAId === viewerId ? f.userBId : f.userAId);
+    }
+
+    const [mates, partners] = await Promise.all([
+      myCommunities.length
+        ? this.databaseService.membership.findMany({
+            where: {
+              userId: { in: others },
+              communityId: { in: myCommunities.map((c) => c.communityId) },
+            },
+            select: { userId: true },
+          })
+        : [],
+      myDmGroups.length
+        ? this.databaseService.directMessageGroupMember.findMany({
+            where: {
+              userId: { in: others },
+              groupId: { in: myDmGroups.map((g) => g.groupId) },
+            },
+            select: { userId: true },
+          })
+        : [],
+    ]);
+    for (const m of mates) visible.add(m.userId);
+    for (const p of partners) visible.add(p.userId);
+    return visible;
+  }
 
   /**
    * Register a new connection for a user.

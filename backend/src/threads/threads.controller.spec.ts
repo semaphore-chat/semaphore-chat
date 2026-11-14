@@ -91,6 +91,40 @@ describe('ThreadsController', () => {
         'viewer-1',
       );
     });
+
+    it('should hold a negative limit at 1', async () => {
+      threadsService.getThreadRepliesWithMetadata.mockResolvedValue({
+        replies: [],
+        continuationToken: undefined,
+      });
+
+      const req = { user: { id: 'viewer-1' } } as never;
+      await controller.getReplies('parent-msg-123', -5, req);
+
+      expect(threadsService.getThreadRepliesWithMetadata).toHaveBeenCalledWith(
+        'parent-msg-123',
+        1,
+        undefined,
+        'viewer-1',
+      );
+    });
+
+    it('should cap an oversized limit at 100', async () => {
+      threadsService.getThreadRepliesWithMetadata.mockResolvedValue({
+        replies: [],
+        continuationToken: undefined,
+      });
+
+      const req = { user: { id: 'viewer-1' } } as never;
+      await controller.getReplies('parent-msg-123', 500, req);
+
+      expect(threadsService.getThreadRepliesWithMetadata).toHaveBeenCalledWith(
+        'parent-msg-123',
+        100,
+        undefined,
+        'viewer-1',
+      );
+    });
   });
 
   describe('getMetadata', () => {

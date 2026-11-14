@@ -36,6 +36,7 @@ jobs:
           # tag, and under test-release-assembly.sh below: a shallow checkout has only the pull
           # request's merge commit, whose changes --no-merges leaves out.
           fetch-depth: 0
+          persist-credentials: false
       # The release and packaging scripts, which nothing else runs before a native-v* tag goes
       # out: assembly and the manifest checks with a throwaway key, and the installer compiled in
       # the NSIS image (native/docker/Dockerfile.nsis). First, so a break here shows up in
@@ -64,6 +65,8 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Deliberately outside the image and with no NDK or Xcode: rustup's targets alone must
       # be enough. If core gains a C build this fails, as the boundary check does.
       - name: Install the toolchain from rust-toolchain.toml
@@ -84,6 +87,8 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Install the toolchain from rust-toolchain.toml
         run: rustup toolchain install
       # gpui-pre-windows is our patched copy, so the release build below compiles the video

@@ -37,6 +37,7 @@ import {
   ThreadMetadataDto,
 } from './dto/thread-response.dto';
 import { MessageDto } from '@/messages/dto/message-response.dto';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 
 /**
  * Controller for thread operations.
@@ -91,7 +92,7 @@ export class ThreadsController {
     @Req() req: AuthenticatedRequest,
     @Query('continuationToken') continuationToken?: string,
   ): Promise<ThreadRepliesResponseDto> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     return this.threadsService.getThreadRepliesWithMetadata(
       parentMessageId,
       limit,

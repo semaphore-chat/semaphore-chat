@@ -3,7 +3,11 @@ import type { Mocked } from '@suites/doubles.jest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DirectMessagesService } from './direct-messages.service';
 import { DatabaseService } from '@/database/database.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   createMockDatabase,
   UserFactory,
@@ -579,6 +583,65 @@ describe('DirectMessagesService', () => {
       await expect(
         service.addMembers(groupId, addDto, user.id),
       ).rejects.toThrow('Cannot add members to a 1:1 DM');
+    });
+
+    it('refuses an addition that would take the group above 20 members', async () => {
+      const user = UserFactory.build();
+      const newUser = UserFactory.build();
+      const groupId = 'group-123';
+      const dmGroup = {
+        id: groupId,
+        isGroup: true,
+        members: Array.from({ length: 20 }, (_, i) => ({
+          userId: i === 0 ? user.id : `member-${i}`,
+        })),
+      };
+
+      mockDatabase.directMessageGroup.findFirst.mockResolvedValue(dmGroup);
+
+      await expect(
+        service.addMembers(groupId, { userIds: [newUser.id] }, user.id),
+      ).rejects.toThrow(BadRequestException);
+      expect(
+        mockDatabase.directMessageGroupMember.create,
+      ).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('allows an addition that takes the group to exactly 20 members', async () => {
+      const user = UserFactory.build();
+      const newUser = UserFactory.build();
+      const groupId = 'group-123';
+      const dmGroup = {
+        id: groupId,
+        isGroup: true,
+        members: Array.from({ length: 19 }, (_, i) => ({
+          userId: i === 0 ? user.id : `member-${i}`,
+        })),
+      };
+
+      mockDatabase.directMessageGroup.findFirst.mockResolvedValue(dmGroup);
+      mockDatabase.directMessageGroupMember.create.mockResolvedValue({});
+      mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
+        groupId,
+        userId: user.id,
+      });
+      mockDatabase.directMessageGroup.findUnique.mockResolvedValue({
+        id: groupId,
+        name: 'Test Group',
+        isGroup: true,
+        createdAt: new Date(),
+        members: [],
+        messages: [],
+      });
+
+      await service.addMembers(groupId, { userIds: [newUser.id] }, user.id);
+
+      expect(mockDatabase.directMessageGroupMember.create).toHaveBeenCalledWith(
+        {
+          data: { groupId, userId: newUser.id },
+        },
+      );
     });
 
     it('should ignore duplicate member errors', async () => {

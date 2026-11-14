@@ -69,5 +69,11 @@ export class SetupInstanceDto {
 export class OnboardingStatusDto {
   needsSetup: boolean;
   hasUsers: boolean;
+  /**
+   * True (the default, REQUIRE_SETUP_TOKEN) when the operator must enter the
+   * setup token printed in the backend logs: `setupToken` is then never sent.
+   */
+  setupTokenRequired: boolean;
+  /** Only sent when REQUIRE_SETUP_TOKEN=false and setup is needed. */
   setupToken?: string;
 }

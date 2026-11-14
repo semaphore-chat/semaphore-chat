@@ -1,0 +1,63 @@
+name: Deploy Checks
+
+# Render checks for the Helm chart and a behavioural check of the production
+# frontend nginx (client address, rate limits, trusted proxies). Both scripts
+# run Docker containers; the Helm one needs network access to fetch the chart's
+# Bitnami dependencies.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'helm/**'
+      - 'frontend/nginx.conf'
+      - 'frontend/nginx-entrypoint.sh'
+      - 'frontend/Dockerfile.prod'
+      - 'scripts/helm-render-checks.sh'
+      - 'scripts/test-nginx-realip.sh'
+      - 'scripts/test-net.sh'
+      - '.github/workflows/deploy-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'helm/**'
+      - 'frontend/nginx.conf'
+      - 'frontend/nginx-entrypoint.sh'
+      - 'frontend/Dockerfile.prod'
+      - 'scripts/helm-render-checks.sh'
+      - 'scripts/test-nginx-realip.sh'
+      - 'scripts/test-net.sh'
+      - '.github/workflows/deploy-checks.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  helm-render:
+    name: Helm render checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Render the chart with good and bad values
+        run: scripts/helm-render-checks.sh
+
+  nginx-realip:
+    name: Nginx real-IP checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check client address handling in the frontend nginx
+        run: scripts/test-nginx-realip.sh

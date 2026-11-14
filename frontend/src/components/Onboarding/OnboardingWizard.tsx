@@ -23,6 +23,11 @@ export interface OnboardingData {
   defaultCommunityName: string;
   createDefaultCommunity: boolean;
   setupToken: string;
+  /**
+   * The operator must paste the setup token from the backend log (the
+   * default, REQUIRE_SETUP_TOKEN); the server never sends it.
+   */
+  setupTokenRequired: boolean;
 }
 
 const steps = [
@@ -34,12 +39,15 @@ const steps = [
 ];
 
 interface OnboardingWizardProps {
-  setupToken: string;
+  /** Only sent by servers with REQUIRE_SETUP_TOKEN=false */
+  setupToken?: string;
+  setupTokenRequired: boolean;
   onComplete: () => void;
 }
 
 const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   setupToken,
+  setupTokenRequired,
   onComplete,
 }) => {
   const [activeStep, setActiveStep] = useState(0);
@@ -51,7 +59,8 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     instanceDescription: '',
     defaultCommunityName: 'General',
     createDefaultCommunity: true,
-    setupToken,
+    setupToken: setupToken ?? '',
+    setupTokenRequired,
   });
 
   const handleNext = () => {

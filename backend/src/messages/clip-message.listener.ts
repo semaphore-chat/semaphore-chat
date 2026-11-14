@@ -10,6 +10,7 @@ import {
   ClipMessageCreateResult,
 } from '@/common/events/clip-message.events';
 import { MessagesService } from './messages.service';
+import { MessageSendService } from './message-send.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 
 /**
@@ -26,6 +27,7 @@ export class ClipMessageListener {
 
   constructor(
     private readonly messagesService: MessagesService,
+    private readonly messageSendService: MessageSendService,
     private readonly websocketService: WebsocketService,
   ) {}
 
@@ -74,6 +76,19 @@ export class ClipMessageListener {
       replyCount: 0,
       lastReplyAt: null,
     };
+
+    // A clip post is a channel message: the same timeout and slow-mode rules
+    // as any other message apply before it is written.
+    if (event.destination === 'channel' && event.targetChannelId) {
+      await this.messageSendService.assertNotTimedOut(
+        event.targetChannelId,
+        event.authorId,
+      );
+      await this.messagesService.checkSlowmode(
+        event.targetChannelId,
+        event.authorId,
+      );
+    }
 
     this.logger.log(
       `Creating clip message with file attachment: ${event.fileId}`,

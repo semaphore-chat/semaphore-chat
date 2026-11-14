@@ -209,6 +209,180 @@ describe('MessagesController', () => {
     });
   });
 
+  describe('limit clamping', () => {
+    const response = () => ({ setHeader: jest.fn() }) as never;
+
+    function mockPagedServices() {
+      service.findAllForDirectMessageGroup.mockResolvedValue({
+        messages: [],
+        continuationToken: undefined,
+      });
+      service.findAllForChannel.mockResolvedValue({
+        messages: [],
+        continuationToken: undefined,
+      });
+      service.findAroundForChannel.mockResolvedValue({
+        messages: [],
+        olderContinuationToken: undefined,
+        newerContinuationToken: undefined,
+      });
+      service.findAroundForDirectMessageGroup.mockResolvedValue({
+        messages: [],
+        olderContinuationToken: undefined,
+        newerContinuationToken: undefined,
+      });
+      service.searchChannelMessages.mockResolvedValue([]);
+      service.searchDirectMessages.mockResolvedValue([]);
+      service.searchCommunityMessages.mockResolvedValue([]);
+    }
+
+    it('holds a negative limit at 1 on every paged route', async () => {
+      mockPagedServices();
+
+      await controller.findAllForGroup('group-1', -5);
+      await controller.findAllForChannel('channel-1', -5);
+      await controller.findAroundForChannel('channel-1', 'message-1', -5);
+      await controller.findAroundForGroup('group-1', 'message-1', -5);
+      await controller.searchChannelMessages(
+        'channel-1',
+        'q',
+        -5,
+        undefined,
+        response(),
+      );
+      await controller.searchDirectMessages(
+        'group-1',
+        'q',
+        -5,
+        undefined,
+        response(),
+      );
+      await controller.searchCommunityMessages(
+        'community-1',
+        'q',
+        mockRequest,
+        -5,
+        undefined,
+        response(),
+      );
+
+      expect(service.findAllForDirectMessageGroup).toHaveBeenCalledWith(
+        'group-1',
+        1,
+        undefined,
+        'older',
+      );
+      expect(service.findAllForChannel).toHaveBeenCalledWith(
+        'channel-1',
+        1,
+        undefined,
+        'older',
+      );
+      expect(service.findAroundForChannel).toHaveBeenCalledWith(
+        'channel-1',
+        'message-1',
+        1,
+      );
+      expect(service.findAroundForDirectMessageGroup).toHaveBeenCalledWith(
+        'group-1',
+        'message-1',
+        1,
+      );
+      expect(service.searchChannelMessages).toHaveBeenCalledWith(
+        'channel-1',
+        'q',
+        1,
+        undefined,
+      );
+      expect(service.searchDirectMessages).toHaveBeenCalledWith(
+        'group-1',
+        'q',
+        1,
+        undefined,
+      );
+      expect(service.searchCommunityMessages).toHaveBeenCalledWith(
+        'community-1',
+        mockUser.id,
+        'q',
+        1,
+        undefined,
+      );
+    });
+
+    it('caps an oversized limit at 100 on every paged route', async () => {
+      mockPagedServices();
+
+      await controller.findAllForGroup('group-1', 500);
+      await controller.findAllForChannel('channel-1', 500);
+      await controller.findAroundForChannel('channel-1', 'message-1', 500);
+      await controller.findAroundForGroup('group-1', 'message-1', 500);
+      await controller.searchChannelMessages(
+        'channel-1',
+        'q',
+        500,
+        undefined,
+        response(),
+      );
+      await controller.searchDirectMessages(
+        'group-1',
+        'q',
+        500,
+        undefined,
+        response(),
+      );
+      await controller.searchCommunityMessages(
+        'community-1',
+        'q',
+        mockRequest,
+        500,
+        undefined,
+        response(),
+      );
+
+      expect(service.findAllForDirectMessageGroup).toHaveBeenCalledWith(
+        'group-1',
+        100,
+        undefined,
+        'older',
+      );
+      expect(service.findAllForChannel).toHaveBeenCalledWith(
+        'channel-1',
+        100,
+        undefined,
+        'older',
+      );
+      expect(service.findAroundForChannel).toHaveBeenCalledWith(
+        'channel-1',
+        'message-1',
+        100,
+      );
+      expect(service.findAroundForDirectMessageGroup).toHaveBeenCalledWith(
+        'group-1',
+        'message-1',
+        100,
+      );
+      expect(service.searchChannelMessages).toHaveBeenCalledWith(
+        'channel-1',
+        'q',
+        100,
+        undefined,
+      );
+      expect(service.searchDirectMessages).toHaveBeenCalledWith(
+        'group-1',
+        'q',
+        100,
+        undefined,
+      );
+      expect(service.searchCommunityMessages).toHaveBeenCalledWith(
+        'community-1',
+        mockUser.id,
+        'q',
+        100,
+        undefined,
+      );
+    });
+  });
+
   describe('search paging', () => {
     const response = () => ({ setHeader: jest.fn() }) as any;
 

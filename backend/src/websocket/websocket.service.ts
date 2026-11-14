@@ -81,6 +81,38 @@ export class WebsocketService {
     return true;
   }
 
+  /**
+   * Emits once to the union of several rooms: Socket.IO delivers one copy per
+   * socket even when the socket is in more than one of them. No-op for an
+   * empty list. Skips mention redaction, so only for payloads without
+   * channel mentions (e.g. presence).
+   */
+  sendToRooms<E extends keyof ServerToClientEvents>(
+    rooms: string[],
+    event: E,
+    ...args: Parameters<ServerToClientEvents[E]>
+  ): boolean {
+    if (rooms.length === 0) return false;
+    if (!this.server) {
+      this.logger.error(
+        'Attempted to send to rooms before server was initialized',
+      );
+      return false;
+    }
+
+    try {
+      const wireArgs = args.map((arg) => toWirePayload(arg)) as typeof args;
+      this.server.to(rooms).emit(event, ...wireArgs);
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `Failed to send event "${event}" to ${rooms.length} rooms`,
+        error,
+      );
+      return false;
+    }
+  }
+
   private emitNow<E extends keyof ServerToClientEvents>(
     room: string,
     event: E,

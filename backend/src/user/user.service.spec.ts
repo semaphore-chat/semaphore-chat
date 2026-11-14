@@ -177,14 +177,22 @@ describe('UserService', () => {
       ).rejects.toThrow('A user with this username already exists.');
     });
 
-    it('should use case-insensitive matching for username', async () => {
+    it('should escape LIKE wildcards in the username it looks up', async () => {
       mockDatabase.user.findFirst.mockResolvedValue(null);
 
       await service.checkForFieldConflicts('Alice', undefined);
+      // Prisma runs an insensitive `equals` as ILIKE: an unescaped '%' would
+      // mean "matches anyone".
+      await service.checkForFieldConflicts('%', undefined);
 
-      expect(mockDatabase.user.findFirst).toHaveBeenCalledWith({
+      expect(mockDatabase.user.findFirst).toHaveBeenNthCalledWith(1, {
         where: {
           OR: [{ username: { equals: 'Alice', mode: 'insensitive' } }],
+        },
+      });
+      expect(mockDatabase.user.findFirst).toHaveBeenNthCalledWith(2, {
+        where: {
+          OR: [{ username: { equals: '\\%', mode: 'insensitive' } }],
         },
       });
     });
@@ -803,6 +811,20 @@ describe('UserService', () => {
       );
     });
 
+    it('should cap the limit at 100 and floor it at 1', async () => {
+      mockDatabase.user.findMany.mockResolvedValue([]);
+
+      await service.findAll(100000);
+      expect(mockDatabase.user.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ take: 100 }),
+      );
+
+      await service.findAll(-1);
+      expect(mockDatabase.user.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ take: 1 }),
+      );
+    });
+
     it('should return continuation token when limit reached', async () => {
       const users = UserFactory.buildMany(50);
       mockDatabase.user.findMany.mockResolvedValue(users);
@@ -924,7 +946,7 @@ describe('UserService', () => {
                   { memberships: { some: { communityId: { in: ['c1'] } } } },
                 ],
               },
-              { username: { equals: 'test', mode: 'insensitive' } },
+              { username: { equals: 'test' } },
             ],
           },
         }),
@@ -942,6 +964,23 @@ describe('UserService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('should escape LIKE wildcards in the search term', async () => {
+      mockDatabase.user.findMany.mockResolvedValue([]);
+
+      await service.searchUsers('a_b%', undefined, undefined, owner);
+
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { username: { contains: 'a\\_b\\%', mode: 'insensitive' } },
+              { displayName: { contains: 'a\\_b\\%', mode: 'insensitive' } },
+            ],
+          },
+        }),
+      );
+    });
+
     it('should return nothing for an empty query without READ_USER', async () => {
       permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
         false,
@@ -949,6 +988,26 @@ describe('UserService', () => {
 
       expect(await service.searchUsers('', undefined, 25, member)).toEqual([]);
       expect(mockDatabase.user.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findAllAdmin', () => {
+    it('should escape LIKE wildcards in the admin search term', async () => {
+      mockDatabase.user.findMany.mockResolvedValue([]);
+
+      await service.findAllAdmin(50, undefined, { search: 'a_b%' });
+
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { username: { contains: 'a\\_b\\%', mode: 'insensitive' } },
+              { email: { contains: 'a\\_b\\%', mode: 'insensitive' } },
+              { displayName: { contains: 'a\\_b\\%', mode: 'insensitive' } },
+            ],
+          },
+        }),
+      );
     });
   });
 

@@ -221,6 +221,29 @@ describe('DmVoicePresenceController', () => {
     expect(controller).toBeDefined();
   });
 
+  describe('updateDmDeafenState', () => {
+    it("sets the caller's deafen state in the DM call", async () => {
+      service.updateDmDeafenState.mockResolvedValue();
+
+      const result = await controller.updateDmDeafenState(
+        'dm-group-123',
+        { isDeafened: true },
+        { user: { id: 'user-1' } } as never,
+      );
+
+      expect(service.updateDmDeafenState).toHaveBeenCalledWith(
+        'dm-group-123',
+        'user-1',
+        true,
+      );
+      expect(result).toEqual({
+        success: true,
+        message: 'Deafen state updated to true',
+        dmGroupId: 'dm-group-123',
+      });
+    });
+  });
+
   describe('getDmPresence', () => {
     it('should return DM presence with user count', async () => {
       const dmGroupId = 'dm-group-123';

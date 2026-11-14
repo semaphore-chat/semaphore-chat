@@ -28,6 +28,7 @@ import { PushNotificationsService } from '@/push-notifications/push-notification
 import { PresenceService } from '@/presence/presence.service';
 import { flattenSpansToDisplayText } from '@/common/utils/text.utils';
 import { isDndActive } from './dnd.util';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 
 /** Full includes for a freshly-created Notification, matching createNotification()'s shape. */
 const NOTIFICATION_INCLUDE = {
@@ -807,7 +808,7 @@ export class NotificationsService {
     // NotificationQueryDto already enforces @Max(100) at the validation
     // layer, but cap again here defensively in case this method is ever
     // called directly (bypassing the pipe).
-    const cappedLimit = Math.min(limit, 100);
+    const cappedLimit = clampLimit(limit, 100);
 
     const notifications = await this.databaseService.notification.findMany({
       where: this.notificationFilter(userId, unreadOnly, includeDismissed),

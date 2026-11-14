@@ -13,6 +13,8 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { LivekitService } from '@/livekit/livekit.service';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import {
   VOICE_USER_LEFT,
   VoiceUserLeftEvent,
@@ -95,6 +97,7 @@ export class VoicePresenceService {
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly livekitService: LivekitService,
   ) {}
 
   /** Remember (or lift) a moderator's server mute of a user in a channel. */
@@ -367,14 +370,27 @@ export class VoicePresenceService {
 
       // Key expired or missing — verify membership before re-registering
       await this.assertDmMember(dmGroupId, userId);
+      // Registering the first participant rings the other side, so the
+      // blocked side of a 1:1 DM can't, and nobody can without actually
+      // being in the call (unless LiveKit can't be asked: fail open)
+      await assertNotBlockedInDm(this.databaseService, userId, dmGroupId);
+      if (
+        (await this.livekitService.isParticipantInRoom(dmGroupId, userId)) ===
+        false
+      ) {
+        throw new ConflictException('You are not connected to this call');
+      }
 
       this.logger.log(
         `DM presence expired for user ${userId} in DM ${dmGroupId}, re-registering`,
       );
       await this.handleWebhookDmParticipantJoined(dmGroupId, userId);
     } catch (error) {
-      // A non-member is an expected refusal, not a fault
-      if (!(error instanceof ForbiddenException)) {
+      // A non-member, a block or no connection is an expected refusal
+      if (
+        !(error instanceof ForbiddenException) &&
+        !(error instanceof ConflictException)
+      ) {
         this.logger.error(
           `Failed to refresh DM presence for user ${userId} in DM ${dmGroupId}`,
           error,
@@ -780,6 +796,20 @@ export class VoicePresenceService {
   }
 
   /**
+   * Set the caller's deafen state in a DM call: the LiveKit metadata the
+   * call's tiles read (a no-op unless they're in the call). DM presence has
+   * no per-user update event, so nothing else changes.
+   */
+  async updateDmDeafenState(
+    dmGroupId: string,
+    userId: string,
+    isDeafened: boolean,
+  ): Promise<void> {
+    await this.assertDmMember(dmGroupId, userId);
+    await this.livekitService.setDeafenMetadata(dmGroupId, userId, isDeafened);
+  }
+
+  /**
    * Update a user's deafen state in a voice channel
    * Updates Redis and broadcasts the change to all clients in the channel
    */
@@ -788,6 +818,10 @@ export class VoicePresenceService {
     userId: string,
     isDeafened: boolean,
   ): Promise<void> {
+    // What the call's tiles show (only for a participant of the room), also
+    // when the presence entry has lapsed
+    await this.livekitService.setDeafenMetadata(channelId, userId, isDeafened);
+
     const userDataKey = `${this.VOICE_PRESENCE_USER_DATA_PREFIX}:${channelId}:${userId}`;
     const userDataStr = await this.redis.get(userDataKey);
 

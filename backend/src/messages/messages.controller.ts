@@ -53,6 +53,7 @@ import { groupReactions } from '@/common/utils/reactions.utils';
 import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
 import { RoomName } from '@/common/utils/room-name.util';
 import { toWireMessage } from '@/common/utils/message-wire.utils';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 import { toMessageReactionsDto } from './message.mapper';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -159,7 +160,7 @@ export class MessagesController {
     @Query('continuationToken') continuationToken?: string,
     @Query('direction') direction?: string,
   ): Promise<PaginatedMessagesResponseDto> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     const dir = direction === 'newer' ? 'newer' : 'older';
     return this.messagesService.findAllForDirectMessageGroup(
       groupId,
@@ -190,7 +191,7 @@ export class MessagesController {
     @Query('continuationToken') continuationToken?: string,
     @Query('direction') direction?: string,
   ): Promise<PaginatedMessagesResponseDto> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     const dir = direction === 'newer' ? 'newer' : 'older';
     return this.messagesService.findAllForChannel(
       channelId,
@@ -214,7 +215,7 @@ export class MessagesController {
     @Param('messageId', ParseUUIDPipe) messageId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
   ): Promise<AnchoredMessagesResponseDto> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     return this.messagesService.findAroundForChannel(
       channelId,
       messageId,
@@ -236,7 +237,7 @@ export class MessagesController {
     @Param('messageId', ParseUUIDPipe) messageId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
   ): Promise<AnchoredMessagesResponseDto> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     return this.messagesService.findAroundForDirectMessageGroup(
       groupId,
       messageId,
@@ -261,7 +262,7 @@ export class MessagesController {
     @Query('continuationToken') continuationToken: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<MessageDto[]> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     const results = await this.messagesService.searchChannelMessages(
       channelId,
       query,
@@ -289,7 +290,7 @@ export class MessagesController {
     @Query('continuationToken') continuationToken: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<MessageDto[]> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     const results = await this.messagesService.searchDirectMessages(
       groupId,
       query,
@@ -318,7 +319,7 @@ export class MessagesController {
     @Query('continuationToken') continuationToken: string | undefined,
     @Res({ passthrough: true }) res: Response,
   ): Promise<CommunitySearchResultDto[]> {
-    limit = Math.min(limit, 100);
+    limit = clampLimit(limit, 100);
     const results = await this.messagesService.searchCommunityMessages(
       communityId,
       req.user.id,

@@ -1,4 +1,10 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { UserService } from '../user/user.service';
 import * as bcrypt from 'bcrypt';
 import { UserEntity } from '@/user/dto/user-response.dto';
@@ -18,6 +24,13 @@ import { RefreshTokenGraceService } from './refresh-token-grace.service';
 import { isSameClient } from './client-match.util';
 import { ClientType } from './client-type.util';
 import { databaseNow } from './db-clock.util';
+import {
+  AuthAttemptLimiter,
+  LOGIN_FAILURE_LIMIT,
+  LOGIN_FAILURE_WINDOW_SECONDS,
+  loginFailureGroup,
+  loginFailureKey,
+} from './auth-attempt-limiter.service';
 
 /**
  * How many rotations findGraceSuccessor follows. Each is a refresh within the
@@ -105,6 +118,7 @@ export class AuthService {
     configService: ConfigService,
     private readonly sessionRevocationService: SessionRevocationService,
     private readonly refreshTokenGraceService: RefreshTokenGraceService,
+    private readonly attemptLimiter: AuthAttemptLimiter,
   ) {
     this.jwtRefreshSecret = configService.get<string>('JWT_REFRESH_SECRET');
     if (!this.jwtRefreshSecret) {
@@ -112,15 +126,33 @@ export class AuthService {
     }
   }
 
+  /**
+   * The user, if `pass` is their password.
+   * @param ip - The client's address (req.ip): failed attempts are limited
+   *   per username and client, so one client's guesses never lock the
+   *   account for anyone else.
+   */
   async validateUser(
     username: string,
     pass: string,
+    ip?: string,
   ): Promise<UserEntity | null> {
-    const user = await this.userService.findByUsername(
-      username.toLocaleLowerCase(),
-    );
+    const normalized = username.toLocaleLowerCase();
+    // Limit on failed password sign-ins to this username from this client
+    // (unknown usernames count too, so it reveals nothing). Existing
+    // sessions and other clients are not affected.
+    const failures = loginFailureKey(normalized, ip);
+    if (await this.attemptLimiter.isLimited(failures, LOGIN_FAILURE_LIMIT)) {
+      throw new HttpException(
+        'Too many failed sign-in attempts. Try again later.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const user = await this.userService.findByUsername(normalized);
     if (user) {
       if (await bcrypt.compare(pass, user.hashedPassword)) {
+        await this.attemptLimiter.clear(failures);
         return new UserEntity(user);
       }
     } else {
@@ -128,6 +160,11 @@ export class AuthService {
       await bcrypt.compare(pass, this.DUMMY_HASH);
     }
 
+    await this.attemptLimiter.recordAttempt(
+      failures,
+      LOGIN_FAILURE_WINDOW_SECONDS,
+      loginFailureGroup(normalized),
+    );
     return null;
   }
 

@@ -10,6 +10,7 @@ import { NotificationsModule } from '@/notifications/notifications.module';
 import { UserModule } from '@/user/user.module';
 import { LinkPreviewsModule } from '@/link-previews/link-previews.module';
 import { RedisModule } from '@/redis/redis.module';
+import { MessagesModule } from '@/messages/messages.module';
 
 @Module({
   controllers: [ThreadsController],
@@ -23,6 +24,7 @@ import { RedisModule } from '@/redis/redis.module';
     UserModule,
     LinkPreviewsModule,
     RedisModule,
+    MessagesModule,
   ],
   exports: [ThreadsService],
 })

@@ -38,7 +38,11 @@ export class TimingInterceptor implements NestInterceptor {
 
     if (type === 'http') {
       const req = context.switchToHttp().getRequest<Request>();
-      return `HTTP ${req.method} ${req.originalUrl || req.url}`;
+      // Log the route template, never the raw URL: webhook tokens are path
+      // params and signed file URLs carry their signature in the query.
+      const route = req.route as { path?: string } | undefined;
+      const target = route?.path ?? (req.originalUrl || req.url).split('?')[0];
+      return `HTTP ${req.method} ${target}`;
     }
 
     if (type === 'ws') {

@@ -7,6 +7,23 @@ import {
   FfmpegCommand,
 } from '@/livekit/providers/ffmpeg.provider';
 import type { IStorageProvider } from '@/storage/interfaces/storage-provider.interface';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { MEDIA_MAX_PIXELS } from '@/common/constants/media-limits.constant';
+
+/** A PNG signature and IHDR declaring the given size. */
+function pngHeader(width: number, height: number): Buffer {
+  const header = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(header);
+  header.writeUInt32BE(13, 8);
+  header.write('IHDR', 12, 'latin1');
+  header.writeUInt32BE(width, 16);
+  header.writeUInt32BE(height, 20);
+  header[24] = 16; // bit depth
+  header[25] = 6; // RGBA
+  return header;
+}
 
 describe('ThumbnailService', () => {
   let service: ThumbnailService;
@@ -118,7 +135,12 @@ describe('ThumbnailService', () => {
       await service.generateVideoThumbnail(filePath, fileId);
 
       expect(mockCommand.input).toHaveBeenCalledWith(filePath);
-      expect(mockCommand.inputOptions).toHaveBeenCalledWith('-ss', '1');
+      expect(mockCommand.inputOptions).toHaveBeenCalledWith(
+        '-ss',
+        '1',
+        '-max_pixels',
+        String(MEDIA_MAX_PIXELS),
+      );
     });
 
     it('should use correct ffmpeg output options', async () => {
@@ -254,7 +276,11 @@ describe('ThumbnailService', () => {
       await generate({ width: 1600, height: 900 });
 
       // Never `-noautorotate`: the default rotates EXIF-oriented photos.
-      expect(mockCommand.inputOptions).not.toHaveBeenCalled();
+      expect(mockCommand.inputOptions).toHaveBeenCalledTimes(1);
+      expect(mockCommand.inputOptions).toHaveBeenCalledWith(
+        '-max_pixels',
+        String(MEDIA_MAX_PIXELS),
+      );
       const options = (mockCommand.outputOptions as jest.Mock).mock
         .calls[0] as string[];
       expect(options).toContain('-map_metadata');
@@ -348,7 +374,9 @@ describe('ThumbnailService', () => {
     });
 
     it('kills ffmpeg and returns null when image extraction times out', async () => {
-      jest.useFakeTimers();
+      // setImmediate stays real so the test can wait for the header read
+      // (real file I/O) to finish before ffmpeg's timeout is armed.
+      jest.useFakeTimers({ doNotFake: ['setImmediate'] });
 
       try {
         mockCommand.run.mockImplementation(() => {
@@ -356,6 +384,9 @@ describe('ThumbnailService', () => {
         });
 
         const resultPromise = generate({ width: 1600, height: 900 });
+        while (mockCommand.run.mock.calls.length === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
 
         await jest.advanceTimersByTimeAsync(30_001);
 
@@ -409,6 +440,95 @@ describe('ThumbnailService', () => {
       expect(storageService.deleteFile).toHaveBeenCalledWith(
         'uploads/thumbnails/file-image-1.jpg.tmp',
       );
+    });
+  });
+
+  describe('decode limits', () => {
+    let dir: string;
+
+    beforeAll(async () => {
+      dir = await mkdtemp(join(tmpdir(), 'thumbnail-limits-'));
+    });
+
+    afterAll(async () => {
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    it('passes the pixel cap to ffmpeg for an image', async () => {
+      await service.generateImageThumbnail(
+        '/uploads/images/photo.jpg',
+        'file-image-1',
+        StorageType.LOCAL,
+        'image/jpeg',
+        { width: 1600, height: 900 },
+      );
+
+      expect(mockCommand.inputOptions).toHaveBeenCalledWith(
+        '-max_pixels',
+        String(MEDIA_MAX_PIXELS),
+      );
+    });
+
+    it('passes the pixel cap to ffmpeg for a video', async () => {
+      await service.generateVideoThumbnail('/uploads/v.mp4', 'file-video-1');
+
+      expect(mockCommand.inputOptions).toHaveBeenCalledWith(
+        '-ss',
+        '1',
+        '-max_pixels',
+        String(MEDIA_MAX_PIXELS),
+      );
+    });
+
+    it('never spawns ffmpeg for an image whose header is over the pixel cap', async () => {
+      const bomb = join(dir, 'bomb.png');
+      await writeFile(bomb, pngHeader(20000, 20000));
+
+      const result = await service.generateImageThumbnail(
+        bomb,
+        'file-bomb-1',
+        StorageType.LOCAL,
+        'image/png',
+        null,
+      );
+
+      expect(result).toBeNull();
+      expect(mockFfmpegProvider.createCommand).not.toHaveBeenCalled();
+    });
+
+    it('still thumbnails an image whose header is within the cap', async () => {
+      const photo = join(dir, 'photo.png');
+      await writeFile(photo, pngHeader(6000, 4000));
+
+      const result = await service.generateImageThumbnail(
+        photo,
+        'file-photo-1',
+        StorageType.LOCAL,
+        'image/png',
+        null,
+      );
+
+      expect(result).toBe('uploads/thumbnails/file-photo-1.jpg');
+      expect(mockCommand.run).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs one ffmpeg at a time: a second thumbnail waits for the first', async () => {
+      let finishFirst: () => void = () => undefined;
+      mockCommand.run.mockImplementationOnce(() => {
+        const ends = [...(allCallbacks.end ?? [])];
+        finishFirst = () => ends.forEach((cb) => cb());
+      });
+
+      const first = service.generateVideoThumbnail('/uploads/a.mp4', 'a');
+      const second = service.generateVideoThumbnail('/uploads/b.mp4', 'b');
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockCommand.run).toHaveBeenCalledTimes(1);
+
+      finishFirst();
+      await expect(first).resolves.toBe('uploads/thumbnails/a.jpg');
+      await expect(second).resolves.toBe('uploads/thumbnails/b.jpg');
+      expect(mockCommand.run).toHaveBeenCalledTimes(2);
     });
   });
 });

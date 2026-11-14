@@ -14,6 +14,7 @@ import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { UserFactory, createMockDatabase } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { AuthenticatedRequest } from '@/types';
+import type { Request } from 'express';
 import { ErrorCode } from '@semaphore-chat/shared';
 
 describe('AuthController', () => {
@@ -207,7 +208,7 @@ describe('AuthController', () => {
         expect.objectContaining({
           httpOnly: true,
           sameSite: 'strict',
-          secure: process.env.NODE_ENV === 'production',
+          secure: false,
           maxAge: 30 * 24 * 60 * 60 * 1000,
           path: '/',
         }),
@@ -981,7 +982,14 @@ describe('AuthController', () => {
         jti,
         mockDatabase,
       );
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith(
+        'refresh_token',
+        expect.objectContaining({
+          path: '/',
+          httpOnly: true,
+          sameSite: 'strict',
+        }),
+      );
       expect(result).toEqual({ message: 'Logged out successfully' });
     });
 
@@ -1039,7 +1047,14 @@ describe('AuthController', () => {
       expect(mockDatabase.$transaction).not.toHaveBeenCalled();
       expect(authService.deleteRefreshToken).not.toHaveBeenCalled();
       expect(sessionRevocationService.revokeSessions).not.toHaveBeenCalled();
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith(
+        'refresh_token',
+        expect.objectContaining({
+          path: '/',
+          httpOnly: true,
+          sameSite: 'strict',
+        }),
+      );
     });
 
     it('still logs out when the token was deleted (revoked) since it was checked', async () => {
@@ -1056,7 +1071,14 @@ describe('AuthController', () => {
       const result = await controller.logout(req, mockRes);
 
       expect(result).toEqual({ message: 'Logged out successfully' });
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith(
+        'refresh_token',
+        expect.objectContaining({
+          path: '/',
+          httpOnly: true,
+          sameSite: 'strict',
+        }),
+      );
     });
 
     it('should revoke the session and disconnect its sockets', async () => {
@@ -1163,9 +1185,10 @@ describe('AuthController', () => {
       expect(authService.verifyRefreshToken).not.toHaveBeenCalled();
       expect(sessionRevocationService.revokeSessions).not.toHaveBeenCalled();
       // Should still clear access_token cookie even when no refresh token
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('access_token', {
-        path: '/',
-      });
+      expect(mockRes.clearCookie).toHaveBeenCalledWith(
+        'access_token',
+        expect.objectContaining({ path: '/', httpOnly: true, sameSite: 'lax' }),
+      );
       expect(result).toEqual({ message: 'Logged out successfully' });
     });
 
@@ -1193,7 +1216,14 @@ describe('AuthController', () => {
       const result = await controller.logout(req, mockRes);
 
       expect(result).toEqual({ message: 'Logged out successfully' });
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith(
+        'refresh_token',
+        expect.objectContaining({
+          path: '/',
+          httpOnly: true,
+          sameSite: 'strict',
+        }),
+      );
     });
 
     it('should blacklist access token from cookie on logout', async () => {
@@ -1284,12 +1314,14 @@ describe('AuthController', () => {
         .spyOn(passwordResetService, 'requestReset')
         .mockResolvedValue(undefined);
 
-      const result = await controller.forgotPassword({
-        email: 'someone@example.com',
-      });
+      const result = await controller.forgotPassword(
+        { email: 'someone@example.com' },
+        { ip: '203.0.113.5' } as Request,
+      );
 
       expect(passwordResetService.requestReset).toHaveBeenCalledWith(
         'someone@example.com',
+        '203.0.113.5',
       );
       expect(result).toEqual({
         message:
@@ -1304,9 +1336,10 @@ describe('AuthController', () => {
         .spyOn(passwordResetService, 'requestReset')
         .mockResolvedValue(undefined);
 
-      const result = await controller.forgotPassword({
-        email: 'unknown@example.com',
-      });
+      const result = await controller.forgotPassword(
+        { email: 'unknown@example.com' },
+        { ip: '203.0.113.5' } as Request,
+      );
 
       expect(result).toEqual({
         message:

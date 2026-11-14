@@ -25,6 +25,7 @@ const mockData: OnboardingData = {
   defaultCommunityName: 'General',
   createDefaultCommunity: true,
   setupToken: 'test-token',
+  setupTokenRequired: false,
 };
 
 describe('CompletionStep', () => {
@@ -103,5 +104,103 @@ describe('CompletionStep', () => {
 
     const cachedStatus = queryClient.getQueryState(onboardingControllerGetStatusQueryKey());
     expect(cachedStatus?.isInvalidated).toBe(true);
+  });
+
+  describe('setup token from the backend log', () => {
+    const requiredData: OnboardingData = {
+      ...mockData,
+      setupToken: '',
+      setupTokenRequired: true,
+    };
+
+    const renderStep = (data: OnboardingData) => {
+      const updateData = vi.fn();
+      const view = renderWithProviders(
+        <CompletionStep
+          data={data}
+          updateData={updateData}
+          onNext={vi.fn()}
+          onBack={vi.fn()}
+          onComplete={vi.fn()}
+        />,
+      );
+      return { ...view, updateData };
+    };
+
+    it('asks for the token and says where to find it', () => {
+      renderStep(requiredData);
+
+      expect(screen.getByLabelText(/setup token/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Setup token:/).length).toBeGreaterThan(0);
+      expect(screen.getByText(/SETUP_TOKEN/)).toBeInTheDocument();
+    });
+
+    it('keeps Complete Setup disabled until a token is entered', () => {
+      renderStep({ ...requiredData, setupToken: '   ' });
+
+      expect(
+        screen.getByRole('button', { name: /complete setup/i }),
+      ).toBeDisabled();
+    });
+
+    it('stores what the operator types', async () => {
+      const { user, updateData } = renderStep(requiredData);
+
+      await user.type(screen.getByLabelText(/setup token/i), 'a');
+
+      expect(updateData).toHaveBeenCalledWith({ setupToken: 'a' });
+    });
+
+    it('sends the pasted token without surrounding whitespace', async () => {
+      let sentToken: unknown;
+      server.use(
+        http.post(
+          'http://localhost:3000/api/onboarding/setup',
+          async ({ request }) => {
+            sentToken = ((await request.json()) as { setupToken: string })
+              .setupToken;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.post('http://localhost:3000/api/auth/login', () =>
+          HttpResponse.json({ accessToken: 'a', refreshToken: 'r' }),
+        ),
+      );
+      const { user } = renderStep({
+        ...requiredData,
+        setupToken: '  pasted-token\n',
+      });
+
+      await user.click(screen.getByRole('button', { name: /complete setup/i }));
+
+      await waitFor(() => expect(sentToken).toBe('pasted-token'));
+    });
+
+    it('explains a wrong token instead of a bare error', async () => {
+      server.use(
+        http.post('http://localhost:3000/api/onboarding/setup', () =>
+          HttpResponse.json(
+            { message: 'Invalid setup token', statusCode: 409 },
+            { status: 409 },
+          ),
+        ),
+      );
+      const { user } = renderStep({ ...requiredData, setupToken: 'wrong' });
+
+      await user.click(screen.getByRole('button', { name: /complete setup/i }));
+
+      expect(
+        await screen.findByText(/doesn't match the token in the backend log/i),
+      ).toBeInTheDocument();
+    });
+
+    it('shows no token field when the server sends the token itself', () => {
+      renderStep(mockData);
+
+      expect(screen.queryByLabelText(/setup token/i)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /complete setup/i }),
+      ).toBeEnabled();
+    });
   });
 });

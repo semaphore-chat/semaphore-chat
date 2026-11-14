@@ -84,6 +84,21 @@ export const getInstanceUrl = (): string => {
 };
 
 /**
+ * Normalise a server or API URL for comparison: lower-case scheme and host
+ * (URL does this), default port dropped, trailing slashes removed. A value
+ * that isn't an absolute URL is only trimmed of trailing slashes.
+ */
+export const normalizeUrlForComparison = (url: string): string => {
+  const trimmed = url.trim();
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return trimmed.replace(/\/+$/, '');
+  }
+};
+
+/**
  * Get full API endpoint URL
  * @param path - API endpoint path (e.g., '/auth/login')
  */

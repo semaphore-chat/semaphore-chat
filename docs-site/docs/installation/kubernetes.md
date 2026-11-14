@@ -38,11 +38,13 @@ Optional: **cert-manager** for automatic TLS, **metrics-server** for autoscaling
 ### 1. Generate secrets
 
 ```bash
-export JWT_SECRET=$(openssl rand -base64 32)
-export JWT_REFRESH_SECRET=$(openssl rand -base64 32)
-export POSTGRES_PASSWORD=$(openssl rand -base64 32)
-export REDIS_PASSWORD=$(openssl rand -base64 32)
+export JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+export JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+export POSTGRES_PASSWORD=$(openssl rand -hex 24)
+export REDIS_PASSWORD=$(openssl rand -hex 24)
 ```
+
+The chart refuses to render (`helm install`/`upgrade` fails before changing anything) when a JWT or LiveKit secret is empty, a placeholder (`CHANGE-ME-...`, `your-...`), shorter than 32 characters, or the two JWT secrets are equal, and when the bundled PostgreSQL or Redis password is empty or the old default. The chart doesn't generate secrets: a value generated at render time would change on every `helm template`/GitOps sync and sign everyone out.
 
 ### 2. Install the chart
 
@@ -52,12 +54,12 @@ The simplest install uses bundled PostgreSQL and Redis:
 helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set secrets.jwtSecret="$JWT_SECRET" \
   --set secrets.jwtRefreshSecret="$JWT_REFRESH_SECRET" \
-  --set postgresql.auth.postgresPassword="$POSTGRES_PASSWORD" \
+  --set postgresql.auth.password="$POSTGRES_PASSWORD" \
   --set redis.auth.password="$REDIS_PASSWORD" \
   --set ingress.hosts[0].host=semaphore.yourdomain.com \
   --set livekit.url=wss://your-livekit-server.com \
-  --set livekit.apiKey=YOUR_KEY \
-  --set livekit.apiSecret=YOUR_SECRET \
+  --set livekit.apiKey="$LIVEKIT_API_KEY" \
+  --set livekit.apiSecret="$LIVEKIT_API_SECRET" \
   --namespace semaphore-chat \
   --create-namespace
 ```
@@ -68,7 +70,7 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/s
 kubectl get pods -n semaphore-chat --watch
 ```
 
-Wait for all pods to show `Running`, then visit your domain.
+Wait for all pods to show `Running`, then visit your domain. The setup wizard asks for the setup token that the backend prints in its log: `kubectl logs -l app.kubernetes.io/component=backend --tail=-1 | grep "Setup token:"` (see [First Run](first-run.md)).
 
 ## Configuration
 
@@ -100,11 +102,11 @@ secrets:
   jwtSecret: ""      # Set via --set or use existingSecret
   jwtRefreshSecret: ""
 
-# --- LiveKit ---
+# --- LiveKit (optional: all three or none) ---
 livekit:
   url: "wss://your-livekit-server.com"
-  apiKey: "your-api-key"
-  apiSecret: "your-api-secret"
+  apiKey: ""      # your LiveKit server's key
+  apiSecret: ""   # its secret, 32+ characters
 
 # --- Ingress ---
 ingress:
@@ -174,7 +176,7 @@ The chart bundles a Bitnami PostgreSQL instance by default. For production, cons
     postgresql:
       bundled: true
       auth:
-        postgresPassword: "CHANGE-ME"
+        password: ""  # required: openssl rand -hex 24
       persistence:
         size: 50Gi
     ```
@@ -188,6 +190,8 @@ The chart bundles a Bitnami PostgreSQL instance by default. For production, cons
         uri: "postgresql://user:password@postgres-host:5432/semaphore"
     ```
 
+    The chart keeps `DATABASE_URL` in a Secret (`<release>-database`, created as a pre-install/pre-upgrade hook so the migration job can read it; Helm leaves hook resources behind on uninstall, so delete it by hand then), never in the backend ConfigMap. To keep the URI out of your values, point `postgresql.external.existingSecret` at a Secret holding it (key `DATABASE_URL`, or set `existingSecretKey`). An external database with neither set reads `DATABASE_URL` from `secrets.existingSecret`.
+
 ### Redis
 
 Same pattern — bundled or external:
@@ -198,7 +202,7 @@ Same pattern — bundled or external:
     redis:
       bundled: true
       auth:
-        password: "CHANGE-ME"
+        password: ""  # required: openssl rand -hex 24
       master:
         persistence:
           size: 10Gi
@@ -225,8 +229,8 @@ Semaphore Chat requires a LiveKit server for voice and video. The chart doesn't 
 ```yaml
 livekit:
   url: "wss://your-livekit-server.com"
-  apiKey: "your-api-key"
-  apiSecret: "your-api-secret"
+  apiKey: "<your LiveKit key>"
+  apiSecret: "<its secret, 32+ characters>"
 ```
 
 Configure your LiveKit server to send webhooks to `https://your-domain.com/api/livekit/webhook` for voice presence tracking:
@@ -406,6 +410,12 @@ secrets:
 ```
 
 The secret must contain: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `LIVEKIT_API_SECRET`, and `REDIS_PASSWORD` (if using Redis auth).
+
+### Network policies
+
+`networkPolicy.enabled=true` adds ingress-only NetworkPolicies: the backend and frontend accept traffic from the ingress controller's namespace (`networkPolicy.ingressController.namespaceSelector`, default `kubernetes.io/metadata.name: ingress-nginx`), the backend also from the frontend and any `networkPolicy.extraBackendFrom` peers (Prometheus, or LiveKit's webhook if it doesn't come through the ingress), and the bundled PostgreSQL and Redis only from the backend. Egress isn't restricted.
+
+NetworkPolicies add up, and the Bitnami PostgreSQL and Redis subcharts render their own, which admit every pod by default. To actually restrict the databases, also set `postgresql.primary.networkPolicy.allowExternal=false` and `redis.networkPolicy.allowExternal=false` (the install notes remind you).
 
 S3 credentials use a separate `fileStorage.s3.existingSecret` (see [S3 object storage](#s3-object-storage)) rather than this one, so you can manage/rotate them independently.
 

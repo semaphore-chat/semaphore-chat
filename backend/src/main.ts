@@ -12,39 +12,10 @@ import { createOpenApiDocument } from './common/openapi/create-document';
 import { configureBodyParsers } from './common/http/body-parsers';
 import { pinClientAddress } from './common/http/pin-client-address';
 import { buildCorsOptions } from './common/http/cors-options';
-
-const KNOWN_WEAK_SECRETS = [
-  'some long elaborate secret that you really need to change',
-  'a different long elaborate secret to change',
-];
-
-function validateSecrets() {
-  const jwtSecret = process.env.JWT_SECRET;
-  const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  if (isProduction && (!jwtSecret || !jwtRefreshSecret)) {
-    throw new Error(
-      'JWT_SECRET and JWT_REFRESH_SECRET must be set in production.',
-    );
-  }
-
-  if (
-    jwtSecret &&
-    jwtRefreshSecret &&
-    (KNOWN_WEAK_SECRETS.includes(jwtSecret) ||
-      KNOWN_WEAK_SECRETS.includes(jwtRefreshSecret))
-  ) {
-    const message =
-      'SECURITY: JWT secrets are set to default sample values. ' +
-      'Generate secure secrets with: openssl rand -base64 64';
-    if (isProduction) {
-      throw new Error(message + ' — refusing to start in production mode.');
-    } else {
-      console.warn(`\n⚠️  WARNING: ${message}\n`);
-    }
-  }
-}
+import {
+  validateSecrets,
+  warnCookieSecureWithoutTrustProxy,
+} from './config/secret-checks';
 
 /**
  * Parse the TRUST_PROXY env var into the type Express expects.
@@ -65,6 +36,7 @@ function parseTrustProxy(value: string): boolean | number | string {
 
 async function bootstrap() {
   validateSecrets();
+  warnCookieSecureWithoutTrustProxy();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: new ConsoleLogger({

@@ -9,18 +9,19 @@ import {
   app, BrowserWindow, ipcMain, session, desktopCapturer, Notification,
   Tray, Menu, nativeImage, screen, dialog, safeStorage, shell,
   powerSaveBlocker, clipboard, powerMonitor,
+  type IpcMainEvent, type IpcMainInvokeEvent,
 } from 'electron';
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 import { initMain } from 'electron-audio-loopback';
 import * as path from 'path';
 import * as fs from 'fs';
-import { fileURLToPath } from 'url';
 import type { SecureStorageAvailability, SecureStorageStoreResult } from './secure-storage.types';
 import { parseDeepLink, extractDeepLinkUrls, DEEP_LINK_PROTOCOL, type DeepLinkRoute } from './deep-link-parser';
 import { BrowserLoginSessions, type BrowserLoginAttempt, type BrowserLoginResult } from './browser-login';
 import { choosePasswordStore, probeSecretService } from './passwordStore';
 import log from 'electron-log/main';
 import { formatVoiceLogEntry } from './voiceLog';
+import { createAppUrlPolicy, type AppUrlPolicy } from './navigation-policy';
 
 // The app's log file (electron-log's default location: Linux
 // ~/.config/<app>/logs/main.log, macOS ~/Library/Logs/<app>/main.log,
@@ -115,63 +116,72 @@ function isWayland(): boolean {
   );
 }
 
+let appUrlPolicy: AppUrlPolicy | null = null;
+
 /**
- * Resolve a filesystem path to its real path (following symlinks), falling
- * back to the normalized path when it can't be resolved (e.g. doesn't exist).
+ * Which URLs are the app itself and where the window may navigate (see
+ * navigation-policy.ts). Production loads `<appPath>/dist/index.html`; the
+ * dev server (`http://localhost:5173`) counts only in unpackaged builds.
  */
-function toRealPath(p: string): string {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
+function getAppUrlPolicy(): AppUrlPolicy {
+  appUrlPolicy ??= createAppUrlPolicy({
+    distDir: path.join(app.getAppPath(), 'dist'),
+    devServerAllowed: !app.isPackaged,
+  });
+  return appUrlPolicy;
 }
 
 /**
- * Whether a filesystem path lives inside the app's `dist` directory — the
- * directory `createWindow()` loads `index.html` from via `loadFile()` in
- * production. Compared on resolved real paths so symlinks, `..` segments and
- * Windows drive-letter casing can't bypass the check (Node's win32
- * `path.relative` compares case-insensitively).
- */
-function isPathInsideAppDist(fsPath: string): boolean {
-  const distDir = toRealPath(path.join(app.getAppPath(), 'dist'));
-  const target = toRealPath(fsPath);
-  const rel = path.relative(distDir, target);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-/**
- * Determine whether a URL belongs to the app itself, as opposed to a remote
- * page loaded via window-open/will-navigate. Used to gate
- * media/display-capture/fullscreen permission grants so an unexpected
- * remote origin can never silently acquire camera/mic/screen access.
- *
- * Matches exactly how the app loads in each mode:
- * - Production: `mainWindow.loadFile(<appPath>/dist/index.html)` → a `file://`
- *   URL whose path must resolve inside the app's `dist` directory. An
- *   arbitrary `file:` URL (or a bare `file://` origin, which carries no
- *   path) is NOT the app — callers must pass the full URL for file: loads.
- * - Development: `mainWindow.loadURL('http://localhost:5173/')`.
+ * Whether a URL belongs to the app itself, as opposed to a remote page or a
+ * local file loaded into the window. Gates media/display-capture/fullscreen
+ * permission grants and IPC senders.
  */
 function isAppOrigin(urlOrOrigin: string): boolean {
-  if (!urlOrOrigin) return false;
-  try {
-    const parsed = new URL(urlOrOrigin);
-    if (parsed.protocol === 'file:') {
-      // fileURLToPath handles platform normalization (Windows drive letters,
-      // percent-decoding). It throws for a pathless origin like 'file://',
-      // which correctly fails closed below.
-      return isPathInsideAppDist(fileURLToPath(parsed));
-    }
-    if (parsed.protocol === 'http:' && parsed.hostname === 'localhost' && parsed.port === '5173') {
-      return true;
-    }
-    return false;
-  } catch {
+  return getAppUrlPolicy().isAppOrigin(urlOrOrigin);
+}
+
+/**
+ * Whether an IPC message comes from the app's own page: the main window's
+ * top frame while it shows the app. Anything else loaded into the window (a
+ * dropped local file, a subframe) gets nothing from the bridge.
+ */
+function isTrustedIpcSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
     return false;
   }
+  return getAppUrlPolicy().isTrustedSender(event.senderFrame, mainWindow.webContents.mainFrame);
 }
+
+/** `ipcMain.handle` for the app's own page only: other senders get an error. */
+function handleTrusted<A extends unknown[]>(
+  channel: string,
+  listener: (event: IpcMainInvokeEvent, ...args: A) => unknown,
+): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!isTrustedIpcSender(event)) {
+      console.warn(`Refused IPC '${channel}' from ${event.senderFrame?.url ?? 'a gone frame'}`);
+      throw new Error('Untrusted IPC sender');
+    }
+    return listener(event, ...(args as A));
+  });
+}
+
+/** `ipcMain.on` for the app's own page only: other senders are ignored. */
+function onTrusted<A extends unknown[]>(
+  channel: string,
+  listener: (event: IpcMainEvent, ...args: A) => void,
+): void {
+  ipcMain.on(channel, (event, ...args) => {
+    if (!isTrustedIpcSender(event)) {
+      console.warn(`Refused IPC '${channel}' from ${event.senderFrame?.url ?? 'a gone frame'}`);
+      return;
+    }
+    listener(event, ...(args as A));
+  });
+}
+
+/** The only secure-storage keys the renderer may use (a file name each). */
+const SECURE_STORAGE_KEYS: ReadonlySet<string> = new Set(['refreshToken']);
 
 /**
  * Get the path to the app icon, handling both development and packaged builds.
@@ -584,13 +594,13 @@ function setupAutoUpdater() {
  */
 function setupIpcHandlers() {
   // Voice events from the renderer, into the log file (validated: renderer input).
-  ipcMain.on('voice:log', (_event, raw: unknown) => {
+  onTrusted('voice:log', (_event, raw: unknown) => {
     const entry = formatVoiceLogEntry(raw);
     if (entry) voiceLog[entry.level](entry.line);
   });
 
   // Check for updates manually
-  ipcMain.on('check-for-updates', () => {
+  onTrusted('check-for-updates', () => {
     if (process.env.NODE_ENV !== 'development') {
       autoUpdater.checkForUpdates().catch((err: Error) => {
         console.error('Failed to check for updates:', err);
@@ -599,19 +609,19 @@ function setupIpcHandlers() {
   });
 
   // Quit and install update
-  ipcMain.on('quit-and-install', () => {
+  onTrusted('quit-and-install', () => {
     if (process.env.NODE_ENV !== 'development') {
       autoUpdater.quitAndInstall();
     }
   });
 
   // Get app version
-  ipcMain.handle('get-app-version', () => {
+  handleTrusted('get-app-version', () => {
     return app.getVersion();
   });
 
   // Desktop capture handlers for screen sharing
-  ipcMain.handle('desktop-capturer:get-sources', async (_event, types: string[]) => {
+  handleTrusted('desktop-capturer:get-sources', async (_event, types: string[]) => {
     try {
       const sources = await desktopCapturer.getSources({
         types: types as ('window' | 'screen')[],
@@ -633,7 +643,7 @@ function setupIpcHandlers() {
   });
 
   // Notification handlers
-  ipcMain.on('notification:show', (_event, options: {
+  onTrusted('notification:show', (_event, options: {
     title: string;
     body?: string;
     icon?: string;
@@ -687,7 +697,7 @@ function setupIpcHandlers() {
   });
 
   // Clear notifications by tag
-  ipcMain.on('notification:clear', (_event, tag: string) => {
+  onTrusted('notification:clear', (_event, tag: string) => {
     const notification = activeNotifications.get(tag);
     if (notification) {
       notification.close();
@@ -696,11 +706,11 @@ function setupIpcHandlers() {
   });
 
   // Settings handlers
-  ipcMain.handle('settings:get', () => {
+  handleTrusted('settings:get', () => {
     return loadSettings();
   });
 
-  ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
+  handleTrusted('settings:set', (_event, key: string, value: unknown) => {
     const current = loadSettings();
     if (!Object.prototype.hasOwnProperty.call(current, key)) {
       throw new Error(`Invalid settings key: ${key}`);
@@ -715,11 +725,14 @@ function setupIpcHandlers() {
 
   // Lets the renderer proactively check encryption availability (e.g. to
   // surface a warning) without performing a store/read operation.
-  ipcMain.handle('secure-storage:availability', (): SecureStorageAvailability => {
+  handleTrusted('secure-storage:availability', (): SecureStorageAvailability => {
     return safeStorage.isEncryptionAvailable() ? 'available' : 'unavailable';
   });
 
-  ipcMain.handle('secure-storage:store', async (_event, key: string, value: string): Promise<SecureStorageStoreResult> => {
+  handleTrusted('secure-storage:store', async (_event, key: string, value: string): Promise<SecureStorageStoreResult> => {
+    if (!SECURE_STORAGE_KEYS.has(key) || typeof value !== 'string') {
+      throw new Error('Invalid secure storage key');
+    }
     const availability: SecureStorageAvailability = safeStorage.isEncryptionAvailable()
       ? 'available'
       : 'unavailable';
@@ -748,7 +761,10 @@ function setupIpcHandlers() {
   // and don't need availability detail here — only `store` needed a typed
   // result, since that's the operation that decides whether to fall back to
   // localStorage and warn the user.
-  ipcMain.handle('secure-storage:get', async (_event, key: string) => {
+  handleTrusted('secure-storage:get', async (_event, key: string) => {
+    if (!SECURE_STORAGE_KEYS.has(key)) {
+      throw new Error('Invalid secure storage key');
+    }
     try {
       if (!safeStorage.isEncryptionAvailable()) {
         return null;
@@ -765,7 +781,10 @@ function setupIpcHandlers() {
     }
   });
 
-  ipcMain.handle('secure-storage:delete', async (_event, key: string) => {
+  handleTrusted('secure-storage:delete', async (_event, key: string) => {
+    if (!SECURE_STORAGE_KEYS.has(key)) {
+      throw new Error('Invalid secure storage key');
+    }
     try {
       const filePath = path.join(secureStoragePath, key);
       if (fs.existsSync(filePath)) {
@@ -779,7 +798,7 @@ function setupIpcHandlers() {
   // Power save blocker for voice calls — prevents OS-level suspension
   let activePowerSaveId: number | null = null;
 
-  ipcMain.handle('voice:request-power-save-block', () => {
+  handleTrusted('voice:request-power-save-block', () => {
     if (activePowerSaveId !== null && powerSaveBlocker.isStarted(activePowerSaveId)) {
       return activePowerSaveId;
     }
@@ -787,7 +806,7 @@ function setupIpcHandlers() {
     return activePowerSaveId;
   });
 
-  ipcMain.handle('voice:release-power-save-block', (_event, id: number) => {
+  handleTrusted('voice:release-power-save-block', (_event, id: number) => {
     if (typeof id === 'number' && powerSaveBlocker.isStarted(id)) {
       powerSaveBlocker.stop(id);
       if (activePowerSaveId === id) {
@@ -798,7 +817,7 @@ function setupIpcHandlers() {
 
   // Clipboard. Electron 44 made clipboard.writeText async (Promise<void>);
   // catch a rejection so it can't surface as an unhandled rejection in main.
-  ipcMain.on('clipboard:write', (_event, text: string) => {
+  onTrusted('clipboard:write', (_event, text: string) => {
     clipboard.writeText(text).catch((error: unknown) => {
       console.error('Failed to write to clipboard:', error);
     });
@@ -808,19 +827,16 @@ function setupIpcHandlers() {
   // so any URL that arrived before then (cold start, second-instance) can
   // be delivered without being lost to a race. Idempotent — once flushed,
   // the queue is empty, so a later resend (e.g. dev HMR remount) is a no-op.
-  ipcMain.on('deep-link:ready', () => {
+  onTrusted('deep-link:ready', () => {
     flushPendingDeepLinks();
   });
 
   // Sign in with browser (see browser-login.ts). One attempt at a time: a
   // new one cancels the last. Resolves when the browser hands back a code,
   // or with why it didn't (cancelled, denied, timeout).
-  ipcMain.handle(
+  handleTrusted(
     'browser-login:start',
-    async (event, request: unknown): Promise<BrowserLoginResult> => {
-      if (!mainWindow || event.sender !== mainWindow.webContents) {
-        return { status: 'error', message: 'Not the app window' };
-      }
+    async (_event, request: unknown): Promise<BrowserLoginResult> => {
       const { instanceUrl, codeChallenge } = (request ?? {}) as Record<string, unknown>;
       if (typeof instanceUrl !== 'string' || typeof codeChallenge !== 'string') {
         return { status: 'error', message: 'Invalid request' };
@@ -850,7 +866,7 @@ function setupIpcHandlers() {
     },
   );
 
-  ipcMain.handle('browser-login:cancel', () => cancelBrowserLogin());
+  handleTrusted('browser-login:cancel', () => cancelBrowserLogin());
 }
 
 /** The browser sign-in, one at a time (see 'browser-login:start'). */
@@ -985,18 +1001,21 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // Catch in-page navigation to external URLs and open them in the default browser
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  // The window shows only the app: any other navigation (a link, a file
+  // dropped on the window, a redirect) is stopped, and web links open in the
+  // default browser instead.
+  const blockForeignNavigation = (event: Electron.Event, url: string) => {
+    if (getAppUrlPolicy().isAllowedNavigation(url)) return;
+    event.preventDefault();
     try {
-      const parsedUrl = new URL(url);
-      // Allow navigation to the app's own URLs (localhost in dev, file:// in prod)
-      if (parsedUrl.protocol === 'file:') return;
-      if (parsedUrl.hostname === 'localhost') return;
-      event.preventDefault();
-      if (['http:', 'https:', 'mailto:'].includes(parsedUrl.protocol)) {
+      if (['http:', 'https:', 'mailto:'].includes(new URL(url).protocol)) {
         void shell.openExternal(url);
       }
     } catch { /* ignore invalid URLs */ }
+  };
+  mainWindow.webContents.on('will-navigate', blockForeignNavigation);
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    if (!getAppUrlPolicy().isAllowedNavigation(url)) event.preventDefault();
   });
 }
 

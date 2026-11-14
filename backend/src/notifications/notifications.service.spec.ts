@@ -1345,6 +1345,20 @@ describe('NotificationsService', () => {
         expect.objectContaining({ take: 100 }),
       );
     });
+
+    it('should hold a negative limit at 1 even if it bypasses DTO validation', async () => {
+      const userId = 'user-1';
+      mockDatabase.notification.findMany.mockResolvedValue([]);
+
+      await service.getUserNotifications(userId, {
+        limit: -5,
+        offset: 0,
+      });
+
+      expect(mockDatabase.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 1 }),
+      );
+    });
   });
 
   describe('countUserNotifications', () => {

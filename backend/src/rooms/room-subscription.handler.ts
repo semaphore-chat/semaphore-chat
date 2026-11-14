@@ -184,8 +184,7 @@ export class RoomSubscriptionHandler {
     communityId,
   }: ModerationTimeoutChangedEvent): Promise<void> {
     try {
-      const connected =
-        await this.voicePresenceService.getUserVoiceChannels(userId);
+      const connected = await this.connectedVoiceRooms(userId);
       if (connected.length === 0) return;
       const channels = await this.databaseService.channel.findMany({
         where: { communityId, id: { in: connected } },
@@ -225,14 +224,40 @@ export class RoomSubscriptionHandler {
     communityId,
     moderatorId,
   }: ModerationTimeoutExpiredEvent): void {
+    // Who set it goes to the target only, as for a moderator lifting it
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.TIMEOUT_REMOVED,
+      { communityId, userId, moderatorId, expired: true },
+    );
     this.websocketService.sendToRoom(
       RoomName.community(communityId),
       ServerEvents.TIMEOUT_REMOVED,
-      { communityId, userId, moderatorId, expired: true },
+      { communityId, userId, expired: true },
     );
     this.logger.debug(
       `Timeout of ${userId} in community ${communityId} expired`,
     );
+  }
+
+  /**
+   * The rooms the user is connected to: the voice presence index merged with
+   * LiveKit's own participant lists. A user can clear their presence (the
+   * REST leave) while staying connected, so presence alone can't be trusted
+   * to find them; LiveKit can't always be listed, so it's not alone either.
+   * May include DM rooms: callers intersect with the community's channels.
+   */
+  private async connectedVoiceRooms(userId: string): Promise<string[]> {
+    const [presence, livekitRooms] = await Promise.all([
+      this.voicePresenceService.getUserVoiceChannels(userId),
+      this.livekitService.listParticipantRooms(userId),
+    ]);
+    return [
+      ...new Set([
+        ...presence,
+        ...livekitRooms.map(({ roomName }) => roomName),
+      ]),
+    ];
   }
 
   /**
@@ -246,8 +271,7 @@ export class RoomSubscriptionHandler {
     communityId: string,
   ): Promise<void> {
     try {
-      const userVoiceChannels =
-        await this.voicePresenceService.getUserVoiceChannels(userId);
+      const userVoiceChannels = await this.connectedVoiceRooms(userId);
 
       if (userVoiceChannels.length === 0) {
         return;
@@ -301,8 +325,12 @@ export class RoomSubscriptionHandler {
   @OnEvent(RoomEvents.CHANNEL_VISIBILITY_CHANGED)
   async onChannelVisibilityChanged({
     channelId,
+    communityId,
   }: ChannelVisibilityChangedEvent): Promise<void> {
     await this.syncChannelRoom(channelId);
+    // Its permissions changed (overwrites, preset): re-clamp what those
+    // still in its call may publish, and remove who lost JOIN_CHANNEL
+    await this.resyncVoiceGrants(communityId, { channelIds: [channelId] });
   }
 
   /**
@@ -392,6 +420,132 @@ export class RoomSubscriptionHandler {
       this.logger.error(
         `Failed to remove users who lost access from voice channel ${channelId}`,
         error,
+      );
+    }
+  }
+
+  /**
+   * Community-wide resyncs running now, per community; `dirty` = another
+   * change arrived meanwhile, so one more pass runs after this one.
+   */
+  private readonly communityResyncs = new Map<
+    string,
+    { running: Promise<void>; dirty: boolean }
+  >();
+
+  /**
+   * resyncVoiceGrants for the whole community, coalesced: at most one runs
+   * per community at a time, and at most one more is queued behind it. A
+   * role reorder emits ROLE_UPDATED once per role; without this each would
+   * start a full resync (LiveKit calls per voice channel and participant)
+   * at once. A queued pass reads the state after every change it covers.
+   * Per process: each replica coalesces its own events.
+   */
+  private resyncCommunityVoiceGrants(communityId: string): Promise<void> {
+    const current = this.communityResyncs.get(communityId);
+    if (current) {
+      current.dirty = true;
+      return current.running;
+    }
+    const entry = { running: Promise.resolve(), dirty: true };
+    this.communityResyncs.set(communityId, entry);
+    entry.running = (async () => {
+      try {
+        while (entry.dirty) {
+          entry.dirty = false;
+          await this.resyncVoiceGrants(communityId);
+        }
+      } finally {
+        this.communityResyncs.delete(communityId);
+      }
+    })();
+    return entry.running;
+  }
+
+  /**
+   * Re-apply each connected participant's voice grant from their current
+   * channel capabilities (roles, overwrites, timeout, server mute): clamp
+   * what they may publish, or remove them from the call when they lost
+   * JOIN_CHANNEL. Covers the community's VOICE channels (or `channelIds`),
+   * and every participant (or just `userIds`). Connected = presence merged
+   * with LiveKit's participant list; only community members are touched, so
+   * egress/ingress participants never are. Best effort: logged, never thrown.
+   */
+  private async resyncVoiceGrants(
+    communityId: string,
+    scope: { channelIds?: string[]; userIds?: string[] } = {},
+  ): Promise<void> {
+    try {
+      const channels = await this.databaseService.channel.findMany({
+        where: {
+          communityId,
+          type: ChannelType.VOICE,
+          ...(scope.channelIds ? { id: { in: scope.channelIds } } : {}),
+        },
+        select: { id: true },
+      });
+      for (const { id: channelId } of channels) {
+        const [presence, participants] = await Promise.all([
+          this.voicePresenceService.getChannelPresence(channelId),
+          this.livekitService.listParticipantIdentities(channelId),
+        ]);
+        let connected = [
+          ...new Set([...presence.map((p) => p.id), ...participants]),
+        ];
+        if (scope.userIds) {
+          const wanted = new Set(scope.userIds);
+          connected = connected.filter((id) => wanted.has(id));
+        }
+        if (connected.length === 0) continue;
+
+        const members = await this.databaseService.membership.findMany({
+          where: { communityId, userId: { in: connected } },
+          select: { userId: true },
+        });
+        await Promise.allSettled(
+          members.map(({ userId }) => this.resyncVoiceGrant(channelId, userId)),
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to re-apply voice grants in community ${communityId}`,
+        error,
+      );
+    }
+  }
+
+  private async resyncVoiceGrant(
+    channelId: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const caps = await this.channelAccessService.channelCapabilities(
+        userId,
+        channelId,
+      );
+      if (!caps?.connect) {
+        await Promise.allSettled([
+          this.livekitService.removeParticipant(channelId, userId),
+          this.voicePresenceService.leaveVoiceChannel(channelId, userId),
+        ]);
+        this.logger.log(
+          `Removed ${userId} from voice channel ${channelId}: no longer allowed to join`,
+        );
+        return;
+      }
+      await this.livekitService.updatePublishPermissions(
+        channelId,
+        userId,
+        publishGrantFor(
+          caps,
+          await this.voicePresenceService.isServerMuted(channelId, userId),
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not re-apply the voice grant of ${userId} in ${channelId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -851,7 +1005,7 @@ export class RoomSubscriptionHandler {
   }
 
   @OnEvent(RoomEvents.ROLE_UPDATED)
-  onRoleUpdated(event: RoleUpdatedEvent): void {
+  async onRoleUpdated(event: RoleUpdatedEvent): Promise<void> {
     this.websocketService.sendToRoom(
       RoomName.community(event.communityId),
       ServerEvents.ROLE_UPDATED,
@@ -860,10 +1014,12 @@ export class RoomSubscriptionHandler {
     this.logger.debug(
       `Role ${event.roleId} updated in community ${event.communityId}`,
     );
+    // What they may publish in calls, or whether they may stay
+    await this.resyncCommunityVoiceGrants(event.communityId);
   }
 
   @OnEvent(RoomEvents.ROLE_DELETED)
-  onRoleDeleted(event: RoleDeletedEvent): void {
+  async onRoleDeleted(event: RoleDeletedEvent): Promise<void> {
     this.websocketService.sendToRoom(
       RoomName.community(event.communityId),
       ServerEvents.ROLE_DELETED,
@@ -872,10 +1028,12 @@ export class RoomSubscriptionHandler {
     this.logger.debug(
       `Role ${event.roleId} deleted from community ${event.communityId}`,
     );
+    // What they may publish in calls, or whether they may stay
+    await this.resyncCommunityVoiceGrants(event.communityId);
   }
 
   @OnEvent(RoomEvents.ROLE_ASSIGNED)
-  onRoleAssigned(event: RoleAssignedEvent): void {
+  async onRoleAssigned(event: RoleAssignedEvent): Promise<void> {
     this.websocketService.sendToRoom(
       RoomName.community(event.communityId),
       ServerEvents.ROLE_ASSIGNED,
@@ -884,10 +1042,14 @@ export class RoomSubscriptionHandler {
     this.logger.debug(
       `User ${event.userId} assigned role ${event.roleId} in community ${event.communityId}`,
     );
+    // What they may publish in calls, or whether they may stay
+    await this.resyncVoiceGrants(event.communityId, {
+      userIds: [event.userId],
+    });
   }
 
   @OnEvent(RoomEvents.ROLE_UNASSIGNED)
-  onRoleUnassigned(event: RoleUnassignedEvent): void {
+  async onRoleUnassigned(event: RoleUnassignedEvent): Promise<void> {
     this.websocketService.sendToRoom(
       RoomName.community(event.communityId),
       ServerEvents.ROLE_UNASSIGNED,
@@ -896,6 +1058,10 @@ export class RoomSubscriptionHandler {
     this.logger.debug(
       `User ${event.userId} unassigned role ${event.roleId} in community ${event.communityId}`,
     );
+    // What they may publish in calls, or whether they may stay
+    await this.resyncVoiceGrants(event.communityId, {
+      userIds: [event.userId],
+    });
   }
 
   @OnEvent(RoomEvents.INSTANCE_ROLES_UPDATED)

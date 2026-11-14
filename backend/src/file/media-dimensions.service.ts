@@ -4,6 +4,11 @@ import {
   FfprobeStream,
   FfprobeStreams,
 } from '@/livekit/providers/ffmpeg.provider';
+import {
+  exceedsMediaPixelCap,
+  readImageSizeFromFile,
+} from '@/common/utils/image-header.util';
+import { mediaProcessSlots } from '@/common/utils/process-slots.util';
 
 /** The pixels an attachment occupies once displayed. */
 export interface MediaDimensions {
@@ -40,10 +45,25 @@ export class MediaDimensionsService {
   ): Promise<MediaDimensions | null> {
     if (!this.isMeasurable(mimeType)) return null;
 
+    // Never decode an image the header says is over the pixel cap (upload
+    // validation refuses these; this guards every other caller).
+    if (mimeType.toLowerCase().startsWith('image/')) {
+      const size = await readImageSizeFromFile(filePath);
+      if (exceedsMediaPixelCap(size)) {
+        this.logger.debug(
+          `Not probing ${size!.width}×${size!.height} image ${filePath}: over the pixel cap`,
+        );
+        return null;
+      }
+    }
+
     try {
       // The provider kills ffprobe at the limit, so a hung probe on a bad
-      // file cannot pile up processes behind abandoned uploads.
-      const probe = await this.ffmpegProvider.probeStreams(filePath, timeoutMs);
+      // file cannot pile up processes behind abandoned uploads; the slot
+      // bounds how many decodes run at once.
+      const probe = await mediaProcessSlots.run(() =>
+        this.ffmpegProvider.probeStreams(filePath, timeoutMs),
+      );
 
       const dimensions = this.fromStreams(probe);
       if (!dimensions) {

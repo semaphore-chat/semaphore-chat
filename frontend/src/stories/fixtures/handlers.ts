@@ -107,7 +107,7 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
   const base: HttpHandler[] = [
     // ── Onboarding / instance ─────────────────────────────────────────
     http.get('/api/onboarding/status', () =>
-      HttpResponse.json({ needsSetup: false, hasUsers: true } satisfies OnboardingStatusDto)),
+      HttpResponse.json({ needsSetup: false, hasUsers: true, setupTokenRequired: true } satisfies OnboardingStatusDto)),
 
     http.get('/api/instance/settings/public', () =>
       HttpResponse.json({

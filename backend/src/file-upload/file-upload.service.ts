@@ -171,8 +171,38 @@ export class FileUploadService {
         await this.assertSoundboardDuration(file);
       }
 
+      // Count the bytes against the quota now, atomically: the check above
+      // is a read, and concurrent uploads would all pass it. Released below
+      // if the upload fails after this point.
+      if (
+        !(await this.storageQuotaService.reserveStorage(user.id, file.size))
+      ) {
+        await this.cleanupFile(file.path);
+        throw new PayloadTooLargeException(
+          'Upload would exceed storage quota',
+          {
+            description: 'Payload Too Large',
+            errorCode: ErrorCode.STORAGE_QUOTA_EXCEEDED,
+          },
+        );
+      }
+      const releaseReservation = () =>
+        this.storageQuotaService
+          .decrementUserStorage(user.id, file.size)
+          .catch((releaseError: unknown) =>
+            this.logger.error(
+              `Failed to release the storage reservation for user ${user.id}: ${String(releaseError)}`,
+            ),
+          );
+
       // Generate checksum (streamed — never buffers the whole file)
-      const checksum = await this.generateChecksum(file.path);
+      let checksum: string;
+      try {
+        checksum = await this.generateChecksum(file.path);
+      } catch (checksumError) {
+        await releaseReservation();
+        throw checksumError;
+      }
 
       // Determine file type from MIME type
       const fileType = this.getFileTypeFromMimeType(file.mimetype);
@@ -192,6 +222,7 @@ export class FileUploadService {
           );
         } catch (uploadError) {
           await this.cleanupFile(file.path);
+          await releaseReservation();
           this.logger.error(`Failed to upload file to S3: ${uploadError}`);
           throw uploadError;
         }
@@ -229,9 +260,6 @@ export class FileUploadService {
           },
         });
 
-        // Increment user's storage usage
-        await this.storageQuotaService.incrementUserStorage(user.id, file.size);
-
         // Generate a thumbnail for videos and raster images before
         // responding, so the metadata clients receive carries
         // hasThumbnail: true. Failure (including an image that needs no
@@ -260,6 +288,7 @@ export class FileUploadService {
         // If DB insert fails, clean up the local tmp file and, if the
         // object was already uploaded to S3, the now-orphaned remote copy.
         await this.cleanupFile(file.path);
+        await releaseReservation();
         if (storageType === StorageType.S3) {
           await this.cleanupRemoteObject(objectKey);
         }
