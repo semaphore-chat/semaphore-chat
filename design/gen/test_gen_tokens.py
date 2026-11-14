@@ -9,6 +9,7 @@ import contextlib
 import io
 import json
 import pathlib
+import re
 import sys
 import tempfile
 import unittest
@@ -17,9 +18,11 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import gen_tokens as gen  # noqa: E402  (after the path fix above)
+from test_colour_ref import DEFAULT  # noqa: E402  (the approved mock-up palette)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 REAL = REPO / "design" / "tokens.json"
+REAL_COLOUR = REPO / "design" / "colour.json"
 
 
 def set_value(path: str, value: object):
@@ -49,7 +52,7 @@ def delete(path: str):
 
 
 class TempSource(unittest.TestCase):
-    """A temporary repo root holding a copy of the real `design/tokens.json`."""
+    """A temporary repo root holding copies of the real source documents."""
 
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
@@ -58,14 +61,24 @@ class TempSource(unittest.TestCase):
         self.source = self.root / "design" / "tokens.json"
         self.source.parent.mkdir()
         self.source.write_text(REAL.read_text(encoding="utf-8"), encoding="utf-8")
+        self.colour_source = self.root / "design" / "colour.json"
+        self.colour_source.write_text(REAL_COLOUR.read_text(encoding="utf-8"), encoding="utf-8")
 
     def edit(self, change) -> None:
         data = json.loads(self.source.read_text(encoding="utf-8"))
         change(data)
         self.source.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
+    def edit_colour(self, change) -> None:
+        data = json.loads(self.colour_source.read_text(encoding="utf-8"))
+        change(data)
+        self.colour_source.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
     def load(self) -> dict:
         return gen.load(self.source)
+
+    def load_colour(self) -> dict:
+        return gen.load_colour(self.colour_source)
 
 
 class RealFileTest(unittest.TestCase):
@@ -193,6 +206,47 @@ class LoadValidationTest(TempSource):
             self.load()
 
 
+class ColourLoadTest(TempSource):
+    def test_load_real_file(self):
+        colour = gen.load_colour(REAL_COLOUR)
+        self.assertEqual(colour["chromaReference"], 0.197)
+        self.assertEqual(list(colour["modes"]), ["dark", "light"])  # source order kept
+
+    def test_mode_role_must_be_a_lightness_chroma_pair(self):
+        self.edit_colour(set_value("modes.dark.ground", [0.2]))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.modes\.dark\.ground"):
+            self.load_colour()
+
+    def test_status_must_be_hex(self):
+        self.edit_colour(set_value("status.danger", "red"))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.status\.danger"):
+            self.load_colour()
+
+    def test_missing_mode_rejected(self):
+        self.edit_colour(delete("modes.light"))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.modes\.light"):
+            self.load_colour()
+
+    def test_intensity_must_be_positive(self):
+        self.edit_colour(set_value("intensity.balanced", 0))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.intensity\.balanced"):
+            self.load_colour()
+
+    def test_accent_lightness_range_must_be_ordered(self):
+        self.edit_colour(set_value("modes.dark.accentL", [0.8, 0.6]))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.modes\.dark\.accentL"):
+            self.load_colour()
+
+    def test_lightness_and_chroma_bounds(self):
+        self.edit_colour(set_value("modes.light.text", [1.2, 0.01]))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.modes\.light\.text"):
+            self.load_colour()
+
+        self.edit_colour(set_value("modes.light.text", [0.2, 0.5]))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.modes\.light\.text"):
+            self.load_colour()
+
+
 class FmtNumTest(unittest.TestCase):
     def test_fmt_num(self):
         self.assertEqual(
@@ -254,6 +308,91 @@ class RenderRsTest(unittest.TestCase):
         tokens = gen.load(REAL)
         tokens["motion"]["fast"] = 120.0
         self.assertIn("pub const MOTION_FAST_MS: u32 = 120;", gen.render_rs(tokens))
+
+
+COLOUR_ENTRY = re.compile(
+    r"^  \{\n"
+    r"    base: '([^']+)',\n"
+    r"    mode: '([^']+)',\n"
+    r"    intensity: '([^']+)',\n"
+    r"    roles: \{\n"
+    r"((?:      [A-Za-z]+: '#[0-9a-f]+',\n)+)"
+    r"    \},\n"
+    r"  \},",
+    re.MULTILINE,
+)
+COLOUR_ROLE = re.compile(r"^      ([A-Za-z]+): '([^']+)',$", re.MULTILINE)
+
+
+def parse_colour_vectors_ts(text: str) -> list[tuple[str, str, str, dict]]:
+    """The entries of the generated TypeScript module, for comparison with the JSON."""
+    return [
+        (match.group(1), match.group(2), match.group(3), dict(COLOUR_ROLE.findall(match.group(4))))
+        for match in COLOUR_ENTRY.finditer(text)
+    ]
+
+
+class RenderColourVectorsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.sources = {"tokens": gen.load(REAL), "colour": gen.load_colour(REAL_COLOUR)}
+        self.rendered = gen.render_colour_vectors(self.sources)
+
+    def test_vectors_cover_every_base_mode_and_intensity(self):
+        vectors = json.loads(self.rendered)
+        self.assertEqual(len(vectors), 96)
+        self.assertEqual(
+            [(vector["base"], vector["mode"], vector["intensity"]) for vector in vectors],
+            [
+                (base, mode, intensity)
+                for base in gen.VECTOR_BASES
+                for mode in ("dark", "light")
+                for intensity in ("minimal", "balanced", "vibrant")
+            ],
+        )
+
+    def test_first_vector_is_the_approved_default_palette(self):
+        first = json.loads(self.rendered)[0]
+        self.assertEqual(
+            (first["base"], first["mode"], first["intensity"]), ("#8E75FF", "dark", "minimal")
+        )
+        self.assertEqual(first["roles"], DEFAULT)
+        self.assertEqual(list(first["roles"]), gen.ROLES)  # ROLES order, not DEFAULT order
+
+    def test_render_is_deterministic(self):
+        self.assertEqual(self.rendered, gen.render_colour_vectors(self.sources))
+
+    def test_ts_renderer_lists_the_same_vectors(self):
+        parsed = parse_colour_vectors_ts(gen.render_colour_vectors_ts(self.sources))
+        self.assertEqual(len(parsed), 96)
+        self.assertEqual(
+            [
+                (vector["base"], vector["mode"], vector["intensity"], vector["roles"])
+                for vector in json.loads(self.rendered)
+            ],
+            parsed,
+        )
+        for base, mode, intensity, roles in parsed:
+            self.assertEqual(list(roles), gen.ROLES, f"{base} {mode} {intensity}")
+
+    def test_ts_render_is_headed_and_exported(self):
+        out = gen.render_colour_vectors_ts(self.sources)
+        self.assertTrue(
+            out.startswith(
+                "// @generated by design/gen/gen_tokens.py from design/colour.json.\n"
+                "// Do not edit by hand"
+            )
+        )
+        self.assertIn(
+            "export const colourVectors = [\n"
+            "  {\n"
+            "    base: '#8E75FF',\n"
+            "    mode: 'dark',\n"
+            "    intensity: 'minimal',\n"
+            "    roles: {\n"
+            "      ground: '#121214',\n",
+            out,
+        )
+        self.assertTrue(out.endswith("  },\n] as const;\n"))
 
 
 class RunTest(TempSource):
