@@ -4,6 +4,7 @@ import {
   LOGIN_FAILURE_LIMIT,
   LOGIN_FAILURE_WINDOW_SECONDS,
 } from './auth-attempt-limiter.service';
+import type Redis from 'ioredis';
 import type { Mocked } from '@suites/doubles.jest';
 import { AuthService, SESSION_ACTIVITY_DELAY_MS } from './auth.service';
 import { UserService } from '../user/user.service';
@@ -23,6 +24,7 @@ import {
   createMockDatabase,
   createMockJwtService,
   createMockConfigService,
+  createFakeRedis,
 } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { SessionRevocationService } from './session-revocation.service';
@@ -46,9 +48,6 @@ describe('AuthService', () => {
   let sessionRevocationService: Mocked<SessionRevocationService>;
   let refreshTokenGraceService: Mocked<RefreshTokenGraceService>;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
-  let unitRefForLimiter: {
-    get<T>(type: new (...args: never[]) => T): Mocked<T>;
-  };
 
   const mockBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 
@@ -70,7 +69,6 @@ describe('AuthService', () => {
       .compile();
 
     service = unit;
-    unitRefForLimiter = unitRef;
     userService = unitRef.get(UserService);
     sessionRevocationService = unitRef.get(SessionRevocationService);
     refreshTokenGraceService = unitRef.get(RefreshTokenGraceService);
@@ -99,57 +97,100 @@ describe('AuthService', () => {
     });
   });
 
-  describe('validateUser: per-account failed sign-in limit', () => {
-    let limiter: Mocked<AuthAttemptLimiter>;
+  describe('validateUser: failed sign-in limit per account and client', () => {
+    // A real limiter on an in-memory Redis
+    let redis: ReturnType<typeof createFakeRedis>;
+    let limited: AuthService;
+    const owner = UserFactory.build({ username: 'owner' });
+    const ATTACKER = '198.51.100.9';
+    const OWNER_IP = '203.0.113.5';
+
     beforeEach(() => {
-      limiter = unitRefForLimiter.get(AuthAttemptLimiter);
-      limiter.isLimited.mockResolvedValue(false);
+      redis = createFakeRedis();
+      limited = new AuthService(
+        userService as unknown as UserService,
+        jwtService as unknown as JwtService,
+        mockDatabase as unknown as DatabaseService,
+        createMockConfigService({
+          JWT_REFRESH_SECRET: 'test-refresh-secret',
+          NODE_ENV: 'production',
+        }) as unknown as ConfigService,
+        sessionRevocationService as unknown as SessionRevocationService,
+        refreshTokenGraceService as unknown as RefreshTokenGraceService,
+        new AuthAttemptLimiter(
+          redis as unknown as Redis,
+          createMockConfigService({
+            NODE_ENV: 'production',
+          }) as unknown as ConfigService,
+        ),
+      );
+      jest.spyOn(userService, 'findByUsername').mockResolvedValue(owner);
+      mockBcrypt.compare.mockImplementation(((pass: string) =>
+        Promise.resolve(pass === 'right')) as never);
     });
 
-    it('refuses with 429, before checking the password, once the account is locked', async () => {
-      limiter.isLimited.mockResolvedValue(true);
+    const failFrom = async (ip: string, times = LOGIN_FAILURE_LIMIT) => {
+      for (let i = 0; i < times; i++) {
+        expect(await limited.validateUser('owner', 'guess', ip)).toBeNull();
+      }
+    };
+
+    it('refuses the 11th guess from the same client with 429, before checking the password', async () => {
+      await failFrom(ATTACKER);
+      mockBcrypt.compare.mockClear();
 
       await expect(
-        service.validateUser('Owner', 'guess'),
+        limited.validateUser('Owner', 'right', ATTACKER),
       ).rejects.toMatchObject({ status: 429 });
-      expect(limiter.isLimited).toHaveBeenCalledWith(
-        'login-fail:owner',
-        LOGIN_FAILURE_LIMIT,
-      );
       expect(bcrypt.compare).not.toHaveBeenCalled();
     });
 
-    it('counts a wrong password against the account', async () => {
-      const user = UserFactory.build({ username: 'owner' });
-      jest.spyOn(userService, 'findByUsername').mockResolvedValue(user);
-      mockBcrypt.compare.mockResolvedValue(false as never);
+    it('still lets another client sign in with the right password while one client is locked', async () => {
+      await failFrom(ATTACKER);
 
-      expect(await service.validateUser('owner', 'guess')).toBeNull();
-      expect(limiter.recordAttempt).toHaveBeenCalledWith(
-        'login-fail:owner',
-        LOGIN_FAILURE_WINDOW_SECONDS,
-      );
+      await expect(
+        limited.validateUser('owner', 'right', OWNER_IP),
+      ).resolves.toBeInstanceOf(UserEntity);
+    });
+
+    it('counts addresses of one IPv6 /64 as one client', async () => {
+      await failFrom('2001:db8:1:2::1', LOGIN_FAILURE_LIMIT - 1);
+      await failFrom('2001:db8:1:2::77', 1);
+
+      await expect(
+        limited.validateUser('owner', 'right', '2001:db8:1:2::abc'),
+      ).rejects.toMatchObject({ status: 429 });
     });
 
     it('counts unknown usernames too (no enumeration)', async () => {
       jest.spyOn(userService, 'findByUsername').mockResolvedValue(null);
-      mockBcrypt.compare.mockResolvedValue(false as never);
-
-      expect(await service.validateUser('Nobody', 'guess')).toBeNull();
-      expect(limiter.recordAttempt).toHaveBeenCalledWith(
-        'login-fail:nobody',
-        LOGIN_FAILURE_WINDOW_SECONDS,
-      );
+      for (let i = 0; i < LOGIN_FAILURE_LIMIT; i++) {
+        expect(
+          await limited.validateUser('Nobody', 'guess', ATTACKER),
+        ).toBeNull();
+      }
+      await expect(
+        limited.validateUser('nobody', 'guess', ATTACKER),
+      ).rejects.toMatchObject({ status: 429 });
     });
 
-    it('clears the count on a successful sign-in', async () => {
-      const user = UserFactory.build({ username: 'owner' });
-      jest.spyOn(userService, 'findByUsername').mockResolvedValue(user);
-      mockBcrypt.compare.mockResolvedValue(true as never);
+    it("clears the client's count on a successful sign-in", async () => {
+      await failFrom(OWNER_IP, LOGIN_FAILURE_LIMIT - 1);
+      await limited.validateUser('owner', 'right', OWNER_IP);
+      await failFrom(OWNER_IP, LOGIN_FAILURE_LIMIT - 1);
 
-      await service.validateUser('owner', 'right');
-      expect(limiter.clear).toHaveBeenCalledWith('login-fail:owner');
-      expect(limiter.recordAttempt).not.toHaveBeenCalled();
+      await expect(
+        limited.validateUser('owner', 'right', OWNER_IP),
+      ).resolves.toBeInstanceOf(UserEntity);
+    });
+
+    it('fails open when Redis is down', async () => {
+      redis.get.mockRejectedValue(new Error('down'));
+      redis.incr.mockRejectedValue(new Error('down'));
+      await failFrom(ATTACKER, LOGIN_FAILURE_LIMIT + 2);
+      await expect(
+        limited.validateUser('owner', 'right', ATTACKER),
+      ).resolves.toBeInstanceOf(UserEntity);
     });
 
     it('locks at 10 failures in 15 minutes', () => {

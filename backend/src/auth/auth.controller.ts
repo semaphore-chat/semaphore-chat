@@ -558,8 +558,9 @@ export class AuthController {
   @ApiOkResponse({ type: ForgotPasswordResponseDto })
   async forgotPassword(
     @Body() dto: ForgotPasswordRequestDto,
+    @Req() req: Request,
   ): Promise<ForgotPasswordResponseDto> {
-    await this.passwordResetService.requestReset(dto.email);
+    await this.passwordResetService.requestReset(dto.email, req.ip);
     return {
       message:
         'If an account with that email exists, a reset link has been sent.',

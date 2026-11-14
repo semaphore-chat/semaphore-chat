@@ -28,6 +28,8 @@ import {
   AuthAttemptLimiter,
   LOGIN_FAILURE_LIMIT,
   LOGIN_FAILURE_WINDOW_SECONDS,
+  loginFailureGroup,
+  loginFailureKey,
 } from './auth-attempt-limiter.service';
 
 /**
@@ -124,18 +126,25 @@ export class AuthService {
     }
   }
 
+  /**
+   * The user, if `pass` is their password.
+   * @param ip - The client's address (req.ip): failed attempts are limited
+   *   per username and client, so one client's guesses never lock the
+   *   account for anyone else.
+   */
   async validateUser(
     username: string,
     pass: string,
+    ip?: string,
   ): Promise<UserEntity | null> {
     const normalized = username.toLocaleLowerCase();
-    // Per-account limit on failed password sign-ins, whatever address they
-    // come from (unknown usernames count too, so it reveals nothing).
-    // Existing sessions keep working; only password sign-in is refused.
-    const failures = `login-fail:${normalized}`;
+    // Limit on failed password sign-ins to this username from this client
+    // (unknown usernames count too, so it reveals nothing). Existing
+    // sessions and other clients are not affected.
+    const failures = loginFailureKey(normalized, ip);
     if (await this.attemptLimiter.isLimited(failures, LOGIN_FAILURE_LIMIT)) {
       throw new HttpException(
-        'Too many failed sign-in attempts for this account. Try again later.',
+        'Too many failed sign-in attempts. Try again later.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
@@ -154,6 +163,7 @@ export class AuthService {
     await this.attemptLimiter.recordAttempt(
       failures,
       LOGIN_FAILURE_WINDOW_SECONDS,
+      loginFailureGroup(normalized),
     );
     return null;
   }

@@ -1,33 +1,12 @@
 import { ConfigService } from '@nestjs/config';
 import type Redis from 'ioredis';
-import { AuthAttemptLimiter } from './auth-attempt-limiter.service';
-
-/** In-memory stand-in for the few Redis commands the limiter uses. */
-export function createFakeRedis() {
-  const values = new Map<string, number>();
-  const ttls = new Map<string, number>();
-  return {
-    values,
-    ttls,
-    get: jest.fn((key: string) =>
-      Promise.resolve(values.has(key) ? String(values.get(key)) : null),
-    ),
-    incr: jest.fn((key: string) => {
-      const next = (values.get(key) ?? 0) + 1;
-      values.set(key, next);
-      return Promise.resolve(next);
-    }),
-    expire: jest.fn((key: string, seconds: number) => {
-      ttls.set(key, seconds);
-      return Promise.resolve(1);
-    }),
-    del: jest.fn((key: string) => {
-      values.delete(key);
-      ttls.delete(key);
-      return Promise.resolve(1);
-    }),
-  };
-}
+import { createFakeRedis } from '@/test-utils';
+import {
+  AuthAttemptLimiter,
+  clientRateKey,
+  loginFailureGroup,
+  loginFailureKey,
+} from './auth-attempt-limiter.service';
 
 const config = (nodeEnv: string) =>
   ({ get: jest.fn(() => nodeEnv) }) as unknown as ConfigService;
@@ -62,6 +41,41 @@ describe('AuthAttemptLimiter', () => {
     await limiter.recordAttempt('k', 900);
     await limiter.clear('k');
     expect(await limiter.isLimited('k', 1)).toBe(false);
+  });
+
+  it('clears every key of a group', async () => {
+    await limiter.recordAttempt('a', 900, 'g');
+    await limiter.recordAttempt('a', 900, 'g');
+    await limiter.recordAttempt('b', 900, 'g');
+    await limiter.recordAttempt('other', 900);
+    expect(redis.ttls.get('g')).toBe(900);
+    await limiter.clearGroup('g');
+    expect(await limiter.isLimited('a', 1)).toBe(false);
+    expect(await limiter.isLimited('b', 1)).toBe(false);
+    expect(await limiter.isLimited('other', 1)).toBe(true);
+    expect(redis.sets.has('g')).toBe(false);
+  });
+
+  describe('keys', () => {
+    it('masks IPv6 clients to their /64 and keeps IPv4 addresses apart', () => {
+      expect(clientRateKey('2001:db8:1:2::1')).toBe(
+        clientRateKey('2001:db8:1:2:aaaa::9'),
+      );
+      expect(clientRateKey('2001:db8:1:2::1')).not.toBe(
+        clientRateKey('2001:db8:1:3::1'),
+      );
+      expect(clientRateKey('203.0.113.7')).not.toBe(
+        clientRateKey('203.0.113.8'),
+      );
+      expect(clientRateKey(undefined)).toBe('unknown');
+    });
+
+    it('keys sign-in failures on the lowercased username and the client', () => {
+      expect(loginFailureKey('Owner', '203.0.113.7')).toBe(
+        'login-fail:owner:203.0.113.7',
+      );
+      expect(loginFailureGroup('Owner')).toBe('login-fail-keys:owner');
+    });
   });
 
   it('fails open when Redis is down', async () => {

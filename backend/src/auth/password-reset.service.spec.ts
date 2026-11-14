@@ -5,11 +5,16 @@ import { PasswordResetService } from './password-reset.service';
 import { UserService } from '@/user/user.service';
 import { MailerService } from '@/mailer/mailer.service';
 import { SessionRevocationService } from './session-revocation.service';
-import { createMockDatabase } from '@/test-utils';
+import { createFakeRedis, createMockDatabase } from '@/test-utils';
+import type Redis from 'ioredis';
 import {
   AuthAttemptLimiter,
+  LOGIN_FAILURE_WINDOW_SECONDS,
+  PASSWORD_RESET_EMAIL_CEILING,
   PASSWORD_RESET_EMAIL_LIMIT,
   PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+  loginFailureGroup,
+  loginFailureKey,
 } from './auth-attempt-limiter.service';
 import { UserFactory } from '@/test-utils/factories';
 
@@ -27,8 +32,8 @@ describe('PasswordResetService', () => {
   let mockSessionRevocationService: {
     revokeAllUserSessions: jest.Mock;
   };
-  let attempts: Map<string, number>;
-  let mockLimiter: { recordAttempt: jest.Mock };
+  let redis: ReturnType<typeof createFakeRedis>;
+  let limiter: AuthAttemptLimiter;
 
   const hashToken = (token: string) =>
     createHash('sha256').update(token).digest('hex');
@@ -38,7 +43,9 @@ describe('PasswordResetService', () => {
 
     mockUserService = {
       hashPassword: jest.fn().mockResolvedValue('hashed-new-password'),
-      resetPasswordAndRevokeSessions: jest.fn(),
+      resetPasswordAndRevokeSessions: jest
+        .fn()
+        .mockResolvedValue(UserFactory.build({ id: 'user-1' })),
     };
 
     mockMailerService = {
@@ -56,13 +63,14 @@ describe('PasswordResetService', () => {
       revokeAllUserSessions: jest.fn().mockResolvedValue(undefined),
     };
 
-    attempts = new Map();
-    mockLimiter = {
-      recordAttempt: jest.fn((key: string) => {
-        attempts.set(key, (attempts.get(key) ?? 0) + 1);
-        return Promise.resolve(attempts.get(key));
-      }),
-    };
+    // A real limiter on an in-memory Redis
+    redis = createFakeRedis();
+    limiter = new AuthAttemptLimiter(
+      redis as unknown as Redis,
+      {
+        get: () => 'production',
+      } as unknown as ConfigService,
+    );
 
     service = new PasswordResetService(
       mockDatabase as never,
@@ -70,7 +78,7 @@ describe('PasswordResetService', () => {
       mockMailerService as unknown as MailerService,
       mockConfigService,
       mockSessionRevocationService as unknown as SessionRevocationService,
-      mockLimiter as unknown as AuthAttemptLimiter,
+      limiter,
     );
   });
 
@@ -78,15 +86,20 @@ describe('PasswordResetService', () => {
     jest.clearAllMocks();
   });
 
-  describe('requestReset: per-email limit', () => {
-    it('sends at most 3 emails an hour to one address, then drops requests silently', async () => {
-      const user = UserFactory.build({ email: 'victim@example.com' });
-      mockDatabase.user.findUnique.mockResolvedValue(user);
+  describe('requestReset: per-email limits', () => {
+    const CLIENT = '203.0.113.5';
+    beforeEach(() => {
+      mockDatabase.user.findUnique.mockResolvedValue(
+        UserFactory.build({ email: 'victim@example.com' }),
+      );
+    });
 
+    it('sends at most 3 emails an hour to one address from one client, then drops requests silently', async () => {
       for (let i = 0; i < 5; i++) {
         await expect(
           service.requestReset(
             i % 2 ? 'Victim@Example.com' : 'victim@example.com',
+            CLIENT,
           ),
         ).resolves.toBeUndefined();
       }
@@ -94,22 +107,43 @@ describe('PasswordResetService', () => {
       expect(mockMailerService.sendPasswordResetEmail).toHaveBeenCalledTimes(
         PASSWORD_RESET_EMAIL_LIMIT,
       );
-      expect(mockLimiter.recordAttempt).toHaveBeenCalledWith(
-        'pwreset-email:victim@example.com',
-        PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
-      );
       expect(PASSWORD_RESET_EMAIL_LIMIT).toBe(3);
       expect(PASSWORD_RESET_EMAIL_WINDOW_SECONDS).toBe(60 * 60);
+    });
+
+    it('lets another client request a reset while one client is limited', async () => {
+      for (let i = 0; i < 5; i++) {
+        await service.requestReset('victim@example.com', '198.51.100.9');
+      }
+      mockMailerService.sendPasswordResetEmail.mockClear();
+
+      await service.requestReset('victim@example.com', CLIENT);
+      expect(mockMailerService.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends at most 10 emails an hour to one address from all clients together', async () => {
+      // 6 clients x 3 accepted requests each would be 18
+      for (let c = 1; c <= 6; c++) {
+        for (let i = 0; i < 3; i++) {
+          await expect(
+            service.requestReset('victim@example.com', `198.51.100.${c}`),
+          ).resolves.toBeUndefined();
+        }
+      }
+      expect(mockMailerService.sendPasswordResetEmail).toHaveBeenCalledTimes(
+        PASSWORD_RESET_EMAIL_CEILING,
+      );
+      expect(PASSWORD_RESET_EMAIL_CEILING).toBe(10);
     });
 
     it('counts unknown addresses the same way (no enumeration)', async () => {
       mockDatabase.user.findUnique.mockResolvedValue(null);
 
-      await service.requestReset('nobody@example.com');
-      expect(mockLimiter.recordAttempt).toHaveBeenCalledWith(
-        'pwreset-email:nobody@example.com',
-        PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
-      );
+      for (let i = 0; i < 4; i++) {
+        await service.requestReset('nobody@example.com', CLIENT);
+      }
+      // The 4th was dropped before the lookup
+      expect(mockDatabase.user.findUnique).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -285,6 +319,45 @@ describe('PasswordResetService', () => {
       expect(
         mockSessionRevocationService.revokeAllUserSessions,
       ).toHaveBeenCalledWith('user-1', 'PASSWORD_CHANGED');
+    });
+
+    it("clears the account's failed sign-in counts from every client", async () => {
+      const keys = [
+        loginFailureKey('owner', '198.51.100.9'),
+        loginFailureKey('owner', '203.0.113.5'),
+      ];
+      for (const key of keys) {
+        for (let i = 0; i < 10; i++) {
+          await limiter.recordAttempt(
+            key,
+            LOGIN_FAILURE_WINDOW_SECONDS,
+            loginFailureGroup('owner'),
+          );
+        }
+      }
+      const other = loginFailureKey('someone-else', '198.51.100.9');
+      await limiter.recordAttempt(other, LOGIN_FAILURE_WINDOW_SECONDS);
+      mockDatabase.passwordResetToken.findUnique.mockResolvedValue({
+        id: 'token-1',
+        userId: 'user-1',
+        tokenHash: hashToken('valid-token'),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        usedAt: null,
+        createdAt: new Date(),
+      });
+      mockDatabase.passwordResetToken.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      mockUserService.resetPasswordAndRevokeSessions.mockResolvedValue(
+        UserFactory.build({ id: 'user-1', username: 'owner' }),
+      );
+
+      await service.resetPassword('valid-token', 'new-password-123');
+
+      for (const key of keys) {
+        expect(await limiter.isLimited(key, 1)).toBe(false);
+      }
+      expect(await limiter.isLimited(other, 1)).toBe(true);
     });
 
     it('hashes the new password (bcrypt) before the transaction claims the token', async () => {

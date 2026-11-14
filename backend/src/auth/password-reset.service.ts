@@ -7,8 +7,11 @@ import { MailerService } from '@/mailer/mailer.service';
 import { SessionRevocationService } from './session-revocation.service';
 import {
   AuthAttemptLimiter,
+  PASSWORD_RESET_EMAIL_CEILING,
   PASSWORD_RESET_EMAIL_LIMIT,
   PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+  clientRateKey,
+  loginFailureGroup,
 } from './auth-attempt-limiter.service';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -41,21 +44,35 @@ export class PasswordResetService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  async requestReset(email: string): Promise<void> {
+  /**
+   * @param ip - The client's address (req.ip), for the per-client limit.
+   */
+  async requestReset(email: string, ip?: string): Promise<void> {
     // Feature is fully opt-in: no-op (but still "succeeds") unless SMTP is
     // configured.
     if (!this.mailerService.isEnabled) {
       return;
     }
 
-    // At most PASSWORD_RESET_EMAIL_LIMIT emails per address per window (no
-    // mail-bombing, and no invalidating someone's link over and over).
-    // Counted before the lookup, for known and unknown addresses alike.
-    const sent = await this.attemptLimiter.recordAttempt(
-      `pwreset-email:${email.trim().toLowerCase()}`,
+    // At most PASSWORD_RESET_EMAIL_LIMIT emails per address per client, and
+    // PASSWORD_RESET_EMAIL_CEILING per address from all clients, per window
+    // (no mail-bombing, and no invalidating someone's link over and over;
+    // one client can't spend the address's whole budget). Counted before
+    // the lookup, for known and unknown addresses alike; requests over a
+    // limit get the same response and send nothing.
+    const address = email.trim().toLowerCase();
+    const fromClient = await this.attemptLimiter.recordAttempt(
+      `pwreset-email:${address}:${clientRateKey(ip)}`,
       PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
     );
-    if (sent > PASSWORD_RESET_EMAIL_LIMIT) {
+    if (fromClient > PASSWORD_RESET_EMAIL_LIMIT) {
+      return;
+    }
+    const total = await this.attemptLimiter.recordAttempt(
+      `pwreset-email:${address}`,
+      PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+    );
+    if (total > PASSWORD_RESET_EMAIL_CEILING) {
       return;
     }
 
@@ -120,7 +137,7 @@ export class PasswordResetService {
     // database connection is held through it
     const hashedPassword = await this.userService.hashPassword(newPassword);
 
-    const userId = await this.databaseService.$transaction(async (tx) => {
+    const user = await this.databaseService.$transaction(async (tx) => {
       // Atomically claim the token by conditioning the update on it still
       // being unused AND unexpired now (the check above was before bcrypt).
       // If two requests race to redeem the same token, or the token
@@ -137,18 +154,20 @@ export class PasswordResetService {
         throw new BadRequestException('Invalid or expired reset token');
       }
 
-      await this.userService.resetPasswordAndRevokeSessions(
+      return this.userService.resetPasswordAndRevokeSessions(
         resetToken.userId,
         hashedPassword,
         tx,
       );
-      return resetToken.userId;
     });
 
     // Committed: end the sessions the old password opened
     await this.sessionRevocationService.revokeAllUserSessions(
-      userId,
+      resetToken.userId,
       'PASSWORD_CHANGED',
     );
+    // The owner proved control of the account: lift sign-in locks on it
+    // from every client
+    await this.attemptLimiter.clearGroup(loginFailureGroup(user.username));
   }
 }

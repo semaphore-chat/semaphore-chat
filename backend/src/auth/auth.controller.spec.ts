@@ -14,6 +14,7 @@ import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { UserFactory, createMockDatabase } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { AuthenticatedRequest } from '@/types';
+import type { Request } from 'express';
 import { ErrorCode } from '@semaphore-chat/shared';
 
 describe('AuthController', () => {
@@ -1313,12 +1314,14 @@ describe('AuthController', () => {
         .spyOn(passwordResetService, 'requestReset')
         .mockResolvedValue(undefined);
 
-      const result = await controller.forgotPassword({
-        email: 'someone@example.com',
-      });
+      const result = await controller.forgotPassword(
+        { email: 'someone@example.com' },
+        { ip: '203.0.113.5' } as Request,
+      );
 
       expect(passwordResetService.requestReset).toHaveBeenCalledWith(
         'someone@example.com',
+        '203.0.113.5',
       );
       expect(result).toEqual({
         message:
@@ -1333,9 +1336,10 @@ describe('AuthController', () => {
         .spyOn(passwordResetService, 'requestReset')
         .mockResolvedValue(undefined);
 
-      const result = await controller.forgotPassword({
-        email: 'unknown@example.com',
-      });
+      const result = await controller.forgotPassword(
+        { email: 'unknown@example.com' },
+        { ip: '203.0.113.5' } as Request,
+      );
 
       expect(result).toEqual({
         message:
