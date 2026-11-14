@@ -12,6 +12,8 @@ on:
       - 'design/**'
       - 'frontend/src/theme/generated/**'
       - 'native/crates/semaphore-design/src/lounge.rs'
+      - 'native/crates/semaphore-design/src/colour_params.rs'
+      - 'native/crates/semaphore-design/src/colour_vectors.rs'
       - '.github/workflows/design-tokens.yml'
   push:
     branches: [main]
@@ -19,6 +21,8 @@ on:
       - 'design/**'
       - 'frontend/src/theme/generated/**'
       - 'native/crates/semaphore-design/src/lounge.rs'
+      - 'native/crates/semaphore-design/src/colour_params.rs'
+      - 'native/crates/semaphore-design/src/colour_vectors.rs'
       - '.github/workflows/design-tokens.yml'
 
 concurrency:
