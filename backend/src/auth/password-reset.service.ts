@@ -5,6 +5,11 @@ import { DatabaseService } from '@/database/database.service';
 import { UserService } from '@/user/user.service';
 import { MailerService } from '@/mailer/mailer.service';
 import { SessionRevocationService } from './session-revocation.service';
+import {
+  AuthAttemptLimiter,
+  PASSWORD_RESET_EMAIL_LIMIT,
+  PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+} from './auth-attempt-limiter.service';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -29,6 +34,7 @@ export class PasswordResetService {
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
     private readonly sessionRevocationService: SessionRevocationService,
+    private readonly attemptLimiter: AuthAttemptLimiter,
   ) {}
 
   private hashToken(token: string): string {
@@ -39,6 +45,17 @@ export class PasswordResetService {
     // Feature is fully opt-in: no-op (but still "succeeds") unless SMTP is
     // configured.
     if (!this.mailerService.isEnabled) {
+      return;
+    }
+
+    // At most PASSWORD_RESET_EMAIL_LIMIT emails per address per window (no
+    // mail-bombing, and no invalidating someone's link over and over).
+    // Counted before the lookup, for known and unknown addresses alike.
+    const sent = await this.attemptLimiter.recordAttempt(
+      `pwreset-email:${email.trim().toLowerCase()}`,
+      PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+    );
+    if (sent > PASSWORD_RESET_EMAIL_LIMIT) {
       return;
     }
 

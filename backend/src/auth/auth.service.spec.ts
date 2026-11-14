@@ -1,4 +1,9 @@
 import { TestBed } from '@suites/unit';
+import {
+  AuthAttemptLimiter,
+  LOGIN_FAILURE_LIMIT,
+  LOGIN_FAILURE_WINDOW_SECONDS,
+} from './auth-attempt-limiter.service';
 import type { Mocked } from '@suites/doubles.jest';
 import { AuthService, SESSION_ACTIVITY_DELAY_MS } from './auth.service';
 import { UserService } from '../user/user.service';
@@ -41,6 +46,9 @@ describe('AuthService', () => {
   let sessionRevocationService: Mocked<SessionRevocationService>;
   let refreshTokenGraceService: Mocked<RefreshTokenGraceService>;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let unitRefForLimiter: {
+    get<T>(type: new (...args: never[]) => T): Mocked<T>;
+  };
 
   const mockBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 
@@ -62,6 +70,7 @@ describe('AuthService', () => {
       .compile();
 
     service = unit;
+    unitRefForLimiter = unitRef;
     userService = unitRef.get(UserService);
     sessionRevocationService = unitRef.get(SessionRevocationService);
     refreshTokenGraceService = unitRef.get(RefreshTokenGraceService);
@@ -84,8 +93,68 @@ describe('AuthService', () => {
           }) as unknown as ConfigService,
           sessionRevocationService as unknown as SessionRevocationService,
           refreshTokenGraceService as unknown as RefreshTokenGraceService,
+          {} as AuthAttemptLimiter,
         );
       }).toThrow('JWT_REFRESH_SECRET not set');
+    });
+  });
+
+  describe('validateUser: per-account failed sign-in limit', () => {
+    let limiter: Mocked<AuthAttemptLimiter>;
+    beforeEach(() => {
+      limiter = unitRefForLimiter.get(AuthAttemptLimiter);
+      limiter.isLimited.mockResolvedValue(false);
+    });
+
+    it('refuses with 429, before checking the password, once the account is locked', async () => {
+      limiter.isLimited.mockResolvedValue(true);
+
+      await expect(
+        service.validateUser('Owner', 'guess'),
+      ).rejects.toMatchObject({ status: 429 });
+      expect(limiter.isLimited).toHaveBeenCalledWith(
+        'login-fail:owner',
+        LOGIN_FAILURE_LIMIT,
+      );
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+
+    it('counts a wrong password against the account', async () => {
+      const user = UserFactory.build({ username: 'owner' });
+      jest.spyOn(userService, 'findByUsername').mockResolvedValue(user);
+      mockBcrypt.compare.mockResolvedValue(false as never);
+
+      expect(await service.validateUser('owner', 'guess')).toBeNull();
+      expect(limiter.recordAttempt).toHaveBeenCalledWith(
+        'login-fail:owner',
+        LOGIN_FAILURE_WINDOW_SECONDS,
+      );
+    });
+
+    it('counts unknown usernames too (no enumeration)', async () => {
+      jest.spyOn(userService, 'findByUsername').mockResolvedValue(null);
+      mockBcrypt.compare.mockResolvedValue(false as never);
+
+      expect(await service.validateUser('Nobody', 'guess')).toBeNull();
+      expect(limiter.recordAttempt).toHaveBeenCalledWith(
+        'login-fail:nobody',
+        LOGIN_FAILURE_WINDOW_SECONDS,
+      );
+    });
+
+    it('clears the count on a successful sign-in', async () => {
+      const user = UserFactory.build({ username: 'owner' });
+      jest.spyOn(userService, 'findByUsername').mockResolvedValue(user);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+
+      await service.validateUser('owner', 'right');
+      expect(limiter.clear).toHaveBeenCalledWith('login-fail:owner');
+      expect(limiter.recordAttempt).not.toHaveBeenCalled();
+    });
+
+    it('locks at 10 failures in 15 minutes', () => {
+      expect(LOGIN_FAILURE_LIMIT).toBe(10);
+      expect(LOGIN_FAILURE_WINDOW_SECONDS).toBe(15 * 60);
     });
   });
 

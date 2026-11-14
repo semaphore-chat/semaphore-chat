@@ -13,6 +13,7 @@ import { Logger, UseGuards, UseFilters } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { Application } from 'express';
 import * as proxyaddr from 'proxy-addr';
+import { DEFAULT_IPV6_SUBNET_PREFIX, normalizeIp } from '@nestjs/throttler';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { WsAuthService } from '@/auth/ws-auth.service';
 import { WebsocketService } from '@/websocket/websocket.service';
@@ -87,8 +88,13 @@ export class RoomsGateway
       ?.getInstance<Application>()
       ?.get('trust proxy fn') as
       ((address: string, hop: number) => boolean) | undefined;
-    if (typeof trust !== 'function') return socket.handshake.address;
-    return proxyaddr(socket.request, trust);
+    const address =
+      typeof trust === 'function'
+        ? proxyaddr(socket.request, trust)
+        : socket.handshake.address;
+    // One key per IPv6 /64 (a host rotates addresses inside it), like the
+    // HTTP throttler's
+    return normalizeIp(address, DEFAULT_IPV6_SUBNET_PREFIX);
   }
 
   afterInit(server: Server) {

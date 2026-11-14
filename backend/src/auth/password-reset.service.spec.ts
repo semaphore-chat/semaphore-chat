@@ -6,6 +6,11 @@ import { UserService } from '@/user/user.service';
 import { MailerService } from '@/mailer/mailer.service';
 import { SessionRevocationService } from './session-revocation.service';
 import { createMockDatabase } from '@/test-utils';
+import {
+  AuthAttemptLimiter,
+  PASSWORD_RESET_EMAIL_LIMIT,
+  PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+} from './auth-attempt-limiter.service';
 import { UserFactory } from '@/test-utils/factories';
 
 describe('PasswordResetService', () => {
@@ -22,6 +27,8 @@ describe('PasswordResetService', () => {
   let mockSessionRevocationService: {
     revokeAllUserSessions: jest.Mock;
   };
+  let attempts: Map<string, number>;
+  let mockLimiter: { recordAttempt: jest.Mock };
 
   const hashToken = (token: string) =>
     createHash('sha256').update(token).digest('hex');
@@ -49,17 +56,61 @@ describe('PasswordResetService', () => {
       revokeAllUserSessions: jest.fn().mockResolvedValue(undefined),
     };
 
+    attempts = new Map();
+    mockLimiter = {
+      recordAttempt: jest.fn((key: string) => {
+        attempts.set(key, (attempts.get(key) ?? 0) + 1);
+        return Promise.resolve(attempts.get(key));
+      }),
+    };
+
     service = new PasswordResetService(
       mockDatabase as never,
       mockUserService as unknown as UserService,
       mockMailerService as unknown as MailerService,
       mockConfigService,
       mockSessionRevocationService as unknown as SessionRevocationService,
+      mockLimiter as unknown as AuthAttemptLimiter,
     );
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('requestReset: per-email limit', () => {
+    it('sends at most 3 emails an hour to one address, then drops requests silently', async () => {
+      const user = UserFactory.build({ email: 'victim@example.com' });
+      mockDatabase.user.findUnique.mockResolvedValue(user);
+
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          service.requestReset(
+            i % 2 ? 'Victim@Example.com' : 'victim@example.com',
+          ),
+        ).resolves.toBeUndefined();
+      }
+
+      expect(mockMailerService.sendPasswordResetEmail).toHaveBeenCalledTimes(
+        PASSWORD_RESET_EMAIL_LIMIT,
+      );
+      expect(mockLimiter.recordAttempt).toHaveBeenCalledWith(
+        'pwreset-email:victim@example.com',
+        PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+      );
+      expect(PASSWORD_RESET_EMAIL_LIMIT).toBe(3);
+      expect(PASSWORD_RESET_EMAIL_WINDOW_SECONDS).toBe(60 * 60);
+    });
+
+    it('counts unknown addresses the same way (no enumeration)', async () => {
+      mockDatabase.user.findUnique.mockResolvedValue(null);
+
+      await service.requestReset('nobody@example.com');
+      expect(mockLimiter.recordAttempt).toHaveBeenCalledWith(
+        'pwreset-email:nobody@example.com',
+        PASSWORD_RESET_EMAIL_WINDOW_SECONDS,
+      );
+    });
   });
 
   describe('requestReset', () => {
