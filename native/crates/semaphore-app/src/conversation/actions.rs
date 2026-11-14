@@ -680,7 +680,12 @@ impl ConversationPane {
         let ours = (self.server_url)()
             .and_then(|server| semaphore_core::links::parse_message_link(&server, &url));
         let Some(link) = ours else {
-            crate::open_url(&url, cx);
+            // Only http(s) goes to the OS: a preview card's link is the server's to choose.
+            if semaphore_core::links::is_web_url(&url) {
+                crate::open_url(&url, cx);
+            } else {
+                log::warn!("not opening {url:?} from a message: not an http(s) link");
+            }
             return;
         };
         let core = self.core.clone();

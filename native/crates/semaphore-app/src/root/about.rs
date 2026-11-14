@@ -29,7 +29,16 @@ impl AppRoot {
                         root.about = None;
                         cx.notify();
                     }
-                    AboutEvent::OpenUrl(url) => crate::open_url(url, cx),
+                    // The licence file is a local path the app wrote; the rest are web links.
+                    AboutEvent::OpenUrl(url) if semaphore_core::links::is_web_url(url) => {
+                        crate::open_url(url, cx)
+                    }
+                    AboutEvent::OpenUrl(path) => {
+                        let path = std::path::PathBuf::from(path);
+                        if crate::menu::licences_path().as_ref() == Some(&path) {
+                            crate::open_path(&path, cx);
+                        }
+                    }
                 }),
             );
         self.about = Some(dialog);
