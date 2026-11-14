@@ -747,9 +747,7 @@ describe('OnboardingService', () => {
 
       await service.onApplicationBootstrap();
 
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('SETUP_TOKEN'),
-      );
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('SETUP_TOKEN'));
       expect(warn).not.toHaveBeenCalledWith(
         expect.stringContaining('operator-chosen-token-123'),
       );

@@ -9,6 +9,13 @@ import { createE2eApp, resetDatabase, E2eApp } from './helpers/e2e-app';
  * returns it: the backend logs it, and the operator pastes it into the
  * wizard. REQUIRE_SETUP_TOKEN=false keeps the old zero-friction flow.
  */
+type StatusBody = {
+  needsSetup: boolean;
+  hasUsers: boolean;
+  setupTokenRequired: boolean;
+  setupToken?: string;
+};
+
 describe('Onboarding setup token (e2e)', () => {
   let app: E2eApp;
   let redis: Redis;
@@ -65,7 +72,7 @@ describe('Onboarding setup token (e2e)', () => {
     const status = await request(app.getHttpServer())
       .get('/api/onboarding/status')
       .expect(200);
-    expect(status.body.needsSetup).toBe(true);
+    expect((status.body as StatusBody).needsSetup).toBe(true);
   });
 
   it('completes setup with the logged token, pasted with whitespace', async () => {
@@ -83,7 +90,7 @@ describe('Onboarding setup token (e2e)', () => {
     const status = await request(app.getHttpServer())
       .get('/api/onboarding/status')
       .expect(200);
-    expect(status.body.needsSetup).toBe(false);
+    expect((status.body as StatusBody).needsSetup).toBe(false);
     expect(status.body).not.toHaveProperty('setupToken');
   });
 
@@ -112,12 +119,13 @@ describe('Onboarding setup token (e2e)', () => {
       .get('/api/onboarding/status')
       .expect(200);
 
-    expect(res.body.setupTokenRequired).toBe(false);
-    expect(typeof res.body.setupToken).toBe('string');
+    const body = res.body as StatusBody;
+    expect(body.setupTokenRequired).toBe(false);
+    expect(typeof body.setupToken).toBe('string');
 
     await request(app.getHttpServer())
       .post('/api/onboarding/setup')
-      .send({ ...setupBody, setupToken: res.body.setupToken })
+      .send({ ...setupBody, setupToken: body.setupToken })
       .expect(200);
   });
 });

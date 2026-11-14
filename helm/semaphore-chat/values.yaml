@@ -37,6 +37,14 @@ backend:
   # See: https://expressjs.com/en/guide/behind-proxies.html
   trustProxy: "1"
 
+  # First-run setup: the backend prints "Setup token: <token>" in its log and
+  # the setup wizard asks for it (REQUIRE_SETUP_TOKEN). The token is never
+  # returned by the API, so whoever reaches a new instance first can't take it
+  # over. false = the wizard gets the token itself (private networks only).
+  # To choose the token yourself (unattended installs), set SETUP_TOKEN
+  # (16+ characters) through backend.extraEnv, e.g. from a Secret.
+  requireSetupToken: true
+
   # Database migrations (runs as a Helm pre-install/pre-upgrade hook Job)
   migrations:
     enabled: true  # Set false to manage migrations externally

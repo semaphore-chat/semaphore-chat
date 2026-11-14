@@ -11,6 +11,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  TextField,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -22,7 +23,38 @@ import { OnboardingData } from './OnboardingWizard';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { onboardingControllerSetupInstanceMutation, authControllerLoginMutation, onboardingControllerGetStatusQueryKey } from '../../api-client/@tanstack/react-query.gen';
 import { logger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/format';
 import { setAccessToken, storeElectronRefreshToken } from '../../utils/tokenService';
+
+/** What the backend answers when the pasted setup token is wrong. */
+const INVALID_SETUP_TOKEN_MESSAGE = 'Invalid setup token';
+
+/** The grep commands copy whole lines, so they wrap anywhere on a phone. */
+const commandSx = {
+  display: 'block',
+  fontFamily: 'monospace',
+  fontSize: '0.85em',
+  wordBreak: 'break-all',
+  mt: 0.5,
+} as const;
+
+/** Where the operator finds the token the backend printed at startup. */
+const SetupTokenHint: React.FC = () => (
+  <Alert severity="info" sx={{ mb: 2 }}>
+    <strong>Where is my setup token?</strong> The backend prints it in its log,
+    on a line containing <code>Setup token:</code>
+    <Box component="code" sx={commandSx}>
+      docker compose logs backend | grep "Setup token:"
+    </Box>
+    <Box component="code" sx={commandSx}>
+      kubectl logs -l app.kubernetes.io/component=backend --tail=-1 | grep "Setup token:"
+    </Box>
+    <Box sx={{ mt: 1 }}>
+      If you set <code>SETUP_TOKEN</code> in the backend's environment, enter
+      that value.
+    </Box>
+  </Alert>
+);
 
 interface CompletionStepProps {
   data: OnboardingData;
@@ -34,6 +66,7 @@ interface CompletionStepProps {
 
 const CompletionStep: React.FC<CompletionStepProps> = ({
   data,
+  updateData,
   onBack,
   onComplete,
 }) => {
@@ -55,7 +88,7 @@ const CompletionStep: React.FC<CompletionStepProps> = ({
           instanceDescription: data.instanceDescription || undefined,
           defaultCommunityName: data.defaultCommunityName || undefined,
           createDefaultCommunity: data.createDefaultCommunity,
-          setupToken: data.setupToken,
+          setupToken: data.setupToken.trim(),
         },
       });
 
@@ -92,6 +125,11 @@ const CompletionStep: React.FC<CompletionStepProps> = ({
       logger.error('Setup failed:', err);
     }
   };
+
+  const errorMessage = error
+    ? getErrorMessage(error, 'An unexpected error occurred. Please try again.')
+    : null;
+  const tokenMissing = data.setupTokenRequired && !data.setupToken.trim();
 
   if (isCompleted) {
     return (
@@ -161,13 +199,29 @@ const CompletionStep: React.FC<CompletionStepProps> = ({
         </CardContent>
       </Card>
 
-      {error && (
+      {data.setupTokenRequired && (
+        <Box sx={{ mb: 3 }}>
+          <SetupTokenHint />
+          <TextField
+            label="Setup token"
+            value={data.setupToken}
+            onChange={(e) => updateData({ setupToken: e.target.value })}
+            required
+            fullWidth
+            autoComplete="off"
+            spellCheck={false}
+            helperText="Proves you can see this server, so nobody else can set it up first"
+            disabled={isLoading}
+          />
+        </Box>
+      )}
+
+      {errorMessage && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          <strong>Setup failed:</strong> {
-            'data' in error && error.data && typeof error.data === 'object' && 'message' in error.data
-              ? String(error.data.message)
-              : 'An unexpected error occurred. Please try again.'
-          }
+          <strong>Setup failed:</strong>{' '}
+          {errorMessage === INVALID_SETUP_TOKEN_MESSAGE
+            ? 'This setup token doesn\'t match the token in the backend log. Copy the value after "Setup token:" from the most recent line and try again.'
+            : errorMessage}
         </Alert>
       )}
 
@@ -189,7 +243,7 @@ const CompletionStep: React.FC<CompletionStepProps> = ({
           onClick={handleSetup} 
           variant="contained" 
           size="large"
-          disabled={isLoading}
+          disabled={isLoading || tokenMissing}
           startIcon={isLoading ? <CircularProgress size={20} /> : <CheckCircleIcon />}
         >
           {isLoading ? 'Setting up...' : 'Complete Setup'}
