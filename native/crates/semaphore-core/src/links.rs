@@ -105,6 +105,38 @@ fn query_value<'a>(query: &'a str, name: &str) -> Option<&'a str> {
 
 /// The conversation, and the message if it names one, that `link` points to on the server at
 /// `server_url`. `None` for anything else: another server, another kind of page, or garbage.
+/// Whether `url` is clearly an http or https link with a host: the only kind a server-supplied
+/// link (a preview card, a message link) may be handed to the OS's opener as. Strict on purpose,
+/// so that what is checked is what the OS reads: the URL standard (and the OS handlers that follow
+/// it) strips leading control characters and spaces, drops tabs and newlines anywhere, reads `\`
+/// as `/` and `http:host` as `http://host`, so any of those is refused rather than normalised.
+pub fn is_web_url(url: &str) -> bool {
+    if url
+        .chars()
+        .any(|c| c.is_control() || c.is_whitespace() || c == '\\' || c == '\u{FEFF}')
+    {
+        return false;
+    }
+    let rest = ["https://", "http://"].iter().find_map(|scheme| {
+        url.get(..scheme.len())
+            .filter(|head| head.eq_ignore_ascii_case(scheme))
+            .map(|_| &url[scheme.len()..])
+    });
+    let Some(rest) = rest else {
+        return false;
+    };
+    // The authority ends at the path, query or fragment; the host follows any user info and
+    // comes before any port.
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = authority.rsplit('@').next().unwrap_or_default();
+    let host = if host.starts_with('[') {
+        host.split_inclusive(']').next().unwrap_or_default()
+    } else {
+        host.split(':').next().unwrap_or_default()
+    };
+    !host.is_empty() && host != "[]"
+}
+
 pub fn parse_message_link(server_url: &str, link: &str) -> Option<MessageLink> {
     let server = parse_url(server_url)?;
     let link = parse_url(link)?;
@@ -307,5 +339,92 @@ mod tests {
             None
         );
         assert_eq!(parse_message_link("not a url", "http://[::1]:3000/"), None);
+    }
+}
+
+#[cfg(test)]
+mod web_url_tests {
+    use super::is_web_url;
+
+    #[test]
+    fn plain_http_and_https_links_are_web_links() {
+        for url in [
+            "https://example.com",
+            "http://example.com",
+            "HTTPS://EXAMPLE.COM/",
+            "hTtP://example.com/a?b=c#d",
+            "https://example.com:8443/path",
+            "https://user@example.com/",
+            "https://[2001:db8::1]/",
+            "https://203.0.113.5/x",
+            "https://example.com/a%20b",
+            "https://例え.jp/",
+        ] {
+            assert!(is_web_url(url), "{url:?} refused");
+        }
+    }
+
+    #[test]
+    fn anything_not_clearly_http_is_refused() {
+        for url in [
+            "",
+            "https",
+            "https:",
+            "https:/",
+            "https://",
+            "http://",
+            "http:///etc/passwd",
+            "https:///example.com",
+            // No `//`: browsers would still read these as http.
+            "http:example.com",
+            "https:example.com/x",
+            "http:/example.com",
+            // Other schemes.
+            "file:///etc/passwd",
+            "file://attacker/share/x.exe",
+            "javascript:alert(1)",
+            "data:text/html,x",
+            "search-ms:query=x",
+            "ms-msdt:/id x",
+            "smb://host/share",
+            "httpx://example.com",
+            "https+x://example.com",
+            "xhttps://example.com",
+            // Windows paths and shares.
+            "\\\\attacker\\share\\x.exe",
+            "C:\\Windows\\calc.exe",
+            "/etc/passwd",
+            // Backslashes anywhere: the URL standard reads them as slashes.
+            "https:\\\\example.com",
+            "http:/\\example.com",
+            "https://example.com\\@evil.example",
+            "https://example.com/\\x",
+            // Leading or trailing whitespace and control characters.
+            " https://example.com",
+            "\thttps://example.com",
+            "\nhttps://example.com",
+            "\u{0}https://example.com",
+            "\u{1F}https://example.com",
+            "\u{7F}https://example.com",
+            "https://example.com ",
+            "https://example.com\n",
+            "\u{FEFF}https://example.com",
+            "\u{3000}https://example.com",
+            // Tabs and newlines inside the scheme or anywhere else: the URL standard strips them.
+            "ht\ttps://example.com",
+            "ht\ntp://example.com",
+            "jav\tascript:alert(1)",
+            "https://exa\tmple.com",
+            "https://example.com/a b",
+            "https://example.com/\u{85}",
+            // No host.
+            "https://@",
+            "https://user@/x",
+            "https://:443/",
+            "https://?q",
+            "https://#f",
+        ] {
+            assert!(!is_web_url(url), "{url:?} accepted");
+        }
     }
 }

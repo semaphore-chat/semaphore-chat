@@ -1,7 +1,7 @@
 //! The launch's arguments: links, `--server <url>` and the after-update flag.
 //!
 //! A link comes from the OS, which puts it in the registered command (`"exe" -- "%1"` on Windows,
-//! `%u` in the Linux desktop entry), so a link is untrusted text that may try to look like more
+//! `"exe" -- %u` in the Linux desktop entry), so a link is untrusted text that may try to look like more
 //! than one argument. Two rules keep it from adding options:
 //!
 //! - everything after `--` is a link candidate or ignored, never an option;
@@ -133,5 +133,52 @@ mod tests {
             Ok(Launch::default())
         );
         assert_eq!(parse(&args(&["--", "--version"])), Ok(Launch::default()));
+    }
+
+    /// NAT-7, the same on every platform: what an unquoting launcher can make of
+    /// `semaphore://x" --server https://evil.example "` and friends never sets an option.
+    #[test]
+    fn split_links_never_set_options() {
+        let only = |links: &[&str]| {
+            Ok(Launch {
+                links: args(links),
+                ..Launch::default()
+            })
+        };
+        for (launch, links) in [
+            (
+                &["--", "semaphore://x\"", "--server", "https://e", "\""][..],
+                &["semaphore://x\""][..],
+            ),
+            (
+                &["--", "semaphore://x", "--after-update"],
+                &["semaphore://x"],
+            ),
+            (&["--", "--", "semaphore://x"], &["semaphore://x"]),
+            (
+                &["--server", "https://e", "SEMAPHORE://x"],
+                &["SEMAPHORE://x"],
+            ),
+            (
+                &["--after-update", "--", "semaphore://x"],
+                &["semaphore://x"],
+            ),
+            (
+                &["--server", "https://e", "--", "semaphore://x"],
+                &["semaphore://x"],
+            ),
+            (&["--", "--after-update"], &[]),
+            (&["--bogus", "--", "semaphore://x"], &["semaphore://x"]),
+        ] {
+            assert_eq!(parse(&args(launch)), only(links), "{launch:?}");
+        }
+        // A bare trailing `--` carries no link: the options before it are the command's own.
+        assert_eq!(
+            parse(&args(&["--after-update", "--"])),
+            Ok(Launch {
+                after_update: true,
+                ..Launch::default()
+            })
+        );
     }
 }

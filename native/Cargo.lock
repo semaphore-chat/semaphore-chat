@@ -10347,8 +10347,6 @@ dependencies = [
 [[package]]
 name = "webrtc-sys-build"
 version = "0.3.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d67326bcdd69af2a902c37d2f19101eaf4298fc81b699b89a2017a9a0c46267"
 dependencies = [
  "anyhow",
  "fs2",
@@ -10356,6 +10354,7 @@ dependencies = [
  "reqwest 0.12.28",
  "scratch",
  "semver",
+ "sha2 0.10.9",
  "zip",
 ]
 
