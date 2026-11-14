@@ -126,6 +126,10 @@ pub(crate) fn transmitting(level: f32, threshold: u8) -> bool {
     (level * 100.).round() > f32::from(threshold)
 }
 
+/// The push-to-talk key a fresh push-to-talk mode gets: the web's default (`Backquote`), by GPUI's
+/// name for that key.
+pub const DEFAULT_PTT_KEY: &str = "`";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModeKind {
     VoiceActivity,
@@ -397,6 +401,11 @@ impl VoiceVideoSettings {
             state.input_mode = match mode {
                 ModeKind::VoiceActivity => InputMode::VoiceActivity { threshold },
                 ModeKind::PushToTalk => InputMode::PushToTalk,
+            };
+            // As the web: push to talk starts out on the key left of 1 (its `Backquote`), so the
+            // mode works before a key is chosen.
+            if mode == ModeKind::PushToTalk && state.ptt_key.is_none() {
+                state.ptt_key = Some(DEFAULT_PTT_KEY.into());
             }
         });
     }

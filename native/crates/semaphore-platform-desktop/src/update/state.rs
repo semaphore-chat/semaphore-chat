@@ -33,7 +33,9 @@ use crate::update::download::{self, DownloadError, DownloadRequest, Stall};
 use crate::update::install::{InstallKind, ReadyAction};
 use crate::update::manifest::{
     Arch, Artifact, MAX_MANIFEST_BYTES, ManifestError, ReleaseManifest, Sha256Digest,
-    verify_signature,
+};
+use crate::update::signature::{
+    MAX_SIGNATURE_BYTES, SignatureCheck, SignatureError, signature_url, verify_signature,
 };
 use crate::update::version::is_newer;
 use semver::Version;
@@ -119,6 +121,9 @@ pub struct UpdateConfig {
     pub arch: Arch,
     /// Sent with every request, so a release host can see which client asked.
     pub user_agent: String,
+    /// Whether `latest.json.sig` must verify before the manifest is read
+    /// ([`crate::update::signature::signature_policy`] decides).
+    pub signature: SignatureCheck,
 }
 
 /// Called with every new state, on whatever thread the check runs. Must not block.
@@ -128,6 +133,7 @@ pub type UpdateSink = Arc<dyn Fn(&UpdateState) + Send + Sync>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FetchError {
     Manifest(ManifestError),
+    Signature(SignatureError),
     Network(String),
     Status(u16),
     Insecure(String),
@@ -137,7 +143,7 @@ enum FetchError {
 impl FetchError {
     fn retryable(&self) -> bool {
         match self {
-            Self::Manifest(_) | Self::Insecure(_) => false,
+            Self::Manifest(_) | Self::Signature(_) | Self::Insecure(_) => false,
             Self::Network(_) => true,
             Self::Status(status) => *status >= 500 || *status == 408 || *status == 429,
             Self::TooLarge => false,
@@ -160,6 +166,9 @@ impl From<FetchError> for UpdateState {
         let retryable = error.retryable();
         let message = match error {
             FetchError::Manifest(error) => error.to_string(),
+            FetchError::Signature(error) => {
+                format!("The update was refused: {error}. Nothing was downloaded.")
+            }
             FetchError::Network(message) => {
                 format!("The update server couldn't be reached: {message}")
             }
@@ -342,8 +351,36 @@ impl Updater {
         }
     }
 
+    /// The manifest, and then (when required) its signature from the same place, verified
+    /// before a single field of the manifest is parsed.
     async fn fetch_manifest(&self) -> Result<ReleaseManifest, FetchError> {
         let url = &self.config.manifest_url;
+        let body = self.fetch_capped(url, MAX_MANIFEST_BYTES).await?;
+        if matches!(self.config.signature, SignatureCheck::Required(_)) {
+            let signature_url =
+                signature_url(url).ok_or(FetchError::Signature(SignatureError::Missing))?;
+            let signature = match self.fetch_capped(&signature_url, MAX_SIGNATURE_BYTES).await {
+                Ok(signature) => signature,
+                Err(FetchError::Status(404 | 410)) => {
+                    return Err(FetchError::Signature(SignatureError::Missing));
+                }
+                Err(FetchError::TooLarge) => {
+                    return Err(FetchError::Signature(SignatureError::Malformed(
+                        "is larger than 1 KiB",
+                    )));
+                }
+                Err(error) => return Err(error),
+            };
+            verify_signature(&self.config.signature, &body, &signature)
+                .map_err(FetchError::Signature)?;
+        }
+        ReleaseManifest::parse(&body).map_err(FetchError::Manifest)
+    }
+
+    /// One GET under the updater's rules: every redirect hop and the final URL https (or
+    /// loopback from loopback), and at most `cap` bytes, refused by the header or while
+    /// streaming.
+    async fn fetch_capped(&self, url: &str, cap: usize) -> Result<Vec<u8>, FetchError> {
         let response = self
             .client
             .get(url)
@@ -358,7 +395,7 @@ impl Updater {
             .map_err(|error| FetchError::Insecure(error.to_string()))?;
         if response
             .content_length()
-            .is_some_and(|length| length > MAX_MANIFEST_BYTES as u64)
+            .is_some_and(|length| length > cap as u64)
         {
             return Err(FetchError::TooLarge);
         }
@@ -370,12 +407,11 @@ impl Updater {
             .map_err(|error| FetchError::from_request(&error))?
         {
             body.extend_from_slice(&chunk);
-            if body.len() > MAX_MANIFEST_BYTES {
+            if body.len() > cap {
                 return Err(FetchError::TooLarge);
             }
         }
-        verify_signature(&body, url).map_err(FetchError::Manifest)?;
-        ReleaseManifest::parse(&body).map_err(FetchError::Manifest)
+        Ok(body)
     }
 
     /// Whether `version` is a release this build should move to.
@@ -703,6 +739,7 @@ mod tests {
                 cache_dir: dir.join("cache"),
                 arch: Arch::X86_64,
                 user_agent: "semaphore-test".into(),
+                signature: SignatureCheck::Off,
             };
             Self {
                 server,
@@ -1382,6 +1419,209 @@ mod tests {
         };
         assert!(message.contains("too large"), "{message}");
         assert!(!retryable);
+    }
+
+    // ----- the signed feed -----------------------------------------------------------------
+
+    const KEY: [u8; 32] = [7; 32];
+
+    /// A fixture whose updater requires `latest.json.sig` signed by [`KEY`] (with the
+    /// stand-in verifier: ring isn't linked in this crate's tests).
+    async fn signed_fixture(name: &str) -> (Fixture, Updater) {
+        use crate::update::signature::{PublicKey, TrustedKeys, fake};
+        let fixture = Fixture::new(name).await;
+        let config = UpdateConfig {
+            signature: SignatureCheck::Required(TrustedKeys::new(
+                vec![PublicKey::from_bytes(KEY)],
+                fake::verify,
+            )),
+            ..fixture.config.clone()
+        };
+        let updater = Updater::new(config, builder()).unwrap();
+        (fixture, updater)
+    }
+
+    /// Serves the release and its manifest, signed with `key`.
+    fn serve_signed(fixture: &Fixture, key: &[u8; 32]) -> String {
+        let manifest = manifest_json(VERSION, &fixture.server.url("/a.AppImage"), BODY);
+        let signature = crate::update::signature::fake::signature_file(key, manifest.as_bytes());
+        fixture
+            .server
+            .route("/latest.json", Response::ok(manifest.clone()));
+        fixture
+            .server
+            .route("/latest.json.sig", Response::ok(format!("{signature}\n")));
+        fixture.server.route("/a.AppImage", Response::ok(BODY));
+        manifest
+    }
+
+    /// A refused feed: not retryable, says why, and nothing was downloaded.
+    fn assert_refused(fixture: &Fixture, state: UpdateState, needle: &str) {
+        let UpdateState::Failed { message, retryable } = state else {
+            panic!("expected Failed, got {state:?}");
+        };
+        assert!(message.contains(needle), "{message}");
+        assert!(message.contains("Nothing was downloaded"), "{message}");
+        assert!(!retryable, "{message}");
+        assert_eq!(fixture.server.count("/a.AppImage"), 0, "nothing downloaded");
+        assert_eq!(
+            std::fs::read(&fixture.appimage).unwrap(),
+            b"the running build"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_signed_feed_is_verified_then_installed() {
+        let (fixture, updater) = signed_fixture("signed").await;
+        serve_signed(&fixture, &KEY);
+        let state = updater.check_and_download().await;
+        assert!(matches!(state, UpdateState::Ready { .. }), "{state:?}");
+        assert_eq!(fixture.server.count("/latest.json.sig"), 1);
+        assert_eq!(std::fs::read(&fixture.appimage).unwrap(), BODY);
+    }
+
+    #[tokio::test]
+    async fn an_unchecked_feed_never_asks_for_a_signature() {
+        let fixture = Fixture::new("unsigned-off").await;
+        fixture.serve(BODY);
+        let state = fixture.updater().check_and_download().await;
+        assert!(matches!(state, UpdateState::Ready { .. }), "{state:?}");
+        assert_eq!(fixture.server.count("/latest.json.sig"), 0);
+    }
+
+    #[tokio::test]
+    async fn a_missing_signature_is_refused() {
+        let (fixture, updater) = signed_fixture("sig-missing").await;
+        fixture.serve(BODY);
+        // The test server answers 404 for a route it doesn't have; say so anyway.
+        fixture
+            .server
+            .route("/latest.json.sig", Response::status(404));
+        let state = updater.check_and_download().await;
+        assert_refused(&fixture, state, "not signed");
+        fixture
+            .server
+            .route("/latest.json.sig", Response::status(410));
+        let state = updater.check_and_download().await;
+        assert_refused(&fixture, state, "not signed");
+    }
+
+    #[tokio::test]
+    async fn a_signature_by_another_key_is_refused() {
+        let (fixture, updater) = signed_fixture("sig-other-key").await;
+        serve_signed(&fixture, &[8; 32]);
+        let state = updater.check_and_download().await;
+        assert_refused(&fixture, state, "does not match a key this build trusts");
+    }
+
+    /// The manifest changed after it was signed (a tampered or half-updated feed).
+    #[tokio::test]
+    async fn a_manifest_that_is_not_the_signed_one_is_refused() {
+        let (fixture, updater) = signed_fixture("sig-tampered").await;
+        let manifest = serve_signed(&fixture, &KEY);
+        let tampered = manifest.replace("9.9.9", "9.9.10");
+        assert_ne!(tampered, manifest);
+        fixture.server.route("/latest.json", Response::ok(tampered));
+        let state = updater.check_and_download().await;
+        assert_refused(&fixture, state, "does not match");
+    }
+
+    #[tokio::test]
+    async fn a_malformed_signature_is_refused() {
+        let (fixture, updater) = signed_fixture("sig-malformed").await;
+        serve_signed(&fixture, &KEY);
+        fixture
+            .server
+            .route("/latest.json.sig", Response::ok("certainly not base64!"));
+        let state = updater.check_and_download().await;
+        assert_refused(&fixture, state, "is not base64");
+    }
+
+    #[tokio::test]
+    async fn a_signature_over_the_cap_is_refused() {
+        let (fixture, updater) = signed_fixture("sig-big").await;
+        serve_signed(&fixture, &KEY);
+        let big = "A".repeat(MAX_SIGNATURE_BYTES + 1);
+        fixture
+            .server
+            .route("/latest.json.sig", Response::ok(big.clone()));
+        let state = updater.check_and_download().await;
+        assert_refused(&fixture, state, "larger than 1 KiB");
+        // Streamed without a length: caught while reading.
+        fixture
+            .server
+            .route("/latest.json.sig", Response::ok(big).chunked());
+        let state = updater.check_and_download().await;
+        assert_refused(&fixture, state, "larger than 1 KiB");
+    }
+
+    /// The signature host being down is a network fault like the manifest's: worth a retry.
+    #[tokio::test]
+    async fn a_signature_the_server_cannot_serve_is_retryable() {
+        let (fixture, updater) = signed_fixture("sig-503").await;
+        serve_signed(&fixture, &KEY);
+        fixture
+            .server
+            .route("/latest.json.sig", Response::status(503));
+        let state = updater.check_and_download().await;
+        let UpdateState::Failed { retryable, .. } = state else {
+            panic!("expected Failed, got {state:?}");
+        };
+        assert!(retryable);
+        assert_eq!(fixture.server.count("/a.AppImage"), 0);
+    }
+
+    /// The signature is held to the manifest's redirect rule.
+    #[tokio::test]
+    async fn a_signature_redirected_off_https_is_refused() {
+        let (fixture, updater) = signed_fixture("sig-redirect").await;
+        serve_signed(&fixture, &KEY);
+        fixture.server.route(
+            "/latest.json.sig",
+            Response::redirect(302, "http://example.invalid/latest.json.sig"),
+        );
+        let state = updater.check_and_download().await;
+        let UpdateState::Failed { message, retryable } = state else {
+            panic!("expected Failed, got {state:?}");
+        };
+        assert!(message.contains("refused"), "{message}");
+        assert!(!retryable);
+        assert_eq!(fixture.server.count("/a.AppImage"), 0);
+    }
+
+    /// A Windows build announces a verified release; its card links the release page.
+    #[tokio::test]
+    async fn windows_announces_only_a_verified_release() {
+        let (fixture, _) = signed_fixture("sig-windows").await;
+        let config = UpdateConfig {
+            install: InstallKind::WindowsZip,
+            signature: SignatureCheck::Required(crate::update::signature::TrustedKeys::new(
+                vec![crate::update::signature::PublicKey::from_bytes(KEY)],
+                crate::update::signature::fake::verify,
+            )),
+            ..fixture.config.clone()
+        };
+        let updater = Updater::new(config, builder()).unwrap();
+        serve_signed(&fixture, &[8; 32]);
+        let state = updater.check().await;
+        assert!(
+            matches!(
+                state,
+                UpdateState::Failed {
+                    retryable: false,
+                    ..
+                }
+            ),
+            "{state:?}"
+        );
+        serve_signed(&fixture, &KEY);
+        assert_eq!(
+            updater.check().await,
+            UpdateState::Available {
+                version: Version::parse(VERSION).unwrap(),
+                notes_url: Some("https://example.org/notes".into())
+            }
+        );
     }
 
     #[tokio::test]

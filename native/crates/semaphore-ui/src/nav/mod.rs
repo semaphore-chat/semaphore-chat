@@ -441,6 +441,18 @@ pub fn parse_deep_link(raw: &str) -> Option<DeepLink> {
 }
 
 impl DeepLink {
+    /// What kind of link it is, for a log line: never its ids, invite code or token.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            DeepLink::Community { .. } => "community",
+            DeepLink::Channel { .. } => "channel",
+            DeepLink::DmInbox => "dm-inbox",
+            DeepLink::Dm { .. } => "dm",
+            DeepLink::Invite { .. } => "invite",
+            DeepLink::ResetPassword { .. } => "reset-password",
+        }
+    }
+
     /// `mapDeepLinkRouteToPath`, typed.
     pub fn route(&self) -> Route {
         match self.clone() {
@@ -820,6 +832,28 @@ mod tests {
             path(&format!("SEMAPHORE://COMMUNITY/{UUID}?utm=1#frag")),
             Some(format!("/community/{UUID}"))
         );
+    }
+
+    /// What `route_link` logs for a link kept until sign-in: its kind, never its code or ids.
+    #[test]
+    fn a_links_kind_names_no_code_token_or_id() {
+        for (raw, kind, secret) in [
+            ("semaphore://join/inv-code-9x", "invite", "inv-code-9x"),
+            (
+                "semaphore://reset-password?token=w3-reset-token",
+                "reset-password",
+                "w3-reset-token",
+            ),
+            (
+                &format!("semaphore://community/{UUID}") as &str,
+                "community",
+                UUID,
+            ),
+        ] {
+            let link = parse_deep_link(raw).expect(raw);
+            assert_eq!(link.kind(), kind);
+            assert!(!link.kind().contains(secret));
+        }
     }
 
     #[test]

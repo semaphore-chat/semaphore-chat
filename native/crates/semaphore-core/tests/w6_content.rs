@@ -426,10 +426,6 @@ async fn draft_table() {
     let rig = Rig::new().signed_in().await;
     let refusals = [
         (
-            InstanceInviteDraft::default(),
-            "Pick at least one community",
-        ),
-        (
             InstanceInviteDraft {
                 community_ids: vec!["not-a-uuid".into()],
                 ..Default::default()
@@ -481,6 +477,22 @@ async fn draft_table() {
         0,
         "a refused draft is never sent"
     );
+
+    // No community: an invite to the instance alone, sent with an empty list (the backend takes
+    // it; Home's Quick invite with nothing to invite to).
+    rig.backend
+        .w4
+        .answer("create_invite", instance_invite_json("instance-only", &[]));
+    assert_eq!(
+        rig.core
+            .create_instance_invite(InstanceInviteDraft::default())
+            .await
+            .unwrap(),
+        "instance-only"
+    );
+    let call = rig.backend.w4.calls().last().cloned().expect("the call");
+    let body: Value = serde_json::from_str(call.strip_prefix("create_invite ").unwrap()).unwrap();
+    assert_eq!(body, json!({ "communityIds": [] }));
 
     // A valid draft with no limits: only the communities go on the wire.
     rig.backend.w4.answer("invites", json!([]));

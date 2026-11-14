@@ -48,6 +48,7 @@ exceptions = [
     { crate = "rig-sio", allow = ["AGPL-3.0-only"] },
     { crate = "rig-surface-smoke", allow = ["AGPL-3.0-only"] },
     { crate = "rig-slice", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-announce", allow = ["AGPL-3.0-only"] },
     { crate = "rig-sysaudio", allow = ["AGPL-3.0-only"] },
     { crate = "rig-fake-camera", allow = ["AGPL-3.0-only"] },
     { crate = "rig-window-hide", allow = ["AGPL-3.0-only"] },

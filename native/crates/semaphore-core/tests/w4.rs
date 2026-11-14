@@ -1416,6 +1416,22 @@ async fn the_diagnostics_report_is_plain_text_without_tokens() {
     assert!(!report.contains("token"), "{report}");
 }
 
+#[tokio::test]
+async fn the_diagnostics_report_redacts_what_the_failure_and_events_carry() {
+    let mut rig = signed_in().await;
+    rig.backend.w4.fail_next(
+        "dm_token",
+        refusal(400, "BAD_REQUEST: access_token=at-leak-1 Bearer at-leak-2"),
+    );
+    assert!(rig.core.join_dm_call(DM.into()).await.is_err());
+    rig.settle().await;
+    let report = rig.core.voice_diagnostics_report();
+    assert!(report.contains("Last failed join"), "{report}");
+    for secret in ["at-leak-1", "at-leak-2"] {
+        assert!(!report.contains(secret), "{secret} in {report}");
+    }
+}
+
 #[test]
 fn the_unknown_join_failure_class_round_trips_as_the_backend_spells_it() {
     // The generator leaves `unknown` to the tolerant catch-all, which sends it as it came.

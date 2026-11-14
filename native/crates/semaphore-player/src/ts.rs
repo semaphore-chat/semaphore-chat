@@ -215,6 +215,14 @@ pub struct AdtsHeader {
     pub blocks: u8,
 }
 
+impl AdtsHeader {
+    /// The profile field says AAC-LC: object type 2. ADTS can say Main, LC, SSR or LTP only, so
+    /// this is the whole of what the header can promise (docs/player.md).
+    pub fn is_lc(&self) -> bool {
+        self.object_type == 2
+    }
+}
+
 const ADTS_RATES: [u32; 13] = [
     96_000, 88_200, 64_000, 48_000, 44_100, 32_000, 24_000, 22_050, 16_000, 12_000, 11_025, 8_000,
     7_350,

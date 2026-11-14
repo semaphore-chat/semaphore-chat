@@ -386,6 +386,8 @@ struct Engine {
     context: Context,
     media: Media,
     machine: Machine,
+    /// What the player told the UI at open, kept to update it if the sound has to stop.
+    metadata: Metadata,
     video: Option<usize>,
     audio: Option<usize>,
     /// What the output is opened with: 1 or 2.
@@ -437,10 +439,18 @@ impl Engine {
         let duration = media.duration();
         // Zero for a file; segments open where they were asked to.
         let initial = media.initial_position();
+        let metadata = Metadata {
+            duration,
+            has_video: video.is_some(),
+            has_audio: audio.is_some(),
+            width: size.0,
+            height: size.1,
+        };
         let mut engine = Self {
             context,
             media,
             machine: Machine::new(),
+            metadata,
             video,
             audio,
             channels,
@@ -466,13 +476,7 @@ impl Engine {
         let input = if video.is_none() && audio.is_none() {
             Input::Failed(PlayerError::Unsupported)
         } else {
-            Input::Opened(Metadata {
-                duration,
-                has_video: video.is_some(),
-                has_audio: audio.is_some(),
-                width: size.0,
-                height: size.1,
-            })
+            Input::Opened(engine.metadata.clone())
         };
         // Show the first frame as the poster once opened, as a paused seek to the start would.
         let opened = matches!(input, Input::Opened(_));
@@ -734,6 +738,8 @@ impl Engine {
                     return;
                 }
             }
+            // An AAC stream the decoder refused as more than LC: its sound stops here.
+            self.stop_refused_audio();
             if matches!(
                 self.machine.state(),
                 semaphore_core::player::PlaybackState::Failed(_)
@@ -748,6 +754,32 @@ impl Engine {
             self.report_position(false);
             self.check_end();
         }
+    }
+
+    /// The media stopped an AAC stream because the decoder reported it as anything but AAC-LC
+    /// (implicit SBR, say). Its sound is gone: continue with the video on the wall clock and tell
+    /// the UI, whose one Metadata event at open is core's machine's only update (`docs/player.md`).
+    fn stop_refused_audio(&mut self) {
+        let Some(stream) = self.media.refused_audio() else {
+            return;
+        };
+        if self.audio != Some(stream) {
+            return;
+        }
+        let at = self.clock().unwrap_or(self.base);
+        log::warn!("player: audio stream {stream} is not AAC-LC; continuing without sound");
+        self.audio = None;
+        self.output = None;
+        self.pending.clear();
+        self.converted.clear();
+        self.resampler = None;
+        self.base = at;
+        self.wall = WallClock::new(at);
+        if self.playing {
+            self.wall.start(Instant::now());
+        }
+        self.metadata.has_audio = false;
+        (self.context.events)(PlayerEvent::Metadata(self.metadata.clone()));
     }
 
     fn take_video(&mut self, image: Nv12Image) {

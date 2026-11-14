@@ -35,12 +35,13 @@ use gpui_kit::*;
 use semaphore_core::model::{ChannelKind, DmRow, ErrorView, SessionState, ViewKey};
 use semaphore_core::{Core, CoreEvent};
 use semaphore_ui::auth::{InviteJoinState, InviteScreen};
+use semaphore_ui::dms::names::dm_title;
 use semaphore_ui::dms::picker::{SEARCH_LIMIT, UserPicker, UserPickerEvent};
 use semaphore_ui::dms::{DmHeader, DmHeaderEvent};
 use semaphore_ui::friends::{
     AddFriendDialog, AddFriendDialogEvent, AddFriendEvent, AddOutcome, FriendsEvent, FriendsPanel,
 };
-use semaphore_ui::kit::{Alert, Button, Dialog, Paper, Severity, spacing};
+use semaphore_ui::kit::{Alert, Button, Dialog, Paper, Severity, Speaker, spacing};
 use semaphore_ui::nav::Route;
 use semaphore_ui::notifications::page::{NotificationsPage, NotificationsPageEvent};
 use semaphore_ui::shortcuts::{ShortcutSheet, ShortcutSheetEvent};
@@ -115,12 +116,17 @@ pub struct U9Area {
     search_pending: std::cell::Cell<bool>,
     /// The pane's search panel is this route's: leaving the route closes it.
     search_open: bool,
+    /// What a screen reader hears about the navigation shortcuts, as the web's
+    /// `ShortcutsProvider` says it.
+    pub(super) announce: Speaker,
 }
 
 /// One row of the list the navigation shortcuts walk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct NavItem {
     id: String,
+    /// The channel's or conversation's name: what the web announces after a step.
+    label: String,
     unread: bool,
 }
 
@@ -786,12 +792,38 @@ impl AppRoot {
         let Some(route) = self.u9_route(cx) else {
             return;
         };
+        // The web has no sidebar to walk outside a community's channels or the DM area, and then
+        // says nothing at all.
+        let channel_area = matches!(route, Route::Channel { .. } | Route::ChannelSearch { .. });
+        let dm_area = matches!(route, Route::DirectMessages | Route::DirectMessage { .. });
+        if !channel_area && !dm_area {
+            return;
+        }
         let (items, current) = u9_nav_items(&core, &route);
         let Some(target) = u9_step_target(&items, current.as_deref(), direction, unread_only)
         else {
+            // The web's `navigate`: only an unread-only step that found nothing says so.
+            if unread_only {
+                let text = if dm_area {
+                    "No unread conversations"
+                } else {
+                    "No unread channels"
+                };
+                if self.u9.announce.say(text) {
+                    cx.notify();
+                }
+            }
             return;
         };
-        let target = target.to_owned();
+        let text = if target.unread {
+            format!("{}, unread", target.label)
+        } else {
+            target.label.clone()
+        };
+        if self.u9.announce.say(text) {
+            cx.notify();
+        }
+        let target = target.id.clone();
         match &route {
             Route::Channel { community_id, .. } | Route::ChannelSearch { community_id, .. } => self
                 .shell_navigate(
@@ -905,6 +937,7 @@ fn u9_nav_items(core: &Core, route: &Route) -> (Vec<NavItem>, Option<String>) {
                 .iter()
                 .map(|channel| NavItem {
                     id: channel.id.clone(),
+                    label: channel.name.clone(),
                     unread: channel.id != *channel_id && channel.unread_count > 0,
                 })
                 .collect();
@@ -921,6 +954,7 @@ fn u9_nav_items(core: &Core, route: &Route) -> (Vec<NavItem>, Option<String>) {
                 .iter()
                 .map(|row| NavItem {
                     id: row.id.clone(),
+                    label: dm_title(row),
                     unread: row.unread > 0,
                 })
                 .collect();
@@ -938,7 +972,7 @@ fn u9_step_target<'a>(
     current: Option<&str>,
     direction: i32,
     unread_only: bool,
-) -> Option<&'a str> {
+) -> Option<&'a NavItem> {
     let count = items.len() as i64;
     if count == 0 || direction == 0 {
         return None;
@@ -957,7 +991,7 @@ fn u9_step_target<'a>(
         }
         let item = &items[index as usize];
         if !unread_only || item.unread {
-            return Some(item.id.as_str());
+            return Some(item);
         }
     }
     None
@@ -1095,47 +1129,82 @@ mod tests {
         ids.iter()
             .map(|(id, unread)| NavItem {
                 id: (*id).to_string(),
+                label: (*id).to_string(),
                 unread: *unread,
             })
             .collect()
     }
 
+    fn target_id(target: Option<&NavItem>) -> Option<&str> {
+        target.map(|item| item.id.as_str())
+    }
+
     #[test]
     fn the_next_channel_is_the_one_after_it_and_the_last_wraps() {
         let list = items(&[("a", false), ("b", true), ("c", false)]);
-        assert_eq!(u9_step_target(&list, Some("a"), 1, false), Some("b"));
-        assert_eq!(u9_step_target(&list, Some("c"), 1, false), Some("a"));
-        assert_eq!(u9_step_target(&list, Some("a"), -1, false), Some("c"));
-        assert_eq!(u9_step_target(&list, Some("b"), -1, false), Some("a"));
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("a"), 1, false)),
+            Some("b")
+        );
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("c"), 1, false)),
+            Some("a")
+        );
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("a"), -1, false)),
+            Some("c")
+        );
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("b"), -1, false)),
+            Some("a")
+        );
     }
 
     #[test]
     fn unread_only_skips_what_is_read_and_stops_at_the_conversation_on_screen() {
         let list = items(&[("a", false), ("b", true), ("c", false), ("d", true)]);
-        assert_eq!(u9_step_target(&list, Some("a"), 1, true), Some("b"));
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("a"), 1, true)),
+            Some("b")
+        );
         // "c" is read, so the next unread one is "d".
-        assert_eq!(u9_step_target(&list, Some("b"), 1, true), Some("d"));
-        assert_eq!(u9_step_target(&list, Some("a"), -1, true), Some("d"));
-        assert_eq!(u9_step_target(&list, Some("c"), -1, true), Some("b"));
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("b"), 1, true)),
+            Some("d")
+        );
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("a"), -1, true)),
+            Some("d")
+        );
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("c"), -1, true)),
+            Some("b")
+        );
         // The conversation on screen is the only unread one: there is nowhere to go.
         let only: Vec<NavItem> = items(&[("a", true), ("b", false)]);
-        assert_eq!(u9_step_target(&only, Some("a"), 1, true), None);
-        assert_eq!(u9_step_target(&only, Some("a"), -1, true), None);
+        assert_eq!(target_id(u9_step_target(&only, Some("a"), 1, true)), None);
+        assert_eq!(target_id(u9_step_target(&only, Some("a"), -1, true)), None);
         let read: Vec<NavItem> = items(&[("a", false), ("b", false)]);
-        assert_eq!(u9_step_target(&read, Some("a"), 1, true), None);
-        assert_eq!(u9_step_target(&read, Some("a"), 1, false), Some("b"));
+        assert_eq!(target_id(u9_step_target(&read, Some("a"), 1, true)), None);
+        assert_eq!(
+            target_id(u9_step_target(&read, Some("a"), 1, false)),
+            Some("b")
+        );
     }
 
     #[test]
     fn no_list_or_nowhere_to_go_is_no_target() {
         let none: Vec<NavItem> = Vec::new();
-        assert_eq!(u9_step_target(&none, None, 1, false), None);
+        assert_eq!(target_id(u9_step_target(&none, None, 1, false)), None);
         let one = items(&[("a", false)]);
-        assert_eq!(u9_step_target(&one, Some("a"), 1, false), None);
+        assert_eq!(target_id(u9_step_target(&one, Some("a"), 1, false)), None);
         // An unknown current entry starts just outside the list.
         let list = items(&[("a", false), ("b", false), ("c", false)]);
-        assert_eq!(u9_step_target(&list, None, 1, false), Some("a"));
-        assert_eq!(u9_step_target(&list, None, -1, false), Some("c"));
-        assert_eq!(u9_step_target(&list, Some("gone"), 1, false), Some("a"));
+        assert_eq!(target_id(u9_step_target(&list, None, 1, false)), Some("a"));
+        assert_eq!(target_id(u9_step_target(&list, None, -1, false)), Some("c"));
+        assert_eq!(
+            target_id(u9_step_target(&list, Some("gone"), 1, false)),
+            Some("a")
+        );
     }
 }

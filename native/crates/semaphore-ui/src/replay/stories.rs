@@ -457,7 +457,8 @@ pub fn stories() -> Vec<Story> {
             Capture::preview(Preview::at(215, PlaybackState::Playing)).story(window, cx)
         }),
         Story::new("replay-preview-paused-at-handle", |_, window, cx| {
-            // Opened at the selection's start, in a build that plays it without sound.
+            // Opened at the selection's start, for a recording with no sound this player can
+            // decode (no audio track, or an unsupported one: only AAC-LC decodes).
             let mut preview = Preview::at(192, PlaybackState::Paused);
             if let Some(Ok(meta)) = &mut preview.script.open {
                 meta.has_audio = false;

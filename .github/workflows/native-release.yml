@@ -1,0 +1,294 @@
+name: Native release
+
+# Publishes the native desktop client as a PREVIEW, next to (and separate from) the Electron
+# releases, which electron-build.yml still makes from v* tags.
+#
+#   - A `native-vX.Y.Z` tag builds every package (native-package.yml), assembles and validates
+#     latest.json, signs it with NATIVE_UPDATE_SIGNING_KEY, and creates the GitHub pre-release
+#     `native-vX.Y.Z` with the Linux packages, the Windows zip and installer, SHA256SUMS,
+#     latest.json and latest.json.sig. Last, it copies latest.json and its signature to the
+#     fixed pre-release `native-preview-feed`, which is what installed copies read.
+#   - Manual dispatch builds the same from the chosen commit. With dry_run (the default) it signs
+#     nothing, uses no secret, creates no release or tag, and uploads the assembled release as
+#     the workflow artifact `native-release-<version>`. With dry_run off, from the default branch
+#     only, it publishes exactly as a tag push would (creating the tag at that commit).
+#
+# Why a separate feed release: GitHub's releases/latest skips pre-releases, so a
+# releases/latest/download/latest.json URL would never see a preview. A pre-release at a fixed
+# tag has a fixed asset URL, and as a pre-release it can never become the repository's "Latest"
+# release, which the Electron app's updater reads. See native/docs/packaging.md, "Releasing a
+# native preview".
+
+on:
+  push:
+    tags:
+      - 'native-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, X.Y.Z (the tag would be native-vX.Y.Z)'
+        type: string
+        required: true
+      dry_run:
+        description: 'Dry run: build and upload artifacts only (no signing, no release)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: native-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FEED_TAG: native-preview-feed
+
+jobs:
+  prepare:
+    name: Version and mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      publish: ${{ steps.meta.outputs.publish }}
+      feed_url: ${{ steps.meta.outputs.feed_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Resolve the version, the tag and whether this publishes
+        id: meta
+        env:
+          # Through the environment, never spliced into the script text.
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = push ]; then
+            [ "$REF_TYPE" = tag ] || { echo "::error::a push that isn't a tag"; exit 1; }
+            tag="$REF_NAME"
+            version="${tag#native-v}"
+            publish=true
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            version="${INPUT_VERSION#native-}"
+            version="${version#v}"
+            tag="native-v$version"
+            if [ "$INPUT_DRY_RUN" = false ]; then
+              [ "$REF" = "refs/heads/$DEFAULT_BRANCH" ] \
+                || { echo "::error::a release is only published from $DEFAULT_BRANCH (this is $REF); dry runs work from any branch"; exit 1; }
+              if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+                echo "::error::$tag already exists: a tag push publishes it; pick another version"
+                exit 1
+              fi
+              publish=true
+            else
+              publish=false
+            fi
+          else
+            echo "::error::unexpected event $EVENT"; exit 1
+          fi
+          # Plain X.Y.Z: a semantic version the updater orders, and what the Windows package
+          # step accepts. Every native release is a GitHub pre-release already.
+          if ! [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::version '$version' (from '$tag') is not X.Y.Z"
+            exit 1
+          fi
+          feed_url="https://github.com/$REPO/releases/download/$FEED_TAG/latest.json"
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "publish=$publish"
+            echo "feed_url=$feed_url"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Native release $version"
+            echo "- tag: \`$tag\`"
+            echo "- publishes: **$publish**"
+            echo "- feed compiled in: $feed_url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  packages:
+    name: Packages
+    needs: prepare
+    permissions:
+      contents: read
+    uses: ./.github/workflows/native-package.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      update_feed_url: ${{ needs.prepare.outputs.feed_url }}
+      release: true
+
+  # Has the signing key and only a read token. The job that can write never sees the key.
+  assemble:
+    name: Assemble, validate and sign
+    needs: [prepare, packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: native-*
+          path: built
+          merge-multiple: true
+      - name: Assemble the release
+        run: |
+          set -euo pipefail
+          ls -l built
+          shopt -s nullglob
+          files=(built/*.AppImage built/*.deb built/*.rpm built/*.zip built/*.exe)
+          python3 native/scripts/assemble-release.py --version "$VERSION" --tag "$TAG" \
+            --repo "$GITHUB_REPOSITORY" --out release "${files[@]}"
+      - name: Validate latest.json against the files
+        run: |
+          set -euo pipefail
+          python3 native/scripts/check-manifest.py \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" \
+            --notes-url "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            release/latest.json \
+            release/*.AppImage release/*.deb release/*.rpm release/*.zip release/*.exe
+          ( cd release && sha256sum -c SHA256SUMS )
+      - name: Release notes
+        run: |
+          set -euo pipefail
+          native/scripts/release-notes.sh "$VERSION" "$GITHUB_SHA" "$GITHUB_REPOSITORY" > notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      # A dry run proves the signing commands on this runner's OpenSSL with a key made here
+      # and thrown away; the signature is deleted, so nothing it signed can be mistaken for a
+      # release.
+      - name: "Dry run: sign and verify with a throwaway key"
+        if: needs.prepare.outputs.publish != 'true'
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm ed25519 -out "$RUNNER_TEMP/throwaway.pem"
+          openssl pkey -in "$RUNNER_TEMP/throwaway.pem" -pubout -out "$RUNNER_TEMP/throwaway.pub.pem"
+          native/scripts/manifest-signature.sh sign "$RUNNER_TEMP/throwaway.pem" release/latest.json
+          native/scripts/manifest-signature.sh verify "$RUNNER_TEMP/throwaway.pub.pem" release/latest.json
+          rm -f release/latest.json.sig "$RUNNER_TEMP/throwaway.pem"
+      - name: Sign latest.json
+        if: needs.prepare.outputs.publish == 'true' && github.event_name != 'pull_request'
+        env:
+          NATIVE_UPDATE_SIGNING_KEY: ${{ secrets.NATIVE_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NATIVE_UPDATE_SIGNING_KEY" ]; then
+            echo "::error::the NATIVE_UPDATE_SIGNING_KEY secret is not set"
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/native-update-signing-key.pem"
+          # printf is a builtin: the key never appears on a command line or in the log.
+          printf '%s\n' "$NATIVE_UPDATE_SIGNING_KEY" > "$key"
+          chmod 600 "$key"
+          native/scripts/manifest-signature.sh sign "$key" release/latest.json
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/native-update-signing-key.pem" "$RUNNER_TEMP/throwaway.pem"
+      - name: Verify the signature with the committed public key
+        if: needs.prepare.outputs.publish == 'true'
+        run: |
+          native/scripts/manifest-signature.sh verify \
+            native/packaging/update-signing-key.pub.pem release/latest.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-release-${{ needs.prepare.outputs.version }}
+          path: |
+            release/*
+            notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  # The only job that can write: it creates the versioned pre-release, then moves the feed.
+  publish:
+    name: Publish the pre-release and the feed
+    needs: [prepare, assemble]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    # One feed: two releases publishing at once must not interleave their feed updates.
+    concurrency:
+      group: native-release-feed
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: native-release-${{ needs.prepare.outputs.version }}
+          path: out
+      - name: Verify the signature again
+        run: |
+          native/scripts/manifest-signature.sh verify \
+            native/packaging/update-signing-key.pub.pem out/release/latest.json
+      - name: Create the pre-release
+        run: |
+          set -euo pipefail
+          cd out/release
+          assets=(*.AppImage *.deb *.rpm *.zip *.exe SHA256SUMS latest.json latest.json.sig)
+          # A draft first, so nobody sees a release with half its files; then published.
+          # --latest=false: a preview must never become the repository's Latest release.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            target=(--verify-tag)
+          else
+            target=(--target "$GITHUB_SHA")
+          fi
+          gh release create "$TAG" "${target[@]}" --draft --prerelease --latest=false \
+            --title "Semaphore Chat native $VERSION (preview)" \
+            --notes-file ../notes.md "${assets[@]}"
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
+      - name: Check every file the manifest names is published
+        run: |
+          set -euo pipefail
+          published="$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)"
+          for url in $(jq -r '.artifacts[].url' out/release/latest.json); do
+            name="${url##*/}"
+            [ "$url" = "https://github.com/$GH_REPO/releases/download/$TAG/$name" ] \
+              || { echo "::error::$url is not an asset URL of $TAG"; exit 1; }
+            grep -qxF "$name" <<<"$published" || { echo "::error::$name is not published"; exit 1; }
+          done
+      # Last, so the feed never names a file that isn't there. An older version never replaces
+      # a newer one (re-running an old tag leaves the feed alone).
+      - name: Update the feed release
+        run: |
+          set -euo pipefail
+          if gh release view "$FEED_TAG" >/dev/null 2>&1; then
+            mkdir -p current
+            if gh release download "$FEED_TAG" --pattern latest.json --dir current 2>/dev/null; then
+              current="$(jq -r .version current/latest.json)"
+              newest="$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)"
+              if [ "$current" != "$VERSION" ] && [ "$newest" = "$current" ]; then
+                echo "::warning::the feed is at $current, newer than $VERSION: left as it is"
+                exit 0
+              fi
+            fi
+            gh release upload "$FEED_TAG" out/release/latest.json out/release/latest.json.sig --clobber
+          else
+            gh release create "$FEED_TAG" --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "Native preview update feed" \
+              --notes "The update feed of the native client's preview releases: latest.json and its Ed25519 signature, replaced by each native-v* release. Downloads are on the versioned releases." \
+              out/release/latest.json out/release/latest.json.sig
+          fi
+          echo "feed: https://github.com/$GH_REPO/releases/download/$FEED_TAG/latest.json -> $VERSION" >> "$GITHUB_STEP_SUMMARY"

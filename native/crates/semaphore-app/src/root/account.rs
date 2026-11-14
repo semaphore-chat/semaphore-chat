@@ -55,6 +55,9 @@ pub struct DesktopSignIn {
     pub at_ms: i64,
 }
 
+/// How long the invite card's notice stays, as the web's snackbar.
+const INVITE_NOTICE_FOR: std::time::Duration = std::time::Duration::from_secs(3);
+
 #[derive(Default)]
 pub(super) struct Account {
     settings: Option<Entity<SettingsScreen>>,
@@ -66,6 +69,8 @@ pub(super) struct Account {
     /// Home's invite card: the app's part (in flight, the last code, the notice), while
     /// `refresh_home` adds what core knows.
     invite: InviteCardModel,
+    /// Takes the invite card's notice away after a while, as the web's snackbar hides.
+    invite_notice_timer: Option<Task<()>>,
     create: Option<Entity<CreateCommunityForm>>,
     desktop_sign_in: Option<DesktopSignIn>,
     links: LinkHandler,
@@ -673,6 +678,13 @@ impl AppRoot {
         }
     }
 
+    /// The window went to the tray, or is closing: a settings-page test left running would keep the
+    /// mic or the camera open with nothing on screen to show it or stop it.
+    pub fn window_hidden(&mut self, cx: &mut Context<Self>) {
+        self.stop_mic_test(cx);
+        self.stop_camera_test(cx);
+    }
+
     /// Stops the mic test, if one runs: its mic closes, its meter goes.
     pub(super) fn stop_mic_test(&mut self, cx: &mut Context<Self>) {
         if self.account.mic_test.take().is_some()
@@ -1029,7 +1041,8 @@ impl AppRoot {
         {
             tray.set_close_to_tray(on);
         }
-        crate::menu::install(cx, on, self.can_check_for_updates());
+        let enabled = self.can_check_for_updates();
+        self.install_menu(on, enabled, cx);
         self.refresh_desktop_tab(cx);
     }
 
@@ -1255,6 +1268,21 @@ impl AppRoot {
         model
     }
 
+    /// Shows the invite card's notice for `INVITE_NOTICE_FOR`, as the web's snackbar
+    /// (`autoHideDuration` 3000); a newer notice starts the time again.
+    fn show_invite_notice(&mut self, notice: InviteNotice, cx: &mut Context<Self>) {
+        self.account.invite.notice = Some(notice);
+        self.account.invite_notice_timer = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(INVITE_NOTICE_FOR).await;
+            this.update(cx, |root, cx| {
+                root.account.invite.notice = None;
+                root.account.invite_notice_timer = None;
+                root.refresh_home(cx);
+            })
+            .ok();
+        }));
+    }
+
     fn on_invite_card(&mut self, event: InviteEvent, window: &mut Window, cx: &mut Context<Self>) {
         match event {
             InviteEvent::QuickInvite => {
@@ -1265,8 +1293,7 @@ impl AppRoot {
                     return;
                 };
                 let targets = quick_invite_targets(&self.account.invite.communities);
-                if targets.is_empty() || self.account.invite.creating || self.account.invite.loading
-                {
+                if self.account.invite.creating || self.account.invite.loading {
                     return;
                 }
                 self.account.invite.creating = true;
@@ -1278,26 +1305,37 @@ impl AppRoot {
                     max_uses: Some(INVITE_USES),
                     valid_until_ms: Some(now + INVITE_DAYS * 24 * 60 * 60 * 1000),
                 };
+                // This session's Home: a sign-out (and maybe someone else's sign-in) before the
+                // answer makes a new one, and the answer belongs to neither.
+                let session_home = self.account.home.as_ref().map(Entity::entity_id);
                 exec.run(
                     window,
                     cx,
                     async move { core.create_instance_invite(draft).await },
-                    |this, result, _, cx| {
+                    move |this, result, _, cx| {
+                        if this.account.home.as_ref().map(Entity::entity_id) != session_home {
+                            return;
+                        }
                         this.account.invite.creating = false;
                         match result {
                             Ok(code) => {
                                 let copied = this.copy_home_invite(&code, cx);
                                 this.account.invite.code = Some(code);
-                                this.account.invite.notice = Some(if copied {
-                                    InviteNotice::copied()
-                                } else {
-                                    InviteNotice::failed(NOTICE_COPY_FAILED_AFTER_CREATE)
-                                });
+                                this.show_invite_notice(
+                                    if copied {
+                                        InviteNotice::copied()
+                                    } else {
+                                        InviteNotice::failed(NOTICE_COPY_FAILED_AFTER_CREATE)
+                                    },
+                                    cx,
+                                );
                             }
                             Err(error) => {
                                 log::warn!("creating an invite from Home: {error}");
-                                this.account.invite.notice =
-                                    Some(InviteNotice::failed(NOTICE_CREATE_FAILED));
+                                this.show_invite_notice(
+                                    InviteNotice::failed(NOTICE_CREATE_FAILED),
+                                    cx,
+                                );
                             }
                         }
                         this.refresh_home(cx);
@@ -1309,11 +1347,14 @@ impl AppRoot {
                     return;
                 };
                 let copied = self.copy_home_invite(&code, cx);
-                self.account.invite.notice = Some(if copied {
-                    InviteNotice::copied()
-                } else {
-                    InviteNotice::failed(NOTICE_COPY_FAILED)
-                });
+                self.show_invite_notice(
+                    if copied {
+                        InviteNotice::copied()
+                    } else {
+                        InviteNotice::failed(NOTICE_COPY_FAILED)
+                    },
+                    cx,
+                );
                 self.refresh_home(cx);
             }
             InviteEvent::Manage => {

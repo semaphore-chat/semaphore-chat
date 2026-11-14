@@ -145,8 +145,8 @@ need it. For size or performance numbers, build with `-p semaphore-app` in relea
 
 Two release-type profiles: `release` (thin LTO, what `verify.sh`, CI and the rigs build) and `dist`
 (release plus fat LTO and one codegen unit: about 14 MB smaller, about three minutes longer).
-Packages are built with `cargo build --locked --profile dist -p semaphore-app` inside the Debian 12
-package image (glibc 2.36), not the Arch development image: see
+Packages are built with `cargo build --locked --profile dist -p semaphore-app --features player`
+inside the Debian 12 package image (glibc 2.36), not the Arch development image: see
 [docs/packaging.md](docs/packaging.md) and [docs/size.md](docs/size.md#release-build-environment).
 
 `verify.sh` reads the result schema from `scripts/native-baseline/result.schema.json`, or from

@@ -297,9 +297,14 @@ pub struct LoopbackRequest {
     pub target: String,
 }
 
+/// A request target without its query or fragment: `/callback?code=...` is `/callback`.
+pub fn request_path(target: &str) -> &str {
+    target.split(['?', '#']).next().unwrap_or("")
+}
+
 impl std::fmt::Debug for LoopbackRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let path = self.target.split(['?', '#']).next().unwrap_or("");
+        let path = request_path(&self.target);
         f.debug_struct("LoopbackRequest")
             .field("id", &self.id)
             .field("method", &self.method)

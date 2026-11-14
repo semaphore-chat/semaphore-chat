@@ -3,8 +3,11 @@
 //! states of the same card; success leads back to sign-in with the new password.
 
 use super::{PASSWORD_MAX, PASSWORD_MIN, card, event_link, page};
-use crate::kit::{Alert, Button, Icon, Severity, TextField, Variant, spacing, text, text_state};
+use crate::kit::{
+    Alert, Button, Icon, LiveElement, Severity, TextField, Variant, spacing, text, text_state,
+};
 use crate::theme::SemTheme;
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -69,8 +72,16 @@ pub fn can_submit(
         && !success
 }
 
+/// The line on the card that says where the new password goes: a pasted token and a
+/// `semaphore://` link don't name a server, so the card does.
+pub fn target_line(host: &str) -> String {
+    format!("This will reset your password on {host}.")
+}
+
 pub struct ResetPasswordScreen {
     token: Option<String>,
+    /// The host of the server the reset is sent to, shown on the card.
+    server_host: Option<String>,
     password: Entity<InputState>,
     confirm: Entity<InputState>,
     busy: bool,
@@ -84,7 +95,13 @@ pub struct ResetPasswordScreen {
 impl EventEmitter<ResetEvent> for ResetPasswordScreen {}
 
 impl ResetPasswordScreen {
-    pub fn new(token: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// `server_host`: where `Submit` will post, named on the card (see [`super::server_host`]).
+    pub fn new(
+        token: Option<String>,
+        server_host: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let password = text_state(window, cx, true);
         let confirm = text_state(window, cx, true);
         let _subscriptions = vec![
@@ -93,6 +110,7 @@ impl ResetPasswordScreen {
         ];
         Self {
             token,
+            server_host,
             password,
             confirm,
             busy: false,
@@ -106,6 +124,10 @@ impl ResetPasswordScreen {
 
     pub fn token(&self) -> Option<&str> {
         self.token.as_deref()
+    }
+
+    pub fn server_host(&self) -> Option<&str> {
+        self.server_host.as_deref()
     }
 
     pub fn set_busy(&mut self, busy: bool, cx: &mut Context<Self>) {
@@ -242,11 +264,25 @@ impl Render for ResetPasswordScreen {
                 self.busy,
                 self.success,
             );
-            head.children(self.error.clone().map(|message| {
+            head.children(self.server_host.as_deref().map(|host| {
+                div()
+                    .id("reset-password-target")
+                    .test_support()
+                    .w_full()
+                    .mb(spacing(2.))
+                    .child(
+                        text(Variant::Body2, target_line(host))
+                            .text_color(sem.text_secondary)
+                            .text_center(),
+                    )
+            }))
+            .children(self.error.clone().map(|message| {
+                // `ResetPasswordPage`'s refusal is `role="alert"`: assertive.
                 div()
                     .id("reset-password-error")
                     .test_support()
                     .role(Role::Alert)
+                    .aria_live(Live::Assertive)
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
@@ -342,7 +378,8 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
     ) -> AnyView {
         let token = token.map(str::to_owned);
         cx.new(|cx| {
-            let mut screen = ResetPasswordScreen::new(token, window, cx);
+            let mut screen =
+                ResetPasswordScreen::new(token, Some("chat.example.com".into()), window, cx);
             setup(&mut screen, window, cx);
             screen
         })

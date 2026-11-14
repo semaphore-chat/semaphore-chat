@@ -2,7 +2,10 @@
 //! libwebrtc: containers, codecs, durations, frame counts, colours and tones.
 //!
 //! Videos are 64x64, 10 fps, 2 s: red for the first second, blue for the second. Audio is a
-//! 440 Hz sine. Run with and without `--features aac`: without it AAC streams are refused.
+//! 440 Hz sine. Run with and without the `aac` feature (on by default; `--no-default-features`
+//! turns it off): without it AAC streams are refused. An LC stream plays; an explicitly
+//! signalled HE-AAC one (fixtures/gen.sh's aac_fixtures.py) is an unsupported audio stream, and
+//! so is a Main-profile ADTS one, while the video plays.
 
 use semaphore_player::{AudioFrame, Codec, Error, Frame, Kind, Media, VideoFrame};
 
@@ -343,6 +346,53 @@ fn theora_is_an_unsupported_codec_but_its_vorbis_plays() {
         samples += frame.samples.len();
     }
     assert!(samples.abs_diff(96_000) <= 512, "{samples} samples");
+}
+
+#[test]
+fn explicit_he_aac_is_an_unsupported_audio_stream_but_the_video_plays() {
+    // fixtures/gen.sh: h264-aac.mp4's AudioSpecificConfig relabelled AAC-LC -> explicit HE-AAC
+    // (AOT 5). The payload is still LC; only the config may not be trusted, so no build decodes it.
+    let mut media = open("h264-aac-he.mp4").expect("opens");
+    let streams = media.streams();
+    let video = streams
+        .iter()
+        .position(|s| s.codec == Codec::H264)
+        .expect("video");
+    let audio = streams
+        .iter()
+        .position(|s| s.codec == Codec::Aac)
+        .expect("audio");
+    assert_eq!(media.enable(audio), Err(Error::UnsupportedCodec));
+    media.enable(video).expect("the video plays");
+    let mut decoded = Decoded {
+        pts_rising: true,
+        ..Decoded::default()
+    };
+    while let Some(frame) = media.next_frame().expect("decodes") {
+        let Frame::Video(frame) = frame else {
+            panic!("only the video is enabled");
+        };
+        decoded.video(&frame);
+    }
+    assert_eq!(decoded.frames, FRAMES);
+    assert_refused_video_colours("h264-aac-he.mp4", &decoded);
+}
+
+/// The shared assertions for a video whose sound is refused: 20 frames, red then blue.
+fn assert_refused_video_colours(file: &str, decoded: &Decoded) {
+    assert!(decoded.pts_rising, "{file}: timestamps out of order");
+    assert_colour(
+        file,
+        "first",
+        decoded.first.expect("a first frame"),
+        yuv(1.0, 0.0, 0.0),
+    );
+    assert_colour(
+        file,
+        "last",
+        decoded.last.expect("a last frame"),
+        yuv(0.0, 0.0, 1.0),
+    );
 }
 
 #[test]

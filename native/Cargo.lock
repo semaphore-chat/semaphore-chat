@@ -7649,6 +7649,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-announce"
+version = "0.0.0"
+dependencies = [
+ "gpui-kit",
+ "semaphore-core",
+ "semaphore-ui",
+]
+
+[[package]]
 name = "rig-fake-camera"
 version = "0.0.0"
 dependencies = [
@@ -8353,10 +8362,12 @@ name = "semaphore-net"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "futures-util",
  "log",
  "rcgen",
  "reqwest 0.13.5",
+ "ring",
  "rustls",
  "rustls-platform-verifier",
  "semaphore-api",
@@ -8377,6 +8388,7 @@ version = "0.0.0"
 dependencies = [
  "async-channel",
  "async-trait",
+ "base64 0.22.1",
  "directories",
  "futures-util",
  "keyring",

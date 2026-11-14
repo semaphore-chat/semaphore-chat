@@ -3,6 +3,9 @@ name: Native packages
 # Builds the native desktop client's Linux packages (AppImage, .deb, .rpm), the Windows portable
 # zip and the Windows NSIS installer. Artifacts only: this workflow never creates a release,
 # pushes a tag, publishes an image or writes to a registry, and it does not run on tag pushes.
+# native-release.yml calls it (workflow_call) to build a release's packages, with the version
+# and the update feed URL to compile in; its own runs (pull requests, dispatch) leave the feed
+# empty, so those builds never check for updates.
 #
 # Linux packages are linked on Debian 12 (glibc 2.36) by native/docker/Dockerfile.package, then
 # installed and started in Debian 13, Ubuntu 24.04, Fedora 45 and a FUSE-less AppImage container
@@ -17,6 +20,22 @@ on:
         description: 'Package version (defaults to the semaphore-app crate version)'
         type: string
         required: false
+  workflow_call:
+    inputs:
+      version:
+        description: 'Package version (X.Y.Z)'
+        type: string
+        required: true
+      update_feed_url:
+        description: 'The update feed compiled into the binaries (SEMAPHORE_UPDATE_MANIFEST_URL)'
+        type: string
+        required: false
+        default: ''
+      release:
+        description: 'A release build: also check the Windows exe reports the version'
+        type: boolean
+        required: false
+        default: false
   pull_request:
     paths:
       - 'native/scripts/package-linux.sh'
@@ -35,7 +54,9 @@ on:
       - '.github/workflows/native-package.yml'
 
 concurrency:
-  group: native-package-${{ github.ref }}
+  # github.workflow is the caller's name when native-release.yml calls this, so a release's
+  # build never cancels (or is cancelled by) a package run on the same ref.
+  group: native-package-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -52,7 +73,8 @@ jobs:
           persist-credentials: false
       - name: Build AppImage, .deb and .rpm
         env:
-          SEMAPHORE_VERSION: ${{ github.event.inputs.version }}
+          SEMAPHORE_VERSION: ${{ inputs.version }}
+          SEMAPHORE_UPDATE_MANIFEST_URL: ${{ inputs.update_feed_url }}
         run: native/scripts/package-linux.sh
       - name: Install and start each package
         run: native/scripts/test-packages.sh
@@ -97,7 +119,7 @@ jobs:
         shell: pwsh
         env:
           # Through the environment, never spliced into the script text.
-          REQUESTED_VERSION: ${{ github.event.inputs.version }}
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           $version = $env:REQUESTED_VERSION
           if (-not $version) {
@@ -114,7 +136,20 @@ jobs:
         shell: bash
         env:
           SEMAPHORE_PACKAGED: '1'
-        run: cargo build --locked --profile dist -p semaphore-app
+          SEMAPHORE_UPDATE_MANIFEST_URL: ${{ inputs.update_feed_url }}
+        # The attachment player is part of every package, and with it AAC-LC (docs/player.md).
+        run: cargo build --locked --profile dist -p semaphore-app --features player
+      # A release only: the exe must report the version the packages are named after (the
+      # Linux packages are checked by test-packages.sh). Release builds are GUI-subsystem, so
+      # the output goes through a pipe, which Git Bash hands the process as its stdout.
+      - name: Check the exe reports the release version
+        if: inputs.release
+        shell: bash
+        run: |
+          printed="$(./target/dist/semaphore-app.exe --version | tr -d '\r')"
+          echo "$printed"
+          [ "$printed" = "semaphore-app $PACKAGE_VERSION" ] \
+            || { echo "::error::the exe reports '$printed', not 'semaphore-app $PACKAGE_VERSION'"; exit 1; }
       - name: Collect the portable tree
         shell: pwsh
         run: |

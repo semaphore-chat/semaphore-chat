@@ -86,6 +86,9 @@ pub enum Registered {
     Ours,
     /// A package installed an entry with our id; it owns the registration.
     Packaged(PathBuf),
+    /// `mimeapps.list` is a symlink (home-manager, stow): another tool manages it, so nothing
+    /// was written.
+    ManagedElsewhere(PathBuf),
 }
 
 /// Registers the scheme for `target`, writing only what differs. Every start may call it.
@@ -107,6 +110,9 @@ pub enum LinkStatus {
     Another(String),
     /// Nothing handles the scheme.
     NotRegistered,
+    /// `mimeapps.list` is a symlink (home-manager, stow): another tool manages it, and this app
+    /// won't replace it.
+    ManagedElsewhere(PathBuf),
 }
 
 /// Reads who opens `semaphore://` links for `target`, writing nothing.
@@ -126,6 +132,21 @@ pub enum Unregistered {
     Packaged(PathBuf),
     /// Another program owns the scheme, or nothing does: left alone.
     NotOurs,
+    /// `mimeapps.list` is managed by another tool (a symlink): left alone.
+    ManagedElsewhere(PathBuf),
+}
+
+/// Rewrites a registration this app wrote in an older form (Windows: an open command without
+/// `--`) to the current one. True if it rewrote something. Only a registration that is this
+/// executable's is touched; everywhere else, and when it's current, nothing is written.
+pub fn upgrade(target: &RegisterTarget) -> Result<bool, CoreError> {
+    #[cfg(windows)]
+    return windows::upgrade(target);
+    #[cfg(not(windows))]
+    {
+        let _ = target;
+        Ok(false)
+    }
 }
 
 /// Removes this app's registration, and only ever the parts this user can undo: no `sudo`, no
@@ -304,6 +325,10 @@ fn write_if_changed(path: &Path, contents: &[u8]) -> std::io::Result<bool> {
         std::process::id()
     ));
     std::fs::write(&temp, contents)?;
+    // The file keeps its mode (a private mimeapps.list stays private).
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(&temp, meta.permissions());
+    }
     std::fs::rename(&temp, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&temp);
     })?;
@@ -322,15 +347,45 @@ mod linux {
 
     use crate::icon::ICON_PNG;
 
-    pub fn status(target: &RegisterTarget) -> Result<LinkStatus, CoreError> {
+    /// A package's desktop entry with our id, in `$XDG_DATA_DIRS`. `~/.local/share` in that list
+    /// (some sessions add it) holds our own generated entry, which is not a package's.
+    fn packaged_entry(target: &RegisterTarget) -> Option<PathBuf> {
         let file_name = format!("{APP_ID}.desktop");
-        if let Some(packaged) = target
+        let ours = target.data_home.join("applications").join(&file_name);
+        target
             .data_dirs
             .iter()
             .map(|dir| dir.join("applications").join(&file_name))
-            .find(|path| path.is_file())
-        {
+            .find(|path| {
+                path.is_file()
+                    && !(same_file(path, &ours)
+                        && std::fs::read_to_string(path)
+                            .is_ok_and(|text| text.contains(&format!("{GENERATED_KEY}=true"))))
+            })
+    }
+
+    fn same_file(a: &Path, b: &Path) -> bool {
+        match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    /// `mimeapps.list`, when it is a symlink: another tool manages it.
+    fn managed_mimeapps(target: &RegisterTarget) -> Option<PathBuf> {
+        let path = target.config_home.join("mimeapps.list");
+        std::fs::symlink_metadata(&path)
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+            .then_some(path)
+    }
+
+    pub fn status(target: &RegisterTarget) -> Result<LinkStatus, CoreError> {
+        let file_name = format!("{APP_ID}.desktop");
+        if let Some(packaged) = packaged_entry(target) {
             return Ok(LinkStatus::Packaged(packaged));
+        }
+        if let Some(managed) = managed_mimeapps(target) {
+            return Ok(LinkStatus::ManagedElsewhere(managed));
         }
         let mimeapps = match std::fs::read_to_string(target.config_home.join("mimeapps.list")) {
             Ok(text) => text,
@@ -367,6 +422,7 @@ mod linux {
         match status(target)? {
             LinkStatus::Ours => {}
             LinkStatus::Packaged(entry) => return Ok(Unregistered::Packaged(entry)),
+            LinkStatus::ManagedElsewhere(path) => return Ok(Unregistered::ManagedElsewhere(path)),
             LinkStatus::Another(_) | LinkStatus::NotRegistered => {
                 return Ok(Unregistered::NotOurs);
             }
@@ -405,13 +461,13 @@ mod linux {
 
     pub fn register(target: &RegisterTarget) -> Result<Registered, CoreError> {
         let file_name = format!("{APP_ID}.desktop");
-        if let Some(packaged) = target
-            .data_dirs
-            .iter()
-            .map(|dir| dir.join("applications").join(&file_name))
-            .find(|path| path.is_file())
-        {
+        if let Some(packaged) = packaged_entry(target) {
             return Ok(Registered::Packaged(packaged));
+        }
+        // A symlinked mimeapps.list is another tool's (home-manager, stow): writing through a temp
+        // file would replace the link with a plain file. Nothing is written, the entry included.
+        if let Some(managed) = managed_mimeapps(target) {
+            return Ok(Registered::ManagedElsewhere(managed));
         }
         let entry_path = target.data_home.join("applications").join(&file_name);
         // A file with our id that we didn't write (the user's own, say) stays; it only loses the
@@ -461,9 +517,54 @@ pub fn registry_values(exe: &Path) -> Vec<(String, String, String)> {
         (
             format!(r"{base}\shell\open\command"),
             String::new(),
-            format!("\"{exe}\" \"%1\""),
+            open_command(&exe.to_string()),
         ),
     ]
+}
+
+/// The scheme's open command for `exe`: `"exe" -- "%1"`. The `--` ends the app's options, so
+/// whatever a link holds (a `"` that closes the quoting early, say) is never read as one.
+pub fn open_command(exe: &str) -> String {
+    format!("\"{exe}\" -- \"%1\"")
+}
+
+/// Which form of our open command a registered command is, for `exe`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandForm {
+    /// `"exe" -- "%1"`, as this build writes it.
+    Current,
+    /// `"exe" "%1"`, as builds before the `--` wrote it (and their installer): still ours, and
+    /// rewritten on the next start.
+    Legacy,
+}
+
+/// Whether `command` is our open command for `exe`, and in which form. Paths compare as Windows
+/// compares them: without case, `/` as `\`, and without a `\\?\` prefix.
+pub fn command_form(command: &str, exe: &Path) -> Option<CommandForm> {
+    let rest = command.trim().strip_prefix('"')?;
+    let (path, args) = rest.split_once('"')?;
+    if !same_windows_path(path, &exe.to_string_lossy()) {
+        return None;
+    }
+    match args.trim() {
+        r#"-- "%1""# => Some(CommandForm::Current),
+        r#""%1""# => Some(CommandForm::Legacy),
+        _ => None,
+    }
+}
+
+/// Two Windows paths that name the same file as the registry would see it.
+pub fn same_windows_path(a: &str, b: &str) -> bool {
+    fn normal(path: &str) -> String {
+        let path = path.replace('/', "\\");
+        let path = path
+            .strip_prefix(r"\\?\UNC\")
+            .map(|rest| format!(r"\\{rest}"))
+            .or_else(|| path.strip_prefix(r"\\?\").map(str::to_owned))
+            .unwrap_or(path);
+        path.to_lowercase()
+    }
+    normal(a) == normal(b)
 }
 
 #[cfg(windows)]
@@ -546,15 +647,42 @@ mod windows {
         let Some(command) = value(&command_key, "") else {
             return Ok(LinkStatus::NotRegistered);
         };
-        if command != format!("\"{}\" \"%1\"", target.exe.display()) {
+        if command_form(&command, &target.exe).is_none() {
             return Ok(LinkStatus::Another(command));
         }
         for (subkey, name, data) in registry_values(&target.exe) {
-            if value(&subkey, &name).as_deref() != Some(data.as_str()) {
+            if subkey == command_key {
+                continue;
+            }
+            let found = value(&subkey, &name);
+            let matches = match found.as_deref() {
+                // The icon names the executable too: compared as a path, like the command.
+                Some(found) if name.is_empty() && subkey.ends_with("DefaultIcon") => found
+                    .strip_suffix(",0")
+                    .and_then(|quoted| quoted.strip_prefix('"')?.strip_suffix('"'))
+                    .is_some_and(|path| same_windows_path(path, &target.exe.to_string_lossy())),
+                Some(found) => found == data,
+                None => false,
+            };
+            if !matches {
                 return Ok(LinkStatus::Another(format!("HKCU\\{subkey}")));
             }
         }
         Ok(LinkStatus::Ours)
+    }
+
+    /// An open command in the old form (`"exe" "%1"`) for this executable: written again in the
+    /// current one.
+    pub fn upgrade(target: &RegisterTarget) -> Result<bool, CoreError> {
+        let command_key = format!(r"Software\Classes\{SCHEME}\shell\open\command");
+        let legacy = value(&command_key, "").is_some_and(|command| {
+            command_form(&command, &target.exe) == Some(CommandForm::Legacy)
+        });
+        if !legacy || status(target)? != LinkStatus::Ours {
+            return Ok(false);
+        }
+        register(target)?;
+        Ok(true)
     }
 
     /// Deletes the scheme's key, when it starts this executable. The installer's uninstaller makes
@@ -567,6 +695,7 @@ mod windows {
                 return Ok(Unregistered::NotOurs);
             }
             LinkStatus::Packaged(entry) => return Ok(Unregistered::Packaged(entry)),
+            LinkStatus::ManagedElsewhere(path) => return Ok(Unregistered::ManagedElsewhere(path)),
             LinkStatus::NotRegistered => return Ok(Unregistered::NotOurs),
         }
         let base = wide(&format!(r"Software\Classes\{SCHEME}"));
@@ -828,8 +957,47 @@ mod tests {
         assert!(values.contains(&(
             r"Software\Classes\semaphore\shell\open\command".into(),
             String::new(),
-            r#""C:\Program Files\Semaphore\semaphore-app.exe" "%1""#.into()
+            r#""C:\Program Files\Semaphore\semaphore-app.exe" -- "%1""#.into()
         )));
+    }
+
+    #[test]
+    fn the_open_command_ends_options_and_the_old_form_is_still_ours() {
+        let exe =
+            Path::new(r"C:\Users\Ava\AppData\Local\Programs\Semaphore Chat\semaphore-app.exe");
+        let current = open_command(&exe.display().to_string());
+        assert_eq!(
+            current,
+            r#""C:\Users\Ava\AppData\Local\Programs\Semaphore Chat\semaphore-app.exe" -- "%1""#
+        );
+        assert_eq!(command_form(&current, exe), Some(CommandForm::Current));
+        // What builds before `--` and their installer wrote: ours, to be rewritten.
+        let legacy =
+            r#""C:\Users\Ava\AppData\Local\Programs\Semaphore Chat\semaphore-app.exe" "%1""#;
+        assert_eq!(command_form(legacy, exe), Some(CommandForm::Legacy));
+        // The same file however Windows spells it.
+        for spelling in [
+            r#""c:\users\ava\appdata\local\programs\semaphore chat\SEMAPHORE-APP.EXE" -- "%1""#,
+            r#""\\?\C:\Users\Ava\AppData\Local\Programs\Semaphore Chat\semaphore-app.exe" -- "%1""#,
+            r#""C:/Users/Ava/AppData/Local/Programs/Semaphore Chat/semaphore-app.exe" "%1""#,
+        ] {
+            assert!(command_form(spelling, exe).is_some(), "{spelling}");
+        }
+        // Not ours: another program, extra arguments, another executable.
+        for other in [
+            r#""C:\Program Files\Semaphore Chat\Semaphore Chat.exe" "%1""#,
+            r#""C:\Users\Ava\AppData\Local\Programs\Semaphore Chat\semaphore-app.exe" --server x "%1""#,
+            r#""C:\Users\Ava\AppData\Local\Programs\Semaphore Chat\semaphore-app.exe" %1"#,
+            r#"C:\Users\Ava\AppData\Local\Programs\Semaphore Chat\semaphore-app.exe "%1""#,
+            "",
+        ] {
+            assert_eq!(command_form(other, exe), None, "{other}");
+        }
+        assert!(same_windows_path(
+            r"\\?\UNC\srv\share\a.exe",
+            r"\\SRV\share\A.exe"
+        ));
+        assert!(!same_windows_path(r"C:\a\b.exe", r"C:\a\c.exe"));
     }
 
     #[cfg(not(windows))]
@@ -955,6 +1123,81 @@ mod tests {
             );
             // Nothing left to undo, twice over.
             assert_eq!(unregister(&target).unwrap(), Unregistered::NotOurs);
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+
+        #[test]
+        fn a_symlinked_mimeapps_list_is_managed_elsewhere_and_never_replaced() {
+            let root = temp_root("symlink");
+            let target = target(&root);
+            let real = root.join("dotfiles/mimeapps.list");
+            std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+            let theirs = "[Default Applications]\ntext/html=firefox.desktop\n";
+            std::fs::write(&real, theirs).unwrap();
+            std::fs::create_dir_all(root.join("config")).unwrap();
+            let link = root.join("config/mimeapps.list");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            assert_eq!(
+                status(&target).unwrap(),
+                LinkStatus::ManagedElsewhere(link.clone())
+            );
+            assert_eq!(
+                register(&target).unwrap(),
+                Registered::ManagedElsewhere(link.clone())
+            );
+            assert!(
+                std::fs::symlink_metadata(&link)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink(),
+                "the link is still a link"
+            );
+            assert_eq!(std::fs::read_to_string(&real).unwrap(), theirs);
+            assert!(!root.join("data").exists(), "nothing else was written");
+            assert_eq!(
+                unregister(&target).unwrap(),
+                Unregistered::ManagedElsewhere(link)
+            );
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+
+        #[test]
+        fn mimeapps_list_keeps_its_mode() {
+            use std::os::unix::fs::PermissionsExt as _;
+            let root = temp_root("mode");
+            let target = target(&root);
+            let mimeapps = root.join("config/mimeapps.list");
+            std::fs::create_dir_all(mimeapps.parent().unwrap()).unwrap();
+            std::fs::write(&mimeapps, "[Default Applications]\n").unwrap();
+            std::fs::set_permissions(&mimeapps, std::fs::Permissions::from_mode(0o600)).unwrap();
+            register(&target).unwrap();
+            assert!(
+                std::fs::read_to_string(&mimeapps)
+                    .unwrap()
+                    .contains("x-scheme-handler/semaphore=")
+            );
+            assert_eq!(
+                std::fs::metadata(&mimeapps).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+
+        #[test]
+        fn our_own_entry_seen_through_xdg_data_dirs_is_not_a_package() {
+            let root = temp_root("xdg-dirs");
+            let target = RegisterTarget {
+                data_dirs: vec![root.join("data"), root.join("system")],
+                ..target(&root)
+            };
+            assert_eq!(register(&target).unwrap(), Registered::Ours);
+            assert_eq!(status(&target).unwrap(), LinkStatus::Ours);
+            assert_eq!(unregister(&target).unwrap(), Unregistered::Removed);
+            // A package's entry elsewhere still owns it.
+            let packaged = root.join("system/applications/app.semaphorechat.semaphore.desktop");
+            std::fs::create_dir_all(packaged.parent().unwrap()).unwrap();
+            std::fs::write(&packaged, "[Desktop Entry]\n").unwrap();
+            assert_eq!(status(&target).unwrap(), LinkStatus::Packaged(packaged));
             std::fs::remove_dir_all(&root).unwrap();
         }
 

@@ -1,7 +1,9 @@
 #!/bin/sh
 # Regenerates the player's test fixtures. The files are committed: tests read them, never this
 # script. Needs an ffmpeg with libx264, libx265, libvpx, libaom, libtheora, libvorbis, libopus
-# and libmp3lame, which the video rig's image has (scripts/desk/t1-video.sh builds it):
+# and libmp3lame, which the video rig's image has (scripts/desk/t1-video.sh builds it). That
+# ffmpeg has no libfdk_aac, so it encodes AAC-LC only: the HE-AAC and AAC-Main refusal fixtures
+# are made by relabelling LC headers (aac_fixtures.py), never by encoding those profiles.
 #
 #   NATIVE_IMAGE=semaphore-native-video:<tag> scripts/in-image.sh sh crates/semaphore-player/fixtures/gen.sh
 #
@@ -44,6 +46,14 @@ aac='-c:a aac -b:a 24k'
   ff -f lavfi -i "$(tone 1)" $aac sine.m4a
 }
 
+# The refusal fixtures (aac_fixtures.py): both carry LC payloads under headers that say otherwise,
+# because the player must refuse them on the header or config alone.
+# - h264-aac-he.mp4: h264-aac.mp4's AudioSpecificConfig relabelled AAC-LC -> explicit HE-AAC (AOT
+#   5, SBR announced). The MP4's box sizes are unchanged (the config keeps its byte length).
+# - ts/h264-aac-main.ts: 2 s the same red/blue video with ADTS frames whose header profile field
+#   says Main (object type 1) instead of LC, muxed into MPEG-TS as egress would.
+python3 aac_fixtures.py mp4-he h264-aac.mp4 h264-aac-he.mp4
+
 # The faststart MP4 cut inside its moov box: a known container that fails to open.
 head -c 600 h264-aac.mp4 > truncated.mp4
 
@@ -66,6 +76,13 @@ ff -i ts/seg1.ts -map 0 -c copy -copyts -f mpegts -mpegts_m2ts_mode 1 ts/seg1-m2
 # shellcheck disable=SC2086
 ff -filter_complex 'color=c=red:s=64x64:r=10:d=2,format=yuv420p[v];sine=frequency=440:sample_rate=48000:duration=2[a]' \
   -map '[v]' -map '[a]' $x264 -c:a libopus -b:a 16k -f mpegts ts/h264-opus.ts
+# The Main-profile ADTS TS: an LC encode, its ADTS headers relabelled.
+lc="$(mktemp -d)"
+ff -f lavfi -i "$(tone 2)" -c:a aac -b:a 24k -f adts "$lc/lc.aac"
+python3 aac_fixtures.py adts-profile "$lc/lc.aac" "$lc/main.aac" main
+# shellcheck disable=SC2086
+ff -i "$lc/main.aac" -filter_complex "$video" -map '[v]' -map 0:a $x264 -c:a copy -f mpegts ts/h264-aac-main.ts
+rm -rf "$lc"
 ls -l ts
 
 ls -l

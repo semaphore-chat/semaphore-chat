@@ -9,6 +9,10 @@
 #   org.freedesktop.Notifications (tests/notify_linux.rs: replace by tag, click with its activation
 #   token, closed cleanup, withdraw). Plain `cargo test` skips both because the build image can't
 #   start a bus.
+# - A live-region announcement out of a real window: on a private session bus, the AT-SPI bus
+#   launcher and an accessibility bus, rig-announce opens the message list scrolled away from the
+#   bottom and inserts one message from another user and one of its own. dbus-monitor must see
+#   exactly one polite `Announcement` reading "Alice: hello from Alice", and none for the own row.
 #
 #   native/scripts/desktop-probe.sh
 #
@@ -71,4 +75,84 @@ fi
 echo "=== tray and notifications on private session buses"
 SEMAPHORE_REQUIRE_DBUS=1 nice -n 10 cargo test --locked -q -p semaphore-platform-desktop \
   --test tray_linux --test notify_linux || status=1
+
+echo "=== a live-region announcement reaches the accessibility bus"
+nice -n 10 cargo build --locked -q -p rig-announce || status=1
+announce_dir="$XDG_RUNTIME_DIR/announce"
+mkdir -p "$announce_dir"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/announce-bus"
+bus_pid="$(dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork --print-pid=1 | tr -d '\n')"
+[ -n "$bus_pid" ] && pids+=("$bus_pid")
+if ! gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
+    --method org.a11y.Bus.GetAddress >"$announce_dir/address" 2>"$announce_dir/address.err"; then
+  echo "desktop-probe: the AT-SPI bus did not start" >&2
+  cat "$announce_dir/address.err" >&2
+  status=1
+else
+  at_spi_address="$(sed -n "s/^('\(.*\)',)\$/\1/p" "$announce_dir/address")"
+  if [ -z "$at_spi_address" ]; then
+    echo "desktop-probe: GetAddress said $(cat "$announce_dir/address")" >&2
+    status=1
+  else
+    monitor="$announce_dir/announcements.log"
+    timeout 120 dbus-monitor --address "$at_spi_address" \
+      "type='signal',interface='org.a11y.atspi.Event.Object',member='Announcement'" \
+      >"$monitor" 2>&1 & monitor_pid=$!
+    pids+=("$monitor_pid")
+    coproc RIG {
+      env -u WAYLAND_DISPLAY DISPLAY=:98 timeout 60 \
+        /cache/target/debug/rig-announce 2>&1 | tee "$announce_dir/rig.log"
+    }
+    ready=1
+    while IFS= read -r line <&"${RIG[0]}"; do
+      [ "$line" = READY ] && { ready=0; break; }
+    done
+    if [ "$ready" -ne 0 ]; then
+      echo "desktop-probe: rig-announce never said READY" >&2
+      cat "$announce_dir/rig.log" >&2
+      status=1
+    else
+      gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
+        --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled "<true>" \
+        >/dev/null || status=1
+      while IFS= read -r line <&"${RIG[0]}"; do :; done
+      rig_status=0
+      wait "$RIG_PID" || rig_status=$?
+      cat "$announce_dir/rig.log"
+      [ "$rig_status" -eq 0 ] || status=1
+    fi
+    # Its own shell without `pipefail`: grep stops at the first match and closes tail's pipe,
+    # which makes tail exit 141, and the pipeline's status is what this waits on.
+    if ! (set +o pipefail; timeout 10 tail -n +1 -f "$monitor" | grep -q -m1 "member=Announcement"); then
+      echo "desktop-probe: no Announcement reached the accessibility bus" >&2
+      status=1
+    fi
+    kill "$monitor_pid" 2>/dev/null || true
+    if ! python3 - "$monitor" <<'PY'
+import sys
+
+text = open(sys.argv[1], errors="replace").read()
+blocks = [b for b in text.split("signal time=")[1:] if "member=Announcement" in b]
+problems = []
+if len(blocks) != 1:
+    problems.append(f"{len(blocks)} announcements, want 1")
+else:
+    block = blocks[0]
+    if "Alice: hello from Alice" not in block:
+        problems.append("the announcement does not read 'Alice: hello from Alice'")
+    if "int32 1" not in block:
+        problems.append("the announcement is not polite (detail1 is not 1)")
+if "my own message" in text:
+    problems.append("the reader's own message was announced")
+if problems:
+    print("desktop-probe: " + "; ".join(problems), file=sys.stderr)
+    print(text, file=sys.stderr)
+    sys.exit(1)
+print('announcement: polite "Alice: hello from Alice", once; nothing for the reader\'s own')
+PY
+    then
+      status=1
+    fi
+  fi
+fi
 exit $status

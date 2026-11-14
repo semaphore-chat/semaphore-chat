@@ -1,5 +1,6 @@
 # W14 trim preview: the capture dialog's trim with its preview on a fake player: loading, playing,
-# paused at the start handle (video only), Loop on, the error, and phone widths.
+# paused at the start handle (no sound this player can decode), Loop on, the error, and phone
+# widths.
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w14-trim-preview.steps
 story replay-preview-loading 1280 800 dark-blue-balanced
 wait idle

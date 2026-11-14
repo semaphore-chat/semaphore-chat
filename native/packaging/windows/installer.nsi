@@ -14,8 +14,9 @@
 ;   - per-user install (RequestExecutionLevel user, no elevation), default
 ;     %LOCALAPPDATA%\Programs\Semaphore Chat, directory page to change it;
 ;   - Start menu and desktop shortcuts named "Semaphore Chat";
-;   - semaphore:// registered in HKCU\Software\Classes with "%1", as the app's own
-;     registration does (crates/semaphore-platform-desktop/src/links.rs);
+;   - semaphore:// registered in HKCU\Software\Classes with -- "%1", as the app's own
+;     registration does (crates/semaphore-platform-desktop/src/links.rs): the -- ends the
+;     app's options, so a link can never add one;
 ;   - an Add/Remove Programs entry (display name, version, publisher, icon, uninstall and
 ;     quiet-uninstall strings, estimated size) under HKCU;
 ;   - an uninstaller that removes the files, shortcuts and registry values written here, and
@@ -227,7 +228,7 @@ Section "Install" INSTALL
   WriteRegStr HKCU "${PROTOCOL_BASE}" "" "URL:Semaphore"
   WriteRegStr HKCU "${PROTOCOL_BASE}" "URL Protocol" ""
   WriteRegStr HKCU "${PROTOCOL_BASE}\DefaultIcon" "" '"$INSTDIR\${APP_EXE_NAME}",0'
-  WriteRegStr HKCU "${PROTOCOL_BASE}\shell\open\command" "" '"$INSTDIR\${APP_EXE_NAME}" "%1"'
+  WriteRegStr HKCU "${PROTOCOL_BASE}\shell\open\command" "" '"$INSTDIR\${APP_EXE_NAME}" -- "%1"'
 
   ; Add/Remove Programs. DisplayName carries the version, as electron-builder's default
   ; uninstallDisplayName ("${productName} ${version}") does.
@@ -271,8 +272,11 @@ Section "Uninstall"
   Delete "${START_MENU_LINK}"
 
   ; Leave the scheme alone when another Semaphore Chat build (the Electron app, say) owns it.
+  ; Ours in either form: the current one (-- "%1"), or the one older builds and installers
+  ; wrote ("%1"), which the app rewrites on its next start (links.rs::command_form).
   ReadRegStr $0 HKCU "${PROTOCOL_BASE}\shell\open\command" ""
-  ${If} $0 == '"$INSTDIR\${APP_EXE_NAME}" "%1"'
+  ${If} $0 == '"$INSTDIR\${APP_EXE_NAME}" -- "%1"'
+  ${OrIf} $0 == '"$INSTDIR\${APP_EXE_NAME}" "%1"'
     DeleteRegKey HKCU "${PROTOCOL_BASE}"
   ${EndIf}
 

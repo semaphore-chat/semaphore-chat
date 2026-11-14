@@ -19,7 +19,10 @@ mod reset;
 #[cfg(test)]
 mod tests;
 
-pub use forgot::{ForgotEvent, ForgotPasswordScreen, reset_token_from_input};
+pub use forgot::{
+    ForgotEvent, ForgotPasswordScreen, Origin, PastedReset, reset_from_input, server_host,
+    wrong_server_message,
+};
 pub use invite::{InviteEvent, InviteJoinState, InviteScreen};
 pub use register::{
     PASSWORD_MAX, PASSWORD_MIN, RegisterEvent, RegisterField, RegisterScreen, USERNAME_MAX,
@@ -28,14 +31,15 @@ pub use register::{
 pub use reset::{
     DONE as RESET_DONE, MISMATCH as RESET_MISMATCH, ResetErrors, ResetEvent, ResetPasswordScreen,
     TOO_LONG as RESET_TOO_LONG, TOO_SHORT as RESET_TOO_SHORT, can_submit as can_submit_reset,
-    validate_reset,
+    target_line as reset_target_line, validate_reset,
 };
 
 use crate::kit::{
-    Alert, Button, ButtonSize, Icon, Severity, Spinner, TextField, Variant, link, spacing, text,
-    text_state,
+    Alert, Button, ButtonSize, Icon, LiveElement, Severity, Spinner, TextField, Variant, link,
+    spacing, text, text_state,
 };
 use crate::theme::{FONT_FAMILY, SemTheme};
+use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -625,10 +629,17 @@ fn browser_panel(
 ) -> AnyElement {
     if matches!(browser, BrowserLogin::Waiting | BrowserLogin::Finishing) {
         let signing_in = browser == BrowserLogin::Finishing;
+        // `BrowserLoginPanel` is `role="status" aria-live="polite"`.
         return div()
             .id("auth-browser-status")
             .test_support()
             .role(Role::Status)
+            .aria_label(if signing_in {
+                "Signing you in\u{2026}"
+            } else {
+                "Waiting for your browser\u{2026}"
+            })
+            .aria_live(Live::Polite)
             .w_full()
             .flex()
             .flex_col()

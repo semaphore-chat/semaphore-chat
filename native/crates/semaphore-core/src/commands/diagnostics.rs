@@ -34,53 +34,7 @@ impl Core {
     /// The panel as plain text, for "Copy report": status, the LiveKit host (never a token or
     /// path), the engine's numbers, the last failure and the log.
     pub fn voice_diagnostics_report(&self) -> String {
-        use std::fmt::Write as _;
-        let view = self.voice_diagnostics();
-        let mut report = String::from("Semaphore voice diagnostics\n");
-        let _ = writeln!(report, "Status: {:?}", view.status);
-        let _ = writeln!(
-            report,
-            "Server: {}",
-            view.server_host.as_deref().unwrap_or("unknown")
-        );
-        if let Some(media) = &view.media {
-            let number = |value: Option<u32>, unit: &str| {
-                value.map_or_else(|| "unknown".to_owned(), |value| format!("{value} {unit}"))
-            };
-            let _ = writeln!(report, "Candidates: {}", media.candidate_types.join(", "));
-            let _ = writeln!(report, "RTT: {}", number(media.rtt_ms, "ms"));
-            let loss = media
-                .packet_loss_pct
-                .map_or_else(|| "unknown".to_owned(), |loss| format!("{loss:.1} %"));
-            let _ = writeln!(report, "Packet loss: {loss}");
-            let _ = writeln!(
-                report,
-                "Audio codec: {}",
-                media.audio_codec.as_deref().unwrap_or("unknown")
-            );
-            let _ = writeln!(
-                report,
-                "Bitrate in: {}",
-                number(media.bitrate_in_kbps, "kbps")
-            );
-            let _ = writeln!(
-                report,
-                "Bitrate out: {}",
-                number(media.bitrate_out_kbps, "kbps")
-            );
-        }
-        if let Some(failure) = &view.last_failure {
-            let _ = writeln!(
-                report,
-                "Last failed join: {:?} after {} ms at {}: {}",
-                failure.class, failure.duration_ms, failure.at_ms, failure.message
-            );
-        }
-        report.push_str("Events:\n");
-        for event in &view.events {
-            let _ = writeln!(report, "  {} {}", event.at_ms, event.message);
-        }
-        report
+        report_text(&self.voice_diagnostics())
     }
 
     /// Asks the engine for its numbers now; `ViewKey::VoiceDiagnostics` says when they're in.
@@ -169,4 +123,95 @@ fn wire_class(class: JoinFailureClass) -> enums::VoiceJoinErrorClass {
 /// `text` at most `max` characters, as every string field the backend takes is capped.
 fn capped(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
+}
+
+/// The report's text for a view. Every message is redacted again here: a report is pasted into
+/// issues, whatever wrote the failure or the event.
+fn report_text(view: &VoiceDiagnosticsView) -> String {
+    use std::fmt::Write as _;
+    let mut report = String::from("Semaphore voice diagnostics\n");
+    let _ = writeln!(report, "Status: {:?}", view.status);
+    let _ = writeln!(
+        report,
+        "Server: {}",
+        view.server_host.as_deref().unwrap_or("unknown")
+    );
+    if let Some(media) = &view.media {
+        let number = |value: Option<u32>, unit: &str| {
+            value.map_or_else(|| "unknown".to_owned(), |value| format!("{value} {unit}"))
+        };
+        let _ = writeln!(report, "Candidates: {}", media.candidate_types.join(", "));
+        let _ = writeln!(report, "RTT: {}", number(media.rtt_ms, "ms"));
+        let loss = media
+            .packet_loss_pct
+            .map_or_else(|| "unknown".to_owned(), |loss| format!("{loss:.1} %"));
+        let _ = writeln!(report, "Packet loss: {loss}");
+        let _ = writeln!(
+            report,
+            "Audio codec: {}",
+            media.audio_codec.as_deref().unwrap_or("unknown")
+        );
+        let _ = writeln!(
+            report,
+            "Bitrate in: {}",
+            number(media.bitrate_in_kbps, "kbps")
+        );
+        let _ = writeln!(
+            report,
+            "Bitrate out: {}",
+            number(media.bitrate_out_kbps, "kbps")
+        );
+    }
+    if let Some(failure) = &view.last_failure {
+        let _ = writeln!(
+            report,
+            "Last failed join: {:?} after {} ms at {}: {}",
+            failure.class,
+            failure.duration_ms,
+            failure.at_ms,
+            crate::redact::redact(&failure.message)
+        );
+    }
+    report.push_str("Events:\n");
+    for event in &view.events {
+        // Redacted again here: a report is pasted into issues, whatever wrote the event.
+        let _ = writeln!(
+            report,
+            "  {} {}",
+            event.at_ms,
+            crate::redact::redact(&event.message)
+        );
+    }
+    report
+}
+
+#[cfg(test)]
+mod tests {
+    use super::report_text;
+    use crate::model::{JoinFailure, JoinFailureClass, VoiceDiagnosticEvent, VoiceDiagnosticsView};
+
+    #[test]
+    fn the_copied_report_redacts_raw_messages() {
+        let view = VoiceDiagnosticsView {
+            last_failure: Some(JoinFailure {
+                class: JoinFailureClass::MediaUnreachable,
+                message: "wss://lk.example.org/rtc?access_token=at-raw-1".into(),
+                duration_ms: 812,
+                at_ms: 5,
+            }),
+            events: vec![VoiceDiagnosticEvent {
+                at_ms: 6,
+                message: "token: \"lk-raw-2\" Bearer at-raw-3".into(),
+            }],
+            ..Default::default()
+        };
+        let report = report_text(&view);
+        assert!(
+            report.contains("Last failed join: MediaUnreachable after 812 ms"),
+            "{report}"
+        );
+        for secret in ["at-raw-1", "lk-raw-2", "at-raw-3"] {
+            assert!(!report.contains(secret), "{secret} in {report}");
+        }
+    }
 }

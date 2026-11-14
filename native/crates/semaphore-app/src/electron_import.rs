@@ -105,8 +105,9 @@ pub fn import_from(native_data_dir: &Path, electron_user_data: Option<&Path>) ->
     let Some(electron_dir) = electron_user_data else {
         return Import::Nothing(Nothing::NoElectronSettings);
     };
-    let Ok(bytes) = std::fs::read(electron_dir.join(ELECTRON_SETTINGS_FILE)) else {
-        return Import::Nothing(Nothing::NoElectronSettings);
+    let bytes = match read_settings(&electron_dir.join(ELECTRON_SETTINGS_FILE)) {
+        Ok(bytes) => bytes,
+        Err(nothing) => return Import::Nothing(nothing),
     };
     let close_to_tray = match map_settings(&bytes) {
         ElectronSettings::Recognised { close_to_tray } => close_to_tray,
@@ -123,6 +124,32 @@ pub fn import_from(native_data_dir: &Path, electron_user_data: Option<&Path>) ->
         Ok(()) => Import::Imported { close_to_tray },
         Err(error) => Import::Failed(error.to_string()),
     }
+}
+
+/// The most of Electron's `settings.json` read: the real file is a few hundred bytes.
+pub const MAX_ELECTRON_SETTINGS: u64 = 64 * 1024;
+
+/// Electron's `settings.json`, when it is a regular file of at most [`MAX_ELECTRON_SETTINGS`]
+/// bytes. A FIFO or device (which could block or never end) is no settings file; a bigger file
+/// is not Electron's.
+fn read_settings(path: &Path) -> Result<Vec<u8>, Nothing> {
+    use std::io::Read as _;
+    // Checked before opening: opening a FIFO would wait for a writer.
+    if !std::fs::metadata(path).is_ok_and(|meta| meta.is_file()) {
+        return Err(Nothing::NoElectronSettings);
+    }
+    let file = std::fs::File::open(path).map_err(|_| Nothing::NoElectronSettings)?;
+    if !file.metadata().is_ok_and(|meta| meta.is_file()) {
+        return Err(Nothing::NoElectronSettings);
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_ELECTRON_SETTINGS + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Nothing::NoElectronSettings)?;
+    if bytes.len() as u64 > MAX_ELECTRON_SETTINGS {
+        return Err(Nothing::Malformed);
+    }
+    Ok(bytes)
 }
 
 /// Electron's `settings.json`, mapped to what this app can use. Pure: no file is touched.
@@ -268,6 +295,45 @@ mod tests {
             Import::Nothing(Nothing::NativeSettingsExist)
         );
         assert!(SettingsStore::load(&native).get().close_to_tray);
+    }
+
+    #[test]
+    fn only_a_small_regular_file_is_read() {
+        let dir = TempDir::new();
+        let electron = dir.electron();
+        let native = dir.native();
+        // A directory where the file should be.
+        fs::create_dir_all(electron.join(ELECTRON_SETTINGS_FILE)).unwrap();
+        assert_eq!(
+            import_from(&native, Some(&electron)),
+            Import::Nothing(Nothing::NoElectronSettings)
+        );
+        fs::remove_dir_all(electron.join(ELECTRON_SETTINGS_FILE)).unwrap();
+        // Over the cap: valid JSON, padded with spaces, still refused.
+        let padded = format!(
+            "{{\"closeToTray\":false{}}}",
+            " ".repeat(MAX_ELECTRON_SETTINGS as usize)
+        );
+        fs::write(electron.join(ELECTRON_SETTINGS_FILE), padded).unwrap();
+        assert_eq!(
+            import_from(&native, Some(&electron)),
+            Import::Nothing(Nothing::Malformed)
+        );
+        assert!(!native.join(SETTINGS_FILE).exists());
+        #[cfg(unix)]
+        {
+            // A FIFO: refused without opening it (opening would block this test forever).
+            fs::remove_file(electron.join(ELECTRON_SETTINGS_FILE)).unwrap();
+            let status = std::process::Command::new("mkfifo")
+                .arg(electron.join(ELECTRON_SETTINGS_FILE))
+                .status();
+            if status.is_ok_and(|status| status.success()) {
+                assert_eq!(
+                    import_from(&native, Some(&electron)),
+                    Import::Nothing(Nothing::NoElectronSettings)
+                );
+            }
+        }
     }
 
     #[test]

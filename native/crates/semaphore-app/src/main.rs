@@ -4,7 +4,6 @@
 use gpui_kit::*;
 use semaphore_app::AppConfig;
 use semaphore_app::desktop::DesktopServices;
-use semaphore_app::update::AFTER_UPDATE_FLAG;
 use semaphore_core::platform::AppPaths as _;
 use semaphore_platform_desktop::update::InstallKind;
 use semaphore_platform_desktop::{
@@ -43,7 +42,7 @@ fn run_media_probe(args: &[String]) -> Option<ExitCode> {
 const NAME: &str = env!("CARGO_PKG_NAME");
 
 const USAGE: &str =
-    "usage: semaphore-app [--server <url>] [semaphore://...] | --probe-media <url> <token>";
+    "usage: semaphore-app [--server <url>] | [--] semaphore://... | --probe-media <url> <token>";
 
 /// How long a build started by "Restart to update" waits for the previous app to shut down and
 /// release the single-instance lock. Shutting down is quick; this only bounds a hung one.
@@ -51,7 +50,7 @@ const USAGE: &str =
 const AFTER_UPDATE_PATIENCE: std::time::Duration = std::time::Duration::from_secs(60);
 
 fn usage() -> ExitCode {
-    eprintln!("{USAGE}");
+    semaphore_app::logging::stderr_line(format_args!("{USAGE}"));
     ExitCode::from(2)
 }
 
@@ -83,6 +82,19 @@ fn register_scheme(data_dir: &std::path::Path) {
         .spawn(move || {
             // The same table the settings switch goes through, so a start and a click agree.
             use semaphore_app::desktop::{DesktopLinks, LinkAction, LinkRegistrar as _};
+            // A registration this app wrote in an older form (Windows: no `--` before the link)
+            // is still ours: rewritten now, before anything reads it.
+            if open_links
+                && let Some(target) = semaphore_platform_desktop::links::RegisterTarget::from_env()
+            {
+                match semaphore_platform_desktop::links::upgrade(&target) {
+                    Ok(true) => {
+                        log::info!("rewrote the semaphore:// registration in its current form")
+                    }
+                    Ok(false) => {}
+                    Err(error) => log::warn!("updating the semaphore:// registration: {error}"),
+                }
+            }
             let links = DesktopLinks::from_env();
             match semaphore_app::desktop::link_action(open_links, links.status()) {
                 LinkAction::Nothing => {}
@@ -120,17 +132,15 @@ fn main() -> ExitCode {
     if let Some(code) = run_media_probe(&args) {
         return code;
     }
-    // Links can come anywhere: the OS appends one to the registered command.
-    let (link_args, rest): (Vec<String>, Vec<String>) =
-        args.into_iter().partition(|arg| links::is_candidate(arg));
-    // Set by "Restart to update" on the build it starts (`semaphore_app::update::restart_command`).
-    let (after_update, rest): (Vec<String>, Vec<String>) =
-        rest.into_iter().partition(|arg| arg == AFTER_UPDATE_FLAG);
-    let after_update = !after_update.is_empty();
-    let server_url = match rest.as_slice() {
-        [] => None,
-        [flag, url] if flag == "--server" => Some(url.clone()),
-        _ => return usage(),
+    // Links come from the OS, after `--` in the registered command: a link launch takes its links
+    // and nothing else (see `semaphore_app::launch`).
+    let Ok(semaphore_app::launch::Launch {
+        links: link_args,
+        server_url,
+        after_update,
+    }) = semaphore_app::launch::parse(&args)
+    else {
+        return usage();
     };
     let Some(data_dir) =
         DesktopPaths::new().map(|paths| std::path::PathBuf::from(paths.data_dir()))
@@ -138,22 +148,11 @@ fn main() -> ExitCode {
         eprintln!("semaphore-app: the OS reports no home directory");
         return ExitCode::FAILURE;
     };
-    // `SEMAPHORE_LOG` as before, now also into size-capped files under the data directory.
-    let level = semaphore_app::logging::init(&data_dir);
+    // `SEMAPHORE_LOG` as before, to stderr; the size-capped files under the data directory join
+    // once this process is the app (below), so a launch that only forwards a link never writes
+    // into or rotates the running app's files.
+    let level = semaphore_app::logging::init();
     let log_dir = semaphore_app::logging::logs_dir(&data_dir);
-    log::info!(
-        "Semaphore Chat {} starting on {} {} ({level} logging)",
-        semaphore_app::version(),
-        std::env::consts::OS,
-        std::env::consts::ARCH
-    );
-    // A panic in a previous run left a report: say so here and do nothing else with it.
-    if let Some(report) = semaphore_app::crash::newest_report(&log_dir) {
-        log::warn!(
-            "a crash report from a previous run is at {}",
-            report.display()
-        );
-    }
     semaphore_app::crash::install(&log_dir);
 
     // One app per user: a second launch hands its links to the first and exits, before it opens
@@ -187,7 +186,26 @@ fn main() -> ExitCode {
             log::info!("handed over to the running app");
             return ExitCode::SUCCESS;
         }
-        Ok(instance::Instance::Primary(primary)) => Some(primary),
+        Ok(instance::Instance::Primary(primary)) => Ok(primary),
+        Err(error) => Err(error),
+    };
+    // This process is the app now (or runs anyway): its files.
+    semaphore_app::logging::attach_files(&data_dir);
+    log::info!(
+        "Semaphore Chat {} starting on {} {} ({level} logging)",
+        semaphore_app::version(),
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    // A panic in a previous run left a report: say so here and do nothing else with it.
+    if let Some(report) = semaphore_app::crash::newest_report(&log_dir) {
+        log::warn!(
+            "a crash report from a previous run is at {}",
+            report.display()
+        );
+    }
+    let primary = match primary {
+        Ok(primary) => Some(primary),
         Err(error) => {
             log::warn!("single instance check failed, starting anyway: {error}");
             None

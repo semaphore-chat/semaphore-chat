@@ -362,6 +362,15 @@ fn each_link_owner_reads_as_the_settings_row_says_it() {
     assert_eq!(LinkHandler::AnotherApp.owner(), "Another app");
     assert_eq!(LinkHandler::NotRegistered.owner(), "Not registered");
     assert_eq!(LinkHandler::Unknown.owner(), "Couldn't tell");
+    assert_eq!(
+        LinkHandler::ManagedElsewhere.owner(),
+        "Managed outside the app"
+    );
+    assert!(
+        link_note(LinkHandler::ManagedElsewhere, true)
+            .unwrap()
+            .contains("can't change")
+    );
     // The line under the switch says something only when there is more to say than the owner.
     assert_eq!(link_note(LinkHandler::Registered, true), None);
     assert!(link_note(LinkHandler::PackageOwned, true).is_some());
@@ -470,6 +479,11 @@ fn each_voice_control_sends_the_new_state(cx: &mut TestAppContext) {
 
     rig.click(cx, "voice-mode-push-to-talk");
     assert_eq!(last_state(&rig).input_mode, InputMode::PushToTalk);
+    assert_eq!(
+        last_state(&rig).ptt_key.as_deref(),
+        Some("`"),
+        "no key yet: the web's default, Backquote"
+    );
     rig.click(cx, "voice-mode-voice-activity");
     assert_eq!(
         last_state(&rig).input_mode,
@@ -491,6 +505,19 @@ fn each_voice_control_sends_the_new_state(cx: &mut TestAppContext) {
         [],
         "picking what's already chosen sends nothing"
     );
+}
+
+#[gpui_kit::test]
+fn push_to_talk_keeps_a_key_already_chosen(cx: &mut TestAppContext) {
+    let rig = voice(
+        cx,
+        VoiceVideoState {
+            ptt_key: Some("f13".into()),
+            ..VoiceVideoState::default()
+        },
+    );
+    rig.click(cx, "voice-mode-push-to-talk");
+    assert_eq!(last_state(&rig).ptt_key.as_deref(), Some("f13"));
 }
 
 #[gpui_kit::test]

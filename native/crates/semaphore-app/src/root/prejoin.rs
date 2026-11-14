@@ -25,6 +25,7 @@ use gpui_kit::*;
 use semaphore_core::CoreEvent;
 use semaphore_core::model::{ChannelKind, ChannelRow, ViewKey, VoiceStatus};
 use semaphore_core::platform::CoreError;
+use semaphore_ui::kit::LiveElement;
 use semaphore_ui::kit::{Snackbar, Variant, text};
 use semaphore_ui::messages::MediaSource;
 use semaphore_ui::nav::Route;
@@ -133,6 +134,7 @@ impl AppRoot {
                         .id("voice-join-failed")
                         .test_support()
                         .role(Role::Status)
+                        .aria_live(gpui_kit::accesskit::Live::Assertive)
                         .aria_label(SharedString::from(notice.message.clone()))
                         .child(Snackbar::new(notice.message.clone())),
                 )

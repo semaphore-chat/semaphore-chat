@@ -22,26 +22,188 @@ pub enum ForgotEvent {
     Back,
 }
 
-/// The token in a pasted reset link or token: the mail's web URL
-/// (`https://host/reset-password?token=...`, with or without a `#`), or the bare token. `None`
-/// when it doesn't look like one.
-pub fn reset_token_from_input(input: &str) -> Option<String> {
+/// What a pasted reset link or token comes to, checked against the server this app uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PastedReset {
+    /// A token to redeem on this app's server: a bare token, a `semaphore://reset-password` link
+    /// (neither names a server; the reset card says where it posts), or a web link from this
+    /// server.
+    Token(String),
+    /// A web link from another server. Its token is never sent to this one.
+    WrongServer { link: String, server: String },
+    /// A web link, but this app has no server to compare it with.
+    NoServer,
+    /// Not a reset link or token.
+    NotALink,
+}
+
+/// A web origin: scheme, host and port, with the scheme's default port filled in. Compared whole:
+/// `https://chat.example.com` and `https://chat.example.com:443/x` are the same origin;
+/// `http://` and another port are not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Origin {
+    scheme: String,
+    host: String,
+    port: u16,
+}
+
+impl Origin {
+    /// The origin of an `http` or `https` URL. `None` for any other scheme, and for an authority
+    /// a reset link never has (credentials, a backslash, an escape, a bad port or host).
+    pub fn parse(url: &str) -> Option<Self> {
+        let (scheme, rest) = url.trim().split_once("://")?;
+        let scheme = scheme.to_ascii_lowercase();
+        let default = match scheme.as_str() {
+            "https" => 443,
+            "http" => 80,
+            _ => return None,
+        };
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+        if authority.is_empty() || authority.contains(['@', '\\', '%']) {
+            return None;
+        }
+        let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
+            let (address, after) = bracketed.split_once(']')?;
+            if address.is_empty()
+                || !address
+                    .chars()
+                    .all(|c| c.is_ascii_hexdigit() || matches!(c, ':' | '.'))
+            {
+                return None;
+            }
+            let port = match after {
+                "" => None,
+                after => Some(after.strip_prefix(':')?),
+            };
+            (format!("[{}]", address.to_ascii_lowercase()), port)
+        } else {
+            let (host, port) = match authority.split_once(':') {
+                Some((host, port)) => (host, Some(port)),
+                None => (authority, None),
+            };
+            let host = host.strip_suffix('.').unwrap_or(host).to_lowercase();
+            if host.is_empty()
+                || !host
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || matches!(c, '-' | '.' | '_'))
+            {
+                return None;
+            }
+            (host, port)
+        };
+        let port = match port {
+            None | Some("") => default,
+            Some(port) if port.bytes().all(|b| b.is_ascii_digit()) && port.len() <= 5 => {
+                port.parse().ok()?
+            }
+            Some(_) => return None,
+        };
+        Some(Self { scheme, host, port })
+    }
+
+    /// The host as a person reads it: with the port only when it isn't the scheme's default.
+    pub fn display_host(&self) -> String {
+        let default = if self.scheme == "https" { 443 } else { 80 };
+        if self.port == default {
+            self.host.clone()
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
+    }
+}
+
+/// The host to name on the reset card for the app's server URL, or the URL as it is when it
+/// won't parse (it was accepted as the server, so it is still what the app talks to).
+pub fn server_host(server_url: &str) -> String {
+    Origin::parse(server_url).map_or_else(
+        || server_url.trim().to_owned(),
+        |origin| origin.display_host(),
+    )
+}
+
+/// A pasted reset link or token, checked against `server_url` (the server this app uses).
+///
+/// - The mail's web link: `${PUBLIC_APP_URL}/reset-password?token=...`, where the app may be served
+///   under a path (`https://host/chat/reset-password?...`) or with a hash route
+///   (`https://host/#/reset-password?...`). Its origin must be the server's, or the token never
+///   leaves: the server would otherwise receive another server's token and the new password.
+/// - `semaphore://reset-password?token=...`, and a bare token: they name no server.
+pub fn reset_from_input(input: &str, server_url: Option<&str>) -> PastedReset {
     let input = input.trim();
     if input.is_empty() {
-        return None;
+        return PastedReset::NotALink;
     }
-    let raw = input
-        .split(['?', '&', '#'])
-        .find_map(|part| part.strip_prefix("token="))
-        .map(|token| token.split('#').next().unwrap_or(token))
-        .unwrap_or(input);
-    let token = percent_decode(raw)?;
+    let raw = if let Some((scheme, _)) = input.split_once("://") {
+        if scheme.eq_ignore_ascii_case("semaphore") {
+            return match crate::nav::parse_deep_link(input) {
+                Some(crate::nav::DeepLink::ResetPassword { token: Some(token) }) => {
+                    valid_token(&token).map_or(PastedReset::NotALink, PastedReset::Token)
+                }
+                _ => PastedReset::NotALink,
+            };
+        }
+        let Some(origin) = Origin::parse(input) else {
+            return PastedReset::NotALink;
+        };
+        let Some(raw) = web_link_token(input) else {
+            return PastedReset::NotALink;
+        };
+        let Some(server) = server_url.and_then(Origin::parse) else {
+            return PastedReset::NoServer;
+        };
+        if origin != server {
+            let (mut link, mut server_name) = (origin.display_host(), server.display_host());
+            if link == server_name {
+                // Only the scheme differs: say so, or the message names one host twice.
+                link = format!("{}://{link}", origin.scheme);
+                server_name = format!("{}://{server_name}", server.scheme);
+            }
+            return PastedReset::WrongServer {
+                link,
+                server: server_name,
+            };
+        }
+        raw
+    } else {
+        input
+    };
+    percent_decode(raw)
+        .and_then(|token| valid_token(&token))
+        .map_or(PastedReset::NotALink, PastedReset::Token)
+}
+
+/// The raw `token` of a web reset link: from the query of a path ending `/reset-password`, or of a
+/// hash route `#/reset-password?...`.
+fn web_link_token(url: &str) -> Option<&str> {
+    let (_, rest) = url.split_once("://")?;
+    let after_authority = rest.find(['/', '?', '#']).map_or("", |at| &rest[at..]);
+    let (before_fragment, fragment) = match after_authority.split_once('#') {
+        Some((before, fragment)) => (before, Some(fragment)),
+        None => (after_authority, None),
+    };
+    [Some(before_fragment), fragment]
+        .into_iter()
+        .flatten()
+        .find_map(|part| {
+            let (path, query) = part.split_once('?')?;
+            let last = path.trim_end_matches('/').rsplit('/').next()?;
+            if last != "reset-password" {
+                return None;
+            }
+            query
+                .split('&')
+                .find_map(|pair| pair.strip_prefix("token="))
+        })
+}
+
+/// A token as the server issues it: printable ASCII, no URL syntax, 1 to 128 characters.
+fn valid_token(token: &str) -> Option<String> {
     let length = token.chars().count();
     (length > 0
         && length <= 128
         && !token.contains(['/', '\\', '?', '#', '&', '='])
         && token.chars().all(|c| c.is_ascii_graphic()))
-    .then_some(token)
+    .then(|| token.to_owned())
 }
 
 fn percent_decode(text: &str) -> Option<String> {
@@ -61,6 +223,13 @@ fn percent_decode(text: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+/// Why a link from another server is refused, naming both.
+pub fn wrong_server_message(link: &str, server: &str) -> String {
+    format!(
+        "This reset link is for {link}, but this app is using {server}. Switch the app to {link} first, or open the link in a browser."
+    )
+}
+
 pub struct ForgotPasswordScreen {
     email: Entity<InputState>,
     /// The pasted reset link or token, on the success card.
@@ -70,6 +239,8 @@ pub struct ForgotPasswordScreen {
     error: Option<String>,
     /// Why the pasted link wasn't one, under its field.
     link_error: Option<String>,
+    /// The server this app uses, which a pasted web link must come from.
+    server_url: Option<String>,
     tried: bool,
     took_focus: bool,
     _subscriptions: Vec<Subscription>,
@@ -92,6 +263,7 @@ impl ForgotPasswordScreen {
             sent: false,
             error: None,
             link_error: None,
+            server_url: None,
             tried: false,
             took_focus: false,
             _subscriptions,
@@ -103,6 +275,18 @@ impl ForgotPasswordScreen {
         if busy {
             self.error = None;
         }
+        cx.notify();
+    }
+
+    /// Why the pasted link was refused, under its field.
+    pub fn link_error(&self) -> Option<&str> {
+        self.link_error.as_deref()
+    }
+
+    /// The server this app uses: a pasted web reset link must come from it. Without one, a web
+    /// link is refused (a bare token still works; the reset card names where it posts).
+    pub fn set_server_url(&mut self, server_url: Option<String>, cx: &mut Context<Self>) {
+        self.server_url = server_url;
         cx.notify();
     }
 
@@ -132,12 +316,23 @@ impl ForgotPasswordScreen {
     /// "Continue" under the pasted link: the token it carries, or why it doesn't carry one.
     pub(crate) fn open_pasted_link(&mut self, cx: &mut Context<Self>) {
         let pasted = self.reset_link.read(cx).value().to_string();
-        match reset_token_from_input(&pasted) {
-            Some(token) => {
+        match reset_from_input(&pasted, self.server_url.as_deref()) {
+            PastedReset::Token(token) => {
                 self.link_error = None;
                 cx.emit(ForgotEvent::OpenReset { token });
             }
-            None => self.link_error = Some("That doesn't look like a reset link.".into()),
+            PastedReset::WrongServer { link, server } => {
+                self.link_error = Some(wrong_server_message(&link, &server));
+            }
+            PastedReset::NoServer => {
+                self.link_error = Some(
+                    "Couldn't tell which server this app uses, so the link can't be checked."
+                        .into(),
+                );
+            }
+            PastedReset::NotALink => {
+                self.link_error = Some("That doesn't look like a reset link.".into());
+            }
         }
         cx.notify();
     }
@@ -338,6 +533,13 @@ pub(super) fn stories() -> Vec<crate::stories::Story> {
                     window,
                     cx,
                 );
+            })
+        }),
+        Story::new("auth-forgot-sent-other-server", |_, window, cx| {
+            screen(window, cx, |screen, _, cx| {
+                screen.set_sent(true, cx);
+                screen.link_error =
+                    Some(wrong_server_message("chat.example.org", "chat.example.com"));
             })
         }),
         Story::new("auth-forgot-sent-bad-link", |_, window, cx| {

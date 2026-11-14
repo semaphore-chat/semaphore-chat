@@ -14,6 +14,9 @@ use crate::video::local::{
 };
 use crate::video::publish::fit_capture;
 use crate::{LiveKitEngine, VideoSink};
+
+/// Why a camera test can't run: the call has the camera, or is opening it.
+pub(crate) const CAMERA_IN_USE: &str = "the camera is in use by the call";
 use semaphore_core::model::{CAMERA_TEST_TRACK_SID, ShareResolution};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -33,6 +36,8 @@ pub(crate) struct CameraTestShared {
     capture: Mutex<Option<Capturing>>,
     /// Where the preview frames go, and the notice that the track is gone.
     sink: Arc<dyn VideoSink>,
+    /// Held while the camera opens, so a call taking the camera over can wait for it.
+    opening: Mutex<()>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -48,6 +53,12 @@ impl CameraTestShared {
         let capture = lock(&self.capture).take();
         drop(capture);
         self.sink.on_track_ended(CAMERA_TEST_TRACK_SID);
+    }
+
+    /// Returns once the test is past opening its camera (and, when stopped meanwhile, has closed
+    /// it again).
+    pub(crate) fn wait_started(&self) {
+        drop(lock(&self.opening));
     }
 
     /// The camera ended on its own: the picture goes, and `failed()` says why.
@@ -124,6 +135,7 @@ impl LiveKitEngine {
             failed: Mutex::new(None),
             capture: Mutex::new(None),
             sink,
+            opening: Mutex::new(()),
         });
         let on_frame: OnFrame = {
             let shared = shared.clone();
@@ -139,6 +151,10 @@ impl LiveKitEngine {
                 let Some((width, height, preview)) = picture.as_mut() else {
                     return;
                 };
+                // Most frames come sooner than the preview's rate: drop them before converting.
+                if !preview.due() {
+                    return;
+                }
                 let Some(buffer) = to_i420(&frame, (*width, *height)) else {
                     return;
                 };
@@ -151,9 +167,20 @@ impl LiveKitEngine {
             let shared = shared.clone();
             Box::new(move |why: String| shared.ended(why))
         };
+        // Registered before the (slow) open, so a call asking for the camera meanwhile stops this
+        // test and waits for the open to finish, instead of opening the device alongside it.
+        let opening = lock(&shared.opening);
+        self.track_camera_test(&shared)?;
         let capture = source.start(on_frame, on_ended)?;
         *lock(&shared.capture) = Some(capture);
-        self.track_camera_test(&shared);
+        if !shared.running.load(Ordering::SeqCst) {
+            // The call took the camera while it opened: close it again at once.
+            let capture = lock(&shared.capture).take();
+            drop(capture);
+            drop(opening);
+            return Err(CAMERA_IN_USE.into());
+        }
+        drop(opening);
         Ok(CameraTest { shared })
     }
 }
@@ -264,6 +291,93 @@ mod tests {
         eventually("the test's camera closes", || camera.stopped());
         assert!(!test.is_running());
         assert!(test.failed().is_none(), "stopped, not failed");
+    }
+
+    /// A call asking for the camera while a test's camera is still opening: the test is stopped
+    /// before it runs, its camera is closed as soon as it opened, and the call's request waits for
+    /// that (it never opens the device alongside the test).
+    #[test]
+    fn a_call_asking_for_the_camera_while_a_test_opens_it_waits_and_the_test_gives_it_up() {
+        let sources = Arc::new(FakeVideoSources::default());
+        let (entered_tx, entered) = std::sync::mpsc::channel();
+        let (release, release_rx) = std::sync::mpsc::channel::<()>();
+        *sources.hold_next_camera.lock().unwrap() = Some(crate::testing::StartHold {
+            entered: entered_tx,
+            release: release_rx,
+        });
+        let engine = Arc::new(engine(sources.clone(), Arc::new(Sink::default())));
+        let tester = {
+            let engine = engine.clone();
+            std::thread::spawn(move || engine.start_camera_test().map(|test| test.is_running()))
+        };
+        entered
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the test opens its camera");
+        let (done_tx, done) = std::sync::mpsc::channel();
+        let caller = {
+            let engine = engine.clone();
+            std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                // No call to send it in: it fails after the hand-over, which is what matters.
+                let result = runtime.block_on(engine.set_camera(true));
+                let _ = done_tx.send(());
+                result
+            })
+        };
+        // The call's request is waiting on the test's open, not past it.
+        assert!(
+            done.recv_timeout(Duration::from_millis(300)).is_err(),
+            "set_camera went on while the test's camera was opening"
+        );
+        drop(release);
+        assert_eq!(
+            tester.join().unwrap().err().as_deref(),
+            Some(CAMERA_IN_USE),
+            "the test gave the camera up"
+        );
+        let camera = sources.last_camera().expect("the test's capture");
+        assert!(camera.stopped(), "closed before the call went on");
+        let _ = caller.join().unwrap();
+        assert_eq!(
+            sources.camera_requests(),
+            vec![None],
+            "only the test opened it"
+        );
+    }
+
+    /// A call's camera on its way (waiting its turn here): a test asked for now is refused, and
+    /// opens nothing; once the request is over (it fails: no call), a test may run again.
+    #[test]
+    fn a_test_is_refused_while_the_calls_camera_is_starting() {
+        let sources = Arc::new(FakeVideoSources::default());
+        let engine = Arc::new(engine(sources.clone(), Arc::new(Sink::default())));
+        let turn = engine.hold_local_ops();
+        let caller = {
+            let engine = engine.clone();
+            std::thread::spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                runtime.block_on(engine.set_camera(true))
+            })
+        };
+        eventually("the call's camera request is pending", || {
+            engine.camera_start_pending()
+        });
+        assert_eq!(
+            engine.start_camera_test().err().as_deref(),
+            Some(CAMERA_IN_USE)
+        );
+        assert!(sources.camera_requests().is_empty(), "nothing opened");
+        drop(turn);
+        let _ = caller.join().unwrap();
+        assert!(!engine.camera_start_pending());
+        let test = engine.start_camera_test().expect("free again");
+        eventually("the test runs", || test.frames() > 0);
     }
 
     #[test]

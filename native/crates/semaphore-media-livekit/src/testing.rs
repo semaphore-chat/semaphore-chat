@@ -131,6 +131,14 @@ pub struct FakeVideoSource {
     fps: u32,
     i420: bool,
     control: Arc<FakeVideoControl>,
+    hold: Option<StartHold>,
+}
+
+/// Holds a fake source's `start` (a slow camera opening) until the test lets it go: `start` sends
+/// on `entered`, then waits for `release` to send or be dropped.
+pub struct StartHold {
+    pub entered: std::sync::mpsc::Sender<()>,
+    pub release: std::sync::mpsc::Receiver<()>,
 }
 
 impl FakeVideoSource {
@@ -151,6 +159,7 @@ impl FakeVideoSource {
                 fps: fps.max(1),
                 i420,
                 control: control.clone(),
+                hold: None,
             },
             control,
         )
@@ -184,6 +193,10 @@ impl crate::video::local::VideoCaptureSource for FakeVideoSource {
     ) -> Result<crate::video::local::Capturing, String> {
         use crate::video::local::SourceFrame;
         use std::sync::mpsc::RecvTimeoutError;
+        if let Some(hold) = &self.hold {
+            let _ = hold.entered.send(());
+            let _ = hold.release.recv();
+        }
         // One channel for both a stop (the sender dropped) and an end (a reason sent).
         let (tx, rx) = std::sync::mpsc::channel::<String>();
         *lock(&self.control.end) = Some(tx.clone());
@@ -260,6 +273,8 @@ pub struct FakeVideoSources {
     pub screen_requests: Mutex<Vec<semaphore_core::model::ScreenShareRequest>>,
     /// The device each camera start asked for, in order (`None` = the first camera).
     camera_requests: Mutex<Vec<Option<String>>>,
+    /// The next camera's `start` waits on this.
+    pub hold_next_camera: Mutex<Option<StartHold>>,
 }
 
 impl Default for FakeVideoSources {
@@ -273,6 +288,7 @@ impl Default for FakeVideoSources {
             screens: Mutex::default(),
             screen_requests: Mutex::default(),
             camera_requests: Mutex::default(),
+            hold_next_camera: Mutex::default(),
         }
     }
 }
@@ -302,7 +318,8 @@ impl crate::video::local::VideoSources for FakeVideoSources {
             return Err(why);
         }
         let (width, height) = self.camera_size;
-        let (source, control) = FakeVideoSource::camera(width, height, 30);
+        let (mut source, control) = FakeVideoSource::camera(width, height, 30);
+        source.hold = lock(&self.hold_next_camera).take();
         lock(&self.cameras).push(control);
         Ok(Box::new(source))
     }

@@ -277,7 +277,12 @@ impl Core {
             }
             match pkce::check_callback(&request, port, &attempt_state) {
                 Callback::Bad => {
-                    log::debug!("browser sign-in: refused {request:?}");
+                    // The path only: the query is where a code and `state` would be.
+                    log::debug!(
+                        "browser sign-in: refused {} {}",
+                        request.method,
+                        crate::platform::request_path(&request.target)
+                    );
                     listener.reply(request.id, LoopbackPage::BadRequest);
                 }
                 Callback::Denied => {
