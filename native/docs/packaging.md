@@ -459,9 +459,11 @@ GPL-licensed code.
 - the Roboto (SIL OFL-1.1) and Material Icons (MIT) licence texts.
 
 libwebrtc is statically linked. Its components are permissive except FFmpeg, which WebRTC builds
-with `ffmpeg_branding = "Chrome"` and without GPL code: the H.264 decoder and a little libavutil
-are LGPL-2.1-or-later. That is not GPL, and `cargo deny` has nothing to say about a C++ archive,
-but distributing a statically linked LGPL component carries relinking terms. The file names the
+with `ffmpeg_branding = "Chrome"` and without GPL code: the H.264 decoder, a little libavutil and
+— since the player is part of every package (`--features player`) — the demuxers and audio
+decoders it uses (AAC included, AAC-LC only; docs/player.md) are LGPL-2.1-or-later. That is not
+GPL, and `cargo deny` has nothing to say about a C++ archive, but distributing a statically linked
+LGPL component carries relinking terms. The file names the
 upstream sources and the LiveKit prebuilt; a release that ships these packages should add the
 LGPL written offer (or ship the relinkable objects) and have that reviewed. This is listed under
 "Known gaps" below.
@@ -604,7 +606,7 @@ compile on both versions is the guard.
   `scripts/test-packages.sh`, upload `native/dist-packages/*` as `native-linux-packages`.
 - **windows-portable** (`windows-latest`, 120 min): rustup from `rust-toolchain.toml`, the same
   `fxc.exe` and vendored-renderer checks as `native-spike.yml`, `cargo build --locked --profile
-  dist -p semaphore-app` with `SEMAPHORE_PACKAGED=1`, `dumpbin /dependents` (fails if a
+  dist -p semaphore-app --features player` with `SEMAPHORE_PACKAGED=1`, `dumpbin /dependents` (fails if a
   non-system DLL is needed), and a zip with the exe, both licence files, the generated
   third-party list and a README, uploaded as `native-windows-portable`. Then it asserts
   `makensis -VERSION`, runs `scripts/package-windows.sh` (the installer and its `.sha256`) and
@@ -655,5 +657,6 @@ commit SHAs (`actions/checkout` v7 and `actions/upload-artifact` v7).
 - **AppImage is not self-contained.** See above: it uses the host's desktop libraries.
 - **Reproducibility.** The base image digest and Rust/LLVM/appimagetool versions are pinned, but
   Debian's archive and apt.llvm.org are not snapshotted.
-- **LGPL relinking.** The FFmpeg part of libwebrtc is LGPL-2.1-or-later; a public release should
-  add the written offer or relinkable object files (see the licence section).
+- **LGPL relinking.** The FFmpeg part of libwebrtc is LGPL-2.1-or-later, and the packages ship
+  its use: the H.264 and AAC decoders, and the player's demuxers. A public release should add the
+  written offer or relinkable object files (see the licence section).

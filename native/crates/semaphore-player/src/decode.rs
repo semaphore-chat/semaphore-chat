@@ -95,6 +95,11 @@ pub fn decode_audio(bytes: Vec<u8>, max: Duration) -> Result<Vec<f32>, DecodeAud
     if let Some((_, mut resampler)) = resampler {
         resampler.finish(&mut out);
     }
+    // An AAC stream the decoder turned out not to be able to play as LC (implicit SBR, say) is
+    // unsupported, not a short sound.
+    if media.refused_audio().is_some() {
+        return Err(DecodeAudioError::Media(Error::UnsupportedCodec));
+    }
     // The filter's tail may run a few samples past the limit.
     out.truncate(cap);
     if out.is_empty() {

@@ -18,6 +18,7 @@
 //! - **Streams** are those of the first segment opened, by PID (else by stream type). Opus in
 //!   TS and anything but H.264 and AAC are listed and refused; AAC needs the `aac` feature.
 
+use crate::aac;
 use crate::buffered::BufferedReport;
 use crate::engine::Cancel;
 use crate::ts::{self, StreamType, TsError, Unit, unwrap_pts};
@@ -297,6 +298,19 @@ struct Decoder {
     done: bool,
 }
 
+/// Whether every AAC frame of `pid` in `demuxed` is AAC-LC (ADTS profile field 1, object type 2).
+/// A stream with no frame at all is not one this can play.
+fn adts_units_lc(demuxed: &ts::Demuxed, pid: u16) -> bool {
+    let mut frames = 0;
+    for unit in demuxed.units.iter().filter(|u| u.pid == pid) {
+        match ts::adts_header(&unit.data) {
+            Some(header) if header.is_lc() => frames += 1,
+            _ => return false,
+        }
+    }
+    frames > 0
+}
+
 // SAFETY: the decoder is only used through `&mut self` of its owner, on one thread at a time.
 unsafe impl Send for Decoder {}
 
@@ -374,6 +388,12 @@ impl Decoder {
         // SAFETY: an open decoder.
         unsafe { ffi::sp_decoder_skipped(self.raw.as_ptr()) }
     }
+
+    /// The decoder's profile once open (FFmpeg's `AV_PROFILE_AAC_LOW` is 1).
+    fn profile(&self) -> i32 {
+        // SAFETY: an open decoder.
+        unsafe { ffi::sp_decoder_profile(self.raw.as_ptr()) }
+    }
 }
 
 impl Drop for Decoder {
@@ -442,6 +462,11 @@ pub(crate) struct SegmentedMedia {
     demux_skipped: u64,
     /// The last seek's target, until a unit is fed after it.
     positioned_at: Option<i64>,
+    /// Per stream: whether its AAC frames are all AAC-LC. A stream that turns out not to be
+    /// keeps its place in the timeline but never decodes.
+    aac_lc: Vec<bool>,
+    /// See [`crate::Media::refused_audio`]: set when an enabled AAC stream stopped mid-play.
+    refused_audio: Option<usize>,
 }
 
 // SAFETY: `frame`'s pointers point into this media's own decoders, which it owns and uses only
@@ -479,6 +504,7 @@ impl SegmentedMedia {
             .iter()
             .map(|track| probe_stream(&demuxed, *track))
             .collect();
+        let tracks_len = tracks.len();
         let mut media = Self {
             fetch,
             cancel,
@@ -500,9 +526,12 @@ impl SegmentedMedia {
             frame: ffi::sp_frame::default(),
             demux_skipped: demuxed.skipped,
             positioned_at: None,
+            aac_lc: vec![true; tracks_len],
+            refused_audio: None,
         };
         media.cache.insert(first, Arc::new(bytes));
         media.report_buffered();
+        media.note_aac_profiles(&demuxed);
         media.units = place(&demuxed, &media.tracks, media.starts[first]);
         media.position(start_us);
         Ok(media)
@@ -535,13 +564,56 @@ impl SegmentedMedia {
             .find(|&i| self.infos[i].kind == Kind::Video && self.decoders[i].is_some())
     }
 
+    pub(crate) fn refused_audio(&self) -> Option<usize> {
+        self.refused_audio
+    }
+
+    /// Checks every AAC track's frames in a segment just demuxed: AAC-LC only (the ADTS header's
+    /// profile), else the stream is marked undecodable and an open decoder for it is dropped.
+    fn note_aac_profiles(&mut self, demuxed: &ts::Demuxed) {
+        for stream in 0..self.infos.len() {
+            if self.infos[stream].codec == Codec::Aac
+                && !adts_units_lc(demuxed, self.tracks[stream].pid)
+            {
+                self.refuse_stream(stream);
+            }
+        }
+    }
+
+    /// This AAC stream may not be decoded (its header or decoder is not AAC-LC): its place on the
+    /// timeline stays, but no unit of it decodes and a decoder already open goes.
+    fn refuse_stream(&mut self, stream: usize) {
+        if let Some(slot) = self.aac_lc.get_mut(stream) {
+            *slot = false;
+        }
+        if self
+            .decoders
+            .get(stream)
+            .is_some_and(|decoder| decoder.is_some())
+        {
+            log::warn!("player: replay audio stream {stream} is not AAC-LC; its sound stops");
+            self.refused_audio.get_or_insert(stream);
+            self.decoders[stream] = None;
+            if self.current == Some(stream) {
+                self.current = None;
+            }
+        }
+    }
+
     pub(crate) fn enable(&mut self, stream: usize) -> Result<(), Error> {
         let info = self.infos.get(stream).ok_or(Error::BadStream)?;
         if self.decoders[stream].is_some() {
             return Ok(());
         }
         let codec = decoder_codec(info.codec).ok_or(Error::UnsupportedCodec)?;
-        self.decoders[stream] = Some(Decoder::open(codec)?);
+        if info.codec == Codec::Aac && !self.aac_lc[stream] {
+            return Err(Error::UnsupportedCodec);
+        }
+        let decoder = Decoder::open(codec)?;
+        if info.codec == Codec::Aac && !aac::profile_is_lc(decoder.profile()) {
+            return Err(Error::UnsupportedCodec);
+        }
+        self.decoders[stream] = Some(decoder);
         match self.positioned_at {
             // Nothing fed since the last seek: place every stream again, this one included.
             Some(to_us) => self.position(to_us),
@@ -589,6 +661,7 @@ impl SegmentedMedia {
         self.units = match ts::demux(&bytes) {
             Ok(demuxed) => {
                 self.demux_skipped += demuxed.skipped;
+                self.note_aac_profiles(&demuxed);
                 place(&demuxed, &self.tracks, self.starts[index])
             }
             Err(error) => {
@@ -657,9 +730,25 @@ impl SegmentedMedia {
     pub(crate) fn next_frame(&mut self) -> Result<Option<Frame<'_>>, Error> {
         loop {
             if let Some(stream) = self.current {
-                let decoder = self.decoders[stream].as_mut().ok_or(Error::BadStream)?;
-                if decoder.receive(&mut self.frame)? {
+                let received = {
+                    let decoder = self.decoders[stream].as_mut().ok_or(Error::BadStream)?;
+                    decoder.receive(&mut self.frame)?
+                };
+                if received {
                     self.frame.stream = c_int::try_from(stream).map_err(|_| Error::BadStream)?;
+                    // What an AAC decoder reports for the frame: an SBR stream doubles its rate
+                    // and says HE-AAC (or HE-AACv2); only LC at the header's rate may sound.
+                    let info = &self.infos[stream];
+                    if info.codec == Codec::Aac
+                        && !aac::decoder_is_lc(
+                            self.frame.profile,
+                            u32::try_from(self.frame.sample_rate).unwrap_or(0),
+                            info.sample_rate,
+                        )
+                    {
+                        self.refuse_stream(stream);
+                        continue;
+                    }
                     break;
                 }
                 self.current = None;

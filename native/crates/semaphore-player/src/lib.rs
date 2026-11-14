@@ -16,14 +16,16 @@
 //!
 //! - **Unsupported** is not **invalid**: bytes no demuxer recognises (AVI, say) are
 //!   [`Error::UnsupportedContainer`]; a known container that won't parse is [`Error::Invalid`];
-//!   a stream with no decoder here (HEVC, Theora, AAC without the `aac` feature) is
-//!   [`Error::UnsupportedCodec`] from [`Media::enable`], and the other streams still play.
+//!   a stream with no decoder here (HEVC, Theora) or an AAC stream that is not AAC-LC (no `aac`
+//!   feature, HE-AAC, Main) is [`Error::UnsupportedCodec`] from [`Media::enable`], and the other
+//!   streams still play.
 //! - **The replay preview** ([`Media::open_segments`]): HLS segments of MPEG-TS fetched one at a
 //!   time, demuxed here ([`ts`]) and decoded by the same FFmpeg ([`segments`]).
 //! - **Short sounds** decode whole with [`decode_audio`] (the soundboard's MP3, AAC and Vorbis):
 //!   mono 48 kHz, length-capped.
 //! - **Desktop only.** `build.rs` refuses a target or a libwebrtc without this FFmpeg.
 
+mod aac;
 mod decode;
 mod engine;
 mod ffi;
@@ -307,10 +309,22 @@ impl Media {
     }
 
     /// Opens the stream's decoder; [`Self::next_frame`] yields frames of enabled streams only.
+    /// An AAC stream this player may not decode (anything but AAC-LC) is
+    /// [`Error::UnsupportedCodec`], and the other streams still play.
     pub fn enable(&mut self, stream: usize) -> Result<(), Error> {
         match &mut self.0 {
             Inner::Ffmpeg(m) => m.enable(stream),
             Inner::Segments(m) => m.enable(stream),
+        }
+    }
+
+    /// The first audio stream whose AAC decoder turned out to be more than AAC-LC (HE-AAC's SBR,
+    /// HE-AACv2's PS, or a rate other than its header's). Its sound stopped at that frame and the
+    /// other streams go on; [`Self::enable`] refuses such a stream up front where it can.
+    pub fn refused_audio(&self) -> Option<usize> {
+        match &self.0 {
+            Inner::Ffmpeg(m) => m.refused_audio,
+            Inner::Segments(m) => m.refused_audio(),
         }
     }
 
@@ -356,6 +370,13 @@ struct FfmpegMedia {
     /// Owned through a raw pointer because C holds it as `opaque` for the media's lifetime.
     source: *mut Box<dyn Source>,
     frame: ffi::sp_frame,
+    /// Per stream: its header's sample rate when it is AAC (the rate its frames must come out
+    /// at), `None` for every other stream.
+    aac: Vec<Option<u32>>,
+    /// Per stream: the demuxer's codec profile, `SP_PROFILE_UNKNOWN` when it said nothing.
+    profiles: Vec<c_int>,
+    /// See [`Media::refused_audio`].
+    refused_audio: Option<usize>,
 }
 
 // SAFETY: the shim's state and the source are only reached through `&mut self` or `&self`
@@ -372,11 +393,18 @@ impl FfmpegMedia {
         // Drop, which closes the media before freeing it.
         let raw = unsafe { ffi::sp_open(read, seek, source.cast::<c_void>(), &mut code) };
         match NonNull::new(raw) {
-            Some(raw) => Ok(Self {
-                raw,
-                source,
-                frame: ffi::sp_frame::default(),
-            }),
+            Some(raw) => {
+                let mut media = Self {
+                    raw,
+                    source,
+                    frame: ffi::sp_frame::default(),
+                    aac: Vec::new(),
+                    profiles: Vec::new(),
+                    refused_audio: None,
+                };
+                media.read_headers();
+                Ok(media)
+            }
             None => {
                 // SAFETY: sp_open failed and has dropped every reference to `source`.
                 drop(unsafe { Box::from_raw(source) });
@@ -398,40 +426,105 @@ impl FfmpegMedia {
         u64::try_from(us).ok().map(Duration::from_micros)
     }
 
+    /// One stream's header info from the shim.
+    fn raw_info(&self, index: usize) -> Option<ffi::sp_stream_info> {
+        let index = c_int::try_from(index).ok()?;
+        let mut info = ffi::sp_stream_info::default();
+        // SAFETY: an open media; the shim checks the index and `info` is a valid out pointer.
+        let code = unsafe { ffi::sp_stream_info_get(self.raw.as_ptr(), index, &mut info) };
+        (code == ffi::SP_OK).then_some(info)
+    }
+
+    /// Per stream: the AAC rates and the demuxer's profiles, for the LC checks.
+    fn read_headers(&mut self) {
+        // SAFETY: an open media.
+        let count = unsafe { ffi::sp_stream_count(self.raw.as_ptr()) };
+        for index in 0..usize::try_from(count).unwrap_or(0) {
+            let info = self.raw_info(index);
+            let aac = info
+                .filter(|info| info.kind == ffi::SP_KIND_AUDIO && info.codec == ffi::SP_CODEC_AAC);
+            self.aac
+                .push(aac.map(|info| u32::try_from(info.sample_rate).unwrap_or(0)));
+            self.profiles
+                .push(info.map_or(ffi::SP_PROFILE_UNKNOWN, |info| info.profile));
+        }
+    }
+
     fn streams(&self) -> Vec<StreamInfo> {
         // SAFETY: an open media.
         let count = unsafe { ffi::sp_stream_count(self.raw.as_ptr()) };
         (0..count)
-            .filter_map(|index| {
-                let mut info = ffi::sp_stream_info::default();
-                // SAFETY: `index` is in range and `info` is a valid out pointer.
-                let code = unsafe { ffi::sp_stream_info_get(self.raw.as_ptr(), index, &mut info) };
-                (code == ffi::SP_OK).then(|| StreamInfo {
-                    kind: match info.kind {
-                        ffi::SP_KIND_VIDEO => Kind::Video,
-                        ffi::SP_KIND_AUDIO => Kind::Audio,
-                        _ => Kind::Other,
-                    },
-                    codec: Codec::from_code(info.codec),
-                    width: u32::try_from(info.width).unwrap_or(0),
-                    height: u32::try_from(info.height).unwrap_or(0),
-                    sample_rate: u32::try_from(info.sample_rate).unwrap_or(0),
-                    channels: u32::try_from(info.channels).unwrap_or(0),
-                    duration: u64::try_from(info.duration_us)
-                        .ok()
-                        .map(Duration::from_micros),
-                })
+            .filter_map(|index| self.raw_info(usize::try_from(index).ok()?))
+            .map(|info| StreamInfo {
+                kind: match info.kind {
+                    ffi::SP_KIND_VIDEO => Kind::Video,
+                    ffi::SP_KIND_AUDIO => Kind::Audio,
+                    _ => Kind::Other,
+                },
+                codec: Codec::from_code(info.codec),
+                width: u32::try_from(info.width).unwrap_or(0),
+                height: u32::try_from(info.height).unwrap_or(0),
+                sample_rate: u32::try_from(info.sample_rate).unwrap_or(0),
+                channels: u32::try_from(info.channels).unwrap_or(0),
+                duration: u64::try_from(info.duration_us)
+                    .ok()
+                    .map(Duration::from_micros),
             })
             .collect()
     }
 
+    /// Refuses an AAC stream that is not AAC-LC before its decoder opens: the container's
+    /// AudioSpecificConfig when it has one, else the profile the demuxer read from the headers.
+    fn check_aac_config(&self, stream: usize) -> Result<(), Error> {
+        let index = c_int::try_from(stream).map_err(|_| Error::BadStream)?;
+        let (mut data, mut size): (*const u8, c_int) = (std::ptr::null(), 0);
+        // SAFETY: an open media; the shim writes both out parameters.
+        match unsafe { ffi::sp_stream_extradata(self.raw.as_ptr(), index, &mut data, &mut size) } {
+            ffi::SP_OK => {}
+            code => return Err(Error::from_code(code)),
+        }
+        if size > 0 && !data.is_null() {
+            // SAFETY: the extradata lives as long as the open media, which `self` owns.
+            let bytes = unsafe { std::slice::from_raw_parts(data, size as usize) };
+            return match aac::parse(bytes) {
+                Some(config) if config.is_plain_lc() => Ok(()),
+                _ => Err(Error::UnsupportedCodec),
+            };
+        }
+        // A raw ADTS file has no config; the demuxer may still have seen the header's profile.
+        let profile = self
+            .profiles
+            .get(stream)
+            .copied()
+            .unwrap_or(ffi::SP_PROFILE_UNKNOWN);
+        if aac::profile_is_lc(profile) {
+            Ok(())
+        } else {
+            Err(Error::UnsupportedCodec)
+        }
+    }
+
     fn enable(&mut self, stream: usize) -> Result<(), Error> {
+        let is_aac = self.aac.get(stream).copied().flatten().is_some();
+        if is_aac {
+            self.check_aac_config(stream)?;
+        }
         let index = c_int::try_from(stream).map_err(|_| Error::BadStream)?;
         // SAFETY: an open media; the shim checks the index.
         match unsafe { ffi::sp_enable(self.raw.as_ptr(), index) } {
-            ffi::SP_OK => Ok(()),
-            code => Err(Error::from_code(code)),
+            ffi::SP_OK => {}
+            code => return Err(Error::from_code(code)),
         }
+        if is_aac {
+            // What the decoder says at open (an explicit HE-AAC config or a demuxer profile).
+            let profile = unsafe { ffi::sp_stream_profile(self.raw.as_ptr(), index) };
+            if !aac::profile_is_lc(profile) {
+                // SAFETY: an open media and an enabled stream.
+                unsafe { ffi::sp_disable(self.raw.as_ptr(), index) };
+                return Err(Error::UnsupportedCodec);
+            }
+        }
+        Ok(())
     }
 
     fn seek(&mut self, to: Duration) -> Result<(), Error> {
@@ -449,14 +542,37 @@ impl FfmpegMedia {
     }
 
     fn next_frame(&mut self) -> Result<Option<Frame<'_>>, Error> {
-        // SAFETY: an open media and a valid out pointer.
-        let code = unsafe { ffi::sp_next_frame(self.raw.as_ptr(), &mut self.frame) };
-        match code {
-            ffi::SP_OK => {}
-            ffi::SP_EOF => return Ok(None),
-            code => return Err(Error::from_code(code)),
+        loop {
+            // SAFETY: an open media and a valid out pointer.
+            let code = unsafe { ffi::sp_next_frame(self.raw.as_ptr(), &mut self.frame) };
+            match code {
+                ffi::SP_OK => {}
+                ffi::SP_EOF => return Ok(None),
+                code => return Err(Error::from_code(code)),
+            }
+            let stream = usize::try_from(self.frame.stream).map_err(|_| Error::Decode)?;
+            let Some(rate) = self.aac.get(stream).copied().flatten() else {
+                return frame_from_raw(&self.frame).map(Some);
+            };
+            if self.frame.kind != ffi::SP_KIND_AUDIO {
+                return frame_from_raw(&self.frame).map(Some);
+            }
+            let reported = u32::try_from(self.frame.sample_rate).unwrap_or(0);
+            if aac::decoder_is_lc(self.frame.profile, reported, rate) {
+                return frame_from_raw(&self.frame).map(Some);
+            }
+            // HE-AAC's SBR (or PS), or a rate the header did not say: stop this stream and drop
+            // the frame, as the player may not decode it. The other streams go on.
+            log::warn!(
+                "player: AAC stream {stream} reports profile {} at {reported} Hz (the header said \
+                 {rate} Hz), not AAC-LC; its sound stops",
+                self.frame.profile
+            );
+            self.refused_audio.get_or_insert(stream);
+            let index = c_int::try_from(stream).map_err(|_| Error::BadStream)?;
+            // SAFETY: an open media; the shim checks the index.
+            unsafe { ffi::sp_disable(self.raw.as_ptr(), index) };
         }
-        frame_from_raw(&self.frame).map(Some)
     }
 }
 

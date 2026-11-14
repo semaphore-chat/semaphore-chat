@@ -7,9 +7,11 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-default = []
-# The AAC decoder ships in the binary either way (libwebrtc's H.264 decoder links FFmpeg's whole
-# decoder list); without this the player refuses AAC streams. Patent posture: docs/player.md.
+# AAC decoding is on in every shipped build (the owner's decision; docs/player.md). The decoder
+# ships in the binary either way (libwebrtc's H.264 decoder links FFmpeg's whole decoder list);
+# without this feature the player refuses AAC streams, which is how the refusal paths are tested:
+# `cargo test -p semaphore-player --no-default-features`. Only AAC-LC decodes either way.
+default = ["aac"]
 aac = []
 
 [dependencies]

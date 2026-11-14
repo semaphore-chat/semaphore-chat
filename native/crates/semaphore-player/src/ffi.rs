@@ -35,11 +35,14 @@ pub const SP_CODEC_PCM: c_int = 25;
 
 pub const SP_SEEK_SIZE: c_int = 0x10000;
 
+/// FFmpeg's `AV_PROFILE_UNKNOWN`.
+pub const SP_PROFILE_UNKNOWN: c_int = -99;
+
 pub type sp_read_fn = unsafe extern "C" fn(opaque: *mut c_void, buf: *mut u8, size: c_int) -> c_int;
 pub type sp_seek_fn = unsafe extern "C" fn(opaque: *mut c_void, offset: i64, whence: c_int) -> i64;
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct sp_stream_info {
     pub kind: c_int,
     pub codec: c_int,
@@ -48,6 +51,7 @@ pub struct sp_stream_info {
     pub sample_rate: c_int,
     pub channels: c_int,
     pub duration_us: i64,
+    pub profile: c_int,
 }
 
 #[repr(C)]
@@ -63,6 +67,7 @@ pub struct sp_frame {
     pub channels: c_int,
     pub sample_rate: c_int,
     pub pcm: *const f32,
+    pub profile: c_int,
 }
 
 impl Default for sp_frame {
@@ -79,6 +84,7 @@ impl Default for sp_frame {
             channels: 0,
             sample_rate: 0,
             pcm: std::ptr::null(),
+            profile: 0,
         }
     }
 }
@@ -110,6 +116,14 @@ unsafe extern "C" {
         out: *mut sp_stream_info,
     ) -> c_int;
     pub fn sp_enable(media: *mut sp_media, index: c_int) -> c_int;
+    pub fn sp_stream_extradata(
+        media: *const sp_media,
+        index: c_int,
+        data: *mut *const u8,
+        size: *mut c_int,
+    ) -> c_int;
+    pub fn sp_stream_profile(media: *const sp_media, index: c_int) -> c_int;
+    pub fn sp_disable(media: *mut sp_media, index: c_int);
     pub fn sp_next_frame(media: *mut sp_media, out: *mut sp_frame) -> c_int;
     pub fn sp_skipped_packets(media: *const sp_media) -> u64;
     pub fn sp_seek(media: *mut sp_media, us: i64) -> c_int;
@@ -125,6 +139,7 @@ unsafe extern "C" {
     pub fn sp_decoder_receive(decoder: *mut sp_decoder, out: *mut sp_frame) -> c_int;
     pub fn sp_decoder_flush(decoder: *mut sp_decoder);
     pub fn sp_decoder_skipped(decoder: *const sp_decoder) -> u64;
+    pub fn sp_decoder_profile(decoder: *const sp_decoder) -> c_int;
     pub fn sp_i420_to_nv12(
         frame: *const sp_frame,
         y: *mut u8,
