@@ -89,6 +89,11 @@ COPY --from=builder --chown=nestjs:nodejs /app/backend/docker-entrypoint.sh ./ba
 
 WORKDIR /app/backend
 
+# This image only ever runs in production (the dev stack uses
+# backend/Dockerfile). Production mode refuses placeholder secrets at startup
+# and turns off the Swagger UI (ENABLE_SWAGGER=true brings it back).
+ENV NODE_ENV=production
+
 # No native rebuild for Alpine: bcrypt >= 6 ships prebuilt N-API binaries for
 # both glibc and musl (prebuilds/linux-x64/bcrypt.{glibc,musl}.node), and
 # node-gyp-build picks the musl one at require time. The node_modules copied

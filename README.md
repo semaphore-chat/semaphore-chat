@@ -100,7 +100,7 @@ Docker Compose setup. For Kubernetes deployment with Helm, see the [full docs](h
 ```yaml
 services:
   caddy:
-    image: caddy:latest
+    image: caddy:2.11
     restart: unless-stopped
     ports:
       - "443:443"
@@ -120,8 +120,9 @@ services:
     image: ghcr.io/semaphore-chat/semaphore-chat-backend:latest
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
+      DATABASE_URL: postgresql://semaphore:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/semaphore
       REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
       LIVEKIT_URL: wss://lk.${HOST:?Set HOST in .env}
@@ -166,6 +167,7 @@ services:
           use_external_ip: true
         redis:
           address: redis:6379
+          password: ${REDIS_PASSWORD}
         keys:
           ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
         webhook:
@@ -196,6 +198,7 @@ services:
         ws_url: ws://livekit:7880
         redis:
           address: redis:6379
+          password: ${REDIS_PASSWORD}
     volumes:
       - egress-data:/out
     depends_on:
@@ -206,26 +209,13 @@ services:
       redis:
         condition: service_healthy
 
-  livekit-ip-watcher:
-    image: curlimages/curl:latest
-    restart: unless-stopped
-    command: sh /scripts/livekit-ip-watcher.sh
-    environment:
-      CHECK_INTERVAL: 300
-      LIVEKIT_CONTAINER: livekit
-    volumes:
-      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      livekit:
-        condition: service_started
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: semaphore
-      POSTGRES_PASSWORD: semaphore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: semaphore
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U semaphore"]
@@ -236,8 +226,11 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   redis:
-    image: redis:latest
+    image: redis:7.4-alpine
     restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}  # for the healthcheck's redis-cli
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -277,12 +270,9 @@ lk.{$HOST} {
 }
 ```
 
-#### Download the IP watcher script
+#### Dynamic public IP (optional)
 
-```bash
-mkdir -p scripts
-curl -fsSL https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/main/scripts/livekit-ip-watcher.sh -o scripts/livekit-ip-watcher.sh
-```
+If your public IP changes (a residential connection), LiveKit has to restart when it does: see [Dynamic IP support](https://docs.semaphorechat.app/installation/docker-compose/#dynamic-ip-support) for a host cron job or an opt-in watcher container.
 
 #### Port forwarding
 
@@ -310,8 +300,9 @@ services:
       # or they can spoof their IP with an X-Forwarded-For header.
       - "127.0.0.1:3000:3000"
     environment:
-      DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
+      DATABASE_URL: postgresql://semaphore:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/semaphore
       REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
       LIVEKIT_URL: wss://lk.${HOST:?Set HOST in .env}
@@ -340,7 +331,9 @@ services:
     image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      # Localhost only: your reverse proxy on this host forwards to it (its
+      # X-Forwarded-For is trusted: TRUSTED_PROXIES, private ranges by default)
+      - "127.0.0.1:5173:5173"
     environment:
       BACKEND_URL: http://backend:3000
     depends_on:
@@ -358,6 +351,7 @@ services:
           use_external_ip: true
         redis:
           address: redis:6379
+          password: ${REDIS_PASSWORD}
         keys:
           ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
         webhook:
@@ -389,6 +383,7 @@ services:
         ws_url: ws://livekit:7880
         redis:
           address: redis:6379
+          password: ${REDIS_PASSWORD}
     volumes:
       - egress-data:/out
     depends_on:
@@ -399,26 +394,13 @@ services:
       redis:
         condition: service_healthy
 
-  livekit-ip-watcher:
-    image: curlimages/curl:latest
-    restart: unless-stopped
-    command: sh /scripts/livekit-ip-watcher.sh
-    environment:
-      CHECK_INTERVAL: 300
-      LIVEKIT_CONTAINER: livekit
-    volumes:
-      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      livekit:
-        condition: service_started
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: semaphore
-      POSTGRES_PASSWORD: semaphore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: semaphore
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U semaphore"]
@@ -429,8 +411,11 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   redis:
-    image: redis:latest
+    image: redis:7.4-alpine
     restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}  # for the healthcheck's redis-cli
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -455,14 +440,11 @@ The frontend's built-in nginx already proxies `/api` and `/socket.io` to the bac
 | `your-domain.com` | `localhost:5173` | Frontend (handles `/api` and `/socket.io` internally) |
 | `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade headers are forwarded |
 
-Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`), so the backend sees every client as your reverse proxy's address. For real client IPs (per-client rate limiting, session IPs), also route `/api` and `/socket.io` on `your-domain.com` straight to `localhost:3000`, and have your proxy set `X-Forwarded-For`. Keep `TRUST_PROXY` equal to the real number of hops, and never publish port 3000 beyond localhost: a client that reaches the backend directly can spoof its IP.
+Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`). nginx takes the client address from your proxy's `X-Forwarded-For` (the proxy connects from a private or loopback address: `TRUSTED_PROXIES`) and passes it on, so rate limits and session IPs are per client. Have your proxy set `X-Forwarded-For`; if clients reach port 5173 directly instead, set `TRUSTED_PROXIES: ""` on the frontend. Keep `TRUST_PROXY` equal to the real number of hops, and never publish port 3000 beyond localhost: a client that reaches the backend directly can spoof its IP.
 
-#### Download the IP watcher script
+#### Dynamic public IP (optional)
 
-```bash
-mkdir -p scripts
-curl -fsSL https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/main/scripts/livekit-ip-watcher.sh -o scripts/livekit-ip-watcher.sh
-```
+If your public IP changes (a residential connection), LiveKit has to restart when it does: see [Dynamic IP support](https://docs.semaphorechat.app/installation/docker-compose/#dynamic-ip-support) for a host cron job or an opt-in watcher container.
 
 #### Port forwarding
 
@@ -478,19 +460,19 @@ curl -fsSL https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/main/
 
 Create a `.env` file next to your `docker-compose.yml`. Your domain needs two DNS records pointing to your server — `HOST` and `lk.HOST` (e.g. `semaphore.example.com` and `lk.semaphore.example.com`), or a wildcard `*.semaphore.example.com`.
 
-```env
-HOST=semaphore.example.com
-JWT_SECRET=replace-with-a-long-random-string
-JWT_REFRESH_SECRET=replace-with-a-different-long-random-string
-LIVEKIT_API_KEY=replace-with-a-key-name
-LIVEKIT_API_SECRET=replace-with-a-secret-at-least-32-characters
-```
-
-Generate secrets with:
-
 ```bash
-openssl rand -base64 32
+cat > .env <<EOF
+HOST=semaphore.example.com
+JWT_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+JWT_REFRESH_SECRET=$(openssl rand -base64 64 | tr -d '\n')
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+REDIS_PASSWORD=$(openssl rand -hex 24)
+LIVEKIT_API_KEY=API$(openssl rand -hex 6)
+LIVEKIT_API_SECRET=$(openssl rand -hex 32)
+EOF
 ```
+
+Every secret gets its own random value: the backend refuses to start with an empty, placeholder or reused secret, or one shorter than 32 characters. Replace `semaphore.example.com` with your domain.
 
 ### 3. Start
 

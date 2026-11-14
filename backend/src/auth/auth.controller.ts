@@ -55,7 +55,13 @@ import { Request, Response } from 'express';
 import { ErrorCode } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
 import { AuthenticatedRequest } from '@/types';
-import { setAccessTokenCookie, clearAccessTokenCookie } from './cookie-helper';
+import {
+  setAccessTokenCookie,
+  clearAccessTokenCookie,
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  REFRESH_TOKEN_COOKIE_NAME,
+} from './cookie-helper';
 import {
   lockRefreshToken,
   lockUserForSessionRevocation,
@@ -107,7 +113,7 @@ type RefreshOutcome =
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
-  private readonly REFRESH_TOKEN_COOKIE_NAME = 'refresh_token';
+  private readonly REFRESH_TOKEN_COOKIE_NAME = REFRESH_TOKEN_COOKIE_NAME;
   constructor(
     private readonly authService: AuthService,
     private readonly databaseService: DatabaseService,
@@ -630,7 +636,7 @@ export class AuthController {
         );
       }
 
-      res.clearCookie(this.REFRESH_TOKEN_COOKIE_NAME);
+      clearRefreshTokenCookie(res);
     }
 
     // Blacklist the access token so it can't be reused until expiry
@@ -694,13 +700,7 @@ export class AuthController {
   }
 
   private setRefreshCookie(res: Response, refreshToken: string) {
-    res.cookie(this.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
-      httpOnly: true,
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      path: '/',
-    });
+    setRefreshTokenCookie(res, refreshToken);
   }
 
   /**

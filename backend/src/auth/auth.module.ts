@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { AuthAttemptLimiter } from './auth-attempt-limiter.service';
 import { AuthService } from './auth.service';
 import { UserModule } from '../user/user.module';
 import { LocalStrategy } from './local.strategy';
@@ -40,6 +41,7 @@ import { WsJwtAuthGuard } from './ws-jwt-auth.guard';
   ],
   providers: [
     AuthService,
+    AuthAttemptLimiter,
     LocalStrategy,
     JwtStrategy,
     PasswordResetService,

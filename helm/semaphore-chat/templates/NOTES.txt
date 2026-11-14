@@ -70,34 +70,17 @@ LiveKit:
 
 ⚠️  SECURITY REMINDERS
 
-{{- if eq .Values.secrets.jwtSecret "CHANGE-ME-long-random-secret-for-jwt-signing" }}
 
-🚨 CRITICAL: You are using default JWT secrets!
-   Please set custom values:
+{{- if .Values.networkPolicy.enabled }}
+{{- $pg := dig "primary" "networkPolicy" "allowExternal" true (.Values.postgresql | toYaml | fromYaml) }}
+{{- $redis := dig "networkPolicy" "allowExternal" true (.Values.redis | toYaml | fromYaml) }}
+{{- if or (and .Values.postgresql.bundled (ne (toString $pg) "false")) (and .Values.redis.bundled (ne (toString $redis) "false")) }}
 
-   --set secrets.jwtSecret="your-random-secret" \
-   --set secrets.jwtRefreshSecret="your-different-random-secret"
+⚠️  networkPolicy.enabled: the Bitnami PostgreSQL/Redis subcharts' own
+   NetworkPolicies still admit every pod. To restrict them to the backend:
 
-{{- end }}
-
-{{- if .Values.postgresql.bundled }}
-{{- if eq .Values.postgresql.auth.password "" }}
-
-🚨 CRITICAL: PostgreSQL password is not set!
-   Please set a custom value:
-
-   --set postgresql.auth.password="strong-random-password"
-
-{{- end }}
-{{- end }}
-
-{{- if and .Values.redis.bundled .Values.redis.auth.enabled }}
-{{- if eq .Values.redis.auth.password "changeme-redis-password" }}
-
-🚨 CRITICAL: You are using default Redis password!
-   Please set a custom value:
-
-   --set redis.auth.password="strong-random-password"
+   --set postgresql.primary.networkPolicy.allowExternal=false \
+   --set redis.networkPolicy.allowExternal=false
 
 {{- end }}
 {{- end }}
