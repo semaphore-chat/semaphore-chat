@@ -5,7 +5,8 @@ tokens of both clients: spacing, radii, control sizes, font families, text
 styles, shadows, motion, breakpoints and layout. `design/colour.json` holds
 the parameters of the palette derivation (see [Colour](#colour)). The web
 client and the Rust client read generated files, never these documents
-directly, so the two stay in step by construction.
+directly, so the two stay in step by construction. For designers, the plain
+language guide to these tokens is in [`guide/`](guide/README.md).
 
 The generator is `design/gen/gen_tokens.py` (Python standard library only,
 no install step). It reads both source documents, validates them, and writes
