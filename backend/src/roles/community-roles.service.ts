@@ -211,7 +211,7 @@ export class CommunityRolesService {
       h.userId === userId && (!roleIds || roleIds.includes(h.roleId));
     if (!holders.some(removed) || holders.some((h) => !removed(h))) return;
     throw new ForbiddenException(
-      "This would leave the community without anyone holding its top role. Give that role to another member first, or delete the community.",
+      'This would leave the community without anyone holding its top role. Give that role to another member first, or delete the community.',
     );
   }
 

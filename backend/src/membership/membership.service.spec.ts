@@ -379,7 +379,10 @@ describe('MembershipService', () => {
       ['the target blocked the caller', { blockerId: 'target-1' }],
       ['the caller blocked the target', { blockerId: 'actor-1' }],
     ])('refuses when %s', async (_label, block) => {
-      mockDatabase.userBlock.findFirst.mockResolvedValue({ id: 'b-1', ...block });
+      mockDatabase.userBlock.findFirst.mockResolvedValue({
+        id: 'b-1',
+        ...block,
+      });
 
       await expect(service.create(dto, 'actor-1')).rejects.toThrow(
         ForbiddenException,
