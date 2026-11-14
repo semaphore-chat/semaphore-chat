@@ -31,6 +31,19 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          # release-notes.sh lists the commits that touched native/ since the previous native-v*
+          # tag, and under test-release-assembly.sh below: a shallow checkout has only the pull
+          # request's merge commit, whose changes --no-merges leaves out.
+          fetch-depth: 0
+      # The release and packaging scripts, which nothing else runs before a native-v* tag goes
+      # out: assembly and the manifest checks with a throwaway key, and the installer compiled in
+      # the NSIS image (native/docker/Dockerfile.nsis). First, so a break here shows up in
+      # minutes rather than after the hour below.
+      - name: Release assembly, signing and manifests
+        run: native/scripts/in-image.sh scripts/test-release-assembly.sh
+      - name: Windows installer compiles and unpacks
+        run: native/scripts/test-package-windows.sh
       # Same pinned image and the same script as local runs.
       - name: Verify
         run: native/scripts/verify.sh
