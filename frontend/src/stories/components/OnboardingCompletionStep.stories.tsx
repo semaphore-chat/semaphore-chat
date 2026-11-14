@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { http, HttpResponse } from 'msw';
+import { Container, Paper } from '@mui/material';
 import CompletionStep from '../../components/Onboarding/CompletionStep';
 import type { OnboardingData } from '../../components/Onboarding/OnboardingWizard';
 import { defineComponent } from '../fixtures/componentStory';
@@ -33,8 +34,11 @@ const Step: React.FC<{ initial: Partial<OnboardingData>; steps?: DriverStep[] }>
   steps,
 }) => {
   const [data, setData] = useState<OnboardingData>({ ...baseData, ...initial });
+  // The same Container + Paper the real wizard (OnboardingWizard.tsx) puts a step in, so the
+  // step gets the page's width and bottom spacing instead of a bare 16 px padded box.
   return (
-    <>
+    <Container maxWidth="md" sx={{ py: 4 }}>
+      <Paper elevation={3} sx={{ p: 4 }}>
       <CompletionStep
         data={data}
         updateData={(patch) => setData((prev) => ({ ...prev, ...patch }))}
@@ -43,7 +47,8 @@ const Step: React.FC<{ initial: Partial<OnboardingData>; steps?: DriverStep[] }>
         onComplete={() => {}}
       />
       {steps && <Drive steps={steps} />}
-    </>
+      </Paper>
+    </Container>
   );
 };
 
@@ -53,7 +58,7 @@ const story = (
   steps?: DriverStep[],
 ) =>
   defineComponent(emptyUserScenario, () => <Step initial={initial} steps={steps} />, {
-    maxWidth: 900,
+    maxWidth: false,
     ...options,
   });
 

@@ -29,20 +29,30 @@ import { setAccessToken, storeElectronRefreshToken } from '../../utils/tokenServ
 /** What the backend answers when the pasted setup token is wrong. */
 const INVALID_SETUP_TOKEN_MESSAGE = 'Invalid setup token';
 
-/** The grep commands copy whole lines, so they wrap anywhere on a phone. */
+/**
+ * The grep commands are copied whole, so each stays on one line and scrolls
+ * sideways inside its own box on a phone instead of wrapping mid-word.
+ */
 const commandSx = {
   display: 'block',
   fontFamily: 'monospace',
   fontSize: '0.85em',
-  wordBreak: 'break-all',
+  whiteSpace: 'pre',
+  overflowX: 'auto',
+  maxWidth: '100%',
   mt: 0.5,
+  px: 1,
+  py: 0.75,
+  borderRadius: 1,
+  bgcolor: 'action.hover',
 } as const;
 
 /** Where the operator finds the token the backend printed at startup. */
 const SetupTokenHint: React.FC = () => (
   <Alert severity="info" sx={{ mb: 2 }}>
     <strong>Where is my setup token?</strong> The backend prints it in its log,
-    on a line containing <code>Setup token:</code>
+    on a line containing{' '}
+    <Box component="code" sx={{ whiteSpace: 'nowrap' }}>Setup token:</Box>
     <Box component="code" sx={commandSx}>
       docker compose logs backend | grep "Setup token:"
     </Box>
@@ -236,13 +246,14 @@ const CompletionStep: React.FC<CompletionStepProps> = ({
       </Alert>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-        <Button onClick={onBack} variant="outlined" disabled={isLoading}>
+        <Button onClick={onBack} variant="outlined" disabled={isLoading} sx={{ minHeight: 44 }}>
           Back
         </Button>
         <Button 
           onClick={handleSetup} 
           variant="contained" 
           size="large"
+          sx={{ minHeight: 44 }}
           disabled={isLoading || tokenMissing}
           startIcon={isLoading ? <CircularProgress size={20} /> : <CheckCircleIcon />}
         >
