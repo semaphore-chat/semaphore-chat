@@ -5,10 +5,15 @@
 //! `native/scripts/gen-design.sh`; never edit `src/generated.rs`, `src/type_scale.rs`, `data/` or
 //! `assets/` by hand.
 //!
+//! `lounge` is generated from `design/tokens.json`, not from the web client at the pin.
+//!
 //! No dependencies, and no GPUI: this is the data, not the mapping onto a renderer (see unit U8).
 //! See `native/docs/slice-units/U2-design.md`.
 
 mod generated;
+pub mod lounge;
+#[cfg(test)]
+mod lounge_tests;
 #[cfg(test)]
 mod tests;
 pub mod type_scale;
