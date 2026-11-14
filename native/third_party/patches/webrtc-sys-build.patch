@@ -1,0 +1,162 @@
+diff -ruN a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -48,6 +48,9 @@
+ [dependencies.scratch]
+ version = "1.0"
+ 
++[dependencies.sha2]
++version = "0.10"
++
+ [dependencies.semver]
+ version = "1.0"
+ 
+diff -ruN a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@
+     collections::HashSet,
+     env,
+     fs::{self, File},
+-    io::{self, BufRead, Write},
++    io::{self, BufRead, Read, Seek, Write},
+     path,
+     process::Command,
+ };
+@@ -28,6 +28,49 @@
+ use reqwest::StatusCode;
+ 
+ pub const SCRATH_PATH: &str = "livekit_webrtc";
++
++// Semaphore Chat patch: the prebuilt is checked against a pinned sha256 before it is extracted,
++// and the build fails if it differs or if this target has no pin. The release asset could be
++// replaced after publishing, and nothing else (Cargo.lock, cargo-deny) covers it.
++//
++// From https://github.com/livekit/rust-sdks/releases/tag/webrtc-a545de4 (assets uploaded
++// 2026-10-23), pinned 2026-11-13: each value is the sha256 of the zip downloaded that day and
++// equals the digest GitHub lists for the asset; the linux-x64 contents also equal a copy
++// extracted on 2026-11-12. A new WEBRTC_TAG needs new pins.
++pub const PINNED_SHA256: &[(&str, &str)] = &[
++    // https://github.com/livekit/rust-sdks/releases/download/webrtc-a545de4/webrtc-linux-x64-release.zip
++    ("linux-x64-release", "2ece73b9a72a2cacd73d0c62ac3a414e202f37885c3c8f49dddb43c1443ac0bd"),
++    // https://github.com/livekit/rust-sdks/releases/download/webrtc-a545de4/webrtc-linux-arm64-release.zip
++    ("linux-arm64-release", "e87dff71422c5cb1470f6cf00ecc4ad6964e746c5039831b7206b946b5d13c5f"),
++    // https://github.com/livekit/rust-sdks/releases/download/webrtc-a545de4/webrtc-win-x64-release.zip
++    ("win-x64-release", "862403fcb248c7d8803487e4c22b8821c6130e89100cb9c69be95ef45ff46146"),
++];
++
++/// The pinned sha256 of the prebuilt for `triple`, if it has one.
++pub fn pinned_sha256(triple: &str) -> Option<&'static str> {
++    PINNED_SHA256.iter().find(|(pinned, _)| *pinned == triple).map(|(_, sha)| *sha)
++}
++
++/// Reads `reader` to the end and fails unless its sha256 is `expected` (lowercase hex).
++pub fn verify_sha256(mut reader: impl Read, expected: &str) -> Result<()> {
++    use sha2::{Digest, Sha256};
++    let mut hasher = Sha256::new();
++    let mut buffer = vec![0u8; 1 << 16];
++    loop {
++        let read = reader.read(&mut buffer).context("Failed to read the WebRTC download")?;
++        if read == 0 {
++            break;
++        }
++        hasher.update(&buffer[..read]);
++    }
++    let actual: String = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
++    if actual != expected {
++        return Err(anyhow!(
++            "the WebRTC download's sha256 is {actual}, not the pinned {expected}: refusing to build with it"
++        ));
++    }
++    Ok(())
++}
+ pub const WEBRTC_TAG: &str = "webrtc-a545de4";
+ pub const IGNORE_DEFINES: [&str; 2] = ["CR_CLANG_REVISION", "CR_XCODE_VERSION"];
+ 
+@@ -90,10 +133,14 @@
+ /// This also has the benefit of not re-downloading the binaries for each crate
+ pub fn prebuilt_dir() -> path::PathBuf {
+     let target_dir = scratch::path(SCRATH_PATH);
++    // Semaphore patch: the pin is part of the path, so a copy extracted before pinning (never
++    // checked) is not reused; only a verified download creates this directory.
++    let pin = pinned_sha256(&webrtc_triple()).map_or("unpinned", |sha| &sha[..12]);
+     path::Path::new(&target_dir).join(format!(
+-        "livekit/{}-{}/{}",
++        "livekit/{}-{}-{}/{}",
+         webrtc_triple(),
+         WEBRTC_TAG,
++        pin,
+         webrtc_triple()
+     ))
+ }
+@@ -209,6 +256,10 @@
+         return Ok(());
+     }
+ 
++    let expected = pinned_sha256(&webrtc_triple()).ok_or_else(|| {
++        anyhow!("no pinned sha256 for the WebRTC prebuilt {}: add one before building", webrtc_triple())
++    })?;
++
+     let mut resp = reqwest::blocking::get(download_url());
+     for attempt in 1..3 {
+         let transient = match &resp {
+@@ -239,6 +290,14 @@
+         .context("Failed to create temporary file for WebRTC download")?;
+     resp.copy_to(&mut file).context("Failed to write WebRTC download to temporary file")?;
+ 
++    file.seek(io::SeekFrom::Start(0)).context("Failed to rewind the WebRTC download")?;
++    if let Err(error) = verify_sha256(&mut file, expected) {
++        drop(file);
++        let _ = fs::remove_file(&tmp_path);
++        return Err(error);
++    }
++    file.seek(io::SeekFrom::Start(0)).context("Failed to rewind the WebRTC download")?;
++
+     // Extract into a sibling temp dir, then atomically rename into place so concurrent
+     // observers see either no `webrtc_dir` or a fully-populated one — never the partially-
+     // extracted state that made `fs::copy(webrtc_dir/LICENSE.md, …)` in callers flaky.
+@@ -369,3 +428,44 @@
+         None
+     }
+ }
++
++#[cfg(test)]
++mod pin_tests {
++    use super::*;
++
++    const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
++
++    #[test]
++    fn the_desktop_targets_are_pinned_with_full_lowercase_hashes() {
++        for triple in ["linux-x64-release", "linux-arm64-release", "win-x64-release"] {
++            let sha = pinned_sha256(triple).unwrap();
++            assert_eq!(sha.len(), 64, "{triple}");
++            assert!(sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)), "{triple}");
++        }
++        assert_eq!(pinned_sha256("mac-arm64-release"), None);
++        assert_eq!(pinned_sha256("linux-x64-debug"), None);
++        assert_eq!(pinned_sha256(""), None);
++    }
++
++    #[test]
++    fn matching_bytes_pass_and_any_change_fails() {
++        verify_sha256(&b""[..], EMPTY_SHA256).unwrap();
++        let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
++        verify_sha256(&b"abc"[..], abc).unwrap();
++        // One flipped bit, one byte more, one byte less: refused.
++        assert!(verify_sha256(&b"abd"[..], abc).is_err());
++        assert!(verify_sha256(&b"abcd"[..], abc).is_err());
++        assert!(verify_sha256(&b"ab"[..], abc).is_err());
++        // The pin must be compared exactly: uppercase or truncated pins don't match.
++        assert!(verify_sha256(&b"abc"[..], &abc.to_uppercase()).is_err());
++        assert!(verify_sha256(&b"abc"[..], &abc[..63]).is_err());
++        // Longer than one read buffer.
++        let big = vec![7u8; (1 << 16) * 3 + 5];
++        use sha2::{Digest, Sha256};
++        let sha: String = Sha256::digest(&big).iter().map(|b| format!("{b:02x}")).collect();
++        verify_sha256(&big[..], &sha).unwrap();
++        let mut corrupted = big.clone();
++        corrupted[(1 << 16) * 2] ^= 1;
++        assert!(verify_sha256(&corrupted[..], &sha).is_err());
++    }
++}
