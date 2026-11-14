@@ -66,6 +66,22 @@ describe('Icon', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
+  it('treats an empty or whitespace-only label as no label', () => {
+    const { container } = renderWithKit(
+      <>
+        <Icon name="Mic" label="" />
+        <Icon name="Mic" label="   " />
+      </>,
+    );
+
+    for (const svg of Array.from(container.querySelectorAll('svg'))) {
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+      expect(svg).not.toHaveAttribute('role');
+      expect(svg).not.toHaveAttribute('aria-label');
+    }
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
   it('takes its accessible name from label', () => {
     renderWithKit(<Icon name="MicOff" label="Muted" />);
     const img = screen.getByRole('img', { name: 'Muted' });

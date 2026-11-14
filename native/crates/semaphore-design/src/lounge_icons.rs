@@ -3,8 +3,8 @@
 
 //! The shared Lucide icon set, generated for the Rust client.
 //!
-//! Every `svg` is the upstream file with `currentColor` replaced by `#000`,
-//! because GPUI draws an SVG as an alpha mask.
+//! Every `svg` is the icon's validated shapes rebuilt as one canonical SVG
+//! drawing them in `#000`, because GPUI draws an SVG as an alpha mask.
 
 /// One icon of the set shared by both clients.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -244,7 +244,7 @@ impl LoungeIcon {
         }
     }
 
-    /// The asset's bytes, with `currentColor` replaced by `#000`.
+    /// The asset's bytes: the validated shapes drawn in `#000`.
     pub fn svg(self) -> &'static [u8] {
         match self {
             Self::Inbox => include_bytes!("../assets/lucide/inbox.svg"),

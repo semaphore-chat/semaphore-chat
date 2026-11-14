@@ -4,8 +4,8 @@ use std::collections::HashSet;
 /// The number of names in `design/icons/icons.json`; `ALL` must hold each once.
 const COUNT: usize = 54;
 
-/// The markup after any leading XML comment: every Lucide file starts with the
-/// `@license` comment, which the generated asset keeps byte for byte.
+/// The markup after the leading XML comment: the generator writes the
+/// `@license` comment first, then the canonical `<svg>` element.
 fn markup(svg: &str) -> &str {
     let rest = svg.trim_start();
     match rest.strip_prefix("<!--") {
@@ -37,13 +37,32 @@ fn mic_points_at_its_asset() {
 
 #[test]
 fn every_asset_is_an_svg_without_the_mask_colour() {
+    const OPEN: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" \
+                        viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#000\" stroke-width=\"2\" \
+                        stroke-linecap=\"round\" stroke-linejoin=\"round\">";
     for icon in LoungeIcon::ALL {
         let svg = icon.svg();
         assert!(!svg.is_empty(), "{} has no asset", icon.name());
         let text = std::str::from_utf8(svg).expect("asset is UTF-8");
         assert!(
-            markup(text).starts_with("<svg"),
-            "{} does not start with an <svg> element",
+            text.starts_with("<!-- @license lucide-static v"),
+            "{} does not start with the licence comment",
+            icon.name()
+        );
+        assert!(
+            markup(text).starts_with(OPEN),
+            "{} does not start with the canonical <svg> element",
+            icon.name()
+        );
+        assert!(
+            text.ends_with("</svg>\n"),
+            "{} does not end with the closing element and one newline",
+            icon.name()
+        );
+        assert_eq!(
+            text.matches("stroke=\"#000\"").count(),
+            1,
+            "{} does not draw in the mask colour exactly once",
             icon.name()
         );
         assert!(

@@ -701,6 +701,28 @@ class RunTest(TempSource):
         self.assertFalse(asset.exists())
 
 
+class RunInvalidIconsTest(TempSource):
+    def test_invalid_icons_after_a_run_leave_every_output_alone(self):
+        self.assertEqual(gen.run(self.root, check=False), 0)
+        generated = self.root / "frontend/src/kit/icons/generated.ts"
+        asset = self.root / "native/crates/semaphore-design/assets/lucide/volume-2.svg"
+        self.assertTrue(asset.is_file())
+        before = generated.read_bytes()
+
+        mic = self.root / "design" / "icons" / "lucide" / "mic.svg"
+        mic.write_text(
+            mic.read_text(encoding="utf-8").replace('viewBox="0 0 24 24"', 'viewBox="0 0 16 16"'),
+            encoding="utf-8",
+        )
+        self.remove_icon("Volume2")
+
+        with self.assertRaisesRegex(gen.TokenError, r"^icons/mic\.svg"):
+            gen.run(self.root, check=False)
+        # Nothing was written or deleted by the failed run.
+        self.assertTrue(asset.is_file())
+        self.assertEqual(generated.read_bytes(), before)
+
+
 class MainTest(TempSource):
     def run_main(self, argv):
         stderr = io.StringIO()

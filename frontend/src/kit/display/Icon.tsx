@@ -55,10 +55,10 @@ const Root = styled('svg', {
 export function Icon({ name, size = 'md', tone = 'inherit', label }: IconProps): JSX.Element {
   const nodes = iconNodes[name];
   const dimension = tokens.icon[size];
-  const accessibility: SVGProps<SVGSVGElement> =
-    label === undefined
-      ? { 'aria-hidden': true, focusable: 'false' }
-      : { role: 'img', 'aria-label': label };
+  // An empty or whitespace-only label names nothing; the icon stays decorative.
+  const accessibility: SVGProps<SVGSVGElement> = label?.trim()
+    ? { role: 'img', 'aria-label': label }
+    : { 'aria-hidden': true, focusable: 'false' };
 
   return (
     <Root

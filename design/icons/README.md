@@ -29,6 +29,15 @@ also validates each SVG: `viewBox="0 0 24 24"`, no fill, stroke
 `currentColor` at width 2, round caps and joins, and only simple shape
 children.
 
+The generator rejects anything that is not a plain Lucide stroke icon: the
+file must be exactly the `@license` line for the pinned version followed by
+one `<svg>` element, with no DOCTYPE, entity, comment, processing instruction
+or foreign namespace, and with only the shape elements and numeric
+attributes Lucide uses. Nothing else reaches either client, because the
+native asset is rebuilt from the validated shapes (the licence line and a
+canonical `<svg>` element with the same children drawn in `#000`) rather than
+copied from the source file.
+
 ## Source
 
 The icons are [Lucide](https://lucide.dev), taken from the `lucide-static`
