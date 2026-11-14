@@ -74,6 +74,8 @@ A security release, from a second audit that also covered the web and desktop ap
 - Community-wide ban, kick, timeout and lift events no longer carry `moderatorId` or `reason`. Clients that showed who acted in a community's live feed should read the moderation log.
 - The Compose examples set Redis and PostgreSQL passwords from `.env` and pin their images, and the IP-watcher container is an opt-in extra; a host cron job is the documented default.
 
+- **Dependencies** — Prisma 7.10.1. (#763)
+
 ### Fixed
 
 - The web register page now follows the server's registration mode: closed shows a "registration is closed" message with a link back to sign in (and the sign-in page hides its register link), open makes the invite code optional, and invite-only still requires it. (#733)
