@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-13
+
+A security release, from a second audit that also covered the web and desktop apps, deployment files and CI. Several fixes change how an instance is deployed and set up, so read the checklist before upgrading.
+
 ### ⚠️ Breaking changes / upgrade checklist
 
 - **One database migration for attachment dimensions.** `20261112090749_file_dimensions` adds two nullable `Int` columns, `File.width` and `File.height`; existing files keep null. Back up your database before upgrading. (#715)
