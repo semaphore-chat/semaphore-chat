@@ -5,8 +5,7 @@ metadata:
   labels:
     {{- include "semaphore-chat.backend.labels" . | nindent 4 }}
 data:
-  # PostgreSQL connection
-  DATABASE_URL: {{ include "semaphore-chat.postgresql.uri" . | quote }}
+  # The database URL comes from a Secret (templates/backend/database-secret.yaml)
 
   # Redis connection
   REDIS_HOST: {{ include "semaphore-chat.redis.host" . | quote }}

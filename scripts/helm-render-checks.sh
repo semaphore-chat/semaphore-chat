@@ -102,6 +102,36 @@ CASES
 
 cat >>"$WORK/cases.sh" <<'CASES'
 
+# ---------------------------------------------------------------- OPS-2 DATABASE_URL
+for mode in install upgrade; do
+  flag=""; [ $mode = upgrade ] && flag="--is-upgrade"
+  expect_ok "bundled DB renders ($mode)" $VALID $flag
+  cm=$(echo "$OUT" | doc ConfigMap -backend-config)
+  db=$(echo "$OUT" | doc Secret -database)
+  dep=$(echo "$OUT" | doc Deployment -backend)
+  job=$(echo "$OUT" | doc Job -backend-migrate)
+  check "$mode: ConfigMap has no DATABASE_URL" lacks "$cm" 'DATABASE_URL|postgresql://'
+  check "$mode: database Secret holds the URL, password URL-encoded" has "$db" 'DATABASE_URL: "postgresql://semaphore:p%40ss%2Fw%3Ard%3Fwith%26chars@t-semaphore-chat-postgresql:5432/semaphore"'
+  check "$mode: database Secret exists before the migration hook" has "$db" 'helm.sh/hook"?: pre-install,pre-upgrade'
+  check "$mode: backend reads DATABASE_URL from the Secret" has "$dep" 'name: t-semaphore-chat-database'
+  check "$mode: migration job reads DATABASE_URL from the Secret" has "$job" 'name: t-semaphore-chat-database'
+  check "$mode: migration job needs no non-hook ConfigMap/Secret" lacks "$job" 'configMapRef|secretRef'
+done
+expect_ok "secrets.existingSecret still gets the database Secret" \
+  --set secrets.existingSecret=my-secrets --set-string postgresql.auth.password=$PGPASS --set redis.auth.password=$REDISPASS
+check "existingSecret: database Secret rendered" has "$(echo "$OUT" | doc Secret -database)" 'DATABASE_URL'
+expect_ok "external DB URI renders" $VALID --set postgresql.bundled=false \
+  --set postgresql.external.uri=postgresql://app:s3cret@db.internal:5432/chat
+check "external URI: in the database Secret" has "$(echo "$OUT" | doc Secret -database)" 'postgresql://app:s3cret@db.internal'
+check "external URI: not in any ConfigMap" lacks "$(echo "$OUT" | doc ConfigMap -backend-config)" 's3cret'
+expect_ok "external DB existingSecret renders" $VALID --set postgresql.bundled=false \
+  --set postgresql.external.existingSecret=pg-creds --set postgresql.external.existingSecretKey=url
+check "external existingSecret: no chart database Secret" lacks "$OUT" 'name: t-semaphore-chat-database$'
+check "external existingSecret: backend uses it" has "$(echo "$OUT" | doc Deployment -backend)" 'name: pg-creds'
+check "external existingSecret: with its key" has "$(echo "$OUT" | doc Deployment -backend)" 'key: url'
+expect_fail "external DB without a URI or secret fails" 'postgresql.external.uri or postgresql.external.existingSecret' \
+  $VALID --set postgresql.bundled=false
+
 echo
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

@@ -292,7 +292,10 @@ postgresql:
 
   # External PostgreSQL (when bundled is false)
   external:
-    uri: ""  # e.g., postgresql://user:pass@host:5432/semaphore
+    uri: ""  # e.g., postgresql://user:pass@host:5432/semaphore (stored in a Secret)
+    # Or a pre-created Secret holding the URL (takes precedence over uri)
+    existingSecret: ""
+    existingSecretKey: "DATABASE_URL"
 
 # ============================================
 # Redis Configuration

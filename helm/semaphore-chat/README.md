@@ -95,7 +95,9 @@ helm uninstall semaphore-chat
 | `postgresql.auth.password` | PostgreSQL password | `""` (set via --set or secrets) |
 | `postgresql.auth.database` | PostgreSQL database name | `semaphore` |
 | `postgresql.primary.persistence.size` | PostgreSQL PVC size | `10Gi` |
-| `postgresql.external.uri` | External PostgreSQL URI (if bundled=false) | `""` |
+| `postgresql.external.uri` | External PostgreSQL URI (if bundled=false); rendered into the `<release>-database` Secret | `""` |
+| `postgresql.external.existingSecret` | Pre-created Secret holding the URI (takes precedence over `uri`) | `""` |
+| `postgresql.external.existingSecretKey` | Key of the URI in that Secret | `DATABASE_URL` |
 
 ### Redis Configuration
 

@@ -92,14 +92,52 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-PostgreSQL URI - either from bundled or external
+PostgreSQL URI - either from bundled or external. The password is URL-encoded.
+Only ever rendered into a Secret (templates/backend/database-secret.yaml).
 */}}
 {{- define "semaphore-chat.postgresql.uri" -}}
 {{- if .Values.postgresql.bundled -}}
-postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "semaphore-chat.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}
+postgresql://{{ .Values.postgresql.auth.username | urlquery }}:{{ .Values.postgresql.auth.password | toString | urlquery }}@{{ include "semaphore-chat.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}
 {{- else -}}
 {{ .Values.postgresql.external.uri }}
 {{- end -}}
+{{- end }}
+
+{{/*
+Whether the chart renders its own <fullname>-database Secret: for the bundled
+database or an external one given as postgresql.external.uri.
+*/}}
+{{- define "semaphore-chat.database.chartSecret" -}}
+{{- if or .Values.postgresql.bundled (and (not .Values.postgresql.external.existingSecret) .Values.postgresql.external.uri) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+The DATABASE_URL env entry (backend and migration job): from the chart's
+database Secret, postgresql.external.existingSecret, or (external database,
+neither set) the DATABASE_URL key of secrets.existingSecret.
+*/}}
+{{- define "semaphore-chat.database.env" -}}
+{{- $name := printf "%s-database" (include "semaphore-chat.fullname" .) -}}
+{{- $key := "DATABASE_URL" -}}
+{{- if not .Values.postgresql.bundled -}}
+{{- if .Values.postgresql.external.existingSecret -}}
+{{- $name = .Values.postgresql.external.existingSecret -}}
+{{- $key = .Values.postgresql.external.existingSecretKey | default "DATABASE_URL" -}}
+{{- else if not .Values.postgresql.external.uri -}}
+{{- if .Values.secrets.existingSecret -}}
+{{- $name = .Values.secrets.existingSecret -}}
+{{- else -}}
+{{- fail "semaphore-chat: postgresql.bundled=false needs postgresql.external.uri or postgresql.external.existingSecret (a Secret holding the URL)." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ $name }}
+      key: {{ $key }}
 {{- end }}
 
 {{/*

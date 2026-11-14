@@ -190,6 +190,8 @@ The chart bundles a Bitnami PostgreSQL instance by default. For production, cons
         uri: "postgresql://user:password@postgres-host:5432/semaphore"
     ```
 
+    The chart keeps `DATABASE_URL` in a Secret (`<release>-database`, created as a pre-install/pre-upgrade hook so the migration job can read it; Helm leaves hook resources behind on uninstall, so delete it by hand then), never in the backend ConfigMap. To keep the URI out of your values, point `postgresql.external.existingSecret` at a Secret holding it (key `DATABASE_URL`, or set `existingSecretKey`). An external database with neither set reads `DATABASE_URL` from `secrets.existingSecret`.
+
 ### Redis
 
 Same pattern — bundled or external:
