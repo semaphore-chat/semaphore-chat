@@ -56,8 +56,14 @@ services:
         VITE_API_URL: /api
     environment:
       - BACKEND_URL=http://backend:3000
+      # Believe X-Forwarded-For from the reverse proxy in front (on this host it
+      # connects through Docker's gateway, a private address). Safe only because
+      # the port below is published on 127.0.0.1: if clients could reach it
+      # directly they could spoof their address. Unset = trust nobody.
+      - TRUSTED_PROXIES=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 ::1/128 fc00::/7
     ports:
-      - "${FRONTEND_PORT:-5173}:5173"
+      # Localhost only: put your reverse proxy (Caddy, nginx, Traefik) in front.
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
     depends_on:
       - backend
     restart: unless-stopped

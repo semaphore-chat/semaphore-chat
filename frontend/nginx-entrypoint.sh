@@ -11,11 +11,12 @@ done
 
 # Proxies whose X-Forwarded-For nginx believes (set_real_ip_from), so rate
 # limits and the backend see the real client instead of the proxy in front.
-# Unset: private ranges and loopback, where the documented proxies run (a
-# proxy on the host or the Docker network, an ingress controller). Empty:
-# trust nobody (the frontend port is exposed to clients directly). Public
-# clients connecting directly are never trusted either way.
-TRUSTED_PROXIES="${TRUSTED_PROXIES-127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 ::1/128 fc00::/7}"
+# Opt-in: unset or empty trusts nobody, and nginx uses the address of the
+# peer that connected (behind a proxy, every client then shares the proxy's
+# rate-limit bucket). Set it only when a proxy is in front and clients cannot
+# reach this port directly: a client that can, from a trusted address, could
+# put any address in X-Forwarded-For.
+TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"
 REAL_IP_CONF=/tmp/nginx/real-ip.conf
 mkdir -p /tmp/nginx
 : >"$REAL_IP_CONF"

@@ -168,8 +168,12 @@ check "NOTES quiet once allowExternal=false" lacks "$OUT" 'still admit every pod
 check "NOTES render" has "$OUT" 'Thank you for installing'
 
 # ---------------------------------------------------------------- OPS-7 trusted proxies
-expect_ok "frontend trustedProxies unset" $VALID
-check "trustedProxies unset: image default (no env)" lacks "$(echo "$OUT" | doc Deployment -frontend)" 'TRUSTED_PROXIES'
+expect_ok "frontend trustedProxies unset (ingress, ClusterIP)" $VALID
+check "trustedProxies unset behind the ingress: private ranges" has "$(echo "$OUT" | doc Deployment -frontend)" 'value: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7"'
+expect_ok "frontend trustedProxies unset, no ingress" $VALID --set ingress.enabled=false
+check "trustedProxies unset, no ingress: trust nobody (no env)" lacks "$(echo "$OUT" | doc Deployment -frontend)" 'TRUSTED_PROXIES'
+expect_ok "frontend trustedProxies unset, LoadBalancer" $VALID --set frontend.service.type=LoadBalancer
+check "trustedProxies unset, LoadBalancer: trust nobody (no env)" lacks "$(echo "$OUT" | doc Deployment -frontend)" 'TRUSTED_PROXIES'
 expect_ok "frontend trustedProxies empty" $VALID --set-string frontend.trustedProxies=
 check "trustedProxies empty: trust nobody" has "$(echo "$OUT" | doc Deployment -frontend)" 'value: ""'
 expect_ok "frontend trustedProxies set" $VALID --set-string frontend.trustedProxies=10.42.0.0/16

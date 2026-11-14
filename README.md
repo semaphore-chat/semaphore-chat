@@ -331,11 +331,14 @@ services:
     image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
     restart: unless-stopped
     ports:
-      # Localhost only: your reverse proxy on this host forwards to it (its
-      # X-Forwarded-For is trusted: TRUSTED_PROXIES, private ranges by default)
+      # Localhost only: your reverse proxy on this host forwards to it, and
+      # it must be the only way in (its X-Forwarded-For is trusted below)
       - "127.0.0.1:5173:5173"
     environment:
       BACKEND_URL: http://backend:3000
+      # Believe the proxy's X-Forwarded-For (it connects from a private or
+      # loopback address). Unset = trust nobody. See "Reverse proxy routing".
+      TRUSTED_PROXIES: 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 ::1/128 fc00::/7
     depends_on:
       - backend
 
@@ -440,7 +443,7 @@ The frontend's built-in nginx already proxies `/api` and `/socket.io` to the bac
 | `your-domain.com` | `localhost:5173` | Frontend (handles `/api` and `/socket.io` internally) |
 | `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade headers are forwarded |
 
-Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`). nginx takes the client address from your proxy's `X-Forwarded-For` (the proxy connects from a private or loopback address: `TRUSTED_PROXIES`) and passes it on, so rate limits and session IPs are per client. Have your proxy set `X-Forwarded-For`; if clients reach port 5173 directly instead, set `TRUSTED_PROXIES: ""` on the frontend. Keep `TRUST_PROXY` equal to the real number of hops, and never publish port 3000 beyond localhost: a client that reaches the backend directly can spoof its IP.
+Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`). nginx takes the client address from your proxy's `X-Forwarded-For` when the proxy's address is in `TRUSTED_PROXIES` (the example lists the private and loopback ranges) and passes it on, so rate limits and session IPs are per client. `TRUSTED_PROXIES` is opt-in: unset, nginx trusts nobody, and behind a proxy all clients then share one rate-limit bucket. Set it only while port 5173 is reachable through your proxy alone; a client that reaches it directly from a trusted address can spoof its IP. Have your proxy set `X-Forwarded-For`. Keep `TRUST_PROXY` equal to the real number of hops, and never publish port 3000 beyond localhost: a client that reaches the backend directly can spoof its IP.
 
 #### Dynamic public IP (optional)
 

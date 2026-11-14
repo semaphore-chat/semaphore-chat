@@ -40,6 +40,9 @@ spec:
             {{- if not (kindIs "invalid" .Values.frontend.trustedProxies) }}
             - name: TRUSTED_PROXIES
               value: {{ .Values.frontend.trustedProxies | toString | quote }}
+            {{- else if and .Values.ingress.enabled (eq .Values.frontend.service.type "ClusterIP") }}
+            - name: TRUSTED_PROXIES
+              value: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7"
             {{- end }}
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}

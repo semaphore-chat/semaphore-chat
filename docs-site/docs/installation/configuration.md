@@ -119,7 +119,7 @@ Set it to the exact number of reverse proxy hops in front of the backend, usuall
 | Variable | Description | Default |
 |----------|------------|---------|
 | `TRUST_PROXY` | Number of trusted proxy hops, a subnet name, or a specific IP | unset (no proxy trusted) |
-| `TRUSTED_PROXIES` | **Frontend container.** Addresses/CIDRs (space- or comma-separated) whose `X-Forwarded-For` the frontend's nginx believes, for its rate limits and the client address it passes to the backend. Empty = trust nobody (clients reach the frontend directly) | private ranges and loopback (`127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 ::1/128 fc00::/7`) |
+| `TRUSTED_PROXIES` | **Frontend container.** Addresses/CIDRs (space- or comma-separated) whose `X-Forwarded-For` the frontend's nginx believes, for its rate limits and the client address it passes to the backend. Opt-in: set it (e.g. `127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 ::1/128 fc00::/7`) only when a proxy is in front and clients cannot reach the frontend port directly. Unset behind a proxy, every client shares the proxy's rate-limit bucket; set while the port is directly reachable, clients can spoof their address. The Helm chart sets the private ranges when the ingress is enabled and the frontend Service is `ClusterIP` | unset (trust nobody) |
 | `WS_CONNECTION_RATE_LIMIT` | WebSocket connections one client address may open per minute, per backend instance. Raise it if many users share one address (an office NAT) | `10` |
 
 Common values:
