@@ -629,8 +629,15 @@ fn voice_user_row(
     let deafened = has(VoiceBadgeKind::Deafened);
     let server_muted = has(VoiceBadgeKind::ServerMuted);
     let muted = server_muted || has(VoiceBadgeKind::Muted);
+    // `CompactUserItem`'s ring: only for someone who can be heard.
+    let speaking = participant.is_some_and(|p| p.speaking) && !muted && !deafened;
     let hover = sem.action_hover;
-    let (negative, primary, secondary) = (sem.negative, sem.text_primary, sem.text_secondary);
+    let (negative, positive, primary, secondary) = (
+        sem.negative,
+        sem.positive,
+        sem.text_primary,
+        sem.text_secondary,
+    );
     let id = ElementId::Name(format!("voice-user-{channel_id}-{}", user.id).into());
     let mut label = name.clone();
     for badge in &badges {
@@ -660,6 +667,24 @@ fn voice_user_row(
                     .relative()
                     .size(px(32.))
                     .child(user_avatar(&name, user.avatar_file_id.as_deref(), 32.))
+                    // The web's 2px ring, drawn around the face rather than as its border, so a
+                    // quiet row is laid out exactly as before and speaking never moves anything.
+                    .when(speaking, |face| {
+                        face.child(
+                            div()
+                                .id(ElementId::Name(
+                                    format!("voice-user-speaking-{}", user.id).into(),
+                                ))
+                                .test_support()
+                                .absolute()
+                                .top(px(-2.))
+                                .left(px(-2.))
+                                .size(px(36.))
+                                .rounded_full()
+                                .border_2()
+                                .border_color(positive),
+                        )
+                    })
                     .when(deafened || muted, |face| {
                         // The mark on the avatar, as well as the one at the row's end.
                         face.child(

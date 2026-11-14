@@ -435,6 +435,18 @@ fn connect_hangout_moderated(fixture: &mut Fixture) {
     }
 }
 
+/// In the call and talking, with one person talking back and one whose mic is off: the green ring
+/// on the first two rows' faces only (a muted mic's speaking never shows, as on the web).
+fn connect_hangout_speaking(fixture: &mut Fixture) {
+    connect_hangout(fixture);
+    let voice = &mut fixture.views.voice;
+    voice.muted = false;
+    for (index, participant) in voice.participants.iter_mut().enumerate() {
+        participant.speaking = index <= 2;
+        participant.muted = index == 2;
+    }
+}
+
 fn connect_hangout(fixture: &mut Fixture) {
     let community = fixture.first_community();
     if let Some(id) = fixture
@@ -608,6 +620,7 @@ pub fn stories() -> Vec<Story> {
         shell_story!("shell-long-content-expanded", edit: long_names, expanded: true),
         shell_story!("shell-voice-connected", edit: connect_hangout),
         shell_story!("shell-voice-server-muted", edit: connect_hangout_moderated),
+        shell_story!("shell-voice-speaking", edit: connect_hangout_speaking),
         // A voice channel's header: the voice icon and the name, as the web's pre-join, in both
         // the desktop header and the phone app bar.
         shell_story!("shell-voice-channel", channel: Some("Hangout")),

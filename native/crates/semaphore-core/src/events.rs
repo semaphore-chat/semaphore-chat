@@ -590,8 +590,8 @@ impl State {
         }
     }
 
-    /// Direct, as these fire on every connect and disconnect in the instance. Nothing to change until
-    /// a members read has loaded the map.
+    /// Direct, as these fire on every connect and disconnect in the instance. Before the map has
+    /// loaded they wait, and go on top of it when it comes (`w2_presence_changed`).
     fn on_presence(&mut self, user_id: &str, online: bool) {
         let key = keys::op(keys::PRESENCE);
         self.note_direct_update(&key);
@@ -599,6 +599,8 @@ impl State {
             presence.insert(user_id.to_owned(), online);
             self.members_changed(Some(user_id));
             self.w2_presence_changed();
+        } else {
+            self.w2.pending_presence.insert(user_id.to_owned(), online);
         }
     }
 
@@ -932,6 +934,8 @@ impl State {
             }
             RealtimeEvent::Disconnected { reason } => {
                 log::debug!("socket disconnected: {reason}");
+                // Events missed from here on would make the waiting ones wrong.
+                self.w2.pending_presence.clear();
                 // Offline and suspended win, because they explain the drop and carry their own way back.
                 if self.connection == ConnectionState::Connected {
                     self.set_connection(ConnectionState::Disconnected);

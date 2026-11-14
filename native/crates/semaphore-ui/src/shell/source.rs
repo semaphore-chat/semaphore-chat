@@ -87,10 +87,14 @@ impl ShellSource for CoreSource {
             community_id: community_id.to_owned(),
         };
         let list = self.0.members(community_id.to_owned());
-        match (self.0.load_state(view), list) {
-            (LoadState::Failed { error }, _) => Load::Failed(error),
-            (_, None) => Load::Loading,
-            (_, Some(list)) => Load::Ready(
+        // Online comes from the presence map: without it everyone would read as offline.
+        let presence = self.0.members_presence();
+        match (self.0.load_state(view), presence, list) {
+            (LoadState::Failed { error }, _, _) | (_, LoadState::Failed { error }, _) => {
+                Load::Failed(error)
+            }
+            (_, _, None) | (_, LoadState::Loading, _) => Load::Loading,
+            (_, LoadState::Ready, Some(list)) => Load::Ready(
                 list.members
                     .into_iter()
                     .map(|member| MemberRow {
