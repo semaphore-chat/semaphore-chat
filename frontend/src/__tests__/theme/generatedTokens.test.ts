@@ -11,6 +11,7 @@ it('carries the Lounge shape and layout values', () => {
 it('carries the kit token groups', () => {
   expect(tokens.radius.sm).toBe(6);
   expect(tokens.icon).toEqual({ xs: 14, sm: 16, md: 18, lg: 20, xl: 24 });
+  expect(tokens.avatar).toEqual({ xs: 20, sm: 28, md: 36, lg: 44, xl: 64 });
   expect(tokens.border).toEqual({ hairline: 1, selected: 2, focus: 2, focusOffset: 2 });
   expect(tokens.state).toEqual({ hover: 0.04, pressed: 0.08, hoverOnFill: 0.16, pressedOnFill: 0.24, disabled: 0.5 });
   expect(tokens.state.hover).toBe(0.04);

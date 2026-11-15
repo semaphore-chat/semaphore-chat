@@ -121,7 +121,8 @@ class RealFileTest(unittest.TestCase):
                 "disabled": 0.5,
             },
         )
-        self.assertEqual(list(t)[-3:], ["icon", "border", "state"])  # after the old groups
+        self.assertEqual(list(t)[-4:], ["icon", "avatar", "border", "state"])  # after the old groups
+        self.assertEqual(t["avatar"], {"xs": 20, "sm": 28, "md": 36, "lg": 44, "xl": 64})
 
 
 class RolesTest(unittest.TestCase):
@@ -269,6 +270,11 @@ class LoadValidationTest(TempSource):
         with self.assertRaisesRegex(gen.TokenError, r"^icon\.md"):
             self.load()
 
+    def test_negative_avatar_size_rejected(self):
+        self.edit(set_value("avatar.md", -1))
+        with self.assertRaisesRegex(gen.TokenError, r"^avatar\.md"):
+            self.load()
+
     def test_negative_border_width_rejected(self):
         self.edit(set_value("border.hairline", -1))
         with self.assertRaisesRegex(gen.TokenError, r"^border\.hairline"):
@@ -358,9 +364,10 @@ class RenderTsTest(unittest.TestCase):
         out = gen.render_ts(gen.load(REAL))
         self.assertIn("  radius: {\n    sm: 6,\n    md: 10,\n    field: 14,", out)
         self.assertIn("hoverOnFill: 0.16,", out)
+        self.assertIn("  avatar: {\n    xs: 20,", out)
         self.assertIn("focusOffset: 2,", out)
         # The new groups follow the old ones, in source order.
-        for earlier, later in (("layout", "icon"), ("icon", "border"), ("border", "state")):
+        for earlier, later in (("layout", "icon"), ("icon", "avatar"), ("avatar", "border"), ("border", "state")):
             self.assertLess(out.index(f"  {earlier}: {{"), out.index(f"  {later}: {{"))
 
     def test_ts_is_deterministic_and_headed(self):
@@ -390,6 +397,7 @@ class RenderRsTest(unittest.TestCase):
             "pub const STATE_HOVER: f32 = 0.04;",
             "pub const BORDER_FOCUS_OFFSET: f32 = 2.0;",
             "pub const ICON_XL: f32 = 24.0;",
+            "pub const AVATAR_XL: f32 = 64.0;",
             "pub const RADIUS_SM: f32 = 6.0;",
         ):
             self.assertIn(line, out)

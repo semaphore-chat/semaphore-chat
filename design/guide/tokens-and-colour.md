@@ -126,6 +126,18 @@ The size of an icon, in px. Pick the size that matches the text beside it.
 |lg|20|Icons in toolbars and section headings|
 |xl|24|Large icons, such as in an empty state or a navigation item|
 
+### Avatar sizes
+
+The diameter of an avatar, in px, for a person or a community.
+
+|Token|px|Use it for|
+|---|---|---|
+|xs|20|Avatars inside a line of text or a dense list|
+|sm|28|Avatars in a stack, or beside small text|
+|md|36|The default avatar in a member row or a message|
+|lg|44|Avatars in a card or a header|
+|xl|64|A profile or a community header|
+
 ### Borders and rings
 
 The width of a border, and of the focus ring, in px.
