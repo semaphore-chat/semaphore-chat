@@ -46,3 +46,7 @@ export { Alert } from './display/Alert';
 export type { AlertProps, AlertSeverity } from './display/Alert';
 export { Toast } from './display/Toast';
 export type { ToastProps, ToastTone } from './display/Toast';
+export { ListRow } from './lists/ListRow';
+export type { ListRowProps } from './lists/ListRow';
+export { Table } from './lists/Table';
+export type { TableColumn, TableProps, TableRow } from './lists/Table';
