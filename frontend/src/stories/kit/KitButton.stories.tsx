@@ -1,15 +1,9 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { Button, type ButtonSize, type ButtonVariant } from '../../kit';
+import { Button, Icon, type ButtonSize, type ButtonVariant } from '../../kit';
 import { KitStage, Row } from '../fixtures/kitStory';
 
 const VARIANTS: ButtonVariant[] = ['primary', 'soft', 'ghost', 'danger', 'quietDanger', 'text'];
 const SIZES: ButtonSize[] = ['sm', 'md', 'lg'];
-
-const PlusIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
 
 const VariantGrid = () => (
   <>
@@ -44,10 +38,10 @@ export const States = () => (
         <Button variant={variant} loading>
           Join room
         </Button>
-        <Button variant={variant} startIcon={<PlusIcon />}>
+        <Button variant={variant} startIcon={<Icon name="Plus" size="sm" />}>
           Join room
         </Button>
-        <Button variant={variant} startIcon={<PlusIcon />} loading>
+        <Button variant={variant} startIcon={<Icon name="Plus" size="sm" />} loading>
           Join room
         </Button>
       </Row>
@@ -69,7 +63,7 @@ export const LongLabel = () => (
       </Button>
     </div>
     <div style={{ width: 240 }}>
-      <Button variant="primary" fullWidth startIcon={<PlusIcon />}>
+      <Button variant="primary" fullWidth startIcon={<Icon name="Plus" size="sm" />}>
         Full width with a long label that overflows the box
       </Button>
     </div>
@@ -94,7 +88,7 @@ export const VariantsTinted = () => (
       <Button variant="primary" loading>
         Loading
       </Button>
-      <Button variant="soft" startIcon={<PlusIcon />}>
+      <Button variant="soft" startIcon={<Icon name="Plus" size="sm" />}>
         With icon
       </Button>
     </Row>

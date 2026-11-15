@@ -21,6 +21,14 @@ every registered output through the `OUTPUTS` mapping:
 |`frontend/src/theme/generated/colourParams.ts`|web client (`colourParams`, `colourRoles`, `colourModes`, `colourIntensities`: the derivation parameters)|
 |`native/crates/semaphore-design/src/colour_params.rs`|Rust client (the derivation parameters as `f64` constants)|
 |`native/crates/semaphore-design/src/colour_vectors.rs`|Rust client (the shared vectors, test-only)|
+|`frontend/src/kit/icons/generated.ts`|web client (`export const iconNodes`, the shape elements; `IconName`, `iconNames`)|
+|`native/crates/semaphore-design/src/lounge_icons.rs`|Rust client (`LoungeIcon`: `ALL`, `name`, `asset_path`, `svg`)|
+|`native/crates/semaphore-design/assets/lucide/<file>.svg`|Rust client (one asset per icon, `currentColor` replaced by `#000`)|
+
+The icon outputs follow `design/icons/icons.json` (see
+[`icons/README.md`](icons/README.md)): `design/gen/gen_icons.py` validates the
+set and renders those files, and `gen_tokens.py` merges them with its own. So
+the set of outputs depends on the source: removing an icon removes its asset.
 
 ## Units
 
@@ -65,6 +73,10 @@ python3 design/gen/gen_tokens.py          # rewrite every output
 python3 design/gen/gen_tokens.py --check  # verify, print stale/missing, exit 1
 ```
 
+The outputs depend on the source: an asset below
+`native/crates/semaphore-design/assets/lucide/` that no icon produces is
+reported as `stale:` by `--check` and deleted by a normal run.
+
 A validation failure prints one line starting with `error:` that names the
 dotted path (for example `error: text.body.font: unknown font 'bodyy'`, or
 `error: colour.modes.dark.accentL: expected lo < hi, got [0.8, 0.6]`),
@@ -88,7 +100,8 @@ commit the regenerated file together with the change that caused it, and push.
 
 Every generated file except `design/vectors/colour.json` (comments are not
 valid JSON) starts with a header naming the source document it comes from
-(`design/tokens.json` or `design/colour.json`) and `design/gen/gen_tokens.py`.
-A wrong generated file means a wrong generator or a wrong source value:
-change one of those and re-run the generator. A hand edit is reported as
-`stale` by `--check` and is reverted by the next run.
+(`design/tokens.json`, `design/colour.json` or `design/icons/icons.json`) and
+`design/gen/gen_tokens.py`. The icon assets carry no header, so the staleness
+check covers them instead. A wrong generated file means a wrong generator or a
+wrong source value: change one of those and re-run the generator. A hand edit
+is reported as `stale` by `--check` and is reverted by the next run.

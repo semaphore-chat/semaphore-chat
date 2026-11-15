@@ -21,6 +21,7 @@ import math
 import re
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Callable, NoReturn
 
 # `colour_ref` lives beside this script, and the tests import from that folder too.
@@ -28,6 +29,9 @@ from typing import Callable, NoReturn
 # `design/colour.json`, so a broken parameter file has to reach `main` as one
 # `error:` line instead of a traceback at module load.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# `gen_error` lives beside this script too; `gen_icons` raises the same class.
+from gen_error import TokenError  # noqa: E402  (after the path fix above)
 
 # The role names and the order every renderer emits them in. A copy of
 # `colour_ref.ROLES`, which cannot be imported above; the tests pin them equal.
@@ -120,13 +124,17 @@ CHROMA_MAX = 0.4
 USAGE = "usage: gen_tokens.py [--check]"
 
 # Output path relative to the repo root -> renderer taking the loaded source
-# documents (`{"tokens": ..., "colour": ...}`).
-# The TypeScript and Rust renderers register themselves here.
+# documents (`{"tokens": ..., "colour": ..., "icons": ...}`).
+# The TypeScript and Rust renderers register themselves here; `run` merges in
+# the icon set's outputs, whose paths depend on the loaded icons.
 OUTPUTS: dict[Path, Callable[[dict], str]] = {}
 
 
-class TokenError(ValueError):
-    """A source document does not match its schema; the message starts with the dotted path."""
+def _icons_module() -> ModuleType:
+    """The icon renderer, imported when `run` needs it rather than at module load."""
+    import gen_icons
+
+    return gen_icons
 
 
 def _fail(path: str, message: str) -> NoReturn:
@@ -830,9 +838,15 @@ def run(root: Path, check: bool) -> int:
         "tokens": load(root / SOURCE),
         "colour": load_colour(root / COLOUR_SOURCE),
     }
+    # Imported after the token and colour sources: a broken one must reach `main`
+    # as one `error:` line, whatever state the icon module is in.
+    icons = _icons_module()
+    sources["icons"] = icons.load_icons(root)
+    outputs = dict(OUTPUTS)
+    outputs.update(icons.renderers(sources["icons"]))
     # Render everything first so a failing renderer leaves no half-written output.
     rendered = [
-        (Path(path), _encoded(render(sources))) for path, render in sorted(OUTPUTS.items())
+        (Path(path), _encoded(render(sources))) for path, render in sorted(outputs.items())
     ]
     problems = 0
     for path, content in rendered:
@@ -850,6 +864,17 @@ def run(root: Path, check: bool) -> int:
         if current != content:
             print(f"stale: {path.as_posix()}", file=sys.stderr)
             problems += 1
+    # One asset per icon: a file left below the asset directory that is no longer
+    # an output belongs to a removed icon, so it is stale too.
+    for target in sorted(path for path in (root / icons.ASSET_ROOT).rglob("*") if path.is_file()):
+        path = target.relative_to(root)
+        if path in outputs:
+            continue
+        if check:
+            print(f"stale: {path.as_posix()}", file=sys.stderr)
+            problems += 1
+        else:
+            target.unlink()
     return 1 if problems else 0
 
 
