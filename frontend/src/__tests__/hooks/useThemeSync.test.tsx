@@ -29,11 +29,14 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 let latest: ThemeContextValue;
 let latestMuiTheme: Theme;
 let patches: UpdateAppearanceSettingsDto[];
+/** The effective mode of every render in which match-system was on. */
+let modesSeenWithMatchSystem: string[];
 
 function Probe() {
   useThemeSync();
   latest = useTheme();
   latestMuiTheme = useMuiTheme();
+  if (latest.matchSystem) modesSeenWithMatchSystem.push(latest.effectiveMode);
   return null;
 }
 
@@ -88,6 +91,7 @@ describe('useThemeSync with the appearance fields', () => {
   beforeEach(() => {
     localStorage.clear();
     patches = [];
+    modesSeenWithMatchSystem = [];
   });
 
   afterEach(() => {
@@ -113,13 +117,15 @@ describe('useThemeSync with the appearance fields', () => {
     });
     renderSync();
 
-    await waitFor(() => expect(latest.baseColor).toBe(ACCENT_PRIMARY.purple));
+    await waitFor(() => expect(latest.matchSystem).toBe(true));
+    expect(latest.baseColor).toBe(ACCENT_PRIMARY.purple);
     expect(latest.settings.accentColor).toBe('purple');
     expect(latest.settings.intensity).toBe('balanced');
-    expect(latest.matchSystem).toBe(true);
     expect(latest.newDesign).toBe(true);
-    // match-system is on, so the OS preference (dark) beats the server's own mode.
+    // match-system is on, so the OS preference (dark) beats the server's own mode,
+    // in the very render in which match-system turned on (no frame in light first).
     expect(latest.effectiveMode).toBe('dark');
+    expect(modesSeenWithMatchSystem).not.toContain('light');
   });
 
   it('leaves the local value for every field the server sends malformed', async () => {
