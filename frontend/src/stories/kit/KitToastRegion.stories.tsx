@@ -1,9 +1,12 @@
-import { useEffect, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react';
 import {
   AppFrame,
   Button,
   Card,
   Dialog,
+  IconButton,
+  Menu,
+  SettingsLayout,
   StageLayout,
   Text,
   ThreeIslands,
@@ -20,7 +23,10 @@ import {
   SampleControls,
   SampleConversation,
   SampleDock,
+  SampleRoleForm,
   SampleScreen,
+  SampleSections,
+  SampleUnsaved,
   SampleStageHeader,
   SampleStrip,
 } from '../fixtures/layoutSamples';
@@ -281,6 +287,85 @@ export const OnStage = () => (
 
 /** How much of the window the faked keyboard covers (browser-tests/toast-region.spec.ts uses the same share). */
 const KEYBOARD_SHARE = 0.36;
+
+/**
+ * A menu opened upwards from beside the composer while a toast shows: every overlay is drawn over the toast, so
+ * its bottom rows stay readable and pressable.
+ */
+function ComposerMenu(): JSX.Element {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [open, setOpen] = useState(true);
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => setAnchor(button.current), []);
+  return (
+    <div style={{ position: 'fixed', left: '50%', bottom: tokens.space.xl * 3, transform: 'translateX(-50%)' }}>
+      <IconButton ref={button} icon="Plus" label="Add to message" variant="soft" onClick={() => setOpen(true)} />
+      <Menu
+        open={open && anchor !== null}
+        anchor={anchor}
+        onClose={() => setOpen(false)}
+        label="Add to message"
+        placement="top-start"
+        items={[
+          { id: 'file', label: 'Upload a file', icon: 'Paperclip', onSelect: noop },
+          { id: 'poll', label: 'Start a poll', icon: 'LayoutGrid', onSelect: noop },
+          { id: 'clip', label: 'Share a clip', icon: 'Image', onSelect: noop },
+        ]}
+      />
+    </div>
+  );
+}
+
+export const MenuOverToast = () => (
+  <KitFrameStage mode="dark">
+    <Chat mode="dark" call={false}>
+      <HeldToast request={{ id: 'copied', message: 'Copied link to the clip' }} />
+      <ComposerMenu />
+    </Chat>
+  </KitFrameStage>
+);
+
+/**
+ * Settings: a toast shows, then the unsaved-changes bar appears under it (press Make a change). The toast moves
+ * up above the bar, so Save and Reset are never covered.
+ */
+function SettingsWithFooter({ startDirty = false }: { startDirty?: boolean }): JSX.Element {
+  const [dirty, setDirty] = useState(startDirty);
+  return (
+    <AppFrame>
+      <SettingsLayout
+        title="Community settings"
+        nav={<SampleSections />}
+        navLabel="Community settings sections"
+        footer={dirty ? <SampleUnsaved /> : undefined}
+        phonePane="content"
+        onBack={noop}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.space.lg }}>
+          <div>
+            <Button variant="soft" onClick={() => setDirty(!dirty)}>
+              {dirty ? 'Undo the change' : 'Make a change'}
+            </Button>
+          </div>
+          <SampleRoleForm />
+        </div>
+      </SettingsLayout>
+      <HeldToast request={{ id: 'role-saved', tone: 'positive', message: 'Role colour updated' }} />
+    </AppFrame>
+  );
+}
+
+export const SettingsFooterAppears = () => (
+  <KitFrameStage mode="dark">
+    <SettingsWithFooter />
+  </KitFrameStage>
+);
+
+export const SettingsWithUnsavedFooter = () => (
+  <KitFrameStage mode="dark">
+    <SettingsWithFooter startDirty />
+  </KitFrameStage>
+);
 
 /**
  * Fakes the on-screen keyboard for a story: the visual viewport reports `KEYBOARD_SHARE` of the window less, as a

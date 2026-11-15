@@ -138,6 +138,29 @@ fn toast_ms(toast: &Toast, params: &Params) -> Option<u32> {
     }
 }
 
+/// Rule 17: only a waiting toast with no action that is not danger is dropped for waiting.
+fn droppable(toast: &Toast) -> bool {
+    toast.tone != Tone::Danger && toast.action.is_none()
+}
+
+/// Rule 17: start the wait of the waiting toast at `index` with the next token.
+fn start_wait(state: &mut State, index: usize, params: &Params, effects: &mut Vec<Effect>) {
+    if let Some(wait) = state.waits.get_mut(index) {
+        state.token = state.token.saturating_add(1);
+        *wait = Some(state.token);
+        effects.push(Effect::StartTimer {
+            token: state.token,
+            ms: params.max_wait_ms,
+        });
+    }
+}
+
+/// Keeps `waits` as long as `queue`, so a malformed state (one built by hand with lists of different
+/// lengths) cannot make the step panic: missing waits are none, extra ones are dropped.
+fn align_waits(state: &mut State) {
+    state.waits.resize(state.queue.len(), None);
+}
+
 /// Cancel the showing toast's timer, if one runs.
 fn cancel_showing_timer(state: &mut State, effects: &mut Vec<Effect>) {
     if let Some(token) = state.timer.take() {
@@ -206,6 +229,7 @@ fn leave(state: &mut State, params: &Params, effects: &mut Vec<Effect>) {
 
 pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect>) {
     let mut next = state.clone();
+    align_waits(&mut next);
     let mut effects = Vec::new();
     let showing = next.showing.clone();
 
@@ -243,13 +267,13 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
                     }
                 }
                 next.queue.push(toast.clone());
-                // Rule 17: every waiting toast's wait is timed from when it joined the queue.
-                next.token = next.token.saturating_add(1);
-                next.waits.push(Some(next.token));
-                effects.push(Effect::StartTimer {
-                    token: next.token,
-                    ms: params.max_wait_ms,
-                });
+                next.waits.push(None);
+                // Rule 17: a droppable toast's wait starts when it joins the queue, unless the
+                // area is paused: then it starts at resume.
+                if droppable(toast) && !next.paused {
+                    let last = next.queue.len() - 1;
+                    start_wait(&mut next, last, params, &mut effects);
+                }
             }
         }
         Event::Dismiss { id, focus_inside } => {
@@ -277,13 +301,13 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
                 next.timer = None;
                 leave(&mut next, params, &mut effects);
             } else if let Some(at) = next.waits.iter().position(|wait| *wait == Some(*token)) {
-                // Rule 17: a waiting toast whose wait ends is dropped with no other effect,
-                // unless it is danger then; a danger toast keeps waiting.
-                if next.queue[at].tone == Tone::Danger {
-                    next.waits[at] = None;
-                } else {
+                // Rule 17: a waiting toast whose wait ends is dropped with no other effect if it
+                // is still droppable; otherwise it waits on, with no wait.
+                if droppable(&next.queue[at]) {
                     next.queue.remove(at);
                     next.waits.remove(at);
+                } else {
+                    next.waits[at] = None;
                 }
             }
             // Rule 10: a timer with any other token does nothing.
@@ -292,9 +316,14 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
             // Rule 11: pause cancels the showing toast's timer (when there is one); while already paused, or
             // while nothing is showing, it does nothing.
             // Rule 15: the host sends one pause for all its reasons to pause.
-            // Rule 17: the waits of the waiting toasts go on.
+            // Rule 17: the waits do not count while paused: every running wait is cancelled.
             if showing.is_some() && !next.paused {
                 cancel_showing_timer(&mut next, &mut effects);
+                for wait in &mut next.waits {
+                    if let Some(token) = wait.take() {
+                        effects.push(Effect::CancelTimer { token });
+                    }
+                }
                 next.paused = true;
             }
         }
@@ -315,6 +344,12 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
                         token: next.token,
                         ms,
                     });
+                }
+                // Rule 17: each droppable waiting toast's wait starts again from the full time.
+                for index in 0..next.queue.len() {
+                    if droppable(&next.queue[index]) {
+                        start_wait(&mut next, index, params, &mut effects);
+                    }
                 }
             }
         }

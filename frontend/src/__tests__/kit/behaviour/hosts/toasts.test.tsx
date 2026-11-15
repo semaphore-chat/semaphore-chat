@@ -5,18 +5,21 @@
  * id, dismiss, the action, F6 and focus return, and the announcements.
  * The reducer vectors prove the queue; these prove the host's translation.
  */
-import { useRef, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import {
   AppFrame,
   Button,
+  KitProvider,
   Dialog,
-  ToastRegion,
   useScreenFocusTarget,
+  useToastClearance,
   useToasts,
   type Toasts,
 } from '../../../../kit';
+import { ToastRegion } from '../../../../kit/display/ToastRegion';
 import { useBehaviourHost, type BehaviourHostValue } from '../../../../kit/behaviour/hosts/hostContext';
 import { tokens } from '../../../../theme/generated/tokens';
 import { renderWithKit } from '../../../test-utils/renderWithKit';
@@ -150,6 +153,39 @@ describe('toast host: showing and leaving', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(shownText()).toContain('Next');
+  });
+
+  it('the action dismisses first, so a follow-up it shows under the same id stays', () => {
+    renderWithKit(<Screen />);
+    const retry = vi.fn(() => {
+      toasts.show({ id: 'send', tone: 'danger', message: 'Still offline', action: { label: 'Retry', onAction: retry } });
+    });
+    show({ id: 'send', tone: 'danger', message: "Couldn't send", action: { label: 'Retry', onAction: retry } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(shownText()).toContain('Still offline');
+    // Its action is still there.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledTimes(2);
+  });
+
+  it('an action that throws or rejects is reported, and the queue carries on', async () => {
+    consoleError.mockImplementation(() => undefined);
+    renderWithKit(<Screen />);
+    const boom = new Error('boom');
+    show({ message: 'One', action: { label: 'Undo', onAction: () => { throw boom; } } });
+    show({ message: 'Two', action: { label: 'Again', onAction: () => Promise.reject(boom) } });
+    show({ message: 'Three' });
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(shownText()).toContain('Two');
+    fireEvent.click(screen.getByRole('button', { name: 'Again' }));
+    expect(shownText()).toContain('Three');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(consoleError).toHaveBeenCalledTimes(2);
+    expect(consoleError).toHaveBeenCalledWith(boom);
+    consoleError.mockClear();
   });
 
   it('is rendered by AppFrame', () => {
@@ -303,16 +339,131 @@ describe('toast host: reasons to pause', () => {
   });
 });
 
+/** StrictMode outside the KitProvider, so the behaviour host's own effects run twice, as in the app. */
+function Strict({ children }: { children: ReactNode }) {
+  return (
+    <StrictMode>
+      <ThemeProvider theme={createTheme()}>
+        <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
+          {children}
+        </KitProvider>
+      </ThemeProvider>
+    </StrictMode>
+  );
+}
+
+describe('toast host: StrictMode', () => {
+  it('a disconnect and reconnect of the host (what StrictMode does to its effect) keeps the timers running', () => {
+    renderWithKit(<Screen />);
+    show({ message: 'Saved' });
+    show({ message: 'Copied' });
+    show({ message: 'Pinned' });
+    act(() => {
+      const off = host.toasts.connect();
+      off();
+    });
+    advance(SHORT);
+    expect(shownText()).toContain('Copied');
+    advance(SHORT);
+    expect(shownText()).toContain('Pinned');
+    advance(SHORT);
+    expect(region()).toBeNull();
+  });
+
+  it('a toast shown in a mount effect under StrictMode still leaves after its timer', () => {
+    function OnMount() {
+      const t = useToasts();
+      useEffect(() => {
+        t.show({ message: 'Welcome back' });
+      }, [t]);
+      return null;
+    }
+    render(
+      <Strict>
+        <Probe />
+        <OnMount />
+        <ToastRegion />
+      </Strict>,
+    );
+    expect(shownText()).toContain('Welcome back');
+    advance(SHORT * 2);
+    expect(region()).toBeNull();
+  });
+
+  it('queued toasts shown on mount keep their waits and timers', () => {
+    function OnMount() {
+      const t = useToasts();
+      useEffect(() => {
+        t.show({ id: 'a', message: 'A' });
+        t.show({ id: 'b', message: 'B' });
+        t.show({ id: 'c', message: 'C' });
+      }, [t]);
+      return null;
+    }
+    render(
+      <Strict>
+        <Probe />
+        <OnMount />
+        <ToastRegion />
+      </Strict>,
+    );
+    advance(SHORT);
+    expect(shownText()).toContain('B');
+    advance(SHORT);
+    expect(shownText()).toContain('C');
+    advance(SHORT);
+    expect(region()).toBeNull();
+  });
+});
+
+describe('toast host: clearance', () => {
+  it('a clearance element that mounts later, or goes, makes the region measure again', () => {
+    function Footer() {
+      const [dirty, setDirty] = useState(false);
+      const ref = useRef<HTMLDivElement>(null);
+      useToastClearance(ref);
+      return (
+        <>
+          <Button onClick={() => setDirty(!dirty)}>Edit</Button>
+          {dirty && <div ref={ref}>Unsaved changes</div>}
+        </>
+      );
+    }
+    renderWithKit(
+      <>
+        <Probe />
+        <Footer />
+      </>,
+    );
+    const measured = vi.fn();
+    const off = host.toasts.onLayout(measured);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(measured).toHaveBeenCalledTimes(1);
+    expect(host.toasts.clearances()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(measured).toHaveBeenCalledTimes(2);
+    expect(host.toasts.clearances()).toHaveLength(0);
+    off();
+  });
+});
+
 describe('toast host: rule 17, a waiting toast that is not danger is dropped after its wait', () => {
-  it('a success waiting behind a sticky danger toast is dropped at toastAction; a waiting danger toast is not', () => {
+  it('a success waiting behind a sticky danger toast is dropped at toastAction; an Undo and a danger toast are not', () => {
     renderWithKit(<Screen />);
     show({ message: "Couldn't send", tone: 'danger', action: { label: 'Retry', onAction: () => undefined } });
     show({ message: 'Saved', tone: 'positive' });
+    show({ message: 'Message deleted', action: { label: 'Undo', onAction: () => undefined } });
     show({ message: "Couldn't upload", tone: 'danger' });
+    const queued = () => host.toasts.machine.getState().queue.map((t) => t.message);
     advance(LONG - 1);
-    expect(host.toasts.machine.getState().queue.map((t) => t.message)).toEqual(['Saved', "Couldn't upload"]);
-    advance(1);
-    expect(host.toasts.machine.getState().queue.map((t) => t.message)).toEqual(["Couldn't upload"]);
+    expect(queued()).toEqual(['Saved', 'Message deleted', "Couldn't upload"]);
+    // The ended wait is delivered one task later (a tie goes to the showing timer); fake timers make that 1 ms.
+    advance(2);
+    expect(queued()).toEqual(['Message deleted', "Couldn't upload"]);
+    advance(LONG * 3);
+    expect(queued()).toEqual(['Message deleted', "Couldn't upload"]);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(shownText()).toContain('Message deleted');
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(shownText()).toContain("Couldn't upload");
   });
@@ -329,16 +480,41 @@ describe('toast host: rule 17, a waiting toast that is not danger is dropped aft
     expect(region()).toBeNull();
   });
 
-  it('the wait counts while the toast area is paused', () => {
+  it('the wait does not count while the toast area is paused: nothing raised behind a dialog is dropped unseen', () => {
     renderWithKit(<Screen />);
     show({ message: 'Copied' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open dialog' }));
+    show({ message: 'Saved' });
+    advance(LONG * 3);
+    expect(host.toasts.machine.getState().queue.map((t) => t.message)).toEqual(['Saved']);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    // After the dialog closes: Copied runs its full time, then Saved shows (its wait started again at resume).
+    advance(SHORT);
+    expect(shownText()).toContain('Saved');
+  });
+
+  it('a hover holds the waits too; they start again from the full time when it ends', () => {
+    renderWithKit(<Screen />);
+    show({ message: 'Message deleted', action: { label: 'Undo', onAction: () => undefined } });
     show({ message: 'Saved' });
     mouse(region() as HTMLElement, true);
-    advance(LONG);
-    expect(host.toasts.machine.getState().queue).toEqual([]);
+    advance(LONG * 3);
     mouse(region() as HTMLElement, false);
-    advance(SHORT);
-    expect(region()).toBeNull();
+    advance(LONG - 1);
+    expect(host.toasts.machine.getState().queue.map((t) => t.message)).toEqual(['Saved']);
+    advance(1);
+    // Undo's own timer and Saved's wait end together: promotion wins, Saved shows.
+    expect(shownText()).toContain('Saved');
+  });
+
+  it('at a tie (the showing timer and a wait end together) the waiting toast shows, not dropped', () => {
+    renderWithKit(<Screen />);
+    show({ message: 'A' });
+    show({ message: 'B' });
+    show({ message: 'C' });
+    // B shows at 4 s with a 4 s timer; C's wait also ends at 8 s.
+    advance(LONG);
+    expect(shownText()).toContain('C');
   });
 });
 

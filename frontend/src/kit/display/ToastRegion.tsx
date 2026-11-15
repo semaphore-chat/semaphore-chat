@@ -14,6 +14,7 @@ import { tokens } from '../../theme/generated/tokens';
 import type { Toast as QueuedToast } from '../behaviour/toastQueue';
 import { useBehaviourHost } from '../behaviour/hosts/hostContext';
 import type { ToastHost } from '../behaviour/hosts/toasts';
+import { layerIndex } from '../overlays/surface';
 import { kitTheme } from '../theme/KitProvider';
 import { focusRing } from '../theme/states';
 import { Toast } from './Toast';
@@ -42,7 +43,9 @@ const Region = styled('div')(({ theme }) => {
   const { palette } = kitTheme(theme);
   return {
     position: 'fixed',
-    zIndex: theme.zIndex.snackbar,
+    // Page level, one below every overlay (Menu, Popover, Select list, Tooltip, Dialog, Sheet): a panel opened
+    // from the composer is never covered, and under a dialog the toast is on the dimmed page.
+    zIndex: layerIndex(theme, 'panel') - 1,
     boxSizing: 'border-box',
     // The bottom edge sits at `top`: the region grows upwards from it.
     transform: 'translateY(-100%)',
@@ -50,8 +53,6 @@ const Region = styled('div')(({ theme }) => {
     outline: 'none',
     '&:focus-visible': focusRing(palette),
     '&[data-leaving]': { pointerEvents: 'none' },
-    // Under a dialog or sheet it stays on the dimmed page, below the modal level: seen, but never over the dialog.
-    '&[data-under-modal]': { zIndex: theme.zIndex.modal - 1 },
   };
 });
 
@@ -197,7 +198,6 @@ export function ToastRegion(): JSX.Element | null {
         data-kit-toast-region=""
         aria-hidden={modalOpen || undefined}
         inert={modalOpen}
-        data-under-modal={modalOpen ? '' : undefined}
         style={placeStyle(place)}
         onPointerEnter={(event) => {
           if (event.pointerType !== 'touch') host.setReason('pointer', true);

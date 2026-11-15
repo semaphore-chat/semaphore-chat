@@ -197,8 +197,9 @@ A confirm dialog is also a layer of the overlay stack. The host joins them:
 **What the user sees.** One toast at a time. If more arrive, they wait their
 turn. Each one leaves on its own after a while, or when the user dismisses it.
 While the pointer or focus is on a toast, or the window is hidden, or a dialog
-is open, it stays. A toast that has waited too long for its turn is dropped,
-unless it reports a failure.
+is open, it stays. A plain toast (no action, not a failure) that has waited
+too long for its turn is dropped; nothing is dropped while it could not be
+seen.
 
 Rules:
 
@@ -233,13 +234,20 @@ Rules:
   knows the action is there.
 - When the user dismisses a toast with focus inside the toast area, focus goes
   back to where it was before it entered the area.
-- A waiting toast that is not danger is dropped once it has waited the
-  toastAction timing (8 seconds): by then "Saved" or "Copied" is stale. Its
-  wait starts when it joins the queue and goes on while the toast area is
-  paused, because a pause holds only the toast on screen. A toast whose turn
-  comes first shows for its full time. A danger toast is never dropped: it
-  waits however long it takes. Replacing a waiting toast with the same id
-  keeps its wait.
+- A waiting toast with no action that is not danger is dropped once it has
+  waited the toastAction timing (8 seconds): by then "Saved" or "Copied" is
+  stale. A toast with an action (Undo) and a danger toast are never dropped:
+  they wait however long it takes. The wait starts when the toast joins the
+  queue. It does not count while the toast area is paused, whatever the
+  reason (the pointer or focus on the toast, the window hidden, a dialog
+  open): the pause stops every wait, and when it ends each one starts again
+  from the full time. So nothing raised behind a dialog is dropped unseen: it
+  shows, and is announced, after the dialog closes. A toast whose turn comes
+  first shows for its full time, also when its turn and its wait's end come
+  at the same moment. Replacing a waiting toast with the same id keeps its
+  wait (a fresher "3 new messages" keeps the clock of "2 new messages"); if
+  the replacement has an action or is danger, it is not dropped when the wait
+  ends.
 
 The toast area is a landmark region named "Notifications". Keyboard users
 reach it with F6, and F6 (or Shift+F6) inside it puts focus back where it was.
@@ -261,7 +269,7 @@ arriving behind it would be dropped after waiting eight seconds.
 |Pause|One `pause`/`resume` pair for pointer, focus, hidden window and open modal; `pause` again when a new toast appears while a reason holds|
 |Dismiss|`focusInside` sent; `returnFocus` puts focus back|
 |Reach|The area is a landmark; F6 moves focus into it and back; nothing while a modal is open|
-|Waits|Each waiting toast's `startTimer` runs like any other; it is not paused|
+|Waits|A wait's `startTimer` runs like any other (the reducer cancels waits on `pause`). When a wait and the showing toast's timer end at the same moment, send the showing toast's `timerFired` first (the web host delivers an ended wait one task later)|
 |Ids|Callers use one id per subject|
 
 ## Overlay stack

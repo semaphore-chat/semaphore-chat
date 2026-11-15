@@ -178,3 +178,54 @@ test('reduced motion: the toast does not move in', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(await animation()).toBe('none');
 });
+
+for (const [range, view] of [
+  ['phone', PHONE],
+  ['wide', WIDE],
+] as const) {
+  test(`${range}: a menu opened upwards from beside the composer is drawn over the toast`, async ({ page }) => {
+    await openStory(page, 'kit-toast-region--menu-over-toast', view);
+    await expect(page.locator('[data-kit-toast-region]')).toBeVisible();
+    await expect(page.getByRole('menu', { name: 'Add to message' })).toBeVisible();
+    const hits = await page.evaluate(() => {
+      const menu = document.querySelector('[role="menu"]') as HTMLElement;
+      const region = document.querySelector('[data-kit-toast-region]') as HTMLElement;
+      const items = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+      const box = (el: Element) => el.getBoundingClientRect();
+      const r = box(region);
+      return {
+        // Every row's centre hits the menu, never the toast.
+        rows: items.map((item) => {
+          const b = box(item);
+          return menu.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2));
+        }),
+        // The story places the menu so it overlaps the toast: the test means something.
+        overlap: items.some((item) => {
+          const b = box(item);
+          return b.left < r.right && r.left < b.right && b.top < r.bottom && r.top < b.bottom;
+        }),
+      };
+    });
+    expect(hits.rows.every(Boolean), JSON.stringify(hits)).toBe(true);
+    expect(hits.overlap, JSON.stringify(hits)).toBe(true);
+  });
+}
+
+test('settings: when the unsaved-changes bar appears under a toast, the toast moves above it; when it goes, back down', async ({ page }) => {
+  await openStory(page, 'kit-toast-region--settings-footer-appears', WIDE);
+  await expect(page.locator('[data-kit-toast-region]')).toBeVisible();
+  const read = () =>
+    page.evaluate(() => {
+      const r = (s: string) => document.querySelector(s)?.getBoundingClientRect() ?? null;
+      return { region: r('[data-kit-toast-region]')?.bottom ?? 0, footer: r('[data-slot="footer"]')?.top ?? null };
+    });
+  const before = await read();
+  expect(before.footer).toBeNull();
+  await page.getByRole('button', { name: 'Make a change' }).click();
+  await expect.poll(async () => {
+    const now = await read();
+    return now.footer !== null && now.region <= now.footer - gutter + 0.5;
+  }).toBe(true);
+  await page.getByRole('button', { name: 'Undo the change' }).click();
+  await expect.poll(async () => (await read()).region).toBeCloseTo(before.region, 0);
+});

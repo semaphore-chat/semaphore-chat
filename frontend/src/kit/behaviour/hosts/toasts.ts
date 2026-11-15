@@ -1,4 +1,4 @@
-import { useContext, useEffect, type RefObject } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import {
   DEFAULT_PARAMS,
   initialToastQueue,
@@ -24,8 +24,11 @@ export interface ToastRequest {
   /** `'neutral'` by default. */
   tone?: ToastTone;
   message: string;
-  /** One action, shown as a text button. Pressing it runs `onAction` and dismisses the toast. */
-  action?: { label: string; onAction: () => void };
+  /**
+   * One action, shown as a text button. Pressing it dismisses the toast, then runs `onAction`, so a follow-up
+   * the action shows under the same id stays. A throw or a rejected promise is reported, never left unhandled.
+   */
+  action?: { label: string; onAction: () => void | Promise<unknown> };
 }
 
 export interface Toasts {
@@ -49,13 +52,15 @@ export interface ToastHost {
   reasons(): ReadonlySet<PauseReason>;
   /** The region element while a toast shows (`ToastRegion` sets it). */
   setRegion(region: HTMLElement | null): void;
-  /** The toast's action was pressed: run it, then dismiss. */
+  /** The toast's action was pressed: dismiss, then run it. */
   act(id: string): void;
   /** Elements the region must sit above (a composer, the stage controls). */
   addClearance(ref: RefObject<HTMLElement | null>): () => void;
   clearances(): HTMLElement[];
-  /** Called when a clearance is added or removed, so the region measures again. */
+  /** Called when a clearance is added, removed, or its element appears or goes, so the region measures again. */
   onLayout(listener: () => void): () => void;
+  /** A clearance's element changed (it mounted later, or went). */
+  clearanceChanged(): void;
   /** Starts following the overlay stack and the queue; returns the function that stops it (and its timers). */
   connect(): () => void;
 }
@@ -68,15 +73,23 @@ export interface ToastHostOptions {
   overlay: Pick<OverlayHost, 'machine' | 'focusScreen'>;
   doc: Document;
   params?: Params;
+  /** Where an action that throws or rejects is reported; the queue carries on. */
+  onError?: (error: unknown) => void;
+}
+
+function reportToConsole(error: unknown): void {
+  console.error(error);
 }
 
 const MODAL_KINDS = new Set(['dialog', 'sheet']);
 
 export function createToastHost(options: ToastHostOptions): ToastHost {
-  const { ids, timers, announcer, overlay, doc, params = DEFAULT_PARAMS } = options;
+  const { ids, timers, announcer, overlay, doc, params = DEFAULT_PARAMS, onError = reportToConsole } = options;
   // The key of this machine's timers: another machine may hand out the same tokens.
   const owner = {};
-  const actions = new Map<string, () => void>();
+  const actions = new Map<string, () => void | Promise<unknown>>();
+  // Ids being shown right now: their action is stored before the toast is in the state (M6).
+  const pending = new Set<string>();
   const reasons = new Set<PauseReason>();
   const clearanceRefs: Array<RefObject<HTMLElement | null>> = [];
   const layoutListeners = new Set<() => void>();
@@ -92,7 +105,15 @@ export function createToastHost(options: ToastHostOptions): ToastHost {
     (effect, send) => {
       if ('startTimer' in effect) {
         const { token, ms } = effect.startTimer;
-        timers.start(owner, token, ms, () => send({ timerFired: { token } }));
+        const fire = () => send({ timerFired: { token } });
+        if (machine.getState().waits.includes(token)) {
+          // Rule 17: a wait that ends at the same moment as the showing toast's timer goes second, so the
+          // toast whose turn has come shows. Deliver it one task later, under the same key: if the toast is
+          // promoted first, the reducer's cancelTimer cancels this too.
+          timers.start(owner, token, ms, () => timers.start(owner, token, 0, fire));
+        } else {
+          timers.start(owner, token, ms, fire);
+        }
       } else if ('cancelTimer' in effect) {
         timers.cancel(owner, effect.cancelTimer.token);
       } else if ('announce' in effect) {
@@ -144,16 +165,17 @@ export function createToastHost(options: ToastHostOptions): ToastHost {
       shown = now;
       const live = new Set([state.showing?.id, ...state.queue.map((toast) => toast.id)]);
       [...actions.keys()].forEach((id) => {
-        if (!live.has(id)) actions.delete(id);
+        if (!live.has(id) && !pending.has(id)) actions.delete(id);
       });
     });
     const offOverlay = overlay.machine.subscribe(() => setReason('modal', isModalOpen()));
     setReason('modal', isModalOpen());
     setReason('hidden', hiddenNow());
+    // The timers are left running: they belong to the machine, which outlives a connection, and a reconnect
+    // (StrictMode runs effects twice) could not restore them. A late one only steps the machine.
     return () => {
       offMachine();
       offOverlay();
-      timers.disposeAll(owner);
     };
   }
 
@@ -162,9 +184,14 @@ export function createToastHost(options: ToastHostOptions): ToastHost {
       const toastId = id ?? ids.next('toast');
       if (action === undefined) actions.delete(toastId);
       else actions.set(toastId, action.onAction);
-      machine.send({
-        show: { toast: { id: toastId, tone, message, action: action?.label ?? null } },
-      });
+      pending.add(toastId);
+      try {
+        machine.send({
+          show: { toast: { id: toastId, tone, message, action: action?.label ?? null } },
+        });
+      } finally {
+        pending.delete(toastId);
+      }
       return toastId;
     },
     dismiss(id) {
@@ -212,11 +239,15 @@ export function createToastHost(options: ToastHostOptions): ToastHost {
     },
     act(id) {
       const action = actions.get(id);
-      const inside = focusInside();
+      // Dismiss first: a follow-up the action shows under the same id then replaces nothing and stays.
+      machine.send({ dismiss: { id, focusInside: focusInside() } });
       try {
-        action?.();
-      } finally {
-        machine.send({ dismiss: { id, focusInside: inside } });
+        const result = action?.();
+        if (result !== undefined && typeof (result as Promise<unknown>).then === 'function') {
+          (result as Promise<unknown>).then(undefined, onError);
+        }
+      } catch (error) {
+        onError(error);
       }
     },
     addClearance(ref) {
@@ -230,6 +261,9 @@ export function createToastHost(options: ToastHostOptions): ToastHost {
     },
     clearances: () =>
       clearanceRefs.map((ref) => ref.current).filter((element): element is HTMLElement => element !== null),
+    clearanceChanged() {
+      layoutListeners.forEach((listener) => listener());
+    },
     onLayout(listener) {
       layoutListeners.add(listener);
       return () => {
@@ -261,7 +295,8 @@ export function joinHandlers(first: RouterHandlers, second: RouterHandlers): Rou
 /**
  * For screens: show and dismiss toasts. The object is the same for the life of
  * the page, so it can sit in effect dependencies; it works before the toast
- * region has mounted. Never render a `Toast` yourself.
+ * region has mounted. Call it from event handlers and effects, never while
+ * rendering. Never render a `Toast` yourself.
  */
 export function useToasts(): Toasts {
   return useBehaviourHost().toasts.toasts;
@@ -274,4 +309,11 @@ export function useToasts(): Toasts {
 export function useToastClearance(ref: RefObject<HTMLElement | null>): void {
   const host = useContext(BehaviourHostContext);
   useEffect(() => host?.toasts.addClearance(ref), [host, ref]);
+  // The element can mount later or go (a settings footer that appears with unsaved changes): tell the host.
+  const last = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (ref.current === last.current) return;
+    last.current = ref.current;
+    host?.toasts.clearanceChanged();
+  });
 }

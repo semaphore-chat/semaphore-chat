@@ -1,6 +1,6 @@
 {
   "pattern": "toastQueue",
-  "doc": "One toast on screen at a time; the rest wait in order. Each toast leaves on its own after its timer, or when the user dismisses it, and the timer stops while the host has a reason to pause. A waiting toast that is not danger is dropped once it has waited too long.",
+  "doc": "One toast on screen at a time; the rest wait in order. Each toast leaves on its own after its timer, or when the user dismisses it, and the timer stops while the host has a reason to pause. A waiting toast with no action that is not danger is dropped once it has waited too long while the toast area was not paused.",
   "params": {
     "durationMs": "motion.toast",
     "durationWithActionMs": "motion.toastAction",
@@ -10,7 +10,7 @@
   "state": {
     "showing": "Toast | null: the toast on screen",
     "queue": "Toast[]: the toasts waiting, oldest first",
-    "waits": "(int | null)[]: for each waiting toast, in queue order, the token of its wait timer (rule 17); null once the wait of a danger toast has ended",
+    "waits": "(int | null)[]: for each waiting toast, in queue order, the token of its running wait (rule 17), or null when none runs: it has an action or is danger, the toast area is paused, or its wait ended",
     "paused": "bool: the host has a reason to pause (rule 15); false whenever nothing is showing",
     "token": "int: the last timer token handed out; every timer takes the next one",
     "timer": "int | null: the token of the showing toast's timer while it runs; only that token makes the showing toast leave"
@@ -55,13 +55,13 @@
     "Dismissing the showing toast cancels its timer, if it has one, and shows the next queued toast, or nothing when the queue is empty.",
     "Dismissing a queued toast removes it from the queue and cancels its wait. Dismissing an id that is neither showing nor queued does nothing.",
     "When the showing toast's timer fires, the showing toast leaves as if dismissed, without a cancelTimer. A timer whose token is neither the showing toast's timer nor a waiting toast's wait does nothing.",
-    "pause cancels the showing toast's timer, if there is one. pause while already paused, or while nothing is showing, does nothing.",
-    "resume starts the timer again, if the toast has one, with the full duration and a new token, never the time that was left. resume while not paused does nothing.",
+    "pause cancels the showing toast's timer, if there is one, and every running wait (rule 17). pause while already paused, or while nothing is showing, does nothing.",
+    "resume starts the timer again, if the toast has one, with the full duration and a new token, never the time that was left; then it starts a new wait, with the full time, for each waiting toast that can be dropped (rule 17), in queue order. resume while not paused does nothing.",
     "The pause belongs to the toast area, not to one toast: a toast that takes the place of a dismissed one while paused shows without a timer until resume. When the last toast leaves, the pause ends; a host whose reason to pause still holds when the next toast shows sends pause again.",
     "Every announcement carries the toast's action label, or null, so a screen reader is told that an action exists.",
     "The host combines every reason to pause into one pause and resume: the pointer on the toast area, focus inside it, the window hidden, and a modal layer open (which makes the toast unreachable). It sends pause when the first reason starts and resume when the last one ends.",
     "When the showing toast is dismissed while focus is inside the toast area, returnFocus asks the host to put focus back where it was before it entered the area.",
-    "A waiting toast that is not danger is dropped once it has waited maxWaitMs (motion.toastAction). Its wait is a timer with the next token, started when it joins the queue. The wait keeps counting while the toast area is paused: a pause holds only the toast on screen, and a waiting toast is not on screen. When the wait ends the toast leaves the queue with no other effect; a toast that is danger then is never dropped and waits on. A toast that leaves the queue before its wait ends (it shows, is dismissed, or is dropped from a full queue) has its wait cancelled."
+    "Only a waiting toast with no action that is not danger (a droppable toast) is ever dropped for waiting; a toast with an action and a danger toast wait however long it takes. A droppable toast's wait is a timer of maxWaitMs (motion.toastAction) with the next token. It starts when the toast joins the queue; if the toast area is paused then, it starts at resume. The wait does not count while the toast area is paused, whatever the reason (the pointer, focus, the window hidden, a modal open): pause cancels every running wait and resume starts each one again from the full time, so nothing is dropped unseen behind a dialog. When a wait ends and the toast is still droppable, the toast leaves the queue with no other effect; if a replacement in place (rule 4) gave it an action or the danger tone, it waits on with no wait. A toast that leaves the queue before its wait ends (it shows, is dismissed, or is dropped from a full queue) has its wait cancelled. A replacement in place keeps the wait the toast has, or its lack of one, so a fresher message keeps the older one's clock. When the showing toast's timer and a wait end at the same moment, the host sends the showing toast's timerFired first, so the toast whose turn has come shows: promotion wins."
   ],
   "scenarios": [
     {
@@ -771,66 +771,6 @@
       ]
     },
     {
-      "name": "a waiting success is dropped once it has waited too long",
-      "covers": [
-        17,
-        7
-      ],
-      "events": [
-        {
-          "show": {
-            "toast": {
-              "id": "s",
-              "tone": "danger",
-              "message": "Couldn't send",
-              "action": "Retry"
-            }
-          }
-        },
-        {
-          "show": {
-            "toast": {
-              "id": "a",
-              "tone": "positive",
-              "message": "Saved",
-              "action": null
-            }
-          }
-        },
-        {
-          "show": {
-            "toast": {
-              "id": "b",
-              "tone": "danger",
-              "message": "Couldn't upload",
-              "action": null
-            }
-          }
-        },
-        {
-          "timerFired": {
-            "token": 2
-          }
-        },
-        {
-          "timerFired": {
-            "token": 3
-          }
-        },
-        {
-          "timerFired": {
-            "token": 2
-          }
-        },
-        {
-          "dismiss": {
-            "id": "s",
-            "focusInside": false
-          }
-        }
-      ]
-    },
-    {
       "name": "a toast that shows before its wait ends stays",
       "covers": [
         17,
@@ -875,7 +815,78 @@
       ]
     },
     {
-      "name": "the wait goes on while the toast area is paused",
+      "name": "a waiting success is dropped once it has waited too long; undo and danger wait on",
+      "covers": [
+        17,
+        7
+      ],
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "s",
+              "tone": "danger",
+              "message": "Couldn't send",
+              "action": "Retry"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "positive",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "u",
+              "tone": "neutral",
+              "message": "Message deleted",
+              "action": "Undo"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "danger",
+              "message": "Couldn't upload",
+              "action": null
+            }
+          }
+        },
+        {
+          "timerFired": {
+            "token": 2
+          }
+        },
+        {
+          "timerFired": {
+            "token": 3
+          }
+        },
+        {
+          "dismiss": {
+            "id": "s",
+            "focusInside": false
+          }
+        },
+        {
+          "dismiss": {
+            "id": "u",
+            "focusInside": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "the wait stops while the toast area is paused",
       "covers": [
         17,
         11,
@@ -904,6 +915,14 @@
           }
         },
         {
+          "pause": {}
+        },
+        {
+          "timerFired": {
+            "token": 2
+          }
+        },
+        {
           "show": {
             "toast": {
               "id": "c",
@@ -914,7 +933,110 @@
           }
         },
         {
-          "pause": {}
+          "resume": {}
+        },
+        {
+          "timerFired": {
+            "token": 4
+          }
+        },
+        {
+          "timerFired": {
+            "token": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "at a tie the showing toast's timer goes first and the waiting toast shows",
+      "covers": [
+        17,
+        10
+      ],
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "neutral",
+              "message": "Copied",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "c",
+              "tone": "neutral",
+              "message": "Pinned",
+              "action": null
+            }
+          }
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "timerFired": {
+            "token": 4
+          }
+        },
+        {
+          "timerFired": {
+            "token": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "a replacement in place keeps the wait and is judged when it ends",
+      "covers": [
+        17,
+        4
+      ],
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "neutral",
+              "message": "2 new messages",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "neutral",
+              "message": "Message deleted",
+              "action": "Undo"
+            }
+          }
         },
         {
           "timerFired": {
@@ -926,9 +1048,6 @@
             "id": "a",
             "focusInside": false
           }
-        },
-        {
-          "resume": {}
         }
       ]
     }

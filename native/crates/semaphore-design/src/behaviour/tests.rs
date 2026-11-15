@@ -370,6 +370,51 @@ impl Port for ToastQueue {
     }
 }
 
+/// A hand-built state whose `waits` and `queue` differ in length must not make the step panic.
+#[test]
+fn toast_queue_tolerates_waits_out_of_step_with_the_queue() {
+    let item = |id: &str| toast::Toast {
+        id: id.to_owned(),
+        tone: toast::Tone::Neutral,
+        message: id.to_owned(),
+        action: None,
+    };
+    let params = toast::Params::default();
+    let events = [
+        toast::Event::TimerFired { token: 7 },
+        toast::Event::Dismiss {
+            id: "b".to_owned(),
+            focus_inside: false,
+        },
+        toast::Event::Pause,
+        toast::Event::Resume,
+        toast::Event::Show { toast: item("c") },
+        toast::Event::Dismiss {
+            id: "a".to_owned(),
+            focus_inside: false,
+        },
+    ];
+    for waits in [
+        vec![],
+        vec![Some(7)],
+        vec![Some(7), None, Some(9), Some(11)],
+    ] {
+        let mut state = toast::State {
+            showing: Some(item("a")),
+            queue: vec![item("b"), item("x")],
+            waits,
+            paused: false,
+            token: 11,
+            timer: Some(1),
+        };
+        for event in &events {
+            let (next, _) = toast::step(&state, event, &params);
+            assert_eq!(next.waits.len(), next.queue.len());
+            state = next;
+        }
+    }
+}
+
 #[test]
 fn toast_queue_reproduces_every_vector() {
     check_vectors::<ToastQueue>();

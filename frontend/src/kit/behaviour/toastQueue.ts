@@ -26,8 +26,8 @@ export interface State {
   /** The toasts waiting, oldest first. */
   queue: Toast[];
   /**
-   * Rule 17: for each waiting toast, in queue order, the token of its wait
-   * timer; null once the wait of a danger toast has ended.
+   * Rule 17: for each waiting toast, in queue order, the token of its running
+   * wait; null when none runs (an action or danger, a pause, or an ended wait).
    */
   waits: (number | null)[];
   /** The host has a reason to pause; false whenever nothing is showing. */
@@ -83,6 +83,18 @@ function toastMs(toast: Toast, params: Params): number | null {
     return toast.action !== null ? null : params.durationWithActionMs;
   }
   return toast.action !== null ? params.durationWithActionMs : params.durationMs;
+}
+
+/** Rule 17: only a waiting toast with no action that is not danger is dropped for waiting. */
+function droppable(toast: Toast): boolean {
+  return toast.tone !== 'danger' && toast.action === null;
+}
+
+/** Rule 17: start the wait of the waiting toast at `index` with the next token. */
+function startWait(state: State, index: number, params: Params, effects: Effect[]): void {
+  state.token += 1;
+  state.waits[index] = state.token;
+  effects.push({ startTimer: { token: state.token, ms: params.maxWaitMs } });
 }
 
 /** Cancel the showing toast's timer, if one runs. */
@@ -196,10 +208,10 @@ export function stepToastQueue(
         }
         // Rule 2: it waits at the end of the queue; nothing is announced until it shows.
         next.queue.push(toast);
-        // Rule 17: every waiting toast's wait is timed from when it joined the queue.
-        next.token += 1;
-        next.waits.push(next.token);
-        effects.push({ startTimer: { token: next.token, ms: params.maxWaitMs } });
+        next.waits.push(null);
+        // Rule 17: a droppable toast's wait starts when it joins the queue,
+        // unless the area is paused: then it starts at resume.
+        if (droppable(toast) && !next.paused) startWait(next, next.queue.length - 1, params, effects);
       }
     }
   } else if ('dismiss' in event) {
@@ -227,8 +239,9 @@ export function stepToastQueue(
       leave(next, params, effects);
     } else if (waiting !== -1) {
       // Rule 17: a waiting toast whose wait ends is dropped with no other
-      // effect, unless it is danger then; a danger toast keeps waiting.
-      if (next.queue[waiting]?.tone !== 'danger') {
+      // effect if it is still droppable; otherwise it waits on, with no wait.
+      const queued = next.queue[waiting];
+      if (queued !== undefined && droppable(queued)) {
         next.queue.splice(waiting, 1);
         next.waits.splice(waiting, 1);
       } else {
@@ -240,9 +253,13 @@ export function stepToastQueue(
     // Rule 11: pause cancels the showing toast's timer (when there is one);
     // while already paused, or while nothing is showing, it does nothing.
     // Rule 15: the host sends one pause for all its reasons to pause.
-    // Rule 17: the waits of the waiting toasts go on.
+    // Rule 17: the waits do not count while paused: every running wait is cancelled.
     if (showing !== null && !next.paused) {
       cancelShowingTimer(next, effects);
+      next.waits = next.waits.map((wait) => {
+        if (wait !== null) effects.push({ cancelTimer: { token: wait } });
+        return null;
+      });
       next.paused = true;
     }
   } else if ('resume' in event) {
@@ -256,6 +273,10 @@ export function stepToastQueue(
         next.timer = next.token;
         effects.push({ startTimer: { token: next.token, ms } });
       }
+      // Rule 17: each droppable waiting toast's wait starts again from the full time.
+      next.queue.forEach((toast, index) => {
+        if (droppable(toast)) startWait(next, index, params, effects);
+      });
     }
   }
 

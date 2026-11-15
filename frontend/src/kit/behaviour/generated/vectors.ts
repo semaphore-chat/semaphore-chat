@@ -7465,19 +7465,12 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 2,
+              token: 1,
               waits: [
-                2,
+                null,
               ],
             },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 2,
-                },
-              },
-            ],
+            effects: [],
           },
           {
             event: {
@@ -7494,20 +7487,15 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              timer: 3,
-              token: 3,
+              timer: 2,
+              token: 2,
               waits: [],
             },
             effects: [
               {
-                cancelTimer: {
-                  token: 2,
-                },
-              },
-              {
                 startTimer: {
                   ms: 8000,
-                  token: 3,
+                  token: 2,
                 },
               },
               {
@@ -7534,8 +7522,8 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              timer: 3,
-              token: 3,
+              timer: 2,
+              token: 2,
               waits: [],
             },
             effects: [],
@@ -7549,14 +7537,9 @@ export const behaviourVectors = {
             state: {
               paused: false,
               queue: [],
-              showing: {
-                action: null,
-                id: 'b',
-                message: 'Couldn\'t send',
-                tone: 'danger',
-              },
-              timer: 3,
-              token: 3,
+              showing: null,
+              timer: null,
+              token: 2,
               waits: [],
             },
             effects: [],
@@ -7572,7 +7555,7 @@ export const behaviourVectors = {
               queue: [],
               showing: null,
               timer: null,
-              token: 3,
+              token: 2,
               waits: [],
             },
             effects: [],
@@ -8153,8 +8136,99 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
+              token: 1,
+              waits: [
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t send',
+                  tone: 'danger',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t send',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 1,
+              waits: [
+                null,
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t send',
+                  tone: 'danger',
+                },
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
               token: 2,
               waits: [
+                null,
+                null,
                 2,
               ],
             },
@@ -8172,9 +8246,9 @@ export const behaviourVectors = {
               show: {
                 toast: {
                   action: null,
-                  id: 'b',
-                  message: 'Couldn\'t send',
-                  tone: 'danger',
+                  id: 'd',
+                  message: 'Joined',
+                  tone: 'positive',
                 },
               },
             },
@@ -8192,6 +8266,12 @@ export const behaviourVectors = {
                   id: 'b',
                   message: 'Couldn\'t send',
                   tone: 'danger',
+                },
+                {
+                  action: null,
+                  id: 'd',
+                  message: 'Joined',
+                  tone: 'positive',
                 },
               ],
               showing: {
@@ -8203,132 +8283,21 @@ export const behaviourVectors = {
               timer: 1,
               token: 3,
               waits: [
-                2,
+                null,
+                null,
                 3,
-              ],
-            },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 3,
-                },
-              },
-            ],
-          },
-          {
-            event: {
-              show: {
-                toast: {
-                  action: null,
-                  id: 'c',
-                  message: 'Copied',
-                  tone: 'neutral',
-                },
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
-                {
-                  action: 'Undo',
-                  id: 'u',
-                  message: 'Message deleted',
-                  tone: 'neutral',
-                },
-                {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t send',
-                  tone: 'danger',
-                },
-                {
-                  action: null,
-                  id: 'c',
-                  message: 'Copied',
-                  tone: 'neutral',
-                },
-              ],
-              showing: {
-                action: null,
-                id: 'a',
-                message: 'Saved',
-                tone: 'neutral',
-              },
-              timer: 1,
-              token: 4,
-              waits: [
-                2,
-                3,
-                4,
-              ],
-            },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 4,
-                },
-              },
-            ],
-          },
-          {
-            event: {
-              show: {
-                toast: {
-                  action: null,
-                  id: 'd',
-                  message: 'Joined',
-                  tone: 'positive',
-                },
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
-                {
-                  action: 'Undo',
-                  id: 'u',
-                  message: 'Message deleted',
-                  tone: 'neutral',
-                },
-                {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t send',
-                  tone: 'danger',
-                },
-                {
-                  action: null,
-                  id: 'd',
-                  message: 'Joined',
-                  tone: 'positive',
-                },
-              ],
-              showing: {
-                action: null,
-                id: 'a',
-                message: 'Saved',
-                tone: 'neutral',
-              },
-              timer: 1,
-              token: 5,
-              waits: [
-                2,
-                3,
-                5,
               ],
             },
             effects: [
               {
                 cancelTimer: {
-                  token: 4,
+                  token: 2,
                 },
               },
               {
                 startTimer: {
                   ms: 8000,
-                  token: 5,
+                  token: 3,
                 },
               },
             ],
@@ -8420,19 +8389,12 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 2,
+              token: 1,
               waits: [
-                2,
+                null,
               ],
             },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 2,
-                },
-              },
-            ],
+            effects: [],
           },
           {
             event: {
@@ -8468,20 +8430,13 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 3,
+              token: 1,
               waits: [
-                2,
-                3,
+                null,
+                null,
               ],
             },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 3,
-                },
-              },
-            ],
+            effects: [],
           },
           {
             event: {
@@ -8517,22 +8472,17 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 4,
+              token: 2,
               waits: [
-                3,
-                4,
+                null,
+                2,
               ],
             },
             effects: [
               {
-                cancelTimer: {
-                  token: 2,
-                },
-              },
-              {
                 startTimer: {
                   ms: 8000,
-                  token: 4,
+                  token: 2,
                 },
               },
             ],
@@ -8624,19 +8574,12 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 2,
+              token: 1,
               waits: [
-                2,
+                null,
               ],
             },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 2,
-                },
-              },
-            ],
+            effects: [],
           },
           {
             event: {
@@ -8672,20 +8615,13 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 3,
+              token: 1,
               waits: [
-                2,
-                3,
+                null,
+                null,
               ],
             },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 3,
-                },
-              },
-            ],
+            effects: [],
           },
           {
             event: {
@@ -8727,21 +8663,14 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 4,
+              token: 1,
               waits: [
-                2,
-                3,
-                4,
+                null,
+                null,
+                null,
               ],
             },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 4,
-                },
-              },
-            ],
+            effects: [],
           },
         ],
       },
@@ -9061,10 +8990,16 @@ export const behaviourVectors = {
               timer: null,
               token: 2,
               waits: [
-                2,
+                null,
               ],
             },
-            effects: [],
+            effects: [
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -9087,12 +9022,19 @@ export const behaviourVectors = {
                 tone: 'danger',
               },
               timer: null,
-              token: 3,
+              token: 4,
               waits: [
-                2,
+                4,
               ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 4,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -9110,20 +9052,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              timer: 4,
-              token: 4,
+              timer: 5,
+              token: 5,
               waits: [],
             },
             effects: [
               {
                 cancelTimer: {
-                  token: 2,
+                  token: 4,
                 },
               },
               {
                 startTimer: {
                   ms: 4000,
-                  token: 4,
+                  token: 5,
                 },
               },
               {
@@ -9623,19 +9565,12 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: 1,
-              token: 2,
+              token: 1,
               waits: [
-                2,
+                null,
               ],
             },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 2,
-                },
-              },
-            ],
+            effects: [],
           },
           {
             event: {
@@ -9658,9 +9593,9 @@ export const behaviourVectors = {
                 tone: 'neutral',
               },
               timer: null,
-              token: 2,
+              token: 1,
               waits: [
-                2,
+                null,
               ],
             },
             effects: [
@@ -9688,15 +9623,10 @@ export const behaviourVectors = {
                 tone: 'danger',
               },
               timer: null,
-              token: 3,
+              token: 2,
               waits: [],
             },
             effects: [
-              {
-                cancelTimer: {
-                  token: 2,
-                },
-              },
               {
                 announce: {
                   action: null,
@@ -9718,7 +9648,7 @@ export const behaviourVectors = {
               queue: [],
               showing: null,
               timer: null,
-              token: 3,
+              token: 2,
               waits: [],
             },
             effects: [],
@@ -9743,15 +9673,15 @@ export const behaviourVectors = {
                 message: 'Copied',
                 tone: 'neutral',
               },
-              timer: 4,
-              token: 4,
+              timer: 3,
+              token: 3,
               waits: [],
             },
             effects: [
               {
                 startTimer: {
                   ms: 4000,
-                  token: 4,
+                  token: 3,
                 },
               },
               {
@@ -10223,13 +10153,18 @@ export const behaviourVectors = {
               timer: null,
               token: 2,
               waits: [
-                2,
+                null,
               ],
             },
             effects: [
               {
                 cancelTimer: {
                   token: 1,
+                },
+              },
+              {
+                cancelTimer: {
+                  token: 2,
                 },
               },
             ],
@@ -10259,11 +10194,6 @@ export const behaviourVectors = {
                 returnFocus: {},
               },
               {
-                cancelTimer: {
-                  token: 2,
-                },
-              },
-              {
                 announce: {
                   action: null,
                   message: 'Saved',
@@ -10288,276 +10218,6 @@ export const behaviourVectors = {
               waits: [],
             },
             effects: [],
-          },
-        ],
-      },
-      {
-        name: 'a waiting success is dropped once it has waited too long',
-        params: {
-          durationMs: 4000,
-          durationWithActionMs: 8000,
-          maxQueued: 3,
-          maxWaitMs: 8000,
-        },
-        initial: {
-          paused: false,
-          queue: [],
-          showing: null,
-          timer: null,
-          token: 0,
-          waits: [],
-        },
-        steps: [
-          {
-            event: {
-              show: {
-                toast: {
-                  action: 'Retry',
-                  id: 's',
-                  message: 'Couldn\'t send',
-                  tone: 'danger',
-                },
-              },
-            },
-            state: {
-              paused: false,
-              queue: [],
-              showing: {
-                action: 'Retry',
-                id: 's',
-                message: 'Couldn\'t send',
-                tone: 'danger',
-              },
-              timer: null,
-              token: 1,
-              waits: [],
-            },
-            effects: [
-              {
-                announce: {
-                  action: 'Retry',
-                  message: 'Couldn\'t send',
-                  politeness: 'assertive',
-                },
-              },
-            ],
-          },
-          {
-            event: {
-              show: {
-                toast: {
-                  action: null,
-                  id: 'a',
-                  message: 'Saved',
-                  tone: 'positive',
-                },
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
-                {
-                  action: null,
-                  id: 'a',
-                  message: 'Saved',
-                  tone: 'positive',
-                },
-              ],
-              showing: {
-                action: 'Retry',
-                id: 's',
-                message: 'Couldn\'t send',
-                tone: 'danger',
-              },
-              timer: null,
-              token: 2,
-              waits: [
-                2,
-              ],
-            },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 2,
-                },
-              },
-            ],
-          },
-          {
-            event: {
-              show: {
-                toast: {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t upload',
-                  tone: 'danger',
-                },
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
-                {
-                  action: null,
-                  id: 'a',
-                  message: 'Saved',
-                  tone: 'positive',
-                },
-                {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t upload',
-                  tone: 'danger',
-                },
-              ],
-              showing: {
-                action: 'Retry',
-                id: 's',
-                message: 'Couldn\'t send',
-                tone: 'danger',
-              },
-              timer: null,
-              token: 3,
-              waits: [
-                2,
-                3,
-              ],
-            },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 3,
-                },
-              },
-            ],
-          },
-          {
-            event: {
-              timerFired: {
-                token: 2,
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
-                {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t upload',
-                  tone: 'danger',
-                },
-              ],
-              showing: {
-                action: 'Retry',
-                id: 's',
-                message: 'Couldn\'t send',
-                tone: 'danger',
-              },
-              timer: null,
-              token: 3,
-              waits: [
-                3,
-              ],
-            },
-            effects: [],
-          },
-          {
-            event: {
-              timerFired: {
-                token: 3,
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
-                {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t upload',
-                  tone: 'danger',
-                },
-              ],
-              showing: {
-                action: 'Retry',
-                id: 's',
-                message: 'Couldn\'t send',
-                tone: 'danger',
-              },
-              timer: null,
-              token: 3,
-              waits: [
-                null,
-              ],
-            },
-            effects: [],
-          },
-          {
-            event: {
-              timerFired: {
-                token: 2,
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
-                {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t upload',
-                  tone: 'danger',
-                },
-              ],
-              showing: {
-                action: 'Retry',
-                id: 's',
-                message: 'Couldn\'t send',
-                tone: 'danger',
-              },
-              timer: null,
-              token: 3,
-              waits: [
-                null,
-              ],
-            },
-            effects: [],
-          },
-          {
-            event: {
-              dismiss: {
-                focusInside: false,
-                id: 's',
-              },
-            },
-            state: {
-              paused: false,
-              queue: [],
-              showing: {
-                action: null,
-                id: 'b',
-                message: 'Couldn\'t upload',
-                tone: 'danger',
-              },
-              timer: 4,
-              token: 4,
-              waits: [],
-            },
-            effects: [
-              {
-                startTimer: {
-                  ms: 8000,
-                  token: 4,
-                },
-              },
-              {
-                announce: {
-                  action: null,
-                  message: 'Couldn\'t upload',
-                  politeness: 'assertive',
-                },
-              },
-            ],
           },
         ],
       },
@@ -10740,7 +10400,353 @@ export const behaviourVectors = {
         ],
       },
       {
-        name: 'the wait goes on while the toast area is paused',
+        name: 'a waiting success is dropped once it has waited too long; undo and danger wait on',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+          maxWaitMs: 8000,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          timer: null,
+          token: 0,
+          waits: [],
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Retry',
+                  id: 's',
+                  message: 'Couldn\'t send',
+                  tone: 'danger',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 1,
+              waits: [],
+            },
+            effects: [
+              {
+                announce: {
+                  action: 'Retry',
+                  message: 'Couldn\'t send',
+                  politeness: 'assertive',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+                null,
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                null,
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 3,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                null,
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 's',
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'u',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 3,
+              token: 3,
+              waits: [
+                null,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+              {
+                announce: {
+                  action: 'Undo',
+                  message: 'Message deleted',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 'u',
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Couldn\'t upload',
+                tone: 'danger',
+              },
+              timer: 4,
+              token: 4,
+              waits: [],
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 3,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 4,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Couldn\'t upload',
+                  politeness: 'assertive',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'the wait stops while the toast area is paused',
         params: {
           durationMs: 4000,
           durationWithActionMs: 8000,
@@ -10840,6 +10846,75 @@ export const behaviourVectors = {
           },
           {
             event: {
+              pause: {},
+            },
+            state: {
+              paused: true,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                null,
+              ],
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: true,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
               show: {
                 toast: {
                   action: null,
@@ -10848,6 +10923,41 @@ export const behaviourVectors = {
                   tone: 'neutral',
                 },
               },
+            },
+            state: {
+              paused: true,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                null,
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              resume: {},
             },
             state: {
               paused: false,
@@ -10869,6 +10979,219 @@ export const behaviourVectors = {
                 action: 'Undo',
                 id: 'a',
                 message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 3,
+              token: 5,
+              waits: [
+                4,
+                5,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 4,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 5,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 4,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 3,
+              token: 5,
+              waits: [
+                5,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 5,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 3,
+              token: 5,
+              waits: [],
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'at a tie the showing toast\'s timer goes first and the waiting toast shows',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+          maxWaitMs: 8000,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          timer: null,
+          token: 0,
+          waits: [],
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 1,
+              waits: [],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Saved',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'c',
+                  message: 'Pinned',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Pinned',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
                 tone: 'neutral',
               },
               timer: 1,
@@ -10889,99 +11212,42 @@ export const behaviourVectors = {
           },
           {
             event: {
-              pause: {},
-            },
-            state: {
-              paused: true,
-              queue: [
-                {
-                  action: null,
-                  id: 'b',
-                  message: 'Saved',
-                  tone: 'positive',
-                },
-                {
-                  action: null,
-                  id: 'c',
-                  message: 'Copied',
-                  tone: 'neutral',
-                },
-              ],
-              showing: {
-                action: 'Undo',
-                id: 'a',
-                message: 'Message deleted',
-                tone: 'neutral',
-              },
-              timer: null,
-              token: 3,
-              waits: [
-                2,
-                3,
-              ],
-            },
-            effects: [
-              {
-                cancelTimer: {
-                  token: 1,
-                },
-              },
-            ],
-          },
-          {
-            event: {
               timerFired: {
-                token: 2,
+                token: 1,
               },
             },
             state: {
-              paused: true,
+              paused: false,
               queue: [
                 {
                   action: null,
                   id: 'c',
-                  message: 'Copied',
+                  message: 'Pinned',
                   tone: 'neutral',
                 },
               ],
-              showing: {
-                action: 'Undo',
-                id: 'a',
-                message: 'Message deleted',
-                tone: 'neutral',
-              },
-              timer: null,
-              token: 3,
-              waits: [
-                3,
-              ],
-            },
-            effects: [],
-          },
-          {
-            event: {
-              dismiss: {
-                focusInside: false,
-                id: 'a',
-              },
-            },
-            state: {
-              paused: true,
-              queue: [],
               showing: {
                 action: null,
-                id: 'c',
+                id: 'b',
                 message: 'Copied',
                 tone: 'neutral',
               },
-              timer: null,
+              timer: 4,
               token: 4,
-              waits: [],
+              waits: [
+                3,
+              ],
             },
             effects: [
               {
                 cancelTimer: {
-                  token: 3,
+                  token: 2,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 4,
                 },
               },
               {
@@ -10995,7 +11261,9 @@ export const behaviourVectors = {
           },
           {
             event: {
-              resume: {},
+              timerFired: {
+                token: 4,
+              },
             },
             state: {
               paused: false,
@@ -11003,7 +11271,7 @@ export const behaviourVectors = {
               showing: {
                 action: null,
                 id: 'c',
-                message: 'Copied',
+                message: 'Pinned',
                 tone: 'neutral',
               },
               timer: 5,
@@ -11012,9 +11280,249 @@ export const behaviourVectors = {
             },
             effects: [
               {
+                cancelTimer: {
+                  token: 3,
+                },
+              },
+              {
                 startTimer: {
                   ms: 4000,
                   token: 5,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Pinned',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 3,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'c',
+                message: 'Pinned',
+                tone: 'neutral',
+              },
+              timer: 5,
+              token: 5,
+              waits: [],
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'a replacement in place keeps the wait and is judged when it ends',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+          maxWaitMs: 8000,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          timer: null,
+          token: 0,
+          waits: [],
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 1,
+              waits: [],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Saved',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: '2 new messages',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: '2 new messages',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Undo',
+                  id: 'b',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'b',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'b',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 2,
+              waits: [
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 'a',
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Undo',
+                id: 'b',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 3,
+              token: 3,
+              waits: [],
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+              {
+                announce: {
+                  action: 'Undo',
+                  message: 'Message deleted',
+                  politeness: 'polite',
                 },
               },
             ],

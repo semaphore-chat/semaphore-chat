@@ -82,6 +82,18 @@ def _politeness(toast: dict) -> str:
     return "assertive" if toast["tone"] == "danger" else "polite"
 
 
+def _droppable(toast: dict) -> bool:
+    """Rule 17: only a waiting toast with no action that is not danger is ever dropped for waiting."""
+    return toast["tone"] != "danger" and toast["action"] is None
+
+
+def _start_wait(state: dict, index: int, params: dict, effects: Effects) -> None:
+    """Rule 17: start the wait of the waiting toast at `index` with the next token."""
+    state["token"] += 1
+    state["waits"][index] = state["token"]
+    effects.append(_effect("startTimer", token=state["token"], ms=params["maxWaitMs"]))
+
+
 def _cancel_showing_timer(state: dict, effects: Effects) -> None:
     """Cancel the showing toast's timer, if one runs."""
     if state["timer"] is not None:
@@ -170,10 +182,11 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
                     if drop is not None:
                         _unqueue(state, drop, effects)
                 waiting.append(toast)
-                # Rule 17: every waiting toast's wait is timed from when it joined the queue.
-                state["token"] += 1
-                state["waits"].append(state["token"])
-                effects.append(_effect("startTimer", token=state["token"], ms=params["maxWaitMs"]))
+                state["waits"].append(None)
+                # Rule 17: a droppable toast's wait starts when it joins the queue,
+                # unless the area is paused: then it starts at resume.
+                if _droppable(toast) and not state["paused"]:
+                    _start_wait(state, len(waiting) - 1, params, effects)
 
     elif name == "dismiss":
         if showing is not None and showing["id"] == fields["id"]:
@@ -200,9 +213,9 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
             _leave(state, params, effects)
         elif token in state["waits"]:
             # Rule 17: a waiting toast whose wait ends is dropped with no other
-            # effect, unless it is danger then; a danger toast keeps waiting.
+            # effect if it is still droppable; otherwise it waits on, with no wait.
             at = state["waits"].index(token)
-            if state["queue"][at]["tone"] != "danger":
+            if _droppable(state["queue"][at]):
                 del state["queue"][at]
                 del state["waits"][at]
             else:
@@ -213,9 +226,13 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
         # Rule 11: pause cancels the showing toast's timer (when there is one);
         # while already paused, or while nothing is showing, it does nothing.
         # Rule 15: the host sends one pause for all its reasons to pause.
-        # Rule 17: the waits of the waiting toasts go on.
+        # Rule 17: the waits do not count while paused: every running wait is cancelled.
         if showing is not None and not state["paused"]:
             _cancel_showing_timer(state, effects)
+            for index, wait in enumerate(state["waits"]):
+                if wait is not None:
+                    effects.append(_effect("cancelTimer", token=wait))
+                    state["waits"][index] = None
             state["paused"] = True
 
     elif name == "resume":
@@ -228,6 +245,10 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
             if ms is not None:
                 state["timer"] = state["token"]
                 effects.append(_effect("startTimer", token=state["token"], ms=ms))
+            # Rule 17: each droppable waiting toast's wait starts again from the full time.
+            for index, toast in enumerate(state["queue"]):
+                if _droppable(toast):
+                    _start_wait(state, index, params, effects)
 
     return state, effects
 

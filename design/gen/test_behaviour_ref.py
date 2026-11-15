@@ -147,7 +147,8 @@ class ToastQueueTest(unittest.TestCase):
         self.m.send("show", toast=toast("a"))
         for id in ("b", "c", "d"):
             self.m.send("show", toast=toast(id, "danger"))
-        self.assertEqual(self.m.send("show", toast=toast("u", action="Undo")), [start_timer(5, 8000)])
+        # A toast with an action has no wait (rule 17).
+        self.assertEqual(self.m.send("show", toast=toast("u", action="Undo")), [])
         self.assertEqual(self.ids(), ("a", ["b", "c", "d", "u"]))
         # A danger toast arriving now drops the only waiting non-danger toast.
         self.m.send("show", toast=toast("e", "danger"))
@@ -235,7 +236,8 @@ class ToastQueueTest(unittest.TestCase):
         self.m.send("show", toast=toast("a"))
         self.m.send("show", toast=toast("b", message="B"))
         self.m.send("pause")
-        self.assertEqual(self.dismiss("a"), [cancel_timer(2), announce("B")])
+        # b's wait was cancelled by the pause (rule 17), so showing it cancels nothing.
+        self.assertEqual(self.dismiss("a"), [announce("B")])
         self.assertTrue(self.m.state["paused"])
         self.assertEqual(self.m.send("resume"), [start_timer(4, 4000)])
 
@@ -270,24 +272,26 @@ class ToastQueueTest(unittest.TestCase):
                                                   start_timer(3, 4000), announce("A")])
         self.assertEqual(self.dismiss("a", False), [cancel_timer(3)])
 
-    def test_r17_a_waiting_toast_that_is_not_danger_is_dropped_after_its_wait(self):
+    def test_r17_only_a_toast_with_no_action_that_is_not_danger_is_dropped(self):
         self.m.send("show", toast=toast("s", "danger", "Couldn't send", "Retry"))
         self.assertEqual(self.m.send("show", toast=toast("a", "positive")), [start_timer(2, 8000)])
-        self.assertEqual(self.m.send("show", toast=toast("u", action="Undo")), [start_timer(3, 8000)])
+        # An Undo and a danger toast get no wait: they wait however long it takes.
+        self.assertEqual(self.m.send("show", toast=toast("u", action="Undo")), [])
+        self.assertEqual(self.m.send("show", toast=toast("b", "danger")), [])
+        self.assertEqual(self.m.state["waits"], [2, None, None])
         self.assertEqual(self.m.send("timerFired", token=2), [])
-        self.assertEqual(self.ids(), ("s", ["u"]))
-        self.assertEqual(self.m.send("timerFired", token=3), [])
-        self.assertEqual(self.ids(), ("s", []))
-        self.assertEqual(self.m.state["waits"], [])
+        self.assertEqual(self.ids(), ("s", ["u", "b"]))
+        self.assertEqual(self.m.state["waits"], [None, None])
 
-    def test_r17_a_danger_toast_waits_on(self):
-        self.m.send("show", toast=toast("s", "danger", "Couldn't send", "Retry"))
-        self.m.send("show", toast=toast("b", "danger", "Couldn't upload"))
+    def test_r17_a_replacement_that_gains_an_action_waits_on(self):
+        self.m.send("show", toast=toast("a"))
+        self.m.send("show", toast=toast("b"))
+        self.assertEqual(self.m.send("show", toast=toast("b", action="Undo")), [])
         self.assertEqual(self.m.send("timerFired", token=2), [])
-        self.assertEqual(self.ids(), ("s", ["b"]))
+        self.assertEqual(self.ids(), ("a", ["b"]))
         self.assertEqual(self.m.state["waits"], [None])
         # Its ended wait is not cancelled when it shows.
-        self.assertEqual(self.dismiss("s"), [start_timer(3, 8000), announce("Couldn't upload", "assertive")])
+        self.assertEqual(self.dismiss("a"), [cancel_timer(1), start_timer(3, 8000), announce("msg b", action="Undo")])
 
     def test_r17_a_toast_that_shows_first_is_not_dropped(self):
         self.m.send("show", toast=toast("a"))
@@ -297,13 +301,27 @@ class ToastQueueTest(unittest.TestCase):
         self.assertEqual(self.m.send("timerFired", token=2), [])
         self.assertEqual(self.m.state, before)
 
-    def test_r17_the_wait_counts_while_paused(self):
+    def test_r17_the_wait_stops_while_paused_and_starts_again_at_resume(self):
         self.m.send("show", toast=toast("a"))
         self.m.send("show", toast=toast("b"))
-        self.assertEqual(self.m.send("pause"), [cancel_timer(1)])
+        self.assertEqual(self.m.send("pause"), [cancel_timer(1), cancel_timer(2)])
         self.assertEqual(self.m.send("timerFired", token=2), [])
-        self.assertEqual(self.ids(), ("a", []))
-        self.assertTrue(self.m.state["paused"])
+        # A toast that joins while paused gets its wait at resume.
+        self.assertEqual(self.m.send("show", toast=toast("c")), [])
+        self.assertEqual(self.ids(), ("a", ["b", "c"]))
+        self.assertEqual(self.m.state["waits"], [None, None])
+        self.assertEqual(self.m.send("resume"), [start_timer(3, 4000), start_timer(4, 8000), start_timer(5, 8000)])
+        self.assertEqual(self.m.send("timerFired", token=4), [])
+        self.assertEqual(self.ids(), ("a", ["c"]))
+
+    def test_r17_at_a_tie_the_showing_timer_first_shows_the_waiting_toast(self):
+        for id in ("a", "b", "c"):
+            self.m.send("show", toast=toast(id))
+        self.m.send("timerFired", token=1)
+        # b's timer (token 4) and c's wait (token 3) end together; the host sends the showing timer first.
+        self.assertEqual(self.m.send("timerFired", token=4), [cancel_timer(3), start_timer(5, 4000), announce("msg c")])
+        self.assertEqual(self.m.send("timerFired", token=3), [])
+        self.assertEqual(self.ids(), ("c", []))
 
     def test_r17_replacing_in_place_keeps_the_wait_and_a_full_queue_cancels_it(self):
         self.m.send("show", toast=toast("a"))

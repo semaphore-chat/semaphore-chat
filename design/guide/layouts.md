@@ -97,8 +97,12 @@ each side, and never wider than a small dialog (400 px).
   the right island.
 - **Under a dialog or sheet.** The toast stays where it is, on the dimmed page
   under the dialog, so it never covers the dialog's own buttons. It cannot be
-  reached and its timer waits until the dialog closes. Screen readers hear it
-  from inside the dialog.
+  reached, and its timer and every waiting toast's wait stop until the dialog
+  closes, so nothing raised meanwhile is dropped unseen: it shows after the
+  dialog closes. Screen readers hear a toast from inside the dialog when it
+  appears.
+- **Under any overlay.** The toast is one level below every overlay: a menu, a
+  popover or a select list opened from the composer is drawn over it.
 
 ```
 Compact, in a call
@@ -135,7 +139,9 @@ templates already do it for the stage controls and the settings footer).
 Stories: `kit-toast-region--in-call`, `kit-toast-region--in-call-light`,
 `kit-toast-region--phone-keyboard`, `kit-toast-region--sticky-danger`,
 `kit-toast-region--sticky-danger-light`, `kit-toast-region--queued`,
-`kit-toast-region--under-dialog`, `kit-toast-region--on-stage`.
+`kit-toast-region--under-dialog`, `kit-toast-region--on-stage`,
+`kit-toast-region--menu-over-toast`, `kit-toast-region--settings-footer-appears`,
+`kit-toast-region--settings-with-unsaved-footer`.
 
 ## Three islands
 
