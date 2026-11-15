@@ -2,6 +2,8 @@ import { styled } from '@mui/material/styles';
 import InputBase, { type InputBaseProps } from '@mui/material/InputBase';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { focusRing } from '../theme/states';
+import { transientProps } from '../theme/transientProps';
 
 export interface FieldBoxProps extends InputBaseProps {
   $error: boolean;
@@ -15,7 +17,7 @@ export interface FieldBoxProps extends InputBaseProps {
  * focus ring on `.Mui-focused`. MUI's InputBase supplies only behaviour.
  */
 export const FieldBox = styled(InputBase, {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<FieldBoxProps>(({ theme, $error, $round, $multiline }) => {
   const { palette } = kitTheme(theme);
   const text = tokens.text.body;
@@ -28,7 +30,11 @@ export const FieldBox = styled(InputBase, {
     width: '100%',
     minWidth: 0,
     minHeight: `${tokens.control.lg}px`,
-    padding: $multiline ? `${(tokens.control.lg - text.line) / 2}px ${padding}` : `0 ${padding}`,
+    // The transparent border is part of the box, so it comes off the vertical
+    // padding: a one-row multiline field is as tall as a single-line one.
+    padding: $multiline
+      ? `${(tokens.control.lg - text.line) / 2 - tokens.border.selected}px ${padding}`
+      : `0 ${padding}`,
     borderRadius: `${$round ? tokens.radius.full : tokens.radius.field}px`,
     border: `${tokens.border.selected}px solid ${$error ? palette.danger : 'transparent'}`,
     background: palette.fill,
@@ -37,10 +43,7 @@ export const FieldBox = styled(InputBase, {
     fontSize: `${text.size}px`,
     lineHeight: `${text.line}px`,
     fontWeight: text.weight,
-    '&.Mui-focused': {
-      outline: `${tokens.border.focus}px solid ${palette.focus}`,
-      outlineOffset: `${tokens.border.focusOffset}px`,
-    },
+    '&.Mui-focused': focusRing(palette),
     '&.Mui-disabled': { color: palette.text },
     '& .MuiInputBase-input': {
       boxSizing: 'border-box',
@@ -51,5 +54,8 @@ export const FieldBox = styled(InputBase, {
       WebkitTextFillColor: 'currentcolor',
       '&::placeholder': { color: palette.textDim, opacity: 1 },
     },
+    // MUI paints a disabled input's text in text.disabled; the field already
+    // dims as a whole (FieldShell), so the text must not be dimmed twice.
+    '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: 'currentcolor' },
   };
 });

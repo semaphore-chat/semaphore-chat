@@ -1,9 +1,12 @@
-import { useId, type ChangeEvent, type JSX, type KeyboardEvent } from 'react';
+import { useId, type ChangeEvent, type CSSProperties, type JSX, type KeyboardEvent, type Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { Text } from '../typography/Text';
-import { visuallyHidden } from './choiceStyle';
+import { FieldLabelText } from '../fields/fieldLabel';
+import { focusRing } from '../theme/states';
+import { visuallyHidden } from '../theme/a11y';
+import { transientProps } from '../theme/transientProps';
 
 export interface SliderProps {
   /** Names the slider. */
@@ -18,11 +21,13 @@ export interface SliderProps {
   /** Hides the label row visually; the label still names the slider. */
   labelHidden?: boolean;
   disabled?: boolean;
+  /** The range input, so a form can focus it. */
+  ref?: Ref<HTMLInputElement>;
   id?: string;
 }
 
 const Root = styled('div', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $disabled: boolean }>(({ $disabled }) => ({
   display: 'flex',
   flexDirection: 'column',
@@ -34,7 +39,7 @@ const Root = styled('div', {
 }));
 
 const LabelRow = styled('div', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $hidden: boolean }>(({ $hidden }) => ({
   display: 'flex',
   alignItems: 'baseline',
@@ -50,13 +55,14 @@ const Value = styled('span')({ flexShrink: 0, fontVariantNumeric: 'tabular-nums'
 const RAIL = tokens.space.xs;
 const THUMB = tokens.icon.md;
 
-const Input = styled('input', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
-})<{ $fraction: number }>(({ theme, $fraction }) => {
+/** Set on the input from the component: how far along the rail the value is, 0 to 1. */
+const FILL = '--fill';
+
+const Input = styled('input')(({ theme }) => {
   const { palette } = kitTheme(theme);
-  const percent = $fraction * 100;
-  // The thumb travels the rail minus its own width, so the fill stops at its centre.
-  const fillEnd = `calc(${percent}% + ${THUMB * (0.5 - $fraction)}px)`;
+  // The thumb travels the rail minus its own width, so the fill stops at the
+  // thumb's centre: the share of the rail, plus half a thumb at 0 and minus half at 1.
+  const fillEnd = `calc(var(${FILL}) * 100% + (0.5 - var(${FILL})) * ${THUMB}px)`;
   const rail = {
     boxSizing: 'border-box',
     height: `${RAIL}px`,
@@ -72,10 +78,7 @@ const Input = styled('input', {
     borderRadius: `${tokens.radius.full}px`,
     background: palette.accent,
   } as const;
-  const ring = {
-    outline: `${tokens.border.focus}px solid ${palette.focus}`,
-    outlineOffset: `${tokens.border.focusOffset}px`,
-  } as const;
+  const ring = focusRing(palette);
   return {
     appearance: 'none',
     display: 'block',
@@ -101,6 +104,11 @@ const Input = styled('input', {
   };
 });
 
+/** Decimal places of a number, so a snapped value can be rounded back to them. */
+function decimalsOf(n: number): number {
+  return (String(n).split('.')[1] ?? '').length;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -120,6 +128,7 @@ export function Slider({
   formatValue,
   labelHidden = false,
   disabled = false,
+  ref,
   id,
 }: SliderProps): JSX.Element {
   const uid = useId();
@@ -127,6 +136,10 @@ export function Slider({
   const text = formatValue ? formatValue(value) : String(value);
   const span = max - min;
   const fraction = span > 0 ? clamp((value - min) / span, 0, 1) : 0;
+
+  const decimals = Math.max(decimalsOf(step), decimalsOf(min));
+  // Snap to the step grid from `min`, rounding away float noise (0.2 + 0.1).
+  const snap = (v: number) => Number((Math.round((v - min) / step) * step + min).toFixed(decimals));
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const moves: Record<string, number> = {
@@ -143,7 +156,7 @@ export function Slider({
     }
     // The browser's own stepping would fire a second change; the value is ours.
     event.preventDefault();
-    const next = clamp(target, min, max);
+    const next = clamp(snap(target), min, max);
     if (next !== value) {
       onChange(next);
     }
@@ -160,7 +173,7 @@ export function Slider({
     <Root $disabled={disabled}>
       <LabelRow $hidden={labelHidden}>
         <label htmlFor={inputId}>
-          <Text>{label}</Text>
+          <FieldLabelText>{label}</FieldLabelText>
         </label>
         <Value>
           <Text variant="meta" tone="secondary">
@@ -169,6 +182,7 @@ export function Slider({
         </Value>
       </LabelRow>
       <Input
+        ref={ref}
         id={inputId}
         type="range"
         min={min}
@@ -182,7 +196,7 @@ export function Slider({
         aria-valuemax={max}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        $fraction={fraction}
+        style={{ [FILL]: fraction } as CSSProperties}
       />
     </Root>
   );

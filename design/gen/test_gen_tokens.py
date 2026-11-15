@@ -161,6 +161,20 @@ class LoadValidationTest(TempSource):
         with self.assertRaisesRegex(gen.TokenError, r"^shadow\.island\.alpha"):
             self.load()
 
+    def test_light_alpha_out_of_range(self):
+        self.edit(set_value("shadow.island.alphaLight", 1.5))
+        with self.assertRaisesRegex(gen.TokenError, r"^shadow\.island\.alphaLight"):
+            self.load()
+
+    def test_shadow_requires_exactly_its_fields(self):
+        self.edit(delete("shadow.island.alphaLight"))
+        with self.assertRaisesRegex(gen.TokenError, r"^shadow\.island"):
+            self.load()
+
+        self.edit(set_value("shadow.island.spread", 1))
+        with self.assertRaisesRegex(gen.TokenError, r"^shadow\.island"):
+            self.load()
+
     def test_shadow_offset_may_be_negative(self):
         # A shadow can be offset upwards; only blur and alpha are bounded.
         self.edit(set_value("shadow.island.y", -2))
@@ -332,6 +346,8 @@ class RenderTsTest(unittest.TestCase):
         out = gen.render_ts(gen.load(REAL))
         self.assertIn("body: { family: 'Figtree', size: 15, line: 22, weight: 400 }", out)
         self.assertIn("css: '0 6px 24px rgba(0, 0, 0, 0.35)'", out)
+        self.assertIn("cssLight: '0 6px 24px rgba(0, 0, 0, 0.08)'", out)
+        self.assertIn("alphaLight: 0.18,", out)
 
     def test_ts_shadow_with_negative_offset(self):
         tokens = gen.load(REAL)
@@ -365,6 +381,8 @@ class RenderRsTest(unittest.TestCase):
         out = gen.render_rs(gen.load(REAL))
         self.assertIn("pub const TEXT_BODY_STRONG: TextStyle = TextStyle {", out)
         self.assertIn("alpha: 0.35,", out)
+        self.assertIn("alpha_light: 0.08,", out)
+        self.assertIn("pub alpha_light: f32,", out)
 
     def test_rs_kit_constants(self):
         out = gen.render_rs(gen.load(REAL))

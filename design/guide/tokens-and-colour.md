@@ -74,12 +74,14 @@ px. Weight is a plain number (400 is normal, 700 is bold).
 
 ### Shadows
 
-Alpha is the opacity of black, from 0 (clear) to 1 (solid).
+Alpha is the opacity of black, from 0 (clear) to 1 (solid). Dark mode uses
+Alpha; light mode uses Alpha (light), because the same black is far heavier on
+a light surface.
 
-|Token|x|y|Blur|Alpha|Use it for|
-|---|---|---|---|---|---|
-|island|0|6|24|0.35|Islands|
-|overlay|0|24|64|0.6|Things that float above the screen, such as dialogs and menus|
+|Token|x|y|Blur|Alpha|Alpha (light)|Use it for|
+|---|---|---|---|---|---|---|
+|island|0|6|24|0.35|0.08|Islands|
+|overlay|0|24|64|0.6|0.18|Things that float above the screen, such as dialogs and menus|
 
 ### Timings
 

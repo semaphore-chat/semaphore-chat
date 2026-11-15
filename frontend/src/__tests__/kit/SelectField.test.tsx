@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { SelectField, type SelectFieldProps, type SelectOption } from '../../kit';
+import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 let consoleError: MockInstance;
@@ -96,7 +98,8 @@ describe('SelectField', () => {
     await user.click(screen.getByRole('combobox'));
     const nobody = screen.getByRole('option', { name: 'Nobody' });
     expect(nobody).toHaveAttribute('aria-disabled', 'true');
-    await user.click(nobody).catch(() => undefined);
+    const clicker = userEvent.setup({ pointerEventsCheck: 0 });
+    await clicker.click(nobody);
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -163,5 +166,74 @@ describe('SelectField', () => {
       <SelectField label="X" options={OPTIONS} value="" onChange={() => {}} className="x" />,
     );
     expect(screen.getByRole('combobox')).toBeInTheDocument();
+  });
+
+  it('clicking the label focuses the combobox and leaves the list closed', async () => {
+    const { user } = renderWithKit(<Controlled />);
+    await user.click(screen.getByText('Who can DM you'));
+    expect(document.activeElement).toBe(screen.getByRole('combobox'));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('the open list is named by the label', async () => {
+    const { user } = renderWithKit(<Controlled />);
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('listbox', { name: 'Who can DM you' })).toBeInTheDocument();
+  });
+
+  it('ref receives the combobox element, so a form can focus it', () => {
+    const ref = { current: null as HTMLElement | null };
+    renderWithKit(<Controlled ref={ref} />);
+    expect(ref.current).toBe(screen.getByRole('combobox'));
+    act(() => ref.current?.focus());
+    expect(document.activeElement).toBe(screen.getByRole('combobox'));
+  });
+
+  it('typing a letter jumps to the matching option', async () => {
+    const { user } = renderWithKit(<Controlled />);
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('F');
+    expect(document.activeElement).toBe(screen.getByRole('option', { name: 'Friends only' }));
+  });
+
+  it('Tab closes the list and returns focus to the combobox; the next Tab moves on', async () => {
+    const { user } = renderWithKit(
+      <>
+        <Controlled />
+        <button>after</button>
+      </>,
+    );
+    await user.click(screen.getByRole('combobox'));
+    await user.tab();
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(screen.getByRole('combobox'));
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'after' }));
+  });
+
+  it('ArrowUp opens the list from the combobox', async () => {
+    const { user } = renderWithKit(<Controlled />);
+    await user.tab();
+    await user.keyboard('{ArrowUp}');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+
+  it('opening by keyboard focuses the selected option', async () => {
+    const { user } = renderWithKit(<Controlled initial="friends" />);
+    await user.tab();
+    await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(screen.getByRole('option', { name: 'Friends only' }));
+  });
+
+  it('the menu uses the light shadow in light mode and the dark one in dark mode', async () => {
+    const { user, unmount } = renderWithKit(<Controlled />, { mode: 'light' });
+    await user.click(screen.getByRole('combobox'));
+    const paper = screen.getByRole('listbox').closest('.MuiPaper-root') as HTMLElement;
+    expect(getComputedStyle(paper).boxShadow).toBe(tokens.shadow.overlay.cssLight);
+    unmount();
+    const dark = renderWithKit(<Controlled />, { mode: 'dark' });
+    await dark.user.click(screen.getByRole('combobox'));
+    const darkPaper = screen.getByRole('listbox').closest('.MuiPaper-root') as HTMLElement;
+    expect(getComputedStyle(darkPaper).boxShadow).toBe(tokens.shadow.overlay.css);
   });
 });

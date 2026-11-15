@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Tabs, type TabItem, type TabsProps } from '../../kit';
 import { KitStage, Row } from '../fixtures/kitStory';
 
@@ -20,6 +20,19 @@ const MANY: TabItem[] = ['General', 'Voice', 'Members', 'Roles', 'Invites', 'Int
 function Demo({ tabs, initial, ...rest }: { tabs: TabItem[]; initial: string } & Pick<TabsProps, 'variant' | 'fullWidth'>) {
   const [value, setValue] = useState(initial);
   return <Tabs label="Demo" tabs={tabs} value={value} onChange={setValue} {...rest} />;
+}
+
+/** Puts keyboard focus on the tab stop (the selected tab), as Tab into the list would. */
+function FocusedDemo(props: { tabs: TabItem[]; initial: string } & Pick<TabsProps, 'variant' | 'fullWidth'>) {
+  const wrap = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    wrap.current?.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')?.focus();
+  }, []);
+  return (
+    <div ref={wrap}>
+      <Demo {...props} />
+    </div>
+  );
 }
 
 /** Underline tabs. */
@@ -71,6 +84,32 @@ export const Overflow = () => (
     <div style={{ width: 320 }}>
       <Demo tabs={MANY} initial="Audit log" variant="segmented" />
     </div>
+  </KitStage>
+);
+
+/** Eight tabs in a 320px box with the last one selected: the row starts scrolled so it is visible. */
+export const LastTabSelected = () => (
+  <KitStage mode="dark">
+    <div style={{ width: 320 }}>
+      <Demo tabs={MANY} initial="Audit log" />
+    </div>
+    <div style={{ width: 320 }}>
+      <Demo tabs={MANY} initial="Audit log" variant="segmented" />
+    </div>
+  </KitStage>
+);
+
+/** Keyboard focus on the selected segmented tab: the ring sits outside the accent pill. */
+export const SegmentedFocused = () => (
+  <KitStage mode="dark">
+    <FocusedDemo tabs={BASIC} initial="mentions" variant="segmented" />
+  </KitStage>
+);
+
+/** The same, in light mode. */
+export const SegmentedFocusedLight = () => (
+  <KitStage mode="light">
+    <FocusedDemo tabs={BASIC} initial="mentions" variant="segmented" />
   </KitStage>
 );
 

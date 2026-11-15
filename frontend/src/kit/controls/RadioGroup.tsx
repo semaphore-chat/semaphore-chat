@@ -2,10 +2,11 @@ import { useId, useRef, type JSX, type KeyboardEvent } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
-import { mix } from '../theme/mix';
 import { FieldLabelText } from '../fields/fieldLabel';
 import { ChoiceText } from './choiceParts';
-import { ChoiceRow, firstLineOffset, visuallyHidden } from './choiceStyle';
+import { visuallyHidden } from '../theme/a11y';
+import { ChoiceInput, ChoiceRow, ChoiceSlot, choiceMarkStates } from './choiceStyle';
+import { transientProps } from '../theme/transientProps';
 
 export interface RadioOption {
   value: string;
@@ -36,7 +37,7 @@ const Root = styled('div')({
 });
 
 const GroupLabel = styled('span', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $hidden: boolean }>(({ $hidden }) => ({
   minWidth: 0,
   overflowWrap: 'anywhere',
@@ -44,7 +45,7 @@ const GroupLabel = styled('span', {
 }));
 
 const Group = styled('div', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $horizontal: boolean }>(({ $horizontal }) => ({
   display: 'flex',
   flexDirection: $horizontal ? 'row' : 'column',
@@ -54,28 +55,8 @@ const Group = styled('div', {
   minWidth: 0,
 }));
 
-const Circle = styled('span')({
-  position: 'relative',
-  display: 'block',
-  flexShrink: 0,
-  width: `${tokens.icon.lg}px`,
-  height: `${tokens.icon.lg}px`,
-  marginTop: `${firstLineOffset(tokens.icon.lg)}px`,
-});
-
-/** The real input covers the drawn ring: invisible, but focusable and clickable. */
-const Input = styled('input')({
-  position: 'absolute',
-  inset: 0,
-  width: '100%',
-  height: '100%',
-  margin: 0,
-  opacity: 0,
-  cursor: 'inherit',
-});
-
 const Ring = styled('span', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $on: boolean }>(({ theme, $on }) => {
   const { palette } = kitTheme(theme);
   const hover = tokens.state.hover;
@@ -98,15 +79,7 @@ const Ring = styled('span', {
       borderRadius: `${tokens.radius.full}px`,
       background: $on ? palette.accent : 'transparent',
     },
-    'label:hover > span > input:not(:disabled) ~ &': {
-      '@media (hover: hover)': { background: mix(palette.text, palette.surface, hover) },
-    },
-    'input:active:not(:disabled) ~ &': { background: mix(palette.text, palette.surface, pressed) },
-    'input:disabled ~ &': { opacity: tokens.state.disabled },
-    'input:focus-visible ~ &': {
-      outline: `${tokens.border.focus}px solid ${palette.focus}`,
-      outlineOffset: `${tokens.border.focusOffset}px`,
-    },
+    ...choiceMarkStates({ palette, under: palette.surface, hover, pressed }),
   };
 });
 
@@ -159,45 +132,45 @@ export function RadioGroup({
       <GroupLabel id={groupLabelId} $hidden={labelHidden}>
         <FieldLabelText>{label}</FieldLabelText>
       </GroupLabel>
-    <Group
-      ref={groupRef}
-      id={id}
-      role="radiogroup"
-      aria-labelledby={groupLabelId}
-      onKeyDown={handleKeyDown}
-      $horizontal={orientation === 'horizontal'}
-    >
-      {options.map((option, index) => {
-        const optionDisabled = disabled || option.disabled === true;
-        const selected = option.value === value;
-        const labelId = `${uid}-${index}-label`;
-        const descriptionId = `${uid}-${index}-description`;
-        return (
-          <ChoiceRow key={option.value}>
-            <Circle>
-              <Input
-                type="radio"
-                name={uid}
-                data-radio={option.value}
-                checked={selected}
+      <Group
+        ref={groupRef}
+        id={id}
+        role="radiogroup"
+        aria-labelledby={groupLabelId}
+        onKeyDown={handleKeyDown}
+        $horizontal={orientation === 'horizontal'}
+      >
+        {options.map((option, index) => {
+          const optionDisabled = disabled || option.disabled === true;
+          const selected = option.value === value;
+          const labelId = `${uid}-${index}-label`;
+          const descriptionId = `${uid}-${index}-description`;
+          return (
+            <ChoiceRow key={option.value}>
+              <ChoiceSlot>
+                <ChoiceInput
+                  type="radio"
+                  name={uid}
+                  data-radio={option.value}
+                  checked={selected}
+                  disabled={optionDisabled}
+                  aria-labelledby={labelId}
+                  aria-describedby={option.description === undefined ? undefined : descriptionId}
+                  onChange={() => onChange(option.value)}
+                />
+                <Ring aria-hidden="true" $on={selected} />
+              </ChoiceSlot>
+              <ChoiceText
+                label={option.label}
+                description={option.description}
+                labelId={labelId}
+                descriptionId={descriptionId}
                 disabled={optionDisabled}
-                aria-labelledby={labelId}
-                aria-describedby={option.description === undefined ? undefined : descriptionId}
-                onChange={() => onChange(option.value)}
               />
-              <Ring aria-hidden="true" $on={selected} />
-            </Circle>
-            <ChoiceText
-              label={option.label}
-              description={option.description}
-              labelId={labelId}
-              descriptionId={descriptionId}
-              disabled={optionDisabled}
-            />
-          </ChoiceRow>
-        );
-      })}
-    </Group>
+            </ChoiceRow>
+          );
+        })}
+      </Group>
     </Root>
   );
 }

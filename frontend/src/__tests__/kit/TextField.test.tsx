@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { screen } from '@testing-library/react';
 import { TextField, type TextFieldProps } from '../../kit';
+import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 let consoleError: MockInstance;
@@ -109,9 +110,49 @@ describe('TextField', () => {
     expect(area).toHaveAttribute('rows', '4');
   });
 
-  it('multiline without rows grows with its content', () => {
-    renderWithKit(<Controlled multiline />);
-    expect(screen.getByRole('textbox', { name: 'Display name' })).toBeInstanceOf(HTMLTextAreaElement);
+  it('multiline without rows autosizes: no fixed rows attribute; with rows it is fixed', () => {
+    // jsdom cannot measure text, so growth itself is not testable here.
+    const { rerender } = renderWithKit(<Controlled multiline />);
+    expect(screen.getByRole('textbox', { name: 'Display name' })).not.toHaveAttribute('rows');
+    rerender(<Controlled multiline rows={2} />);
+    expect(screen.getByRole('textbox', { name: 'Display name' })).toHaveAttribute('rows', '2');
+  });
+
+  it('a one-row multiline field is as tall as a single-line field', () => {
+    renderWithKit(
+      <>
+        <TextField label="One" value="" onChange={() => {}} />
+        <TextField label="Many" value="" onChange={() => {}} multiline rows={1} />
+      </>,
+    );
+    const height = (label: string) => {
+      const root = screen.getByLabelText(label).closest('.MuiInputBase-root') as HTMLElement;
+      const style = getComputedStyle(root);
+      return (
+        parseFloat(style.paddingTop) +
+        parseFloat(style.paddingBottom) +
+        parseFloat(style.borderTopWidth) +
+        parseFloat(style.borderBottomWidth) +
+        tokens.text.body.line
+      );
+    };
+    expect(height('Many')).toBe(tokens.control.lg);
+    expect(height('One')).toBeLessThanOrEqual(tokens.control.lg);
+  });
+
+  it('an empty error string counts as no error: the helper shows and the field is valid', () => {
+    renderWithKit(<TextField label="Name" value="" onChange={() => {}} helper="Help" error="" />);
+    const input = screen.getByLabelText('Name');
+    expect(input).not.toHaveAttribute('aria-invalid');
+    expect(input).toHaveAccessibleDescription('Help');
+  });
+
+  it('does not accept type number', () => {
+    renderWithKit(
+      // @ts-expect-error -- number entry will be its own component.
+      <TextField label="X" value="" onChange={() => {}} type="number" />,
+    );
+    expect(screen.getByLabelText('X')).toBeInTheDocument();
   });
 
   it('password type is not a textbox', () => {

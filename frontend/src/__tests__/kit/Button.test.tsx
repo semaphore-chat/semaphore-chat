@@ -122,6 +122,29 @@ describe('Button', () => {
     });
   });
 
+  it('disabled wins over loading: disabled, not busy, no spinner', () => {
+    renderWithKit(
+      <Button disabled loading startIcon={<svg data-testid="icon" />}>
+        Save
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Save' });
+    expect(button).toBeDisabled();
+    expect(button).not.toHaveAttribute('aria-busy');
+    expect(screen.queryByRole('progressbar', { hidden: true })).toBeNull();
+    expect(screen.getByTestId('icon')).toBeInTheDocument();
+  });
+
+  it('disabled wins over loading without an icon: the label stays visible', () => {
+    renderWithKit(
+      <Button disabled loading>
+        Save
+      </Button>,
+    );
+    expect(screen.queryByRole('progressbar', { hidden: true })).toBeNull();
+    expect(screen.getByText('Save')).not.toHaveStyle({ opacity: '0' });
+  });
+
   it('ignores clicks when disabled', async () => {
     const onClick = vi.fn();
     renderWithKit(

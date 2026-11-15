@@ -10,14 +10,14 @@ function Demo({ initial, ...rest }: { initial: number } & Partial<SliderProps>) 
   return <Slider label="Volume" value={value} onChange={setValue} {...rest} />;
 }
 
-function FocusedDemo() {
+function FocusedDemo({ initial = 60 }: { initial?: number }) {
   const wrap = useRef<HTMLDivElement>(null);
   useEffect(() => {
     wrap.current?.querySelector('input')?.focus();
   }, []);
   return (
     <div ref={wrap}>
-      <Demo initial={60} />
+      <Demo initial={initial} />
     </div>
   );
 }
@@ -50,6 +50,20 @@ export const States = () => (
 export const Focused = () => (
   <KitStage mode="dark">
     <FocusedDemo />
+  </KitStage>
+);
+
+/** Keyboard focus with the thumb at the minimum: the ring must not be clipped at the left edge. */
+export const FocusedAtMin = () => (
+  <KitStage mode="dark">
+    <FocusedDemo initial={0} />
+  </KitStage>
+);
+
+/** Keyboard focus with the thumb at the maximum: the ring must not be clipped at the right edge. */
+export const FocusedAtMax = () => (
+  <KitStage mode="dark">
+    <FocusedDemo initial={100} />
   </KitStage>
 );
 

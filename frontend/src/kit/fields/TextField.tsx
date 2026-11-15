@@ -4,6 +4,9 @@ import type { IconName } from '../icons/generated';
 import { FieldBox } from './FieldBox';
 import { FieldShell } from './FieldShell';
 
+/** Rows a multiline field starts with when `rows` is not given; it grows past them. */
+const DEFAULT_ROWS = 3;
+
 export interface TextFieldProps {
   /** Names the field; shown above it. */
   label: string;
@@ -18,7 +21,7 @@ export interface TextFieldProps {
   /** Hides the label visually; it still names the field. */
   labelHidden?: boolean;
   shape?: 'field' | 'round';
-  type?: 'text' | 'password' | 'email' | 'search' | 'url' | 'number';
+  type?: 'text' | 'password' | 'email' | 'search' | 'url';
   multiline?: boolean;
   rows?: number;
   startIcon?: IconName;
@@ -89,7 +92,7 @@ export function TextField({
           autoComplete={autoComplete}
           multiline={multiline}
           rows={multiline ? rows : undefined}
-          minRows={multiline && rows === undefined ? 3 : undefined}
+          minRows={multiline && rows === undefined ? DEFAULT_ROWS : undefined}
           startAdornment={
             startIcon === undefined ? undefined : <Icon name={startIcon} tone="secondary" />
           }

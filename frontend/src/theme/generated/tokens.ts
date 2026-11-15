@@ -46,14 +46,18 @@ export const tokens = {
       y: 6,
       blur: 24,
       alpha: 0.35,
+      alphaLight: 0.08,
       css: '0 6px 24px rgba(0, 0, 0, 0.35)',
+      cssLight: '0 6px 24px rgba(0, 0, 0, 0.08)',
     },
     overlay: {
       x: 0,
       y: 24,
       blur: 64,
       alpha: 0.6,
+      alphaLight: 0.18,
       css: '0 24px 64px rgba(0, 0, 0, 0.6)',
+      cssLight: '0 24px 64px rgba(0, 0, 0, 0.18)',
     },
   },
   motion: {

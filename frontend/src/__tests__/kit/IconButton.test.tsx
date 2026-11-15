@@ -120,4 +120,22 @@ describe('IconButton', () => {
     );
     expect(screen.getByRole('button')).toBeInTheDocument();
   });
+
+  it('while loading, Space is blocked as well as Enter', async () => {
+    const onClick = vi.fn();
+    const { user } = renderWithKit(<IconButton icon="Settings" label="Settings" onClick={onClick} loading />);
+    screen.getByRole('button', { name: 'Settings' }).focus();
+    await user.keyboard(' ');
+    await user.keyboard('{Enter}');
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('disabled wins over loading: disabled, not busy, the icon stays and no spinner shows', () => {
+    const { container } = renderWithKit(<IconButton icon="Settings" label="Settings" disabled loading />);
+    const button = screen.getByRole('button', { name: 'Settings' });
+    expect(button).toBeDisabled();
+    expect(button).not.toHaveAttribute('aria-busy');
+    expect(screen.queryByRole('progressbar', { hidden: true })).toBeNull();
+    expect(container.querySelector('svg')).toBeInTheDocument();
+  });
 });

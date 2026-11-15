@@ -4,6 +4,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Slider, type SliderProps } from '../../kit';
 import { derivePalette } from '../../theme/derive/derivePalette';
+import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 let consoleError: MockInstance;
@@ -128,5 +129,38 @@ describe('Slider', () => {
     expect(rail).toContain(palette.hairline.toLowerCase());
     expect(rail).toContain(palette.accent.toLowerCase());
     expect(rail).not.toContain(palette.fill.toLowerCase());
+  });
+
+  it('snaps a fractional step: 0.2 + 0.1 is 0.3, not 0.30000000000000004', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(<Controlled onChange={onChange} step={0.1} initial={0.2} max={1} />);
+    await user.tab();
+    await user.keyboard('{ArrowRight}');
+    expect(onChange).toHaveBeenLastCalledWith(0.3);
+    expect(screen.getByRole('slider')).toHaveAttribute('aria-valuenow', '0.3');
+    await user.keyboard('{ArrowLeft}');
+    expect(onChange).toHaveBeenLastCalledWith(0.2);
+  });
+
+  it('snaps an off-grid value to the step grid from the min', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(<Controlled onChange={onChange} step={5} min={1} initial={3} />);
+    await user.tab();
+    await user.keyboard('{ArrowRight}');
+    // Grid from min 1: 1, 6, 11. 3 + 5 = 8 snaps to 6.
+    expect(onChange).toHaveBeenLastCalledWith(6);
+  });
+
+  it('forwards ref to the input', () => {
+    const ref = { current: null as HTMLInputElement | null };
+    renderWithKit(<Controlled ref={ref} />);
+    expect(ref.current).toBe(screen.getByRole('slider'));
+  });
+
+  it('labels with the field label style: same size and weight as a TextField label', () => {
+    renderWithKit(<Controlled />);
+    const style = getComputedStyle(screen.getByText('Volume'));
+    expect(parseFloat(style.fontSize)).toBe(tokens.text.meta.size);
+    expect(style.fontWeight).toBe(String(tokens.text.bodyStrong.weight));
   });
 });

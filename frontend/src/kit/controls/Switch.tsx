@@ -6,6 +6,7 @@ import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
 import { ChoiceText } from './choiceParts';
 import { ChoiceRow, firstLineOffset } from './choiceStyle';
+import { transientProps } from '../theme/transientProps';
 
 export interface SwitchProps {
   checked: boolean;
@@ -23,7 +24,7 @@ const PAD = (tokens.icon.xl - tokens.icon.md) / 2;
 const TRAVEL = tokens.control.md - 2 * PAD - tokens.icon.md;
 
 const Track = styled(ButtonBase, {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $checked: boolean }>(({ theme, $checked }) => {
   const { palette } = kitTheme(theme);
   const background = $checked ? palette.accent : palette.textDim;
@@ -52,7 +53,7 @@ const Track = styled(ButtonBase, {
 });
 
 const Thumb = styled('span', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $checked: boolean }>(({ theme, $checked }) => {
   const { palette } = kitTheme(theme);
   return {

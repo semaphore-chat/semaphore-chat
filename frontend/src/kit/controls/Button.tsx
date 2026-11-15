@@ -7,12 +7,13 @@ import type {
   Ref,
 } from 'react';
 import ButtonBase from '@mui/material/ButtonBase';
-import CircularProgress from '@mui/material/CircularProgress';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
 import { buttonLook, type ButtonVariant } from './buttonLook';
+import { Spinner } from './Spinner';
+import { transientProps } from '../theme/transientProps';
 
 export type { ButtonVariant } from './buttonLook';
 
@@ -52,7 +53,7 @@ interface RootProps {
 }
 
 const Root = styled(ButtonBase, {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<RootProps>(({ theme, $variant, $size, $fullWidth }) => {
   const { palette } = kitTheme(theme);
   const look = buttonLook(palette, $variant);
@@ -100,7 +101,7 @@ const Root = styled(ButtonBase, {
 });
 
 const Label = styled('span', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $hidden: boolean }>(({ $hidden }) => ({
   minWidth: 0,
   overflow: 'hidden',
@@ -124,11 +125,6 @@ const SpinnerOverlay = styled('span')({
   alignItems: 'center',
   justifyContent: 'center',
 });
-
-function Spinner(): JSX.Element {
-  // thickness is an SVG stroke ratio (of the circle's radius), not a pixel size.
-  return <CircularProgress aria-hidden="true" color="inherit" size={tokens.icon.sm} thickness={5} />;
-}
 
 /**
  * Pill button. While `loading` it is busy: it keeps focus and its accessible
@@ -156,8 +152,9 @@ export function Button({
   children,
 }: ButtonProps): JSX.Element {
   const busy = loading && !disabled;
-  const spinnerInIconSlot = loading && startIcon !== undefined;
-  const spinnerOverLabel = loading && startIcon === undefined;
+  // Disabled wins over loading: a disabled button shows no spinner.
+  const spinnerInIconSlot = busy && startIcon !== undefined;
+  const spinnerOverLabel = busy && startIcon === undefined;
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
@@ -190,12 +187,12 @@ export function Button({
       $fullWidth={fullWidth}
     >
       {startIcon !== undefined && (
-        <IconSlot>{spinnerInIconSlot ? <Spinner /> : startIcon}</IconSlot>
+        <IconSlot>{spinnerInIconSlot ? <Spinner size={tokens.icon.sm} /> : startIcon}</IconSlot>
       )}
       <Label $hidden={spinnerOverLabel}>{children}</Label>
       {spinnerOverLabel && (
         <SpinnerOverlay>
-          <Spinner />
+          <Spinner size={tokens.icon.sm} />
         </SpinnerOverlay>
       )}
     </Root>

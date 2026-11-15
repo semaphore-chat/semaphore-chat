@@ -138,7 +138,20 @@ describe('RadioGroup', () => {
     expect(screen.getAllByText('Notify me')).toHaveLength(1);
   });
 
-  it('labelHidden hides the label visually but keeps the accessible name', () => {
+  it('with no checked value, Tab lands on the first enabled radio and an arrow selects the next', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(
+      <RadioGroup label="Notify me" options={OPTIONS} value="" onChange={onChange} />,
+    );
+    expect(screen.getAllByRole('radio').filter((radio) => (radio as HTMLInputElement).checked)).toHaveLength(0);
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'All messages' }));
+    await user.keyboard('{ArrowDown}');
+    expect(onChange).toHaveBeenLastCalledWith('mentions');
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Mentions only' }));
+  });
+
+  it('labelHidden keeps the accessible name and clips the label out of the layout', () => {
     renderWithKit(
       <RadioGroup label="Notify me" labelHidden options={OPTIONS} value="all" onChange={() => {}} />,
     );

@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { transientProps } from '../theme/transientProps';
 
 export type TextVariant = keyof typeof tokens.text;
 export type TextTone = 'default' | 'secondary' | 'dim' | 'accent' | 'danger';
@@ -32,7 +33,7 @@ interface RootProps {
 
 const Root = styled('span', {
   // `as` must be excluded here: emotion then swaps the element instead of forwarding it.
-  shouldForwardProp: (prop) => typeof prop === 'string' && prop !== 'as' && !prop.startsWith('$'),
+  shouldForwardProp: (prop) => prop !== 'as' && transientProps(prop),
 })<RootProps>(({ theme, $variant, $tone, $truncate }) => {
   const { palette } = kitTheme(theme);
   const style = tokens.text[$variant];

@@ -68,7 +68,7 @@ class RealSetTest(unittest.TestCase):
     def test_loads_the_real_set_in_icons_json_order(self):
         self.assertEqual(self.document["version"], "1.71.0")
         self.assertEqual([icon["name"] for icon in self.document["icons"]], NAMES)
-        self.assertEqual(len(self.document["icons"]), 54)
+        self.assertEqual(len(self.document["icons"]), 55)
 
     def test_real_mic_loads_with_its_shapes(self):
         mic = next(icon for icon in self.document["icons"] if icon["name"] == "Mic")
@@ -231,7 +231,7 @@ class RenderTest(unittest.TestCase):
         self.assertIn("pub enum LoungeIcon {", rendered)
         self.assertIn('Self::Mic => "lucide/mic.svg",', rendered)
         self.assertIn('include_bytes!("../assets/lucide/mic.svg")', rendered)
-        self.assertIn("pub const ALL: [LoungeIcon; 54]", rendered)
+        self.assertIn("pub const ALL: [LoungeIcon; 55]", rendered)
 
     def test_rs_is_deterministic_and_headed(self):
         rendered = icons.render_icons_rs(self.document)

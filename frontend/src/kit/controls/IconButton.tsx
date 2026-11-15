@@ -1,6 +1,5 @@
 import type { AriaAttributes, JSX, MouseEvent, MouseEventHandler, Ref } from 'react';
 import ButtonBase from '@mui/material/ButtonBase';
-import CircularProgress from '@mui/material/CircularProgress';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
@@ -8,6 +7,8 @@ import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
 import { buttonLook, type ButtonVariant } from './buttonLook';
+import { Spinner } from './Spinner';
+import { transientProps } from '../theme/transientProps';
 
 export type IconButtonSize = 'sm' | 'md' | 'lg';
 export type IconButtonVariant = Extract<ButtonVariant, 'ghost' | 'soft' | 'primary' | 'danger'>;
@@ -43,7 +44,7 @@ interface RootProps {
 }
 
 const Root = styled(ButtonBase, {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<RootProps>(({ theme, $variant, $size, $selected }) => {
   const { palette } = kitTheme(theme);
   const look = buttonLook(palette, $variant);
@@ -97,7 +98,8 @@ const Root = styled(ButtonBase, {
 /**
  * Round, square icon button. `label` is its accessible name. While `loading`
  * it is busy (keeps focus and name, ignores activation) and shows a spinner in
- * place of the icon; only `disabled` removes it from the tab order.
+ * place of the icon; only `disabled` removes it from the tab order, and
+ * `disabled` wins over `loading`.
  */
 export function IconButton({
   icon,
@@ -146,12 +148,7 @@ export function IconButton({
       $selected={selected === true}
     >
       {busy ? (
-        <CircularProgress
-          aria-hidden="true"
-          color="inherit"
-          size={tokens.icon[ICON_SIZE[size]]}
-          thickness={5}
-        />
+        <Spinner size={tokens.icon[ICON_SIZE[size]]} />
       ) : (
         <Icon name={icon} size={ICON_SIZE[size]} />
       )}

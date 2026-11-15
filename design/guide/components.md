@@ -33,7 +33,8 @@ Switch, Checkbox, RadioGroup, Slider, TextField and SelectField.
 - **Loading is not disabled.** A busy control stays focusable and reachable by
   keyboard. It tells assistive technology that it is busy, and it ignores
   clicks and Enter. Use `loading` for work in progress. Use `disabled` only
-  when the action is not available.
+  when the action is not available. If both are set, `disabled` wins: the
+  control is disabled and shows no spinner.
 - **Colours and sizes come only from the tokens and palette roles** described
   in [Tokens and colour](tokens-and-colour.md).
 
@@ -160,14 +161,28 @@ stays visible.
 one option out of a form that needs descriptions (use RadioGroup), or a long
 list of options (use SelectField).
 
-Each tab has an `id`, a `label`, and optionally a `count` and `disabled`. The
-`label` prop names the whole row for screen readers.
+Each tab has an `id`, a `label`, and optionally a `count`, `disabled` and
+`panelId`. The `label` prop names the whole row for screen readers. A tab with a
+count is named "Mentions, 3" for screen readers; the eye sees the label and the
+count as they are drawn. Clicking the tab that is already selected does nothing.
+
+To link a tab to the panel it controls, give the tab a `panelId` (it becomes
+`aria-controls`) and label the panel by the tab: every tab gets the id
+`<list id>-tab-<tab id>`, and `tabElementId(listId, tabId)` returns it. Pass
+your own `id` to Tabs so the screen can build the panel's `aria-labelledby`
+with that helper. Without an `id`, Tabs makes one of its own, and the tab ids
+are still unique on the page.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`variant`|`underline`, `segmented`|`underline`|The look. See below.|
 |`fullWidth`|true, false|false|Spreads the tabs across the width of their space.|
 |`value`|a tab id|none (required)|The selected tab.|
+|`id`|text|made for you|The id of the row. Also the start of every tab's id.|
+
+A row that is wider than its space scrolls inside it, with a thin scrollbar,
+and starts scrolled so the selected tab is visible, also when `value` changes
+from outside. Tabs takes no `ref`.
 
 ### Underline or segmented
 
@@ -177,8 +192,9 @@ Each tab has an `id`, a `label`, and optionally a `count` and `disabled`. The
   options.
 
 Stories: `kit-tabs--underline`, `kit-tabs--segmented`,
-`kit-tabs--with-counts`, `kit-tabs--overflow`, `kit-tabs--segmented-light`,
-`kit-tabs--segmented-tinted`.
+`kit-tabs--with-counts`, `kit-tabs--overflow`, `kit-tabs--last-tab-selected`,
+`kit-tabs--segmented-focused`, `kit-tabs--segmented-focused-light`,
+`kit-tabs--segmented-light`, `kit-tabs--segmented-tinted`.
 
 ## Switch
 
@@ -214,7 +230,7 @@ exactly one option must be chosen (use RadioGroup).
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`checked`|true, false|none (required)|Ticked or not.|
-|`indeterminate`|true, false|false|Shows a dash for a parent whose children are only partly ticked.|
+|`indeterminate`|true, false|false|Shows a dash (the Minus icon) for a parent whose children are only partly ticked. The dash stays for as long as you pass `true`, also after a click: your `onChange` decides what happens next.|
 |`label`|text|none (required)|The name of the choice.|
 |`description`|text|none|A line of help under the label.|
 |`labelHidden`|true, false|false|Hides the text from the eye. It still names the checkbox.|
@@ -254,19 +270,23 @@ A control for choosing a number in a range by dragging.
 **Use it when** the exact number matters less than the feel, such as a
 volume.
 
-**Do not use it when** the user must type an exact value. Use TextField with
-`type` set to `number`.
+**Do not use it when** the user must type an exact value. Number entry will be
+its own component; TextField takes text only.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`label`|text|none (required)|Names the slider. Shown above it unless `labelHidden`.|
 |`min`, `max`|numbers|0 and 100|The ends of the range.|
-|`step`|a number|1|The size of one step.|
+|`step`|a number|1|The size of one step. Values snap to the grid of steps counted from `min`, so a step of 0.1 gives 0.3 and not 0.30000000000000004.|
 |`formatValue`|a function from number to text|none|Turns the value into the text shown beside the label, for example "80%". It is also what screen readers read.|
 |`labelHidden`|true, false|false|Hides the label row from the eye. It still names the slider.|
 |`disabled`|true, false|false|The slider is not available.|
+|`ref`|a ref to an input element|none|Reaches the slider's input, so a form can focus it.|
+
+The label uses the same style as the labels of fields.
 
 Stories: `kit-slider--states`, `kit-slider--focused`,
+`kit-slider--focused-at-min`, `kit-slider--focused-at-max`,
 `kit-slider--formatted`, `kit-slider--long-label`,
 `kit-slider--slider-light`, `kit-slider--slider-tinted`.
 
@@ -290,9 +310,15 @@ RadioGroup.
 |`disabled`|true, false|false|The field is not available.|
 |`labelHidden`|true, false|false|Hides the label from the eye. It still names the field.|
 |`shape`|`field`, `round`|`field`|`field` is the standard shape. `round` is the fully rounded shape.|
-|`type`|`text`, `password`, `email`, `search`, `url`, `number`|`text`|The kind of text.|
+|`type`|`text`, `password`, `email`, `search`, `url`|`text`|The kind of text. Numbers have no type here: number entry will be its own component.|
 |`multiline`, `rows`|true, false; a number|false|Makes the field several lines tall.|
 |`startIcon`|a name from the icon set|none|An icon at the start of the field.|
+
+A multiline field without `rows` starts three rows tall and grows with its
+text; one with `rows={1}` is as tall as a single-line field. The error message
+is not a live region: an error that appears after a submit is read out when the
+field gets focus again, not when it appears. Move focus to the first invalid
+field after a failed submit.
 
 Stories: `kit-text-field--states`, `kit-text-field--shapes`,
 `kit-text-field--multiline`, `kit-text-field--narrow`,
@@ -317,8 +343,76 @@ visible (use RadioGroup), or when the choice switches a view (use Tabs).
 |`error`|text|none|An error message. It marks the field invalid and replaces the helper.|
 |`disabled`|true, false|false|The field is not available.|
 |`labelHidden`|true, false|false|Hides the label from the eye. It still names the field.|
+|`ref`|a ref to an element|none|Receives the combobox element, so a form can focus the first invalid field.|
+
+Clicking the label focuses the field without opening the list, as a native
+select does. A `value` that matches no option shows the placeholder, and in
+development MUI logs a warning about it; pass a value from `options` or an empty
+string. The list's shadow is lighter in light mode than in dark mode.
 
 Stories: `kit-select-field--states`, `kit-select-field--open`,
 `kit-select-field--open-light`, `kit-select-field--long-options`,
 `kit-select-field--select-field-light`,
 `kit-select-field--select-field-tinted`.
+
+## What the browser does for us
+
+The web kit gets a lot of behaviour for free from the browser and from MUI, and
+none of it is written down in the components. The native client draws every
+control itself, so it has to implement each behaviour below on its own. They
+will become shared behaviour tables that both clients are tested against; until
+then this list is the spec for the native side.
+
+### Select menu
+
+- The list opens when the pointer is pressed on the field, not when it is
+  released. Enter, Space, ArrowDown and ArrowUp open it from the keyboard.
+- When it opens, focus goes to the selected item, or to the first item when
+  there is none.
+- Typing letters jumps to the next item whose text starts with them. Home and
+  End jump to the first and last item. Disabled items are skipped. The list does
+  not wrap.
+- Tab closes the list and puts focus back on the field; the next Tab moves on.
+  Escape and a click outside close it and put focus back on the field.
+- While the list is open the page behind it does not scroll, and the page is
+  hidden from assistive technology. Focus cannot leave the list.
+- The list is at least as wide as the field and sits just below it. When there is
+  no room it is moved to stay 16 px inside the window; it does not flip above the
+  field.
+- The list fades in over the fast timing.
+- Clicking the label focuses the field and does not open the list.
+
+### Text input
+
+- A multiline field grows with its text. It measures the text with a hidden copy
+  of itself.
+- The focus ring shows on any focus, with the mouse too, not only the keyboard.
+- `maxLength` is enforced by the input itself: typing and pasting stop at the limit.
+- A browser autofill is detected and the field is treated as filled.
+
+### Slider
+
+- A press on the rail jumps the thumb to that point, and dragging moves it from
+  there. The thumb travels the width of the rail minus its own width, so at both
+  ends it sits fully inside.
+- Values snap to the step grid counted from `min`. Arrows move one step; Home
+  and End jump to the ends; PageUp and PageDown move a larger step.
+
+### Radio group
+
+- Tab enters the group at the selected radio, or at the first enabled radio when
+  none is selected (Shift+Tab enters at the last). Only one radio of the group is
+  a Tab stop.
+- Arrows move focus and selection together, skip disabled radios and wrap.
+
+### Label rows
+
+- A press anywhere on the row of a checkbox, switch or radio, the text included,
+  activates the control. A disabled row does nothing.
+
+### Buttons
+
+- Focus is drawn only for keyboard focus, never after a mouse press.
+- Space activates a button when the key is released; Enter activates it when
+  the key goes down.
+- A busy button stays focusable and ignores both keys and clicks.

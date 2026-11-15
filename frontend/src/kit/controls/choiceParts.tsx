@@ -2,10 +2,11 @@ import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Text } from '../typography/Text';
-import { visuallyHidden } from './choiceStyle';
+import { visuallyHidden } from '../theme/a11y';
+import { transientProps } from '../theme/transientProps';
 
 const TextColumn = styled('span', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $hidden: boolean; $disabled: boolean }>(({ $hidden, $disabled }) => ({
   display: 'flex',
   flexDirection: 'column',

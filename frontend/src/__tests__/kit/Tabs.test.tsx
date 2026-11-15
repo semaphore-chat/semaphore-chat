@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Tabs, type TabItem } from '../../kit';
+import { Tabs, tabElementId, type TabItem } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 let consoleError: MockInstance;
@@ -99,16 +99,117 @@ describe('Tabs', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('renders the count after the label', () => {
+  it('names a tab with a count "<label>, <count>"', () => {
     renderWithKit(<Controlled />);
-    const tab = screen.getByRole('tab', { name: /Mentions/ });
-    expect(tab).toHaveTextContent('Mentions3');
+    expect(screen.getByRole('tab', { name: 'Mentions, 3' })).toBeInTheDocument();
   });
 
-  it('shows the value in the tab order even when it names a disabled tab only if present', () => {
+  it('a value that names no tab leaves the first enabled tab reachable', () => {
     renderWithKit(<Tabs label="X" tabs={TABS} value="missing" onChange={() => {}} />);
-    // No selected tab: the first enabled tab stays reachable.
     expect(screen.getByRole('tab', { name: 'All' })).toHaveAttribute('tabindex', '0');
+  });
+
+  it('a value that names a disabled tab leaves the first enabled tab reachable', () => {
+    renderWithKit(<Tabs label="X" tabs={TABS} value="off" onChange={() => {}} />);
+    expect(screen.getByRole('tab', { name: 'All' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tab', { name: 'Muted' })).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('clicking the already-selected tab does not call onChange', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(<Controlled onChange={onChange} />);
+    await user.click(screen.getByRole('tab', { name: 'All' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('gives every tab an id from the list id and tab id, and aria-controls from panelId', () => {
+    const tabs: TabItem[] = [
+      { id: 'all', label: 'All', panelId: 'panel-all' },
+      { id: 'mentions', label: 'Mentions' },
+    ];
+    renderWithKit(<Tabs label="X" id="nav" tabs={tabs} value="all" onChange={() => {}} />);
+    const all = screen.getByRole('tab', { name: 'All' });
+    expect(all).toHaveAttribute('id', tabElementId('nav', 'all'));
+    expect(all).toHaveAttribute('id', 'nav-tab-all');
+    expect(all).toHaveAttribute('aria-controls', 'panel-all');
+    expect(screen.getByRole('tab', { name: 'Mentions' })).not.toHaveAttribute('aria-controls');
+  });
+
+  it('a panel labelled by the tab id gets the tab as its name', () => {
+    renderWithKit(
+      <>
+        <Tabs label="X" id="nav" tabs={[{ id: 'all', label: 'All', panelId: 'p' }]} value="all" onChange={() => {}} />
+        <div role="tabpanel" id="p" aria-labelledby={tabElementId('nav', 'all')} />
+      </>,
+    );
+    expect(screen.getByRole('tabpanel', { name: 'All' })).toBeInTheDocument();
+  });
+
+  it('generates unique tab ids when no id is passed', () => {
+    renderWithKit(
+      <>
+        <Tabs label="A" tabs={[{ id: 'x', label: 'One' }]} value="x" onChange={() => {}} />
+        <Tabs label="B" tabs={[{ id: 'x', label: 'Two' }]} value="x" onChange={() => {}} />
+      </>,
+    );
+    const ids = screen.getAllByRole('tab').map((tab) => tab.getAttribute('id'));
+    expect(ids[0]).toBeTruthy();
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
+  describe('scrolling the selected tab into view', () => {
+    // jsdom has no layout: fake a 100px-wide list of five 60px tabs.
+    const scrolled = new WeakMap<Element, number>();
+    const restore: Array<() => void> = [];
+    const define = (name: string, descriptor: PropertyDescriptor) => {
+      const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name);
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, ...descriptor });
+      restore.push(() => {
+        if (original) {
+          Object.defineProperty(HTMLElement.prototype, name, original);
+        } else {
+          delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+        }
+      });
+    };
+    beforeEach(() => {
+      define('clientWidth', { get: () => 100 });
+      define('offsetWidth', { get: () => 60 });
+      define('offsetLeft', {
+        get(this: HTMLElement) {
+          const index = Array.from(this.parentElement?.children ?? []).indexOf(this);
+          return index * 60;
+        },
+      });
+      define('scrollLeft', {
+        get(this: HTMLElement) {
+          return scrolled.get(this) ?? 0;
+        },
+        set(this: HTMLElement, value: number) {
+          scrolled.set(this, value);
+        },
+      });
+    });
+    afterEach(() => {
+      restore.splice(0).reverse().forEach((undo) => undo());
+    });
+
+    const FIVE: TabItem[] = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, label: id.toUpperCase() }));
+
+    it('on mount, when the initial value is off-screen', () => {
+      renderWithKit(<Tabs label="X" tabs={FIVE} value="e" onChange={() => {}} />);
+      // Tab e spans 240..300; the list shows 100px, so it scrolls to 200.
+      expect(screen.getByRole('tablist').scrollLeft).toBe(200);
+    });
+
+    it('when value changes from outside, in both directions', () => {
+      const { rerender } = renderWithKit(<Tabs label="X" tabs={FIVE} value="a" onChange={() => {}} />);
+      expect(screen.getByRole('tablist').scrollLeft).toBe(0);
+      rerender(<Tabs label="X" tabs={FIVE} value="d" onChange={() => {}} />);
+      expect(screen.getByRole('tablist').scrollLeft).toBe(140);
+      rerender(<Tabs label="X" tabs={FIVE} value="a" onChange={() => {}} />);
+      expect(screen.getByRole('tablist').scrollLeft).toBe(0);
+    });
   });
 
   it('accepts fullWidth and id', () => {

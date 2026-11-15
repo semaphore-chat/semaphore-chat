@@ -8,7 +8,7 @@ export { Button } from './controls/Button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './controls/Button';
 export { IconButton } from './controls/IconButton';
 export type { IconButtonProps, IconButtonSize, IconButtonVariant } from './controls/IconButton';
-export { Tabs } from './controls/Tabs';
+export { Tabs, tabElementId } from './controls/Tabs';
 export type { TabItem, TabsProps } from './controls/Tabs';
 export { Switch } from './controls/Switch';
 export type { SwitchProps } from './controls/Switch';

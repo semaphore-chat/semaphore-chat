@@ -4,7 +4,8 @@ import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
 import { Text } from '../typography/Text';
 import { FieldLabelText } from './fieldLabel';
-import { visuallyHidden } from '../controls/choiceStyle';
+import { visuallyHidden } from '../theme/a11y';
+import { transientProps } from '../theme/transientProps';
 
 export interface FieldShellProps {
   label: string;
@@ -18,6 +19,11 @@ export interface FieldShellProps {
   controlId: string;
   labelId: string;
   messageId: string;
+  /**
+   * For a control a `<label for>` cannot reach (MUI's select is a div, not a
+   * labelable element): the label then has no `for` and runs this on click.
+   */
+  onLabelClick?: () => void;
   /** Receives what the control needs to wire itself to the label and the message. */
   children: (wiring: FieldWiring) => ReactNode;
 }
@@ -29,7 +35,7 @@ export interface FieldWiring {
 }
 
 const Root = styled('div', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $disabled: boolean }>(({ $disabled }) => ({
   position: 'relative',
   boxSizing: 'border-box',
@@ -42,7 +48,7 @@ const Root = styled('div', {
 }));
 
 const LabelRow = styled('div', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $hidden: boolean }>(({ $hidden }) => ({
   display: 'flex',
   alignItems: 'baseline',
@@ -80,6 +86,7 @@ export function FieldShell({
   controlId,
   labelId,
   messageId,
+  onLabelClick,
   children,
 }: FieldShellProps): JSX.Element {
   const hasError = error !== undefined && error !== '';
@@ -89,7 +96,13 @@ export function FieldShell({
   return (
     <Root $disabled={disabled}>
       <LabelRow $hidden={labelHidden}>
-        <label id={labelId} htmlFor={controlId}>
+        {/* A label click is a pointer convenience: the control it focuses is the keyboard path. */}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
+        <label
+          id={labelId}
+          htmlFor={onLabelClick === undefined ? controlId : undefined}
+          onClick={onLabelClick}
+        >
           <FieldLabelText>{label}</FieldLabelText>
         </label>
         {required && (

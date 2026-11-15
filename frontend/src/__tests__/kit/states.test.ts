@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { interactiveStates } from '../../kit/theme/states';
+import { focusRing, interactiveStates } from '../../kit/theme/states';
 import { mix } from '../../kit/theme/mix';
 import { derivePalette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
@@ -59,4 +59,19 @@ describe('interactiveStates', () => {
       mix(palette.text, palette.accent, tokens.state.pressedOnFill),
     );
   });
+
+describe('focusRing', () => {
+  const palette = derivePalette('#8E75FF', 'dark', 'minimal');
+
+  it('outlines with the focus role and the focus offset by default', () => {
+    expect(focusRing(palette)).toEqual({
+      outline: `${tokens.border.focus}px solid ${palette.focus}`,
+      outlineOffset: `${tokens.border.focusOffset}px`,
+    });
+  });
+
+  it('takes an offset, negative for a ring drawn inside', () => {
+    expect(focusRing(palette, -tokens.border.focus).outlineOffset).toBe(`${-tokens.border.focus}px`);
+  });
+});
 });

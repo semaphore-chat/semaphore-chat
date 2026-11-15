@@ -121,4 +121,32 @@ describe('Checkbox', () => {
     );
     expect(screen.getByRole('checkbox')).toBeInTheDocument();
   });
+
+  it('stays indeterminate in the DOM after a click when the parent keeps it mixed', async () => {
+    const { user } = renderWithKit(
+      <Checkbox label="Some" checked={false} indeterminate onChange={vi.fn()} />,
+    );
+    const box = screen.getByRole('checkbox') as HTMLInputElement;
+    await user.click(box);
+    expect(box.indeterminate).toBe(true);
+    expect(box).toHaveAttribute('aria-checked', 'mixed');
+  });
+
+  it('draws the indeterminate dash and the check with the kit Icon', () => {
+    const { container, rerender } = renderWithKit(
+      <Checkbox label="Some" checked={false} indeterminate onChange={() => {}} />,
+    );
+    expect(container.querySelector('svg path')?.getAttribute('d')).toBe('M5 12h14');
+    rerender(<Checkbox label="Some" checked onChange={() => {}} />);
+    expect(container.querySelector('svg path')?.getAttribute('d')).not.toBe('M5 12h14');
+    expect(container.querySelector('svg')).toBeInTheDocument();
+  });
+
+  it('passes a callback ref the input and clears it on unmount', () => {
+    const ref = vi.fn();
+    const { unmount } = renderWithKit(<Checkbox label="X" ref={ref} checked onChange={() => {}} />);
+    expect(ref).toHaveBeenLastCalledWith(screen.getByRole('checkbox'));
+    unmount();
+    expect(ref).toHaveBeenLastCalledWith(null);
+  });
 });

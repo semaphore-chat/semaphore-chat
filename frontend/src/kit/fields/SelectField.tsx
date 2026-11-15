@@ -1,4 +1,5 @@
-import { useId, type JSX } from 'react';
+import { useId, useImperativeHandle, useRef, type JSX, type Ref } from 'react';
+import Fade from '@mui/material/Fade';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import { styled, type Theme } from '@mui/material/styles';
@@ -7,6 +8,7 @@ import { Icon } from '../display/Icon';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
 import { mix } from '../theme/mix';
+import { shadow } from '../theme/shadow';
 import { FieldBox, type FieldBoxProps } from './FieldBox';
 import { FieldShell } from './FieldShell';
 
@@ -30,6 +32,8 @@ export interface SelectFieldProps {
   disabled?: boolean;
   /** Hides the label visually; it still names the field. */
   labelHidden?: boolean;
+  /** The combobox element, so a form can focus it. */
+  ref?: Ref<HTMLElement>;
   id?: string;
 }
 
@@ -78,22 +82,33 @@ const Item = styled(MenuItem)(({ theme }) => {
     lineHeight: `${tokens.text.body.line}px`,
     color: palette.text,
     ...states,
+    // MUI tints a selected item (and its hover, and focus-visible) with the
+    // primary colour. Selected reads as the accent label and a Check, so the
+    // tint is cleared; the rules below are the kit's own hover and focus
+    // states, and they match MUI's specificity so they win.
     '&.Mui-selected, &.Mui-selected:hover': { background: 'transparent', color: palette.accentText },
-    '&.Mui-focusVisible': { background: mix(palette.text, palette.surface, tokens.state.pressed) },
+    '@media (hover: hover)': {
+      ...states['@media (hover: hover)'],
+      '&.Mui-selected:hover': { background: mix(palette.text, palette.surface, tokens.state.hover) },
+    },
+    '&.Mui-focusVisible, &.Mui-selected.Mui-focusVisible': {
+      background: mix(palette.text, palette.surface, tokens.state.pressed),
+    },
     '&.Mui-disabled': { opacity: tokens.state.disabled },
     '& > .label': { flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
   };
 });
 
 const paperSx = (theme: Theme) => {
-  const { palette } = kitTheme(theme);
+  const lounge = kitTheme(theme);
+  const { palette } = lounge;
   return {
     marginTop: `${tokens.space.xs}px`,
     background: palette.surface,
     backgroundImage: 'none',
     border: `${tokens.border.hairline}px solid ${palette.hairline}`,
     borderRadius: `${tokens.radius.card}px`,
-    boxShadow: tokens.shadow.overlay.css,
+    boxShadow: shadow(lounge, 'overlay'),
   };
 };
 
@@ -114,11 +129,17 @@ export function SelectField({
   error,
   disabled = false,
   labelHidden = false,
+  ref,
   id,
 }: SelectFieldProps): JSX.Element {
   const uid = useId();
   const controlId = id ?? `${uid}-select`;
   const labelId = `${uid}-label`;
+  // MUI's select hands this handle to `inputRef`; its focus() focuses the
+  // combobox without opening it, as a native select's label does.
+  const selectRef = useRef<{ focus: () => void }>(null);
+  // The combobox is MUI's display div, found by the id this component gives it.
+  useImperativeHandle(ref, () => document.getElementById(controlId) as HTMLElement, [controlId]);
 
   return (
     <FieldShell
@@ -130,11 +151,22 @@ export function SelectField({
       controlId={controlId}
       labelId={labelId}
       messageId={`${uid}-message`}
+      onLabelClick={() => selectRef.current?.focus()}
     >
       {({ invalid, describedBy }) => (
         <Select
+          inputRef={selectRef}
+          labelId={labelId}
           value={value}
-          onChange={(event) => onChange(String(event.target.value))}
+          onChange={(event) => {
+            const next = String(event.target.value);
+            // MUI relies on CSS pointer-events to keep a disabled option from
+            // being chosen; an assistive technology's synthetic click skips CSS.
+            if (options.find((option) => option.value === next)?.disabled) {
+              return;
+            }
+            onChange(next);
+          }}
           disabled={disabled}
           displayEmpty
           IconComponent={Chevron}
@@ -150,6 +182,10 @@ export function SelectField({
             'aria-invalid': invalid ? true : undefined,
           }}
           MenuProps={{
+            // A plain fade at the fast timing: MUI's default Grow takes its
+            // duration from the menu's height and scales the paper.
+            transitionDuration: tokens.motion.fast,
+            slots: { transition: Fade },
             slotProps: { paper: { sx: paperSx }, list: { sx: listSx } },
           }}
           sx={(theme) => {
@@ -162,7 +198,6 @@ export function SelectField({
                 height: 'auto',
                 minHeight: 0,
                 padding: 0,
-                paddingRight: `${tokens.icon.sm + tokens.space.sm}px`,
                 lineHeight: `${tokens.text.body.line}px`,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -170,15 +205,16 @@ export function SelectField({
                 cursor: 'pointer',
               },
               '&.Mui-disabled .MuiSelect-select': { cursor: 'default' },
+              // The chevron is a flex item of the field box (which centres its
+              // children), not positioned over it, so the text ends before it.
               '& .MuiSelect-icon': {
-                position: 'absolute',
-                right: `${tokens.space.lg}px`,
-                top: '50%',
-                transform: 'translateY(-50%)',
+                position: 'static',
+                flexShrink: 0,
                 color: palette.textSecondary,
                 pointerEvents: 'none',
               },
-              '& .MuiSelect-icon.MuiSelect-iconOpen': { transform: 'translateY(-50%) rotate(180deg)' },
+              // Half a turn flips the chevron up while the list is open.
+              '& .MuiSelect-icon.MuiSelect-iconOpen': { transform: 'rotate(180deg)' },
             };
           }}
         >
