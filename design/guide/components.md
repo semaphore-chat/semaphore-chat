@@ -16,10 +16,11 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Twenty-seven components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Thirty-three components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, Toast,
-ListRow, Table, Menu, Popover, Tooltip and Dialog.
+ListRow, Table, Menu, Popover, Tooltip, Dialog, Island, Card, Sheet, Dock,
+DockDivider and DockItem.
 
 ## Rules every component follows
 
@@ -41,6 +42,23 @@ ListRow, Table, Menu, Popover, Tooltip and Dialog.
   timing tokens, and stop for people who ask their system for reduced motion.
 - **Colours and sizes come only from the tokens and palette roles** described
   in [Tokens and colour](tokens-and-colour.md).
+
+## How a screen is built
+
+The ground is the page. Islands float on the ground and hold everything: a
+screen is a few islands and nothing outside them. Inside an island go rows,
+cards, text and controls. Overlays float above everything, and they are the
+only thing that does.
+
+|Layer|What it is|Palette role|
+|---|---|---|
+|Ground|The page behind everything|`ground`|
+|Island|A large rounded panel that floats on the ground|`surface`|
+|Card|A soft block inside an island|`fill`|
+|Overlay|A Dialog, a Sheet or another floating panel|`surface`, with a border and a shadow|
+
+The gap between islands belongs to the layout, not to the island. See
+[Tokens and colour](tokens-and-colour.md) for the palette roles.
 
 ## Text
 
@@ -701,7 +719,7 @@ Stories: `kit-table--basic`, `kit-table--empty`, `kit-table--narrow`,
 
 ## Which overlay
 
-Four components float above the page. Choose by what the thing holds and by
+Five components float above the page. Choose by what the thing holds and by
 how much it should stop the user. For a message about something that happened,
 use Toast or Alert instead.
 
@@ -710,7 +728,8 @@ use Toast or Alert instead.
 |Tooltip|A few words of text|No|It closes on its own when the pointer or focus leaves, or on Escape.|
 |Menu|A list of actions on one thing|Yes, until it closes|Choosing an item, Escape, a press outside, or Tab.|
 |Popover|A small piece of interface: a short form, a picker, a few controls|No|Escape or a press outside.|
-|Dialog|A decision that needs an answer|Yes: it is the only modal|A button in it, Escape, or a press on the dimmed page.|
+|Dialog|A decision that needs an answer|Yes|A button in it, Escape, or a press on the dimmed page.|
+|Sheet|Browsing many things, or a longer task|Yes|Its Close button, a button in it, Escape, or a press on the dimmed page.|
 
 Overlays stack in the order they were opened, and a tooltip sits above all of
 them. A Menu, a select list or a Popover that opens from inside a Dialog is on
@@ -826,7 +845,7 @@ Stories: `kit-tooltip--shown`, `kit-tooltip--long-label`,
 A box that interrupts the screen to ask for a decision.
 
 **Use it when** the user must answer before going on: confirm a deletion, give a
-name, accept a choice. It is the only modal in the system. It dims the page and
+name, accept a choice. It is the modal for a decision. It dims the page and
 nothing behind it can be used until it closes.
 
 **Do not use it when** the information can sit on the page (use Alert), when it
@@ -865,11 +884,192 @@ Stories: `kit-dialog--confirm`, `kit-dialog--with-content`,
 `kit-dialog--phone`, `kit-dialog--confirm-light`,
 `kit-dialog--confirm-tinted`, `kit-dialog--with-select`.
 
+## Island
+
+The large surface of the app: a rounded panel that floats on the ground and
+holds a part of the screen.
+
+**Use it when** you group a part of a screen: a list of channels, the messages,
+a member list. Every part of a screen sits on an island.
+
+**Do not use it when** you want a block inside an island. Use Card. Do not put
+an island inside an island.
+
+An island has no border and is lifted by a shadow. It does not set the gap to
+the next island. The layout does. In a row of islands, give each one its width
+from the layout, because an island is only as wide as its content.
+
+### Which label and element
+
+An island is a page region only when it has a `label`. Give it one when the
+part is something people jump to, and then pick the element with `as`:
+
+- `nav`: places to go, such as the list of channels.
+- `aside`: supporting content beside the main content, such as a member list.
+- `main`: the main content of the page. Use it once per page.
+- `section`: any other named part. This is the default. Without a `label` it is
+  only a box, not a region.
+- `div`: a plain box, with no meaning for screen readers.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`children`|content|none (required)|What the island holds.|
+|`as`|`section`, `aside`, `nav`, `main`, `div`|`section`|The page element. See above.|
+|`label`|text|none|Names the region for screen readers.|
+|`padding`|`none`, `md`, `lg`|`lg`|The space inside. Use `none` when the content brings its own, such as a list of rows.|
+|`scroll`|true, false|false|The island fills the height its parent gives it, and its content scrolls inside it, never the page.|
+|`id`|text|none|The id of the element.|
+
+Without `scroll`, whatever is wider or taller than the island is cut off. With
+`scroll`, the parent must give the island a height.
+
+Stories: `kit-island--layout`, `kit-island--scrolling`, `kit-island--paddings`,
+`kit-island--layout-light`, `kit-island--layout-tinted`.
+
 ## Card
 
-A soft-filled card inside an island: plain, or one button or link that covers the whole card.
+A soft-filled block inside an island. It is plain, or it is one button or one
+link that covers the whole card.
 
-Kit pieces adapt automatically when placed on a Card: a soft Button, a neutral Pill and a field draw on the surface colour instead of the fill, so they stay visible.
+**Use it when** you show a self-contained thing in an island with its own
+content: a voice room with the people in it, a block of settings.
+
+**Do not use it when** the thing is one row in a list. Use ListRow. Do not put
+a Card on the ground, or inside another Card.
+
+A card that is a button or a link is one control, named by its text. If the
+text is not enough, give it a `label`. Because the whole card is the control,
+do not put other buttons or links inside it. A plain card may hold any kit
+components.
+
+Kit pieces adapt on their own when they sit on a Card. A soft Button, a neutral
+Pill and a field draw on the surface colour instead of the fill, so they stay
+visible. You do not do anything for this.
+
+### Two signs for "this one"
+
+The Card and the ListRow each have a sign for the current thing, and they mean
+different things. Never swap them.
+
+|Sign|Where|What it means|
+|---|---|---|
+|Accent outline|`selected` on a Card|You are in this (a voice room you joined), or this is the current item.|
+|Solid accent pill|`selected` on a ListRow|The selected row in a list, such as the channel you are in.|
+
+The outline is drawn as a border that is always there and is clear when the
+card is not selected, so selecting never changes the size of the card. A
+selected card is announced as current.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`children`|content|none (required)|What the card holds.|
+|`selected`|true, false|false|The accent outline.|
+|`padding`|`md`, `lg`|`md`|The space inside.|
+|`onClick`|a function|none|Makes the card a button.|
+|`href`|an address|none|Makes the card a link. Do not pass both `onClick` and `href`.|
+|`label`|text|none|The accessible name of a button or link card, when its text is not enough.|
+|`id`|text|none|The id of the element.|
+
+Stories: `kit-card--voice-rooms`, `kit-card--clickable`, `kit-card--paddings`,
+`kit-card--voice-rooms-light`, `kit-card--voice-rooms-tinted`.
+
+## Dock
+
+The bar where the user moves between communities and goes to the inbox. It is a
+pill-shaped bar of DockItems, icon buttons and dividers.
+
+**Use it when** you build the community switcher of a screen.
+
+**Do not use it when** you need tabs for views of a page (use Tabs) or a list
+of places with names (use ListRow in an island).
+
+A Dock must have a `label`. It names the navigation for screen readers.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|Names the navigation.|
+|`children`|DockItems, IconButtons and DockDividers|none (required)|What is on the bar.|
+
+Put an IconButton on the bar for a thing that is not a community, such as the
+inbox. Use a DockDivider between groups: it is a thin vertical line, and it has
+no options and is hidden from screen readers. A bar that holds more than fits
+scrolls sideways, and keeps the current item in view. See "What the browser
+does for us".
+
+Stories: `kit-dock--communities`, `kit-dock--overflow`, `kit-dock--phone-bar`,
+`kit-dock--communities-light`, `kit-dock--communities-tinted`.
+
+## DockItem
+
+One community on the Dock: a round button, or a link, that holds its picture.
+
+**Use it when** the item is a community in a Dock.
+
+**Do not use it when** you show a community in a list or a row. Use ListRow
+with an Avatar. Do not use it outside a Dock.
+
+What the picture shows is also in the name, so a screen reader hears all of it.
+The name is the community's name, then ", current", then ", 3 unread", then
+", reconnecting", for each that applies. The name also shows in a tooltip on
+hover and on keyboard focus.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`name`|text|none (required)|The community. It is the accessible name, the tooltip and the source of the initials.|
+|`src`|an image address|none|The picture.|
+|`colour`|a colour as `#rrggbb`|none|The community's own colour, as for Avatar.|
+|`current`|true, false|false|The community you are in: an accent ring.|
+|`unread`|a number|0|A count on the item. 0 shows nothing.|
+|`status`|`reconnecting`|none|A warning dot, and the picture dimmed.|
+|`onClick`|a function|none|Makes the item a button.|
+|`href`|an address|none|Makes the item a link.|
+|`id`|text|none|The id of the element.|
+
+The ring is always there and is clear when the item is not current, so
+becoming current moves nothing. The count is a danger Badge and a warning dot is
+the dot of a reconnecting community; both are drawn only, and the name carries
+the same facts. The Dock stories show every state.
+
+Stories: `kit-dock--communities`, `kit-dock--overflow`.
+
+## Sheet
+
+A large modal panel for browsing or a longer task, such as a list of all
+communities or a settings pane.
+
+**Use it when** the user looks through many things or does a task with several
+steps, and it needs more room than a question.
+
+**Do not use it when** the user only answers a question. Use Dialog. Do not use
+it for a few controls beside the thing they act on. Use Popover.
+
+Use Dialog for a decision and Sheet for browsing or a longer task. A Sheet works
+like a Dialog: it dims the page and nothing behind it can be used until it
+closes. The title and a Close button stay at the top. The `actions`, if any,
+stay in a row at the bottom. Only the body scrolls. Above the phone width the
+Sheet is a panel in the middle of the page. On a phone it rises from the bottom
+as a bottom sheet: full width, rounded at the top, and it leaves room for the
+Dock.
+
+The parent decides whether the sheet closes. `onClose` is called on Escape, on a
+press on the dimmed page and on the Close button.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`open`|true, false|none (required)|Whether the sheet is showing.|
+|`onClose`|a function|none (required)|Called on Escape, on a press on the dimmed page and on Close.|
+|`title`|text|none (required)|Names the sheet. It is the heading.|
+|`children`|content|none (required)|The body. It scrolls.|
+|`actions`|Buttons|none|The buttons, in a row pinned to the bottom. On a phone they stack.|
+|`size`|`md`, `lg`|`md`|The width. `md` is 560 pixels and `lg` is 800.|
+
+Focus lands on the sheet itself, not on a first action, so Close is the first
+Tab stop. A select list, a Menu, a Popover or a Tooltip may open from inside a
+Sheet, as in a Dialog.
+
+Stories: `kit-sheet--all-communities`, `kit-sheet--with-actions`,
+`kit-sheet--long-content`, `kit-sheet--phone`, `kit-sheet--all-communities-light`,
+`kit-sheet--all-communities-tinted`.
 
 ## What the browser does for us
 
@@ -1081,3 +1281,30 @@ then this list is the spec for the native side.
 - The dimmed page fades in. The dialog is centred, and keeps the page gutter on
   each side of a narrow screen. On a phone the action buttons stack, one to a
   row, safe action on top.
+
+### Dock
+
+- A bar that holds more than fits scrolls sideways inside itself. The scrollbar
+  is not drawn, and the scroll does not pass on to the page. While everything
+  fits, the items are centred. Once it overflows they start at the start edge,
+  so nothing is cut off at the left.
+- It keeps the current item (the one marked as the current page) in view when it
+  first shows and whenever the current item changes: it scrolls only as far as
+  needed, leaving one small space beside the item. A scroll the user made is left
+  alone otherwise. It scrolls the bar, never the page.
+- An item is a button or a link with its own name and a tooltip. The ring of the
+  current item is a border that is always there, so nothing moves when it
+  changes.
+
+### Sheet
+
+- It behaves like a Dialog: the page behind does not scroll and is hidden from
+  assistive technology, focus moves in and cannot leave, Escape and a press on
+  the dimmed page call `onClose`, and focus goes back to where it was. A layer
+  opened from inside is drawn within the sheet. Focus goes to the sheet itself.
+- The header and the actions stay put and the body scrolls.
+- Above the phone width it is centred and keeps the page gutter. At the phone
+  width or below it is full width, sits at the bottom with rounded top corners,
+  and is never taller than the window less the height of the Dock. It slides up
+  when it opens, unless the user asks for reduced motion. It fades out when it
+  closes. The actions stack, one to a row.
