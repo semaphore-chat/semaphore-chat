@@ -64,8 +64,7 @@ vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
 
 import { useLogout } from '../../hooks/useLogout';
 
-function renderUseLogout() {
-  const queryClient = createTestQueryClient();
+function renderUseLogout(queryClient = createTestQueryClient()) {
   return renderHook(() => useLogout(), {
     wrapper: createTestWrapper({ queryClient }),
   });
@@ -222,6 +221,84 @@ describe('useLogout', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith('/login', {
       state: { returnTo: '/desktop-login?challenge=x' },
+    });
+  });
+
+  describe('query cache', () => {
+    it('clears every cached query so the next account never sees the previous one\'s data', async () => {
+      const queryClient = createTestQueryClient();
+      queryClient.setQueryData(['userControllerGetProfile'], { id: 'u1', username: 'alice' });
+      queryClient.setQueryData(['communities'], [{ id: 'c1' }]);
+      const { result } = renderUseLogout(queryClient);
+
+      await act(async () => {
+        await result.current.handleLogout();
+      });
+
+      expect(queryClient.getQueryCache().getAll()).toEqual([]);
+      expect(queryClient.getQueryData(['userControllerGetProfile'])).toBeUndefined();
+      expect(queryClient.getQueryData(['communities'])).toBeUndefined();
+    });
+
+    it('clears the cache even when the logout mutation rejects', async () => {
+      mockLogoutMutationFn.mockRejectedValueOnce(new Error('network down'));
+      const queryClient = createTestQueryClient();
+      queryClient.setQueryData(['communities'], [{ id: 'c1' }]);
+      const { result } = renderUseLogout(queryClient);
+
+      await act(async () => {
+        await result.current.handleLogout();
+      });
+
+      expect(queryClient.getQueryCache().getAll()).toEqual([]);
+    });
+
+    it('clears the cache after the socket is disconnected and tokens are cleared, before navigating', async () => {
+      const queryClient = createTestQueryClient();
+      queryClient.setQueryData(['communities'], [{ id: 'c1' }]);
+      const clear = queryClient.clear.bind(queryClient);
+      vi.spyOn(queryClient, 'clear').mockImplementation(() => {
+        callOrder.push('clearQueryCache');
+        clear();
+      });
+      mockNavigate.mockImplementationOnce(() => {
+        callOrder.push('navigate');
+      });
+      const { result } = renderUseLogout(queryClient);
+
+      await act(async () => {
+        await result.current.handleLogout();
+      });
+
+      expect(callOrder).toEqual([
+        'clearSavedConnection',
+        'disconnectSocket',
+        'logoutMutation',
+        'clearTokens',
+        'clearQueryCache',
+        'navigate',
+      ]);
+    });
+
+    it('does not let an in-flight query repopulate the cache after sign-out', async () => {
+      const queryClient = createTestQueryClient();
+      let resolveFetch!: (value: unknown) => void;
+      const inFlight = queryClient
+        .fetchQuery({
+          queryKey: ['userControllerGetProfile'],
+          queryFn: () => new Promise((resolve) => { resolveFetch = resolve; }),
+        })
+        .catch(() => undefined);
+      const { result } = renderUseLogout(queryClient);
+
+      await act(async () => {
+        await result.current.handleLogout();
+      });
+      resolveFetch({ id: 'u1', username: 'alice' });
+      await inFlight;
+
+      expect(queryClient.getQueryData(['userControllerGetProfile'])).toBeUndefined();
+      expect(queryClient.getQueryCache().getAll()).toEqual([]);
     });
   });
 });

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type RefObject } from "react";
 import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { DESKTOP_LOGIN_PATH } from "../utils/desktopLogin";
 import { Box, CircularProgress, Typography } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { onboardingControllerGetStatusOptions } from "../api-client/@tanstack/react-query.gen";
 import {
   getAccessToken,
@@ -29,6 +29,7 @@ import { ThreadPanelProvider } from "../contexts/ThreadPanelProvider";
 import { UserProfileProvider } from "../contexts/UserProfileProvider";
 import { logger } from "../utils/logger";
 import { clearDesignPreview } from "../shell/designPreview";
+import { clearSessionCaches } from "../utils/clearSessionCaches";
 import { PAGE_LOAD_REFRESH_ROUNDS } from "../utils/sessionRefreshPolicy";
 import { SessionUnavailable } from "./SessionUnavailable";
 import type { LoginLocationState } from "../pages/LoginPage";
@@ -84,6 +85,7 @@ export function AuthGate() {
   // Why the server signed us out, for the login page to explain
   const [signOutReason, setSignOutReason] = useState<SignOutReason | null>(null);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   // Ends a session refresh still waiting for the server when AuthGate unmounts
   const refreshAbort = useRef<AbortController | null>(null);
@@ -116,6 +118,9 @@ export function AuthGate() {
     if (onboardingChecked || onboardingCheckFailed) {
       validateToken();
     }
+    // validateToken is recreated every render; its only reactive input is the
+    // (stable) QueryClient, so the effect keeps running on the onboarding state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckingOnboarding, onboardingChecked, onboardingCheckFailed, onboardingStatus]);
 
   // Listen for unrecoverable 401s during the session (e.g. refresh token
@@ -127,10 +132,11 @@ export function AuthGate() {
       clearTokens();
       // The next account signed in on this tab must not inherit the design preview.
       clearDesignPreview();
+      clearSessionCaches(queryClient);
       setSignOutReason(reason ?? null);
       setAuthState(AuthState.Unauthenticated);
     });
-  }, []);
+  }, [queryClient]);
 
   // Flush any deep link stashed by useDeepLinks (mounted in App.tsx, alive
   // even while unauthenticated) once sign-in completes. AuthGate is the one
@@ -181,6 +187,7 @@ export function AuthGate() {
 
     disconnectSocket();
     clearTokens();
+    clearSessionCaches(queryClient);
     setAuthState(AuthState.Unauthenticated);
   }
 
@@ -197,6 +204,7 @@ export function AuthGate() {
     disconnectSocket();
     clearTokens();
     clearDesignPreview();
+    clearSessionCaches(queryClient);
     setSignOutReason(null);
     setAuthState(AuthState.Unauthenticated);
   }

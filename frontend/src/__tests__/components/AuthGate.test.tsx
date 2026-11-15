@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders, createTestQueryClient } from '../test-utils';
 import { AuthGate } from '../../components/AuthGate';
 import {
   notifyAuthFailure,
@@ -111,7 +111,7 @@ function LoginProbe() {
   );
 }
 
-function renderAuthGate(initialRoute = '/') {
+function renderAuthGate(initialRoute = '/', queryClient = createTestQueryClient()) {
   return renderWithProviders(
     <Routes>
       <Route element={<AuthGate />}>
@@ -123,8 +123,22 @@ function renderAuthGate(initialRoute = '/') {
       <Route path="/login" element={<LoginProbe />} />
       <Route path="/onboarding" element={<div data-testid="onboarding">Onboarding Page</div>} />
     </Routes>,
-    { routerProps: { initialEntries: [initialRoute] } },
+    { routerProps: { initialEntries: [initialRoute] }, queryClient },
   );
+}
+
+/** The user data a signed-in session caches (not AuthGate's own onboarding query). */
+function seedAccountQueries(queryClient: ReturnType<typeof createTestQueryClient>) {
+  queryClient.setQueryData(['userControllerGetProfile'], { id: 'u1', username: 'alice' });
+  queryClient.setQueryData(['communities'], [{ id: 'c1' }]);
+}
+
+function accountQueryKeys(queryClient: ReturnType<typeof createTestQueryClient>) {
+  return queryClient
+    .getQueryCache()
+    .getAll()
+    .map((q) => JSON.stringify(q.queryKey))
+    .filter((k) => !k.includes('onboarding'));
 }
 
 describe('AuthGate', () => {
@@ -478,6 +492,26 @@ describe('AuthGate', () => {
       expect(localStorage.getItem('refreshToken')).toBeNull();
     });
 
+    it('clears the query cache when the refresh is rejected', async () => {
+      setAccessToken(expiredToken());
+      mockOnboardingOk();
+      mockProfileUnauthorized();
+      server.use(
+        http.post(`${BASE_URL}/api/auth/refresh`, () =>
+          HttpResponse.json({ message: 'Expired' }, { status: 401 }),
+        ),
+      );
+      const queryClient = createTestQueryClient();
+      seedAccountQueries(queryClient);
+
+      renderAuthGate('/', queryClient);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(accountQueryKeys(queryClient)).toEqual([]);
+    });
+
     it('calls disconnectSocket when refresh fails', async () => {
       setAccessToken(expiredToken());
 
@@ -595,8 +629,8 @@ describe('AuthGate', () => {
       });
 
       /** Let the retries and pauses run until AuthGate gives up. */
-      async function renderUntilUnavailable() {
-        const result = renderAuthGate();
+      async function renderUntilUnavailable(queryClient = createTestQueryClient()) {
+        const result = renderAuthGate('/', queryClient);
         for (let i = 0; i < 40 && !screen.queryByText(unavailableText); i++) {
           await act(() => vi.advanceTimersByTimeAsync(2_000));
         }
@@ -664,6 +698,20 @@ describe('AuthGate', () => {
         expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
         expect(localStorage.getItem('refreshToken')).toBeNull();
         expect(getAccessToken()).toBeNull();
+      }, 20_000);
+
+      it('"Sign in again" clears the query cache', async () => {
+        localStorage.setItem('refreshToken', 'stored-refresh-token');
+        const queryClient = createTestQueryClient();
+        await renderUntilUnavailable(queryClient);
+        seedAccountQueries(queryClient);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('login')).toBeInTheDocument();
+        });
+        expect(accountQueryKeys(queryClient)).toEqual([]);
       }, 20_000);
     });
 
@@ -761,6 +809,66 @@ describe('AuthGate', () => {
       });
       expect(mockDisconnectSocket).toHaveBeenCalled();
       expect(getAccessToken()).toBeNull();
+    });
+
+    it('clears the query cache when the server ends the session, after tokens and socket', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      renderAuthGate('/', queryClient);
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      seedAccountQueries(queryClient);
+      let tokenWhenCleared: string | null | undefined;
+      let socketDisconnectedWhenCleared = false;
+      const clear = queryClient.clear.bind(queryClient);
+      vi.spyOn(queryClient, 'clear').mockImplementation(() => {
+        tokenWhenCleared = getAccessToken();
+        socketDisconnectedWhenCleared = mockDisconnectSocket.mock.calls.length > 0;
+        clear();
+      });
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(accountQueryKeys(queryClient)).toEqual([]);
+      expect(queryClient.getQueryData(['userControllerGetProfile'])).toBeUndefined();
+      expect(queryClient.getQueryData(['communities'])).toBeUndefined();
+      expect(tokenWhenCleared).toBeNull();
+      expect(socketDisconnectedWhenCleared).toBe(true);
+    });
+
+    it('does not let an in-flight query repopulate the cache after the session ends', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      renderAuthGate('/', queryClient);
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      let resolveFetch!: (value: unknown) => void;
+      const inFlight = queryClient
+        .fetchQuery({
+          queryKey: ['userControllerGetProfile'],
+          queryFn: () => new Promise((resolve) => { resolveFetch = resolve; }),
+        })
+        .catch(() => undefined);
+
+      act(() => {
+        notifyAuthFailure();
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      resolveFetch({ id: 'u1' });
+      await inFlight;
+
+      expect(queryClient.getQueryData(['userControllerGetProfile'])).toBeUndefined();
     });
 
     it("clears this tab's design preview when the server ends the session", async () => {

@@ -158,10 +158,15 @@ export function createPreviewUrl(file: File): string | null {
   }
 }
 
-/** Test helper: forget every entry. */
-export function resetPendingUploadsForTests(): void {
+/** Forget every entry (revoking its previews), e.g. when the session ends. */
+export function clearPendingUploads(): void {
   for (const entry of byClientId.values()) entry.files.forEach(revokePreview);
   byClientId.clear();
   clientIdByMessageId.clear();
   emit();
+}
+
+/** Test helper: forget every entry. */
+export function resetPendingUploadsForTests(): void {
+  clearPendingUploads();
 }
