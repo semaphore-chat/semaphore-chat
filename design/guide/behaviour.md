@@ -46,8 +46,12 @@ called a host.
   bottom centre of the template's main island (see
   [Layouts](layouts.md#where-toasts-sit)); a bottom-pinned element such as a
   composer lifts it above itself with `useToastClearance(ref)`.
-- The other hosts (confirm, list focus, load state) do not exist yet, and the
-  native client has none. They arrive with the new shell.
+- The web kit has hosts for two more patterns. `useConfirmDestructive` runs the
+  destructive confirmation on a kit Dialog. `useLoadState` and
+  `useQueryLoadState` run the load state, and `LoadState` draws its five faces.
+  Screens use these, not the reducers.
+- The list focus host does not exist yet, and the native client has no hosts.
+  They arrive with the new shell.
 - Until then, today's screens still handle these things by hand, and they use
   MUI overlays, not the kit's. They behave as MUI does, which differs from these
   rules in places. For example, MUI lets an Escape pressed over a tooltip also
@@ -191,6 +195,15 @@ A confirm dialog is also a layer of the overlay stack. The host joins them:
   reports `closed` to the overlay stack.
 - While the action runs, the confirm pattern ignores the cancel, so the owner
   does not close the dialog and reports nothing to the overlay stack.
+- `requestClose(dialog, 'parentClosed')` cannot be refused: the dialog has left
+  the stack and is gone from the screen. Before the action and after a failure
+  it is `cancel`. While the action runs, the run goes on. Its success is `done`
+  as usual. Its failure has no dialog to show in, so the host sends `cancel`
+  right after `failed` (the confirmation is closed again, and a later `request`
+  opens it) and shows the message as a danger toast through `notify`. If the
+  dialog comes back on the page before the result (its parent reopened), a
+  failure shows in the dialog as usual, with no toast. The pattern does not
+  cover this case yet; this is the host's rule.
 
 ## Toast queue
 
@@ -388,6 +401,45 @@ Delete: the button is busy. The server says no. The dialog shows "Couldn't
 delete the channel". They press Delete again; this time it works, and the
 dialog closes.
 
+**On the web.** `useConfirmDestructive({ title, description, confirmLabel, run,
+errorMessage?, timeoutMessage?, onDone?, timeoutMs? })` returns `{ request,
+dialog, phase }`; `request` keeps its identity across renders.
+Wire `request` to the dangerous button or Menu item and render `dialog` once in
+the screen's tree. It is the kit Dialog (see ConfirmDialog in
+[Components](components.md#confirmdialog)).
+
+- `run(signal)` has `timeoutMs` (30 seconds by default) to answer; a timeout is
+  a failure. A screen that goes away while the action works counts as failed,
+  and the late answer is dropped. Each run reports exactly one result. The
+  signal aborts when the answer no longer counts: a timeout (its reason is a
+  `ConfirmTimeoutError`) or the screen going away.
+- `errorMessage(error)` words a rejection. A timeout does not go through it:
+  the result is unknown, so the dialog says "This is taking too long. It may
+  still have worked, so check before you try again." (`timeoutMessage`
+  replaces it). The confirm button stays, with its label, for a second try.
+- Cancel is `aria-disabled` while the action works: it reads as unavailable
+  and ignores presses, but keeps focus (Safari leaves focus on it when the
+  confirm button is clicked). A failure shows as a danger Alert in the body,
+  and the confirm button keeps its label, so it reads as the retry.
+- Opened from a Menu item, the dialog's opener is the menu's button (rule 17 of
+  the overlay stack), so focus goes back to it.
+- `onDone` runs after the dialog has closed and focus has gone back.
+- When the layer the dialog was opened from closes (a Sheet or Popover it was
+  rendered in), the dialog goes with it, and the same happens when the dialog
+  element leaves the page. Before the action and after a failure that is a
+  cancel. While the action works, the dialog disappears but the action keeps
+  running: success calls `onDone`; failure shows its message as a danger toast
+  (the kit's toast host, the same queue as `useToasts`, with an id of its own
+  per confirmation) and the hook goes back to idle, so
+  `request()` opens the dialog again. If that layer reopens before the result,
+  the dialog shows again and a failure appears in it as usual. See "One dialog,
+  two patterns".
+- Rule: a dialog rendered inside a Popover, Sheet or other layer that can close
+  while the action works reports a failure after that close only as a toast, so
+  the screen must render the toast region: inside `AppFrame` it always does
+  (`AppFrame` renders `ToastRegion`). Outside it (a story, a test), render
+  `<ToastRegion />` yourself, or the notice waits in the queue unseen.
+
 |Host checklist|Done when|
 |---|---|
 |Results|Every `run` reports exactly one `succeeded` or `failed`, a timeout included|
@@ -482,6 +534,58 @@ screen sets its own).
 list refreshes in the background; the refresh fails. The members stay on
 screen, and a toast says "You are offline". It fails again a minute later: the
 same toast is replaced, not added.
+
+**On the web.** `useLoadState({ notifyId, resetKey, load, isEmpty })` takes a
+function that fetches: `load(signal)` returns the data, and the signal aborts
+when a newer fetch starts or the screen goes away. It returns `{ state, data }`:
+`state` is the controller, and `data` is the current load's answer only, so a
+late answer for an earlier `resetKey` never shows, even when `load` ignores the
+signal. `useQueryLoadState(query, { notifyId, resetKey, isEmpty })` takes a
+TanStack Query result instead and returns the controller (draw `query.data`).
+Both accept an optional `errorMessage(error)`; the default is "Try again.",
+under the screen's error title ("Couldn't load members"). The controller
+(`status`, `error`, `retryable`, `refreshByUser`, `refresh()`, `retry()`) is what
+`<LoadState>` draws (see LoadState in [Components](components.md#loadstate)).
+
+- `resetKey` is a string or a number, compared by value. Build it from ids
+  (`channelId`, or `` `${communityId}:${channelId}` ``), never an array or an
+  object, and change it in the same render as the query key. A change is
+  `start`: the screen loads from scratch, and the answer to the earlier key is
+  dropped.
+- `resetKey` is compared with `Object.is`; NaN (`Number(missingId)`) throws.
+- `useQueryLoadState` observes the query; it never fetches by itself. On open
+  and on a `resetKey` change, data in the cache is the first face painted (ready
+  or empty), with no skeleton and no request, whatever the query is doing:
+  fresh, disabled, offline, or its last refetch failed. A refetch TanStack makes
+  of that data on mount (it is stale) is a background refresh; offline, it fails
+  into a toast, never the error screen. With no data, it joins the query's own
+  fetch.
+- Only Try again and a refresh the user starts call `refetch()`, and only while
+  the query is enabled and not fetching already. A disabled query with no
+  answer (a dependent query whose id has not arrived, or one waiting on a
+  permission) reads as loading, never empty or error, and fetches nothing; a
+  cached error on a disabled query keeps the skeleton too, since Try again could
+  not fetch it.
+- A refetch the query starts itself (focus, reconnect, invalidation) is a
+  background refresh; one that ended before the screen saw it start, and data
+  set by hand (`setQueryData` from a socket handler), are reported the same way
+  and settle at once.
+- A cancelled fetch (`cancelQueries`, which reverts) is not a result. During
+  the first load the skeleton stays, and the hook calls `refetch()` once to
+  resume the load the cancel interrupted (once only: a second cancel is left
+  alone). During a refresh the reverted data, or the data a socket handler sets
+  right after, ends the refresh.
+- A paused fetch (offline: TanStack waits instead of failing) is a failed
+  attempt. A first load shows the error face with "You're offline. It will
+  load when you're back online." and no Try again (the controller's
+  `retryable` is false): TanStack resumes the paused fetch on reconnect, so the
+  screen loads by itself, and Try again would only fail again. A refresh
+  notifies "You're offline. It will refresh when you're back online." and its
+  button stops being busy. When the connection returns, the resumed fetch's
+  answer shows as a background refresh.
+- `notify` goes straight to the kit's toast host (the queue behind
+  `useToasts`): `show({ id: notifyId, tone: 'danger', message })`, so repeated
+  failures replace one toast. The toast region `AppFrame` renders draws it.
 
 |Host checklist|Done when|
 |---|---|
