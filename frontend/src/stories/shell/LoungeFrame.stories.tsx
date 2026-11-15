@@ -3,7 +3,8 @@
  * its template. `bare` is the marker filling the frame; `threeIslands` is the chat template with the
  * shell's pieces in their slots. The pieces are placeholders until PRs 5-7: here each slot shows its
  * name, so the screenshots show where the dock, the community, the members and the call bar sit at
- * phone, tablet and desktop width. In the app the placeholders render nothing.
+ * phone, tablet and desktop width. In the app the placeholders render nothing. The community left island
+ * and the members (PR 6) are the real, connected pieces on the scenario's first community.
  */
 import { useRef, type JSX } from 'react';
 import { IncomingCallProvider } from '../../contexts/IncomingCallContext';
@@ -15,7 +16,7 @@ import { ShowPlaceholdersContext } from '../../shell/lounge/pieces/placeholderCo
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { defineComponent } from '../fixtures/componentStory';
 import { KitFrameStage } from '../fixtures/kitStory';
-import { bigCommunityScenario } from '../fixtures/scenarios';
+import { bigCommunityScenario, primaryCommunity } from '../fixtures/scenarios';
 import { http, HttpResponse } from 'msw';
 
 /** The mock-ups' sample user. */
@@ -67,7 +68,7 @@ const bare = (mode: ModeName) =>
 const threeIslands = (mode: ModeName, route: LoungeRoute) =>
   defineComponent(
     bigCommunityScenario,
-    () => <Frame mode={mode} placeholders choice={{ kind: 'lounge', route, params: { communityId: 'c-1' } }} />,
+    () => <Frame mode={mode} placeholders choice={{ kind: 'lounge', route, params: { communityId: primaryCommunity.id } }} />,
     { maxWidth: false, extraHandlers: [sampleUser] },
   );
 

@@ -36,7 +36,13 @@ function headlessPatterns(components) {
     },
     { group: ['**/pages', '**/pages/**'], message: 'No classic pages in src/data or src/shell/lounge.' },
     {
-      group: ['**/Layout*', '**/theme', '**/theme/**'],
+      group: ['**/Layout*'],
+      message: 'No classic layouts or the classic MUI theme in src/data or src/shell/lounge.',
+    },
+    {
+      // The generated design tokens are plain numbers (no MUI): the Lounge's pieces lay their kit
+      // components out with them, as the kit's own stories do (shell/lounge/pieces/arrange.ts).
+      regex: '(^|/)theme(/(?!generated/tokens$)|$)',
       message: 'No classic layouts or the classic MUI theme in src/data or src/shell/lounge.',
     },
     { group: ['**/kit/*', '**/kit/**'], message: "Import the kit from its public index ('src/kit')." },
