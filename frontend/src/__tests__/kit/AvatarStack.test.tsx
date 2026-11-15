@@ -80,3 +80,44 @@ describe('AvatarStack', () => {
     expect(screen.getByText('+2')).toBeInTheDocument();
   });
 });
+
+describe('AvatarStack speaking (K6)', () => {
+  const crew = [
+    { name: 'pri' },
+    { name: 'dropbear', speaking: true },
+    { name: 'aiko' },
+  ];
+
+  it('rings the speaking avatar only', () => {
+    const { container } = renderWithKit(<AvatarStack people={crew} />);
+    const rings = container.querySelectorAll('[data-kit-speaking]');
+    expect(rings).toHaveLength(1);
+    expect(rings[0]).toHaveTextContent('DR');
+  });
+
+  it('says who is talking in the name', () => {
+    renderWithKit(<AvatarStack people={crew} />);
+    expect(screen.getByRole('img', { name: 'pri, dropbear and aiko, dropbear is talking' })).toBeInTheDocument();
+  });
+
+  it('two or more speakers: "A and B are talking"; none: the name is unchanged', () => {
+    const two = renderWithKit(
+      <AvatarStack people={[{ name: 'pri', speaking: true }, { name: 'dropbear', speaking: true }, { name: 'aiko' }]} />,
+    );
+    expect(screen.getByRole('img', { name: 'pri, dropbear and aiko, pri and dropbear are talking' })).toBeInTheDocument();
+    two.unmount();
+    const none = renderWithKit(<AvatarStack people={[{ name: 'pri', speaking: false }]} />);
+    expect(screen.getByRole('img', { name: 'pri' })).toBeInTheDocument();
+    expect(none.container.querySelector('[data-kit-speaking]')).toBeNull();
+  });
+
+  it('a speaker behind the "+N" is still in the name', () => {
+    renderWithKit(<AvatarStack max={1} people={[{ name: 'pri' }, { name: 'dropbear', speaking: true }]} />);
+    expect(screen.getByRole('img', { name: 'pri and 1 more, dropbear is talking' })).toBeInTheDocument();
+  });
+
+  it('an explicit label still wins', () => {
+    renderWithKit(<AvatarStack label="In Squad Up" people={crew} />);
+    expect(screen.getByRole('img', { name: 'In Squad Up' })).toBeInTheDocument();
+  });
+});

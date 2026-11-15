@@ -1,5 +1,5 @@
-import type { JSX, ReactNode } from 'react';
-import { Badge, Dock, DockDivider, DockItem, IconButton } from '../../kit';
+import { useState, type JSX, type ReactNode } from 'react';
+import { Badge, Button, Dock, DockDivider, DockItem, IconButton, useListFocus } from '../../kit';
 import type { IntensityName, ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { KitStage, Row } from '../fixtures/kitStory';
@@ -29,7 +29,7 @@ const COMMUNITIES = [
   { name: 'Wavelength', colour: '#F08FC0' },
 ];
 
-function Bar({ items = COMMUNITIES }: { items?: typeof COMMUNITIES }): JSX.Element {
+function Bar({ items = COMMUNITIES }: { items?: readonly (typeof COMMUNITIES[number] & { newMessages?: boolean })[] }): JSX.Element {
   return (
     <Dock label="Pinned communities">
       <Inbox />
@@ -116,4 +116,118 @@ export const PhoneBar = () => (
       <Bar />
     </div>
   </KitStage>
+);
+
+/** A Dock as one keyboard list: Inbox, `count` communities and All, driven by `useListFocus` (horizontal). */
+function FocusBar({ count, current }: { count: number; current: number }): JSX.Element {
+  const names = Array.from({ length: count }, (_, index) => {
+    const base = COMMUNITY_NAMES[index % COMMUNITY_NAMES.length];
+    return index < COMMUNITY_NAMES.length ? base : `${base} ${Math.floor(index / COMMUNITY_NAMES.length) + 1}`;
+  });
+  const rows = [
+    { id: 'inbox', label: 'Inbox', disabled: false },
+    ...names.map((name) => ({ id: name, label: name, disabled: false })),
+    { id: 'all', label: 'All communities', disabled: false },
+  ];
+  const [chosen, setChosen] = useState<string>(names[current]);
+  const list = useListFocus({ rows, selected: chosen, orientation: 'horizontal', onSelect: setChosen });
+  return (
+    <>
+      <Dock label="Pinned communities" listProps={list.listProps}>
+        <IconButton icon="Inbox" label="Inbox" variant="primary" focus={list.rowFocus('inbox')} />
+        <DockDivider />
+        {names.map((name, index) => (
+          <DockItem
+            key={name}
+            name={name}
+            colour={COLOURS[index % COLOURS.length]}
+            current={name === chosen}
+            newMessages={index % 5 === 3}
+            unread={index % 7 === 2 ? index : undefined}
+            onClick={noop}
+            focus={list.rowFocus(name)}
+          />
+        ))}
+        <DockDivider />
+        <IconButton icon="LayoutGrid" label="All communities" variant="soft" focus={list.rowFocus('all')} />
+      </Dock>
+      {/* Something to Tab to: the bar is one stop, and the next Tab must leave it. */}
+      <div style={{ marginTop: tokens.space.lg }}>
+        <Button variant="soft" size="sm">After the dock</Button>
+      </div>
+    </>
+  );
+}
+
+const COMMUNITY_NAMES = ['Couch Co-op', 'Trailheads', 'Lumen Studio', 'Friday LAN', 'Wavelength', 'Aurora', 'Bytes', 'Dune', 'Ember', 'Fjord', 'Glow', 'Harbor'];
+const COLOURS = ['#FF9A6B', '#6FD39A', '#6BC5E0', '#E0C060', '#F08FC0', '#C792F0', '#FF8FB8'];
+
+/** 12 communities on the list focus host: one Tab stop (on the current one), arrows, Home and End; scrolls to follow focus. */
+export const FocusTwelve = () => (
+  <Page mode="dark">
+    <Wide>
+      <FocusBar count={12} current={4} />
+    </Wide>
+  </Page>
+);
+
+export const FocusTwelveLight = () => (
+  <Page mode="light">
+    <Wide>
+      <FocusBar count={12} current={4} />
+    </Wide>
+  </Page>
+);
+
+/** 60 communities, the 40th current: the bar scrolls, and focus keeps the focused item in view. */
+export const FocusSixty = () => (
+  <Page mode="dark">
+    <Wide>
+      <FocusBar count={60} current={39} />
+    </Wide>
+  </Page>
+);
+
+/** The same as the phone's bottom bar, full width at the foot of a 390 px frame. */
+export const FocusSixtyPhone = () => (
+  <KitStage mode="dark">
+    <div style={{ width: 390, maxWidth: '100%', minHeight: 360, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <FocusBar count={60} current={39} />
+    </div>
+  </KitStage>
+);
+
+const NEW_MESSAGES = [
+  { name: 'Couch Co-op', colour: '#FF9A6B', current: true },
+  { name: 'Trailheads', colour: '#6FD39A', newMessages: true },
+  { name: 'Lumen Studio', colour: '#6BC5E0', unread: 2, newMessages: true },
+  { name: 'Friday LAN', colour: '#E0C060', status: 'reconnecting' as const, newMessages: true },
+  { name: 'Wavelength', colour: '#F08FC0' },
+];
+
+/** "New messages" dot: Trailheads (dot), Lumen Studio (a count too: the badge wins), Friday LAN (dot and reconnecting). */
+export const NewMessages = () => (
+  <Page mode="dark">
+    <Row label="Pinned communities">
+      <Wide>
+        <Bar items={NEW_MESSAGES} />
+      </Wide>
+    </Row>
+  </Page>
+);
+
+export const NewMessagesLight = () => (
+  <Page mode="light">
+    <Wide>
+      <Bar items={NEW_MESSAGES} />
+    </Wide>
+  </Page>
+);
+
+export const NewMessagesTinted = () => (
+  <Page mode="dark" base="#0d9488" intensity="vibrant">
+    <Wide>
+      <Bar items={NEW_MESSAGES} />
+    </Wide>
+  </Page>
 );

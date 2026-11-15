@@ -32,6 +32,8 @@ export { Avatar } from './display/Avatar';
 export type { AvatarProps, AvatarSize, Presence } from './display/Avatar';
 export { AvatarStack } from './display/AvatarStack';
 export type { AvatarStackProps } from './display/AvatarStack';
+export { MediaTile } from './display/MediaTile';
+export type { MediaTileProps } from './display/MediaTile';
 export { Badge } from './display/Badge';
 export type { BadgeProps } from './display/Badge';
 export { Pill } from './display/Pill';
@@ -75,6 +77,7 @@ export type {
 } from './behaviour/hosts/loadState';
 export type { DialogCloseReason, SheetCloseReason } from './overlays/modal';
 export { ESCAPE_PRIORITY, useScreenEscape, useScreenFocusTarget } from './behaviour/hosts/overlay';
+export { useAnnounce } from './behaviour/hosts/announce';
 export { useToastClearance, useToasts } from './behaviour/hosts/toasts';
 export type { ToastRequest, Toasts } from './behaviour/hosts/toasts';
 export { useListFocus } from './behaviour/hosts/listFocus';

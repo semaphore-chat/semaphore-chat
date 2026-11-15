@@ -18,6 +18,8 @@ export interface AlertProps {
   title?: string;
   children: ReactNode;
   action?: { label: string; onClick: () => void };
+  /** A second action beside `action`, for a choice (Join and Decline). It is not a dismiss: use `onClose` for that. */
+  secondaryAction?: { label: string; onClick: () => void };
   onClose?: () => void;
   /**
    * Speak when it appears (default). Pass `false` for an alert that is already
@@ -72,6 +74,9 @@ const Title = styled('div')({
 
 const ActionRow = styled('div')({
   display: 'flex',
+  // Wraps at a narrow width instead of overflowing; the rows of buttons stay close.
+  flexWrap: 'wrap',
+  gap: `0 ${tokens.space.sm}px`,
   // The text button has its own side padding: pull it back so its label lines up with the text above.
   margin: `${tokens.space.sm}px 0 0 ${-BUTTON_PADDING.sm}px`,
 });
@@ -91,7 +96,7 @@ const CloseSlot = styled('span')({
 });
 
 /** An inline message banner. Warnings and errors interrupt (`alert`); info and success wait (`status`); `announce={false}` makes it a quiet `note`. */
-export function Alert({ severity, title, children, action, onClose, announce = true }: AlertProps): JSX.Element {
+export function Alert({ severity, title, children, action, secondaryAction, onClose, announce = true }: AlertProps): JSX.Element {
   const look = LOOK[severity];
   const on = useSurface();
   return (
@@ -102,11 +107,18 @@ export function Alert({ severity, title, children, action, onClose, announce = t
       <Body>
         {title !== undefined && <Title>{title}</Title>}
         <div>{children}</div>
-        {action && (
+        {(action || secondaryAction) && (
           <ActionRow>
-            <Button variant="text" size="sm" onClick={action.onClick}>
-              {action.label}
-            </Button>
+            {action && (
+              <Button variant="text" size="sm" onClick={action.onClick}>
+                {action.label}
+              </Button>
+            )}
+            {secondaryAction && (
+              <Button variant="text" size="sm" onClick={secondaryAction.onClick}>
+                {secondaryAction.label}
+              </Button>
+            )}
           </ActionRow>
         )}
       </Body>

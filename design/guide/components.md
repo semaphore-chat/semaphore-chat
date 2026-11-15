@@ -15,9 +15,9 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Thirty-five components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Thirty-six components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
-AvatarStack, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
+AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
 Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
 Card, Sheet, Dock, DockDivider and DockItem.
 
@@ -163,6 +163,7 @@ screen readers.
 |`selected`|true, false|not set|Marks a toggle as on. It fills the button and gives the icon the accent colour.|
 |`loading`|true, false|false|The button is busy. See the rules above.|
 |`disabled`|true, false|false|The action is not available.|
+|`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list: today the Dock's. The button is then one stop of the list's single Tab stop. A disabled button ignores it. See [Dock](#dock).|
 
 Stories: `kit-icon-button--variants`, `kit-icon-button--states`,
 `kit-icon-button--focused`, `kit-icon-button--variants-light`,
@@ -451,14 +452,58 @@ The stack is named as a whole, for example "Ana, Ben and 2 more". It is one
 image to a screen reader, and the avatars inside it are decorative. A blank name
 is read as "Unknown user". A stack with no people shows nothing.
 
+A person who is talking (`speaking`) wears the same green ring as an Avatar with
+`presence="speaking"`, and the name says so after the names: "pri, dropbear and
+aiko, dropbear is talking", or "pri and dropbear are talking" for two or more. The
+name counts everyone who is talking, also someone behind the "+N", who has no ring
+to show. A `label` replaces the whole name, so it must say who is talking itself.
+
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
-|`people`|a list of `name`, and optionally `src` and `colour`|none (required)|Who is in the group.|
+|`people`|a list of `name`, and optionally `src`, `colour` and `speaking`|none (required)|Who is in the group. `speaking` draws the speaking ring on that avatar and adds them to the name.|
 |`max`|a number|3|How many avatars to show before the "+N".|
 |`size`|`xs`, `sm`, `md`, `lg`, `xl`|`sm`|The size of each avatar.|
 |`label`|text|the shown names and "and N more"|The accessible name of the group.|
 
-Stories: `kit-avatar--stack`.
+Stories: `kit-avatar--stack`, `kit-avatar--stack-speaking`,
+`kit-avatar--stack-speaking-light`, `kit-avatar--stack-speaking-tinted`.
+
+## MediaTile
+
+A 16:9 rounded box for one participant's video, a shared screen, or, when they
+have no video, their avatar.
+
+**Use it when** you show a video call's picture of one person or one shared
+screen: the call surface, the voice room.
+
+**Do not use it when** you show a person in a list (use ListRow with an Avatar)
+or a small round picture (use Avatar). It draws no controls: put buttons beside
+it, not in it.
+
+The tile is one group named by its `label`, with ", speaking" added while
+`speaking` is on; the ring is the same green ring Avatar uses for speaking, so
+the state is in the name as well as the colour. The tile has no video of its own:
+give it `videoRef` and it renders a muted, inline, auto-playing `<video>` that
+fills the tile (a `screen` is shown whole, a `camera` fills the box), and the
+label moves to a chip at the bottom left, so it reads on any picture. Set the
+stream on the element you are handed (`ref.current.srcObject = stream`). Without
+`videoRef`, or for `avatar`, the label is centred, with a large Avatar above it
+for `avatar`. A long label is cut with an ellipsis. The box is always 16:9 and
+as wide as its container; the container sets the size.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|Whose tile or what it shows. The accessible name, the caption and the source of an avatar tile's initials.|
+|`kind`|`screen`, `camera`, `avatar`|none (required)|What the tile is. `avatar` never draws a video.|
+|`speaking`|true, false|false|The speaking ring, and ", speaking" in the name.|
+|`videoRef`|a ref to a video element|none|Draws a `<video>` for `screen` and `camera` and hands it to you.|
+
+Stories: `kit-media-tile--kinds`, `kit-media-tile--kinds-light`,
+`kit-media-tile--kinds-tinted`, `kit-media-tile--speaking`,
+`kit-media-tile--speaking-light`, `kit-media-tile--long-label`.
+
+Web kit only so far; the native kit has not caught up (see
+[Extending the system](extending.md#the-native-kit-is-catching-up)).
 
 ## Badge
 
@@ -599,6 +644,7 @@ that field.
 |`title`|text|none|A bold first line.|
 |`children`|text or content|none (required)|The message.|
 |`action`|a `label` and an `onClick`|none|One action, shown as a text button under the message.|
+|`secondaryAction`|a `label` and an `onClick`|none|A second text button beside `action` (Join and Decline on an incoming call). It is a choice, not a dismiss: dismissing is `onClose`. The buttons wrap onto a second line when they do not fit.|
 |`onClose`|a function|none|Adds a Dismiss button. Without it the alert cannot be dismissed.|
 |`announce`|true, false|true|Whether screen readers speak it when it appears.|
 
@@ -610,7 +656,8 @@ Leave it on for an alert that appears because something happened.
 
 Stories: `kit-alert--severities`, `kit-alert--severities-light`,
 `kit-alert--severities-tinted`, `kit-alert--with-actions`,
-`kit-alert--long-text`.
+`kit-alert--long-text`, `kit-alert--secondary-action`,
+`kit-alert--secondary-action-light`, `kit-alert--secondary-action-long`.
 
 ## LoadState
 
@@ -1200,8 +1247,36 @@ size (a rotation). See "What the browser does for us". Its items draw on the
 `surface` layer. Where the bar sits on screen, and keeping page content clear of
 it, belong to the app shell.
 
+**A keyboard Dock.** With many communities the bar is one list, not one Tab stop
+per item. Build it like [a keyboard list](#a-keyboard-list), with
+`orientation: 'horizontal'`: pass `useListFocus(...).listProps` as the Dock's
+`listProps`, and `rowFocus(id)` as the `focus` of every DockItem and IconButton
+on the bar (the Inbox and All too). Tab then enters on the selected (current)
+item, Left, Right, Home and End move along the bar, typing a name jumps to it, and
+the next Tab leaves the bar. The focused item scrolls into view inside the bar,
+never the page. The bar itself is then `tabindex="-1"`, because Firefox would
+otherwise make a scrolling bar a Tab stop of its own. The same on a phone's bottom
+bar (`bottomBar`).
+
+```tsx
+const list = useListFocus({ rows, selected: currentId, orientation: 'horizontal' });
+<Dock label="Communities" listProps={list.listProps}>
+  <IconButton icon="Inbox" label="Inbox" focus={list.rowFocus('inbox')} />
+  {communities.map((c) => (
+    <DockItem key={c.id} name={c.name} href={`#/community/${c.id}`} current={c.id === currentId}
+      focus={list.rowFocus(c.id)} />
+  ))}
+</Dock>
+```
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`listProps`|`useListFocus(...).listProps`|none|Makes the bar one keyboard list. Without it the items keep their own Tab stops.|
+
 Stories: `kit-dock--communities`, `kit-dock--overflow`, `kit-dock--phone-bar`,
-`kit-dock--communities-light`, `kit-dock--communities-tinted`.
+`kit-dock--communities-light`, `kit-dock--communities-tinted`,
+`kit-dock--focus-twelve`, `kit-dock--focus-twelve-light`, `kit-dock--focus-sixty`,
+`kit-dock--focus-sixty-phone`.
 
 ## DockItem
 
@@ -1213,8 +1288,8 @@ One community on the Dock: a round button, or a link, that holds its picture.
 with an Avatar. Do not use it outside a Dock.
 
 What the picture shows is also in the name, so a screen reader hears all of it.
-The name is the community's name, then ", current", then ", 3 unread", then
-", reconnecting", for each that applies. The name also shows in a tooltip on
+The name is the community's name, then ", current", then ", 3 unread" or ", new
+messages", then ", reconnecting", for each that applies. The name also shows in a tooltip on
 hover and on keyboard focus; the tooltip only repeats the name, so it is not
 added to the item's description. A count that is not a finite number shows
 nothing.
@@ -1226,17 +1301,24 @@ nothing.
 |`colour`|a colour as `#rrggbb`|none|The community's own colour, as for Avatar.|
 |`current`|true, false|false|The community you are in: an accent ring.|
 |`unread`|a number|0|A count on the item. 0 shows nothing.|
+|`newMessages`|true, false|false|There are new messages that do not mention you: a small accent dot at the top right, and ", new messages" in the name. With an `unread` count the badge is shown instead and the dot is not.|
 |`status`|`reconnecting`|none|A warning dot, and the picture dimmed.|
 |`onClick`|a function|none|Makes the item a button.|
 |`href`|an address|none|Makes the item a link.|
 |`id`|text|none|The id of the element.|
+|`focus`|`rowFocus(id)` from `useListFocus`|none|Joins the Dock's keyboard list. See [Dock](#dock).|
 
 The ring is always there and is clear when the item is not current, so
 becoming current moves nothing. The count is a danger Badge and a warning dot is
 the dot of a reconnecting community; both are drawn only, and the name carries
 the same facts. The Dock stories show every state.
 
-Stories: `kit-dock--communities`, `kit-dock--overflow`.
+The dot says "something new, nobody asked for you" and the count says "someone
+did": a count wins over the dot. The dot is a shape that is there or not (and the
+name says it), never a colour change.
+
+Stories: `kit-dock--communities`, `kit-dock--overflow`, `kit-dock--new-messages`,
+`kit-dock--new-messages-light`, `kit-dock--new-messages-tinted`.
 
 ## Sheet
 
@@ -1408,6 +1490,8 @@ lists below say what each overlay still gets from MUI and the browser.
 
 - The role: `danger` and `warning` alerts (a `danger` toast) are `alert`; the
   rest are `status`. With `announce` off, all are `note`.
+- Alert's actions share one row that wraps: with two long labels the second goes
+  to a second line. A single label too long for the row is cut with an ellipsis.
 - Alert's text button is pulled back by the button's side padding, so its label
   lines up with the text above. The close button is pulled up so its centre
   meets the first line of text, and right by the space around its icon, so the
@@ -1547,6 +1631,9 @@ lists below say what each overlay still gets from MUI and the browser.
   which is acceptable). The bar re-centres the current item when its own size
   changes.
 - With `bottomBar` the bar keeps `env(safe-area-inset-bottom)` as a bottom margin.
+- As a keyboard list (`listProps`) the bar is one Tab stop; the focused item is
+  scrolled into view by the browser's own focus scroll inside the bar. Firefox
+  makes a scrolling element a Tab stop of its own, so the bar is `tabindex="-1"`.
 
 ### Sheet
 

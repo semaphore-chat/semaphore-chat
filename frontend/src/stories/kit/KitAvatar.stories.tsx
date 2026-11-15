@@ -150,3 +150,45 @@ export const PresenceTinted = () => (
     </Row>
   </KitStage>
 );
+
+const CREW = [
+  { name: 'dropbear', colour: '#5FD49A', speaking: true },
+  { name: 'pri', colour: '#C792F0' },
+  { name: 'aiko', colour: '#FF8FB8' },
+  { name: 'kwam3', colour: '#6FB1F5', speaking: true },
+];
+
+const SpeakingBody = () => (
+  <>
+    <Row label="dropbear is talking">
+      <AvatarStack people={CREW.slice(0, 3)} />
+    </Row>
+    <Row label="Two talking, one behind the +N (max 3)">
+      <AvatarStack people={CREW} />
+    </Row>
+    <Row label="The four, max 4, at xs, sm, md, lg and xl">
+      {SIZES.map((size) => (
+        <AvatarStack key={size} people={CREW} max={4} size={size} />
+      ))}
+    </Row>
+  </>
+);
+
+/** A person who is talking wears the speaking ring in a stack, and the stack's name says so. */
+export const StackSpeaking = () => (
+  <KitStage mode="dark">
+    <SpeakingBody />
+  </KitStage>
+);
+
+export const StackSpeakingLight = () => (
+  <KitStage mode="light">
+    <SpeakingBody />
+  </KitStage>
+);
+
+export const StackSpeakingTinted = () => (
+  <KitStage mode="dark" base="#0d9488" intensity="vibrant">
+    <SpeakingBody />
+  </KitStage>
+);

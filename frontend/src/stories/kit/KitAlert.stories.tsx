@@ -85,3 +85,51 @@ export const LongText = () => (
     </div>
   </KitStage>
 );
+
+const CallAlerts = () => (
+  <div style={stack}>
+    <Alert
+      severity="info"
+      title="Incoming call"
+      action={{ label: 'Join', onClick: noop }}
+      secondaryAction={{ label: 'Decline', onClick: noop }}
+    >
+      dropbear is calling you in Squad Up.
+    </Alert>
+    <Alert severity="warning" secondaryAction={{ label: 'Not now', onClick: noop }} onClose={noop}>
+      A new version is ready.
+    </Alert>
+    <Alert severity="danger" action={{ label: 'Retry', onClick: noop }} secondaryAction={{ label: 'Dismiss for today', onClick: noop }}>
+      We could not reach Hangout.
+    </Alert>
+  </div>
+);
+
+/** Two actions (Join, Decline), a secondary action alone beside a close button, and two in other severities. */
+export const SecondaryAction = () => (
+  <KitStage mode="dark">
+    <CallAlerts />
+  </KitStage>
+);
+
+export const SecondaryActionLight = () => (
+  <KitStage mode="light">
+    <CallAlerts />
+  </KitStage>
+);
+
+/** Long labels in a 260 px box: the buttons wrap onto a second line, nothing overflows. */
+export const SecondaryActionLong = () => (
+  <KitStage mode="dark">
+    <div style={{ ...stack, width: 260 }}>
+      <Alert
+        severity="info"
+        title="Incoming call"
+        action={{ label: 'Join the call in Squad Up', onClick: noop }}
+        secondaryAction={{ label: 'Decline and let dropbear know', onClick: noop }}
+      >
+        dropbear is calling you.
+      </Alert>
+    </div>
+  </KitStage>
+);

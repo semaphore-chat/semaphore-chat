@@ -71,3 +71,32 @@ describe('Alert', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Alert secondaryAction (K5)', () => {
+  it('shows both actions, in order, and each runs its own handler', async () => {
+    const join = vi.fn();
+    const decline = vi.fn();
+    const { user } = renderWithKit(
+      <Alert severity="info" action={{ label: 'Join', onClick: join }} secondaryAction={{ label: 'Decline', onClick: decline }}>
+        dropbear is calling you in Squad Up.
+      </Alert>,
+    );
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Join', 'Decline']);
+    await user.click(screen.getByRole('button', { name: 'Decline' }));
+    expect(decline).toHaveBeenCalledTimes(1);
+    expect(join).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Join' }));
+    expect(join).toHaveBeenCalledTimes(1);
+  });
+
+  it('works without a primary action, and the row wraps instead of overflowing', () => {
+    renderWithKit(
+      <Alert severity="info" secondaryAction={{ label: 'Not now', onClick: () => undefined }}>
+        text
+      </Alert>,
+    );
+    const button = screen.getByRole('button', { name: 'Not now' });
+    expect(getComputedStyle(button.parentElement as HTMLElement).flexWrap).toBe('wrap');
+  });
+});

@@ -8,7 +8,7 @@ import { Avatar, type AvatarSize } from './Avatar';
 import { UNNAMED } from './unnamed';
 
 export interface AvatarStackProps {
-  people: { name: string; src?: string; colour?: string }[];
+  people: { name: string; src?: string; colour?: string; speaking?: boolean }[];
   /** How many avatars to show before the "+N"; default 3. */
   max?: number;
   size?: AvatarSize;
@@ -17,6 +17,11 @@ export interface AvatarStackProps {
 }
 
 const DEFAULT_MAX = 3;
+
+/** "A", "A and B", "A, B and C": "and" before the last, never found by searching the text for a comma. */
+function joinNames(names: string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
 
 interface SizeProps {
   $size: AvatarSize;
@@ -29,13 +34,15 @@ const Group = styled('span')({
 });
 
 /** One avatar's slot: a ground ring around it, and the overlap onto the one before. */
-const Slot = styled('span', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
+const Slot = styled('span', { shouldForwardProp: transientProps })<{ $on: Surface; $speaking?: boolean }>(({ theme, $on, $speaking }) => {
   const { palette } = kitTheme(theme);
   return {
     display: 'inline-flex',
     flexShrink: 0,
     borderRadius: `${tokens.radius.full}px`,
     boxShadow: `0 0 0 ${tokens.border.selected}px ${tintBase(palette, $on)}`,
+    // The speaking ring is drawn whole, over the avatar that overlaps it.
+    ...($speaking && { position: 'relative', zIndex: 1 }),
     '&:not(:first-of-type)': { marginLeft: `-${tokens.space.sm}px` },
   };
 });
@@ -76,16 +83,23 @@ export function AvatarStack({ people, max = DEFAULT_MAX, size = 'sm', label }: A
   const shown = people.slice(0, limit);
   const extra = people.length - shown.length;
   const names = shown.map((person) => (person.name.trim() === '' ? UNNAMED : person.name));
-  // "A", "A and B", "A, B and C": "and" before the last, never found by searching the text for a comma.
-  const list = names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  const summary =
+  const list = joinNames(names);
+  const who =
     extra === 0 ? list : names.length === 0 ? `${extra} people` : `${names.join(', ')} and ${extra} more`;
+  // Everyone who is talking, also behind the "+N": the name describes the whole group.
+  const talking = people
+    .filter((person) => person.speaking === true)
+    .map((person) => (person.name.trim() === '' ? UNNAMED : person.name));
+  const summary =
+    talking.length === 0
+      ? who
+      : `${who}, ${joinNames(talking)} ${talking.length === 1 ? 'is' : 'are'} talking`;
 
   return (
     <Group role="img" aria-label={label ?? summary}>
-      {shown.map((person, index) => (
-        <Slot key={index} $on={on}>
-          <Avatar {...person} size={size} decorative />
+      {shown.map(({ speaking, ...person }, index) => (
+        <Slot key={index} $on={on} $speaking={speaking === true}>
+          <Avatar {...person} size={size} presence={speaking === true ? 'speaking' : undefined} decorative />
         </Slot>
       ))}
       {extra > 0 && (

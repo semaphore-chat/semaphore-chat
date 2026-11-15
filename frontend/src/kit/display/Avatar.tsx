@@ -6,6 +6,7 @@ import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSur
 import { readableBackground } from '../theme/readable';
 import { transientProps } from '../theme/transientProps';
 import { Icon, type IconSize } from './Icon';
+import { SPEAKING_ATTRIBUTE, speakingRing } from './speaking';
 import { UNNAMED } from './unnamed';
 
 export type AvatarSize = keyof typeof tokens.avatar;
@@ -95,7 +96,6 @@ interface RootProps {
 const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
   ({ theme, $size, $radius, $speaking, $on }) => {
     const { palette } = kitTheme(theme);
-    const gap = tokens.border.selected;
     const behind = tintBase(palette, $on);
     return {
       position: 'relative',
@@ -105,10 +105,7 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
       width: `${tokens.avatar[$size]}px`,
       height: `${tokens.avatar[$size]}px`,
       borderRadius: `${$radius}px`,
-      // A gap in the colour of the layer it sits on, then the ring: a shadow, so the box never grows.
-      ...($speaking && {
-        boxShadow: `0 0 0 ${gap}px ${behind}, 0 0 0 ${gap * 2}px ${palette.positive}`,
-      }),
+      ...($speaking && { boxShadow: speakingRing(palette, behind) }),
     };
   },
 );
@@ -241,6 +238,7 @@ export function Avatar({
       $size={size}
       $radius={radiusFor(shape, size)}
       $speaking={presence === 'speaking'}
+      {...(presence === 'speaking' && { [SPEAKING_ATTRIBUTE]: '' })}
       $on={on}
     >
       <Face $size={size} $colour={colour} $covered={showPhoto && loadedSrc === src} $on={on}>

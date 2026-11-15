@@ -8,6 +8,7 @@ import { mix } from '../theme/mix';
 import { focusRing } from '../theme/states';
 import { SurfaceContext, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
+import { assignRef } from '../behaviour/assignRef';
 import {
   ROW_ATTRIBUTE,
   restoreTrailingTabOrder,
@@ -42,11 +43,6 @@ export interface ListRowProps {
    * roving Tab stop, and the controls in `trailing` leave the Tab order (Right and Left reach them).
    */
   focus?: RowFocus;
-}
-
-function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
-  if (typeof ref === 'function') ref(value);
-  else if (ref) (ref as { current: T | null }).current = value;
 }
 
 interface LookProps {
