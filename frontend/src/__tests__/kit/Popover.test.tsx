@@ -216,14 +216,15 @@ describe('Popover holding other overlays', () => {
     expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
   });
 
-  it('the field inside still sees Escape before the popover closes on it', async () => {
+  it('the field inside sees Escape first; it does not use it, so the popover closes on it', async () => {
     const onKeyDown = vi.fn();
+    const onClose = vi.fn();
     function Subject() {
       const [anchor, setAnchor] = useState<HTMLElement | null>(null);
       return (
         <>
           <Button ref={setAnchor}>Open</Button>
-          <Popover open anchor={anchor} onClose={() => {}} label="Panel">
+          <Popover open anchor={anchor} onClose={onClose} label="Panel">
             <TextField label="Name" value="" onChange={() => {}} onKeyDown={onKeyDown} />
           </Popover>
         </>
@@ -233,6 +234,7 @@ describe('Popover holding other overlays', () => {
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveFocus());
     await user.keyboard('{Escape}');
     expect(onKeyDown).toHaveBeenCalledWith(expect.objectContaining({ key: 'Escape' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('Escape with focus on the anchor closes it', async () => {

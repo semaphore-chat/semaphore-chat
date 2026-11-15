@@ -161,6 +161,19 @@ describe('Menu', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('a press inside the menu, on a disabled item or a divider, does not close it', async () => {
+    const onClose = vi.fn();
+    const { user } = renderWithKit(<Harness onClose={onClose} />);
+    await user.click(trigger());
+    const mouse = { button: 0, pointerType: 'mouse', isPrimary: true };
+    fireEvent.pointerDown(screen.getByRole('separator'), mouse);
+    fireEvent.pointerUp(screen.getByRole('separator'), mouse);
+    fireEvent.pointerDown(screen.getByRole('menuitem', { name: 'Pin message' }), mouse);
+    fireEvent.pointerUp(screen.getByRole('menuitem', { name: 'Pin message' }), mouse);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
   it('a divider is a separator and takes no focus', async () => {
     const { user } = renderWithKit(<Harness />);
     await user.click(trigger());

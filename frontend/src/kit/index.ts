@@ -58,6 +58,8 @@ export { Tooltip } from './overlays/Tooltip';
 export type { TooltipProps } from './overlays/Tooltip';
 export { Dialog } from './overlays/Dialog';
 export type { DialogProps } from './overlays/Dialog';
+export type { DialogCloseReason, SheetCloseReason } from './overlays/modal';
+export { ESCAPE_PRIORITY, useScreenEscape, useScreenFocusTarget } from './behaviour/hosts/overlay';
 export { Island } from './surfaces/Island';
 export type { IslandProps } from './surfaces/Island';
 export { Card } from './surfaces/Card';

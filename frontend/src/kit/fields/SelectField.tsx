@@ -1,9 +1,12 @@
-import { useId, useImperativeHandle, useRef, type JSX, type Ref } from 'react';
+import { useId, useImperativeHandle, useRef, useState, type JSX, type Ref } from 'react';
+import { createPortal } from 'react-dom';
 import Fade from '@mui/material/Fade';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import { styled, type Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
+import { LiveRegionSlot } from '../behaviour/hosts/LiveRegionSlot';
+import { useOverlayLayer } from '../behaviour/hosts/overlay';
 import { Icon } from '../display/Icon';
 import { kitTheme } from '../theme/KitProvider';
 import { useOverlayContainer } from '../overlays/overlayContainer';
@@ -72,8 +75,10 @@ const listSx = { padding: `${tokens.space.xs}px` };
 
 /**
  * A single-choice dropdown in the Lounge look, built on MUI's Select for its
- * keyboard handling and focus return. The menu renders in a portal but is
- * styled from the same theme. Controlled by `value`.
+ * keyboard handling. The open list is a menu layer of the overlay stack, which
+ * decides when it closes (Escape, a press outside, Tab) and returns focus to
+ * the field. The list renders in a portal but is styled from the same theme.
+ * Controlled by `value`.
  */
 export function SelectField({
   label,
@@ -98,6 +103,13 @@ export function SelectField({
   const selectRef = useRef<{ focus: () => void }>(null);
   // The combobox is MUI's display div, found by the id this component gives it.
   useImperativeHandle(ref, () => document.getElementById(controlId) as HTMLElement, [controlId]);
+  // MUI opens the list (a press or a key on the field) and closes it when an
+  // option is chosen; every other close is the stack's.
+  const [open, setOpen] = useState(false);
+  const paper = useRef<HTMLDivElement>(null);
+  useOverlayLayer({ kind: 'menu', open, panel: paper, onRequestClose: () => setOpen(false) });
+  // The list's modal root: its live-region slot goes there, outside the list MUI manages.
+  const [listRoot, setListRoot] = useState<HTMLElement | null>(null);
 
   return (
     <FieldShell
@@ -112,6 +124,7 @@ export function SelectField({
       onLabelClick={() => selectRef.current?.focus()}
     >
       {({ invalid, describedBy }) => (
+        <>
         <Select
           inputRef={selectRef}
           labelId={labelId}
@@ -126,6 +139,9 @@ export function SelectField({
             onChange(next);
           }}
           disabled={disabled}
+          open={open}
+          onOpen={() => setOpen(true)}
+          onClose={() => setOpen(false)}
           displayEmpty
           IconComponent={Chevron}
           renderValue={(selected) => {
@@ -145,7 +161,11 @@ export function SelectField({
             container,
             transitionDuration: tokens.motion.fast,
             slots: { transition: Fade },
-            slotProps: { paper: { sx: paperSx }, list: { sx: listSx } },
+            // MUI's reasons (escapeKeyDown, backdropClick, tabKeyDown) are not ours to act on.
+            onClose: () => undefined,
+            disableEscapeKeyDown: true,
+            disableRestoreFocus: true,
+            slotProps: { root: { ref: setListRoot }, paper: { sx: paperSx, ref: paper }, list: { sx: listSx } },
           }}
           sx={(theme) => {
             const { palette } = kitTheme(theme);
@@ -187,6 +207,8 @@ export function SelectField({
             </Item>
           ))}
         </Select>
+        {listRoot !== null && createPortal(<LiveRegionSlot scope="layer" active={open} />, listRoot)}
+        </>
       )}
     </FieldShell>
   );

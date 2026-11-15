@@ -7,13 +7,13 @@ import {
   useState,
   type FocusEvent,
   type JSX,
-  type KeyboardEvent,
   type PointerEvent,
   type ReactElement,
 } from 'react';
 import Popper from '@mui/material/Popper';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
+import { useOverlayLayer } from '../behaviour/hosts/overlay';
 import { kitTheme } from '../theme/KitProvider';
 import { SurfaceContext } from '../theme/onSurface';
 import { useOverlayContainer } from './overlayContainer';
@@ -62,10 +62,12 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * A text hint for a control. It opens after a short delay on a mouse or pen
- * hover and at once on keyboard focus; a touch, even into a text field, never
- * opens it. Escape and blur close it. While open, the control is linked to it
- * with `aria-describedby`.
+ * A text hint for a control, a layer of the overlay stack. It opens after a
+ * short delay on a mouse or pen hover and at once on keyboard focus; a touch,
+ * even into a text field, never opens it. Blur and the pointer leaving close
+ * it. Escape closes it and goes no further (the stack's rule), and it then
+ * stays hidden until the pointer or focus leaves the control and comes back.
+ * While open, the control is linked to it with `aria-describedby`.
  *
  * Kit controls take no extra props, so the link goes through an internal
  * context: the control puts the tooltip's id next to its own description on the
@@ -85,6 +87,9 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
   const claims = useRef(0);
   // True from a touch press until the next key or non-touch press: a focus then is a tap, not the keyboard.
   const touched = useRef(false);
+  // Hidden by Escape: it stays hidden until the pointer or focus leaves the control.
+  const suppressed = useRef(false);
+  const panel = useRef<HTMLDivElement>(null);
 
   const claim = useCallback(() => {
     claims.current += 1;
@@ -99,6 +104,9 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
 
   // The anchor is read when the tooltip opens, so a child that swapped its element is followed.
   const show = () => {
+    if (suppressed.current) {
+      return;
+    }
     const first = wrapper.current?.firstElementChild;
     setAnchor(first instanceof HTMLElement ? first : null);
     setOpen(true);
@@ -125,19 +133,20 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
     };
   }, []);
 
-  // Escape with focus elsewhere (a hover tooltip): hide it and let the key go on.
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
+  // Escape (wherever focus is) and a closing owner layer come from the stack.
+  // The tooltip closes itself on leave and blur, and reports it by closing.
+  useOverlayLayer({
+    kind: 'tooltip',
+    open: open && anchor !== null,
+    panel,
+    onRequestClose: (reason) => {
+      clearTimer();
+      if (reason === 'escape') {
+        suppressed.current = true;
       }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open]);
+      setOpen(false);
+    },
+  });
 
   // For a child that is not a kit control: merge the id into the focusable
   // element's description and take only that id out on close.
@@ -169,6 +178,7 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
     timer.current = setTimeout(show, tokens.motion.slow);
   };
   const onPointerLeave = () => {
+    suppressed.current = false;
     clearTimer();
     setOpen(false);
   };
@@ -179,16 +189,9 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
     }
   };
   const onBlur = () => {
+    suppressed.current = false;
     clearTimer();
     setOpen(false);
-  };
-  // With focus in the child, Escape ends here: a dialog around it stays open and
-  // the child still saw the key first (a search field that clears on Escape).
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (open && event.key === 'Escape' && !event.nativeEvent.isComposing) {
-      setOpen(false);
-      event.stopPropagation();
-    }
   };
 
   return (
@@ -198,7 +201,6 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
       onPointerLeave={onPointerLeave}
       onFocus={onFocus}
       onBlur={onBlur}
-      onKeyDown={onKeyDown}
     >
       <TooltipDescriptionContext value={description}>{children}</TooltipDescriptionContext>
       <Popper
@@ -215,7 +217,7 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
         sx={(theme) => ({ pointerEvents: 'none', zIndex: layerIndex(theme, 'tooltip') })}
       >
         <SurfaceContext value="surface">
-          <Panel>{label}</Panel>
+          <Panel ref={panel}>{label}</Panel>
         </SurfaceContext>
       </Popper>
     </Wrapper>

@@ -6,6 +6,19 @@ import jsxA11y from 'eslint-plugin-jsx-a11y'
 import tseslint from 'typescript-eslint'
 import muiAllowlist from './eslint/mui-allowlist.json' with { type: 'json' }
 
+// The five reducers in src/kit/behaviour/ and their barrel. Only the step,
+// initial-state and default-params names are restricted; their types are not.
+const reducerStepPattern = {
+  group: [
+    '**/behaviour/{toastQueue,overlayStack,confirmDestructive,listFocus,loadState}',
+    '**/behaviour',
+    '**/behaviour/index',
+  ],
+  importNamePattern: '^(step[A-Z]|initial[A-Z]|DEFAULT_PARAMS$|[A-Z_]+_DEFAULT_PARAMS$)',
+  message:
+    'Only the hosts in src/kit/behaviour/hosts/ may call a reducer step (design/guide/behaviour.md, "Applying a step"). Types are fine to import.',
+}
+
 // jsx-a11y's own "recommended" preset ships most rules at 'error'. This repo
 // runs it at 'warn' (downgrade every enabled rule's severity but keep each
 // rule's own options, and leave anything explicitly 'off' alone), so the
@@ -137,9 +150,24 @@ export default tseslint.config(
               message:
                 'Import from src/kit. MUI is used only inside the kit (design/guide).',
             },
+            reducerStepPattern,
           ],
         },
       ],
+    },
+  },
+  // The reducers' step functions (src/kit/behaviour/*.ts) are called only by the
+  // hosts in src/kit/behaviour/hosts/, which apply a step's effects in order and
+  // queue events sent meanwhile (design/guide/behaviour.md, "Applying a step").
+  // Anyone else calling a step skips that. Types are fine to import. This is a
+  // second no-restricted-imports block for the kit: it covers src/kit/** minus
+  // the reducers and hosts, while the MUI block above (screens and stories, which
+  // also carry reducerStepPattern) covers everything outside the kit.
+  {
+    files: ['src/kit/**/*.{ts,tsx}'],
+    ignores: ['src/kit/behaviour/**'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [reducerStepPattern] }],
     },
   },
   // Exempt Electron main/preload and service worker from no-console

@@ -745,8 +745,11 @@ use Toast or Alert instead.
 
 Overlays stack in the order they were opened, and a tooltip sits above all of
 them. A Menu, a select list or a Popover that opens from inside a Dialog is on
-top of the Dialog, and Escape closes the innermost layer first. Nothing in a
-screen sets a layer number.
+top of the Dialog, and Escape closes the innermost layer first. A layer opened
+from inside another closes with it: when the Dialog closes, the Popover open in
+it closes too, and its `onClose` is called. Nothing in a screen sets a layer
+number, and no screen handles Escape or a press outside for an overlay: the
+overlay stack does (see [Overlay stack](behaviour.md#overlay-stack)).
 
 Inside a Dialog, a Popover, Tooltip, Menu or select list is drawn within the
 Dialog, so its focus trap lets focus into them. The other way round, a Dialog
@@ -876,6 +879,11 @@ Rules for the actions:
 
 The parent decides whether the dialog closes. `onClose` is called on Escape and
 on a press on the dimmed page, and the dialog stays open until `open` is false.
+`onClose` says why: `'escape'` or `'scrim'`, which the parent may refuse (unsaved
+changes), or `'parentClosed'`. A dialog opened from inside another layer (a
+Popover, say) closes when that layer closes; then `onClose('parentClosed')` is a
+notice, not a request: the dialog is already closed whatever `open` says, so set
+`open` to false, even when there are unsaved changes.
 
 A select list, a Menu, a Popover or a Tooltip may open from inside a Dialog.
 Escape closes that layer first and the Dialog on the next press. The dialog has
@@ -885,7 +893,7 @@ confirmation too; keep the safe action first.
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`open`|true, false|none (required)|Whether the dialog is showing.|
-|`onClose`|a function|none (required)|Called on Escape and on a press on the dimmed page.|
+|`onClose`|a function, given `'escape'`, `'scrim'` or `'parentClosed'`|none (required)|Called on Escape, on a press on the dimmed page, and when the layer it was opened from closes.|
 |`title`|text|none (required)|Names the dialog. It is the heading.|
 |`description`|text|none|A line under the title that says more.|
 |`children`|content|none|The body, such as a field. It sits between the description and the actions.|
@@ -1088,12 +1096,15 @@ on-screen keyboard (the viewport setting and the keyboard inset are the shell
 plan's job, not the kit's).
 
 The parent decides whether the sheet closes. `onClose` is called on Escape, on a
-press on the dimmed page and on the Close button.
+press on the dimmed page and on the Close button, and says which: `'escape'`,
+`'scrim'` or `'button'`. Like a Dialog, a sheet opened from inside another layer
+closes with it, and `onClose` is then called with `'parentClosed'`: a notice, not
+a request.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`open`|true, false|none (required)|Whether the sheet is showing.|
-|`onClose`|a function|none (required)|Called on Escape, on a press on the dimmed page and on Close.|
+|`onClose`|a function, given `'escape'`, `'scrim'`, `'button'` or `'parentClosed'`|none (required)|Called on Escape, on a press on the dimmed page, on Close, and when the layer it was opened from closes.|
 |`title`|text|none (required)|Names the sheet. It is the heading.|
 |`children`|content|none (required)|The body. It scrolls.|
 |`actions`|Buttons|none|The buttons, in a row pinned to the bottom. On a phone they stack.|
@@ -1117,6 +1128,12 @@ it is now in the shared behaviour tables (see [Behaviour](behaviour.md)), which
 both clients are tested against. For the rest, this list is the spec for the
 native side.
 
+When an overlay closes, and where focus goes after, is no longer MUI's to
+decide. It is the overlay stack's (see [Overlay stack](behaviour.md#overlay-stack)):
+Escape, Tab, a press outside, a closing parent and focus return. The kit turns
+off MUI's own Escape handling, its focus restore and its close reasons. The
+lists below say what each overlay still gets from MUI and the browser.
+
 ### Select menu
 
 - The list opens when the pointer is pressed on the field, not when it is
@@ -1127,7 +1144,9 @@ native side.
   End jump to the first and last item. Disabled items are skipped. The list does
   not wrap.
 - Tab closes the list and puts focus back on the field; the next Tab moves on.
-  Escape and a click outside close it and put focus back on the field.
+  Escape and a click outside close it and put focus back on the field. The list
+  is a menu layer of the overlay stack, which decides all three; MUI only closes
+  it when an option is chosen.
 - While the list is open the page behind it does not scroll, and the page is
   hidden from assistive technology. Focus cannot leave the list.
 - The list is at least as wide as the field and sits just below it. When there is
@@ -1245,13 +1264,15 @@ native side.
   Disabled items and dividers are skipped.
 - Enter and Space on an item choose it. Choosing calls the item's action, then
   closes the menu. A disabled item does nothing when clicked.
-- Tab closes the menu and focus goes back to the opener, not to the next
-  control. Escape and a press on the page outside it close it too. The press is
-  swallowed by an invisible layer: the control under it is not activated. A
-  right press does the same.
-- Escape is ignored while an input method is composing text, and only the
-  topmost layer handles it.
-- When it closes, focus goes back to whatever had it before the menu opened.
+- Tab, Escape and a press on the page outside it close it (the overlay stack's
+  rules), and focus goes back to whatever had it before the menu opened, not to
+  the next control. What MUI still gives: the invisible layer that swallows the
+  press, so the control under it is not activated, and `preventDefault` on the
+  Tab key. A right or middle press outside does not close it.
+- An item that opens a Dialog: the menu closes under the dialog without moving
+  focus, and the dialog returns focus to the menu's button when it closes.
+- Where a click does not focus the button (Safari), focus still returns to the
+  menu's anchor.
 - Typing letters collects into a prefix; the same letter again steps through the
   matches. Matching is not case sensitive. MUI resets the prefix after about half
   a second; the shared rule is one second (the typeahead timing, see
@@ -1269,15 +1290,20 @@ native side.
 
 - When it opens, focus goes to the first control inside it, or to the panel
   itself when there is none.
-- Escape closes it. So does a press anywhere outside the panel and its anchor.
-  A press on the anchor is left to the anchor.
+- Escape closes it, wherever focus is. So does a press anywhere outside the
+  panel and its anchor, and the press carries on to what is under it. A press on
+  the anchor is left to the anchor. Both are the overlay stack's rules; the kit
+  has no code of its own for them.
 - Nothing traps focus, and the page keeps its scroll. Outside a Dialog the panel
   is placed at the end of the page, so Tab from its last control carries on
   after the page. Inside a Dialog it is drawn in the Dialog.
 - A press inside a layer that opened from the Popover (a select list, a Menu, a
-  Dialog) is not a press outside it, and that layer handles its own Escape first.
-  The Escape is ignored while an input method is composing text.
-- When it closes, focus goes back to the anchor.
+  Dialog) is not a press outside it, and Escape closes that layer first. The
+  Escape is ignored while an input method is composing text, and when the
+  focused control uses it.
+- When it closes with focus inside it, or with focus lost, focus goes back to
+  the anchor. When the user moved focus elsewhere (a press on another control),
+  focus stays there.
 - It sits just below or above the anchor. When there is no room it flips to the
   other side, then shifts along the anchor to stay one gutter inside the window.
 - It follows the anchor when the window or any scrolling box around it scrolls
@@ -1289,13 +1315,18 @@ native side.
 - A mouse or pen pointer opens it after a short delay. Keyboard focus opens it
   at once, but only when the focus is keyboard focus, not after a mouse press.
 - A touch never opens it.
-- Escape and the control losing focus close it. Moving the pointer away closes
-  it.
+- The control losing focus closes it, and so does moving the pointer away. The
+  tooltip handles both itself.
+- Escape closes it wherever focus is, and goes no further: a dialog under it
+  stays open and the screen does not get the key. It then stays hidden until
+  the pointer or focus leaves the control and comes back. That is the overlay
+  stack's rule.
 - While it is open, the control is linked to it as a description, merged with any
   description the control has. The control keeps its own name.
 - A tap on a text field, and a touch press on any control, never open it.
 - The panel cannot be hovered. Escape ignores an input method that is composing
   text, and a focused control still receives the key before the tooltip closes.
+  A press never closes it.
 - It sits on the chosen side of the control. When there is no room it flips to
   the other side, then shifts to stay one gutter inside the window. It appears
   with no fade, and it is not in the page while closed.
@@ -1305,16 +1336,21 @@ native side.
 - When it opens, focus goes to the first control in the actions row.
 - Tab and Shift+Tab wrap inside the dialog. Focus cannot leave it.
 - Escape and a press on the dimmed page call `onClose`. The parent decides
-  whether to close.
-- When it closes, focus goes back to the element that was focused just before.
+  whether to close. Both are the overlay stack's rules: MUI's own Escape
+  handling and close reasons are off.
+- When it closes, focus goes back to the element that was focused just before
+  it opened. If that has gone, focus goes to the layer it was in, or to the
+  screen's focus target. This is the stack's rule too: MUI's focus restore is off.
 - A press on the dimmed page closes it only when the press starts and ends there:
-  a drag that starts in the panel and ends on the dimmed page does not.
+  a drag that starts in the panel and ends on the dimmed page does not. Only the
+  main button counts: a right or middle press does nothing.
 - A layer opened from inside (a select list, a Menu, a Popover, a Tooltip) is
   drawn within the dialog and takes the key first. The page behind is hidden from
   assistive technology when the dialog opens, so a layer drawn elsewhere would
   be hidden too.
 - Long content scrolls inside the panel, which is never taller than the window
-  less the page gutter. Escape is ignored while an input method is composing.
+  less the page gutter. Escape is ignored while an input method is composing,
+  and when the focused control uses it.
 - While it is open the page behind it does not scroll, and the page is hidden
   from assistive technology. The dialog is announced as a dialog, named by its
   title and described by its description.
@@ -1350,8 +1386,9 @@ native side.
 
 - It behaves like a Dialog: the page behind does not scroll and is hidden from
   assistive technology, focus moves in and cannot leave, Escape and a press on
-  the dimmed page call `onClose`, and focus goes back to where it was. A layer
-  opened from inside is drawn within the sheet. Focus goes to the sheet itself.
+  the dimmed page call `onClose` (the overlay stack decides both), and focus goes
+  back to where it was. A layer opened from inside is drawn within the sheet.
+  Focus goes to the sheet itself.
 - The header and the actions stay put and the body scrolls.
 - Above the phone width it is centred and keeps the page gutter. At the phone
   width or below it is full width, sits at the bottom with rounded top corners,

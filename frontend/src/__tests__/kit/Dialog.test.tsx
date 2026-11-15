@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { Button, Dialog, IconButton, SelectField, TextField, Tooltip, type DialogProps } from '../../kit';
+import { Button, Dialog, IconButton, SelectField, TextField, Tooltip, type DialogProps, type DialogCloseReason } from '../../kit';
 import { derivePalette } from '../../theme/derive/derivePalette';
 import { parseHex } from '../../theme/derive/oklch';
 import { tokens } from '../../theme/generated/tokens';
@@ -20,15 +20,15 @@ function Harness({
   onClose,
   size,
   description = 'This removes the channel for everyone.',
-}: { onClose?: () => void; size?: DialogProps['size']; description?: string }) {
+}: { onClose?: (reason: DialogCloseReason) => void; size?: DialogProps['size']; description?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button onClick={() => setOpen(true)}>Delete channel</Button>
       <Dialog
         open={open}
-        onClose={() => {
-          onClose?.();
+        onClose={(reason) => {
+          onClose?.(reason);
           setOpen(false);
         }}
         title="Delete #memes?"
@@ -89,23 +89,27 @@ describe('Dialog', () => {
     expect(dialog.contains(document.activeElement)).toBe(true);
   });
 
-  it('Escape calls onClose and returns focus to the opener', async () => {
+  it("Escape calls onClose('escape') and returns focus to the opener", async () => {
     const onClose = vi.fn();
     const { user } = renderWithKit(<Harness onClose={onClose} />);
     await user.click(opener());
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('escape');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(document.activeElement).toBe(opener());
   });
 
-  it('a press on the scrim calls onClose', async () => {
+  it("a press on the scrim calls onClose('scrim') and returns focus to the opener", async () => {
     const onClose = vi.fn();
     const { user } = renderWithKit(<Harness onClose={onClose} />);
     await user.click(opener());
     const dialog = screen.getByRole('dialog');
     await user.click(dialog.parentElement as HTMLElement);
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('scrim');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(opener());
   });
 
   it('a press inside the panel does not close it', async () => {
