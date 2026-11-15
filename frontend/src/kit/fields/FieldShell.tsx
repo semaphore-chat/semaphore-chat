@@ -1,4 +1,5 @@
 import type { JSX, ReactNode } from 'react';
+import { useDescribedBy } from '../overlays/tooltipDescription';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
@@ -92,6 +93,8 @@ export function FieldShell({
   const hasError = error !== undefined && error !== '';
   const message = hasError ? error : helper;
   const hasMessage = message !== undefined && message !== '';
+  // The helper or error text, then an enclosing Tooltip's description while it shows.
+  const describedBy = useDescribedBy(hasMessage ? messageId : undefined);
 
   return (
     <Root $disabled={disabled}>
@@ -113,7 +116,7 @@ export function FieldShell({
           </span>
         )}
       </LabelRow>
-      {children({ invalid: hasError, describedBy: hasMessage ? messageId : undefined })}
+      {children({ invalid: hasError, describedBy })}
       {hasMessage && (
         <Message id={messageId}>
           {hasError && (

@@ -2,7 +2,11 @@ import type { JSX, MouseEvent, ReactNode, Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
-import { focusRing, interactiveStates } from '../theme/states';
+import { TooltipDescriptionContext } from '../overlays/tooltipDescription';
+import { reducedMotion } from '../overlays/surface';
+import { mix } from '../theme/mix';
+import { focusRing } from '../theme/states';
+import { SurfaceInkContext } from '../theme/surfaceInk';
 import { transientProps } from '../theme/transientProps';
 
 export interface ListRowProps {
@@ -34,12 +38,19 @@ interface LookProps {
   $disabled: boolean;
 }
 
-/** The whole row: background, hover and selection live here so a trailing slot sits inside the pill. */
+/**
+ * The whole row: background, hover and selection live here so a trailing slot sits inside the pill.
+ * It is a stacking context (`zIndex: 0`) so the link or button's stretched layer can sit behind the
+ * text yet above this background.
+ */
 const Wrapper = styled('div', { shouldForwardProp: transientProps })<LookProps>(
   ({ theme, $size, $selected, $interactive, $disabled }) => {
     const { palette } = kitTheme(theme);
     const under = $selected ? palette.accent : palette.surface;
     return {
+      ...reducedMotion,
+      position: 'relative',
+      zIndex: 0,
       display: 'flex',
       alignItems: 'center',
       boxSizing: 'border-box',
@@ -52,16 +63,20 @@ const Wrapper = styled('div', { shouldForwardProp: transientProps })<LookProps>(
       background: $selected ? palette.accent : 'transparent',
       color: $selected ? palette.onAccent : palette.textSecondary,
       transition: `background-color ${tokens.motion.fast}ms`,
+      // Hover is the row's. Pressed and the focus ring belong to the link or button (see `mainStyle`):
+      // pressing a trailing control must not show the row as pressed.
       ...($interactive &&
-        !$disabled &&
-        interactiveStates({
-          palette,
-          under,
-          hover: $selected ? tokens.state.hoverOnFill : tokens.state.hover,
-          pressed: $selected ? tokens.state.pressedOnFill : tokens.state.pressed,
-        })),
-      // The ring belongs to the inner element; the wrapper only paints states.
-      '&:focus-visible': { outline: 'none' },
+        !$disabled && {
+          '@media (hover: hover)': {
+            '&:hover': {
+              background: mix(
+                palette.text,
+                under,
+                $selected ? tokens.state.hoverOnFill : tokens.state.hover,
+              ),
+            },
+          },
+        }),
       ...($disabled && { opacity: tokens.state.disabled }),
     };
   },
@@ -69,6 +84,9 @@ const Wrapper = styled('div', { shouldForwardProp: transientProps })<LookProps>(
 
 const mainStyle = (theme: Parameters<typeof kitTheme>[0], interactive: boolean) => {
   const { palette } = kitTheme(theme);
+  // Pressed tint over the row's own colour. Selected is on the accent pill: its pressed tint is the on-fill one.
+  const pressed = (selected: boolean) =>
+    mix(palette.text, selected ? palette.accent : palette.surface, selected ? tokens.state.pressedOnFill : tokens.state.pressed);
   return {
     display: 'flex',
     alignItems: 'center',
@@ -87,8 +105,25 @@ const mainStyle = (theme: Parameters<typeof kitTheme>[0], interactive: boolean) 
     textAlign: 'start',
     textDecoration: 'none',
     cursor: interactive ? 'pointer' : 'default',
-    '&:focus-visible': focusRing(palette, -tokens.border.focus),
+    '&:focus-visible': { outline: 'none' },
     '&:disabled, &[aria-disabled="true"]': { cursor: 'default' },
+    // The stretched layer: it covers the whole row (padding, gaps and all), so a press anywhere on the
+    // row is a press on this link or button. It sits behind the row's text (`zIndex: -1` inside the
+    // wrapper's stacking context) and behind the trailing slot, which is positioned above it. It also
+    // carries the pressed tint and the focus ring, so both outline the whole pill.
+    ...(interactive && {
+      '&::after': {
+        content: '""',
+        position: 'absolute',
+        inset: 0,
+        zIndex: -1,
+        borderRadius: 'inherit',
+      },
+      '&:active::after': { background: pressed(false) },
+      '&[aria-current]:active::after': { background: pressed(true) },
+      '&:focus-visible::after': focusRing(palette, -tokens.border.focus),
+      '&:disabled::after, &[aria-disabled="true"]::after': { display: 'none' },
+    }),
   } as const;
 };
 
@@ -106,6 +141,8 @@ const Leading = styled('span')({
 });
 
 const Trailing = styled('span')({
+  // Above the row's stretched layer, so its own controls take their own presses.
+  position: 'relative',
   display: 'inline-flex',
   alignItems: 'center',
   flexShrink: 0,
@@ -236,8 +273,15 @@ export function ListRow({
 
   return (
     <Wrapper $size={size} $selected={selected} $interactive={interactive} $disabled={disabled}>
-      {main}
-      {trailing !== undefined && <Trailing>{trailing}</Trailing>}
+      <SurfaceInkContext value={selected ? 'onAccent' : 'default'}>
+        {main}
+        {trailing !== undefined && (
+          // A Tooltip around the row describes its link or button, not a control in the slot.
+          <TooltipDescriptionContext value={null}>
+            <Trailing>{trailing}</Trailing>
+          </TooltipDescriptionContext>
+        )}
+      </SurfaceInkContext>
     </Wrapper>
   );
 }

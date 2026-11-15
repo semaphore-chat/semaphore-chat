@@ -11,7 +11,7 @@ describe('menu row height', () => {
   // jsdom does not evaluate @media rules, so the wide-viewport case is pinned on the
   // generated style: the height sits under the doubled-class selector, which beats MUI's
   // `min-width: sm` reset. The rendered row is also checked at jsdom's (narrow) default.
-  it('declares min-height and padding at doubled specificity', () => {
+  it('guard: declares min-height and padding at doubled specificity (pins the implementation; the real check is the ui-review height at desktop width)', () => {
     const lounge = createLoungeTheme(derivePalette('#8E75FF', 'dark', 'minimal'), 'dark').lounge!;
     const style = menuItemStyle(lounge);
     expect(style['&&']).toEqual({

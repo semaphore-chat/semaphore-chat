@@ -1,11 +1,14 @@
 import type { AriaAttributes, JSX, MouseEvent, MouseEventHandler, Ref } from 'react';
+import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
+import { mix } from '../theme/mix';
 import { interactiveStates } from '../theme/states';
+import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
 import { buttonLook, type ButtonVariant } from './buttonLook';
 import { Spinner } from '../display/Spinner';
 import { transientProps } from '../theme/transientProps';
@@ -41,17 +44,28 @@ interface RootProps {
   $variant: IconButtonVariant;
   $size: IconButtonSize;
   $selected: boolean;
+  $ink: SurfaceInk;
 }
 
 const Root = styled(ButtonBase, {
   shouldForwardProp: transientProps,
-})<RootProps>(({ theme, $variant, $size, $selected }) => {
+})<RootProps>(({ theme, $variant, $size, $selected, $ink }) => {
   const { palette } = kitTheme(theme);
   const look = buttonLook(palette, $variant);
-  const background = $selected ? palette.fill : look.background;
-  const color = $selected ? palette.accentText : look.label;
-  const under = $selected ? palette.fill : look.stateBase;
-  const onFill = !$selected && ($variant === 'primary' || $variant === 'danger');
+  // On the accent pill a ghost or soft button reads as the on-accent ink; a soft one keeps a faint
+  // on-accent tint for its fill. States are the on-fill ones, tinted over the accent.
+  const onAccent = $ink === 'onAccent' && !$selected && ($variant === 'ghost' || $variant === 'soft');
+  const tint = mix(palette.onAccent, palette.accent, tokens.state.pressedOnFill);
+  const background = $selected
+    ? palette.fill
+    : onAccent
+      ? $variant === 'soft'
+        ? tint
+        : 'transparent'
+      : look.background;
+  const color = $selected ? palette.accentText : onAccent ? palette.onAccent : look.label;
+  const under = $selected ? palette.fill : onAccent ? ($variant === 'soft' ? tint : palette.accent) : look.stateBase;
+  const onFill = onAccent || (!$selected && ($variant === 'primary' || $variant === 'danger'));
 
   return {
     position: 'relative',
@@ -117,7 +131,9 @@ export function IconButton({
   'aria-haspopup': ariaHaspopup,
   'aria-controls': ariaControls,
 }: IconButtonProps): JSX.Element {
+  const ink = useSurfaceInk();
   const busy = loading && !disabled;
+  const describedBy = useDescribedBy(undefined);
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
@@ -140,12 +156,14 @@ export function IconButton({
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHaspopup}
       aria-controls={ariaControls}
+      aria-describedby={describedBy}
       id={id}
       title={title}
       disableRipple
       $variant={variant}
       $size={size}
       $selected={selected === true}
+      $ink={ink}
     >
       {busy ? (
         <Spinner size={ICON_SIZE[size]} />

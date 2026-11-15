@@ -90,3 +90,48 @@ export const LongNames = () => (
     </KitSurface>
   </KitStage>
 );
+
+/**
+ * The selected row is the solid accent pill: kit children in its slots switch to on-accent ink, so
+ * an unread Badge, a Pill and a ghost IconButton stay visible and readable.
+ */
+export const SelectedWithTrailing = () => (
+  <KitStage mode="dark">
+    <KitSurface width={288}>
+      <ListRow primary="general" leading={hash} selected href="#general" trailing={<Badge count={3} tone="accent" label="3 unread" />} />
+      <ListRow primary="clips" leading={hash} selected unread href="#clips" trailing={<Badge count={12} label="12 unread" />} />
+      <ListRow
+        size="lg"
+        primary="dropbear"
+        secondary="Streaming"
+        selected
+        leading={<Avatar decorative name="dropbear" colour="#5FD49A" presence="speaking" />}
+        onClick={noop}
+        trailing={
+          <>
+            <Pill size="sm" tone="accent">Mod</Pill>
+            <IconButton size="sm" icon="Ellipsis" label="More about dropbear" />
+          </>
+        }
+      />
+      <ListRow
+        size="lg"
+        primary="aiko"
+        secondary="Playing Hades"
+        selected
+        leading={<Avatar decorative name="aiko" colour="#FF8FB8" presence="online" />}
+        onClick={noop}
+        trailing={<IconButton size="sm" variant="soft" icon="Pin" label="Pin aiko" />}
+      />
+    </KitSurface>
+  </KitStage>
+);
+
+export const SelectedWithTrailingLight = () => (
+  <KitStage mode="light">
+    <KitSurface width={288} mode="light">
+      <ListRow primary="general" leading={hash} selected href="#general" trailing={<Badge count={3} tone="accent" label="3 unread" />} />
+      <ListRow size="lg" primary="aiko" secondary="Playing Hades" selected leading={<Avatar decorative name="aiko" colour="#FF8FB8" />} onClick={noop} trailing={<IconButton size="sm" icon="Ellipsis" label="More" />} />
+    </KitSurface>
+  </KitStage>
+);

@@ -1,11 +1,13 @@
-import { useEffect, useRef, type JSX, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, type JSX, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import ClickAwayListener from '@mui/material/ClickAwayListener';
 import Fade from '@mui/material/Fade';
 import Popper from '@mui/material/Popper';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { transientProps } from '../theme/transientProps';
-import { ANCHOR_GAP, overlaySurface, reducedMotion, type Placement } from './surface';
+import { useOverlayContainer } from './overlayContainer';
+import { ANCHOR_GAP, layerIndex, overlaySurface, reducedMotion, type Placement } from './surface';
 
 export interface PopoverProps {
   open: boolean;
@@ -55,9 +57,13 @@ function FocusIn({ panel }: { panel: RefObject<HTMLDivElement | null> }): null {
  * `onClose`; on close, focus returns to the anchor. Placement flips to the other
  * side and shifts to stay in the viewport.
  *
- * The panel renders in a portal at the end of the page, so Tab from its last
- * control continues after the page. Do not open one from inside a Dialog: the
- * Dialog's focus trap takes focus back.
+ * Other layers can open from inside it (a Menu, a SelectField list, a Dialog):
+ * a press or an Escape in them belongs to them, not to the Popover, because
+ * both are tracked through the React tree, not the DOM. Opened from inside a
+ * Dialog it renders within the Dialog, so the focus trap lets focus in.
+ *
+ * Outside a Dialog the panel renders in a portal at the end of the page, so Tab
+ * from its last control continues after the page.
  */
 export function Popover({
   open,
@@ -69,11 +75,12 @@ export function Popover({
   padding = 'md',
 }: PopoverProps): JSX.Element {
   const panel = useRef<HTMLDivElement>(null);
+  const container = useOverlayContainer();
   // The latest onClose, so the listeners below are not re-added on every render.
   const close = useRef(onClose);
   close.current = onClose;
 
-  // Focus in on open; focus back to the anchor on close.
+  // Focus back to the anchor on close.
   useEffect(() => {
     if (!open) {
       return undefined;
@@ -90,38 +97,36 @@ export function Popover({
     };
   }, [open, anchor]);
 
+  // Escape with focus on the anchor (after a press on it, say). It is a native listener on the
+  // anchor so it runs before any layer around the anchor, such as a Dialog, sees the key.
   useEffect(() => {
-    if (!open) {
+    if (!open || anchor === null) {
       return undefined;
     }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') {
-        return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.isComposing) {
+        close.current();
+        event.stopPropagation();
       }
-      close.current();
-      // Spent here: an enclosing layer must not also close on this key.
-      event.stopPropagation();
     };
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      // The anchor handles its own presses (it may toggle the popover).
-      if (panel.current?.contains(target) === true || anchor?.contains(target) === true) {
-        return;
-      }
-      close.current();
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown, true);
-      document.removeEventListener('pointerdown', onPointerDown, true);
-    };
+    anchor.addEventListener('keydown', onKeyDown);
+    return () => anchor.removeEventListener('keydown', onKeyDown);
   }, [open, anchor]);
+
+  // A React handler on the panel: React events bubble through portals, so a layer opened
+  // from inside has already used the key (MUI's modals stop the Escape they consume).
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+      close.current();
+      event.stopPropagation();
+    }
+  };
 
   return (
     <Popper
       open={open && anchor !== null}
       anchorEl={anchor}
+      container={container}
       placement={placement}
       transition
       role={undefined}
@@ -129,21 +134,33 @@ export function Popover({
         { name: 'offset', options: { offset: [0, ANCHOR_GAP] } },
         { name: 'preventOverflow', options: { padding: tokens.layout.gutter } },
       ]}
-      sx={(theme) => ({ zIndex: theme.zIndex.modal })}
+      sx={(theme) => ({ zIndex: layerIndex(theme, 'panel') })}
     >
       {({ TransitionProps }) => (
-        <Fade {...TransitionProps} timeout={tokens.motion.fast}>
-          <Panel
-            ref={panel}
-            role="dialog"
-            aria-label={label}
-            tabIndex={-1}
-            $padding={padding}
-          >
-            <FocusIn panel={panel} />
-            {children}
-          </Panel>
-        </Fade>
+        <ClickAwayListener
+          mouseEvent="onPointerDown"
+          touchEvent={false}
+          onClickAway={(event) => {
+            // The anchor handles its own presses (it may toggle the popover).
+            if (anchor?.contains(event.target as Node) !== true) {
+              close.current();
+            }
+          }}
+        >
+          <Fade {...TransitionProps} timeout={tokens.motion.fast}>
+            <Panel
+              ref={panel}
+              role="dialog"
+              aria-label={label}
+              tabIndex={-1}
+              onKeyDown={onKeyDown}
+              $padding={padding}
+            >
+              <FocusIn panel={panel} />
+              {children}
+            </Panel>
+          </Fade>
+        </ClickAwayListener>
       )}
     </Popper>
   );

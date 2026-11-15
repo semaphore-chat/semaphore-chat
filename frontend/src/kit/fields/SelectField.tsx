@@ -6,6 +6,7 @@ import { styled, type Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
 import { kitTheme } from '../theme/KitProvider';
+import { useOverlayContainer } from '../overlays/overlayContainer';
 import { ANCHOR_GAP, menuItemStyle, overlaySurface } from '../overlays/surface';
 import { FieldBox, type FieldBoxProps } from './FieldBox';
 import { FieldShell } from './FieldShell';
@@ -88,6 +89,8 @@ export function SelectField({
   const uid = useId();
   const controlId = id ?? `${uid}-select`;
   const labelId = `${uid}-label`;
+  // Inside a Dialog the list renders in the Dialog, where its focus trap lets focus in.
+  const container = useOverlayContainer();
   // MUI's select hands this handle to `inputRef`; its focus() focuses the
   // combobox without opening it, as a native select's label does.
   const selectRef = useRef<{ focus: () => void }>(null);
@@ -137,6 +140,7 @@ export function SelectField({
           MenuProps={{
             // A plain fade at the fast timing: MUI's default Grow takes its
             // duration from the menu's height and scales the paper.
+            container,
             transitionDuration: tokens.motion.fast,
             slots: { transition: Fade },
             slotProps: { paper: { sx: paperSx }, list: { sx: listSx } },

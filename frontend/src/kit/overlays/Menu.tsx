@@ -8,6 +8,7 @@ import { KeyCap } from '../display/KeyCap';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
 import { transientProps } from '../theme/transientProps';
+import { useOverlayContainer } from './overlayContainer';
 import {
   ANCHOR_GAP,
   fadeTransition,
@@ -63,12 +64,18 @@ const Keys = styled('span')({
   marginLeft: `${tokens.space.lg}px`,
 });
 
-const Divider = styled('li')(({ theme }) => ({
+const Line = styled('li')(({ theme }) => ({
   listStyle: 'none',
   height: `${tokens.border.hairline}px`,
   margin: `${tokens.space.xs}px 0`,
   background: kitTheme(theme).palette.hairline,
 }));
+
+/** MUI's MenuList gives focus to its first child that does not set this flag; a divider must never get it. */
+function Divider(): JSX.Element {
+  return <Line role="separator" />;
+}
+Divider.muiSkipListHighlight = true;
 
 const paperSx = (theme: Theme) => ({
   ...overlaySurface(kitTheme(theme)),
@@ -87,10 +94,13 @@ const listSx = { padding: `${tokens.space.xs}px` };
 export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-start' }: MenuProps): JSX.Element {
   const { anchorOrigin, transformOrigin } = placementOrigins(placement);
   const gap = placement.startsWith('bottom') ? ANCHOR_GAP : -ANCHOR_GAP;
+  // Inside a Dialog the menu renders in the Dialog, where its focus trap lets focus in.
+  const container = useOverlayContainer();
   return (
     <MuiMenu
       open={open}
       anchorEl={anchor}
+      container={container}
       onClose={onClose}
       anchorOrigin={anchorOrigin}
       transformOrigin={transformOrigin}
@@ -104,7 +114,7 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
     >
       {items.map((entry) => {
         if ('divider' in entry) {
-          return <Divider key={entry.id} role="separator" />;
+          return <Divider key={entry.id} />;
         }
         const danger = entry.tone === 'danger';
         return (

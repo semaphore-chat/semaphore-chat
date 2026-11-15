@@ -1,4 +1,5 @@
 import { useId, type JSX, type Ref } from 'react';
+import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
@@ -84,6 +85,7 @@ export function Switch({
   const uid = useId();
   const labelId = `${uid}-label`;
   const descriptionId = `${uid}-description`;
+  const describedBy = useDescribedBy(description === undefined ? undefined : descriptionId);
 
   return (
     <ChoiceRow>
@@ -102,7 +104,7 @@ export function Switch({
         role="switch"
         aria-checked={checked}
         aria-labelledby={labelId}
-        aria-describedby={description === undefined ? undefined : descriptionId}
+        aria-describedby={describedBy}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         disableRipple

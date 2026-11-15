@@ -2,6 +2,8 @@ import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { mix } from '../theme/mix';
+import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
 import { transientProps } from '../theme/transientProps';
 import type { IconName } from '../icons/generated';
 import { dotStyle } from './dot';
@@ -22,10 +24,11 @@ export interface PillProps {
 interface RootProps {
   $tone: PillTone;
   $size: PillSize;
+  $ink: SurfaceInk;
 }
 
 const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
-  ({ theme, $tone, $size }) => {
+  ({ theme, $tone, $size, $ink }) => {
     const { palette } = kitTheme(theme);
     const type = $size === 'sm' ? tokens.text.tag : { ...tokens.text.small, weight: tokens.text.bodyStrong.weight };
     const height = $size === 'sm' ? tokens.icon.lg : tokens.icon.xl;
@@ -36,6 +39,13 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
       positive: { background: palette.fill, color: palette.positive },
       warning: { background: palette.fill, color: palette.warning },
     };
+    // On the accent pill: an accent pill inverts (on-accent fill, accent text) and a neutral one is a
+    // faint on-accent tint with on-accent text. Status tones keep their fill and colour.
+    const onAccent: Partial<Record<PillTone, { background: string; color: string }>> = {
+      accent: { background: palette.onAccent, color: palette.accent },
+      neutral: { background: mix(palette.onAccent, palette.accent, tokens.state.pressedOnFill), color: palette.onAccent },
+    };
+    const look = ($ink === 'onAccent' ? onAccent[$tone] : undefined) ?? looks[$tone];
     return {
       display: 'inline-flex',
       alignItems: 'center',
@@ -51,7 +61,7 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
       lineHeight: `${type.line}px`,
       fontWeight: type.weight,
       whiteSpace: 'nowrap',
-      ...looks[$tone],
+      ...look,
     };
   },
 );
@@ -72,8 +82,9 @@ const Label = styled('span')({
  * the text carries the meaning).
  */
 export function Pill({ children, tone = 'neutral', dot = false, icon, size = 'md' }: PillProps): JSX.Element {
+  const ink = useSurfaceInk();
   return (
-    <Root $tone={tone} $size={size}>
+    <Root $tone={tone} $size={size} $ink={ink}>
       {dot && <Dot aria-hidden="true" />}
       {icon !== undefined && <Icon name={icon} size={size === 'sm' ? 'xs' : 'sm'} />}
       <Label>{children}</Label>

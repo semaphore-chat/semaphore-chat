@@ -1,4 +1,5 @@
 import { useId, useImperativeHandle, useLayoutEffect, useRef, type JSX, type Ref } from 'react';
+import { useDescribedBy } from '../overlays/tooltipDescription';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
@@ -75,6 +76,7 @@ export function Checkbox({
   });
 
   const on = checked || indeterminate;
+  const describedBy = useDescribedBy(description === undefined ? undefined : descriptionId);
 
   return (
     <ChoiceRow>
@@ -87,7 +89,7 @@ export function Checkbox({
           disabled={disabled}
           aria-checked={indeterminate ? 'mixed' : checked}
           aria-labelledby={labelId}
-          aria-describedby={description === undefined ? undefined : descriptionId}
+          aria-describedby={describedBy}
           onChange={(event) => {
             // The click has already cleared the browser's indeterminate flag;
             // put the prop's value back even if the parent does not re-render.

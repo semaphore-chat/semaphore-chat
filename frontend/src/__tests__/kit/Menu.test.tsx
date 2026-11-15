@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { Button, Menu, type MenuEntry, type MenuProps } from '../../kit';
+import { Button, Dialog, Menu, type MenuEntry, type MenuProps } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 let consoleError: MockInstance;
@@ -190,5 +190,53 @@ describe('Menu', () => {
       <Menu open={false} anchor={null} onClose={() => {}} label="x" items={[]} className="x" />,
     );
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('an item that opens a Dialog: closing the Dialog returns focus to the menu trigger', async () => {
+    function Screen() {
+      const [menu, setMenu] = useState(false);
+      const [dialog, setDialog] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <Button ref={setAnchor} onClick={() => setMenu(true)}>
+            Options
+          </Button>
+          <Menu
+            open={menu}
+            anchor={anchor}
+            onClose={() => setMenu(false)}
+            label="Options"
+            items={[{ id: 'del', label: 'Delete', onSelect: () => setDialog(true) }]}
+          />
+          <Dialog open={dialog} onClose={() => setDialog(false)} title="Delete it?" actions={<Button onClick={() => setDialog(false)}>Cancel</Button>} />
+        </>
+      );
+    }
+    const { user } = renderWithKit(<Screen />);
+    await user.click(trigger());
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await screen.findByRole('dialog', { name: 'Delete it?' });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger()).toHaveFocus());
+  });
+
+  it('a divider that comes first or follows a disabled first item never takes focus', async () => {
+    const { user } = renderWithKit(
+      <Harness
+        items={[
+          { id: 'd0', divider: true },
+          { id: 'a', label: 'Alpha', disabled: true, onSelect: () => {} },
+          { id: 'd1', divider: true },
+          { id: 'b', label: 'Beta', onSelect: () => {} },
+        ]}
+      />,
+    );
+    await user.click(trigger());
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Beta' })).toHaveFocus());
+    for (const separator of screen.getAllByRole('separator')) {
+      expect(separator).not.toHaveAttribute('tabindex');
+    }
   });
 });

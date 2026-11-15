@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, type JSX, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react';
 import MuiDialog from '@mui/material/Dialog';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { shadow } from '../theme/shadow';
+import { OverlayContainerContext } from './overlayContainer';
 import { fadeTransition, reducedMotion } from './surface';
 
 export interface DialogProps {
@@ -73,6 +74,10 @@ function Foot({ children }: { children: ReactNode }): JSX.Element {
  * A modal dialog over a dimmed page. MUI's Dialog supplies the behaviour: the
  * page behind is inert and does not scroll, Tab cycles inside, Escape and a
  * press on the scrim call `onClose`, and focus returns to the opener.
+ *
+ * A Popover, Tooltip, Menu or SelectField list opened from inside render within
+ * the Dialog, so its focus trap lets focus into them; Escape closes the
+ * innermost layer first.
  */
 export function Dialog({
   open,
@@ -86,6 +91,8 @@ export function Dialog({
   const uid = useId();
   const titleId = `${uid}-title`;
   const descriptionId = description ? `${uid}-description` : undefined;
+  // The element MUI's focus trap guards: layers opened from inside render in it.
+  const [container, setContainer] = useState<HTMLElement | null>(null);
   return (
     <MuiDialog
       open={open}
@@ -104,6 +111,7 @@ export function Dialog({
         },
       }}
       slotProps={{
+        container: { ref: setContainer },
         backdrop: {
           sx: (theme) => ({ background: kitTheme(theme).palette.scrim, ...reducedMotion }),
         },
@@ -113,6 +121,8 @@ export function Dialog({
             return {
               boxSizing: 'border-box',
               width: '100%',
+              // The container's padding is the margin, so MUI's own `100% - 64px` would double it.
+              maxHeight: '100%',
               maxWidth: `${WIDTH[size]}px`,
               margin: 0,
               padding: `${tokens.space.xl}px`,
@@ -127,10 +137,12 @@ export function Dialog({
         },
       }}
     >
-      <Title id={titleId}>{title}</Title>
-      {description && <Description id={descriptionId}>{description}</Description>}
-      {children !== undefined && <Body>{children}</Body>}
-      <Foot>{actions}</Foot>
+      <OverlayContainerContext value={container}>
+        <Title id={titleId}>{title}</Title>
+        {description && <Description id={descriptionId}>{description}</Description>}
+        {children !== undefined && <Body>{children}</Body>}
+        <Foot>{actions}</Foot>
+      </OverlayContainerContext>
     </MuiDialog>
   );
 }

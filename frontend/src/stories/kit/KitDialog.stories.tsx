@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Button, Dialog, Text, TextField } from '../../kit';
+import { useEffect, useState } from 'react';
+import { Button, Dialog, SelectField, Text, TextField } from '../../kit';
 import type { IntensityName, ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { KitStage } from '../fixtures/kitStory';
@@ -71,3 +71,46 @@ export const ConfirmTinted = () => <Page mode="dark" base="#0d9488" intensity="v
 
 /** Judge at 390 px: the buttons stack full width, the safe action on top. */
 export const Phone = () => <Page mode="dark" size="md" withField />;
+
+const AUDIENCE = [
+  { value: 'everyone', label: 'Everyone in Couch Co-op' },
+  { value: 'friends', label: 'Friends only' },
+  { value: 'mods', label: 'Moderators' },
+];
+
+function SelectDialog() {
+  const [value, setValue] = useState('friends');
+  // MUI opens its select on a primary mouse press; a story has no user, so press it once on mount.
+  useEffect(() => {
+    const press = setTimeout(() => {
+      document
+        .getElementById('story-audience')
+        ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    }, 50);
+    return () => clearTimeout(press);
+  }, []);
+  return (
+    <Dialog
+      open
+      onClose={() => undefined}
+      title="Who can see #memes?"
+      description="Pick who may read and post in this channel."
+      actions={
+        <>
+          <Button variant="ghost">Cancel</Button>
+          <Button variant="primary">Save</Button>
+        </>
+      }
+    >
+      <SelectField id="story-audience" label="Audience" value={value} onChange={setValue} options={AUDIENCE} />
+    </Dialog>
+  );
+}
+
+/** A SelectField inside a Dialog, shown with its list open: the list renders inside the Dialog. */
+export const WithSelect = () => (
+  <KitStage mode="dark">
+    <PageBehind />
+    <SelectDialog />
+  </KitStage>
+);

@@ -1,5 +1,5 @@
 import Fade from '@mui/material/Fade';
-import type { CSSObject } from '@mui/material/styles';
+import type { CSSObject, Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import type { LoungeTheme } from '../theme/createLoungeTheme';
 import { interactiveStates } from '../theme/states';
@@ -69,7 +69,32 @@ export function menuItemStyle(lounge: LoungeTheme): CSSObject {
   };
 }
 
-/** The gap between an anchor and the panel that opens from it. */
+/**
+ * How floating layers stack. One rule: overlays stack in the order they were
+ * opened, and a tooltip sits above all of them.
+ *
+ * A Menu, a SelectField list and a Dialog are MUI modals; a Popover is a Popper
+ * given the modal level. Layers at one level stack by portal order, which is
+ * open order, so a Menu opened from a Dialog (or a Popover from a Dialog, which
+ * renders inside it) lies on top without a number to tune. Only the tooltip
+ * level differs, because a hint must stay readable over whatever it describes.
+ * The levels are read from the MUI theme, so no component file holds a number.
+ * A native client stacks by open order the same way and puts a tooltip last.
+ */
+export const LAYER = { panel: 'modal', tooltip: 'tooltip' } as const;
+
+/** The theme's z-index for a layer; spread into a Popper's `sx`. */
+export function layerIndex(theme: Theme, layer: keyof typeof LAYER): number {
+  return theme.zIndex[LAYER[layer]];
+}
+
+/**
+ * The gap between an anchor and the panel that opens from it. A Menu and a
+ * SelectField list apply it as a paper margin, which MUI's viewport clamp does
+ * not see: right at the bottom edge the panel can end this far past the gutter.
+ * That is accepted; a Popover and a Tooltip take it from Popper's offset and
+ * stay inside.
+ */
 export const ANCHOR_GAP = tokens.space.xs;
 
 /**

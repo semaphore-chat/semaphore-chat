@@ -1,4 +1,5 @@
 import { useId, useRef, type JSX, type KeyboardEvent } from 'react';
+import { joinIds, useDescribedBy } from '../overlays/tooltipDescription';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -100,6 +101,8 @@ export function RadioGroup({
 }: RadioGroupProps): JSX.Element {
   const uid = useId();
   const groupLabelId = `${uid}-group-label`;
+  // An enclosing Tooltip's description, on whichever radio takes focus.
+  const tooltipId = useDescribedBy(undefined);
   const groupRef = useRef<HTMLDivElement>(null);
   const enabled = options.filter((option) => !option.disabled);
 
@@ -155,7 +158,7 @@ export function RadioGroup({
                   checked={selected}
                   disabled={optionDisabled}
                   aria-labelledby={labelId}
-                  aria-describedby={option.description === undefined ? undefined : descriptionId}
+                  aria-describedby={joinIds(option.description === undefined ? undefined : descriptionId, tooltipId)}
                   onChange={() => onChange(option.value)}
                 />
                 <Ring aria-hidden="true" $on={selected} />
