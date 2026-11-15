@@ -215,6 +215,7 @@ fn toast_event_from_json(value: &Value) -> Result<toast::Event, String> {
         },
         "dismiss" => toast::Event::Dismiss {
             id: canon::text(fields, "id")?.to_owned(),
+            focus_inside: canon::flag(fields, "focusInside")?,
         },
         "timerFired" => toast::Event::TimerFired {
             token: canon::number(fields, "token")?,
@@ -241,9 +242,14 @@ fn toast_effect_to_json(effect: &toast::Effect) -> Value {
         toast::Effect::Announce {
             message,
             politeness,
+            action,
         } => Value::object([(
             "announce",
             Value::object([
+                (
+                    "action",
+                    action.as_deref().map_or(Value::Null, Value::string),
+                ),
                 ("message", Value::string(message)),
                 (
                     "politeness",
@@ -251,6 +257,7 @@ fn toast_effect_to_json(effect: &toast::Effect) -> Value {
                 ),
             ]),
         )]),
+        toast::Effect::ReturnFocus => Value::object([("returnFocus", Value::object([]))]),
     }
 }
 
@@ -379,6 +386,15 @@ fn overlay_reason_text(reason: overlay::CloseReason) -> &'static str {
     }
 }
 
+fn overlay_focus_from_text(text: &str) -> Result<overlay::CloseFocus, String> {
+    match text {
+        "inside" => Ok(overlay::CloseFocus::Inside),
+        "lost" => Ok(overlay::CloseFocus::Lost),
+        "outside" => Ok(overlay::CloseFocus::Outside),
+        other => Err(format!("unknown close focus {other:?}")),
+    }
+}
+
 fn overlay_layer_to_json(layer: &overlay::Layer) -> Value {
     Value::object([
         ("id", Value::string(&layer.id)),
@@ -386,6 +402,13 @@ fn overlay_layer_to_json(layer: &overlay::Layer) -> Value {
         (
             "opener",
             layer.opener.as_deref().map_or(Value::Null, Value::string),
+        ),
+        (
+            "openerLayer",
+            layer
+                .opener_layer
+                .as_deref()
+                .map_or(Value::Null, Value::string),
         ),
         (
             "parent",
@@ -400,6 +423,7 @@ fn overlay_layer_from_json(value: &Value) -> Result<overlay::Layer, String> {
         kind: overlay_kind_from_text(canon::text(value, "kind")?)?,
         parent: canon::optional_text(value, "parent")?.map(str::to_owned),
         opener: canon::optional_text(value, "opener")?.map(str::to_owned),
+        opener_layer: canon::optional_text(value, "openerLayer")?.map(str::to_owned),
     })
 }
 
@@ -428,8 +452,12 @@ fn overlay_event_from_json(value: &Value) -> Result<overlay::Event, String> {
         "closed" => overlay::Event::Closed {
             id: canon::text(fields, "id")?.to_owned(),
             opener_present: canon::flag(fields, "openerPresent")?,
+            focus: overlay_focus_from_text(canon::text(fields, "focus")?)?,
         },
-        "escape" => overlay::Event::Escape,
+        "escape" => overlay::Event::Escape {
+            composing: canon::flag(fields, "composing")?,
+            focus_owns_escape: canon::flag(fields, "focusOwnsEscape")?,
+        },
         "pressOutside" => overlay::Event::PressOutside {
             inside_id: canon::optional_text(fields, "insideId")?.map(str::to_owned),
         },
@@ -744,6 +772,16 @@ fn list_state_from_json(value: &Value) -> Result<list::State, String> {
     })
 }
 
+/// `type.char` is exactly one Unicode scalar value; anything else is a host bug, as in the
+/// reference.
+fn one_char(text: &str) -> Result<char, String> {
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(char), None) => Ok(char),
+        _ => Err(format!("char: expected one character, got {text:?}")),
+    }
+}
+
 fn list_event_from_json(value: &Value) -> Result<list::Event, String> {
     let (name, fields) = canon::event(value)?;
     Ok(match name {
@@ -759,7 +797,7 @@ fn list_event_from_json(value: &Value) -> Result<list::Event, String> {
         "home" => list::Event::Home,
         "end" => list::Event::End,
         "type" => list::Event::Type {
-            char: canon::text(fields, "char")?.to_owned(),
+            char: one_char(canon::text(fields, "char")?)?,
         },
         "timerFired" => list::Event::TimerFired {
             token: canon::number(fields, "token")?,
@@ -788,6 +826,7 @@ fn list_effect_to_json(effect: &list::Effect) -> Value {
             "cancelTimer",
             Value::object([("token", Value::int(i64::from(*token)))]),
         )]),
+        list::Effect::Deselect => Value::object([("deselect", Value::object([]))]),
     }
 }
 
@@ -910,6 +949,7 @@ fn load_state_to_json(state: &load::State) -> String {
             state.error.as_deref().map_or(Value::Null, Value::string),
         ),
         ("fetching", Value::Bool(state.fetching)),
+        ("refreshByUser", Value::Bool(state.refresh_by_user)),
         ("status", Value::string(load_status_text(state.status))),
         ("token", Value::int(i64::from(state.token))),
     ]))
@@ -921,6 +961,7 @@ fn load_state_from_json(value: &Value) -> Result<load::State, String> {
         error: canon::optional_text(value, "error")?.map(str::to_owned),
         token: canon::number(value, "token")?,
         fetching: canon::flag(value, "fetching")?,
+        refresh_by_user: canon::flag(value, "refreshByUser")?,
     })
 }
 
@@ -928,7 +969,9 @@ fn load_event_from_json(value: &Value) -> Result<load::Event, String> {
     let (name, fields) = canon::event(value)?;
     Ok(match name {
         "start" => load::Event::Start,
-        "refresh" => load::Event::Refresh,
+        "refresh" => load::Event::Refresh {
+            by_user: canon::flag(fields, "byUser")?,
+        },
         "retry" => load::Event::Retry,
         "succeeded" => load::Event::Succeeded {
             token: canon::number(fields, "token")?,
@@ -948,9 +991,12 @@ fn load_effect_to_json(effect: &load::Effect) -> Value {
             "fetch",
             Value::object([("token", Value::int(i64::from(*token)))]),
         )]),
-        load::Effect::Notify { message } => Value::object([(
+        load::Effect::Notify { id, message } => Value::object([(
             "notify",
-            Value::object([("message", Value::string(message))]),
+            Value::object([
+                ("id", Value::string(id)),
+                ("message", Value::string(message)),
+            ]),
         )]),
     }
 }
@@ -962,12 +1008,16 @@ fn load_effects_to_json(effects: &[load::Effect]) -> String {
 }
 
 fn load_params_from_json(value: &Value) -> Result<load::Params, String> {
-    canon::object(value, "loadState params")?;
-    Ok(load::Params)
+    Ok(load::Params {
+        notify_id: canon::text(value, "notifyId")?.to_owned(),
+    })
 }
 
-fn load_params_to_json(_params: &load::Params) -> String {
-    canon::to_canonical(&Value::object([]))
+fn load_params_to_json(params: &load::Params) -> String {
+    canon::to_canonical(&Value::object([(
+        "notifyId",
+        Value::string(&params.notify_id),
+    )]))
 }
 
 struct LoadState;

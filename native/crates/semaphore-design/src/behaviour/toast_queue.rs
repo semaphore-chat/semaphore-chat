@@ -47,9 +47,18 @@ pub struct State {
 /// One thing that happened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    Show { toast: Toast },
-    Dismiss { id: String },
-    TimerFired { token: u32 },
+    Show {
+        toast: Toast,
+    },
+    /// The toast's Dismiss button or its action was pressed, or the caller withdrew it.
+    Dismiss {
+        id: String,
+        /// Focus is inside the toast area, so it goes back where it was.
+        focus_inside: bool,
+    },
+    TimerFired {
+        token: u32,
+    },
     Pause,
     Resume,
 }
@@ -67,7 +76,11 @@ pub enum Effect {
     Announce {
         message: String,
         politeness: Politeness,
+        /// The action's label, or `None`; read after the message.
+        action: Option<String>,
     },
+    /// Focus that was inside the toast area goes back where it was.
+    ReturnFocus,
 }
 
 /// The queue's settings, from the pattern file's defaults.
@@ -97,18 +110,41 @@ pub fn initial(_params: &Params) -> State {
     }
 }
 
-/// Rules 6 and 7: how long `toast` stays; an action or a danger tone stays longer.
-fn toast_ms(toast: &Toast, params: &Params) -> u32 {
-    if toast.action.is_some() || toast.tone == Tone::Danger {
-        params.duration_with_action_ms
+/// Rules 6 and 7: how long `toast` stays, or `None` when it has no timer and stays until
+/// dismissed. A danger toast with an action has no timer; one without an action stays for the
+/// longer duration, as does any other toast with an action.
+fn toast_ms(toast: &Toast, params: &Params) -> Option<u32> {
+    if toast.tone == Tone::Danger {
+        if toast.action.is_some() {
+            None
+        } else {
+            Some(params.duration_with_action_ms)
+        }
+    } else if toast.action.is_some() {
+        Some(params.duration_with_action_ms)
     } else {
-        params.duration_ms
+        Some(params.duration_ms)
     }
 }
 
-/// Rules 1, 3, 7 and 13: put `toast` on screen with a fresh token, its timer (unless paused) and
-/// its announcement. A danger toast is announced assertively, every other toast politely.
-fn present(state: &mut State, toast: Toast, params: &Params, effects: &mut Vec<Effect>) {
+/// The showing toast is on screen, not paused, and has a timer to cancel.
+fn timer_running(state: &State, params: &Params) -> bool {
+    state
+        .showing
+        .as_ref()
+        .is_some_and(|showing| !state.paused && toast_ms(showing, params).is_some())
+}
+
+/// Rules 1, 3, 7, 13 and 14: put `toast` on screen with a fresh token, its timer (unless paused)
+/// and, when `announce` is set, its announcement. A danger toast is announced assertively, every
+/// other toast politely, and every announcement carries the toast's action label.
+fn present(
+    state: &mut State,
+    toast: Toast,
+    params: &Params,
+    effects: &mut Vec<Effect>,
+    announce: bool,
+) {
     let ms = toast_ms(&toast, params);
     let politeness = if toast.tone == Tone::Danger {
         Politeness::Assertive
@@ -116,18 +152,24 @@ fn present(state: &mut State, toast: Toast, params: &Params, effects: &mut Vec<E
         Politeness::Polite
     };
     let message = toast.message.clone();
+    let action = toast.action.clone();
     state.showing = Some(toast);
     state.token = state.token.saturating_add(1);
-    if !state.paused {
+    if !state.paused
+        && let Some(ms) = ms
+    {
         effects.push(Effect::StartTimer {
             token: state.token,
             ms,
         });
     }
-    effects.push(Effect::Announce {
-        message,
-        politeness,
-    });
+    if announce {
+        effects.push(Effect::Announce {
+            message,
+            politeness,
+            action,
+        });
+    }
 }
 
 /// Rules 8 and 13: the showing toast has gone; show the next queued one, or nothing.
@@ -138,7 +180,7 @@ fn leave(state: &mut State, params: &Params, effects: &mut Vec<Effect>) {
         state.paused = false;
     } else {
         let next = state.queue.remove(0);
-        present(state, next, params, effects);
+        present(state, next, params, effects, true);
     }
 }
 
@@ -151,36 +193,49 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
         Event::Show { toast } => {
             if showing.is_none() {
                 // Rule 1: shown while nothing is showing, it appears at once.
-                present(&mut next, toast.clone(), params, &mut effects);
+                present(&mut next, toast.clone(), params, &mut effects, true);
             } else if showing.as_ref().is_some_and(|item| item.id == toast.id) {
-                // Rule 3: the same id as the showing toast replaces it in place.
-                if !next.paused {
+                // Rule 3: the same id as the showing toast replaces it in place: the old timer
+                // (if any) is cancelled and a new one starts with a new token; it is announced
+                // only when the message or the action changed.
+                if timer_running(&next, params) {
                     effects.push(Effect::CancelTimer { token: next.token });
                 }
-                present(&mut next, toast.clone(), params, &mut effects);
+                let changed = showing.as_ref().is_some_and(|item| {
+                    item.message != toast.message || item.action != toast.action
+                });
+                present(&mut next, toast.clone(), params, &mut effects, changed);
             } else if let Some(at) = next.queue.iter().position(|item| item.id == toast.id) {
                 // Rule 4: the same id as a queued toast replaces it in its place.
                 next.queue[at] = toast.clone();
             } else {
                 // Rule 2: it waits at the end of the queue.
-                next.queue.push(toast.clone());
-                // Rule 5: past maxQueued, drop the oldest queued toast that is not danger;
-                // when every queued toast is danger, drop the oldest.
-                if next.queue.len() > params.max_queued {
-                    let drop = next
+                // Rule 5: when the queue is full, drop the oldest waiting toast with no action
+                // that is not danger; failing that, the oldest waiting non-danger toast. Never
+                // the incoming toast or a danger toast: with only danger waiting, it grows.
+                if next.queue.len() >= params.max_queued {
+                    let plain = next
                         .queue
                         .iter()
-                        .position(|item| item.tone != Tone::Danger)
-                        .unwrap_or(0);
-                    next.queue.remove(drop);
+                        .position(|item| item.tone != Tone::Danger && item.action.is_none());
+                    let other = next.queue.iter().position(|item| item.tone != Tone::Danger);
+                    if let Some(drop) = plain.or(other) {
+                        next.queue.remove(drop);
+                    }
                 }
+                next.queue.push(toast.clone());
             }
         }
-        Event::Dismiss { id } => {
+        Event::Dismiss { id, focus_inside } => {
             if showing.as_ref().is_some_and(|item| item.id == *id) {
-                // Rule 8: dismissing the showing toast cancels its timer and brings the next in.
-                if !next.paused {
+                // Rule 8: dismissing the showing toast cancels its timer (when it has one) and
+                // shows the next queued toast, or nothing.
+                if timer_running(&next, params) {
                     effects.push(Effect::CancelTimer { token: next.token });
+                }
+                // Rule 16: focus that was inside the toast area goes back where it was.
+                if *focus_inside {
+                    effects.push(Effect::ReturnFocus);
                 }
                 leave(&mut next, params, &mut effects);
             } else {
@@ -191,31 +246,38 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
         Event::TimerFired { token } => {
             // Rule 10: the current token makes the toast leave as if dismissed, without a
             // cancelTimer; any other token does nothing.
-            if showing.is_some() && !next.paused && *token == next.token {
+            if timer_running(&next, params) && *token == next.token {
                 leave(&mut next, params, &mut effects);
             }
         }
         Event::Pause => {
-            // Rule 11: pause cancels the timer; while already paused, or while nothing is
-            // showing, it does nothing.
+            // Rule 11: pause cancels the timer (when there is one); while already paused, or
+            // while nothing is showing, it does nothing.
+            // Rule 15: the host sends one pause for all its reasons to pause.
             if showing.is_some() && !next.paused {
+                if timer_running(&next, params) {
+                    effects.push(Effect::CancelTimer { token: next.token });
+                }
                 next.paused = true;
-                effects.push(Effect::CancelTimer { token: next.token });
             }
         }
         Event::Resume => {
-            // Rule 12: resume starts the timer again with the full duration and a new token,
-            // never the remaining time; while not paused it does nothing. A pause belongs to a
-            // showing toast, so `showing` is the one to time.
-            if next.paused
-                && let Some(showing) = next.showing.clone()
-            {
+            // Rule 12: resume starts the timer again (when the toast has one) with the full
+            // duration and a new token, never the remaining time; while not paused it does
+            // nothing. A pause belongs to a showing toast, so `showing` is the one to time.
+            if next.paused {
                 next.paused = false;
                 next.token = next.token.saturating_add(1);
-                effects.push(Effect::StartTimer {
-                    token: next.token,
-                    ms: toast_ms(&showing, params),
-                });
+                if let Some(ms) = next
+                    .showing
+                    .as_ref()
+                    .and_then(|showing| toast_ms(showing, params))
+                {
+                    effects.push(Effect::StartTimer {
+                        token: next.token,
+                        ms,
+                    });
+                }
             }
         }
     }

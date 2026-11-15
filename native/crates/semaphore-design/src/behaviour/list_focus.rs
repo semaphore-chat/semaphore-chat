@@ -33,24 +33,43 @@ pub struct State {
 /// One thing that happened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    SetRows { rows: Vec<Row> },
+    SetRows {
+        rows: Vec<Row>,
+    },
     FocusIn,
     Up,
     Down,
     Home,
     End,
-    Type { char: String },
-    TimerFired { token: u32 },
+    /// Exactly one Unicode scalar value; while the typeahead buffer is not empty the host sends
+    /// Space as `Type`, not `Activate`.
+    Type {
+        char: char,
+    },
+    TimerFired {
+        token: u32,
+    },
     Activate,
-    Press { id: String },
+    Press {
+        id: String,
+    },
 }
 
 /// What the list asks of its surroundings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
-    Select { id: String },
-    StartTimer { token: u32, ms: u32 },
-    CancelTimer { token: u32 },
+    Select {
+        id: String,
+    },
+    StartTimer {
+        token: u32,
+        ms: u32,
+    },
+    CancelTimer {
+        token: u32,
+    },
+    /// The selected row is gone, so nothing is selected.
+    Deselect,
 }
 
 /// The list's settings, from the pattern file's defaults.
@@ -104,9 +123,16 @@ fn focus(state: &mut State, target: &str, params: &Params, effects: &mut Vec<Eff
     }
 }
 
+/// Rule 16: map each character on its own with the Unicode default lower-case mapping, which is
+/// locale independent, and compare by Unicode scalar values. `char::to_lowercase` gives the same
+/// mapping as the reference's `str.lower()` applied one character at a time.
+fn fold(text: &str) -> String {
+    text.chars().flat_map(char::to_lowercase).collect()
+}
+
 /// Rule 7: the first enabled row from the focused one onwards, wrapping round, whose label starts
-/// with the buffer, ignoring case. Rule 8: one letter repeated (or a single letter) steps through
-/// the rows that start with that letter, from the row after the focused one.
+/// with the buffer, folded. Rule 8: one letter repeated (or a single letter) steps through the
+/// rows that start with that letter, from the row after the focused one.
 fn typeahead_match(state: &State) -> Option<String> {
     let ids: Vec<&str> = state.rows.iter().map(|row| row.id.as_str()).collect();
     let focused_at = state
@@ -114,7 +140,7 @@ fn typeahead_match(state: &State) -> Option<String> {
         .as_deref()
         .and_then(|focused| ids.iter().position(|id| *id == focused));
     let buffer = state.typeahead.as_str();
-    let mut prefix = buffer;
+    let mut prefix = buffer.to_owned();
     let mut start = focused_at.unwrap_or(0);
     if let Some(at) = focused_at {
         let mut chars = buffer.chars();
@@ -122,13 +148,13 @@ fn typeahead_match(state: &State) -> Option<String> {
             && chars.all(|char| char == first)
         {
             // `buffer` has one distinct character: step through its matches from the next row.
-            prefix = &buffer[..first.len_utf8()];
+            prefix = first.to_string();
             start = at + 1;
         }
     }
     for offset in 0..state.rows.len() {
         let row = &state.rows[(start + offset) % state.rows.len()];
-        if !row.disabled && row.label.to_lowercase().starts_with(prefix) {
+        if !row.disabled && fold(&row.label).starts_with(&prefix) {
             return Some(row.id.clone());
         }
     }
@@ -148,7 +174,8 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
         {
             // Rule 14: the focused row is gone or disabled: focus moves to the nearest
             // enabled survivor after it in the old order, else before it, else the first
-            // enabled row, else nothing. The selection stays.
+            // enabled row, else nothing. The selection moves with it only when
+            // selectionFollowsFocus is on.
             let at = old_ids.iter().position(|id| *id == focused);
             let after: &[String] = at.map_or(&[], |at| &old_ids[at + 1..]);
             let before: &[String] = at.map_or(&old_ids[..], |at| &old_ids[..at]);
@@ -157,12 +184,19 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
                 .chain(before.iter().rev())
                 .find(|id| enabled.contains(id));
             next.focused = survivor.cloned().or_else(|| enabled.first().cloned());
-        }
-        if let Some(selected) = &next.selected {
-            // Rule 15: a selected row that is gone clears the selection, with no effect.
-            if !next.rows.iter().any(|row| row.id == *selected) {
-                next.selected = None;
+            if params.selection_follows_focus
+                && let Some(focused) = next.focused.clone()
+            {
+                next.selected = Some(focused.clone());
+                effects.push(Effect::Select { id: focused });
             }
+        }
+        if let Some(selected) = next.selected.clone()
+            && !next.rows.iter().any(|row| row.id == selected)
+        {
+            // Rule 15: a selected row that is gone clears the selection: deselect.
+            next.selected = None;
+            effects.push(Effect::Deselect);
         }
         return (next, effects);
     }
@@ -235,12 +269,12 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
             }
         }
         Event::Type { char } => {
-            // Rule 7: the character joins the buffer, lowercased, and the timer restarts with a
-            // new token, cancelling the old one.
+            // Rule 7: the character joins the buffer, folded (rule 16), and the timer restarts
+            // with a new token, cancelling the old one.
             if !next.typeahead.is_empty() {
                 effects.push(Effect::CancelTimer { token: next.token });
             }
-            next.typeahead.push_str(&char.to_lowercase());
+            next.typeahead.extend(char.to_lowercase());
             next.token = next.token.saturating_add(1);
             effects.push(Effect::StartTimer {
                 token: next.token,

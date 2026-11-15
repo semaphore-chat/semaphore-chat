@@ -24,7 +24,7 @@ export interface State {
   focused: string | null;
   /** The selected row. */
   selected: string | null;
-  /** The letters typed so far, lowercased. */
+  /** The letters typed so far, folded (rule 16). */
   typeahead: string;
   /** The token of the latest typeahead timer. */
   token: number;
@@ -45,6 +45,7 @@ export type Event =
 
 export type Effect =
   | { select: { id: string } }
+  | { deselect: Record<string, never> }
   | { startTimer: { token: number; ms: number } }
   | { cancelTimer: { token: number } };
 
@@ -96,17 +97,27 @@ function focus(state: State, target: string, params: Params, effects: Effect[]):
 }
 
 /**
+ * Rule 16: map each character on its own with the Unicode default lower-case
+ * mapping, which is locale independent (Python `str.lower()` per character, so
+ * the final-sigma rule never applies). Code points are iterated so that an
+ * emoji is one character, and the result is compared by code point.
+ */
+function fold(text: string): string {
+  return [...text].map((ch) => ch.toLowerCase()).join('');
+}
+
+/**
  * The row the typeahead buffer picks. Rule 7: the first enabled row from the
- * focused one onwards, wrapping round, whose label starts with the buffer.
- * Rule 8: one letter repeated (or a single letter) steps through the rows that
- * start with that letter, from the row after the focused one.
+ * focused one onwards, wrapping round, whose folded label starts with the
+ * folded buffer. Rule 8: one character repeated steps through the rows that
+ * start with it, from the row after the focused one.
  */
 function typeaheadMatch(state: State): string | null {
   const { rows, focused } = state;
   const ids = rows.map((row) => row.id);
   const focusedAt = focused !== null && ids.includes(focused) ? ids.indexOf(focused) : -1;
-  const buffer = state.typeahead;
-  let prefix = buffer;
+  const buffer = [...state.typeahead];
+  let prefix = state.typeahead;
   let start = focusedAt === -1 ? 0 : focusedAt;
   if (new Set(buffer).size === 1 && focusedAt !== -1) {
     prefix = buffer[0];
@@ -114,7 +125,7 @@ function typeaheadMatch(state: State): string | null {
   }
   for (let offset = 0; offset < rows.length; offset++) {
     const row = rows[(start + offset) % rows.length];
-    if (!row.disabled && row.label.toLowerCase().startsWith(prefix)) return row.id;
+    if (!row.disabled && fold(row.label).startsWith(prefix)) return row.id;
   }
   return null;
 }
@@ -124,7 +135,16 @@ export function stepListFocus(
   event: Event,
   params: Params = DEFAULT_PARAMS,
 ): { state: State; effects: Effect[] } {
-  const name = requireEvent('listFocus', event, EVENT_NAMES);
+  requireEvent('listFocus', event, EVENT_NAMES);
+  if (
+    'type' in event &&
+    (typeof event.type.char !== 'string' || [...event.type.char].length !== 1)
+  ) {
+    // `type.char` is exactly one Unicode scalar value; anything else is a host bug.
+    throw new RangeError(
+      `listFocus: type.char must be one character, got ${JSON.stringify(event.type.char)}`,
+    );
+  }
   const next: State = { ...state, rows: [...state.rows] };
   const effects: Effect[] = [];
 
@@ -137,23 +157,29 @@ export function stepListFocus(
     if (focused !== null && !enabled.includes(focused)) {
       // Rule 14: the focused row is gone or disabled: focus moves to the
       // nearest enabled survivor after it in the old order, else before it,
-      // else the first enabled row, else nothing. The selection stays.
+      // else the first enabled row, else nothing. The selection moves with it
+      // only when selectionFollowsFocus is on.
       const at = oldIds.indexOf(focused);
       const after = oldIds.slice(at + 1);
       const before = oldIds.slice(0, at).reverse();
       const survivors = [...after, ...before].filter((id) => enabled.includes(id));
       next.focused = survivors.length > 0 ? survivors[0] : (enabled[0] ?? null);
+      if (params.selectionFollowsFocus && next.focused !== null) {
+        next.selected = next.focused;
+        effects.push({ select: { id: next.focused } });
+      }
     }
     if (next.selected !== null && !present.has(next.selected)) {
-      // Rule 15: a selected row that is gone clears the selection, with no effect.
+      // Rule 15: a selected row that is gone clears the selection: deselect.
       next.selected = null;
+      effects.push({ deselect: {} });
     }
     return { state: next, effects };
   }
 
   const enabled = enabledIds(next.rows);
   // Rule 2: with no enabled rows, every key does nothing.
-  if (enabled.length === 0 && name !== 'timerFired') return { state: next, effects };
+  if (enabled.length === 0 && !('timerFired' in event)) return { state: next, effects };
   const { focused } = next;
 
   if ('down' in event || 'up' in event) {
@@ -185,9 +211,10 @@ export function stepListFocus(
       next.focused = selected !== null && enabled.includes(selected) ? selected : enabled[0];
     }
   } else if ('type' in event) {
-    // Rule 7: the character joins the buffer, lowercased, and the timer restarts.
+    // Rule 7: the character joins the buffer, folded (rule 16), and the timer
+    // restarts with a new token.
     if (next.typeahead) effects.push({ cancelTimer: { token: next.token } });
-    next.typeahead += event.type.char.toLowerCase();
+    next.typeahead += fold(event.type.char);
     next.token += 1;
     effects.push({ startTimer: { token: next.token, ms: params.typeaheadMs } });
     const match = typeaheadMatch(next);

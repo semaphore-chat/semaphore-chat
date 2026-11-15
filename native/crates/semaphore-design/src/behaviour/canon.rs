@@ -5,9 +5,11 @@
 //! no whitespace, whole numbers in plain decimal, strings with only `"` and `\` escaped, `null`,
 //! `true`, `false`, list order kept.
 //!
-//! [`parse`] accepts exactly that restricted subset; [`to_canonical`] writes it. A port's tests
-//! build events and params out of these values and serialise their own state and effects the
-//! same way, so both sides of the comparison are strings.
+//! [`parse`] accepts exactly that restricted subset and nothing else, so it rejects `-0`, object
+//! keys out of order or repeated, whitespace, other escapes, fractions and exponents;
+//! [`to_canonical`] writes it. A port's tests build events and params out of these values and
+//! serialise their own state and effects the same way, so both sides of the comparison are
+//! strings.
 
 use std::fmt::Write as _;
 
@@ -162,8 +164,16 @@ impl Parser<'_> {
         }
         loop {
             let key = self.string()?;
-            if fields.iter().any(|(name, _)| name == &key) {
-                return Err(format!("duplicate key {key:?}"));
+            if let Some((previous, _)) = fields.last() {
+                if previous == &key {
+                    return Err(format!("duplicate key {key:?}"));
+                }
+                // Canonical order is by code point, and UTF-8 byte order is code point order.
+                if previous.as_str() > key.as_str() {
+                    return Err(format!(
+                        "key {key:?} is not in sorted order after {previous:?}"
+                    ));
+                }
             }
             self.expect(b':')?;
             let value = self.value()?;
@@ -228,7 +238,8 @@ impl Parser<'_> {
 
     fn int(&mut self) -> Result<i64, String> {
         let start = self.at;
-        if self.peek() == Some(b'-') {
+        let negative = self.peek() == Some(b'-');
+        if negative {
             self.at += 1;
         }
         let digits = self.at;
@@ -240,6 +251,10 @@ impl Parser<'_> {
         }
         if self.at - digits > 1 && self.bytes[digits] == b'0' {
             return Err(format!("leading zero at byte {digits}"));
+        }
+        if negative && self.bytes[digits] == b'0' {
+            // Canonical zero is `0`; the sign is never written.
+            return Err(format!("negative zero at byte {start}"));
         }
         let text = std::str::from_utf8(&self.bytes[start..self.at])
             .map_err(|_| "invalid number".to_owned())?;
@@ -355,6 +370,34 @@ mod tests {
         ] {
             assert_eq!(to_canonical(&read(text)), text);
         }
+    }
+
+    #[test]
+    fn parse_rejects_negative_zero() {
+        assert!(parse("-0").is_err(), "-0 parsed");
+        assert!(parse("[-0]").is_err(), "[-0] parsed");
+        assert_eq!(to_canonical(&read("0")), "0");
+    }
+
+    #[test]
+    fn parse_rejects_keys_out_of_sorted_order() {
+        assert!(
+            parse("{\"b\":1,\"a\":2}").is_err(),
+            "keys out of order parsed"
+        );
+        assert!(parse("{\"a\":1,\"b\":2}").is_ok(), "sorted keys rejected");
+    }
+
+    #[test]
+    fn parse_rejects_duplicate_keys() {
+        assert!(
+            parse("{\"a\":1,\"a\":2}").is_err(),
+            "a duplicate key parsed"
+        );
+        assert!(
+            parse("{\"a\":1,\"b\":2,\"b\":3}").is_err(),
+            "a later duplicate key parsed"
+        );
     }
 
     #[test]

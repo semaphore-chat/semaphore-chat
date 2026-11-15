@@ -19,10 +19,23 @@ pub enum LayerKind {
 pub struct Layer {
     pub id: String,
     pub kind: LayerKind,
-    /// The layer it opened from.
+    /// The layer that owns it: it closes with that layer.
     pub parent: Option<String>,
     /// The element that had focus when it opened.
     pub opener: Option<String>,
+    /// The layer the opener is in; `None` for the screen.
+    pub opener_layer: Option<String>,
+}
+
+/// Where focus is as a layer closes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseFocus {
+    /// Inside the layer (or in a layer it owns).
+    Inside,
+    /// Lost: on the page body, or removed with the layer.
+    Lost,
+    /// The user moved it outside the layer.
+    Outside,
 }
 
 /// The overlay stack's state: bottom first.
@@ -47,12 +60,18 @@ pub enum Event {
     Open {
         layer: Layer,
     },
-    /// The owner has closed the layer, and whether its opener is still on the page.
+    /// The owner has closed the layer: whether its opener is still on the page and where focus
+    /// is as it closes.
     Closed {
         id: String,
         opener_present: bool,
+        focus: CloseFocus,
     },
-    Escape,
+    /// An input method is composing text, or the focused control uses Escape itself.
+    Escape {
+        composing: bool,
+        focus_owns_escape: bool,
+    },
     /// `inside_id` is the innermost layer the press landed in, or `None` for the screen. A press
     /// on a popover's anchor counts as inside the popover.
     PressOutside {
@@ -120,6 +139,16 @@ pub fn step(state: &State, event: &Event, _params: &Params) -> (State, Vec<Effec
         Event::Open { layer } => {
             // Rule 2: opening a layer whose id is already in the stack does nothing.
             if !next.layers.iter().any(|item| item.id == layer.id) {
+                let mut layer = layer.clone();
+                // Rule 19: a parent or openerLayer that is not in the stack is stored as null.
+                for id in [&mut layer.parent, &mut layer.opener_layer] {
+                    if id
+                        .as_ref()
+                        .is_some_and(|id| !next.layers.iter().any(|item| item.id == *id))
+                    {
+                        *id = None;
+                    }
+                }
                 // Rule 1: layers stack in the order they open, and a tooltip always sits on
                 // top: anything else goes just below the tooltips.
                 let mut at = next.layers.len();
@@ -128,33 +157,46 @@ pub fn step(state: &State, event: &Event, _params: &Params) -> (State, Vec<Effec
                         at -= 1;
                     }
                 }
-                next.layers.insert(at, layer.clone());
+                next.layers.insert(at, layer);
             }
         }
-        Event::Escape => {
-            // Rule 4: tooltips never block Escape: each is asked to close, topmost first, and
-            // Escape then acts as if they were not there.
-            for layer in next.layers.iter().rev() {
-                if layer.kind == LayerKind::Tooltip {
+        Event::Escape {
+            composing,
+            focus_owns_escape,
+        } => {
+            // Rule 18: Escape during composition never reaches the stack, and a focused
+            // control that owns Escape gets it first.
+            if !*composing && !*focus_owns_escape {
+                // Rule 4: a tooltip takes the Escape: every tooltip is asked to close,
+                // topmost first, and the key goes no further.
+                let tooltips: Vec<&Layer> = next
+                    .layers
+                    .iter()
+                    .rev()
+                    .filter(|layer| layer.kind == LayerKind::Tooltip)
+                    .collect();
+                if !tooltips.is_empty() {
+                    for layer in tooltips {
+                        effects.push(Effect::RequestClose {
+                            id: layer.id.clone(),
+                            reason: CloseReason::Escape,
+                        });
+                    }
+                } else if let Some(top) = next
+                    .layers
+                    .iter()
+                    .rev()
+                    .find(|layer| layer.kind != LayerKind::Tooltip)
+                {
+                    // Rule 3: Escape asks the topmost layer to close, one layer per Escape.
                     effects.push(Effect::RequestClose {
-                        id: layer.id.clone(),
+                        id: top.id.clone(),
                         reason: CloseReason::Escape,
                     });
+                } else {
+                    // Rule 5: with nothing open, the screen gets the key.
+                    effects.push(Effect::PassToScreen);
                 }
-            }
-            match next
-                .layers
-                .iter()
-                .rev()
-                .find(|layer| layer.kind != LayerKind::Tooltip)
-            {
-                // Rule 3: Escape asks the topmost layer to close, one layer per Escape.
-                Some(layer) => effects.push(Effect::RequestClose {
-                    id: layer.id.clone(),
-                    reason: CloseReason::Escape,
-                }),
-                // Rule 5: with nothing (else) open, the screen gets the key.
-                None => effects.push(Effect::PassToScreen),
             }
         }
         Event::PressOutside { inside_id } => {
@@ -208,11 +250,16 @@ pub fn step(state: &State, event: &Event, _params: &Params) -> (State, Vec<Effec
                 });
             }
         }
-        Event::Closed { id, opener_present } => {
+        Event::Closed {
+            id,
+            opener_present,
+            focus,
+        } => {
             // Rule 12: a layer leaves the stack only when its owner reports closed.
-            if let Some(target) = state.layers.iter().find(|layer| layer.id == *id) {
-                // Rule 13: layers opened from it are asked to close first, innermost first,
-                // one requestClose each, and leave with it.
+            if let Some(at) = state.layers.iter().position(|layer| layer.id == *id) {
+                let target = &state.layers[at];
+                // Rule 13: the layers it owns are told to close (a command), innermost first,
+                // and leave with it.
                 let children = descendants(&state.layers, &target.id);
                 for child in &children {
                     effects.push(Effect::RequestClose {
@@ -220,31 +267,59 @@ pub fn step(state: &State, event: &Event, _params: &Params) -> (State, Vec<Effec
                         reason: CloseReason::ParentClosed,
                     });
                 }
-                let gone: Vec<&str> = std::iter::once(target.id.as_str())
-                    .chain(children.iter().map(|child| child.id.as_str()))
+                let gone: Vec<&Layer> = std::iter::once(target)
+                    .chain(children.iter().copied())
                     .collect();
+                let above = &state.layers[at + 1..];
                 next.layers = state
                     .layers
                     .iter()
-                    .filter(|layer| !gone.contains(&layer.id.as_str()))
+                    .filter(|layer| !gone.iter().any(|item| item.id == layer.id))
                     .cloned()
                     .collect();
-                // Rule 15: closing a tooltip moves no focus.
-                if target.kind != LayerKind::Tooltip {
-                    // Rule 14: focus goes to the opener if it is still on the page, else to the
-                    // layer it opened from, else to the screen (null).
-                    let to =
-                        if *opener_present && target.opener.is_some() {
-                            target.opener.clone()
-                        } else if target.parent.as_ref().is_some_and(|parent| {
-                            next.layers.iter().any(|layer| layer.id == *parent)
-                        }) {
-                            target.parent.clone()
-                        } else {
-                            None
+                // Rule 17: a layer whose opener was inside a closed layer takes over that
+                // layer's opener and openerLayer. Each step consumes one closed layer, so a
+                // chain longer than `gone` can only repeat one.
+                for layer in &mut next.layers {
+                    for _ in 0..gone.len() {
+                        let Some(source) = layer
+                            .opener_layer
+                            .as_deref()
+                            .and_then(|id| gone.iter().find(|item| item.id == id))
+                        else {
+                            break;
                         };
+                        layer.opener = source.opener.clone();
+                        layer.opener_layer = source.opener_layer.clone();
+                    }
+                }
+                // Rule 16: never restore focus beneath a dialog or sheet that is still open.
+                let remaining: Vec<&str> =
+                    next.layers.iter().map(|layer| layer.id.as_str()).collect();
+                let under_modal = above.iter().any(|layer| {
+                    matches!(layer.kind, LayerKind::Dialog | LayerKind::Sheet)
+                        && remaining.contains(&layer.id.as_str())
+                });
+                if target.kind != LayerKind::Tooltip
+                    && !under_modal
+                    && matches!(focus, CloseFocus::Inside | CloseFocus::Lost)
+                {
+                    // Rule 14: focus inside the layer or lost goes to the opener if it is
+                    // still on the page, else the layer the opener was in, else the screen.
+                    let to = if *opener_present && target.opener.is_some() {
+                        target.opener.clone()
+                    } else if target
+                        .opener_layer
+                        .as_deref()
+                        .is_some_and(|layer| remaining.contains(&layer))
+                    {
+                        target.opener_layer.clone()
+                    } else {
+                        None
+                    };
                     effects.push(Effect::RestoreFocus { to });
                 }
+                // Rule 14: focus the user moved outside the layer stays where it is.
             }
             // Rule 15: a closed event for an id not in the stack does nothing.
         }

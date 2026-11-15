@@ -32,6 +32,7 @@ export type {
   CloseReason,
   Effect as OverlayStackEffect,
   Event as OverlayStackEvent,
+  FocusPosition,
   Layer,
   LayerKind,
   Params as OverlayStackParams,

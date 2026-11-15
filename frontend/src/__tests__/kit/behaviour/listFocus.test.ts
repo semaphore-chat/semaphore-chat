@@ -37,4 +37,16 @@ describe('listFocus', () => {
     expect(() => stepListFocus(initialListFocus(), explode)).toThrow(RangeError);
     expect(() => stepListFocus(initialListFocus(), explode)).toThrow(/\bexplode\b/);
   });
+
+  it('requires a type char of exactly one code point', () => {
+    // The reference raises for anything but one Unicode scalar value.
+    for (const char of ['', 'ab', '😀😀', '\r\n']) {
+      expect(() => stepListFocus(initialListFocus(), { type: { char } })).toThrow(RangeError);
+      expect(() => stepListFocus(initialListFocus(), { type: { char } })).toThrow(
+        /type\.char must be one character/,
+      );
+    }
+    // An emoji is one code point even though it is two UTF-16 code units.
+    expect(() => stepListFocus(initialListFocus(), { type: { char: '😀' } })).not.toThrow();
+  });
 });
