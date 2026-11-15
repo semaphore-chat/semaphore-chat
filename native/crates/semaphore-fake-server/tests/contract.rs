@@ -1834,6 +1834,33 @@ async fn accounts_match_openapi_and_socket_events() {
         Some(schemas.component("AppearanceSettingsResponseDto")),
     )
     .await;
+    // The base colour and the two switches, as a client that has them sends them.
+    let base = check(
+        M::PATCH,
+        "/api/appearance-settings".into(),
+        true,
+        Some((
+            "UpdateAppearanceSettingsDto",
+            json!({ "baseColor": "#ff9a6b", "matchSystem": true, "newDesign": true }),
+        )),
+        200,
+        Some(schemas.component("AppearanceSettingsResponseDto")),
+    )
+    .await;
+    assert_eq!(
+        (
+            &base["baseColor"],
+            &base["accentColor"],
+            &base["matchSystem"],
+            &base["newDesign"]
+        ),
+        (
+            &json!("#ff9a6b"),
+            &json!("amber"),
+            &json!(true),
+            &json!(true)
+        )
+    );
 
     // Sign in with browser: the redeem, and the event the user's other sessions hear.
     let verifier = "contract-contract-contract-contract-contract-123";

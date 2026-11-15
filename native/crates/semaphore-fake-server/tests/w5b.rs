@@ -459,9 +459,19 @@ async fn a_ban_removes_the_member_tells_them_first_and_is_logged() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["message"], "User banned successfully");
     let heard = settle(&server, &mut [&mut me, &mut kwame]).await;
-    assert_eq!(names(&heard[1])[0], "userBanned");
-    assert!(names(&heard[0]).contains(&"userBanned"));
-    assert_eq!(heard[1][0].1["reason"], "spam");
+    // Theirs first, from their own room, with who banned them and why; the community only that
+    // they are gone.
+    assert_eq!(names(&heard[1]), ["userBanned"]);
+    assert_eq!(
+        heard[1][0].1,
+        json!({ "communityId": couch, "userId": id("u-kwame"), "moderatorId": id("me"), "reason": "spam" })
+    );
+    // `me` also sees kwame leave the call they were in; the ban is what follows.
+    assert_eq!(names(&heard[0]).last(), Some(&"userBanned"));
+    assert_eq!(
+        heard[0].last().expect("an event").1,
+        json!({ "communityId": couch, "userId": id("u-kwame") })
+    );
     // Banned again: no longer a member (with no role left, the rank rule passes first).
     let (status, body) = post(
         &client,
@@ -550,9 +560,22 @@ async fn a_timeout_set_by_a_higher_rank_is_not_yours_to_lift() {
     )
     .await;
     assert_eq!(status, 200, "{body}");
+    // Her own room's first, with who timed her out and why, then the community's, with only
+    // until when.
     let heard = settle(&server, &mut [&mut priya]).await;
-    assert_eq!(names(&heard[0]), ["userTimedOut"]);
-    assert_eq!(heard[0][0].1["durationSeconds"], 600);
+    assert_eq!(names(&heard[0]), ["userTimedOut", "userTimedOut"]);
+    let own = &heard[0][0].1;
+    assert_eq!(own["durationSeconds"], 600);
+    assert_eq!(own["moderatorId"], id("u-samira").as_str());
+    assert_eq!(own["reason"], "cool off");
+    assert!(own["expiresAt"].is_string(), "{own}");
+    let community = &heard[0][1].1;
+    assert_eq!(community["communityId"], couch.as_str());
+    assert_eq!(community["userId"], id("u-priya").as_str());
+    assert_eq!(community["durationSeconds"], 600);
+    assert_eq!(community["expiresAt"], own["expiresAt"]);
+    assert!(community.get("moderatorId").is_none(), "{community}");
+    assert!(community.get("reason").is_none(), "{community}");
     let (_, status_body) = get(
         &client,
         &base,
@@ -585,8 +608,17 @@ async fn a_timeout_set_by_a_higher_rank_is_not_yours_to_lift() {
     )
     .await;
     assert_eq!(status, 200);
+    // The same two audiences: who lifted it and why for her, that it is lifted for the community.
     let heard = settle(&server, &mut [&mut priya]).await;
-    assert_eq!(names(&heard[0]), ["timeoutRemoved"]);
+    assert_eq!(names(&heard[0]), ["timeoutRemoved", "timeoutRemoved"]);
+    assert_eq!(
+        heard[0][0].1,
+        json!({ "communityId": couch, "userId": id("u-priya"), "moderatorId": id("u-samira") })
+    );
+    assert_eq!(
+        heard[0][1].1,
+        json!({ "communityId": couch, "userId": id("u-priya") })
+    );
 }
 
 #[tokio::test]
@@ -704,7 +736,17 @@ async fn moderate_as_acts_with_the_moderators_own_checks_and_events() {
     .await;
     assert_eq!(status, 200, "{body}");
     let heard = settle(&server, &mut [&mut kwame]).await;
-    assert!(names(&heard[0]).contains(&"userTimedOut"), "{heard:?}");
+    assert_eq!(
+        names(&heard[0]),
+        ["userTimedOut", "userTimedOut"],
+        "{heard:?}"
+    );
+    assert_eq!(heard[0][0].1["moderatorId"], id("u-marcus").as_str());
+    assert_eq!(heard[0][0].1["reason"], "cool off");
+    let community = &heard[0][1].1;
+    assert_eq!(community["durationSeconds"], 600);
+    assert!(community.get("moderatorId").is_none(), "{community}");
+    assert!(community.get("reason").is_none(), "{community}");
     let (_, list) = get(&client, &base, &format!("/api/moderation/timeouts/{couch}")).await;
     assert_eq!(list[0]["user"]["id"], id("u-kwame"));
     assert_eq!(list[0]["moderator"]["id"], id("u-marcus"));

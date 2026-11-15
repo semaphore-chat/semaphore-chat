@@ -14,7 +14,8 @@ use common::until;
 use semaphore_core::lifecycle::ConnectionState;
 use semaphore_core::model::{
     AccentColor, AppearancePatch, BrowserSignInFailure, BrowserSignInView, DraftFile, ImageChange,
-    LoadState, NewCommunity, ProfilePatch, RegisterForm, RegistrationMode, SessionState, ThemeMode,
+    LoadState, NewCommunity, ProfilePatch, RegisterForm, RegistrationMode, Rgb, SessionState,
+    ThemeMode,
 };
 use semaphore_core::platform::{
     Clock, CoreError, CoreEvent, EventSink, Loopback, LoopbackListener, LoopbackPage,
@@ -170,6 +171,29 @@ async fn every_account_call_over_the_wire() {
         (shown.mode, shown.accent),
         (ThemeMode::Light, AccentColor::Rose)
     );
+
+    // A base colour goes over the wire as `baseColor`, and the server answers with the accent it
+    // derives from it.
+    core.update_appearance(AppearancePatch {
+        base: Some(Rgb {
+            r: 0xff,
+            g: 0x9a,
+            b: 0x6b,
+        }),
+        ..AppearancePatch::default()
+    })
+    .await
+    .unwrap();
+    let shown = core.appearance().appearance;
+    assert_eq!(
+        shown.base,
+        Rgb {
+            r: 0xff,
+            g: 0x9a,
+            b: 0x6b
+        }
+    );
+    assert_eq!(shown.accent, AccentColor::Amber);
 
     // Instance permissions: the showcase's user owns the instance, so needs no roles read.
     assert!(core.instance_permissions().can_create_community);

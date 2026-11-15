@@ -265,15 +265,41 @@ async fn update_appearance(
     let user_id = inner.user_of(bearer_token(&headers));
     let now = inner.now();
     let mut accounts = lock(&inner.accounts);
+    // `updateUserSettings` compares the accent with the one `findUnique` reads, and that finds no
+    // row before the first read: an accent in a first PATCH is then a change, and derives its
+    // primary, even when it is the accent a new row would have started with.
+    let stored = accounts.appearance.contains_key(&user_id);
     let row = accounts.appearance_for(&user_id, now);
     if let Some(mode) = dto.theme_mode {
         row.theme_mode = mode.as_str().into_owned();
     }
-    if let Some(color) = dto.accent_color {
-        row.accent_color = color.as_str().into_owned();
-    }
     if let Some(intensity) = dto.intensity {
         row.intensity = intensity.as_str().into_owned();
+    }
+    if let Some(match_system) = dto.match_system {
+        row.match_system = match_system;
+    }
+    if let Some(new_design) = dto.new_design {
+        row.new_design = new_design;
+    }
+    // `updateUserSettings` keeps the two colours in step once, here: a `baseColor` wins and
+    // derives `accentColor` (an `accentColor` beside it is ignored), while a *changed*
+    // `accentColor` derives `baseColor` from the accent's primary. An accent equal to the stored
+    // one changes nothing, so an older client's echo does not reset a custom base colour.
+    if let Some(base) = dto.base_color {
+        let base = base.to_lowercase();
+        // The generated newtype only takes the contract's `#rrggbb` pattern, so this holds.
+        let accent = crate::appearance::nearest_accent(&base)
+            .expect("the contract's pattern makes baseColor #rrggbb");
+        row.base_color = base;
+        row.accent_color = accent;
+    } else if let Some(accent) = dto.accent_color {
+        let accent = accent.as_str().into_owned();
+        if !stored || row.accent_color != accent {
+            row.base_color =
+                crate::appearance::primary(&accent).expect("a known accent has a primary colour");
+            row.accent_color = accent;
+        }
     }
     row.updated_at = now;
     let row = row.clone();

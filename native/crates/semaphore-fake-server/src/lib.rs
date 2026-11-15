@@ -8,6 +8,7 @@
 mod accounts;
 mod actions;
 mod admin;
+mod appearance;
 mod calls;
 mod gifs;
 mod http;

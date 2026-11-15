@@ -106,6 +106,9 @@ fn every_appearance_maps_to_its_theme() {
                     mode,
                     accent,
                     intensity,
+                    base: accent.primary(),
+                    match_system: false,
+                    new_design: false,
                 };
                 assert_eq!(
                     theme_choice(appearance).name(),

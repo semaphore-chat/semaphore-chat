@@ -227,7 +227,13 @@ async fn reset_password(State(inner): State<Arc<Inner>>, body: Bytes) -> Respons
 /// instance. A fresh one gets a setup token, as the backend makes one on every such read.
 async fn instance_status(State(inner): State<Arc<Inner>>) -> Response {
     let needs_setup = lock(&inner.accounts).needs_setup;
-    let mut body = json!({ "needsSetup": needs_setup, "hasUsers": !needs_setup });
+    // The fake runs as a `REQUIRE_SETUP_TOKEN=false` instance: a fresh one hands the wizard its
+    // token, which a default instance never sends.
+    let mut body = json!({
+        "needsSetup": needs_setup,
+        "hasUsers": !needs_setup,
+        "setupTokenRequired": false,
+    });
     if needs_setup {
         body["setupToken"] = json!("fixture-setup-token");
     }

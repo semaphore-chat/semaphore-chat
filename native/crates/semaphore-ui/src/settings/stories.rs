@@ -138,6 +138,9 @@ fn appearance_view(
             mode,
             accent,
             intensity,
+            base: accent.primary(),
+            match_system: false,
+            new_design: false,
         },
     }
 }

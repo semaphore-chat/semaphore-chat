@@ -4009,6 +4009,47 @@ impl Client {
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
+    /**Sends a `POST` request to `/api/dm-groups/{dmGroupId}/voice-presence/deafen`
+
+    */
+    pub async fn dm_voice_presence_controller_update_dm_deafen_state<'a>(
+        &'a self,
+        dm_group_id: &'a str,
+        body: &'a types::UpdateDeafenStateDto,
+    ) -> Result<ResponseValue<types::RefreshDmPresenceResponseDto>, Error<()>> {
+        let url = format!(
+            "{}/api/dm-groups/{}/voice-presence/deafen",
+            self.baseurl,
+            encode_path(&dm_group_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "dm_voice_presence_controller_update_dm_deafen_state",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            201u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
     /**Sends a `POST` request to `/api/dm-groups/{dmGroupId}/voice-presence/decline`
 
     */
@@ -7850,7 +7891,7 @@ impl Client {
     */
     pub async fn onboarding_controller_get_status<'a>(
         &'a self,
-    ) -> Result<ResponseValue<types::OnboardingStatusDto>, Error<()>> {
+    ) -> Result<ResponseValue<semaphore_wire::overrides::OnboardingStatusDto>, Error<()>> {
         let url = format!("{}/api/onboarding/status", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -8215,7 +8256,8 @@ impl Client {
     */
     pub async fn appearance_settings_controller_get_settings<'a>(
         &'a self,
-    ) -> Result<ResponseValue<types::AppearanceSettingsResponseDto>, Error<()>> {
+    ) -> Result<ResponseValue<semaphore_wire::overrides::AppearanceSettingsResponseDto>, Error<()>>
+    {
         let url = format!("{}/api/appearance-settings", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -8252,7 +8294,8 @@ impl Client {
     pub async fn appearance_settings_controller_update_settings<'a>(
         &'a self,
         body: &'a types::UpdateAppearanceSettingsDto,
-    ) -> Result<ResponseValue<types::AppearanceSettingsResponseDto>, Error<()>> {
+    ) -> Result<ResponseValue<semaphore_wire::overrides::AppearanceSettingsResponseDto>, Error<()>>
+    {
         let url = format!("{}/api/appearance-settings", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(

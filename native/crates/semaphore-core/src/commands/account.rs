@@ -12,7 +12,7 @@ use crate::cache::{CacheValue, keys};
 use crate::client::{Core, State};
 use crate::model::{
     AccentColor, Appearance, AppearancePatch, AppearanceView, ErrorView, InstancePermissionsView,
-    LoadState, ProfileUpload, SessionRow, SessionsView, ThemeIntensity, ThemeMode, ViewKey,
+    LoadState, ProfileUpload, Rgb, SessionRow, SessionsView, ThemeIntensity, ThemeMode, ViewKey,
 };
 use crate::platform::CoreError;
 use semaphore_wire::enums::RbacAction;
@@ -47,23 +47,6 @@ fn mode(raw: &str) -> ThemeMode {
     match raw {
         "light" => ThemeMode::Light,
         _ => ThemeMode::Dark,
-    }
-}
-
-fn accent(raw: &str) -> AccentColor {
-    match raw {
-        "blue" => AccentColor::Blue,
-        "indigo" => AccentColor::Indigo,
-        "purple" => AccentColor::Purple,
-        "rose" => AccentColor::Rose,
-        "red" => AccentColor::Red,
-        "orange" => AccentColor::Orange,
-        "amber" => AccentColor::Amber,
-        "lime" => AccentColor::Lime,
-        "emerald" => AccentColor::Emerald,
-        "cyan" => AccentColor::Cyan,
-        "slate" => AccentColor::Slate,
-        _ => AccentColor::Teal,
     }
 }
 
@@ -120,27 +103,49 @@ fn session_row(session: &wire::SessionInfoDto, busy: bool) -> SessionRow {
     }
 }
 
+/// The server's row as the model shows it. A server older than the base colour sends none: the
+/// accent it names keeps working, and its primary is the base, as the web's `useThemeSync`.
+fn appearance_of(dto: &wire::AppearanceSettingsResponseDto) -> Appearance {
+    let accent = AccentColor::parse(&dto.accent_color).unwrap_or_default();
+    Appearance {
+        mode: mode(&dto.theme_mode),
+        accent,
+        intensity: intensity(&dto.intensity),
+        base: Rgb::parse(&dto.base_color).unwrap_or_else(|| accent.primary()),
+        match_system: dto.match_system,
+        new_design: dto.new_design,
+    }
+}
+
 impl State {
     /// The server's appearance, or its defaults, with the changes on their way over it.
     fn effective_appearance(&self) -> Appearance {
         let mut appearance = self
             .cache
             .appearance(&keys::op(keys::APPEARANCE))
-            .map(|dto| Appearance {
-                mode: mode(&dto.theme_mode),
-                accent: accent(&dto.accent_color),
-                intensity: intensity(&dto.intensity),
-            })
+            .map(appearance_of)
             .unwrap_or_default();
         for (_, patch) in &self.w3.appearance_overlays {
             if let Some(mode) = patch.mode {
                 appearance.mode = mode;
             }
-            if let Some(accent) = patch.accent {
-                appearance.accent = accent;
-            }
             if let Some(intensity) = patch.intensity {
                 appearance.intensity = intensity;
+            }
+            // The server's `updateUserSettings` rules, so the pair shown now is the pair it will
+            // answer with: a base wins (the request drops an accent beside it) and derives the
+            // nearest accent, a *changed* accent derives its primary, and an echo changes neither.
+            if let Some(base) = patch.base {
+                appearance.base = base;
+                appearance.accent = AccentColor::nearest_to(base);
+            } else if let Some(accent) = patch.accent
+                && appearance.accent != accent
+            {
+                appearance.accent = accent;
+                appearance.base = accent.primary();
+            }
+            if let Some(match_system) = patch.match_system {
+                appearance.match_system = match_system;
             }
         }
         appearance
@@ -328,9 +333,22 @@ impl Core {
     /// Changes the fields the patch sets. Shown at once; back if the server refuses.
     pub async fn update_appearance(&self, patch: AppearancePatch) -> Result<(), CoreError> {
         let (services, epoch) = self.begin("appearance settings")?;
+        // The two colour fields never travel together: the server derives the accent from the
+        // base, and ignores an accent sent beside it.
+        let base = patch
+            .base
+            .map(|base| wire::UpdateAppearanceSettingsDtoBaseColor::try_from(base.to_hex()))
+            .transpose()
+            .expect("`Rgb::to_hex` writes the #rrggbb the contract's pattern takes");
         let body = wire::UpdateAppearanceSettingsDto {
-            accent_color: patch.accent.map(wire_accent),
+            accent_color: patch
+                .accent
+                .filter(|_| patch.base.is_none())
+                .map(wire_accent),
+            base_color: base,
             intensity: patch.intensity.map(wire_intensity),
+            match_system: patch.match_system,
+            new_design: None,
             theme_mode: patch.mode.map(wire_mode),
         };
         let change = self.write(|state, _| {
