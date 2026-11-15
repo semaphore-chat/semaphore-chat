@@ -13,6 +13,18 @@ export interface InteractiveStateInput {
 }
 
 /**
+ * The focus ring: the kit's focus role in an outline of the focus width.
+ * `offset` defaults to the focus offset (outside the edge); pass a negative
+ * offset for a ring drawn inside, where an outer ring would be clipped.
+ */
+export function focusRing(palette: Palette, offset: number = tokens.border.focusOffset) {
+  return {
+    outline: `${tokens.border.focus}px solid ${palette.focus}`,
+    outlineOffset: `${offset}px`,
+  };
+}
+
+/**
  * The pointer and keyboard states every interactive surface shares.
  *
  * Hover sits inside a `(hover: hover)` media query, so a touch tap never
@@ -25,9 +37,6 @@ export function interactiveStates({ palette, under, hover, pressed }: Interactiv
       '&:hover': { background: mix(palette.text, under, hover) },
     },
     '&:active': { background: mix(palette.text, under, pressed) },
-    '&:focus-visible': {
-      outline: `${tokens.border.focus}px solid ${palette.focus}`,
-      outlineOffset: `${tokens.border.focusOffset}px`,
-    },
+    '&:focus-visible': focusRing(palette),
   };
 }

@@ -7,14 +7,16 @@ import type {
   Ref,
 } from 'react';
 import ButtonBase from '@mui/material/ButtonBase';
-import CircularProgress from '@mui/material/CircularProgress';
 import { styled } from '@mui/material/styles';
-import type { Palette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
+import { buttonLook, type ButtonVariant } from './buttonLook';
+import { Spinner } from './Spinner';
+import { transientProps } from '../theme/transientProps';
 
-export type ButtonVariant = 'primary' | 'soft' | 'ghost' | 'danger' | 'quietDanger' | 'text';
+export type { ButtonVariant } from './buttonLook';
+
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps {
@@ -38,69 +40,6 @@ export interface ButtonProps {
   children: ReactNode;
 }
 
-/** A variant's paint: the resting fill and label, plus the tint and alphas of its states. */
-export interface ButtonLook {
-  background: string;
-  label: string;
-  stateBase: string;
-  hover: number;
-  pressed: number;
-}
-
-/**
- * The six variants' colours. `stateBase` is what hover and pressed tint: the
- * resting fill, or for a transparent fill the surface behind it.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- exported for the unit test; not re-exported from the kit index.
-export function buttonLook(palette: Palette, variant: ButtonVariant): ButtonLook {
-  const { state } = tokens;
-  const looks: Record<ButtonVariant, ButtonLook> = {
-    primary: {
-      background: palette.accent,
-      label: palette.onAccent,
-      stateBase: palette.accent,
-      hover: state.hoverOnFill,
-      pressed: state.pressedOnFill,
-    },
-    danger: {
-      background: palette.danger,
-      label: palette.onDanger,
-      stateBase: palette.danger,
-      hover: state.hoverOnFill,
-      pressed: state.pressedOnFill,
-    },
-    soft: {
-      background: palette.fill,
-      label: palette.text,
-      stateBase: palette.fill,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-    quietDanger: {
-      background: palette.fill,
-      label: palette.danger,
-      stateBase: palette.fill,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-    ghost: {
-      background: 'transparent',
-      label: palette.textSecondary,
-      stateBase: palette.surface,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-    text: {
-      background: 'transparent',
-      label: palette.accentText,
-      stateBase: palette.surface,
-      hover: state.hover,
-      pressed: state.pressed,
-    },
-  };
-  return looks[variant];
-}
-
 const PADDING: Record<ButtonSize, number> = {
   sm: tokens.space.md,
   md: tokens.space.lg,
@@ -114,7 +53,7 @@ interface RootProps {
 }
 
 const Root = styled(ButtonBase, {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<RootProps>(({ theme, $variant, $size, $fullWidth }) => {
   const { palette } = kitTheme(theme);
   const look = buttonLook(palette, $variant);
@@ -162,7 +101,7 @@ const Root = styled(ButtonBase, {
 });
 
 const Label = styled('span', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<{ $hidden: boolean }>(({ $hidden }) => ({
   minWidth: 0,
   overflow: 'hidden',
@@ -186,11 +125,6 @@ const SpinnerOverlay = styled('span')({
   alignItems: 'center',
   justifyContent: 'center',
 });
-
-function Spinner(): JSX.Element {
-  // thickness is an SVG stroke ratio (of the circle's radius), not a pixel size.
-  return <CircularProgress aria-hidden="true" color="inherit" size={tokens.icon.sm} thickness={5} />;
-}
 
 /**
  * Pill button. While `loading` it is busy: it keeps focus and its accessible
@@ -218,8 +152,9 @@ export function Button({
   children,
 }: ButtonProps): JSX.Element {
   const busy = loading && !disabled;
-  const spinnerInIconSlot = loading && startIcon !== undefined;
-  const spinnerOverLabel = loading && startIcon === undefined;
+  // Disabled wins over loading: a disabled button shows no spinner.
+  const spinnerInIconSlot = busy && startIcon !== undefined;
+  const spinnerOverLabel = busy && startIcon === undefined;
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
@@ -252,12 +187,12 @@ export function Button({
       $fullWidth={fullWidth}
     >
       {startIcon !== undefined && (
-        <IconSlot>{spinnerInIconSlot ? <Spinner /> : startIcon}</IconSlot>
+        <IconSlot>{spinnerInIconSlot ? <Spinner size={tokens.icon.sm} /> : startIcon}</IconSlot>
       )}
       <Label $hidden={spinnerOverLabel}>{children}</Label>
       {spinnerOverLabel && (
         <SpinnerOverlay>
-          <Spinner />
+          <Spinner size={tokens.icon.sm} />
         </SpinnerOverlay>
       )}
     </Root>

@@ -86,7 +86,7 @@ SCALAR_GROUPS = (
     "state",
 )
 TEXT_FIELDS = ("font", "size", "line", "weight")
-SHADOW_FIELDS = ("x", "y", "blur", "alpha")
+SHADOW_FIELDS = ("x", "y", "blur", "alpha", "alphaLight")
 WEIGHTS = (400, 500, 600, 700)
 # Motion is written to Rust as `u32` milliseconds.
 MOTION_MAX = 2**32 - 1
@@ -298,6 +298,7 @@ def _shadow_group(group: object) -> None:
             _number(f"{path}.{field}", shadow[field], signed=True)
         _number(f"{path}.blur", shadow["blur"])
         _number(f"{path}.alpha", shadow["alpha"], maximum=1)
+        _number(f"{path}.alphaLight", shadow["alphaLight"], maximum=1)
 
 
 def validate(data: object) -> dict:
@@ -414,13 +415,13 @@ def _ts_text_style(style: dict, fonts: dict) -> str:
     return "{ " + ", ".join(fields) + " }"
 
 
-def _ts_shadow_css(shadow: dict) -> str:
+def _ts_shadow_css(shadow: dict, alpha_field: str = "alpha") -> str:
     """The equivalent CSS `box-shadow` value (zero lengths carry no unit)."""
     lengths = " ".join(
         "0" if shadow[field] == 0 else f"{fmt_num(shadow[field])}px"
         for field in ("x", "y", "blur")
     )
-    return f"{lengths} rgba(0, 0, 0, {fmt_num(shadow['alpha'])})"
+    return f"{lengths} rgba(0, 0, 0, {fmt_num(shadow[alpha_field])})"
 
 
 def _ts_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
@@ -432,6 +433,7 @@ def _ts_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
             for field in SHADOW_FIELDS:
                 lines.append(f"      {field}: {fmt_num(shadow[field])},")
             lines.append(f"      css: {_ts_string(_ts_shadow_css(shadow))},")
+            lines.append(f"      cssLight: {_ts_string(_ts_shadow_css(shadow, 'alphaLight'))},")
             lines.append("    },")
         return lines
     lines = []
@@ -501,6 +503,8 @@ pub struct Shadow {
     pub y: f32,
     pub blur: f32,
     pub alpha: f32,
+    /// The alpha in light mode, where the same shadow is far less opaque.
+    pub alpha_light: f32,
 }"""
 
 
@@ -536,7 +540,10 @@ def _rs_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
             ]
         elif name == "shadow":
             lines += [doc, f"pub const {ident}: Shadow = Shadow {{"]
-            lines += [f"    {field}: {_rs_float(value[field])}," for field in SHADOW_FIELDS]
+            lines += [
+                f"    {'alpha_light' if field == 'alphaLight' else field}: {_rs_float(value[field])},"
+                for field in SHADOW_FIELDS
+            ]
             lines += ["};"]
         elif name == "motion":
             lines += [doc, f"pub const {ident}: u32 = {fmt_num(value)};"]

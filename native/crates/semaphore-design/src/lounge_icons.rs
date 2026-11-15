@@ -28,6 +28,7 @@ pub enum LoungeIcon {
     ArrowLeft,
     X,
     Plus,
+    Minus,
     Check,
     Search,
     Users,
@@ -67,7 +68,7 @@ pub enum LoungeIcon {
 
 impl LoungeIcon {
     /// Every icon, in `design/icons/icons.json` order.
-    pub const ALL: [LoungeIcon; 54] = [
+    pub const ALL: [LoungeIcon; 55] = [
         LoungeIcon::Inbox,
         LoungeIcon::Hash,
         LoungeIcon::Volume2,
@@ -87,6 +88,7 @@ impl LoungeIcon {
         LoungeIcon::ArrowLeft,
         LoungeIcon::X,
         LoungeIcon::Plus,
+        LoungeIcon::Minus,
         LoungeIcon::Check,
         LoungeIcon::Search,
         LoungeIcon::Users,
@@ -146,6 +148,7 @@ impl LoungeIcon {
             Self::ArrowLeft => "ArrowLeft",
             Self::X => "X",
             Self::Plus => "Plus",
+            Self::Minus => "Minus",
             Self::Check => "Check",
             Self::Search => "Search",
             Self::Users => "Users",
@@ -206,6 +209,7 @@ impl LoungeIcon {
             Self::ArrowLeft => "lucide/arrow-left.svg",
             Self::X => "lucide/x.svg",
             Self::Plus => "lucide/plus.svg",
+            Self::Minus => "lucide/minus.svg",
             Self::Check => "lucide/check.svg",
             Self::Search => "lucide/search.svg",
             Self::Users => "lucide/users.svg",
@@ -266,6 +270,7 @@ impl LoungeIcon {
             Self::ArrowLeft => include_bytes!("../assets/lucide/arrow-left.svg"),
             Self::X => include_bytes!("../assets/lucide/x.svg"),
             Self::Plus => include_bytes!("../assets/lucide/plus.svg"),
+            Self::Minus => include_bytes!("../assets/lucide/minus.svg"),
             Self::Check => include_bytes!("../assets/lucide/check.svg"),
             Self::Search => include_bytes!("../assets/lucide/search.svg"),
             Self::Users => include_bytes!("../assets/lucide/users.svg"),

@@ -36,7 +36,7 @@ Everything is px, except:
 
 - `motion`: milliseconds.
 - `text.*.weight`: font weight, one of 400, 500, 600, 700.
-- `shadow.*.alpha`: opacity of black, 0 to 1.
+- `shadow.*.alpha` and `shadow.*.alphaLight`: opacity of black, 0 to 1.
 
 `font` maps a font key to a family name; a `text` style names its font by
 that key, and the renderers resolve it to the family string.

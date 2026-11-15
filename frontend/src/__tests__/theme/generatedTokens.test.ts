@@ -21,4 +21,7 @@ it('resolves text styles to real font families', () => {
   expect(Object.keys(tokens.text)).toEqual(names);
   expect(tokens.text.title).toEqual({ family: 'Bricolage Grotesque', size: 20, line: 26, weight: 700 });
   expect(tokens.shadow.overlay.css).toBe('0 24px 64px rgba(0, 0, 0, 0.6)');
+  expect(tokens.shadow.overlay.alphaLight).toBe(0.18);
+  expect(tokens.shadow.overlay.cssLight).toBe('0 24px 64px rgba(0, 0, 0, 0.18)');
+  expect(tokens.shadow.island.cssLight).toBe('0 6px 24px rgba(0, 0, 0, 0.08)');
 });

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import userEvent from '@testing-library/user-event';
 import { screen } from '@testing-library/react';
 import { Button, type ButtonVariant } from '../../kit';
-import { buttonLook } from '../../kit/controls/Button';
+import { buttonLook } from '../../kit/controls/buttonLook';
 import { derivePalette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
@@ -120,6 +120,29 @@ describe('Button', () => {
         button.firstElementChild,
       );
     });
+  });
+
+  it('disabled wins over loading: disabled, not busy, no spinner', () => {
+    renderWithKit(
+      <Button disabled loading startIcon={<svg data-testid="icon" />}>
+        Save
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Save' });
+    expect(button).toBeDisabled();
+    expect(button).not.toHaveAttribute('aria-busy');
+    expect(screen.queryByRole('progressbar', { hidden: true })).toBeNull();
+    expect(screen.getByTestId('icon')).toBeInTheDocument();
+  });
+
+  it('disabled wins over loading without an icon: the label stays visible', () => {
+    renderWithKit(
+      <Button disabled loading>
+        Save
+      </Button>,
+    );
+    expect(screen.queryByRole('progressbar', { hidden: true })).toBeNull();
+    expect(screen.getByText('Save')).not.toHaveStyle({ opacity: '0' });
   });
 
   it('ignores clicks when disabled', async () => {

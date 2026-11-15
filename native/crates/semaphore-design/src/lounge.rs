@@ -22,6 +22,8 @@ pub struct Shadow {
     pub y: f32,
     pub blur: f32,
     pub alpha: f32,
+    /// The alpha in light mode, where the same shadow is far less opaque.
+    pub alpha_light: f32,
 }
 
 /// `space.none`, px.
@@ -154,6 +156,7 @@ pub const SHADOW_ISLAND: Shadow = Shadow {
     y: 6.0,
     blur: 24.0,
     alpha: 0.35,
+    alpha_light: 0.08,
 };
 
 /// `shadow.overlay`, px offsets and blur, alpha of black.
@@ -162,6 +165,7 @@ pub const SHADOW_OVERLAY: Shadow = Shadow {
     y: 24.0,
     blur: 64.0,
     alpha: 0.6,
+    alpha_light: 0.18,
 };
 
 /// `motion.fast`, ms.

@@ -3,6 +3,7 @@ import { styled } from '@mui/material/styles';
 import { iconNodes, type IconName } from '../icons/generated';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { transientProps } from '../theme/transientProps';
 
 export type IconSize = keyof typeof tokens.icon;
 
@@ -28,7 +29,7 @@ interface RootProps {
 }
 
 const Root = styled('svg', {
-  shouldForwardProp: (prop) => typeof prop === 'string' && !prop.startsWith('$'),
+  shouldForwardProp: transientProps,
 })<RootProps>(({ theme, $tone }) => {
   const { palette } = kitTheme(theme);
   const tones: Record<Exclude<IconTone, 'inherit'>, string> = {

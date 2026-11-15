@@ -38,7 +38,9 @@ fn lounge_text_and_shadow() {
             x: 0.0,
             y: 24.0,
             blur: 64.0,
-            alpha: 0.6
+            alpha: 0.6,
+            alpha_light: 0.18
         }
     );
+    assert_eq!(SHADOW_ISLAND.alpha_light, 0.08);
 }
