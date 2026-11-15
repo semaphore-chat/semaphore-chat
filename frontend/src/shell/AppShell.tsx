@@ -1,4 +1,5 @@
-import React, { lazy, Suspense } from 'react';
+import React, { startTransition, Suspense, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { instanceControllerGetPublicSettingsOptions } from '../api-client/@tanstack/react-query.gen';
 import { useCurrentUser } from '../hooks/useCurrentUser';
@@ -13,14 +14,56 @@ import { useDesktopSignInNotice } from '../hooks/useDesktopSignInNotice';
 import { LayoutProviders } from '../components/LayoutProviders';
 import { VoiceSessionLayer } from '../components/Voice/VoiceSessionLayer';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { AppErrorFallback, AppLoadingFallback } from '../components/AppErrorFallback';
+import { AppLoadingFallback, NewDesignErrorFallback } from '../components/AppErrorFallback';
 import { ClassicShell } from './ClassicShell';
 import { ShellKindContext } from './shellKind';
+import { setDesignPreview } from './designPreview';
+import type { LoungeChoice } from './chooseShell';
 import { useShellChoice } from './useShellChoice';
-import { loadLoungeRoot } from './loungeRootChunk';
+import { currentLoungeRoot, renewLoungeRoot } from './loungeRootLazy';
 
-/** The new design's shell: its own chunk, never requested while the new design is off. */
-const LoungeRoot = lazy(loadLoungeRoot);
+/**
+ * The new shell below the voice layer, with its own boundary and Suspense: a crash, a failed chunk
+ * or a slow one never reaches the call. The fallbacks are old-look (they cannot rely on the kit), so
+ * the shell kind says `classic` while they show.
+ */
+const LoungeShell: React.FC<{ choice: LoungeChoice }> = ({ choice }) => {
+  const navigate = useNavigate();
+  const [Root, setRoot] = useState(currentLoungeRoot);
+  return (
+    <ErrorBoundary
+      fallback={(_error, reset) => (
+        <ShellKindContext value="classic">
+          <NewDesignErrorFallback
+            onBack={() => {
+              // This tab goes back to the current design; the next visit to a new-design route gets a fresh load.
+              // Both as transitions: the current screen stays until the old shell's page is ready.
+              renewLoungeRoot();
+              setDesignPreview('classic');
+              startTransition(() => {
+                void navigate('/');
+              });
+            }}
+            onRetry={() => {
+              setRoot(() => renewLoungeRoot());
+              reset();
+            }}
+          />
+        </ShellKindContext>
+      )}
+    >
+      <Suspense
+        fallback={
+          <ShellKindContext value="classic">
+            <AppLoadingFallback />
+          </ShellKindContext>
+        }
+      >
+        <Root choice={choice} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+};
 
 /** Has to sit inside LayoutProviders: it needs their socket. */
 const DesktopSignInNotice: React.FC = () => {
@@ -95,11 +138,7 @@ const AppShell: React.FC = () => {
           {choice.kind === 'classic' ? (
             <ClassicShell userData={userData as User | undefined} />
           ) : (
-            <ErrorBoundary fallback={(error) => <AppErrorFallback error={error} />}>
-              <Suspense fallback={<AppLoadingFallback />}>
-                <LoungeRoot choice={choice} />
-              </Suspense>
-            </ErrorBoundary>
+            <LoungeShell choice={choice} />
           )}
         </ShellKindContext>
       </VoiceSessionLayer>

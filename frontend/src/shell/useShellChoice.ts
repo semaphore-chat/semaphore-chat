@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useDeferredValue, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useNewDesignSetting } from '../contexts/ThemeContext';
 import { chooseShell, type ShellChoice } from './chooseShell';
@@ -32,9 +32,21 @@ export function useShellChoice(): ShellChoice {
 
   useEffect(() => {
     if (enabled) {
-      void loadLoungeRoot();
+      // A failure here is retried by the shell's own load, which shows it.
+      loadLoungeRoot().catch(() => undefined);
     }
   }, [enabled]);
 
-  return useMemo(() => chooseShell({ pathname, enabled, width }), [pathname, enabled, width]);
+  // Deferred: the setting (a plain setState), the preview and the width (useSyncExternalStore) change
+  // in synchronous renders. Switching shells mounts the other one, whose page may still be a lazy
+  // chunk; in a synchronous render it would suspend up to App's top-level Suspense, which hides and
+  // cleans up the whole signed-in tree, the call included. A deferred render that suspends shows no
+  // fallback: the current screen stays until the new one is ready, as with a router navigation
+  // (pathname changes are transitions already).
+  const shellEnabled = useDeferredValue(enabled);
+  const shellWidth = useDeferredValue(width);
+  return useMemo(
+    () => chooseShell({ pathname, enabled: shellEnabled, width: shellWidth }),
+    [pathname, shellEnabled, shellWidth],
+  );
 }

@@ -18,7 +18,7 @@ test.describe.configure({ mode: 'serial' });
  * (build), the kit, or the kit's font families. Not shell/loungeRootChunk.ts: that two-line loader is
  * eager by design (in a build it is part of the entry chunk).
  */
-const NEW_SHELL_REQUEST = /\/src\/shell\/lounge\/|\/assets\/(LoungeRoot|MarkerScreen)-|\/src\/kit\/|bricolage|figtree/i;
+const NEW_SHELL_REQUEST = /\/src\/shell\/lounge\/|\/assets\/(LoungeRoot|MarkerScreen|kit)-|\/src\/kit\/|bricolage|figtree/i;
 
 /** The viewport meta tag as index.html ships it: this change must not touch it. */
 const VIEWPORT_META = /<meta name="viewport" content="([^"]+)"/.exec(

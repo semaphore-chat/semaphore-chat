@@ -48,6 +48,8 @@ const counts = vi.hoisted(() => ({ recoveryMounts: 0, effectsMounts: 0, effectsU
 /** The new shell's chunk: `loaded` counts requests for it; `mode` says what the stub screen does. */
 const lounge = vi.hoisted(() => ({
   loaded: 0,
+  /** How many of the next loads fail like a chunk that is gone (a deploy) or offline. */
+  failLoads: 0,
   mode: 'ok' as 'ok' | 'throw' | 'suspend',
   never: new Promise<never>(() => {}),
 }));
@@ -64,6 +66,10 @@ vi.mock('../../shell/loungeRootChunk', () => {
   return {
     loadLoungeRoot: () => {
       lounge.loaded += 1;
+      if (lounge.failLoads > 0) {
+        lounge.failLoads -= 1;
+        return Promise.reject(new TypeError('Failed to fetch dynamically imported module: /assets/LoungeRoot-x.js'));
+      }
       return Promise.resolve({ default: StubLoungeRoot });
     },
   };
@@ -128,6 +134,7 @@ import AppShell from '../../shell/AppShell';
 import { AppRoutes } from '../../routes';
 import { DesignPreviewPage } from '../../pages/debug/PWADebugPage';
 import { clearDesignPreview, setDesignPreview } from '../../shell/designPreview';
+import { renewLoungeRoot } from '../../shell/loungeRootLazy';
 
 // --- A viewport whose width can change, with real media-query listeners ------
 
@@ -248,6 +255,23 @@ const IN_A_CALL = {
 
 /** Handles on the router and the theme from inside the tree. */
 const handles: { navigate?: ReturnType<typeof useNavigate>; setNewDesign?: (on: boolean) => void } = {};
+
+/** App's top-level Suspense fallback: counts how often it is shown (it hides, and cleans up, the whole signed-in tree). */
+const appSuspended = { shown: 0 };
+function AppSuspended() {
+  React.useEffect(() => {
+    appSuspended.shown += 1;
+  }, []);
+  return <div data-testid="app-suspended" />;
+}
+
+/** An old-shell page that is still a lazy chunk the first time it renders, like NotFoundPage. */
+let slowPage = React.lazy(() => new Promise<{ default: React.FC }>(() => {}));
+function renewSlowPage() {
+  slowPage = React.lazy(
+    () => new Promise<{ default: React.FC }>((resolve) => setTimeout(() => resolve({ default: () => <div data-testid="page" /> }), 30)),
+  );
+}
 function Handles() {
   handles.navigate = useNavigate();
   handles.setNewDesign = useTheme().setNewDesign;
@@ -259,9 +283,11 @@ interface RenderOptions {
   inCall?: boolean;
   /** Render AppShell inside real routes (its Outlet then shows the page). */
   withRoutes?: boolean;
+  /** With routes: the `*` page is a lazy chunk not loaded yet. */
+  slowPageRoute?: boolean;
 }
 
-function renderShell({ route = '/community/c-1/channel/ch-1', inCall = true, withRoutes = false }: RenderOptions = {}) {
+function renderShell({ route = '/community/c-1/channel/ch-1', inCall = true, withRoutes = false, slowPageRoute = false }: RenderOptions = {}) {
   const { room, track } = createRoom();
   const setRoom = vi.fn();
   const roomContext = inCall
@@ -271,7 +297,8 @@ function renderShell({ route = '/community/c-1/channel/ch-1', inCall = true, wit
     <Routes>
       <Route path="/" element={<AppShell />}>
         <Route path="debug/design" element={<DesignPreviewPage />} />
-        <Route path="*" element={<div data-testid="page" />} />
+        <Route index element={slowPageRoute ? React.createElement(slowPage) : <div data-testid="page" />} />
+        <Route path="*" element={slowPageRoute ? React.createElement(slowPage) : <div data-testid="page" />} />
       </Route>
     </Routes>
   ) : (
@@ -280,7 +307,7 @@ function renderShell({ route = '/community/c-1/channel/ch-1', inCall = true, wit
   const view = renderWithProviders(
     // Anything reaching these would mean the switch's own boundaries failed.
     <ErrorBoundary fallback={<div data-testid="app-crashed" />}>
-      <Suspense fallback={<div data-testid="app-suspended" />}>
+      <Suspense fallback={<AppSuspended />}>
         <ThemeProvider>
           <BottomChromeProvider>
             <VoiceProvider initialState={inCall ? IN_A_CALL : undefined}>
@@ -319,6 +346,8 @@ beforeEach(() => {
   counts.effectsMounts = 0;
   counts.effectsUnmounts = 0;
   lounge.mode = 'ok';
+  lounge.failLoads = 0;
+  appSuspended.shown = 0;
   localStorage.clear();
   clearDesignPreview();
   getUserMedia = vi.fn(async () => ({}));
@@ -466,15 +495,17 @@ describe('the call across a change of shell', () => {
     expectCallUntouched('setting flipped three times');
   });
 
-  it('a crash in the new shell shows its own error page and keeps the call up', async () => {
+  it('a crash in the new shell shows its own error page, without Reload, and keeps the call up', async () => {
     createViewport(1440);
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     lounge.mode = 'throw';
     setNewDesignStored(true);
     const { container, track, room } = renderShell({ route: '/__lounge' });
     await flush();
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument();
+    expect(screen.getByText('The new design could not be shown')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to the current design' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reload' })).toBeNull();
     expect(screen.queryByTestId('app-crashed')).toBeNull();
     expect(container.querySelectorAll('audio')).toHaveLength(1);
     expect(track.attach).toHaveBeenCalledTimes(1);
@@ -482,6 +513,133 @@ describe('the call across a change of shell', () => {
     expect(room.disconnect).not.toHaveBeenCalled();
     expect(counts.effectsUnmounts).toBe(0);
     expect(consoleError).toHaveBeenCalled();
+  });
+
+  it('a chunk that fails to load: "Back to the current design" shows the old shell with the same call, no reload', async () => {
+    createViewport(1440);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const reload = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload } as Location);
+    lounge.failLoads = Number.POSITIVE_INFINITY;
+    renewLoungeRoot(); // a first load in this page, not the one earlier tests resolved
+    setDesignPreview('lounge');
+    const { container, track, room } = renderShell({ route: '/__lounge' });
+    await flush();
+    const audio = container.querySelector('audio');
+    expect(audio).not.toBeNull();
+    expect(screen.getByText('The new design could not be shown')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the current design' }));
+    await flush();
+    expect(screen.getByTestId('rail')).toBeInTheDocument();
+    expect(loungeShell(container)).toBeNull();
+    expect(screen.queryByText('The new design could not be shown')).toBeNull();
+    expect(container.querySelector('audio')).toBe(audio);
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    expect(track.detach).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(counts.effectsMounts).toBe(1);
+    expect(counts.effectsUnmounts).toBe(0);
+    expect(reload).not.toHaveBeenCalled();
+    // This tab is back on the current design: the marker is the old shell's 404 now.
+    act(() => handles.navigate!('/__lounge'));
+    await flush();
+    expect(screen.queryByText('The new design could not be shown')).toBeNull();
+    expect(screen.getByTestId('rail')).toBeInTheDocument();
+    expect(lounge.loaded).toBeGreaterThan(0);
+    expect(consoleError).toHaveBeenCalled();
+  });
+
+  it('a chunk that keeps failing: "Try again" shows the page again, then "Back" keeps the call', async () => {
+    createViewport(1440);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    lounge.failLoads = Number.POSITIVE_INFINITY;
+    renewLoungeRoot();
+    setDesignPreview('lounge');
+    const { container, track, room } = renderShell({ route: '/__lounge' });
+    await flush();
+    const audio = container.querySelector('audio');
+    expect(screen.getByText('The new design could not be shown')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await flush();
+    expect(screen.getByText('The new design could not be shown')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-crashed')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the current design' }));
+    await flush();
+    expect(screen.getByTestId('rail')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-crashed')).toBeNull();
+    expect(container.querySelector('audio')).toBe(audio);
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    expect(track.detach).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(counts.effectsMounts).toBe(1);
+    expect(counts.effectsUnmounts).toBe(0);
+  });
+
+  it('"Back" while the old shell\'s page is still a lazy chunk never suspends the whole app (the call stays mounted)', async () => {
+    createViewport(1440);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    lounge.failLoads = Number.POSITIVE_INFINITY;
+    renewLoungeRoot();
+    renewSlowPage();
+    setDesignPreview('lounge');
+    const { container, track, room } = renderShell({ route: '/__lounge', withRoutes: true, slowPageRoute: true });
+    await flush();
+    const audio = container.querySelector('audio');
+    expect(screen.getByText('The new design could not be shown')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the current design' }));
+    expect(await screen.findByTestId('page')).toBeInTheDocument();
+    expect(screen.getByTestId('rail')).toBeInTheDocument();
+    expect(appSuspended.shown).toBe(0);
+    expect(container.querySelector('audio')).toBe(audio);
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    expect(track.detach).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(counts.effectsMounts).toBe(1);
+    expect(counts.effectsUnmounts).toBe(0);
+  });
+
+  it('the account setting turned off on the marker while the old page is a lazy chunk never suspends the whole app', async () => {
+    createViewport(1440);
+    renewSlowPage();
+    setNewDesignStored(true);
+    const { container, track, room } = renderShell({ route: '/__lounge', withRoutes: true, slowPageRoute: true });
+    await flush();
+    expect(loungeShell(container)).not.toBeNull();
+    const audio = container.querySelector('audio');
+
+    // A plain setState, as when the server's settings arrive with the setting off.
+    act(() => handles.setNewDesign!(false));
+    expect(await screen.findByTestId('page')).toBeInTheDocument();
+    expect(loungeShell(container)).toBeNull();
+    expect(appSuspended.shown).toBe(0);
+    expect(container.querySelector('audio')).toBe(audio);
+    expect(track.detach).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(counts.effectsUnmounts).toBe(0);
+  });
+
+  it('a chunk that fails once: "Try again" loads it, with the same call', async () => {
+    createViewport(1440);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    lounge.failLoads = 1;
+    renewLoungeRoot();
+    setNewDesignStored(true);
+    const { container, track } = renderShell({ route: '/__lounge' });
+    await flush();
+    const audio = container.querySelector('audio');
+    expect(screen.getByText('The new design could not be shown')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await flush();
+    expect(loungeShell(container)).not.toBeNull();
+    expect(screen.queryByText('The new design could not be shown')).toBeNull();
+    expect(container.querySelector('audio')).toBe(audio);
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    expect(counts.effectsUnmounts).toBe(0);
   });
 
   it('a new shell that is still loading shows the spinner and keeps the call up', async () => {

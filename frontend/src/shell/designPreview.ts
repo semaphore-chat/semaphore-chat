@@ -11,8 +11,8 @@
  * blocked the storage can throw, and then the override lives in memory for the
  * page's lifetime.
  */
-import { useEffect, useSyncExternalStore } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useContext, useEffect, useSyncExternalStore } from 'react';
+import { UNSAFE_NavigationContext, useLocation, useNavigate, type Location } from 'react-router-dom';
 
 export type DesignPreview = 'lounge' | 'classic';
 export type DesignParam = DesignPreview | 'reset';
@@ -21,8 +21,10 @@ export const DESIGN_PREVIEW_KEY = 'semaphore-design-preview';
 export const DESIGN_PARAM = 'design';
 
 const listeners = new Set<() => void>();
-/** Used only while sessionStorage throws. */
+/** The override when sessionStorage cannot be used. */
 let memory: DesignPreview | null = null;
+/** Set once a write has failed (storage full, or reads work but writes throw): from then on `memory` is the truth. */
+let storageBroken = false;
 
 function parsePreview(value: string | null): DesignPreview | null {
   return value === 'lounge' || value === 'classic' ? value : null;
@@ -35,6 +37,9 @@ export function parseDesignParam(search: string): DesignParam | null {
 }
 
 export function readDesignPreview(): DesignPreview | null {
+  if (storageBroken) {
+    return memory;
+  }
   try {
     return parsePreview(window.sessionStorage.getItem(DESIGN_PREVIEW_KEY));
   } catch {
@@ -51,8 +56,10 @@ function write(value: DesignPreview | null): void {
     } else {
       window.sessionStorage.setItem(DESIGN_PREVIEW_KEY, value);
     }
+    storageBroken = false;
   } catch {
     // Storage unavailable: `memory` holds it for this page.
+    storageBroken = true;
   }
   if (readDesignPreview() !== before) {
     listeners.forEach((listener) => listener());
@@ -87,22 +94,31 @@ export function useDesignPreview(): DesignPreview | null {
 export function useDesignPreviewParam(): void {
   const location = useLocation();
   const navigate = useNavigate();
+  // The router's history: its `location` is the current one when the effect runs, which can be
+  // newer than the one this component rendered with (a child navigated in the same commit).
+  const { navigator } = useContext(UNSAFE_NavigationContext);
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (!params.has(DESIGN_PARAM)) {
+    const value = parseDesignParam(location.search);
+    if (!new URLSearchParams(location.search).has(DESIGN_PARAM)) {
       return;
     }
-    const value = parseDesignParam(location.search);
     if (value === 'reset') {
       clearDesignPreview();
     } else if (value !== null) {
       setDesignPreview(value);
     }
+    // Remove the parameter from the location as it is now, not as it was rendered: never undo
+    // another component's navigation. If the router has moved on, the parameter is gone already.
+    const current = (navigator as unknown as { location?: Location }).location ?? location;
+    const params = new URLSearchParams(current.search);
+    if (!params.has(DESIGN_PARAM)) {
+      return;
+    }
     params.delete(DESIGN_PARAM);
     const search = params.toString();
     navigate(
-      { pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash },
-      { replace: true, state: location.state },
+      { pathname: current.pathname, search: search ? `?${search}` : '', hash: current.hash },
+      { replace: true, state: current.state },
     );
-  }, [location, navigate]);
+  }, [location, navigate, navigator]);
 }

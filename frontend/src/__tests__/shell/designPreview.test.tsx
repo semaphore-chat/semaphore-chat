@@ -4,6 +4,7 @@
  * (Cleared on logout: hooks/useLogout.test.ts.)
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import React from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
@@ -37,22 +38,34 @@ let location: { pathname: string; search: string; state: unknown };
 let newDesign: boolean;
 let navigate: ReturnType<typeof useNavigate>;
 
-function Probe() {
+function Probe({ children }: { children?: React.ReactNode }) {
   useDesignPreviewParam();
   navigate = useNavigate();
   useThemeSync();
   newDesign = useTheme().newDesign;
   const current = useLocation();
   location = { pathname: current.pathname, search: current.search, state: current.state };
+  return <>{children}</>;
+}
+
+/** Navigates once from its own effect, which runs before the parent's (the hook's) in the same commit. */
+function NavigatesOnMount({ to, state }: { to: string; state: unknown }) {
+  const go = useNavigate();
+  const done = React.useRef(false);
+  React.useEffect(() => {
+    if (done.current) return;
+    done.current = true;
+    go(to, { state });
+  }, [go, to, state]);
   return null;
 }
 
-function renderAt(entry: string | { pathname: string; search: string; state: unknown }) {
+function renderAt(entry: string | { pathname: string; search: string; state: unknown }, child?: React.ReactNode) {
   return render(
     <QueryClientProvider client={createTestQueryClient()}>
       <ThemeProvider>
         <MemoryRouter initialEntries={[entry]}>
-          <Probe />
+          <Probe>{child}</Probe>
         </MemoryRouter>
       </ThemeProvider>
     </QueryClientProvider>,
@@ -128,6 +141,13 @@ describe('?design= in the URL', () => {
     expect(readDesignPreview()).toBe('classic');
   });
 
+  it("does not undo another component's navigation made in the same commit", async () => {
+    renderAt('/settings?design=lounge', <NavigatesOnMount to="/elsewhere?tab=1" state={{ from: 'child' }} />);
+    await waitFor(() => expect(readDesignPreview()).toBe('lounge'));
+    await act(async () => {});
+    expect(location).toEqual({ pathname: '/elsewhere', search: '?tab=1', state: { from: 'child' } });
+  });
+
   it('a URL without the parameter is left alone', async () => {
     renderAt('/settings?tab=2');
     await act(async () => {});
@@ -156,6 +176,18 @@ describe('the preview store', () => {
     expect(result.current).toBeNull();
     act(() => setDesignPreview('lounge'));
     expect(result.current).toBe('lounge');
+    act(() => clearDesignPreview());
+    expect(result.current).toBeNull();
+  });
+
+  it('storage that reads but cannot write (full): the override still applies, from memory', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    const { result } = renderHook(() => useDesignPreview());
+    act(() => setDesignPreview('lounge'));
+    expect(result.current).toBe('lounge');
+    expect(readDesignPreview()).toBe('lounge');
     act(() => clearDesignPreview());
     expect(result.current).toBeNull();
   });

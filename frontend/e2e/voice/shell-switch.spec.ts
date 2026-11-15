@@ -14,7 +14,9 @@
  *   4. deafened on the marker, a newcomer is not heard;
  *   5. muted by a moderator on the marker, the mic stays off;
  *   6. push-to-talk works on the marker;
- *   7. 100 s on the marker: still listed in voice presence (TTL 90 s) (@slow).
+ *   7. 100 s on the marker: still listed in voice presence (TTL 90 s) (@slow);
+ *   8. the new shell's chunk fails to load (offline, or gone after a deploy): its error page offers
+ *      a way back that keeps the call, and Try again loads it once the network is back.
  *
  * Requires the real-LiveKit stack: scripts/run-voice-e2e.sh shell-switch
  */
@@ -271,6 +273,47 @@ test.describe('The call across the shell switch', () => {
     await waitForAudioFlow(b, a);
     await a.page.keyboard.up('Backquote');
     await expect.poll(() => micOn(a), { ...POLL, message: 'letting go stops' }).toBe(false);
+  });
+
+  test("step 8: the new shell's chunk fails to load: back to the current design keeps the call, Try again recovers", async () => {
+    test.setTimeout(180_000);
+    a = await launchParticipant(TEST_USER, 'sample-a.wav');
+    b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
+    await a.page.setViewportSize({ width: 1440, height: HEIGHT });
+    await setAccountNewDesign(a, false);
+    await a.page.addInitScript(countGetUserMedia);
+    await joinVoiceChannel(a, CH);
+    await joinVoiceChannel(b, CH);
+    await waitForAudioFlow(a, b);
+    await waitForAudioFlow(b, a);
+    const before = await tagCall(a);
+
+    // The shell's module (dev server) or chunk (build) cannot be fetched.
+    const chunk = /\/src\/shell\/lounge\/LoungeRoot\.tsx|\/assets\/LoungeRoot-[^/]*\.js/;
+    // A 404, as for a chunk a deploy removed from under an open tab.
+    await a.page.route(chunk, (route) => route.fulfill({ status: 404, body: 'Not found' }));
+
+    await goTo(a.page, '/__lounge?design=lounge');
+    await expect(a.page.getByText('The new design could not be shown')).toBeVisible();
+    await expect(a.page.getByRole('button', { name: 'Reload' })).toHaveCount(0);
+    await expectCallUntouched(a, before, 'on the error page');
+
+    // Try again while still offline: the same page again, the call still untouched.
+    await a.page.getByRole('button', { name: 'Try again' }).click();
+    await expect(a.page.getByText('The new design could not be shown')).toBeVisible();
+
+    await a.page.getByRole('button', { name: 'Back to the current design' }).click();
+    await expect(voiceBar(a.page)).toBeVisible();
+    await expectCallUntouched(a, before, 'back to the current design');
+    await waitForAudioFlow(a, b);
+    await waitForAudioFlow(b, a);
+
+    // The network is back: the preview link loads the new shell.
+    await a.page.unroute(chunk);
+    await goTo(a.page, '/__lounge?design=lounge');
+    await expect(marker(a.page)).toBeVisible();
+    await expectCallUntouched(a, before, 'the new shell loaded after the failure');
+    // The Room tag checked above lives on `window`: it would be gone after any page reload.
   });
 
   test('step 7: 100 s on the marker keeps A in voice presence @slow', async () => {

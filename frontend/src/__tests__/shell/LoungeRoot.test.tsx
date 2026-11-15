@@ -30,7 +30,7 @@ vi.mock('../../hooks/useAppearance', () => ({
 }));
 
 const user = vi.hoisted(() => ({
-  current: { id: 'u1', username: 'kim', displayName: 'Kim Lee' } as { id: string; username: string; displayName: string | null } | undefined,
+  current: { id: 'u1', username: 'alexk', displayName: 'Alex K' } as { id: string; username: string; displayName: string | null } | undefined,
 }));
 vi.mock('../../hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({ user: user.current, isLoading: false, isError: false }),
@@ -56,7 +56,7 @@ function renderLounge(choice: LoungeChoice, voiceState?: Partial<VoiceState>) {
 
 beforeEach(() => {
   kitProps.length = 0;
-  user.current = { id: 'u1', username: 'kim', displayName: 'Kim Lee' };
+  user.current = { id: 'u1', username: 'alexk', displayName: 'Alex K' };
 });
 
 afterEach(() => {
@@ -96,7 +96,7 @@ describe('LoungeRoot', () => {
 describe('the marker screen', () => {
   it('shows the display name, "Not in a call" and the way back', async () => {
     const { user: events } = renderLounge({ kind: 'lounge', route: marker, params: {} });
-    expect(await screen.findByText('Kim Lee')).toBeInTheDocument();
+    expect(await screen.findByText('Alex K')).toBeInTheDocument();
     expect(screen.getByText('Not in a call')).toBeInTheDocument();
     expect(screen.getByRole('main', { name: 'New design preview' })).toBeInTheDocument();
     await events.click(screen.getByRole('button', { name: 'Back to the app' }));
@@ -104,9 +104,9 @@ describe('the marker screen', () => {
   });
 
   it('falls back to the username', async () => {
-    user.current = { id: 'u1', username: 'kim', displayName: null };
+    user.current = { id: 'u1', username: 'alexk', displayName: null };
     renderLounge({ kind: 'lounge', route: marker, params: {} });
-    expect(await screen.findByText('kim')).toBeInTheDocument();
+    expect(await screen.findByText('alexk')).toBeInTheDocument();
   });
 
   it('says which channel the call is in, from the shared voice state', async () => {
@@ -116,18 +116,18 @@ describe('the marker screen', () => {
         isConnected: true,
         contextType: VoiceSessionType.Channel,
         currentChannelId: 'ch-1',
-        channelName: 'Couch co-op',
+        channelName: 'Squad Up',
         communityId: 'c-1',
       },
     );
-    expect(await screen.findByText('In a call in Couch co-op')).toBeInTheDocument();
+    expect(await screen.findByText('In a call in Squad Up')).toBeInTheDocument();
   });
 
   it('says which direct message the call is in', async () => {
     renderLounge(
       { kind: 'lounge', route: marker, params: {} },
-      { isConnected: true, contextType: VoiceSessionType.Dm, currentDmGroupId: 'dm-1', dmGroupName: 'Ana and Kim' },
+      { isConnected: true, contextType: VoiceSessionType.Dm, currentDmGroupId: 'dm-1', dmGroupName: 'Hangout' },
     );
-    expect(await screen.findByText('In a call in Ana and Kim')).toBeInTheDocument();
+    expect(await screen.findByText('In a call in Hangout')).toBeInTheDocument();
   });
 });

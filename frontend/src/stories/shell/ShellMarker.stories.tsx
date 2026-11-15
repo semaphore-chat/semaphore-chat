@@ -4,19 +4,25 @@
  * A test fixture of the shell switch, not a template screen; the UI review shoots it at phone,
  * tablet and desktop width.
  */
+import { http, HttpResponse } from 'msw';
 import { AppFrame } from '../../kit';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import MarkerScreen from '../../shell/lounge/screens/MarkerScreen';
 import { defineComponent } from '../fixtures/componentStory';
 import { KitFrameStage } from '../fixtures/kitStory';
 import { bigCommunityScenario, firstDmGroup, primaryCommunity, primaryVoiceChannel } from '../fixtures/scenarios';
+
+/** The mock-ups' sample user, so the screenshots carry no real-looking name. */
+const sampleUser = http.get('/api/users/profile', () =>
+  HttpResponse.json({ ...bigCommunityScenario.me, username: 'alexk', displayName: null }),
+);
 import type { ModeName } from '../../theme/derive/derivePalette';
 
 const inChannel: Partial<VoiceState> = {
   isConnected: true,
   contextType: VoiceSessionType.Channel,
   currentChannelId: primaryVoiceChannel.id,
-  channelName: primaryVoiceChannel.name,
+  channelName: 'Squad Up',
   communityId: primaryCommunity.id,
   isPrivate: false,
   createdAt: '2026-11-15T10:00:00.000Z',
@@ -26,7 +32,7 @@ const inDm: Partial<VoiceState> = {
   isConnected: true,
   contextType: VoiceSessionType.Dm,
   currentDmGroupId: firstDmGroup.id,
-  dmGroupName: firstDmGroup.name ?? 'Direct message',
+  dmGroupName: 'Hangout',
 };
 
 const marker = (mode: ModeName, voiceState?: Partial<VoiceState>) =>
@@ -39,7 +45,7 @@ const marker = (mode: ModeName, voiceState?: Partial<VoiceState>) =>
         </AppFrame>
       </KitFrameStage>
     ),
-    { maxWidth: false, voiceState },
+    { maxWidth: false, voiceState, extraHandlers: [sampleUser] },
   );
 
 /** Dark, not in a call. */
