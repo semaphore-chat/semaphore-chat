@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useRef, useState, type JSX } from 'react';
 import {
   Avatar,
   AvatarStack,
@@ -15,6 +15,7 @@ import {
   Switch,
   Text,
   TextField,
+  useToastClearance,
 } from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 
@@ -117,6 +118,9 @@ export function SampleConversation({
   onBack?: () => void;
 }): JSX.Element {
   const [draft, setDraft] = useState('');
+  // A screen's composer lifts toasts above itself.
+  const composer = useRef<HTMLDivElement>(null);
+  useToastClearance(composer);
   return (
     <div style={{ ...column, flex: '1 1 auto', minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: tokens.space.md, padding: `${tokens.space.md}px ${tokens.space.lg}px ${tokens.space.sm}px ${tokens.space.xl}px` }}>
@@ -141,7 +145,7 @@ export function SampleConversation({
           </div>
         ))}
       </div>
-      <div style={{ padding: `${tokens.space.sm}px ${tokens.space.lg}px ${tokens.space.lg}px` }}>
+      <div ref={composer} data-slot="composer" style={{ padding: `${tokens.space.sm}px ${tokens.space.lg}px ${tokens.space.lg}px` }}>
         <TextField
           label="Message general"
           labelHidden

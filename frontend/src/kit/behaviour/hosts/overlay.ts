@@ -111,6 +111,8 @@ export interface OverlayHost {
   closed(id: string): void;
   addScreenEscape(handler: () => boolean, priority: number): () => void;
   addScreenFocusTarget(ref: RefObject<HTMLElement | null>): () => void;
+  /** Focus the screen focus target, else the `main` landmark if it takes focus (the last fallback of a focus return). */
+  focusScreen(): void;
 }
 
 /** How long after a press's pointerup the pressed control may still stand in for an opener: one gesture. */
@@ -414,6 +416,7 @@ export function createOverlayHost(options: {
         if (at !== -1) focusTargets.splice(at, 1);
       };
     },
+    focusScreen: screenTarget,
   };
 }
 

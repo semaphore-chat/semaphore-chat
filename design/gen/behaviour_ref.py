@@ -63,7 +63,7 @@ TOAST_EVENTS = ("show", "dismiss", "timerFired", "pause", "resume")
 
 
 def initial_toast_queue(params: dict) -> dict:
-    return {"showing": None, "queue": [], "paused": False, "token": 0}
+    return {"showing": None, "queue": [], "waits": [], "paused": False, "token": 0, "timer": None}
 
 
 def _toast_ms(toast: dict, params: dict) -> int | None:
@@ -82,9 +82,31 @@ def _politeness(toast: dict) -> str:
     return "assertive" if toast["tone"] == "danger" else "polite"
 
 
-def _timer_running(state: dict, params: dict) -> bool:
-    showing = state["showing"]
-    return showing is not None and not state["paused"] and _toast_ms(showing, params) is not None
+def _droppable(toast: dict) -> bool:
+    """Rule 17: only a waiting toast with no action that is not danger is ever dropped for waiting."""
+    return toast["tone"] != "danger" and toast["action"] is None
+
+
+def _start_wait(state: dict, index: int, params: dict, effects: Effects) -> None:
+    """Rule 17: start the wait of the waiting toast at `index` with the next token."""
+    state["token"] += 1
+    state["waits"][index] = state["token"]
+    effects.append(_effect("startTimer", token=state["token"], ms=params["maxWaitMs"]))
+
+
+def _cancel_showing_timer(state: dict, effects: Effects) -> None:
+    """Cancel the showing toast's timer, if one runs."""
+    if state["timer"] is not None:
+        effects.append(_effect("cancelTimer", token=state["timer"]))
+        state["timer"] = None
+
+
+def _unqueue(state: dict, index: int, effects: Effects) -> dict:
+    """Take the waiting toast at `index` out of the queue and cancel its wait (rule 17)."""
+    wait = state["waits"].pop(index)
+    if wait is not None:
+        effects.append(_effect("cancelTimer", token=wait))
+    return state["queue"].pop(index)
 
 
 def _present(state: dict, toast: dict, params: dict, effects: Effects, announce: bool = True) -> None:
@@ -95,6 +117,7 @@ def _present(state: dict, toast: dict, params: dict, effects: Effects, announce:
     # Rule 13: a toast that takes the place of a dismissed one while paused
     # shows without a timer until resume.
     if not state["paused"] and ms is not None:
+        state["timer"] = state["token"]
         effects.append(_effect("startTimer", token=state["token"], ms=ms))
     if announce:
         # Rule 14: every announcement carries the toast's action label, or null.
@@ -111,7 +134,8 @@ def _present(state: dict, toast: dict, params: dict, effects: Effects, announce:
 def _leave(state: dict, params: dict, effects: Effects) -> None:
     """The showing toast has gone: show the next queued one, or nothing."""
     if state["queue"]:
-        _present(state, state["queue"].pop(0), params, effects)
+        # Rule 17: a waiting toast that shows before its wait ends is never dropped.
+        _present(state, _unqueue(state, 0, effects), params, effects)
     else:
         state["showing"] = None
         # Rule 13: when the last toast leaves, the pause ends.
@@ -134,14 +158,14 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
             # Rule 3: the same id as the showing toast replaces it in place: the
             # old timer (if any) is cancelled and a new one starts with a new
             # token; it is announced only when the message or the action changed.
-            if _timer_running(state, params):
-                effects.append(_effect("cancelTimer", token=state["token"]))
+            _cancel_showing_timer(state, effects)
             changed = (showing["message"], showing["action"]) != (toast["message"], toast["action"])
             _present(state, toast, params, effects, announce=changed)
         else:
             queued = [item["id"] for item in state["queue"]]
             if toast["id"] in queued:
-                # Rule 4: the same id as a queued toast replaces it in its place, with no effects.
+                # Rule 4: the same id as a queued toast replaces it in its place, with
+                # no effects; it keeps its wait (rule 17).
                 state["queue"][queued.index(toast["id"])] = toast
             else:
                 # Rule 2: it waits at the end of the queue; nothing is announced until it shows.
@@ -156,36 +180,59 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
                     other = [i for i, item in enumerate(waiting) if item["tone"] != "danger"]
                     drop = (plain or other or [None])[0]
                     if drop is not None:
-                        del waiting[drop]
+                        _unqueue(state, drop, effects)
                 waiting.append(toast)
+                state["waits"].append(None)
+                # Rule 17: a droppable toast's wait starts when it joins the queue,
+                # unless the area is paused: then it starts at resume.
+                if _droppable(toast) and not state["paused"]:
+                    _start_wait(state, len(waiting) - 1, params, effects)
 
     elif name == "dismiss":
         if showing is not None and showing["id"] == fields["id"]:
             # Rule 8: dismissing the showing toast cancels its timer (when it has
             # one) and shows the next queued toast, or nothing.
-            if _timer_running(state, params):
-                effects.append(_effect("cancelTimer", token=state["token"]))
+            _cancel_showing_timer(state, effects)
             # Rule 16: focus that was inside the toast area goes back where it was.
             if fields["focusInside"]:
                 effects.append(_effect("returnFocus"))
             _leave(state, params, effects)
         else:
-            # Rule 9: dismissing a queued toast removes it; an unknown id does nothing.
-            state["queue"] = [item for item in state["queue"] if item["id"] != fields["id"]]
+            # Rule 9: dismissing a queued toast removes it and cancels its wait;
+            # an unknown id does nothing.
+            queued = [item["id"] for item in state["queue"]]
+            if fields["id"] in queued:
+                _unqueue(state, queued.index(fields["id"]), effects)
 
     elif name == "timerFired":
-        # Rule 10: the current token makes the toast leave as if dismissed,
-        # without a cancelTimer; any other token does nothing.
-        if _timer_running(state, params) and fields["token"] == state["token"]:
+        token = fields["token"]
+        if state["timer"] is not None and token == state["timer"]:
+            # Rule 10: the showing toast's timer makes it leave as if dismissed,
+            # without a cancelTimer.
+            state["timer"] = None
             _leave(state, params, effects)
+        elif token in state["waits"]:
+            # Rule 17: a waiting toast whose wait ends is dropped with no other
+            # effect if it is still droppable; otherwise it waits on, with no wait.
+            at = state["waits"].index(token)
+            if _droppable(state["queue"][at]):
+                del state["queue"][at]
+                del state["waits"][at]
+            else:
+                state["waits"][at] = None
+        # Rule 10: a timer with any other token does nothing.
 
     elif name == "pause":
-        # Rule 11: pause cancels the timer (when there is one); while already
-        # paused, or while nothing is showing, it does nothing.
+        # Rule 11: pause cancels the showing toast's timer (when there is one);
+        # while already paused, or while nothing is showing, it does nothing.
         # Rule 15: the host sends one pause for all its reasons to pause.
+        # Rule 17: the waits do not count while paused: every running wait is cancelled.
         if showing is not None and not state["paused"]:
-            if _timer_running(state, params):
-                effects.append(_effect("cancelTimer", token=state["token"]))
+            _cancel_showing_timer(state, effects)
+            for index, wait in enumerate(state["waits"]):
+                if wait is not None:
+                    effects.append(_effect("cancelTimer", token=wait))
+                    state["waits"][index] = None
             state["paused"] = True
 
     elif name == "resume":
@@ -196,7 +243,12 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
             state["token"] += 1
             ms = _toast_ms(showing, params)
             if ms is not None:
+                state["timer"] = state["token"]
                 effects.append(_effect("startTimer", token=state["token"], ms=ms))
+            # Rule 17: each droppable waiting toast's wait starts again from the full time.
+            for index, toast in enumerate(state["queue"]):
+                if _droppable(toast):
+                    _start_wait(state, index, params, effects)
 
     return state, effects
 

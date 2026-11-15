@@ -67,18 +67,18 @@ class LoadTest(TempPatterns):
     def test_durations_resolve_to_motion_tokens(self):
         toast = next(p for p in real_patterns() if p["pattern"] == "toastQueue")
         self.assertEqual(
-            toast["resolved"], {"durationMs": 4000, "durationWithActionMs": 8000, "maxQueued": 3}
+            toast["resolved"], {"durationMs": 4000, "durationWithActionMs": 8000, "maxQueued": 3, "maxWaitMs": 8000}
         )
 
     def test_unknown_event_in_a_scenario(self):
         self.edit("toast-queue", lambda d: d["scenarios"][0]["events"].append({"bogus": {}}))
-        self.assert_error("behaviour.toastQueue.scenarios[0].events[5].bogus: unknown event")
+        self.assert_error("behaviour.toastQueue.scenarios[0].events[6].bogus: unknown event")
 
     def test_event_fields_must_match_the_declaration(self):
         self.edit("toast-queue", lambda d: d["scenarios"][0]["events"].append({"timerFired": {}}))
-        self.assert_error("behaviour.toastQueue.scenarios[0].events[5].timerFired.token: missing")
-        self.edit("toast-queue", lambda d: d["scenarios"][0]["events"].__setitem__(5, {"pause": {"x": 1}}))
-        self.assert_error("behaviour.toastQueue.scenarios[0].events[5].pause.x: unknown field")
+        self.assert_error("behaviour.toastQueue.scenarios[0].events[6].timerFired.token: missing")
+        self.edit("toast-queue", lambda d: d["scenarios"][0]["events"].__setitem__(6, {"pause": {"x": 1}}))
+        self.assert_error("behaviour.toastQueue.scenarios[0].events[6].pause.x: unknown field")
 
     def test_an_event_is_one_key(self):
         self.edit("load-state", lambda d: d["scenarios"][0]["events"].append({"start": {}, "retry": {}}))
@@ -214,7 +214,7 @@ class BuildTest(unittest.TestCase):
         vector = self.built["toastQueue"]["vectors"][0]
         self.assertEqual(list(vector), ["name", "params", "initial", "steps"])
         self.assertEqual(list(vector["steps"][0]), ["event", "state", "effects"])
-        self.assertEqual(list(vector["initial"]), ["paused", "queue", "showing", "token"])
+        self.assertEqual(list(vector["initial"]), ["paused", "queue", "showing", "timer", "token", "waits"])
 
 
 class CanonicalTest(unittest.TestCase):

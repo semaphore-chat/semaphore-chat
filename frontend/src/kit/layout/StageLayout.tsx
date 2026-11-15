@@ -1,8 +1,9 @@
-import type { JSX, ReactNode } from 'react';
+import { useRef, type JSX, type ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Island } from '../surfaces/Island';
 import { Sheet } from '../overlays/Sheet';
+import { useToastClearance } from '../behaviour/hosts/toasts';
 import { isPresent } from './present';
 
 export interface StageLayoutProps {
@@ -109,15 +110,19 @@ export function StageLayout({
   sideOpen = false,
   onSideClose,
 }: StageLayoutProps): JSX.Element {
+  const controlsRef = useRef<HTMLDivElement>(null);
+  useToastClearance(controlsRef);
   return (
     <>
-      <Fill>
+      <Fill data-kit-toast-anchor="">
         <Island as="main" label={stageLabel} padding="none" scroll>
           <Column>
             <Header data-slot="header">{header}</Header>
             <Stage data-slot="stage">{stage}</Stage>
             {isPresent(strip) && <Strip data-slot="strip">{strip}</Strip>}
-            <Controls data-slot="controls">{controls}</Controls>
+            <Controls ref={controlsRef} data-slot="controls">
+              {controls}
+            </Controls>
           </Column>
         </Island>
       </Fill>

@@ -1,6 +1,7 @@
 import { useRef, type JSX, type ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
+import { useToastClearance } from '../behaviour/hosts/toasts';
 import { IconButton } from '../controls/IconButton';
 import { Island } from '../surfaces/Island';
 import { kitTheme } from '../theme/KitProvider';
@@ -110,6 +111,8 @@ export function SettingsLayout({
   const showContent = !phone || phonePane === 'content';
   const navRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  useToastClearance(footerRef);
   useFollowFocus(
     { nav: navRef, content: contentRef },
     [...(showNav ? ['nav'] : []), ...(showContent ? ['content'] : [])],
@@ -124,6 +127,7 @@ export function SettingsLayout({
         hidden={!showNav}
         inert={!showNav}
         role={phone && showNav ? 'main' : undefined}
+        data-kit-toast-anchor={phone && showNav ? '' : undefined}
       >
         <Island as="nav" label={navLabel} padding="md" scroll>
           <Text variant="title" as="h1">
@@ -132,7 +136,14 @@ export function SettingsLayout({
           <NavBody>{nav}</NavBody>
         </Island>
       </PhonePane>
-      <PhonePane ref={contentRef} tabIndex={-1} $area="content" hidden={!showContent} inert={!showContent}>
+      <PhonePane
+        ref={contentRef}
+        tabIndex={-1}
+        $area="content"
+        hidden={!showContent}
+        inert={!showContent}
+        data-kit-toast-anchor={showContent ? '' : undefined}
+      >
         <Island as="main" label={title} padding="none" scroll>
           <Column>
             {phone && (
@@ -144,7 +155,11 @@ export function SettingsLayout({
               </Header>
             )}
             <Body $headed={phone}>{children}</Body>
-            {isPresent(footer) && <Footer data-slot="footer">{footer}</Footer>}
+            {isPresent(footer) && (
+              <Footer ref={footerRef} data-slot="footer">
+                {footer}
+              </Footer>
+            )}
           </Column>
         </Island>
       </PhonePane>

@@ -1,6 +1,7 @@
 import type { CSSProperties, JSX, ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
+import { ToastRegion } from '../display/ToastRegion';
 import { kitTheme } from '../theme/KitProvider';
 import { SurfaceContext } from '../theme/onSurface';
 import { isPresent } from './present';
@@ -57,16 +58,20 @@ const Banner = styled('div')({
  *
  * `banner` is an optional row above the layout. On a phone, while the on-screen keyboard is up, the frame is
  * shortened to end at the keyboard's top edge and gives up the home-indicator padding.
+ *
+ * It renders the toast region (`useToasts`): at the bottom centre of the template's main island, which the
+ * template marks with `data-kit-toast-anchor`, or of the frame when no template marks one.
  */
 export function AppFrame({ children, banner }: AppFrameProps): JSX.Element {
   const keyboard = useKeyboardInset();
   const style = { [KEYBOARD]: `${keyboard}px` } as CSSProperties;
   return (
-    <Frame style={style} data-keyboard={keyboard > 0 ? '' : undefined}>
+    <Frame style={style} data-keyboard={keyboard > 0 ? '' : undefined} data-kit-toast-frame="">
       <SurfaceContext value="ground">
         {isPresent(banner) && <Banner data-slot="banner">{banner}</Banner>}
         {children}
       </SurfaceContext>
+      <ToastRegion />
     </Frame>
   );
 }

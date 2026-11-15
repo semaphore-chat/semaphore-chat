@@ -40,8 +40,14 @@ called a host.
   panel, `ESCAPE_PRIORITY.conversation` marks as read), and
   `useScreenFocusTarget` names where focus goes when nothing else can take it
   (the composer on a chat screen).
-- The other hosts (toasts, confirm, list focus, load state) do not exist yet,
-  and the native client has none. They arrive with the new shell.
+- The web kit has the toast queue's host too. Screens show toasts with
+  `useToasts()` (`show({id, tone, message, action})` and `dismiss(id)`) and
+  never render a Toast themselves. `AppFrame` renders the toast region at the
+  bottom centre of the template's main island (see
+  [Layouts](layouts.md#where-toasts-sit)); a bottom-pinned element such as a
+  composer lifts it above itself with `useToastClearance(ref)`.
+- The other hosts (confirm, list focus, load state) do not exist yet, and the
+  native client has none. They arrive with the new shell.
 - Until then, today's screens still handle these things by hand, and they use
   MUI overlays, not the kit's. They behave as MUI does, which differs from these
   rules in places. For example, MUI lets an Escape pressed over a tooltip also
@@ -61,7 +67,7 @@ The patterns take their durations from the timing tokens (see
 |---|---|---|
 |typeahead|1000|How long typed letters in a list add up before they start again|
 |toast|4000|How long a toast stays|
-|toastAction|8000|How long a toast with an action, or a danger toast without one, stays|
+|toastAction|8000|How long a toast with an action, or a danger toast without one, stays; the longest a waiting toast that is not danger waits|
 
 ## What a host does
 
@@ -117,7 +123,11 @@ it does what the effect's description says to do instead.
   the pointer on the toast area, focus inside it, the window hidden (minimised,
   in the background, or the tab hidden), and a modal layer open (a dialog or
   sheet makes the toast unreachable). If a reason still holds when a new toast
-  appears after the queue was empty, send `pause` again.
+  appears after the queue was empty, send `pause` again. The pointer counts for
+  a mouse or a pen, not a touch (a touch has no hover to end the pause). When
+  the area goes (the last toast left), the pointer and focus reasons end with
+  it. On the web, "the window hidden" is the page hidden or the window
+  blurred.
 - **Overlay stack.** `open{layer}` when a layer appears, with `parent` (the
   layer that owns it: it closes when that one closes), `opener` (the element
   focus returns to) and `openerLayer` (the layer that element is in, or null for
@@ -187,7 +197,9 @@ A confirm dialog is also a layer of the overlay stack. The host joins them:
 **What the user sees.** One toast at a time. If more arrive, they wait their
 turn. Each one leaves on its own after a while, or when the user dismisses it.
 While the pointer or focus is on a toast, or the window is hidden, or a dialog
-is open, it stays.
+is open, it stays. A plain toast (no action, not a failure) that has waited
+too long for its turn is dropped; nothing is dropped while it could not be
+seen.
 
 Rules:
 
@@ -222,17 +234,33 @@ Rules:
   knows the action is there.
 - When the user dismisses a toast with focus inside the toast area, focus goes
   back to where it was before it entered the area.
+- A waiting toast with no action that is not danger is dropped once it has
+  waited the toastAction timing (8 seconds): by then "Saved" or "Copied" is
+  stale. A toast with an action (Undo) and a danger toast are never dropped:
+  they wait however long it takes. The wait starts when the toast joins the
+  queue. It does not count while the toast area is paused, whatever the
+  reason (the pointer or focus on the toast, the window hidden, a dialog
+  open): the pause stops every wait, and when it ends each one starts again
+  from the full time. So nothing raised behind a dialog is dropped unseen: it
+  shows, and is announced, after the dialog closes. A toast whose turn comes
+  first shows for its full time, also when its turn and its wait's end come
+  at the same moment. Replacing a waiting toast with the same id keeps its
+  wait (a fresher "3 new messages" keeps the clock of "2 new messages"); if
+  the replacement has an action or is danger, it is not dropped when the wait
+  ends.
 
 The toast area is a landmark region named "Notifications". Keyboard users
-reach it with F6, which moves between the main regions of the window.
+reach it with F6, and F6 (or Shift+F6) inside it puts focus back where it was.
+While a dialog or sheet is open the area is out of reach and F6 does nothing.
 
 Parameters: `durationMs` (toast), `durationWithActionMs` (toastAction),
-`maxQueued` (3).
+`maxQueued` (3), `maxWaitMs` (toastAction).
 
 **Example.** "Saved" appears and starts a four-second timer. A danger toast,
 "Couldn't send", arrives and waits. After four seconds "Saved" leaves and
 "Couldn't send" appears, interrupts the screen reader, and stays eight seconds.
-Had it carried a "Retry" action, it would stay until dismissed.
+Had it carried a "Retry" action, it would stay until dismissed, and a "Saved"
+arriving behind it would be dropped after waiting eight seconds.
 
 |Host checklist|Done when|
 |---|---|
@@ -240,7 +268,8 @@ Had it carried a "Retry" action, it would stay until dismissed.
 |Announcements|Message then action label, at the given politeness|
 |Pause|One `pause`/`resume` pair for pointer, focus, hidden window and open modal; `pause` again when a new toast appears while a reason holds|
 |Dismiss|`focusInside` sent; `returnFocus` puts focus back|
-|Reach|The area is a landmark reached with F6|
+|Reach|The area is a landmark; F6 moves focus into it and back; nothing while a modal is open|
+|Waits|A wait's `startTimer` runs like any other (the reducer cancels waits on `pause`). When a wait and the showing toast's timer end at the same moment, send the showing toast's `timerFired` first (the web host delivers an ended wait one task later)|
 |Ids|Callers use one id per subject|
 
 ## Overlay stack

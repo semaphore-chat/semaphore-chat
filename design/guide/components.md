@@ -615,9 +615,23 @@ until the user acts. Use Alert.
 
 A Toast is only the look of one notice. How long toasts stay and how they queue
 belong to the [Behaviour](behaviour.md#toast-queue) chapter.
+
 A `danger` toast interrupts screen readers when it appears. The others wait for
 a pause. `announce={false}` makes a toast a quiet note, for one that is already
 on the page at load.
+
+**Screens never render a Toast.** They call `useToasts()` from the kit, from
+event handlers and effects (never while rendering):
+`show({ id, tone, message, action })` returns the toast's id, and `dismiss(id)`
+takes it away. `action` is `{ label, onAction }`; pressing it dismisses the
+toast and then runs `onAction`, so a follow-up shown under the same id (Retry
+failing again) stays. An action that throws or rejects is reported and the
+queue carries on. Use one `id` per subject (`'offline'`,
+`` `upload-${fileId}` ``), so a second report replaces the first. `AppFrame`
+renders the toast region where [Layouts](layouts.md#where-toasts-sit) says, and
+the host announces each toast, so the region's Toast is quiet. A screen's
+bottom-pinned element (the composer) calls `useToastClearance(ref)` so toasts
+sit above it. Rendering `Toast` directly is for the kit and its stories.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -628,7 +642,9 @@ on the page at load.
 |`announce`|true, false|true|Whether screen readers speak it when it appears.|
 
 Stories: `kit-toast--tones`, `kit-toast--tones-light`,
-`kit-toast--tones-tinted`, `kit-toast--long-message`.
+`kit-toast--tones-tinted`, `kit-toast--long-message`; the region on the
+templates: `kit-toast-region--in-call` and the others listed in
+[Layouts](layouts.md#where-toasts-sit).
 
 ## ListRow
 

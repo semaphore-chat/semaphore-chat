@@ -25,10 +25,17 @@ export interface State {
   showing: Toast | null;
   /** The toasts waiting, oldest first. */
   queue: Toast[];
-  /** The pointer or focus is on the toast area; false whenever nothing is showing. */
+  /**
+   * Rule 17: for each waiting toast, in queue order, the token of its running
+   * wait; null when none runs (an action or danger, a pause, or an ended wait).
+   */
+  waits: (number | null)[];
+  /** The host has a reason to pause; false whenever nothing is showing. */
   paused: boolean;
-  /** The token of the latest timer; only that one counts when it fires. */
+  /** The last timer token handed out; every timer takes the next one. */
   token: number;
+  /** The token of the showing toast's timer while it runs. */
+  timer: number | null;
 }
 
 /** An event is an object with exactly one key, its name. */
@@ -49,6 +56,8 @@ export interface Params {
   durationMs: number;
   durationWithActionMs: number;
   maxQueued: number;
+  /** Rule 17: how long a waiting toast that is not danger may wait. */
+  maxWaitMs: number;
 }
 
 const EVENT_NAMES = ['show', 'dismiss', 'timerFired', 'pause', 'resume'] as const;
@@ -57,10 +66,11 @@ export const DEFAULT_PARAMS: Params = {
   durationMs: tokens.motion.toast,
   durationWithActionMs: tokens.motion.toastAction,
   maxQueued: 3,
+  maxWaitMs: tokens.motion.toastAction,
 };
 
 export function initialToastQueue(_params: Params = DEFAULT_PARAMS): State {
-  return { showing: null, queue: [], paused: false, token: 0 };
+  return { showing: null, queue: [], waits: [], paused: false, token: 0, timer: null };
 }
 
 /**
@@ -75,9 +85,32 @@ function toastMs(toast: Toast, params: Params): number | null {
   return toast.action !== null ? params.durationWithActionMs : params.durationMs;
 }
 
-/** A timer starts for the showing toast only while it is on screen, unpaused, and has one. */
-function timerRunning(state: State, params: Params): boolean {
-  return state.showing !== null && !state.paused && toastMs(state.showing, params) !== null;
+/** Rule 17: only a waiting toast with no action that is not danger is dropped for waiting. */
+function droppable(toast: Toast): boolean {
+  return toast.tone !== 'danger' && toast.action === null;
+}
+
+/** Rule 17: start the wait of the waiting toast at `index` with the next token. */
+function startWait(state: State, index: number, params: Params, effects: Effect[]): void {
+  state.token += 1;
+  state.waits[index] = state.token;
+  effects.push({ startTimer: { token: state.token, ms: params.maxWaitMs } });
+}
+
+/** Cancel the showing toast's timer, if one runs. */
+function cancelShowingTimer(state: State, effects: Effect[]): void {
+  if (state.timer !== null) {
+    effects.push({ cancelTimer: { token: state.timer } });
+    state.timer = null;
+  }
+}
+
+/** Rule 17: take the waiting toast at `index` out of the queue and cancel its wait. */
+function unqueue(state: State, index: number, effects: Effect[]): Toast {
+  const [wait] = state.waits.splice(index, 1);
+  if (wait !== null && wait !== undefined) effects.push({ cancelTimer: { token: wait } });
+  const [toast] = state.queue.splice(index, 1);
+  return toast as Toast;
 }
 
 /**
@@ -97,6 +130,7 @@ function present(
   // Rule 13: a toast that takes the place of a dismissed one while paused
   // shows without a timer until resume.
   if (!state.paused && ms !== null) {
+    state.timer = state.token;
     effects.push({ startTimer: { token: state.token, ms } });
   }
   if (announce) {
@@ -114,9 +148,9 @@ function present(
 
 /** Rules 8 and 13: the showing toast has gone; show the next queued one, or nothing. */
 function leave(state: State, params: Params, effects: Effect[]): void {
-  const next = state.queue.shift();
-  if (next !== undefined) {
-    present(state, next, params, effects);
+  if (state.queue.length > 0) {
+    // Rule 17: a waiting toast that shows before its wait ends is never dropped.
+    present(state, unqueue(state, 0, effects), params, effects);
   } else {
     state.showing = null;
     // Rule 13: when the last toast leaves, the pause ends.
@@ -133,8 +167,10 @@ export function stepToastQueue(
   const next: State = {
     showing: state.showing,
     queue: [...state.queue],
+    waits: [...state.waits],
     paused: state.paused,
     token: state.token,
+    timer: state.timer,
   };
   const effects: Effect[] = [];
   const showing = next.showing;
@@ -148,30 +184,34 @@ export function stepToastQueue(
       // Rule 3: the same id as the showing toast replaces it in place: its old
       // timer (if any) is cancelled and it is announced only when the message
       // or the action changed.
-      if (timerRunning(next, params)) {
-        effects.push({ cancelTimer: { token: next.token } });
-      }
+      cancelShowingTimer(next, effects);
       const changed = showing.message !== toast.message || showing.action !== toast.action;
       present(next, toast, params, effects, changed);
     } else {
       const at = next.queue.findIndex((item) => item.id === toast.id);
       if (at !== -1) {
-        // Rule 4: the same id as a queued toast replaces it in its place.
+        // Rule 4: the same id as a queued toast replaces it in its place, with
+        // no effects; it keeps its wait (rule 17).
         next.queue[at] = toast;
       } else {
-        const waiting = next.queue;
-        if (waiting.length >= params.maxQueued) {
+        if (next.queue.length >= params.maxQueued) {
           // Rule 5: when the queue is full, drop the oldest waiting toast with
           // no action that is not danger; failing that, the oldest waiting
           // non-danger toast. Never the incoming toast or a danger toast: with
           // only danger waiting, the queue grows.
-          const plain = waiting.findIndex((item) => item.tone !== 'danger' && item.action === null);
-          const other = waiting.findIndex((item) => item.tone !== 'danger');
+          const plain = next.queue.findIndex(
+            (item) => item.tone !== 'danger' && item.action === null,
+          );
+          const other = next.queue.findIndex((item) => item.tone !== 'danger');
           const drop = plain !== -1 ? plain : other;
-          if (drop !== -1) waiting.splice(drop, 1);
+          if (drop !== -1) unqueue(next, drop, effects);
         }
         // Rule 2: it waits at the end of the queue; nothing is announced until it shows.
-        waiting.push(toast);
+        next.queue.push(toast);
+        next.waits.push(null);
+        // Rule 17: a droppable toast's wait starts when it joins the queue,
+        // unless the area is paused: then it starts at resume.
+        if (droppable(toast) && !next.paused) startWait(next, next.queue.length - 1, params, effects);
       }
     }
   } else if ('dismiss' in event) {
@@ -179,30 +219,47 @@ export function stepToastQueue(
     if (showing !== null && showing.id === id) {
       // Rule 8: dismissing the showing toast cancels its timer (when it has
       // one) and shows the next queued toast, or nothing.
-      if (timerRunning(next, params)) {
-        effects.push({ cancelTimer: { token: next.token } });
-      }
+      cancelShowingTimer(next, effects);
       // Rule 16: focus that was inside the toast area goes back where it was.
       if (focusInside) effects.push({ returnFocus: {} });
       leave(next, params, effects);
     } else {
-      // Rule 9: dismissing a queued toast removes it; an unknown id does nothing.
-      next.queue = next.queue.filter((item) => item.id !== id);
+      // Rule 9: dismissing a queued toast removes it and cancels its wait; an
+      // unknown id does nothing.
+      const at = next.queue.findIndex((item) => item.id === id);
+      if (at !== -1) unqueue(next, at, effects);
     }
   } else if ('timerFired' in event) {
-    // Rule 10: the current token makes the toast leave as if dismissed,
-    // without a cancelTimer; any other token does nothing.
-    if (timerRunning(next, params) && event.timerFired.token === next.token) {
+    const { token } = event.timerFired;
+    const waiting = next.waits.indexOf(token);
+    if (next.timer !== null && token === next.timer) {
+      // Rule 10: the showing toast's timer makes it leave as if dismissed,
+      // without a cancelTimer.
+      next.timer = null;
       leave(next, params, effects);
-    }
-  } else if ('pause' in event) {
-    // Rule 11: pause cancels the timer (when there is one); while already
-    // paused, or while nothing is showing, it does nothing.
-    // Rule 15: the host sends one pause for all its reasons to pause.
-    if (showing !== null && !next.paused) {
-      if (timerRunning(next, params)) {
-        effects.push({ cancelTimer: { token: next.token } });
+    } else if (waiting !== -1) {
+      // Rule 17: a waiting toast whose wait ends is dropped with no other
+      // effect if it is still droppable; otherwise it waits on, with no wait.
+      const queued = next.queue[waiting];
+      if (queued !== undefined && droppable(queued)) {
+        next.queue.splice(waiting, 1);
+        next.waits.splice(waiting, 1);
+      } else {
+        next.waits[waiting] = null;
       }
+    }
+    // Rule 10: a timer with any other token does nothing.
+  } else if ('pause' in event) {
+    // Rule 11: pause cancels the showing toast's timer (when there is one);
+    // while already paused, or while nothing is showing, it does nothing.
+    // Rule 15: the host sends one pause for all its reasons to pause.
+    // Rule 17: the waits do not count while paused: every running wait is cancelled.
+    if (showing !== null && !next.paused) {
+      cancelShowingTimer(next, effects);
+      next.waits = next.waits.map((wait) => {
+        if (wait !== null) effects.push({ cancelTimer: { token: wait } });
+        return null;
+      });
       next.paused = true;
     }
   } else if ('resume' in event) {
@@ -212,7 +269,14 @@ export function stepToastQueue(
       next.paused = false;
       next.token += 1;
       const ms = showing === null ? null : toastMs(showing, params);
-      if (ms !== null) effects.push({ startTimer: { token: next.token, ms } });
+      if (ms !== null) {
+        next.timer = next.token;
+        effects.push({ startTimer: { token: next.token, ms } });
+      }
+      // Rule 17: each droppable waiting toast's wait starts again from the full time.
+      next.queue.forEach((toast, index) => {
+        if (droppable(toast)) startWait(next, index, params, effects);
+      });
     }
   }
 

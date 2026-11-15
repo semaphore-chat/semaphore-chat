@@ -188,8 +188,35 @@ fn toast_state_to_json(state: &toast::State) -> String {
             "showing",
             state.showing.as_ref().map_or(Value::Null, toast_to_json),
         ),
+        (
+            "timer",
+            state
+                .timer
+                .map_or(Value::Null, |token| Value::int(i64::from(token))),
+        ),
         ("token", Value::int(i64::from(state.token))),
+        (
+            "waits",
+            Value::Array(
+                state
+                    .waits
+                    .iter()
+                    .map(|wait| wait.map_or(Value::Null, |token| Value::int(i64::from(token))))
+                    .collect(),
+            ),
+        ),
     ]))
+}
+
+/// A whole number that fits a `u32`, or null.
+fn optional_token(value: &Value, what: &str) -> Result<Option<u32>, String> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Int(number) => u32::try_from(*number)
+            .map(Some)
+            .map_err(|_| format!("{what}: expected a u32, got {number}")),
+        _ => Err(format!("{what}: expected a number or null")),
+    }
 }
 
 fn toast_state_from_json(value: &Value) -> Result<toast::State, String> {
@@ -202,8 +229,13 @@ fn toast_state_from_json(value: &Value) -> Result<toast::State, String> {
             .iter()
             .map(toast_from_json)
             .collect::<Result<_, String>>()?,
+        waits: canon::items(value, "waits")?
+            .iter()
+            .map(|wait| optional_token(wait, "waits"))
+            .collect::<Result<_, String>>()?,
         paused: canon::flag(value, "paused")?,
         token: canon::number(value, "token")?,
+        timer: optional_token(canon::field(value, "timer")?, "timer")?,
     })
 }
 
@@ -272,6 +304,7 @@ fn toast_params_from_json(value: &Value) -> Result<toast::Params, String> {
         duration_ms: canon::number(value, "durationMs")?,
         duration_with_action_ms: canon::number(value, "durationWithActionMs")?,
         max_queued: canon::count(value, "maxQueued")?,
+        max_wait_ms: canon::number(value, "maxWaitMs")?,
     })
 }
 
@@ -286,6 +319,7 @@ fn toast_params_to_json(params: &toast::Params) -> String {
             "maxQueued",
             Value::int(i64::try_from(params.max_queued).unwrap_or(i64::MAX)),
         ),
+        ("maxWaitMs", Value::int(i64::from(params.max_wait_ms))),
     ]))
 }
 
@@ -333,6 +367,51 @@ impl Port for ToastQueue {
 
     fn effects_to_json(effects: &[Self::Effect]) -> String {
         toast_effects_to_json(effects)
+    }
+}
+
+/// A hand-built state whose `waits` and `queue` differ in length must not make the step panic.
+#[test]
+fn toast_queue_tolerates_waits_out_of_step_with_the_queue() {
+    let item = |id: &str| toast::Toast {
+        id: id.to_owned(),
+        tone: toast::Tone::Neutral,
+        message: id.to_owned(),
+        action: None,
+    };
+    let params = toast::Params::default();
+    let events = [
+        toast::Event::TimerFired { token: 7 },
+        toast::Event::Dismiss {
+            id: "b".to_owned(),
+            focus_inside: false,
+        },
+        toast::Event::Pause,
+        toast::Event::Resume,
+        toast::Event::Show { toast: item("c") },
+        toast::Event::Dismiss {
+            id: "a".to_owned(),
+            focus_inside: false,
+        },
+    ];
+    for waits in [
+        vec![],
+        vec![Some(7)],
+        vec![Some(7), None, Some(9), Some(11)],
+    ] {
+        let mut state = toast::State {
+            showing: Some(item("a")),
+            queue: vec![item("b"), item("x")],
+            waits,
+            paused: false,
+            token: 11,
+            timer: Some(1),
+        };
+        for event in &events {
+            let (next, _) = toast::step(&state, event, &params);
+            assert_eq!(next.waits.len(), next.queue.len());
+            state = next;
+        }
     }
 }
 
