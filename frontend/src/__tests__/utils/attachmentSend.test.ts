@@ -39,10 +39,12 @@ import {
   removeAttachment,
   startAttachmentUploads,
   discardAttachmentSend,
+  abortAllAttachmentSends,
   resetAttachmentSendsForTests,
   type AttachmentSendRuntime,
 } from '../../utils/attachmentSend';
-import { getPendingUpload, resetPendingUploadsForTests } from '../../utils/pendingUploadStore';
+import { getPendingUpload, listPendingUploads, resetPendingUploadsForTests } from '../../utils/pendingUploadStore';
+import { clearSessionCaches } from '../../utils/clearSessionCaches';
 import { uploadFileWithProgress } from '../../utils/uploadFileWithProgress';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { channelMessagesQueryKey, dmMessagesQueryKey } from '../../utils/messageQueryKeys';
@@ -361,5 +363,41 @@ describe('failures, retry, remove and cancel', () => {
     await flush();
     expect(addAttachment).toHaveBeenCalledWith(expect.objectContaining({ body: { fileId: 'file-a' } }));
     expect(getPendingUpload(clientId)).toBeUndefined();
+  });
+
+  describe('on sign-out', () => {
+    it('abortAllAttachmentSends aborts every upload of every message and empties the store', async () => {
+      await sendMessageWithAttachments({ runtime: runtime(), payload: payload(), files: files(), send: ack('msg-1') });
+      await sendMessageWithAttachments({ runtime: runtime(), payload: payload('again'), files: files().slice(0, 1), send: ack('msg-2') });
+      expect(uploads).toHaveLength(3);
+      expect(listPendingUploads()).toHaveLength(2);
+
+      abortAllAttachmentSends();
+
+      expect(uploads.every((u) => u.signal?.aborted)).toBe(true);
+      expect(listPendingUploads()).toEqual([]);
+    });
+
+    it('clearSessionCaches drops the pending uploads and shows no failure for the aborted ones', async () => {
+      await sendMessageWithAttachments({ runtime: runtime(), payload: payload(), files: files(), send: ack('msg-1') });
+
+      clearSessionCaches(queryClient);
+      await flush();
+
+      expect(uploads.every((u) => u.signal?.aborted)).toBe(true);
+      expect(listPendingUploads()).toEqual([]);
+      expect(notifyError).not.toHaveBeenCalled();
+    });
+
+    it('an upload that finishes after sign-out is not attached to the message', async () => {
+      await sendMessageWithAttachments({ runtime: runtime(), payload: payload(), files: files().slice(0, 1), send: ack('msg-1') });
+
+      clearSessionCaches(queryClient);
+      uploads[0].resolve({ id: 'file-a' });
+      await flush();
+
+      expect(addAttachment).not.toHaveBeenCalled();
+      expect(listPendingUploads()).toEqual([]);
+    });
   });
 });

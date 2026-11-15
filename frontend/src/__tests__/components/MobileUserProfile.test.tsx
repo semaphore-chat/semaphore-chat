@@ -20,6 +20,14 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
   };
 });
 
+// The panel signs out through useLogout, which needs the voice providers
+vi.mock('../../hooks/useVoiceConnection', () => ({
+  useVoiceConnection: () => ({
+    state: { isConnected: false },
+    actions: { leaveVoiceChannel: vi.fn() },
+  }),
+}));
+
 vi.mock('../../hooks/useAuthenticatedImage', () => ({
   useAuthenticatedImage: () => ({ blobUrl: null, isLoading: false, error: null }),
 }));

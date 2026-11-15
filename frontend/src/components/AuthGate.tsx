@@ -1,19 +1,18 @@
-import { useState, useEffect, useRef, type RefObject } from "react";
+import { useState, useEffect, useRef, useCallback, type RefObject } from "react";
 import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { DESKTOP_LOGIN_PATH } from "../utils/desktopLogin";
 import { Box, CircularProgress, Typography } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { onboardingControllerGetStatusOptions } from "../api-client/@tanstack/react-query.gen";
 import {
   getAccessToken,
   refreshSessionUntilAnswered,
   endRefreshCooldown,
-  clearTokens,
   onAuthFailure,
+  isServerSignOutOwed,
   type RefreshResult,
   type SignOutReason,
 } from "../utils/tokenService";
-import { disconnectSocket } from "../utils/socketSingleton";
 import { userControllerGetProfile } from "../api-client/sdk.gen";
 import { SocketProvider } from "../utils/SocketProvider";
 import { AvatarCacheProvider } from "../contexts/AvatarCacheContext";
@@ -28,7 +27,10 @@ import { SpeakingProvider } from "../contexts/SpeakingContext";
 import { ThreadPanelProvider } from "../contexts/ThreadPanelProvider";
 import { UserProfileProvider } from "../contexts/UserProfileProvider";
 import { logger } from "../utils/logger";
-import { clearDesignPreview } from "../shell/designPreview";
+import { removeUnobservedQueries } from "../utils/clearSessionCaches";
+import { endLocalSession } from "../utils/endLocalSession";
+import { isSigningOut } from "../utils/signOutSession";
+import { settleOwedServerSignOut } from "../utils/serverSignOut";
 import { PAGE_LOAD_REFRESH_ROUNDS } from "../utils/sessionRefreshPolicy";
 import { SessionUnavailable } from "./SessionUnavailable";
 import type { LoginLocationState } from "../pages/LoginPage";
@@ -84,6 +86,7 @@ export function AuthGate() {
   // Why the server signed us out, for the login page to explain
   const [signOutReason, setSignOutReason] = useState<SignOutReason | null>(null);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   // Ends a session refresh still waiting for the server when AuthGate unmounts
   const refreshAbort = useRef<AbortController | null>(null);
@@ -97,58 +100,34 @@ export function AuthGate() {
     isError: onboardingCheckFailed,
   } = useQuery(onboardingControllerGetStatusOptions());
 
-  // Phase 2: Token validation (runs after onboarding check completes)
-  useEffect(() => {
-    // Still checking onboarding
-    if (isCheckingOnboarding) return;
+  // Set once this AuthGate has ended the session, until the next sign-in: a
+  // request fired during the teardown can't run it again (and replace the
+  // reason the server gave with none).
+  const sessionEnded = useRef(false);
 
-    // Onboarding needed
-    if (onboardingChecked && onboardingStatus?.needsSetup) {
-      setAuthState(AuthState.NeedsOnboarding);
-      return;
-    }
-
-    // Onboarding check failed — could be network error on first load.
-    // Fall through to token check so the app doesn't get stuck.
-    // If server is unreachable, authenticated requests will also fail.
-
-    // Onboarding done (or check failed) → validate token
-    if (onboardingChecked || onboardingCheckFailed) {
-      validateToken();
-    }
-  }, [isCheckingOnboarding, onboardingChecked, onboardingCheckFailed, onboardingStatus]);
-
-  // Listen for unrecoverable 401s during the session (e.g. refresh token
-  // expired while the user was browsing). The interceptor calls
-  // notifyAuthFailure() instead of performing navigation/cleanup itself.
-  useEffect(() => {
-    return onAuthFailure((reason) => {
-      disconnectSocket();
-      clearTokens();
-      // The next account signed in on this tab must not inherit the design preview.
-      clearDesignPreview();
-      setSignOutReason(reason ?? null);
+  /** End the session on this tab (endLocalSession) and show the login page. */
+  const endSession = useCallback(
+    (reason: SignOutReason | null) => {
+      sessionEnded.current = true;
+      endLocalSession(queryClient);
+      setSignOutReason(reason);
       setAuthState(AuthState.Unauthenticated);
-    });
-  }, []);
+    },
+    [queryClient]
+  );
 
-  // Flush any deep link stashed by useDeepLinks (mounted in App.tsx, alive
-  // even while unauthenticated) once sign-in completes. AuthGate is the one
-  // place every sign-in path — LoginPage, RegisterPage, JoinInvitePage,
-  // onboarding completion, and silent refresh — funnels through and
-  // observes Authenticated, so it's the right place to own the flush.
-  useEffect(() => {
-    if (authState !== AuthState.Authenticated) return;
-    const pending = takeStashedDeepLinkRoute();
-    if (!pending) return;
-    const path = mapDeepLinkRouteToPath(pending);
-    if (path) navigate(path);
-  }, [authState, navigate]);
-
-  async function validateToken() {
+  const validateToken = useCallback(async () => {
     const token = getAccessToken();
 
     if (!token) {
+      // A sign-out the server never confirmed (web): retry it first, and never
+      // restore that session from the refresh cookie
+      if (isServerSignOutOwed()) {
+        logger.dev("[AuthGate] A server sign-out is owed, retrying it before the login page");
+        await settleOwedServerSignOut();
+        setAuthState(AuthState.Unauthenticated);
+        return;
+      }
       // No in-memory token (e.g. page refresh). Attempt silent refresh
       // using httpOnly refresh_token cookie (web) or stored token (Electron).
       logger.dev("[AuthGate] No token in memory, attempting silent refresh...");
@@ -179,10 +158,70 @@ export function AuthGate() {
       return;
     }
 
-    disconnectSocket();
-    clearTokens();
-    setAuthState(AuthState.Unauthenticated);
-  }
+    endSession(null);
+  }, [endSession]);
+
+  // Phase 2: Token validation (runs after onboarding check completes)
+  useEffect(() => {
+    // Still checking onboarding
+    if (isCheckingOnboarding) return;
+
+    // Onboarding needed
+    if (onboardingChecked && onboardingStatus?.needsSetup) {
+      setAuthState(AuthState.NeedsOnboarding);
+      return;
+    }
+
+    // Onboarding check failed — could be network error on first load.
+    // Fall through to token check so the app doesn't get stuck.
+    // If server is unreachable, authenticated requests will also fail.
+
+    // Onboarding done (or check failed) → validate token
+    if (onboardingChecked || onboardingCheckFailed) {
+      void validateToken();
+    }
+  }, [isCheckingOnboarding, onboardingChecked, onboardingCheckFailed, onboardingStatus, validateToken]);
+
+  // Listen for unrecoverable 401s during the session (e.g. refresh token
+  // expired while the user was browsing). The interceptor calls
+  // notifyAuthFailure() instead of performing navigation/cleanup itself.
+  useEffect(() => {
+    return onAuthFailure((reason) => {
+      // A manual sign-out is ending the session already (its requests may
+      // fail meanwhile), or this AuthGate already ended it
+      if (isSigningOut() || sessionEnded.current) return;
+      endSession(reason ?? null);
+    });
+  }, [endSession]);
+
+  useEffect(() => {
+    if (authState === AuthState.Authenticated) sessionEnded.current = false;
+  }, [authState]);
+
+  // Once the signed-in screens have unmounted (the session ended, or a manual
+  // sign-out navigated away): drop what they rebuilt in the cache between the
+  // teardown's clear and their unmount. After a macrotask, so every unmounted
+  // observer has unsubscribed whatever order React runs the cleanups in.
+  useEffect(() => {
+    if (authState !== AuthState.Authenticated) return;
+    return () => {
+      if (getAccessToken()) return; // still signed in (e.g. a re-validation)
+      setTimeout(() => removeUnobservedQueries(queryClient), 0);
+    };
+  }, [authState, queryClient]);
+
+  // Flush any deep link stashed by useDeepLinks (mounted in App.tsx, alive
+  // even while unauthenticated) once sign-in completes. AuthGate is the one
+  // place every sign-in path — LoginPage, RegisterPage, JoinInvitePage,
+  // onboarding completion, and silent refresh — funnels through and
+  // observes Authenticated, so it's the right place to own the flush.
+  useEffect(() => {
+    if (authState !== AuthState.Authenticated) return;
+    const pending = takeStashedDeepLinkRoute();
+    if (!pending) return;
+    const path = mapDeepLinkRouteToPath(pending);
+    if (path) navigate(path);
+  }, [authState, navigate]);
 
   /** "Try again": a new attempt now, without waiting out a pause. */
   function retryAfterUnavailable() {
@@ -194,11 +233,7 @@ export function AuthGate() {
   /** "Sign in again": forget the session this device holds. */
   function signInAgain() {
     refreshAbort.current?.abort();
-    disconnectSocket();
-    clearTokens();
-    clearDesignPreview();
-    setSignOutReason(null);
-    setAuthState(AuthState.Unauthenticated);
+    endSession(null);
   }
 
   if (authState === AuthState.Loading) {

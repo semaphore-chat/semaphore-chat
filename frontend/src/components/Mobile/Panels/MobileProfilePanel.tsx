@@ -33,11 +33,10 @@ import {
   PersonOff as PersonOffIcon,
   ErrorOutline as ErrorIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   userControllerGetProfileOptions,
   userControllerGetUserByIdOptions,
-  authControllerLogoutMutation,
 } from '../../../api-client/@tanstack/react-query.gen';
 import type { UserEntity } from '../../../api-client/types.gen';
 import { useAuthenticatedImage } from '../../../hooks/useAuthenticatedImage';
@@ -46,9 +45,7 @@ import { useNavigate } from 'react-router-dom';
 import MobileAppBar from '../MobileAppBar';
 import EmptyState from '../../Common/EmptyState';
 import { ClipLibrary } from '../../Profile/ClipLibrary';
-import { logger } from '../../../utils/logger';
-import { isElectron } from '../../../utils/platform';
-import { getElectronRefreshToken } from '../../../utils/tokenService';
+import { useLogout } from '../../../hooks/useLogout';
 
 interface MobileProfilePanelProps {
   /** Whose profile to show. Omitted (or the current user's id) = own profile. */
@@ -218,7 +215,7 @@ const OtherUserProfile: React.FC<{ userId: string }> = ({ userId }) => {
 /** The current user's own profile with settings, admin and logout. */
 const OwnProfile: React.FC<{ userData: UserEntity | undefined }> = ({ userData }) => {
   const navigate = useNavigate();
-  const { mutateAsync: logout } = useMutation(authControllerLogoutMutation());
+  const { handleLogout, logoutLoading } = useLogout();
 
   const handleEditProfile = () => {
     navigate('/profile/edit');
@@ -230,17 +227,6 @@ const OwnProfile: React.FC<{ userData: UserEntity | undefined }> = ({ userData }
 
   const handleAdminPanel = () => {
     navigate('/admin/invites');
-  };
-
-  const handleLogout = async () => {
-    try {
-      // Electron clients must send refresh token in body since cookies don't work cross-origin
-      const refreshToken = isElectron() ? (await getElectronRefreshToken()) ?? undefined : undefined;
-      await logout({ body: { refreshToken } });
-      navigate('/login');
-    } catch (error) {
-      logger.error('Failed to logout:', error);
-    }
   };
 
   const isAdmin = userData?.role === 'OWNER';
@@ -328,7 +314,9 @@ const OwnProfile: React.FC<{ userData: UserEntity | undefined }> = ({ userData }
           <List>
             <ListItem disablePadding>
               <ListItemButton
-                onClick={handleLogout}
+                onClick={() => void handleLogout()}
+                disabled={logoutLoading}
+                aria-busy={logoutLoading}
                 sx={{
                   minHeight: TOUCH_TARGETS.RECOMMENDED,
                   color: 'error.main',
@@ -337,7 +325,7 @@ const OwnProfile: React.FC<{ userData: UserEntity | undefined }> = ({ userData }
                 <ListItemIcon>
                   <LogoutIcon sx={{ color: 'error.main' }} />
                 </ListItemIcon>
-                <ListItemText primary="Logout" />
+                <ListItemText primary={logoutLoading ? 'Logging out…' : 'Logout'} />
               </ListItemButton>
             </ListItem>
           </List>

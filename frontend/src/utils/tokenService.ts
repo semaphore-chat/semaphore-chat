@@ -205,6 +205,72 @@ export function getAccessToken(): string | null {
  */
 export function setAccessToken(token: string): void {
   accessTokenInMemory = token;
+  sessionEnded = false;
+  // A new session (a deliberate sign-in, or a refresh, which can't run while
+  // a server sign-out is owed) supersedes the old one's owed sign-out.
+  clearServerSignOutOwed();
+}
+
+/**
+ * Set by clearTokens() (a session ended on this page) until the next
+ * setAccessToken(). While set, the REST interceptor doesn't try to refresh a
+ * 401: a request fired during or after the sign-out must not refresh with
+ * the old session's cookie or report a second auth failure.
+ */
+let sessionEnded = false;
+
+/** Whether a session ended on this page and no new one has started. */
+export function hasSessionEnded(): boolean {
+  return sessionEnded;
+}
+
+/**
+ * The user id (`sub`) of the current access token, or null without a
+ * (readable) token. Not verified: for keying local per-user state only.
+ */
+export function getAccessTokenUserId(): string | null {
+  const token = accessTokenInMemory;
+  if (!token) return null;
+  try {
+    const payload: unknown = JSON.parse(atob(token.split(".")[1] ?? ""));
+    const sub = (payload as { sub?: unknown } | null)?.sub;
+    return typeof sub === "string" && sub ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * localStorage flag (no user data): a sign-out on the web could not reach the
+ * server, so the httpOnly refresh cookie may still hold the old session.
+ * While it is set, no refresh is sent (performRefresh), so nothing restores
+ * that session silently; settleOwedServerSignOut() retries the logout.
+ */
+export const SERVER_SIGN_OUT_OWED_KEY = "semaphore:serverSignOutOwed";
+
+/** Whether a server sign-out is still owed (see SERVER_SIGN_OUT_OWED_KEY). */
+export function isServerSignOutOwed(): boolean {
+  try {
+    return localStorage.getItem(SERVER_SIGN_OUT_OWED_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function markServerSignOutOwed(): void {
+  try {
+    localStorage.setItem(SERVER_SIGN_OUT_OWED_KEY, "1");
+  } catch {
+    // Storage unavailable: nothing to remember it in
+  }
+}
+
+export function clearServerSignOutOwed(): void {
+  try {
+    localStorage.removeItem(SERVER_SIGN_OUT_OWED_KEY);
+  } catch {
+    // Storage unavailable: nothing was saved
+  }
 }
 
 /**
@@ -213,6 +279,7 @@ export function setAccessToken(token: string): void {
  */
 export function clearTokens(): void {
   accessTokenInMemory = null;
+  sessionEnded = true;
   // Clear refresh token from secure storage (Electron) or localStorage (fallback)
   const electronAPI = getElectronAPI();
   if (electronAPI?.deleteRefreshToken) {
@@ -435,6 +502,12 @@ async function performRefresh(): Promise<string> {
   const isElectronApp = isElectron();
 
   try {
+    // A sign-out the server never confirmed: the cookie may still hold the
+    // signed-out session, which must not come back silently.
+    if (isServerSignOutOwed()) {
+      throw new NoRefreshTokenError("A server sign-out is still owed; not refreshing");
+    }
+
     let refreshResponse;
 
     if (isElectronApp) {
@@ -719,15 +792,4 @@ export function isRefreshing(): boolean {
  */
 export function isAuthenticated(): boolean {
   return getAccessToken() !== null;
-}
-
-/**
- * Redirect to login page
- */
-export function redirectToLogin(): void {
-  clearTokens();
-  // Use hash for HashRouter compatibility (especially in Electron)
-  if (window.location.hash !== "#/login") {
-    window.location.hash = "#/login";
-  }
 }

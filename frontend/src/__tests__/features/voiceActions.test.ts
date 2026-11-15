@@ -295,6 +295,18 @@ describe('voiceActions', () => {
           | { micMuted?: boolean }
           | undefined;
 
+      it("saves the signed-in user's id with the connection, so only they rejoin", async () => {
+        const body = btoa(JSON.stringify({ sub: 'user-a' }));
+        const tokens = await import('../../utils/tokenService');
+        tokens.setAccessToken(`h.${body}.s`);
+        try {
+          await joinVoiceChannel(params, createMockDeps());
+          expect(savedCall()).toMatchObject({ channelId: 'ch-1', userId: 'user-a' });
+        } finally {
+          tokens.clearTokens();
+        }
+      });
+
       it('saves micMuted with the connection', async () => {
         await joinVoiceChannel(params, createMockDeps());
         expect(savedCall()).toMatchObject({ channelId: 'ch-1', micMuted: false });

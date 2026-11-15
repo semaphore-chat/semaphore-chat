@@ -54,6 +54,7 @@ import {
 } from "./optimisticSend";
 import {
   createPreviewUrl,
+  clearPendingUploads,
   deletePendingUpload,
   getPendingUpload,
   removePendingFile,
@@ -392,6 +393,20 @@ async function discardEmptyMessage(
 /** Forget a message's uploads (its failed optimistic row was deleted). */
 export function discardAttachmentSend(clientId: string): void {
   forget(clientId);
+}
+
+/**
+ * Sign-out: abort every upload and forget every run and pending entry, so a
+ * previous account's upload neither continues nor shows up under the next one.
+ */
+export function abortAllAttachmentSends(): void {
+  const controllers = [...abortControllers.values()];
+  abortControllers.clear();
+  attachQueues.clear();
+  runtimes.clear();
+  clearPendingUploads();
+  // After the entries are gone, so the aborted uploads find nothing to mark failed.
+  controllers.forEach((c) => c.abort());
 }
 
 /** Test helper: forget every run. */

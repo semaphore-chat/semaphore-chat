@@ -1,61 +1,36 @@
-import { useMutation } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { authControllerLogoutMutation } from "../api-client/@tanstack/react-query.gen";
 import { useVoiceConnection } from "./useVoiceConnection";
-import { disconnectSocket } from "../utils/socketSingleton";
-import { clearSavedConnection } from "../features/voice/voiceActions";
-import { clearTokens, getElectronRefreshToken } from "../utils/tokenService";
-import { isElectron } from "../utils/platform";
-import { clearComposerDrafts } from "./useComposerDraft";
-import { clearDesignPreview } from "../shell/designPreview";
+import { isSigningOut, signOutSession, subscribeSigningOut } from "../utils/signOutSession";
 import type { LoginLocationState } from "../pages/LoginPage";
 
 /**
- * Encapsulates the app's logout flow: leave voice (best effort), tear down
- * the local voice connection + socket state, call the logout mutation
- * (best effort, sending the Electron refresh token in the body when
- * applicable), then always clear tokens and navigate to /login — local
- * logout completes even if the server-side revocation fails.
+ * The app's logout flow (signOutSession): leave voice, call the logout
+ * endpoint (with a timeout), then always end the local session and navigate
+ * to /login.
+ *
+ * `logoutLoading` is true while any sign-out runs (shared by every control);
+ * `handleLogout` during one returns the running one.
  */
 export function useLogout() {
   const navigate = useNavigate();
-  const { mutateAsync: logout, isPending: logoutLoading } = useMutation(authControllerLogoutMutation());
+  const queryClient = useQueryClient();
+  const logoutLoading = useSyncExternalStore(subscribeSigningOut, isSigningOut);
   const { state: voiceState, actions: voiceActions } = useVoiceConnection();
 
   /**
    * @param loginState - Router state for the login page (e.g. where to
    *   return to after signing in as someone else)
    */
-  const handleLogout = async (loginState?: LoginLocationState) => {
-    // Disconnect voice if connected
-    if (voiceState.isConnected) {
-      try {
-        await voiceActions.leaveVoiceChannel();
-      } catch {
-        // Best effort — don't block logout
-      }
-    }
-    clearSavedConnection();
-    disconnectSocket();
-    try {
-      // Electron clients must send refresh token in body since cookies don't work cross-origin
-      const refreshToken = isElectron() ? (await getElectronRefreshToken()) ?? undefined : undefined;
-      await logout({ body: { refreshToken } });
-    } catch {
-      // Best effort — the server-side session revocation can fail (network
-      // error, already-expired session), but local logout must still
-      // complete: clear tokens and leave the authenticated UI regardless.
-    } finally {
-      clearTokens();
-      // Unsent drafts are per browser tab, not per user: drop them so the
-      // next account signed in on this tab never sees them.
-      clearComposerDrafts();
-      // Likewise this tab's design preview (`?design=` links).
-      clearDesignPreview();
-      if (loginState) navigate("/login", { state: loginState });
-      else navigate("/login");
-    }
-  };
+  const handleLogout = (loginState?: LoginLocationState) =>
+    signOutSession({
+      queryClient,
+      voiceConnected: voiceState.isConnected,
+      leaveVoice: voiceActions.leaveVoiceChannel,
+      navigate,
+      loginState,
+    });
 
   return { handleLogout, logoutLoading };
 }
