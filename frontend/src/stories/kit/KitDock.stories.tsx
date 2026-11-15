@@ -254,3 +254,88 @@ export const NewMessagesTinted = () => (
     <NewMessagesBody />
   </Page>
 );
+
+/** Inbox (with its count) fixed at the start, All fixed at the end, the communities scrolling between: fades mark the edges with more. */
+function SlotBar({ count, current, inboxCurrent = false }: { count: number; current: number; inboxCurrent?: boolean }): JSX.Element {
+  const names = Array.from({ length: count }, (_, index) => {
+    const base = COMMUNITY_NAMES[index % COMMUNITY_NAMES.length];
+    return index < COMMUNITY_NAMES.length ? base : `${base} ${Math.floor(index / COMMUNITY_NAMES.length) + 1}`;
+  });
+  return (
+    <Dock
+      label="Communities"
+      start={
+        <>
+          <IconButton icon="Inbox" label="Inbox" variant="primary" badge={9} current={inboxCurrent} />
+          <DockDivider />
+        </>
+      }
+      end={
+        <>
+          <DockDivider />
+          <IconButton icon="LayoutGrid" label="All communities" variant="soft" />
+        </>
+      }
+    >
+      {names.map((name, index) => (
+        <DockItem
+          key={name}
+          name={name}
+          colour={COLOURS[index % COLOURS.length]}
+          current={!inboxCurrent && index === current}
+          unread={index % 4 === 2 ? index + 1 : undefined}
+          unreadLabel="mentions"
+          newMessages={index % 5 === 3}
+          onClick={noop}
+        />
+      ))}
+    </Dock>
+  );
+}
+
+/** `start` and `end` in the 288 px left column: five communities scroll, Inbox and All stay; no badge cut at an edge. */
+export const FixedEnds = () => (
+  <Page mode="dark">
+    <Row label="Five communities, the last current">
+      <div style={{ width: tokens.layout.leftColumn }}>
+        <SlotBar count={5} current={4} />
+      </div>
+    </Row>
+    <Row label="Twelve, the sixth current: fades at both edges">
+      <div style={{ width: tokens.layout.leftColumn }}>
+        <SlotBar count={12} current={5} />
+      </div>
+    </Row>
+    <Row label="Two: everything fits, centred, no fade">
+      <div style={{ width: tokens.layout.leftColumn }}>
+        <SlotBar count={2} current={0} />
+      </div>
+    </Row>
+    <Row label="The inbox is the current place (the ring) with its count">
+      <div style={{ width: tokens.layout.leftColumn }}>
+        <SlotBar count={3} current={0} inboxCurrent />
+      </div>
+    </Row>
+  </Page>
+);
+
+/** The same, light. */
+export const FixedEndsLight = () => (
+  <Page mode="light">
+    <div style={{ width: tokens.layout.leftColumn }}>
+      <SlotBar count={12} current={5} />
+    </div>
+    <div style={{ width: tokens.layout.leftColumn }}>
+      <SlotBar count={3} current={0} inboxCurrent />
+    </div>
+  </Page>
+);
+
+/** Sixty in a phone-width bar, the 55th current. */
+export const FixedEndsPhone = () => (
+  <Page mode="dark">
+    <div style={{ width: 390, maxWidth: '100%' }}>
+      <SlotBar count={60} current={54} />
+    </div>
+  </Page>
+);

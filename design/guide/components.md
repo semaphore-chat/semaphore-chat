@@ -15,11 +15,11 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Thirty-six components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Thirty-seven components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
 Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
-Card, Sheet, Dock, DockDivider and DockItem.
+Card, Sheet, Dock, DockDivider, DockItem and Stack.
 
 ## Rules every component follows
 
@@ -164,13 +164,19 @@ screen readers.
 |`loading`|true, false|false|The button is busy. See the rules above.|
 |`disabled`|true, false|false|The action is not available.|
 |`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list: today the Dock's. The button is then one stop of the list's single Tab stop. A disabled button ignores it. See [Dock](#dock).|
+|`badge`|a number|none|A count over the button's corner, the same danger Badge a DockItem shows (the Dock's Inbox). 0, or a number that is not finite, shows nothing. The count is added to the name: "Inbox, 9 unread".|
+|`badgeMeaning`|`unread`, `mentions`|`unread`|What `badge` counts, in the name: "9 unread", or "1 mention" / "2 mentions".|
+|`current`|true, false|false|The place you are in, for an item on the Dock: the accent ring a current DockItem has (a surface gap, then the accent), ", current" in the name before the count, and `aria-current="page"`. Not a toggle: use `selected` for that.|
 
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
 
 Stories: `kit-icon-button--variants`, `kit-icon-button--states`,
 `kit-icon-button--focused`, `kit-icon-button--variants-light`,
-`kit-icon-button--variants-tinted`.
+`kit-icon-button--variants-tinted`, `kit-icon-button--badge-and-current`,
+`kit-icon-button--badge-and-current-light`.
+
+`badge`, `badgeMeaning` and `current`: web kit only so far.
 
 ## KeyCap
 
@@ -952,6 +958,28 @@ keyboard focus, so a keyboard user can scroll it.
 Stories: `kit-table--basic`, `kit-table--empty`, `kit-table--narrow`,
 `kit-table--basic-light`, `kit-table--basic-tinted`.
 
+## Stack
+
+Children one under the other with a fixed space between them.
+
+**Use it when** a few blocks inside an island, a Card or an overlay's body need
+the system's vertical rhythm: a heading, a field, then a list.
+
+**Do not use it when** the rows are a list (ListRows sit flush, with no gap),
+or you need a whole screen arranged (use a layout template).
+
+It is layout only: no surface, no padding, no semantics of its own.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`gap`|`xs`, `sm`, `md`, `lg`, `xl`|none (required)|The space between the children: 4, 8, 12, 16 or 24 pixels.|
+|`children`|content|none (required)|The blocks.|
+
+Web kit only so far; the native kit has not caught up (see
+[Extending the system](extending.md#the-native-kit-is-catching-up)).
+
+Stories: `kit-stack--gaps`, `kit-stack--gaps-light`.
+
 ## Which overlay
 
 Five components float above the page. Choose by what the thing holds and by
@@ -1292,6 +1320,15 @@ A Dock must have a `label`. It names the navigation for screen readers.
 |`label`|text|none (required)|Names the navigation.|
 |`children`|DockItems, IconButtons and DockDividers|none (required)|What is on the bar.|
 |`bottomBar`|true, false|false|The bar is the bottom edge of a phone screen. It adds the home-indicator inset (`env(safe-area-inset-bottom)`) as a bottom margin, so it does not sit under the indicator. Leave it off when the bar is mid-layout.|
+|`start`|IconButtons and DockDividers|none|Items fixed at the start of the bar, such as the Inbox: they never scroll out of sight.|
+|`end`|IconButtons and DockDividers|none|Items fixed at the end of the bar, such as "All communities": they never scroll out of sight.|
+
+Only the `children` scroll, between `start` and `end`. The scrolling region keeps
+`space.sm` inside each edge, so a count or a dot at the edge item is never cut
+off, and an edge with more beyond it fades out (`space.xl` wide), which says
+there is more to scroll to. Use `start` and `end` for the items a user must
+always reach (the inbox, "All communities") whenever the communities may not
+fit. Web kit only so far for `start`, `end`, the inset and the fade.
 
 Put an IconButton on the bar for a thing that is not a community, such as the
 inbox. Use a DockDivider between groups: it is a thin vertical line, and it has
@@ -1325,13 +1362,16 @@ const list = useListFocus({
   orientation: 'horizontal',
   onSelect: (id) => id === 'all' && openAllSheet(),   // see below
 });
-<Dock label="Communities" focus={list.bar}>
-  <IconButton icon="Inbox" label="Inbox" focus={list.rowFocus('inbox')} />
+<Dock
+  label="Communities"
+  focus={list.bar}
+  start={<IconButton icon="Inbox" label="Inbox" badge={9} focus={list.rowFocus('inbox')} />}
+  end={<IconButton icon="LayoutGrid" label="All communities" focus={list.rowFocus('all')} />}
+>
   {communities.map((c) => (
     <DockItem key={c.id} name={c.name} href={`#/community/${c.id}`} current={c.id === currentId}
-      focus={list.rowFocus(c.id)} />
+      unread={c.mentions} unreadLabel="mentions" focus={list.rowFocus(c.id)} />
   ))}
-  <IconButton icon="LayoutGrid" label="All communities" focus={list.rowFocus('all')} />
 </Dock>
 ```
 
@@ -1358,7 +1398,8 @@ const list = useListFocus({
 Stories: `kit-dock--communities`, `kit-dock--overflow`, `kit-dock--phone-bar`,
 `kit-dock--communities-light`, `kit-dock--communities-tinted`,
 `kit-dock--focus-twelve`, `kit-dock--focus-twelve-light`, `kit-dock--focus-sixty`,
-`kit-dock--focus-sixty-phone`.
+`kit-dock--focus-sixty-phone`, `kit-dock--fixed-ends`, `kit-dock--fixed-ends-light`,
+`kit-dock--fixed-ends-phone`.
 
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
@@ -1386,6 +1427,7 @@ nothing.
 |`colour`|a colour as `#rrggbb`|none|The community's own colour, as for Avatar.|
 |`current`|true, false|false|The community you are in: an accent ring.|
 |`unread`|a number|0|A count on the item. 0 shows nothing.|
+|`unreadLabel`|`unread`, `mentions`|`unread`|What the count means, in the name and the badge's label: ", 3 unread", or ", 1 mention" / ", 2 mentions". Use `mentions` when the number counts mentions. Web kit only so far.|
 |`newMessages`|true, false|false|There are new messages that do not mention you: a small accent dot at the top right, and ", new messages" in the name. With an `unread` count the badge is shown instead and the dot is not.|
 |`status`|`reconnecting`|none|A warning dot, and the picture dimmed.|
 |`onClick`|a function|none|Makes the item a button.|
@@ -1708,7 +1750,7 @@ lists below say what each overlay still gets from MUI and the browser.
   so nothing is cut off at the left.
 - It keeps the current item (the one marked as the current page) in view when it
   first shows and whenever the current item changes: it scrolls only as far as
-  needed, leaving one small space beside the item. A scroll the user made is left
+  needed, leaving the edge fade's width (`space.xl`) beside the item. A scroll the user made is left
   alone otherwise. It scrolls the bar, never the page.
 - An item is a button or a link with its own name and a tooltip. The ring of the
   current item is a border that is always there, so nothing moves when it
@@ -1720,8 +1762,11 @@ lists below say what each overlay still gets from MUI and the browser.
   changes.
 - With `bottomBar` the bar keeps `env(safe-area-inset-bottom)` as a bottom margin.
 - As a keyboard list (`focus`) the bar is one Tab stop; the focused item is
-  scrolled into view by the browser's own focus scroll inside the bar. Firefox
-  makes a scrolling element a Tab stop of its own, so the bar is `tabindex="-1"`.
+  scrolled into view inside the scrolling region, leaving the fade's width beside
+  it. Firefox makes a scrolling element a Tab stop of its own, so the scrolling
+  region is `tabindex="-1"`.
+- `start` and `end` items sit outside the scrolling region. The fade at an edge
+  is a CSS mask that follows the scroll position.
 
 ### Sheet
 

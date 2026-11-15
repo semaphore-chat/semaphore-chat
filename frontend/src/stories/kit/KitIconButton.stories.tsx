@@ -73,3 +73,29 @@ export const VariantsTinted = () => (
     </Row>
   </KitStage>
 );
+
+/** `badge` (a count over the corner, worded by `badgeMeaning`) and `current` (the Dock's ring), on each variant. */
+export const BadgeAndCurrent = () => (
+  <KitStage mode="dark">
+    {VARIANTS.map((variant) => (
+      <Row key={variant} label={variant}>
+        <IconButton icon="Inbox" label="Inbox" variant={variant} badge={9} />
+        <IconButton icon="Inbox" label="Inbox" variant={variant} badge={128} />
+        <IconButton icon="Inbox" label="Inbox" variant={variant} current />
+        <IconButton icon="Inbox" label="Inbox" variant={variant} current badge={3} />
+        <IconButton icon="AtSign" label="Mentions" variant={variant} badge={1} badgeMeaning="mentions" />
+      </Row>
+    ))}
+  </KitStage>
+);
+
+/** The same, light. */
+export const BadgeAndCurrentLight = () => (
+  <KitStage mode="light">
+    <Row label="primary">
+      <IconButton icon="Inbox" label="Inbox" variant="primary" badge={9} />
+      <IconButton icon="Inbox" label="Inbox" variant="primary" current badge={3} />
+      <IconButton icon="LayoutGrid" label="All communities" variant="soft" current />
+    </Row>
+  </KitStage>
+);

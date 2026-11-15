@@ -1,0 +1,149 @@
+/**
+ * The "All communities" sheet (shell/lounge/pieces/AllCommunitiesSheet.tsx), open over the chat
+ * template with the dock: a centred panel at tablet and desktop width, a bottom sheet on a phone (with
+ * Settings and Your profile at the foot). The mock-ups' communities: Couch Co-op current and your call,
+ * Lumen Studio 2 mentions, Friday LAN new messages, Wavelength both.
+ */
+import { useState, type JSX } from 'react';
+import { AllCommunitiesSheet } from '../../shell/lounge/pieces/AllCommunitiesSheet';
+import { ShellDock } from '../../shell/lounge/pieces/ShellDock';
+import type { ModeName } from '../../theme/derive/derivePalette';
+import { useWidthRange } from '../../kit';
+import { LoungePiecesFrame } from '../fixtures/LoungePiecesFrame';
+import {
+  fixedLoad,
+  LONG_NAME,
+  MOCKUP_STATES,
+  sampleCommunities,
+  type FixedLoad,
+  type SampleCommunity,
+} from '../fixtures/loungeCommunities';
+
+interface SheetStoryProps {
+  mode?: ModeName;
+  communities?: readonly SampleCommunity[];
+  currentId?: string | null;
+  canCreate?: boolean;
+  load?: FixedLoad;
+  filter?: string;
+  /** Closed at first: the dock's All button opens it (the browser spec's story). */
+  startClosed?: boolean;
+}
+
+type SheetProps = Required<Omit<SheetStoryProps, 'mode' | 'startClosed'>> & { open: boolean; onClose(): void };
+
+function Sheet({ communities, currentId, canCreate, load, filter: initial, open, onClose }: SheetProps): JSX.Element {
+  const [filter, setFilter] = useState(initial);
+  const [useLoad] = useState(() => fixedLoad(load));
+  const range = useWidthRange();
+  return (
+    <AllCommunitiesSheet
+      open={open}
+      onClose={() => {
+        setFilter('');
+        onClose();
+      }}
+      instanceName="moss.social"
+      username="alexk"
+      communities={communities}
+      currentId={currentId}
+      canCreate={canCreate}
+      useLoad={useLoad}
+      filter={filter}
+      onFilterChange={setFilter}
+      showSettings={range === 'phone'}
+    />
+  );
+}
+
+function SheetStory({
+  mode = 'dark',
+  communities = sampleCommunities(12, MOCKUP_STATES),
+  currentId = 'c-1',
+  canCreate = true,
+  load = 'ready',
+  filter = '',
+  startClosed = false,
+}: SheetStoryProps): JSX.Element {
+  const [open, setOpen] = useState(!startClosed);
+  const dockCommunities = load === 'ready' ? communities : [];
+  return (
+    <LoungePiecesFrame
+      mode={mode}
+      dock={(range) => (
+        <ShellDock
+          communities={dockCommunities}
+          current={currentId === null ? null : { kind: 'community', id: currentId }}
+          inboxCount={9}
+          status={load === 'loading' ? 'loading' : load === 'error' ? 'error' : 'ready'}
+          onOpenInbox={() => undefined}
+          onOpenAll={() => setOpen(true)}
+          allOpen={open}
+          bottomBar={range === 'phone'}
+        />
+      )}
+    >
+      <Sheet
+        // Loading or failed: the connected sheet has no list yet.
+        communities={dockCommunities}
+        currentId={currentId}
+        canCreate={canCreate}
+        load={load}
+        filter={filter}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
+    </LoungePiecesFrame>
+  );
+}
+
+/** Twelve communities (above 8: the filter shows), each with its state line; Couch Co-op current and in your call. */
+export const Twelve = () => <SheetStory />;
+
+/** The same, light. */
+export const TwelveLight = () => <SheetStory mode="light" />;
+
+/** Eight or fewer: no filter field. Five here. */
+export const Few = () => <SheetStory communities={sampleCommunities(5, MOCKUP_STATES)} />;
+
+/** One community. */
+export const One = () => <SheetStory communities={sampleCommunities(1)} />;
+
+/** Sixty: the body scrolls; the header, the filter and the foot rows scroll with it. */
+export const Sixty = () => <SheetStory communities={sampleCommunities(60, MOCKUP_STATES)} currentId="c-55" />;
+
+/** The filter narrowed to "lan". */
+export const Filtered = () => <SheetStory filter="lan" />;
+
+/** A filter that matches nothing. */
+export const NoMatch = () => <SheetStory filter="zebra" />;
+
+/** In no community yet, and allowed to create one. */
+export const Empty = () => <SheetStory communities={[]} currentId={null} load="empty" />;
+
+/** In no community yet, and not allowed to create one: no Create row. */
+export const EmptyNoCreate = () => <SheetStory communities={[]} currentId={null} load="empty" canCreate={false} />;
+
+/** A user who cannot create communities: the list without the Create row. */
+export const NoCreate = () => <SheetStory communities={sampleCommunities(5, MOCKUP_STATES)} canCreate={false} />;
+
+/** Loading. */
+export const Loading = () => <SheetStory load="loading" />;
+
+/** The list failed to load: the error with Try again. */
+export const LoadError = () => <SheetStory load="error" />;
+
+/** Long names are cut on one line. */
+export const LongNames = () => (
+  <SheetStory
+    communities={[
+      { id: 'long', name: LONG_NAME, mentions: 12, newMessages: false, inYourCall: false },
+      { id: 'long-2', name: `${LONG_NAME} (the second)`, mentions: 0, newMessages: true, inYourCall: true },
+      ...sampleCommunities(3),
+    ]}
+    currentId="long"
+  />
+);
+
+/** Closed: press All communities on the dock to open it (the browser spec drives this one). */
+export const FromDock = () => <SheetStory startClosed />;

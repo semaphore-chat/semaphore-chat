@@ -4,6 +4,7 @@ import { tokens } from '../../theme/generated/tokens';
 import { Avatar } from '../display/Avatar';
 import { Badge } from '../display/Badge';
 import { dotStyle } from '../display/dot';
+import { countWords, type CountMeaning } from '../display/countWords';
 import { Tooltip } from '../overlays/Tooltip';
 import { useIgnoreTooltipDescription } from '../overlays/tooltipDescription';
 import { reducedMotion } from '../overlays/surface';
@@ -23,6 +24,8 @@ export interface DockItemProps {
   current?: boolean;
   /** A count on the item; nothing is shown for 0. */
   unread?: number;
+  /** What `unread` counts, in the name: "3 unread" (default) or "2 mentions" / "1 mention". */
+  unreadLabel?: CountMeaning;
   /**
    * New messages that do not mention you: a small accent dot, and ", new messages" in the name. When `unread` (a
    * count) is also given, the count badge is shown and the dot is not.
@@ -144,6 +147,7 @@ export function DockItem({
   colour,
   current = false,
   unread = 0,
+  unreadLabel = 'unread',
   newMessages = false,
   status,
   onClick,
@@ -173,7 +177,7 @@ export function DockItem({
   const label = [
     name,
     current ? 'current' : undefined,
-    count > 0 ? `${count} unread` : undefined,
+    count > 0 ? countWords(count, unreadLabel) : undefined,
     dot ? 'new messages' : undefined,
     reconnecting ? 'reconnecting' : undefined,
   ]
@@ -187,7 +191,7 @@ export function DockItem({
       </Picture>
       {count > 0 && (
         <BadgeSlot aria-hidden="true">
-          <Badge count={count} tone="danger" label={`${count} unread`} />
+          <Badge count={count} tone="danger" label={countWords(count, unreadLabel)} />
         </BadgeSlot>
       )}
       {dot && <NewDot aria-hidden="true" data-kit-new-messages="" />}

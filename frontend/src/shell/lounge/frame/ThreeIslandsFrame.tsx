@@ -67,7 +67,7 @@ export function ThreeIslandsFrame({ screen, params, resetKey, title }: ThreeIsla
   return (
     <ScreenChromeContext value={chrome}>
       <ThreeIslands
-        dock={<ShellDockConnected current={dockCurrent(screen, params)} onOpenAll={() => setAllOpen(true)} />}
+        dock={<ShellDockConnected current={dockCurrent(screen, params)} onOpenAll={() => setAllOpen(true)} allOpen={allOpen} />}
         left={
           screen.place === 'community' ? (
             communityId === null ? null : (
