@@ -48,7 +48,7 @@ import type { LadleStoryComponent } from './screenStory';
 import { showcaseFileHandlers } from './showcaseArt';
 import { SHOWCASE_ONLINE_IDS, showcaseScenario } from './showcase';
 import { showcaseGifHandlers } from './showcaseGifs';
-import type { Scenario, ScenarioUser, StoryTheme } from './types';
+import { findChannel, type Scenario, type ScenarioUser, type StoryTheme } from './types';
 
 /** The showcase's default look: dark, violet accent (matches the docs site), balanced intensity. */
 export const SHOWCASE_THEME: StoryTheme = { mode: 'dark', accentColor: 'purple', intensity: 'balanced' };
@@ -292,6 +292,7 @@ function liveHandlers(scenario: Scenario, live: LiveState): HttpHandler[] {
         Array.from(live.unread.entries()).map(([id, v]) => ({
           directMessageGroupId: isDm(id) ? id : undefined,
           channelId: isDm(id) ? undefined : id,
+          communityId: isDm(id) ? null : (findChannel(scenario, id)?.community.id ?? null),
           unreadCount: v.unreadCount,
           mentionCount: v.mentionCount,
         })),

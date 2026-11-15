@@ -457,12 +457,16 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
 
     // ── Read receipts / presence ─────────────────────────────────────
     http.get('/api/read-receipts/unread-counts', () => {
-      const counts: UnreadCountDto[] = Object.entries(scenario.unreadByContextId).map(([id, v]) => ({
-        directMessageGroupId: scenario.dmGroups.some((g) => g.id === id) ? id : undefined,
-        channelId: scenario.dmGroups.some((g) => g.id === id) ? undefined : id,
-        unreadCount: v.unreadCount,
-        mentionCount: v.mentionCount,
-      }));
+      const counts: UnreadCountDto[] = Object.entries(scenario.unreadByContextId).map(([id, v]) => {
+        const isDm = scenario.dmGroups.some((g) => g.id === id);
+        return {
+          directMessageGroupId: isDm ? id : undefined,
+          channelId: isDm ? undefined : id,
+          communityId: isDm ? null : (findChannel(scenario, id)?.community.id ?? null),
+          unreadCount: v.unreadCount,
+          mentionCount: v.mentionCount,
+        };
+      });
       return HttpResponse.json(counts);
     }),
     http.get('/api/read-receipts/dm-peer-reads/:directMessageGroupId', () => HttpResponse.json([])),

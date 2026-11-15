@@ -15047,6 +15047,11 @@
       "UnreadCountDto": {
         "type": "object",
         "properties": {
+          "communityId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The community the channel belongs to; null for direct-message entries."
+          },
           "unreadCount": {
             "type": "integer"
           },

@@ -12,6 +12,9 @@ export class ReadReceiptDto {
 export class UnreadCountDto {
   channelId?: string;
   directMessageGroupId?: string;
+  /** The community the channel belongs to; null for direct-message entries. */
+  @ApiProperty({ type: 'string', nullable: true, required: false })
+  communityId?: string | null;
   @ApiProperty({ type: 'integer' })
   unreadCount: number;
   @ApiProperty({ type: 'integer' })
