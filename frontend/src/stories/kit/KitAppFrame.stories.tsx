@@ -1,5 +1,6 @@
-import { AppFrame, Island, Text } from '../../kit';
+import { Alert, AppFrame, Island, ThreeIslands, Text } from '../../kit';
 import { KitFrameStage } from '../fixtures/kitStory';
+import { SampleChannels, SampleConversation } from '../fixtures/layoutSamples';
 
 /**
  * The frame alone: the ground, the gutter and the safe-area insets, exactly the viewport's height. The
@@ -17,6 +18,29 @@ export const Empty = () => (
           </p>
         ))}
       </Island>
+    </AppFrame>
+  </KitFrameStage>
+);
+
+/**
+ * The banner row: a notice about the whole app, above the layout and inside the safe area. It takes its natural
+ * height and the layout fills the rest, so no island is pushed off screen.
+ */
+export const WithBanner = () => (
+  <KitFrameStage mode="dark">
+    <AppFrame
+      banner={
+        <Alert severity="warning" title="Reconnecting">
+          You are offline. Messages you send will wait until the connection is back.
+        </Alert>
+      }
+    >
+      <ThreeIslands
+        left={<SampleChannels />}
+        leftLabel="Channels"
+        centre={<SampleConversation />}
+        centreLabel="general in Couch Co-op"
+      />
     </AppFrame>
   </KitFrameStage>
 );

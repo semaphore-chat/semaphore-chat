@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react';
+import { useRef, type JSX, type ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { IconButton } from '../controls/IconButton';
@@ -8,6 +8,8 @@ import { transientProps } from '../theme/transientProps';
 import { Text } from '../typography/Text';
 import { atMedia, media, useWidthRange } from './breakpoints';
 import { Pane } from './Pane';
+import { isPresent } from './present';
+import { useFollowFocus } from './useFollowFocus';
 
 export interface SettingsLayoutProps {
   /** The page's heading: shown on the nav island (and on the content pane's header on a phone), and names the main. */
@@ -20,8 +22,8 @@ export interface SettingsLayoutProps {
   children: ReactNode;
   /** Which pane a phone shows. */
   phonePane?: 'nav' | 'content';
-  /** The Back button on a phone's content pane. */
-  onBack?: () => void;
+  /** Called by the Back button on a phone's content pane. Required: a phone has no other way back to the list. */
+  onBack: () => void;
   /** A bar pinned to the bottom of the content island, such as "unsaved changes". */
   footer?: ReactNode;
 }
@@ -91,7 +93,8 @@ const Footer = styled('div')(({ theme }) => ({
  * - phone: one pane (`phonePane`). The content pane has a header with a Back button. The other pane stays
  *   mounted but `hidden` and `inert`, so what was typed in it survives and nothing in it can be reached.
  *   While the nav pane is the one shown it sits in a `main`, so the page still has exactly one.
- * Render inside an `AppFrame`.
+ * When the pane that holds focus stops being shown, focus moves to the pane now shown. A `footer` that is
+ * `undefined`, `null`, `false` or `''` leaves no bar. Render inside an `AppFrame`.
  */
 export function SettingsLayout({
   title,
@@ -105,9 +108,23 @@ export function SettingsLayout({
   const phone = useWidthRange() === 'phone';
   const showNav = !phone || phonePane === 'nav';
   const showContent = !phone || phonePane === 'content';
+  const navRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useFollowFocus(
+    { nav: navRef, content: contentRef },
+    [...(showNav ? ['nav'] : []), ...(showContent ? ['content'] : [])],
+    phone && phonePane === 'nav' ? 'nav' : 'content',
+  );
   return (
     <Grid>
-      <PhonePane $area="nav" hidden={!showNav} inert={!showNav} role={phone && showNav ? 'main' : undefined}>
+      <PhonePane
+        ref={navRef}
+        tabIndex={-1}
+        $area="nav"
+        hidden={!showNav}
+        inert={!showNav}
+        role={phone && showNav ? 'main' : undefined}
+      >
         <Island as="nav" label={navLabel} padding="md" scroll>
           <Text variant="title" as="h1">
             {title}
@@ -115,7 +132,7 @@ export function SettingsLayout({
           <NavBody>{nav}</NavBody>
         </Island>
       </PhonePane>
-      <PhonePane $area="content" hidden={!showContent} inert={!showContent}>
+      <PhonePane ref={contentRef} tabIndex={-1} $area="content" hidden={!showContent} inert={!showContent}>
         <Island as="main" label={title} padding="none" scroll>
           <Column>
             {phone && (
@@ -127,7 +144,7 @@ export function SettingsLayout({
               </Header>
             )}
             <Body $headed={phone}>{children}</Body>
-            {footer !== undefined && <Footer data-slot="footer">{footer}</Footer>}
+            {isPresent(footer) && <Footer data-slot="footer">{footer}</Footer>}
           </Column>
         </Island>
       </PhonePane>

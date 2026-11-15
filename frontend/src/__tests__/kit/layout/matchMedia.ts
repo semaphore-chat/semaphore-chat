@@ -16,14 +16,26 @@ interface Fake {
   listeners: Set<Listener>;
 }
 
-/** Evaluates the two query shapes the layouts use: `(min-width: Npx)` and `not all and (min-width: Npx)`. */
-function evaluate(query: string, width: number): boolean {
-  const match = /(not all and )?\(min-width: (\d+(?:\.\d+)?)px\)$/.exec(query);
-  if (match === null) {
-    throw new Error(`The matchMedia fake does not understand "${query}"`);
+/**
+ * Evaluates a media query against a width. It understands every shape `media` builds: `(min-width: N)`,
+ * `not all and (min-width: N)` and `(min-width: A) and (not (min-width: B))`. Anything else throws, so a new
+ * query form cannot slip through unchecked.
+ */
+export function matches(query: string, width: number): boolean {
+  const px = '(\\d+(?:\\.\\d+)?)px';
+  const below = new RegExp(`^not all and \\(min-width: ${px}\\)$`).exec(query);
+  if (below) {
+    return width < Number(below[1]);
   }
-  const min = Number(match[2]);
-  return match[1] === undefined ? width >= min : width < min;
+  const between = new RegExp(`^\\(min-width: ${px}\\) and \\(not \\(min-width: ${px}\\)\\)$`).exec(query);
+  if (between) {
+    return width >= Number(between[1]) && width < Number(between[2]);
+  }
+  const above = new RegExp(`^\\(min-width: ${px}\\)$`).exec(query);
+  if (above) {
+    return width >= Number(above[1]);
+  }
+  throw new Error(`The matchMedia fake does not understand "${query}"`);
 }
 
 const original = window.matchMedia;
@@ -33,10 +45,10 @@ afterEach(() => {
 });
 
 /**
- * Installs a `window.matchMedia` for a viewport of `width`. `setWidth` moves the viewport and fires
+ * Installs a `window.matchMedia` for a viewport of `width`. `await setWidth(n)` moves the viewport and fires
  * the change events, inside `act`.
  */
-export function mockViewport(width: number): { setWidth: (next: number) => void } {
+export function mockViewport(width: number): { setWidth: (next: number) => Promise<void> } {
   let current = width;
   const fakes: Fake[] = [];
   window.matchMedia = ((query: string) => {
@@ -44,7 +56,7 @@ export function mockViewport(width: number): { setWidth: (next: number) => void 
     fakes.push(fake);
     return {
       get matches() {
-        return evaluate(query, current);
+        return matches(query, current);
       },
       media: query,
       onchange: null,
@@ -56,12 +68,13 @@ export function mockViewport(width: number): { setWidth: (next: number) => void 
     } as unknown as MediaQueryList;
   }) as typeof window.matchMedia;
   return {
-    setWidth: (next) => {
+    // Async, because a layout may move focus when the width changes, and the blur it causes updates state.
+    setWidth: async (next) => {
       current = next;
-      act(() => {
+      await act(async () => {
         for (const fake of fakes) {
           for (const listener of fake.listeners) {
-            listener({ matches: evaluate(fake.query, next), media: fake.query } as MediaQueryListEvent);
+            listener({ matches: matches(fake.query, next), media: fake.query } as MediaQueryListEvent);
           }
         }
       });

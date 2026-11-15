@@ -26,7 +26,20 @@ tall as the window, it pads the screen by the gutter (16 px) plus any safe area
 (the notch and the home indicator on a phone), and it never scrolls. Each
 island scrolls inside itself. The frame adds no landmark of its own.
 
-Story: `kit-app-frame--empty`.
+**The banner.** A frame can have a `banner`: a row above everything, for a
+notice about the whole app such as "reconnecting" or "update available". Put a
+kit Alert in it. It sits inside the safe area, takes its natural height, and the
+template below fills what is left, so no island is pushed off the screen. With
+no banner there is no row and no gap.
+
+**The on-screen keyboard (phones).** While the keyboard is up, the frame ends
+where the keyboard starts, and it gives up the home-indicator padding, because
+the bottom of the screen is now the keyboard. A template that has a dock bar
+leaves it out while the keyboard is up, so a composer keeps the room. The kit
+reads the keyboard's height from the browser (`useKeyboardInset`); a screen
+that needs it, such as a floating toast region, can read it too.
+
+Stories: `kit-app-frame--empty`, `kit-app-frame--with-banner`.
 
 ## The three width ranges
 
@@ -87,20 +100,30 @@ Compact (600 to 1199)
 | Left |  |                                  |
 |      |  |   Right content is a Sheet,      |
 +------+  |   open only when asked           |
-          +----------------------------------+
+| Call |  |                                  |
++------+  +----------------------------------+
 
 Phone (below 600): one pane at a time
 +----------------------+      +----------------------+
 |  Centre              |  or  |  Left                |
 |  (or Left)           |      |  (or Centre)         |
 +----------------------+      +----------------------+
+|  Call bar (optional) |      |  Call bar (optional) |
++----------------------+      +----------------------+
 |  Dock as a bar       |      |  Dock as a bar       |
 +----------------------+      +----------------------+
 ```
 
-At wide and compact widths the left column is 288 px, and at wide the right
-island is 264 px. The dock sits above the left island and is 60 px tall. The
-centre takes the rest.
+(At wide, the call bar is under the left island, as at compact; the diagram
+shows it once.) At wide and compact widths the left column is 288 px, and at
+wide the right island is 264 px. The dock sits above the left island and is 60
+px tall. The centre takes the rest.
+
+**The call bar** is the strip that shows you are in a voice room, with a mute
+control and Leave. It is optional. At compact and wide it sits at the bottom of
+the left column, under the left island. On a phone it sits between the pane on
+show and the dock bar, and it stays on screen whichever pane is shown, so the
+user can always reach Leave. With no call bar there is no row and no gap.
 
 **What goes where**
 
@@ -109,24 +132,39 @@ centre takes the rest.
 |Dock (optional)|The community switcher: a Dock of DockItems|Anything else. See [Components](components.md)|
 |Left|The place: community header, channels, voice rooms, the user's own card|The conversation itself, or actions the screen cannot do without|
 |Centre|The conversation or task, with its own header, list and composer|Context that the conversation merely refers to|
+|Call bar (optional)|The persistent in-call strip: the room, mute, Leave|Anything that is not about the call you are in|
 |Right (optional)|Members, a thread, pins|Primary actions, or anything the user must reach on a tablet or phone without opening a Sheet|
 
 The centre island has no padding of its own, because the conversation brings
 its own header, list and composer.
 
 **How the right region behaves.** At wide it is an island beside the centre.
-Below wide it is a Sheet over the screen. The screen controls the Sheet: it
-says whether it is open, and it handles the close request (Escape, a press on
-the dimmed page, or the Close button). The right content is rebuilt when the
-width crosses the boundary, so do not keep important state only inside it. If a
-screen has no right content, there is no right region at any width.
+Below wide it is a Sheet over the screen. The screen says whether the right
+content is showing with `rightOpen`, and it means the same at every width:
+showing, as an island at wide and as a Sheet below. If the screen leaves
+`rightOpen` out, the right content shows at wide and is closed below, so a
+resize never opens a Sheet by itself unless the user had asked to see the
+content. Below wide the template tells the screen when the Sheet asks to close
+(Escape, a press on the dimmed page, or the Close button). At wide the screen
+closes the island with its own control, such as a Members button in the centre
+header, which sets `rightOpen` for every width. With `rightOpen` false at wide
+there is no island, no empty landmark and no gap: the centre takes the room.
+The right content is rebuilt when the width crosses the boundary or the Sheet
+closes, so do not keep important state only inside it: keep a reply draft or a
+scroll position in the screen's own state. If a screen has no right content
+(nothing, or an empty value), there is no right region at any width.
 
 **How the phone panes behave.** The screen chooses which pane a phone shows:
 the centre (the default) or the left. The pane that is not shown stays alive
 behind the scenes, so a half-typed message is still there when the user comes
 back. It is hidden from the eye, from the keyboard and from screen readers, so
-nothing in it can be reached by accident. On a phone the dock becomes a bar
-under the pane, and the template keeps it clear of the home indicator.
+nothing in it can be reached by accident. When the pane that holds the focus is
+the one that gets hidden (the user picks a channel, the window is rotated, the
+right island goes away), the focus moves to the pane now shown, so a keyboard or
+screen-reader user does not lose their place. On a phone the dock becomes a bar
+under the pane, and the template keeps it clear of the home indicator. The
+template has no Back button of its own: the centre's header brings one that
+sets the pane back to the left.
 
 **Landmarks and labels.** The left island is a navigation landmark, the centre
 is the main, the right is a complementary landmark, and the dock is its own
@@ -136,8 +174,13 @@ the Sheet; if you leave it out, the name is "Details". The Dock needs its own
 `label`. On a phone showing the left pane, that pane takes the role of the main
 so the page always has exactly one.
 
+**Empty slots.** An optional slot that is nothing, empty, or false (a
+conditional that did not apply) is simply not there: no region, no column, no
+empty Sheet, no gap.
+
 Stories: `kit-three-islands--chat`, `kit-three-islands--no-right`,
-`kit-three-islands--right-open`, `kit-three-islands--phone-left`,
+`kit-three-islands--right-open`, `kit-three-islands--right-closed-wide`,
+`kit-three-islands--phone-left`, `kit-three-islands--in-call`,
 `kit-three-islands--chat-light`, `kit-three-islands--no-dock`.
 
 ## Settings with side navigation
@@ -177,10 +220,11 @@ has no right region and no dock.
 
 **How the phone panes behave.** The screen chooses which pane a phone shows:
 the nav (the default) or the content. The content pane gets a header with a
-Back button, which calls the screen's `onBack`. As with the chat screen, the
-pane that is not shown stays alive and hidden, so a half-edited form survives
-going back to the list. While the nav is the pane on show it takes the role of
-the main.
+Back button, which calls the screen's `onBack` (every screen must supply it: a
+phone has no other way back to the list). As with the chat screen, the pane that
+is not shown stays alive and hidden, so a half-edited form survives going back
+to the list, and focus moves to the pane now shown. While the nav is the pane on
+show it takes the role of the main.
 
 **Landmarks and labels.** The nav island is a navigation landmark named by
 `navLabel`, headed by the `title`. The content island is the main, named by the
@@ -259,17 +303,20 @@ use that.
 
 ## Not decided or built yet
 
-These are decided with the app shell, and they are not built yet. Do not make
-up an answer on your own screen.
+These are decided with the app shell, and they are not all built yet. Do not
+make up an answer on your own screen.
 
-- **The voice bar.** Where the bar that shows an active voice connection sits
-  while the user is on another screen.
 - **Toasts.** Where a Toast appears on each template, and how it clears the
-  phone's dock bar.
-- **The on-screen keyboard on phones.** How a template makes room for it, and
-  where a composer sits when it is open.
-- **A top banner.** Where a notice about the whole app, such as "reconnecting"
-  or "update available", would go.
+  phone's dock bar and the on-screen keyboard.
+- **The viewport setting for the keyboard.** The frame follows the keyboard from
+  what the browser reports, but the page's viewport setting (`index.html`, the
+  `interactive-widget` option for Android) is an app-level change that is not
+  made yet. Until it is, a phone may pan the page instead of resizing it.
+- **The call bar across screens.** The three-islands template has a place for the
+  in-call strip. Keeping it on screen when the user goes to a settings screen or
+  a full stage belongs to the app shell, which has not been built.
+- **A phone thread as a full pane.** Below wide the right content is a Sheet. A
+  thread with a composer may want to be a pane of its own on a phone.
 
 ## A new template
 

@@ -47,7 +47,7 @@ const column = { display: 'flex', flexDirection: 'column' } as const;
 const hash = <Icon name="Hash" />;
 
 /** The place: the community's header, its channels and its voice rooms. */
-export function SampleChannels(): JSX.Element {
+export function SampleChannels({ onPick = noop }: { onPick?: () => void }): JSX.Element {
   return (
     <div style={{ ...column, gap: tokens.space.lg }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: tokens.space.md, padding: `${tokens.space.xs}px ${tokens.space.sm}px` }}>
@@ -59,10 +59,10 @@ export function SampleChannels(): JSX.Element {
         <IconButton icon="Settings" label="Community settings" variant="ghost" />
       </div>
       <div style={column}>
-        <ListRow primary="general" leading={hash} selected href="#general" />
-        <ListRow primary="clips" leading={hash} unread href="#clips" trailing={<Badge count={2} tone="accent" label="2 unread" />} />
-        <ListRow primary="lfg" leading={hash} href="#lfg" />
-        <ListRow primary="memes" leading={hash} href="#memes" />
+        <ListRow primary="general" leading={hash} selected onClick={onPick} />
+        <ListRow primary="clips" leading={hash} unread onClick={onPick} trailing={<Badge count={2} tone="accent" label="2 unread" />} />
+        <ListRow primary="lfg" leading={hash} onClick={onPick} />
+        <ListRow primary="memes" leading={hash} onClick={onPick} />
       </div>
       <div style={{ ...column, gap: tokens.space.sm }}>
         <Text variant="section" tone="secondary" as="h2">Voice rooms</Text>
@@ -105,16 +105,27 @@ const MESSAGES = [
 ];
 
 /** The conversation: a header, the messages and the composer. It brings its own padding (the island has none). */
-export function SampleConversation({ rows = MESSAGES.length }: { rows?: number }): JSX.Element {
+export function SampleConversation({
+  rows = MESSAGES.length,
+  onMembers = noop,
+  onBack,
+}: {
+  rows?: number;
+  /** The Members button: shows or hides the right content. */
+  onMembers?: () => void;
+  /** On a phone, the way back to the channel list. */
+  onBack?: () => void;
+}): JSX.Element {
   const [draft, setDraft] = useState('');
   return (
     <div style={{ ...column, flex: '1 1 auto', minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: tokens.space.md, padding: `${tokens.space.md}px ${tokens.space.lg}px ${tokens.space.sm}px ${tokens.space.xl}px` }}>
+        {onBack && <IconButton icon="ArrowLeft" label="Back to channels" variant="ghost" onClick={onBack} />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: tokens.space.md }}>
           <Text variant="title" as="h1" truncate>general</Text>
         </div>
         <IconButton icon="Search" label="Search" variant="soft" />
-        <IconButton icon="Users" label="Members" variant="soft" />
+        <IconButton icon="Users" label="Members" variant="soft" onClick={onMembers} />
       </div>
       <div style={{ ...column, flex: '1 1 0', minHeight: 0, overflowY: 'auto', gap: tokens.space.lg, padding: `${tokens.space.md}px ${tokens.space.xl}px` }}>
         {MESSAGES.slice(0, rows).map((message) => (
@@ -157,9 +168,8 @@ const PEOPLE = [
 export function SampleMembers(): JSX.Element {
   return (
     <div style={{ ...column, gap: tokens.space.sm }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: `0 ${tokens.space.xs}px` }}>
-        <Text variant="title" as="h2">Who's around</Text>
-        <Text variant="meta" tone="secondary">5 of 12</Text>
+      <div style={{ padding: `0 ${tokens.space.sm}px` }}>
+        <Text variant="meta" tone="secondary">5 of 12 here</Text>
       </div>
       <div style={column}>
         {PEOPLE.map((person) => (
@@ -181,11 +191,11 @@ export function SampleMembers(): JSX.Element {
 const SECTIONS = ['General', 'Roles', 'Channels', 'Members', 'Invites', 'Moderation', 'Emoji', 'Danger zone'];
 
 /** The sections of the community settings, one selected. */
-export function SampleSections({ selected = 'Roles' }: { selected?: string }): JSX.Element {
+export function SampleSections({ selected = 'Roles', onPick = noop }: { selected?: string; onPick?: () => void }): JSX.Element {
   return (
     <div style={column}>
       {SECTIONS.map((name) => (
-        <ListRow key={name} primary={name} selected={name === selected} onClick={noop} />
+        <ListRow key={name} primary={name} selected={name === selected} onClick={onPick} />
       ))}
     </div>
   );
@@ -217,6 +227,22 @@ export function SampleRoleForm(): JSX.Element {
       </div>
       <Text tone="secondary">Roles apply to everyone who has them, in every channel the role can see.</Text>
     </div>
+  );
+}
+
+/** The persistent in-call strip: the room, a mute control and Leave. */
+export function SampleCallBar(): JSX.Element {
+  return (
+    <Card>
+      <div style={{ display: 'flex', alignItems: 'center', gap: tokens.space.sm }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text variant="bodyStrong" truncate>Squad Up</Text>
+          <div><Text variant="meta" tone="secondary" truncate>Connected, 42:10</Text></div>
+        </div>
+        <IconButton icon="MicOff" label="Unmute" variant="ghost" />
+        <Button variant="danger" size="sm" onClick={noop}>Leave</Button>
+      </div>
+    </Card>
   );
 }
 

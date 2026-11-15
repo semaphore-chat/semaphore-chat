@@ -1,10 +1,11 @@
 import { styled, type CSSObject } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import type { LoungeTheme } from '../theme/createLoungeTheme';
+import { atMedia, media } from '../layout/breakpoints';
 import { kitTheme } from '../theme/KitProvider';
 
-/** The width at or below which a modal is full-width and its action buttons stack. */
-export const PHONE = `@media (max-width: ${tokens.breakpoint.phone}px)`;
+/** Below the phone breakpoint (the layouts' phone range, exclusive of the token itself) a modal is full-width and its action buttons stack. */
+export const PHONE = atMedia(media.phone);
 
 /** On a phone the bottom edge of the screen may be the home indicator: room the panel adds below its last row. */
 export const SAFE_BOTTOM = 'env(safe-area-inset-bottom)';

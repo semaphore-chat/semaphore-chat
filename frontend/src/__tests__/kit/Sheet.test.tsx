@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { Button, Popover, Sheet, SelectField, TextField } from '../../kit';
+import { Button, Popover, Sheet, SelectField, TextField, media } from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { rulesFor } from './cssRules';
@@ -143,7 +143,7 @@ describe('Sheet', () => {
     renderWithKit(<Sheet open onClose={() => undefined} title="x">y</Sheet>);
     const dialog = screen.getByRole('dialog');
     const phone = rulesFor(dialog, '').filter((rule) =>
-      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(`max-width: ${tokens.breakpoint.phone}px`),
+      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(media.phone),
     );
     const declared = (property: string) => phone.map((rule) => rule.style.getPropertyValue(property)).find(Boolean);
     expect(declared('max-width')).toBe('100%');
@@ -155,7 +155,7 @@ describe('Sheet', () => {
     renderWithKit(<Sheet open onClose={() => undefined} title="x" actions={<Button>Done</Button>}>y</Sheet>);
     const actions = screen.getByRole('button', { name: 'Done' }).parentElement as HTMLElement;
     const phone = rulesFor(actions, '').filter((rule) =>
-      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(`max-width: ${tokens.breakpoint.phone}px`),
+      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(media.phone),
     );
     const padding = phone.map((rule) => rule.style.getPropertyValue('padding-bottom')).find(Boolean);
     expect(padding).toContain('env(safe-area-inset-bottom)');
@@ -166,7 +166,7 @@ describe('Sheet', () => {
     renderWithKit(<Sheet open onClose={() => undefined} title="x">body text</Sheet>);
     const body = screen.getByText('body text');
     const phone = rulesFor(body, '').filter((rule) =>
-      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(`max-width: ${tokens.breakpoint.phone}px`),
+      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(media.phone),
     );
     expect(phone.map((rule) => rule.style.getPropertyValue('padding-bottom')).find(Boolean)).toContain('env(safe-area-inset-bottom)');
   });

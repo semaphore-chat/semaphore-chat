@@ -3,6 +3,7 @@ import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Island } from '../surfaces/Island';
 import { Sheet } from '../overlays/Sheet';
+import { isPresent } from './present';
 
 export interface StageLayoutProps {
   /** The title row: room name, who is here, how long. */
@@ -22,6 +23,15 @@ export interface StageLayoutProps {
   sideOpen?: boolean;
   onSideClose?: () => void;
 }
+
+/** Takes what the frame has left under a banner, so the island never outgrows it. */
+const Fill = styled('div')({
+  flex: '1 1 0',
+  minWidth: 0,
+  minHeight: 0,
+  display: 'flex',
+  flexDirection: 'column',
+});
 
 const Column = styled('div')({
   flex: '1 1 auto',
@@ -84,6 +94,7 @@ const noop = () => undefined;
 /**
  * The call screen: one island filling the frame (the `main`), a header row, the stage taking the rest of
  * the height with its content centred and contained, an optional strip, and the controls centred at the bottom.
+ * Optional slots count as absent when `undefined`, `null`, `false` or `''`.
  * `side` (the people) is a Sheet at every width, shown while `sideOpen`. Render inside an `AppFrame`,
  * which keeps the controls above the home indicator.
  */
@@ -100,15 +111,17 @@ export function StageLayout({
 }: StageLayoutProps): JSX.Element {
   return (
     <>
-      <Island as="main" label={stageLabel} padding="none" scroll>
-        <Column>
-          <Header data-slot="header">{header}</Header>
-          <Stage data-slot="stage">{stage}</Stage>
-          {strip !== undefined && <Strip data-slot="strip">{strip}</Strip>}
-          <Controls data-slot="controls">{controls}</Controls>
-        </Column>
-      </Island>
-      {side !== undefined && (
+      <Fill>
+        <Island as="main" label={stageLabel} padding="none" scroll>
+          <Column>
+            <Header data-slot="header">{header}</Header>
+            <Stage data-slot="stage">{stage}</Stage>
+            {isPresent(strip) && <Strip data-slot="strip">{strip}</Strip>}
+            <Controls data-slot="controls">{controls}</Controls>
+          </Column>
+        </Island>
+      </Fill>
+      {isPresent(side) && (
         <Sheet open={sideOpen} onClose={onSideClose ?? noop} title={sideLabel ?? 'People'}>
           {side}
         </Sheet>

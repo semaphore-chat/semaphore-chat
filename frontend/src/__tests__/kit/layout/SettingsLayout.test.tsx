@@ -27,20 +27,21 @@ function Content(): ReactNode {
   return <TextField label="Community name" value={name} onChange={setName} />;
 }
 
-function renderSettings(props: Partial<SettingsLayoutProps> = {}) {
-  return renderWithKit(
+const settings = (props: Partial<SettingsLayoutProps> = {}) => (
     <AppFrame>
       <SettingsLayout
         title="Community settings"
         nav={<a href="#roles">Roles</a>}
         navLabel="Settings sections"
+        onBack={() => undefined}
         {...props}
       >
         <Content />
       </SettingsLayout>
-    </AppFrame>,
-  );
-}
+    </AppFrame>
+);
+
+const renderSettings = (props: Partial<SettingsLayoutProps> = {}) => renderWithKit(settings(props));
 
 describe.each([
   ['wide', WIDTH.wide],
@@ -122,11 +123,61 @@ describe('SettingsLayout across width changes', () => {
     const viewport = mockViewport(WIDTH.wide);
     const { user } = renderSettings({ phonePane: 'nav' });
     await user.type(screen.getByRole('textbox', { name: 'Community name' }), 'Couch');
-    viewport.setWidth(WIDTH.compact);
-    viewport.setWidth(WIDTH.phone);
+    await viewport.setWidth(WIDTH.compact);
+    await viewport.setWidth(WIDTH.phone);
     expect(screen.queryByRole('textbox', { name: 'Community name' })).toBeNull();
-    viewport.setWidth(WIDTH.wide);
+    await viewport.setWidth(WIDTH.wide);
     expect(screen.getByRole('textbox', { name: 'Community name' })).toHaveValue('Couch');
     expect(mounts.content).toBe(1);
+  });
+});
+
+describe('SettingsLayout: the phone flow', () => {
+  beforeEach(() => {
+    mockViewport(WIDTH.phone);
+  });
+
+  it.each(['nav', 'content'] as const)('has exactly one h1 and one main with the %s pane shown', (phonePane) => {
+    renderSettings({ phonePane });
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+
+  it('moves focus into the content pane when it replaces the nav', async () => {
+    const view = renderSettings({ phonePane: 'nav' });
+    await view.user.click(screen.getByRole('link', { name: 'Roles' }));
+    expect(screen.getByRole('link', { name: 'Roles' })).toHaveFocus();
+    view.rerender(settings({ phonePane: 'content' }));
+    expect(screen.getByRole('main', { name: 'Community settings' }).parentElement).toHaveFocus();
+  });
+
+  it('moves focus back into the nav pane when Back returns to it', async () => {
+    const view = renderSettings({ phonePane: 'content' });
+    await view.user.click(screen.getByRole('textbox', { name: 'Community name' }));
+    view.rerender(settings({ phonePane: 'nav' }));
+    expect(screen.getByRole('navigation', { name: 'Settings sections' }).parentElement).toHaveFocus();
+  });
+
+  it('moves focus into the shown pane when the width crosses into the phone range', async () => {
+    const viewport = mockViewport(WIDTH.compact);
+    const view = renderSettings({ phonePane: 'content' });
+    await view.user.click(screen.getByRole('link', { name: 'Roles' }));
+    await viewport.setWidth(WIDTH.phone);
+    expect(screen.getByRole('main', { name: 'Community settings' }).parentElement).toHaveFocus();
+  });
+
+  it('hides the other pane with hidden and inert', () => {
+    renderSettings({ phonePane: 'nav' });
+    const hidden = document.querySelectorAll('[inert]');
+    expect(hidden).toHaveLength(1);
+    expect(hidden[0]).toHaveAttribute('hidden');
+  });
+});
+
+describe('SettingsLayout: a footer that is not there', () => {
+  it.each([null, false, ''])('footer=%j leaves no element', (footer) => {
+    mockViewport(WIDTH.wide);
+    renderSettings({ footer });
+    expect(document.querySelector('[data-slot="footer"]')).toBeNull();
   });
 });

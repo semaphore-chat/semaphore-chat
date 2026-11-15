@@ -31,28 +31,41 @@ export function atMedia(query: string): string {
 
 const supported = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function';
 
+/** The two lists everything is read from, made once for a given `window.matchMedia`. */
+let lists: { source: typeof window.matchMedia; wide: MediaQueryList; abovePhone: MediaQueryList } | null = null;
+
+function queries(): NonNullable<typeof lists> {
+  if (lists === null || lists.source !== window.matchMedia) {
+    lists = {
+      source: window.matchMedia,
+      wide: window.matchMedia(media.wide),
+      abovePhone: window.matchMedia(media.abovePhone),
+    };
+  }
+  return lists;
+}
+
 function read(): WidthRange {
   if (!supported()) {
     return 'wide';
   }
-  if (window.matchMedia(media.wide).matches) {
+  const { wide, abovePhone } = queries();
+  if (wide.matches) {
     return 'wide';
   }
-  return window.matchMedia(media.abovePhone).matches ? 'compact' : 'phone';
+  return abovePhone.matches ? 'compact' : 'phone';
 }
 
 function subscribe(onChange: () => void): () => void {
   if (!supported()) {
     return () => undefined;
   }
-  const lists = [window.matchMedia(media.wide), window.matchMedia(media.abovePhone)];
-  for (const list of lists) {
-    list.addEventListener('change', onChange);
-  }
+  const { wide, abovePhone } = queries();
+  wide.addEventListener('change', onChange);
+  abovePhone.addEventListener('change', onChange);
   return () => {
-    for (const list of lists) {
-      list.removeEventListener('change', onChange);
-    }
+    wide.removeEventListener('change', onChange);
+    abovePhone.removeEventListener('change', onChange);
   };
 }
 

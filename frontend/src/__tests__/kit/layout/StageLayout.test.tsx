@@ -95,4 +95,24 @@ describe.each([
     renderStage({ sideOpen: true });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  it.each([null, false, ''])('strip=%j leaves no strip element', (strip) => {
+    renderStage({ strip });
+    expect(screen.getByRole('main').querySelector('[data-slot="strip"]')).toBeNull();
+  });
+
+  it.each([null, false, ''])('side=%j opens no empty dialog', (side) => {
+    renderStage({ side, sideOpen: true });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('keeps one main and fills the frame under a banner', () => {
+    renderWithKit(
+      <AppFrame banner={<p>Reconnecting</p>}>
+        <StageLayout header="h" stage="s" controls="c" stageLabel="Squad Up stage" />
+      </AppFrame>,
+    );
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(screen.getByText('Reconnecting')).toBeInTheDocument();
+  });
 });

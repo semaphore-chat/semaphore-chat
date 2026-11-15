@@ -70,6 +70,7 @@ export { DockItem } from './dock/DockItem';
 export type { DockItemProps } from './dock/DockItem';
 export { media, useWidthRange } from './layout/breakpoints';
 export type { WidthRange } from './layout/breakpoints';
+export { useKeyboardInset } from './layout/useKeyboardInset';
 export { AppFrame } from './layout/AppFrame';
 export type { AppFrameProps } from './layout/AppFrame';
 export { ThreeIslands } from './layout/ThreeIslands';

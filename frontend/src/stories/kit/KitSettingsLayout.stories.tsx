@@ -15,7 +15,7 @@ function Screen({ mode, phonePane = 'nav', ...props }: { mode: ModeName } & Part
       <AppFrame>
         <SettingsLayout
           title="Community settings"
-          nav={<SampleSections />}
+          nav={<SampleSections onPick={() => setPane('content')} />}
           navLabel="Community settings sections"
           footer={<SampleUnsaved />}
           phonePane={pane}

@@ -4,6 +4,7 @@ import { screen, within } from '@testing-library/react';
 import { AppFrame, Button, Dock, DockItem, TextField, ThreeIslands, type ThreeIslandsProps } from '../../../kit';
 import { renderWithKit } from '../../test-utils/renderWithKit';
 import { WIDTH, mockViewport } from './matchMedia';
+import { fakeVisualViewport } from './visualViewport';
 
 let consoleError: MockInstance;
 beforeEach(() => {
@@ -42,22 +43,22 @@ const dock = (
   </Dock>
 );
 
-function renderChat(props: Partial<ThreeIslandsProps> = {}) {
-  return renderWithKit(
-    <AppFrame>
-      <ThreeIslands
-        dock={dock}
-        left={<Left />}
-        leftLabel="Channels"
-        centre={<Centre />}
-        centreLabel="general"
-        right={<p>Member list</p>}
-        rightLabel="Members"
-        {...props}
-      />
-    </AppFrame>,
-  );
-}
+const chat = (props: Partial<ThreeIslandsProps> = {}) => (
+  <AppFrame>
+    <ThreeIslands
+      dock={dock}
+      left={<Left />}
+      leftLabel="Channels"
+      centre={<Centre />}
+      centreLabel="general"
+      right={<p>Member list</p>}
+      rightLabel="Members"
+      {...props}
+    />
+  </AppFrame>
+);
+
+const renderChat = (props: Partial<ThreeIslandsProps> = {}) => renderWithKit(chat(props));
 
 /** The names of the navigation, main and complementary landmarks, in document order. */
 const landmarkOrder = () =>
@@ -169,12 +170,17 @@ describe('ThreeIslands at phone', () => {
     expect(within(screen.getByRole('main')).getByRole('navigation', { name: 'Channels' })).toBeInTheDocument();
   });
 
-  it('hides the other pane with hidden and inert, so it cannot take focus', () => {
+  // jsdom ignores `inert` for focus and for the accessibility tree, so each mechanism is pinned by its own
+  // assertion: the attribute (fails if `inert` is removed), `hidden`, and the role queries finding nothing.
+  it('hides the other pane with both hidden and inert, and the role queries find nothing in it', () => {
     renderChat();
-    const hiddenPane = document.querySelector('[inert]');
-    expect(hiddenPane).not.toBeNull();
-    expect(hiddenPane).toHaveAttribute('hidden');
-    expect(hiddenPane?.querySelector('input')).not.toBeNull();
+    const hiddenPanes = document.querySelectorAll('[inert]');
+    expect(hiddenPanes).toHaveLength(1);
+    expect(hiddenPanes[0]).toHaveAttribute('inert');
+    expect(hiddenPanes[0]).toHaveAttribute('hidden');
+    expect(hiddenPanes[0].querySelector('input')).not.toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Find a channel' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Channels' })).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Message' }).closest('[inert]')).toBeNull();
   });
 
@@ -196,11 +202,11 @@ describe('ThreeIslands across width changes', () => {
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hello there');
     expect(mounts.centre).toBe(1);
 
-    viewport.setWidth(WIDTH.compact);
+    await viewport.setWidth(WIDTH.compact);
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('hello there');
-    viewport.setWidth(WIDTH.phone);
+    await viewport.setWidth(WIDTH.phone);
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('hello there');
-    viewport.setWidth(WIDTH.wide);
+    await viewport.setWidth(WIDTH.wide);
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('hello there');
     expect(mounts.centre).toBe(1);
   });
@@ -209,9 +215,9 @@ describe('ThreeIslands across width changes', () => {
     const viewport = mockViewport(WIDTH.compact);
     const { user } = renderChat();
     await user.type(screen.getByRole('textbox', { name: 'Find a channel' }), 'gen');
-    viewport.setWidth(WIDTH.phone);
+    await viewport.setWidth(WIDTH.phone);
     expect(screen.queryByRole('textbox', { name: 'Find a channel' })).toBeNull();
-    viewport.setWidth(WIDTH.compact);
+    await viewport.setWidth(WIDTH.compact);
     expect(screen.getByRole('textbox', { name: 'Find a channel' })).toHaveValue('gen');
     expect(mounts.left).toBe(1);
   });
@@ -219,11 +225,11 @@ describe('ThreeIslands across width changes', () => {
   it('keeps the state of the centre slot while it is the hidden pane on a phone', async () => {
     const viewport = mockViewport(WIDTH.phone);
     const view = renderChat({ phonePane: 'left' });
-    viewport.setWidth(WIDTH.wide);
+    await viewport.setWidth(WIDTH.wide);
     await view.user.type(screen.getByRole('textbox', { name: 'Message' }), 'draft');
-    viewport.setWidth(WIDTH.phone);
+    await viewport.setWidth(WIDTH.phone);
     expect(screen.queryByRole('textbox', { name: 'Message' })).toBeNull();
-    viewport.setWidth(WIDTH.compact);
+    await viewport.setWidth(WIDTH.compact);
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('draft');
     expect(mounts.centre).toBe(1);
   });
@@ -251,10 +257,208 @@ describe('ThreeIslands across width changes', () => {
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'abc');
     await user.click(screen.getByRole('button', { name: 'Show members' }));
     expect(screen.getByRole('dialog', { name: 'Members' })).toBeInTheDocument();
-    viewport.setWidth(WIDTH.wide);
+    await viewport.setWidth(WIDTH.wide);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(within(screen.getByRole('complementary', { name: 'Members' })).getByText('Member list')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('abc');
     expect(mounts.centre).toBe(1);
+  });
+});
+
+describe('ThreeIslands: rightOpen means the right content is showing, at every width', () => {
+  it('shows the island at wide by default', () => {
+    mockViewport(WIDTH.wide);
+    renderChat();
+    expect(screen.getByRole('complementary', { name: 'Members' })).toBeInTheDocument();
+  });
+
+  it('shows no island at wide when rightOpen is false, and leaves two columns and no landmark', () => {
+    mockViewport(WIDTH.wide);
+    renderChat({ rightOpen: false });
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(screen.queryByText('Member list')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(landmarkOrder()).toEqual(['Communities', 'Channels', 'general']);
+  });
+
+  it('shows the island at wide when rightOpen is true, not a dialog', () => {
+    mockViewport(WIDTH.wide);
+    renderChat({ rightOpen: true });
+    expect(screen.getByRole('complementary', { name: 'Members' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('is closed below wide by default, and narrowing from the default island opens no modal', async () => {
+    const viewport = mockViewport(WIDTH.wide);
+    renderChat();
+    await viewport.setWidth(WIDTH.compact);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await viewport.setWidth(WIDTH.phone);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('keeps what the user asked for across a resize: closed stays closed, open stays showing', async () => {
+    const viewport = mockViewport(WIDTH.wide);
+    const view = renderChat({ rightOpen: false });
+    await viewport.setWidth(WIDTH.compact);
+    await viewport.setWidth(WIDTH.wide);
+    expect(screen.queryByRole('complementary')).toBeNull();
+    view.rerender(chat({ rightOpen: true }));
+    expect(screen.getByRole('complementary')).toBeInTheDocument();
+    await viewport.setWidth(WIDTH.compact);
+    expect(screen.getByRole('dialog', { name: 'Members' })).toBeInTheDocument();
+  });
+
+  it('does not call onRightClose by itself when the width changes', async () => {
+    const onRightClose = vi.fn();
+    const viewport = mockViewport(WIDTH.wide);
+    renderChat({ rightOpen: true, onRightClose });
+    await viewport.setWidth(WIDTH.compact);
+    await viewport.setWidth(WIDTH.wide);
+    expect(onRightClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('ThreeIslands: slots that are not there', () => {
+  beforeEach(() => {
+    mockViewport(WIDTH.wide);
+  });
+
+  it.each([null, false, ''])('right=%j leaves no landmark, column or dialog', (right) => {
+    renderChat({ right });
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it.each([null, false])('dock=%j leaves no dock landmark', (value) => {
+    renderChat({ dock: value });
+    expect(landmarkOrder()).toEqual(['Channels', 'general', 'Members']);
+  });
+
+  it.each([null, false])('callBar=%j leaves no element', (callBar) => {
+    renderChat({ callBar });
+    expect(document.querySelector('[data-slot="call-bar"]')).toBeNull();
+  });
+
+  it('right=false below wide opens no empty dialog even when rightOpen', () => {
+    mockViewport(WIDTH.compact);
+    renderChat({ right: false, rightOpen: true });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('ThreeIslands: callBar', () => {
+  const bar = <p>In Squad Up</p>;
+  const callBar = () => screen.getByText('In Squad Up').closest('[data-slot="call-bar"]') as HTMLElement;
+  const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('sits under the left island and before the centre at wide and compact', () => {
+    for (const width of [WIDTH.wide, WIDTH.compact]) {
+      mockViewport(width);
+      const { unmount } = renderChat({ callBar: bar });
+      expect(before(screen.getByRole('navigation', { name: 'Channels' }), callBar())).toBe(true);
+      expect(before(callBar(), screen.getByRole('main'))).toBe(true);
+      unmount();
+    }
+  });
+
+  it('sits between the shown pane and the dock bar on a phone, whichever pane shows', () => {
+    mockViewport(WIDTH.phone);
+    const view = renderChat({ callBar: bar });
+    expect(before(screen.getByRole('main'), callBar())).toBe(true);
+    expect(before(callBar(), screen.getByRole('navigation', { name: 'Communities' }))).toBe(true);
+    view.rerender(chat({ callBar: bar, phonePane: 'left' }));
+    expect(before(screen.getByRole('navigation', { name: 'Channels' }), callBar())).toBe(true);
+    expect(callBar()).toBeVisible();
+  });
+
+  it('is in the tree once at every width', async () => {
+    const viewport = mockViewport(WIDTH.wide);
+    renderChat({ callBar: bar });
+    for (const width of [WIDTH.compact, WIDTH.phone, WIDTH.wide]) {
+      await viewport.setWidth(width);
+      expect(screen.getAllByText('In Squad Up')).toHaveLength(1);
+    }
+  });
+});
+
+describe('ThreeIslands: the on-screen keyboard on a phone', () => {
+  it('takes the dock bar out while the keyboard is up, and brings it back', () => {
+    mockViewport(WIDTH.phone);
+    const viewport = fakeVisualViewport(800);
+    renderChat();
+    expect(screen.getByRole('navigation', { name: 'Communities' })).toBeInTheDocument();
+    viewport.cover(300);
+    expect(screen.queryByRole('navigation', { name: 'Communities' })).toBeNull();
+    viewport.cover(0);
+    expect(screen.getByRole('navigation', { name: 'Communities' })).toBeInTheDocument();
+  });
+
+  it('keeps the call bar while the keyboard is up', () => {
+    mockViewport(WIDTH.phone);
+    const viewport = fakeVisualViewport(800);
+    renderChat({ callBar: <p>In Squad Up</p> });
+    viewport.cover(300);
+    expect(screen.getByText('In Squad Up')).toBeInTheDocument();
+  });
+
+  it('leaves the dock alone below the phone range', () => {
+    mockViewport(WIDTH.compact);
+    const viewport = fakeVisualViewport(800);
+    renderChat();
+    viewport.cover(300);
+    expect(screen.getByRole('navigation', { name: 'Communities' })).toBeInTheDocument();
+  });
+});
+
+describe('ThreeIslands: focus follows the shown pane', () => {
+  const centrePane = () => screen.getByRole('main', { name: 'general' }).parentElement as HTMLElement;
+
+  it('moves into the centre when the phone pane changes from left to centre', async () => {
+    mockViewport(WIDTH.phone);
+    const view = renderChat({ phonePane: 'left' });
+    await view.user.click(screen.getByRole('textbox', { name: 'Find a channel' }));
+    expect(screen.getByRole('textbox', { name: 'Find a channel' })).toHaveFocus();
+    view.rerender(chat({ phonePane: 'centre' }));
+    expect(centrePane()).toHaveFocus();
+  });
+
+  it('moves into the left pane when the phone pane changes from centre to left', async () => {
+    mockViewport(WIDTH.phone);
+    const view = renderChat();
+    await view.user.click(screen.getByRole('textbox', { name: 'Message' }));
+    view.rerender(chat({ phonePane: 'left' }));
+    expect(screen.getByRole('navigation', { name: 'Channels' }).parentElement).toHaveFocus();
+  });
+
+  it('moves into the shown pane when the width crosses into the phone range with focus in the other', async () => {
+    const viewport = mockViewport(WIDTH.compact);
+    const view = renderChat();
+    await view.user.click(screen.getByRole('textbox', { name: 'Find a channel' }));
+    await viewport.setWidth(WIDTH.phone);
+    expect(centrePane()).toHaveFocus();
+  });
+
+  it('moves into the centre when the right island goes away with focus inside it', async () => {
+    const viewport = mockViewport(WIDTH.wide);
+    const view = renderChat({ right: <input aria-label="Reply" /> });
+    await view.user.click(screen.getByRole('textbox', { name: 'Reply' }));
+    await viewport.setWidth(WIDTH.compact);
+    expect(centrePane()).toHaveFocus();
+  });
+
+  it('does not take focus when it was elsewhere', async () => {
+    mockViewport(WIDTH.phone);
+    const view = renderChat({ phonePane: 'left' });
+    view.rerender(chat({ phonePane: 'centre' }));
+    expect(centrePane()).not.toHaveFocus();
+  });
+
+  it('leaves focus where it is when the pane it is in stays shown', async () => {
+    const viewport = mockViewport(WIDTH.wide);
+    const view = renderChat();
+    await view.user.click(screen.getByRole('textbox', { name: 'Message' }));
+    await viewport.setWidth(WIDTH.compact);
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus();
   });
 });
