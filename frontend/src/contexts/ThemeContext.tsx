@@ -295,3 +295,13 @@ export function useTheme(): ThemeContextValue {
   }
   return context;
 }
+
+/**
+ * The "new design" setting, or false outside a ThemeProvider. For the shell
+ * switch (shell/useShellChoice.ts), which must never be the thing that breaks a
+ * tree rendered without the app's theme: without one, the old shell shows.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useNewDesignSetting(): boolean {
+  return useContext(ThemeContext)?.newDesign ?? false;
+}

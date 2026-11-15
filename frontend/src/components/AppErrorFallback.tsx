@@ -1,4 +1,4 @@
-import { Box, Typography, Button } from '@mui/material';
+import { Box, Typography, Button, CircularProgress } from '@mui/material';
 import { Error as ErrorIcon } from '@mui/icons-material';
 
 interface AppErrorFallbackProps {
@@ -42,6 +42,17 @@ export const AppErrorFallback: React.FC<AppErrorFallbackProps> = ({ error }) => 
     >
       Reload
     </Button>
+  </Box>
+);
+
+/**
+ * The centred spinner shown while a lazy part of the app loads: App's top-level
+ * Suspense, and AppShell's while the new design's chunk loads (no old-shell
+ * chrome around it, so the two designs never mix on screen).
+ */
+export const AppLoadingFallback: React.FC = () => (
+  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--full-dvh)' }}>
+    <CircularProgress />
   </Box>
 );
 
