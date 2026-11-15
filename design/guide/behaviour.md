@@ -135,8 +135,10 @@ it does what the effect's description says to do instead.
   in edit mode). On the web a control says so by calling `preventDefault()` on
   the key, not `stopPropagation()`. `pressOutside{insideId}` for a press:
   `insideId` is the innermost layer the press landed in, or null; a press on a
-  popover's anchor counts as inside the popover. A press is the pointer going
-  down and coming up in the same layer, with no layer opening in between. So a
+  popover's anchor counts as inside the popover. A press is the main button (or
+  the first finger or pen on the screen) going down and coming up in the same
+  layer, with no layer opening in between; a right or middle press is not one,
+  and closes nothing. So a
   drag from a dialog onto the dimmed page is not a press, and nor is the press
   that opens a select list under the pointer. `tab` for Tab or Shift+Tab.
 - **Escape that the stack used.** When `escape` asks a layer to close, or the

@@ -101,6 +101,14 @@ export interface OverlayHost {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/**
+ * Only the main button, or the first finger or pen contact, makes a press: a
+ * right or middle press closes nothing.
+ */
+function isMainPress(event: PointerEvent): boolean {
+  return (event.button ?? 0) === 0 && event.isPrimary !== false;
+}
+
 function tryFocus(doc: Document, element: Element | null | undefined): boolean {
   if (!(element instanceof HTMLElement) || !element.isConnected) return false;
   element.focus({ preventScroll: true });
@@ -226,9 +234,11 @@ export function createOverlayHost(options: {
       }
     },
     pointerdown(event) {
+      if (!isMainPress(event)) return;
       press = { insideId: layerAt(event.target, true), opened };
     },
     pointerup(event) {
+      if (!isMainPress(event)) return;
       const down = press;
       press = null;
       // A press is down and up in the same layer, with no layer opened in between

@@ -1265,8 +1265,8 @@ lists below say what each overlay still gets from MUI and the browser.
 - Tab, Escape and a press on the page outside it close it (the overlay stack's
   rules), and focus goes back to whatever had it before the menu opened, not to
   the next control. What MUI still gives: the invisible layer that swallows the
-  press, so the control under it is not activated (a right press too), and
-  `preventDefault` on the Tab key.
+  press, so the control under it is not activated, and `preventDefault` on the
+  Tab key. A right or middle press outside does not close it.
 - An item that opens a Dialog: the menu closes under the dialog without moving
   focus, and the dialog returns focus to the menu's button when it closes.
 - Typing letters collects into a prefix; the same letter again steps through the
@@ -1338,7 +1338,8 @@ lists below say what each overlay still gets from MUI and the browser.
   it opened. If that has gone, focus goes to the layer it was in, or to the
   screen's focus target. This is the stack's rule too: MUI's focus restore is off.
 - A press on the dimmed page closes it only when the press starts and ends there:
-  a drag that starts in the panel and ends on the dimmed page does not.
+  a drag that starts in the panel and ends on the dimmed page does not. Only the
+  main button counts: a right or middle press does nothing.
 - A layer opened from inside (a select list, a Menu, a Popover, a Tooltip) is
   drawn within the dialog and takes the key first. The page behind is hidden from
   assistive technology when the dialog opens, so a layer drawn elsewhere would

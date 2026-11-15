@@ -165,10 +165,11 @@ describe('Menu', () => {
     const onClose = vi.fn();
     const { user } = renderWithKit(<Harness onClose={onClose} />);
     await user.click(trigger());
-    fireEvent.pointerDown(screen.getByRole('separator'));
-    fireEvent.pointerUp(screen.getByRole('separator'));
-    fireEvent.pointerDown(screen.getByRole('menuitem', { name: 'Pin message' }));
-    fireEvent.pointerUp(screen.getByRole('menuitem', { name: 'Pin message' }));
+    const mouse = { button: 0, pointerType: 'mouse', isPrimary: true };
+    fireEvent.pointerDown(screen.getByRole('separator'), mouse);
+    fireEvent.pointerUp(screen.getByRole('separator'), mouse);
+    fireEvent.pointerDown(screen.getByRole('menuitem', { name: 'Pin message' }), mouse);
+    fireEvent.pointerUp(screen.getByRole('menuitem', { name: 'Pin message' }), mouse);
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('menu')).toBeInTheDocument();
   });

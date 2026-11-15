@@ -56,8 +56,10 @@ function tab(): boolean {
 }
 /** A press: down and up on the same element, as a mouse does. */
 function press(element: Element, up: Element = element): void {
-  fireEvent.pointerDown(element);
-  fireEvent.pointerUp(up);
+  // What a mouse sends (jsdom's PointerEvent defaults isPrimary to false).
+  const mouse = { button: 0, pointerType: 'mouse', isPrimary: true };
+  fireEvent.pointerDown(element, mouse);
+  fireEvent.pointerUp(up, mouse);
 }
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
 const scrimOf = (name: string) => screen.getByRole('dialog', { name }).parentElement as HTMLElement;
@@ -410,6 +412,42 @@ describe('overlay stack rules on the kit overlays', () => {
     expect(onDialog).toHaveBeenCalledWith('scrim');
     expect(onDialog).toHaveBeenCalledTimes(1);
     expect(onPopover).not.toHaveBeenCalled();
+  });
+
+  it('rule 9: only the main button, or a primary touch or pen contact, is a press; a right or middle press does nothing', async () => {
+    const onDialog = vi.fn();
+    const onPopover = vi.fn();
+    const onMenu = vi.fn();
+    const { user } = renderWithKit(
+      <>
+        <OwnPopover name="Invite" onClose={onPopover} />
+        <OwnMenu name="More" onClose={onMenu} />
+        <OwnDialog name="Create" onClose={onDialog} />
+      </>,
+    );
+    const pressWith = (element: Element, init: PointerEventInit) => {
+      fireEvent.pointerDown(element, { isPrimary: true, pointerType: 'mouse', ...init });
+      fireEvent.pointerUp(element, { isPrimary: true, pointerType: 'mouse', ...init });
+    };
+    await user.click(button('Invite'));
+    for (const init of [{ button: 2 }, { button: 1 }, { pointerType: 'touch', isPrimary: false }]) {
+      pressWith(document.body, init);
+    }
+    expect(onPopover).not.toHaveBeenCalled();
+    await activate('More');
+    pressWith(menuBackdrop(), { button: 2 });
+    pressWith(menuBackdrop(), { button: 1 });
+    expect(onMenu).not.toHaveBeenCalled();
+    pressWith(menuBackdrop(), { button: 0, pointerType: 'pen', isPrimary: true });
+    expect(onMenu).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    await activate('Create');
+    pressWith(scrimOf('Create dialog'), { button: 2 });
+    pressWith(scrimOf('Create dialog'), { button: 1 });
+    pressWith(scrimOf('Create dialog'), { pointerType: 'touch', isPrimary: false });
+    expect(onDialog).not.toHaveBeenCalled();
+    pressWith(scrimOf('Create dialog'), { button: 0, pointerType: 'touch', isPrimary: true });
+    expect(onDialog).toHaveBeenCalledWith('scrim');
   });
 
   it('rule 10: a press never closes a tooltip', async () => {
