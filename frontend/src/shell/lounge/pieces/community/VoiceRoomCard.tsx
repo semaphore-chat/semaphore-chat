@@ -9,14 +9,13 @@
  * (`useChannelPermissions(...).can('connect')`).
  */
 import { useState, type JSX } from 'react';
-import { AvatarStack, Button, Card, Icon, Pill, Text, useToasts } from '../../../../kit';
+import { AvatarStack, Button, Card, Icon, Pill, Stack, Text, useToasts } from '../../../../kit';
 import type { Channel } from '../../../../types/channel.type';
 import { useVoiceRoomPeople, useJoinVoiceRoom } from '../../../../data/voiceRoom';
 import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
 import { useVoiceConnection } from '../../../../hooks/useVoiceConnection';
 import { useCurrentUser } from '../../../../hooks/useCurrentUser';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
-import { column, fixed, grow, row } from '../arrange';
 import { peopleLine, talkingLine } from './lines';
 
 export interface VoiceRoomPersonView {
@@ -76,30 +75,24 @@ export function VoiceRoomCard({
 
   return (
     <Card selected={youAreHere}>
-      <div style={row('sm')}>
-        <div style={fixed}>
-          <Icon name="Volume2" tone="secondary" />
-        </div>
-        <div style={{ ...grow, ...column('2xs') }}>
+      <Stack direction="row" gap="sm">
+        <Icon name="Volume2" tone="secondary" />
+        <Stack gap="xs" fill align="start">
           <Text variant="name" as="h3" truncate>
             {name}
           </Text>
           {youAreHere && (
-            <div>
-              <Pill tone="accent" size="sm">
-                You're here
-              </Pill>
-            </div>
+            <Pill tone="accent" size="sm">
+              You're here
+            </Pill>
           )}
-        </div>
-        {action && <div style={fixed}>{action}</div>}
-      </div>
+        </Stack>
+        {action}
+      </Stack>
       {people.length > 0 ? (
-        <div style={row('sm')}>
-          <div style={fixed}>
-            <AvatarStack people={stack} size="sm" />
-          </div>
-          <div style={{ ...grow, ...column() }}>
+        <Stack direction="row" gap="sm">
+          <AvatarStack people={stack} size="sm" />
+          <Stack gap="xs" fill>
             <Text variant="meta" tone="secondary" truncate>
               {peopleLine(people, youId)}
             </Text>
@@ -108,8 +101,8 @@ export function VoiceRoomCard({
                 {talking}
               </Text>
             )}
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       ) : (
         <Text variant="meta" tone="secondary">
           Nobody here

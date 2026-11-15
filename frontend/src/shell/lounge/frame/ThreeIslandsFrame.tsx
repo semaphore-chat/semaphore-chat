@@ -11,6 +11,7 @@ import { ScreenChromeContext } from '../screen';
 import { ShellDockConnected, type DockCurrent } from '../pieces/ShellDock';
 import { AllCommunitiesSheetConnected } from '../pieces/AllCommunitiesSheet';
 import { CommunityLeft } from '../pieces/community/CommunityLeft';
+import { UserCardConnected } from '../pieces/community/UserCard';
 import { InboxLeft } from '../pieces/InboxLeft';
 import { MembersIslandConnected } from '../pieces/MembersIsland';
 import { CentreSkeleton } from '../pieces/CentreSkeleton';
@@ -76,6 +77,10 @@ export function ThreeIslandsFrame({ screen, params, resetKey, title }: ThreeIsla
           ) : (
             <InboxLeft />
           )
+        }
+        leftFooter={
+          // The user's own card stays at the left island's foot at compact and wide; a phone has none.
+          screen.place === 'community' && communityId !== null && range !== 'phone' ? <UserCardConnected /> : undefined
         }
         leftLabel={screen.place === 'community' ? 'Community' : 'Inbox'}
         centre={

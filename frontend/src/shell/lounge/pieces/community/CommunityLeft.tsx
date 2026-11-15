@@ -1,15 +1,15 @@
 /**
  * The left island of a community screen (design §3.3, PR 6): the community's header and its menu,
- * the text channels, the voice rooms, and at compact and wide the user's own card pinned to the
- * island's foot. The frame gives it the route's ids (no `useParams` in a piece).
+ * the text channels and the voice rooms. The user's own card is the island's footer (the frame puts
+ * `UserCardConnected` in ThreeIslands' `leftFooter` at compact and wide). The frame gives it the route's ids (no `useParams` in a piece).
  *
  * Data: `useCommunity`, `useCommunityActions` (the menu), `useCommunityMembers().aroundCount` (the
  * header's "N around", no number while it is null), `useCommunityChannels` (only the server's
- * filtered list), `useUnreadSummary`, a `VoiceRoomCardConnected` per room and `UserCardConnected`.
+ * filtered list), `useUnreadSummary`, a `VoiceRoomCardConnected` per room.
  */
 import { startTransition, useCallback, useMemo, type JSX, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Button, Text, useKitPalette, useWidthRange } from '../../../../kit';
+import { Button, Stack, Text } from '../../../../kit';
 import { useCommunity, useCommunityActions } from '../../../../data/communities';
 import { useCommunityChannels } from '../../../../data/channels';
 import { useCommunityMembers } from '../../../../data/members';
@@ -17,12 +17,10 @@ import { useUnreadSummary } from '../../../../data/unread';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
 import { isPermanentAccessError } from '../../../../utils/httpError';
 import { rememberActivatedRow } from '../../frame/routeMemory';
-import { column, pinnedFoot, SECTION_GAP } from '../arrange';
 import { loadController } from './lines';
 import { CommunityHeader, type CommunityAction, type CommunityHeaderProps } from './CommunityHeader';
 import { ChannelSection, type ChannelSectionProps } from './ChannelSection';
 import { VoiceRoomCardConnected } from './VoiceRoomCard';
-import { UserCardConnected } from './UserCard';
 
 export interface CommunityLeftProps {
   communityId: string;
@@ -37,16 +35,13 @@ export interface CommunityLeftViewProps {
   channels: ChannelSectionProps;
   /** The voice room cards, in order; none: no "Voice rooms" section. */
   rooms: readonly ReactNode[];
-  /** The user's card (compact and wide); null leaves it out (a phone). */
-  userCard: ReactNode | null;
   onLeave(): void;
 }
 
-export function CommunityLeftView({ access, header, channels, rooms, userCard, onLeave }: CommunityLeftViewProps): JSX.Element {
-  const palette = useKitPalette();
+export function CommunityLeftView({ access, header, channels, rooms, onLeave }: CommunityLeftViewProps): JSX.Element {
   if (access === 'notMember') {
     return (
-      <div style={column('md')}>
+      <Stack gap="md">
         <Text variant="title" as="h2">
           You're not a member of this community
         </Text>
@@ -56,34 +51,28 @@ export function CommunityLeftView({ access, header, channels, rooms, userCard, o
         <div>
           <Button onClick={onLeave}>Go to your communities</Button>
         </div>
-      </div>
+      </Stack>
     );
   }
   return (
-    <div style={{ ...column(SECTION_GAP), flexGrow: 1 }}>
+    <Stack gap="lg">
       <CommunityHeader {...header} />
       <ChannelSection {...channels} />
       {rooms.length > 0 && (
-        <div style={column('sm')}>
+        <Stack gap="sm">
           <Text variant="section" tone="secondary" as="h2">
             Voice rooms
           </Text>
           {rooms}
-        </div>
+        </Stack>
       )}
-      {userCard !== null && (
-        // Pinned to the island's foot: below the rooms when they are short, and over the list's end
-        // while it scrolls.
-        <div style={pinnedFoot(palette.surface)}>{userCard}</div>
-      )}
-    </div>
+    </Stack>
   );
 }
 
 export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): JSX.Element {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const range = useWidthRange();
   const { community, status: communityStatus, error: communityError } = useCommunity(communityId);
   const { canEdit } = useCommunityActions(communityId);
   const { aroundCount } = useCommunityMembers(communityId);
@@ -140,7 +129,6 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
       rooms={voice.map((room) => (
         <VoiceRoomCardConnected key={room.id} room={room} communityId={communityId} />
       ))}
-      userCard={range === 'phone' ? null : <UserCardConnected />}
       onLeave={() => startTransition(() => navigate('/'))}
     />
   );

@@ -74,6 +74,8 @@ vi.mock('../../shell/lounge/pieces/community/CommunityLeft', async () => {
     },
   };
 });
+// The user's card in the left island's footer (PR 6): its data is tested with the piece.
+vi.mock('../../shell/lounge/pieces/community/UserCard', () => ({ UserCardConnected: () => null }));
 vi.mock('../../shell/lounge/pieces/MembersIsland', async () => {
   const { useEffect: useMountEffect } = await import('react');
   return {

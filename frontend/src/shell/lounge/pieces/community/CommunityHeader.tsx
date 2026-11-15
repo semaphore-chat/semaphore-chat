@@ -6,8 +6,7 @@
  * plain heading.
  */
 import { useRef, useState, type JSX } from 'react';
-import { Avatar, Card, IconButton, Menu, Skeleton, Text, type MenuEntry } from '../../../../kit';
-import { column, fixed, grow, row } from '../arrange';
+import { Avatar, Card, IconButton, Menu, Skeleton, Stack, Text, type MenuEntry } from '../../../../kit';
 import { aroundLine } from './lines';
 
 export type CommunityAction = 'settings';
@@ -35,12 +34,12 @@ export function CommunityHeader({ name, src, aroundCount, actions, onAction }: C
   if (name === null) {
     return (
       <Card>
-        <div style={row('md')}>
+        <Stack direction="row" gap="md">
           <Skeleton shape="circle" size="lg" />
-          <div style={grow}>
+          <Stack gap="xs" fill>
             <Skeleton shape="text" lines={2} />
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       </Card>
     );
   }
@@ -57,11 +56,9 @@ export function CommunityHeader({ name, src, aroundCount, actions, onAction }: C
 
   return (
     <Card>
-      <div style={row('md')}>
-        <div style={fixed}>
-          <Avatar decorative name={name} src={src} shape="rounded" size="lg" />
-        </div>
-        <div style={{ ...grow, ...column() }}>
+      <Stack direction="row" gap="md">
+        <Avatar decorative name={name} src={src} shape="rounded" size="lg" />
+        <Stack gap="xs" fill>
           <Text variant="title" as="h2" truncate>
             {name}
           </Text>
@@ -70,9 +67,9 @@ export function CommunityHeader({ name, src, aroundCount, actions, onAction }: C
               {line}
             </Text>
           )}
-        </div>
+        </Stack>
         {items.length > 0 && (
-          <div style={fixed}>
+          <>
             <IconButton
               ref={button}
               icon="ChevronDown"
@@ -91,9 +88,9 @@ export function CommunityHeader({ name, src, aroundCount, actions, onAction }: C
               items={items}
               placement="bottom-end"
             />
-          </div>
+          </>
         )}
-      </div>
+      </Stack>
     </Card>
   );
 }

@@ -1,7 +1,9 @@
 /**
  * The words the community pieces put together from data: pure, so tests and stories share them.
  */
-import type { LoadController } from '../../../../kit';
+import type { IconName, LoadController } from '../../../../kit';
+import type { CallBarModel } from '../../../../data/callBar';
+import type { UserCardCall, UserCardMic } from './UserCard';
 
 export interface NamedPerson {
   id: string;
@@ -48,3 +50,35 @@ export function loadController(status: 'pending' | 'error' | 'success', empty: b
     retry,
   };
 }
+
+/** What the card says about the call: deafened wins (you hear nothing and cannot speak), then the mic. */
+export function callState(call: UserCardCall): { icon: IconName; text: string } {
+  if (call.deafened) return { icon: 'HeadphoneOff', text: 'Deafened' };
+  switch (call.mic) {
+    case 'serverMuted':
+      return { icon: 'MicOff', text: 'Muted by a moderator' };
+    case 'blocked':
+      return { icon: 'MicOff', text: 'Listening only' };
+    case 'pushToTalk':
+      return { icon: 'Mic', text: call.keyLabel ? `Push to talk (${call.keyLabel})` : 'Push to talk' };
+    case 'muted':
+      return { icon: 'MicOff', text: 'Muted' };
+    default:
+      return { icon: 'Mic', text: 'Mic on' };
+  }
+}
+
+/** The card's call state from the call bar model. */
+export function callFromModel(model: CallBarModel): UserCardCall {
+  const mic: UserCardMic = model.mic.serverMuted
+    ? 'serverMuted'
+    : model.mic.blocked
+      ? 'blocked'
+      : model.mic.mode !== 'toggle'
+        ? 'pushToTalk'
+        : model.mic.on
+          ? 'on'
+          : 'muted';
+  return { mic, deafened: model.deafened, keyLabel: model.mic.keyLabel };
+}
+

@@ -11,6 +11,11 @@ interface IslandBase {
   padding?: 'none' | 'md' | 'lg';
   /** Fills its parent's height; the content scrolls inside the island, never the page. */
   scroll?: boolean;
+  /**
+   * A block that stays at the island's foot (the user's own card): with `scroll`, only the content above it
+   * scrolls. Inside the island's padding, a small gap below the content.
+   */
+  footer?: ReactNode;
   id?: string;
 }
 
@@ -29,10 +34,12 @@ export type IslandProps = IslandBase &
 interface RootProps {
   $padding: 'none' | 'md' | 'lg';
   $scroll: boolean;
+  /** A footer is shown: the padding and the scrolling move to the body above it. */
+  $split?: boolean;
 }
 
 const Root = styled('div', { shouldForwardProp: (prop) => prop !== 'as' && transientProps(prop) })<RootProps>(
-  ({ theme, $padding, $scroll }) => {
+  ({ theme, $padding, $scroll, $split = false }) => {
     const lounge = kitTheme(theme);
     const { palette } = lounge;
     return {
@@ -40,18 +47,37 @@ const Root = styled('div', { shouldForwardProp: (prop) => prop !== 'as' && trans
       display: 'flex',
       flexDirection: 'column',
       minWidth: 0,
-      padding: `${tokens.space[$padding]}px`,
+      padding: $split ? 0 : `${tokens.space[$padding]}px`,
       background: palette.surface,
       color: palette.text,
       borderRadius: `${tokens.radius.island}px`,
       boxShadow: shadow(lounge, 'island'),
       border: 'none',
-      ...($scroll
+      ...($scroll && !$split
         ? { height: '100%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain' }
-        : { overflow: 'hidden' }),
+        : { overflow: 'hidden', ...($scroll && { height: '100%', minHeight: 0 }) }),
     } as const;
   },
 );
+
+/** With a footer: the content above it, which scrolls when the island does. */
+const Body = styled('div', { shouldForwardProp: transientProps })<RootProps>(({ $padding, $scroll }) => ({
+  boxSizing: 'border-box',
+  display: 'flex',
+  flexDirection: 'column',
+  minWidth: 0,
+  flex: '1 1 auto',
+  padding: `${tokens.space[$padding]}px`,
+  ...($scroll && { minHeight: 0, overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain' }),
+}));
+
+/** The block at the island's foot: never scrolls away. */
+const Foot = styled('div', { shouldForwardProp: transientProps })<{ $padding: 'none' | 'md' | 'lg' }>(({ $padding }) => ({
+  boxSizing: 'border-box',
+  flexShrink: 0,
+  minWidth: 0,
+  padding: `${tokens.space.sm}px ${tokens.space[$padding]}px ${tokens.space[$padding]}px`,
+}));
 
 /**
  * The Lounge's big surface: a rounded panel on the ground, with the island shadow and no border.
@@ -64,11 +90,24 @@ export function Island({
   label,
   padding = 'lg',
   scroll = false,
+  footer,
   id,
 }: IslandProps): JSX.Element {
+  const split = footer !== undefined && footer !== null && footer !== false;
   return (
-    <Root as={as} id={id} aria-label={label} $padding={padding} $scroll={scroll}>
-      <SurfaceContext value="surface">{children}</SurfaceContext>
+    <Root as={as} id={id} aria-label={label} $padding={padding} $scroll={scroll} $split={split}>
+      <SurfaceContext value="surface">
+        {split ? (
+          <>
+            <Body $padding={padding} $scroll={scroll}>
+              {children}
+            </Body>
+            <Foot $padding={padding}>{footer}</Foot>
+          </>
+        ) : (
+          children
+        )}
+      </SurfaceContext>
     </Root>
   );
 }

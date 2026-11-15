@@ -33,7 +33,7 @@ vi.mock('../../../hooks/useVoiceConnection', () => ({
 
 import { KitProvider } from '../../../kit';
 import { UserProfileContext } from '../../../contexts/UserProfileContext';
-import { handleUserOnline } from '../../../socket-hub/handlers/presenceHandlers';
+import { handleUserOnline, resetCommunityPresenceThrottle } from '../../../socket-hub/handlers/presenceHandlers';
 import type { MemberSummary } from '../../../data/members';
 import { MembersIsland, MembersIslandConnected } from '../../../shell/lounge/pieces/MembersIsland';
 import { memberLine, seenLine } from '../../../shell/lounge/pieces/memberLines';
@@ -95,6 +95,7 @@ function renderView(props: Partial<Parameters<typeof MembersIsland>[0]> = {}) {
 
 const consoleError = vi.spyOn(console, 'error');
 beforeEach(() => {
+  resetCommunityPresenceThrottle();
   consoleError.mockClear();
   rowRenders.byFile.clear();
 });
@@ -177,7 +178,7 @@ function membership(n: number) {
   };
 }
 
-function serveMembers(total: number, online: Record<string, boolean>) {
+function serveMembers(total: number, online: Record<string, boolean>, communityOnline?: () => number) {
   const all = Array.from({ length: total }, (_, i) => membership(i + 1));
   server.use(
     http.get(`${BASE}/api/membership/community/c-1`, ({ request }) => {
@@ -187,6 +188,11 @@ function serveMembers(total: number, online: Record<string, boolean>) {
     }),
     http.get(`${BASE}/api/presence/users/bulk`, () => HttpResponse.json({ presence: online })),
     http.get(`${BASE}/api/channels/community/c-1`, () => HttpResponse.json([])),
+    http.get(`${BASE}/api/presence/community/c-1`, () => {
+      const ids = Object.keys(online).filter((id) => online[id]);
+      const count = communityOnline ? communityOnline() : ids.length;
+      return HttpResponse.json({ onlineUserIds: ids, onlineCount: count, memberCount: total });
+    }),
   );
 }
 
@@ -209,17 +215,27 @@ function renderConnected(onRender?: (phase: string, duration: number) => void) {
 }
 
 const groupOf = (name: string) =>
-  screen.getByRole('button', { name: new RegExp(`^${name}\\b`) }).closest('div[style]')?.parentElement?.querySelector('h3')?.textContent;
+  screen.getByRole('button', { name: new RegExp(`^${name}\\b`) }).closest('[data-kit-list-row]')?.parentElement?.querySelector('h3')?.textContent;
 
 describe('MembersIslandConnected', () => {
+  it('"N around" is the community presence count, known before every page is loaded', async () => {
+    serveMembers(300, {}, () => 42);
+    renderConnected();
+    await screen.findByRole('button', { name: /^User 100\b/ });
+    expect(await screen.findByText('42 around')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+  });
+
   it('a presence change (the real socket handler) moves a member from Away to Around', async () => {
-    serveMembers(5, { 'user-3': true });
+    const online: Record<string, boolean> = { 'user-3': true };
+    serveMembers(5, online);
     const { queryClient, user, openProfile } = renderConnected();
     await screen.findByRole('button', { name: /^User 4/ });
     expect(screen.getByText('1 around')).toBeInTheDocument();
     const away = screen.getByRole('heading', { name: 'Away' }).parentElement!;
     expect(within(away).getByRole('button', { name: /^User 4/ })).toBeInTheDocument();
 
+    online['user-4'] = true;
     act(() => handleUserOnline({ userId: 'user-4' } as never, queryClient));
 
     const around = await screen.findByRole('heading', { name: 'Around' });
@@ -231,7 +247,8 @@ describe('MembersIslandConnected', () => {
   });
 
   it('300 members: one presence event re-renders at most 2 rows; the full render time is reported', async () => {
-    serveMembers(300, {});
+    const online: Record<string, boolean> = {};
+    serveMembers(300, online);
     const durations: { phase: string; duration: number }[] = [];
     const { queryClient, user } = renderConnected((phase, duration) => durations.push({ phase, duration }));
     await screen.findByRole('button', { name: /^User 100\b/ });
@@ -245,6 +262,7 @@ describe('MembersIslandConnected', () => {
 
     rowRenders.byFile.clear();
     const start = durations.length;
+    online['user-150'] = true;
     act(() => handleUserOnline({ userId: 'user-150' } as never, queryClient));
     await screen.findByText('1 around');
     const touched = [...rowRenders.byFile.entries()];

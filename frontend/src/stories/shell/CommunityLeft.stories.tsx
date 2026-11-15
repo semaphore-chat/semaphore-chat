@@ -30,14 +30,17 @@ import {
   SQUAD_HERE,
   TWELVE,
   USER_IDLE,
+  USER_DEAFENED,
   USER_IN_CALL,
+  USER_MUTED,
+  USER_SERVER_MUTED,
   useUserCardShown,
 } from '../fixtures/loungeCommunity';
 import { CommunityPage } from '../fixtures/LoungeCommunityPage';
 
 interface LeftOptions {
   mode?: ModeName;
-  view?: Partial<Omit<CommunityLeftViewProps, 'rooms' | 'userCard'>>;
+  view?: Partial<Omit<CommunityLeftViewProps, 'rooms'>>;
   channels?: Partial<CommunityLeftViewProps['channels']>;
   rooms?: VoiceRoomCardProps[];
   user?: typeof USER_IN_CALL | null;
@@ -65,9 +68,9 @@ function Left({ mode, view, channels, rooms = [SQUAD_HERE, AFK], user = USER_IN_
           rooms={rooms.map((r) => (
             <VoiceRoomCard key={r.name} {...r} />
           ))}
-          userCard={userShown && user ? <UserCard {...user} /> : null}
         />
       }
+      leftFooter={userShown && user ? <UserCard {...user} /> : undefined}
       right={
         members ? (
           <MembersIsland
@@ -166,12 +169,14 @@ export const LoadError = () => <Left channels={{ state: failed() }} rooms={[]} /
 /** Not a member (403/404). */
 export const NotMember = () => <Left view={{ access: 'notMember' }} rooms={[]} user={null} />;
 
-/** Push-to-talk: the mute button cannot be tapped (it says why), deafened. */
-export const PushToTalkDeafened = () => (
-  <Left
-    user={{
-      ...USER_IN_CALL,
-      call: { mic: { muted: true, disabled: true, title: 'Hold V to talk' }, deafened: true, onMute: noop, onDeafen: noop },
-    }}
-  />
-);
+/** In a call, muted: the user card says so (status only; the controls are on the call bar). */
+export const UserMuted = () => <Left user={USER_MUTED} />;
+
+/** In a call, deafened. */
+export const UserDeafened = () => <Left user={USER_DEAFENED} />;
+
+/** In a call, muted by a moderator. */
+export const UserServerMuted = () => <Left user={USER_SERVER_MUTED} />;
+
+/** In a call with push-to-talk on V. */
+export const UserPushToTalk = () => <Left user={{ ...USER_IN_CALL, call: { mic: 'pushToTalk', deafened: false, keyLabel: 'V' } }} />;

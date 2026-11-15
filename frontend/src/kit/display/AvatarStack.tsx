@@ -44,16 +44,19 @@ const Group = styled('span')({
 });
 
 /** One avatar's slot: a ground ring around it, and the overlap onto the one before. */
-const Slot = styled('span', { shouldForwardProp: transientProps })<{ $on: Surface; $speaking?: boolean }>(({ theme, $on, $speaking }) => {
+const Slot = styled('span', { shouldForwardProp: transientProps })<{ $on: Surface; $speaking?: boolean; $afterSpeaker?: boolean }>(({ theme, $on, $speaking, $afterSpeaker }) => {
   const { palette } = kitTheme(theme);
   return {
     display: 'inline-flex',
     flexShrink: 0,
     borderRadius: `${tokens.radius.full}px`,
     boxShadow: `0 0 0 ${tokens.border.selected}px ${tintBase(palette, $on)}`,
-    // The speaking ring is drawn whole, over the avatar that overlaps it.
+    // A speaker does not overlap its neighbours (its ring would hide most of the next avatar's initials): it and
+    // the avatar after it sit a ring's width apart, the ring drawn whole above them.
+    '&:not(:first-of-type)': {
+      marginLeft: $speaking || $afterSpeaker ? `${tokens.border.selected * 2}px` : `-${tokens.space.sm}px`,
+    },
     ...($speaking && { position: 'relative', zIndex: 1 }),
-    '&:not(:first-of-type)': { marginLeft: `-${tokens.space.sm}px` },
   };
 });
 
@@ -108,12 +111,12 @@ export function AvatarStack({ people, max = DEFAULT_MAX, size = 'sm', label }: A
   return (
     <Group role="img" aria-label={label ?? summary}>
       {shown.map(({ speaking, ...person }, index) => (
-        <Slot key={index} $on={on} $speaking={speaking === true}>
+        <Slot key={index} $on={on} $speaking={speaking === true} $afterSpeaker={shown[index - 1]?.speaking === true}>
           <Avatar {...person} size={size} presence={speaking === true ? 'speaking' : undefined} decorative />
         </Slot>
       ))}
       {extra > 0 && (
-        <Slot $on={on}>
+        <Slot $on={on} $afterSpeaker={shown[shown.length - 1]?.speaking === true}>
           <More aria-hidden="true" $size={size} $on={on}>
             +{extra}
           </More>

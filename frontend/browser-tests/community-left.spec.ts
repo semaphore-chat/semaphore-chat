@@ -4,7 +4,7 @@ import { openStory } from './story.ts';
 /**
  * The community left island (shell/lounge/pieces/community) in a real browser: the channel list is one
  * Tab stop with arrows, Home, End and typeahead; the voice cards' Join and Leave and the user card's
- * buttons are reached with Tab; nothing scrolls sideways at 320 px.
+ * Settings are reached with Tab; nothing scrolls sideways at 320 px.
  */
 const PHONE = { width: 320, height: 700 };
 const TABLET = { width: 820, height: 1180 };
@@ -52,20 +52,13 @@ test.describe('community-left @keyboard', () => {
     expect(await focusedName(page)).toBe('Join AFK');
   });
 
-  test('user card: Mute, Deafen and Settings are reached with Tab, Mute says it is pressed', async ({ page }) => {
-    await openStory(page, 'community-left--push-to-talk-deafened', TABLET);
-    // A disabled Mute (push-to-talk) is not a stop; Deafen and Settings are
-    await tabTo(page, 'Deafen');
-    expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-pressed'))).toBe('true');
+  test('user card: status only; Settings is its one control and is reached with Tab after the voice rooms', async ({ page }) => {
+    await openStory(page, 'community-left--user-deafened', TABLET);
+    await expect(page.getByText('Deafened')).toBeVisible();
+    await tabTo(page, 'Join AFK');
     await page.keyboard.press('Tab');
     expect(await focusedName(page)).toBe('Settings');
-    await openStory(page, 'community-left--default', TABLET);
-    await tabTo(page, 'Mute');
-    expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-pressed'))).toBe('false');
-    await page.keyboard.press('Tab');
-    expect(await focusedName(page)).toBe('Deafen');
-    await page.keyboard.press('Tab');
-    expect(await focusedName(page)).toBe('Settings');
+    expect(await page.getByRole('button', { name: /^(Mute|Deafen)$/ }).count()).toBe(0);
   });
 });
 
@@ -87,7 +80,9 @@ test('the user card stays at the foot of the island while 200 channels scroll', 
   await openStory(page, 'community-left--two-hundred-channels', TABLET);
   const settings = page.getByRole('button', { name: 'Settings' });
   const before = await settings.boundingBox();
-  await island(page).evaluate((nav) => nav.scrollBy(0, 2000));
+  // The island's body scrolls; its footer (the user card) does not.
+  await island(page).evaluate((nav) => (nav.firstElementChild as HTMLElement).scrollBy(0, 2000));
+  expect(await island(page).evaluate((nav) => (nav.firstElementChild as HTMLElement).scrollTop)).toBeGreaterThan(0);
   const after = await settings.boundingBox();
   expect(after?.y).toBeCloseTo(before?.y ?? 0, 0);
   const navBox = await island(page).boundingBox();

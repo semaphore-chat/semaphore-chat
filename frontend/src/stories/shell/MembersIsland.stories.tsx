@@ -23,7 +23,6 @@ function Members({ mode, ...props }: Partial<MembersIslandProps> & { mode?: Mode
           onLeave={noop}
           channels={{ channels: CHANNELS, selectedId: 'ch-general', hrefFor: (id) => `#${id}`, state: ready() }}
           rooms={[]}
-          userCard={null}
         />
       }
       right={

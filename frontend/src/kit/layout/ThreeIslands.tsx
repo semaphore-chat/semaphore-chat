@@ -15,6 +15,11 @@ export interface ThreeIslandsProps {
   dock?: ReactNode;
   /** The place: community header, channels, voice rooms, the user's card. */
   left: ReactNode;
+  /**
+   * Stays at the foot of the left island while the rest of it scrolls (the user's own card). Inside the island, so
+   * the call bar (compact and wide) stays under the island, below this footer.
+   */
+  leftFooter?: ReactNode;
   leftLabel: string;
   /** The conversation or task. This island is the screen's `main`. */
   centre: ReactNode;
@@ -136,6 +141,7 @@ const noop = () => undefined;
 export function ThreeIslands({
   dock,
   left,
+  leftFooter,
   leftLabel,
   centre,
   centreLabel,
@@ -179,7 +185,7 @@ export function ThreeIslands({
         role={phone && phonePane === 'left' ? 'main' : undefined}
         data-kit-toast-anchor={phone && phonePane === 'left' ? '' : undefined}
       >
-        <Island as="nav" label={leftLabel} padding="md" scroll>
+        <Island as="nav" label={leftLabel} padding="md" scroll footer={leftFooter}>
           {left}
         </Island>
       </PhonePane>

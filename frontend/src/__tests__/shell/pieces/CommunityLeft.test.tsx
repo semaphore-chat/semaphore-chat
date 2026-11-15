@@ -71,9 +71,9 @@ import { handleVoiceUserJoined } from '../../../socket-hub/handlers/voiceHandler
 import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityLeft';
 import { CommunityHeader } from '../../../shell/lounge/pieces/community/CommunityHeader';
 import { VoiceRoomCard } from '../../../shell/lounge/pieces/community/VoiceRoomCard';
-import { UserCard } from '../../../shell/lounge/pieces/community/UserCard';
+import { UserCard, UserCardConnected } from '../../../shell/lounge/pieces/community/UserCard';
 import { ChannelSection } from '../../../shell/lounge/pieces/community/ChannelSection';
-import { loadController } from '../../../shell/lounge/pieces/community/lines';
+import { callFromModel, callState, loadController } from '../../../shell/lounge/pieces/community/lines';
 import { peopleLine, talkingLine, aroundLine } from '../../../shell/lounge/pieces/community/lines';
 
 const BASE = 'http://localhost:3000';
@@ -219,6 +219,21 @@ describe('CommunityLeft (connected)', () => {
     expect(screen.getByRole('link', { name: 'Private channel mods' })).toBeInTheDocument();
     // Unread is bold, read is not
     await waitFor(() => expect(weight(within(clipsLink).getByText('clips'))).toBeGreaterThan(weight(screen.getByText('mods'))));
+  });
+
+  it('badges count text channels only (channelType): a voice room with unread and mentions shows neither', async () => {
+    serve({
+      counts: [
+        { channelId: 'vc-squad', communityId: 'c-1', channelType: 'VOICE', unreadCount: 5, mentionCount: 3 },
+        { channelId: 'ch-clips', communityId: 'c-1', channelType: 'TEXT', unreadCount: 1, mentionCount: 1 },
+      ],
+    });
+    renderLeft();
+    expect(await screen.findByRole('img', { name: '1 mention' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /3 mentions/ })).toBeNull();
+    expect(screen.getAllByRole('img', { name: /mention/ })).toHaveLength(1);
+    const card = screen.getByRole('heading', { name: 'Squad Up' }).closest('div')!.parentElement!.parentElement!;
+    expect(within(card).queryByText(/\b[35]\b/)).toBeNull();
   });
 
   it('the selected channel shows no unread or mention even with counts', async () => {
@@ -407,57 +422,45 @@ describe('the pieces (views)', () => {
     expect(talkingLine(twelve, new Set(['me']), 'me')).toBeNull();
   });
 
-  it('user card: mute and deafen only in a call, with their state; settings always', async () => {
-    const onMute = vi.fn();
-    const onDeafen = vi.fn();
+  it('user card: status only, never a call control; settings always', async () => {
     const onSettings = vi.fn();
     const user = userEvent.setup();
-    const { rerender } = render(
+    const card = (call: Parameters<typeof UserCard>[0]['call'], line: string | null = 'In Squad Up') => (
       <Kit>
-        <UserCard name="alexk" online line="chilling" call={null} onSettings={onSettings} />
-      </Kit>,
+        <UserCard name="alexk" online line={line} call={call} onSettings={onSettings} />
+      </Kit>
     );
-    expect(screen.queryByRole('button', { name: 'Mute' })).toBeNull();
-    expect(screen.getByText('chilling')).toBeInTheDocument();
+    const { rerender } = render(card(null, 'keeping it chill'));
+    expect(screen.getByText('keeping it chill')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'alexk, online' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(onSettings).toHaveBeenCalled();
-    rerender(
-      <Kit>
-        <UserCard
-          name="alexk"
-          online
-          line="In Squad Up"
-          call={{ mic: { muted: true, disabled: false, title: 'Unmute' }, deafened: false, onMute, onDeafen }}
-          onSettings={onSettings}
-        />
-      </Kit>,
-    );
-    expect(screen.getByRole('button', { name: 'Mute' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Deafen' })).toHaveAttribute('aria-pressed', 'false');
-    await user.click(screen.getByRole('button', { name: 'Mute' }));
-    await user.click(screen.getByRole('button', { name: 'Deafen' }));
-    expect(onMute).toHaveBeenCalled();
-    expect(onDeafen).toHaveBeenCalled();
-    expect(screen.getByRole('img', { name: 'alexk, online' })).toBeInTheDocument();
+    const states: [Parameters<typeof UserCard>[0]['call'], string][] = [
+      [{ mic: 'on', deafened: false }, 'Mic on'],
+      [{ mic: 'muted', deafened: false }, 'Muted'],
+      [{ mic: 'muted', deafened: true }, 'Deafened'],
+      [{ mic: 'serverMuted', deafened: false }, 'Muted by a moderator'],
+      [{ mic: 'blocked', deafened: false }, 'Listening only'],
+      [{ mic: 'pushToTalk', deafened: false, keyLabel: 'V' }, 'Push to talk (V)'],
+    ];
+    for (const [call, text] of states) {
+      rerender(card(call));
+      expect(screen.getByText(text)).toBeInTheDocument();
+      expect(screen.getByText('In Squad Up')).toBeInTheDocument();
+      // The call controls live on the call bar: the card has only Settings
+      expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Settings']);
+    }
   });
 
-  it('user card: push-to-talk leaves the mic button untappable, saying why', () => {
-    render(
-      <Kit>
-        <UserCard
-          name="alexk"
-          online={false}
-          line={null}
-          call={{ mic: { muted: true, disabled: true, title: 'Hold V to talk' }, deafened: true, onMute: noop, onDeafen: noop }}
-          onSettings={noop}
-        />
-      </Kit>,
-    );
-    const mute = screen.getByRole('button', { name: 'Mute' });
-    expect(mute).toBeDisabled();
-    expect(mute).toHaveAttribute('title', 'Hold V to talk');
-    expect(screen.getByRole('button', { name: 'Deafen' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Offline')).toBeInTheDocument();
+  it('user card state from the call bar model: server mute, a missing SPEAK, push-to-talk, deafened', () => {
+    const model = (mic: Record<string, unknown>, deafened = false) =>
+      ({ mic: { on: false, serverMuted: false, blocked: false, mode: 'toggle', keyLabel: null, ...mic }, deafened }) as never;
+    expect(callFromModel(model({ on: true }))).toEqual({ mic: 'on', deafened: false, keyLabel: null });
+    expect(callFromModel(model({})).mic).toBe('muted');
+    expect(callFromModel(model({ serverMuted: true, blocked: true })).mic).toBe('serverMuted');
+    expect(callFromModel(model({ blocked: true })).mic).toBe('blocked');
+    expect(callFromModel(model({ mode: 'pushToTalkKey', keyLabel: 'V' }))).toEqual({ mic: 'pushToTalk', deafened: false, keyLabel: 'V' });
+    expect(callState(callFromModel(model({ on: true }, true))).text).toBe('Deafened');
   });
 });
 
@@ -479,20 +482,27 @@ describe('200 channels', () => {
 });
 
 describe('UserCard (connected)', () => {
-  it('reads the call bar model: "In <room>", mute toggles through the model', async () => {
-    const toggleMute = vi.fn();
+  it('reads the profile and the call bar model: "In <room>" and the mic state', async () => {
     mocks.callBar = {
       place: { kind: 'channel', name: 'Squad Up', channelId: 'vc-squad', communityId: 'c-1' },
-      mic: { on: true, tappable: true, blocked: false, title: 'Mute' },
+      mic: { on: false, tappable: true, blocked: false, serverMuted: false, mode: 'toggle', keyLabel: null, title: 'Unmute' },
       deafened: false,
-      actions: { toggleMute, toggleDeafen: vi.fn() },
+      actions: {},
     };
-    serve();
-    const { user } = renderLeft();
-    // jsdom has no matchMedia: the width range reads as wide, where the user card shows.
-    const mute = await screen.findByRole('button', { name: 'Mute' });
+    const queryClient = createTestQueryClient();
+    const Hub = createTestHubWrapper({ queryClient, eventBus: createEventBus() });
+    render(
+      <Hub>
+        <MemoryRouter>
+          <Kit>
+            <UserCardConnected />
+          </Kit>
+        </MemoryRouter>
+      </Hub>,
+    );
+    expect(await screen.findByText('alexk')).toBeInTheDocument();
     expect(screen.getByText('In Squad Up')).toBeInTheDocument();
-    await user.click(mute);
-    expect(toggleMute).toHaveBeenCalled();
+    expect(screen.getByText('Muted')).toBeInTheDocument();
+    mocks.callBar = null;
   });
 });

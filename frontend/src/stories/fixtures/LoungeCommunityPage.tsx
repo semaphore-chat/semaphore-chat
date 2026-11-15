@@ -17,12 +17,15 @@ import { noop } from './loungeCommunity';
 export function CommunityPage({
   mode = 'dark',
   left,
+  leftFooter,
   right,
   phonePane = 'left',
   rightOpen,
 }: {
   mode?: ModeName;
   left: ReactNode;
+  /** The user's card at the left island's foot (the frame passes it at compact and wide). */
+  leftFooter?: ReactNode;
   right?: ReactNode;
   phonePane?: 'left' | 'centre';
   /** Leave it out: the members show at wide and stay closed below (the template's default). */
@@ -35,6 +38,7 @@ export function CommunityPage({
           <ThreeIslands
             dock={<SampleDock />}
             left={left}
+            leftFooter={leftFooter}
             leftLabel="Couch Co-op"
             centre={null}
             centreLabel="general"

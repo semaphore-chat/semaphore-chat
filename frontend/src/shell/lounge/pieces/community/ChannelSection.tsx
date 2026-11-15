@@ -6,9 +6,8 @@
  * channel you cannot see never arrives).
  */
 import { useCallback, useMemo, useRef, type JSX } from 'react';
-import { Badge, Icon, ListRow, LoadState, Skeleton, Text, useListFocus, type LoadController } from '../../../../kit';
+import { Badge, Icon, ListRow, LoadState, Skeleton, Stack, Text, useListFocus, type LoadController } from '../../../../kit';
 import { LOUNGE_ROW_ATTRIBUTE } from '../../frame/routeMemory';
-import { column } from '../arrange';
 
 export interface ChannelItem {
   id: string;
@@ -34,11 +33,11 @@ const SKELETON_ROWS = 6;
 
 function ChannelSkeleton(): JSX.Element {
   return (
-    <div style={column('sm')}>
+    <Stack gap="sm">
       {Array.from({ length: SKELETON_ROWS }, (_, i) => (
         <Skeleton key={i} shape="rect" height="md" />
       ))}
-    </div>
+    </Stack>
   );
 }
 
@@ -61,7 +60,7 @@ export function ChannelSection({ channels, selectedId, hrefFor, onActivate, stat
   const marker = useRowMarkers();
 
   return (
-    <div style={column('xs')}>
+    <Stack gap="xs">
       <Text variant="section" tone="secondary" as="h2">
         Channels
       </Text>
@@ -76,7 +75,7 @@ export function ChannelSection({ channels, selectedId, hrefFor, onActivate, stat
         }
         errorTitle="Couldn't load channels"
       >
-        <div {...list.listProps} style={column()}>
+        <div {...list.listProps}>
           {channels.map((channel) => {
             const selected = channel.id === selectedId;
             const mentions = selected ? 0 : channel.mentions;
@@ -100,6 +99,6 @@ export function ChannelSection({ channels, selectedId, hrefFor, onActivate, stat
           })}
         </div>
       </LoadState>
-    </div>
+    </Stack>
   );
 }

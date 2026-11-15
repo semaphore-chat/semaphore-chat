@@ -167,8 +167,14 @@ const Trailing = styled('span')({
   position: 'relative',
   display: 'inline-flex',
   alignItems: 'center',
-  flexShrink: 0,
+  // A long tag (a role written out in full) gives way with an ellipsis instead of squeezing the name: the slot
+  // takes at most half the row (a Pill cuts its own label; badges and buttons are far narrower than that). It never
+  // shrinks below its content otherwise: the name gives way first.
+  flex: '0 0 auto',
+  minWidth: 0,
+  maxWidth: '50%',
   gap: `${tokens.space.xs}px`,
+  '& > *': { minWidth: 0 },
 });
 
 const Column = styled('span')({

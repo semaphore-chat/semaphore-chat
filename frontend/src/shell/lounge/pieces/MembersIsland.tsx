@@ -12,11 +12,10 @@
  * re-renders only the rows it touched (Profiler test, `__tests__/shell/pieces/MembersIsland.test.tsx`).
  */
 import { memo, useCallback, useContext, useMemo, type JSX } from 'react';
-import { Avatar, Button, ListRow, LoadState, Pill, Skeleton, Text, useListFocus, type LoadController, type RowFocus } from '../../../kit';
+import { Avatar, Button, ListRow, LoadState, Pill, Skeleton, Stack, Text, useListFocus, type LoadController, type RowFocus } from '../../../kit';
 import { useCommunityMembers, type MemberSummary } from '../../../data/members';
 import { useAuthenticatedImage } from '../../../hooks/useAuthenticatedImage';
 import { UserProfileContext } from '../../../contexts/UserProfileContext';
-import { column, fixed, grow, row } from './arrange';
 import { aroundLine, loadController } from './community/lines';
 import { memberLine } from './memberLines';
 
@@ -77,18 +76,16 @@ export const MemberRow = memo(
 
 function MembersSkeleton(): JSX.Element {
   return (
-    <div style={column('sm')}>
+    <Stack gap="sm">
       {Array.from({ length: 8 }, (_, i) => (
-        <div key={i} style={row('sm')}>
-          <div style={fixed}>
-            <Skeleton shape="circle" size="md" />
-          </div>
-          <div style={grow}>
+        <Stack key={i} direction="row" gap="sm">
+          <Skeleton shape="circle" size="md" />
+          <Stack gap="xs" fill>
             <Skeleton shape="text" lines={2} />
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       ))}
-    </div>
+    </Stack>
   );
 }
 
@@ -121,8 +118,8 @@ export function MembersIsland({
   const minute = Math.floor(now / 60_000) * 60_000;
 
   return (
-    <div style={column('lg')}>
-      <div style={column()}>
+    <Stack gap="lg">
+      <Stack gap="xs">
         <Text variant="title" as="h2">
           Who's around
         </Text>
@@ -131,7 +128,7 @@ export function MembersIsland({
             {line}
           </Text>
         )}
-      </div>
+      </Stack>
       <LoadState
         state={state}
         label="Members"
@@ -143,20 +140,22 @@ export function MembersIsland({
         }
         errorTitle="Couldn't load members"
       >
-        <div style={column('lg')}>
-          <div {...list.listProps} style={column('lg')}>
+        <Stack gap="lg">
+          <div {...list.listProps}>
+            <Stack gap="lg">
             {GROUPS.map(({ key, title }) =>
               groups[key].length === 0 ? null : (
-                <div key={key} style={column('2xs')}>
+                <Stack key={key} gap="xs">
                   <Text variant="section" tone="secondary" as="h3">
                     {title}
                   </Text>
                   {groups[key].map((member) => (
                     <MemberRow key={member.id} member={member} now={minute} focus={list.rowFocus(member.id)} onOpen={onOpenProfile} />
                   ))}
-                </div>
+                </Stack>
               ),
             )}
+            </Stack>
           </div>
           {!allLoaded && (
             <div>
@@ -165,9 +164,9 @@ export function MembersIsland({
               </Button>
             </div>
           )}
-        </div>
+        </Stack>
       </LoadState>
-    </div>
+    </Stack>
   );
 }
 

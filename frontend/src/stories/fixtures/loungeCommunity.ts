@@ -84,11 +84,14 @@ export const USER_IN_CALL: UserCardProps = {
   name: 'alexk',
   online: true,
   line: 'In Squad Up',
-  call: { mic: { muted: false, disabled: false, title: 'Mute' }, deafened: false, onMute: noop, onDeafen: noop },
+  call: { mic: 'on', deafened: false },
   onSettings: noop,
 };
 
 export const USER_IDLE: UserCardProps = { ...USER_IN_CALL, line: 'keeping it chill', call: null };
+export const USER_MUTED: UserCardProps = { ...USER_IN_CALL, call: { mic: 'muted', deafened: false } };
+export const USER_DEAFENED: UserCardProps = { ...USER_IN_CALL, call: { mic: 'muted', deafened: true } };
+export const USER_SERVER_MUTED: UserCardProps = { ...USER_IN_CALL, call: { mic: 'serverMuted', deafened: false } };
 
 const HOUR = 3_600_000;
 /** Pinned so "Seen 2h ago" never changes between captures. */

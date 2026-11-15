@@ -84,6 +84,17 @@ export const LongNames = () => (
   </KitStage>
 );
 
+/** A role written out in full in a 264 px members island: the pill cuts at half the row, the name keeps its room. */
+export const LongTrailingPill = () => (
+  <KitStage mode="dark">
+    <div style={{ width: 264, maxWidth: '100%' }}><Island padding="md">
+      <ListRow size="lg" primary="Samira" secondary="keeping the server warm" leading={<Avatar decorative name="Samira" presence="online" />} onClick={noop} trailing={<Pill size="sm">Server administrator</Pill>} />
+      <ListRow size="lg" primary="dropbear" secondary="back at 9" leading={<Avatar decorative name="dropbear" presence="online" />} onClick={noop} trailing={<Pill size="sm">mod</Pill>} />
+      <ListRow size="lg" primary="Samira-the-longest-username" secondary="keeping the server warm while everyone sleeps" leading={<Avatar decorative name="Samira" presence="online" />} onClick={noop} trailing={<Pill size="sm">Community moderator and events lead</Pill>} />
+    </Island></div>
+  </KitStage>
+);
+
 /**
  * The selected row is the solid accent pill: kit children in its slots switch to on-accent ink, so
  * an unread Badge, a Pill and a ghost IconButton stay visible and readable.
