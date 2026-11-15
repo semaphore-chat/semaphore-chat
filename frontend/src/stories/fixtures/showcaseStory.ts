@@ -32,7 +32,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import GlobalStyles from '@mui/material/GlobalStyles';
 import { http, HttpResponse, type HttpHandler } from 'msw';
 import type { LocalParticipant, Participant, RemoteParticipant, Room } from 'livekit-client';
-import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
+import { ACCENT_PRIMARY, ClientEvents, ServerEvents } from '@semaphore-chat/shared';
 import type { AppearanceSettingsResponseDto } from '../../api-client/types.gen';
 import { ThemeProvider } from '../../contexts/ThemeContext';
 import type { ThemeSettings } from '../../theme/constants';
@@ -341,6 +341,9 @@ function appearanceHandler(scenario: Scenario, theme: ThemeSettings): HttpHandle
       themeMode: theme.mode,
       accentColor: theme.accentColor,
       intensity: theme.intensity,
+      baseColor: ACCENT_PRIMARY[theme.accentColor],
+      matchSystem: false,
+      newDesign: false,
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
     } satisfies AppearanceSettingsResponseDto),

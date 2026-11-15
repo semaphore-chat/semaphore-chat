@@ -34,6 +34,7 @@ import { createElement as h, Fragment, type ReactNode } from 'react';
 import CssBaseline from '@mui/material/CssBaseline';
 import GlobalStyles from '@mui/material/GlobalStyles';
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
+import { ACCENT_PRIMARY } from '@semaphore-chat/shared';
 import type { AppearanceSettingsResponseDto } from '../../../api-client/types.gen';
 import { ThemeProvider } from '../../../contexts/ThemeContext';
 import type { ThemeSettings } from '../../../theme/constants';
@@ -95,6 +96,9 @@ function appearanceHandler(scenario: Scenario, theme: ThemeSettings): HttpHandle
       themeMode: theme.mode,
       accentColor: theme.accentColor,
       intensity: theme.intensity,
+      baseColor: ACCENT_PRIMARY[theme.accentColor],
+      matchSystem: false,
+      newDesign: false,
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
     } satisfies AppearanceSettingsResponseDto),
