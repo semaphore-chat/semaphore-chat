@@ -6,7 +6,9 @@
  *
  *   - the same Room object (a tag set on window.__lkRoom survives),
  *   - no new getUserMedia call (the microphone is not requested again),
- *   - the same <audio> element (remote audio is never detached and re-created),
+ *   - the same <audio> elements (remote audio is never detached and re-created):
+ *     one for B's mic and one for the silent soundboard track B publishes about
+ *     a second after joining, tagged only once both are there,
  *   - audio keeps flowing both ways.
  *
  * Before the voice session layer (Layout.tsx → VoiceSessionLayer), each layout
@@ -21,6 +23,7 @@ import {
   joinVoiceChannel,
   closeParticipant,
   waitForAudioFlow,
+  waitForRemoteAudioElements,
   TEST_USER,
   TEST_USER_2,
   type Participant,
@@ -80,13 +83,10 @@ test.describe('Layout changes mid-call', () => {
     await waitForAudioFlow(b, a);
     expect(await currentLayout(a)).toBe('desktop');
 
-    // Tag what must survive: the Room object, the remote audio element.
-    await expect
-      .poll(() => a.page.evaluate(() => document.querySelectorAll('audio').length), {
-        timeout: 15_000,
-        message: 'A never rendered an <audio> element for B',
-      })
-      .toBeGreaterThan(0);
+    // Tag what must survive: the Room object, the remote audio elements. Only
+    // once B's soundboard track has its element too: it can land after audio
+    // flows, and tagged before it, its (correct) new element reads as a re-created one.
+    await waitForRemoteAudioElements(a, b);
     const before = await a.page.evaluate(() => {
       (window.__lkRoom as unknown as Record<string, unknown>).__probe = 'layout-resize';
       window.__probeAudios = Array.from(document.querySelectorAll('audio'));

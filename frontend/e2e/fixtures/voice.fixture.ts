@@ -320,6 +320,56 @@ export async function waitForAudioFlow(
 }
 
 /**
+ * Wait until `listener` has its full, final set of `<audio>` elements for
+ * `remote`, the only other participant in the call: one element for the mic
+ * and one for the soundboard track.
+ *
+ * In a community voice channel every participant with the soundboard button
+ * publishes a silent `soundboard` track about a second after joining
+ * (SoundboardButton / VoiceBottomBarContent → soundboardPlayer.warmup), and
+ * AudioRenderer gives it its own `<audio>` element. That track can land after
+ * audio already flows both ways (it did on CI), so a spec that tags the
+ * `<audio>` elements to prove they are never re-created must tag them after
+ * this: otherwise the late, correct second element looks like a re-created one.
+ */
+export async function waitForRemoteAudioElements(listener: Participant, remote: Participant): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        remote.page.evaluate(() => {
+          const lp = (window.__lkRoom as unknown as {
+            localParticipant: { trackPublications: Map<string, { trackName?: string }> };
+          } | null)?.localParticipant;
+          return !!lp && [...lp.trackPublications.values()].some((pub) => pub.trackName === 'soundboard');
+        }),
+      { timeout: 15_000, message: `${remote.name} never published its soundboard track` },
+    )
+    .toBe(true);
+  await expect
+    .poll(
+      () =>
+        listener.page.evaluate((id) => {
+          type Pub = { source: string; trackName?: string; track?: { attachedElements: HTMLMediaElement[] } };
+          const room = window.__lkRoom as unknown as {
+            remoteParticipants: Map<string, { identity: string; audioTrackPublications: Map<string, Pub> }>;
+          } | null;
+          const out = { mic: -1, soundboard: -1, audioElements: document.querySelectorAll('audio').length };
+          room?.remoteParticipants.forEach((participant) => {
+            if (participant.identity !== id) return;
+            participant.audioTrackPublications.forEach((pub) => {
+              const attached = pub.track ? pub.track.attachedElements.filter((el) => el.isConnected).length : 0;
+              if (pub.trackName === 'soundboard') out.soundboard = attached;
+              else if (pub.source === 'microphone') out.mic = attached;
+            });
+          });
+          return out;
+        }, remote.identity),
+      { timeout: 15_000, message: `${listener.name} never rendered one <audio> each for ${remote.name}'s mic and soundboard` },
+    )
+    .toEqual({ mic: 1, soundboard: 1, audioElements: 2 });
+}
+
+/**
  * Assert audio is NOT flowing from `remote` to `from` — used after a mute. We
  * can't assert totalAudioEnergy decreasing (it's cumulative/monotonic), so we
  * assert inbound bytes don't meaningfully grow across a settle window. A small

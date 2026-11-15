@@ -26,6 +26,7 @@ import {
   joinVoiceChannel,
   closeParticipant,
   waitForAudioFlow,
+  waitForRemoteAudioElements,
   expectNoAudioGrowth,
   moderatorMute,
   setMicEnabled,
@@ -83,14 +84,12 @@ async function setAccountNewDesign(p: Participant, on: boolean): Promise<void> {
   if (!res.ok()) throw new Error(`PATCH appearance-settings: ${res.status()} ${await res.text()}`);
 }
 
-/** Tags what must survive every step: the Room object and the remote <audio> elements. */
-async function tagCall(p: Participant): Promise<{ gum: number; audioCount: number }> {
-  await expect
-    .poll(() => p.page.evaluate(() => document.querySelectorAll('audio').length), {
-      timeout: 15_000,
-      message: `${p.name} never rendered an <audio> element`,
-    })
-    .toBeGreaterThan(0);
+/**
+ * Tags what must survive every step: the Room object and the remote <audio> elements, once
+ * `remote`'s mic and soundboard track both have theirs (the soundboard one can land after audio flows).
+ */
+async function tagCall(p: Participant, remote: Participant): Promise<{ gum: number; audioCount: number }> {
+  await waitForRemoteAudioElements(p, remote);
   return p.page.evaluate(() => {
     (window.__lkRoom as unknown as Record<string, unknown>).__probe = 'shell-switch';
     window.__probeAudios = Array.from(document.querySelectorAll('audio'));
@@ -145,7 +144,7 @@ test.describe('The call across the shell switch', () => {
     await joinVoiceChannel(b, CH);
     await waitForAudioFlow(a, b);
     await waitForAudioFlow(b, a);
-    const before = await tagCall(a);
+    const before = await tagCall(a, b);
     expect(before.gum).toBeGreaterThan(0);
 
     // 1. The preview link, in the middle of the call.
@@ -286,7 +285,7 @@ test.describe('The call across the shell switch', () => {
     await joinVoiceChannel(b, CH);
     await waitForAudioFlow(a, b);
     await waitForAudioFlow(b, a);
-    const before = await tagCall(a);
+    const before = await tagCall(a, b);
 
     // The shell's module (dev server) or chunk (build) cannot be fetched.
     const chunk = /\/src\/shell\/lounge\/LoungeRoot\.tsx|\/assets\/LoungeRoot-[^/]*\.js/;
