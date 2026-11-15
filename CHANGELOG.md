@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes / upgrade checklist
+
+- **One database migration for appearance settings.** `20261115022623_appearance_base_color` adds `baseColor`, `matchSystem` and `newDesign` to `UserAppearanceSettings`, fills each existing row's `baseColor` from its accent (so existing users keep their look), and changes the `accentColor` default to `purple`. An account that never loaded the app while the table existed is treated as new: its old shell shows the new violet default rather than the old `blue` one. Back up your database before upgrading.
+
+### Added
+
+- Appearance settings gained a `baseColor` (any lowercase `#rrggbb` colour), `matchSystem` (follow the operating system's light/dark setting) and `newDesign` ("try the new design"). `PATCH /appearance-settings` keeps `accentColor` equal to the accent nearest `baseColor`, so clients that only know the named accents keep working; sending `accentColor` alone sets `baseColor` to that accent's primary. `GET /appearance-settings` returns all three fields.
+
 ## [0.10.0] - 2026-11-13
 
 A security release, from a second audit that also covered the web and desktop apps, deployment files and CI. Several fixes change how an instance is deployed and set up, so read the checklist before upgrading.

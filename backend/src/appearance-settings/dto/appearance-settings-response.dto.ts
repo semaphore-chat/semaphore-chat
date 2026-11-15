@@ -4,6 +4,9 @@ export class AppearanceSettingsResponseDto {
   themeMode: string;
   accentColor: string;
   intensity: string;
+  baseColor: string;
+  matchSystem: boolean;
+  newDesign: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -16597,6 +16597,15 @@
           "intensity": {
             "type": "string"
           },
+          "baseColor": {
+            "type": "string"
+          },
+          "matchSystem": {
+            "type": "boolean"
+          },
+          "newDesign": {
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -16612,6 +16621,9 @@
           "themeMode",
           "accentColor",
           "intensity",
+          "baseColor",
+          "matchSystem",
+          "newDesign",
           "createdAt",
           "updatedAt"
         ]
@@ -16671,6 +16683,20 @@
                 "$ref": "#/components/schemas/ThemeIntensity"
               }
             ]
+          },
+          "baseColor": {
+            "type": "string",
+            "pattern": "^#[0-9a-f]{6}$",
+            "example": "#8e75ff",
+            "description": "Base colour as lowercase #rrggbb"
+          },
+          "matchSystem": {
+            "type": "boolean",
+            "description": "Follow the operating system light/dark setting"
+          },
+          "newDesign": {
+            "type": "boolean",
+            "description": "Use the new design"
           }
         }
       },

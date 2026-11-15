@@ -255,8 +255,11 @@ model UserAppearanceSettings {
   id          String   @id @default(uuid())
   userId      String   @unique
   themeMode   String   @default("dark") // "dark" | "light"
-  accentColor String   @default("blue") // "teal" | "purple" | "orange" | "blue"
+  accentColor String   @default("purple") // kept for old clients; the server keeps it = nearestAccent(baseColor)
   intensity   String   @default("minimal") // "minimal" | "balanced" | "vibrant"
+  baseColor   String   @default("#8e75ff") // lowercase #rrggbb
+  matchSystem Boolean  @default(false) // follow the OS light/dark
+  newDesign   Boolean  @default(false) // "Try the new design"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

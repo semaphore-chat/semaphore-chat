@@ -1,4 +1,11 @@
-import { IsOptional, IsIn } from 'class-validator';
+import {
+  IsOptional,
+  IsIn,
+  IsBoolean,
+  Matches,
+  IsString,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateAppearanceSettingsDto {
@@ -48,4 +55,36 @@ export class UpdateAppearanceSettingsDto {
     enumName: 'ThemeIntensity',
   })
   intensity?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9a-fA-F]{6}$/, {
+    message: 'baseColor must be a #rrggbb colour',
+  })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @ApiPropertyOptional({
+    type: String,
+    pattern: '^#[0-9a-f]{6}$',
+    example: '#8e75ff',
+    description: 'Base colour as lowercase #rrggbb',
+  })
+  baseColor?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Follow the operating system light/dark setting',
+  })
+  matchSystem?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Use the new design',
+  })
+  newDesign?: boolean;
 }

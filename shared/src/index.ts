@@ -5,3 +5,5 @@ export * from './types';
 export * from './payloads';
 export * from './type-maps';
 export * from './permissions';
+export * from './theme/oklch';
+export * from './theme/accents';
