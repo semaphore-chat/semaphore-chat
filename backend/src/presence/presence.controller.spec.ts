@@ -232,4 +232,23 @@ describe('PresenceController', () => {
       expect(result.presence).toEqual({ [mate]: true });
     });
   });
+
+  describe('getCommunityPresence', () => {
+    it('returns the service’s community presence as-is', async () => {
+      const communityId = '00000000-0000-4000-a000-0000000000cc';
+      const presence = {
+        onlineUserIds: [mockUsers[0].id, mockUsers[1].id],
+        onlineCount: 2,
+        memberCount: 5,
+      };
+      presenceService.getCommunityPresence.mockResolvedValue(presence);
+
+      await expect(
+        controller.getCommunityPresence(communityId),
+      ).resolves.toEqual(presence);
+      expect(presenceService.getCommunityPresence).toHaveBeenCalledWith(
+        communityId,
+      );
+    });
+  });
 });

@@ -8,17 +8,24 @@
  * list of ids: the per-ids endpoint reads at most 200 ids, so members past the
  * 200th always showed offline after "Show more" (design F4).
  *
+ * The community-wide online count comes from the community presence endpoint
+ * (`useCommunityPresence`), so "N around" is right before every page is
+ * loaded; the loaded pages still decide which rows show as online, and the
+ * count falls back to them when the endpoint is missing (an older backend).
+ *
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
 import { useCallback, useMemo, useRef } from 'react';
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 import {
   presenceControllerGetBulkPresenceOptions,
+  presenceControllerGetCommunityPresenceOptions,
   voicePresenceControllerGetChannelPresenceOptions,
 } from '../api-client/@tanstack/react-query.gen';
 import { membershipControllerFindAllForCommunity } from '../api-client/sdk.gen';
 import type { MembershipResponseDto, RoleDto } from '../api-client/types.gen';
 import { communityMembersQueryKey, MEMBER_LIST_PAGE_SIZE } from '../utils/membershipQueryKeys';
+import { getHttpStatus } from '../utils/httpError';
 import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import { useCommunityChannels, type QueryStatus } from './channels';
 
@@ -89,6 +96,30 @@ export function useBulkPresence(enabled = true) {
     ...presenceControllerGetBulkPresenceOptions(),
     enabled,
     staleTime: 60_000,
+  });
+}
+
+/**
+ * Who of ONE community is online (`presenceControllerGetCommunityPresence`):
+ * the community-wide count without downloading the instance's presence. Live
+ * via the presence handlers (they invalidate it), refetched on reconnect.
+ *
+ * A 404 means a backend older than the endpoint: the query errors and callers
+ * fall back to what the loaded member pages say.
+ */
+export function useCommunityPresence(communityId: string | undefined, enabled = true) {
+  return useQuery({
+    ...presenceControllerGetCommunityPresenceOptions({ path: { communityId: communityId ?? '' } }),
+    enabled: enabled && !!communityId,
+    staleTime: 60_000,
+    // A 404 is an older backend without the endpoint: retrying it only delays
+    // the fallback to the loaded pages. Retry once for what a retry can fix
+    // (a network error, or a 5xx), and never for another 4xx.
+    retry: (failureCount, error) => {
+      if (failureCount >= 1) return false;
+      const status = getHttpStatus(error);
+      return status === undefined || status >= 500;
+    },
   });
 }
 
@@ -172,10 +203,12 @@ export interface MemberSummary {
 
 /**
  * The community's members **of the loaded pages** (the first 100 until
- * `loadMore`): complete only when `allLoaded`. There is no community-wide
- * online count on the server yet, so a whole-community number is offered only
- * once every page is loaded (`aroundCount`); before that, show
- * `loadedAroundCount` as "N+" next to "Show more".
+ * `loadMore`): complete only when `allLoaded`. `aroundCount` is the whole
+ * community's online count from the community presence endpoint, so it is
+ * known before every page is loaded; when that request fails (or the backend
+ * predates the endpoint, a 404) it falls back to the online members among the
+ * loaded pages and is null until `allLoaded` — then show `loadedAroundCount`
+ * as "N+" next to "Show more".
  */
 export interface CommunityMembers {
   /** Loaded members with a role (any presence), by role priority, then server order. */
@@ -186,7 +219,7 @@ export interface CommunityMembers {
   away: MemberSummary[];
   /** Online members among the loaded pages, hosts included. */
   loadedAroundCount: number;
-  /** Online members in the whole community, hosts included ("9 around"): null until every page is loaded. */
+  /** Online members in the whole community, hosts included ("9 around"): from the presence endpoint, else null until every page is loaded. */
   aroundCount: number | null;
   allLoaded: boolean;
   loadMore(): void;
@@ -249,7 +282,10 @@ export function groupMembers(entries: readonly { summary: MemberSummary; rolePos
 /** The community's members for the members island (Hosts / Around / Away). */
 export function useCommunityMembers(communityId: string): CommunityMembers {
   const pages = useCommunityMemberPages(communityId);
-  const presence = useBulkPresence((pages.memberships?.length ?? 0) > 0);
+  const hasLoadedMembers = (pages.memberships?.length ?? 0) > 0;
+  const presence = useBulkPresence(hasLoadedMembers);
+  // The community-wide count, without the pages having to reach the last one.
+  const communityPresence = useCommunityPresence(communityId, hasLoadedMembers);
   const { voice } = useCommunityChannels(communityId);
   const { state: voiceState } = useVoiceConnection();
   // Your own room: no 120 s poll (LiveKit is the live source there, see
@@ -306,7 +342,10 @@ export function useCommunityMembers(communityId: string): CommunityMembers {
 
   return {
     ...grouped,
-    aroundCount: allLoaded ? grouped.loadedAroundCount : null,
+    // The endpoint's count when it answers; otherwise the old page-based one
+    // (a backend without the endpoint answers 404, an error leaves it null).
+    aroundCount:
+      communityPresence.data?.onlineCount ?? (allLoaded ? grouped.loadedAroundCount : null),
     allLoaded,
     loadMore: pages.loadMore,
     loadingMore: pages.loadingMore,

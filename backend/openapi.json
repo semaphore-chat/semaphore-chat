@@ -8388,6 +8388,46 @@
         ]
       }
     },
+    "/api/presence/community/{communityId}": {
+      "get": {
+        "operationId": "PresenceController_getCommunityPresence",
+        "parameters": [
+          {
+            "name": "communityId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityPresenceResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Presence"
+        ]
+      }
+    },
     "/api/channels/community/{communityId}/permissions/me": {
       "get": {
         "operationId": "ChannelPermissionsController_getMyCommunityChannelPermissions",
@@ -15768,6 +15808,33 @@
         },
         "required": [
           "presence"
+        ]
+      },
+      "CommunityPresenceResponseDto": {
+        "type": "object",
+        "properties": {
+          "onlineUserIds": {
+            "description": "Ids of the community members who are online now.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "onlineCount": {
+            "type": "integer",
+            "example": 3,
+            "description": "onlineUserIds.length"
+          },
+          "memberCount": {
+            "type": "integer",
+            "example": 42,
+            "description": "Total members of the community."
+          }
+        },
+        "required": [
+          "onlineUserIds",
+          "onlineCount",
+          "memberCount"
         ]
       },
       "ChannelCapabilitiesDto": {
