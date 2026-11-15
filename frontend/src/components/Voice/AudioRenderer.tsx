@@ -89,10 +89,8 @@ const ParticipantAudio: React.FC<ParticipantAudioProps> = ({ participant, audioP
  * updateAudioTracks callback and its event listener registrations stable.
  * Mic audio management must never be disrupted by screen share watching state changes.
  *
- * @example
- * // In Layout.tsx or MobileLayout.tsx, alongside VoiceBottomBar
- * <VoiceBottomBar />
- * <AudioRenderer />
+ * Mounted once, by VoiceSessionLayer (Layout.tsx), above the phone, tablet
+ * and desktop layouts: a layout change must never re-create these elements.
  */
 export const AudioRenderer: React.FC = () => {
   const { room } = useRoom();

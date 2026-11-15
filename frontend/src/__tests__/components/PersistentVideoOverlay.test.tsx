@@ -132,7 +132,7 @@ vi.mock('../../contexts/ReplayBufferContext', () => ({
 }));
 
 vi.mock('../../hooks/usePushToTalk', () => ({
-  usePushToTalk: vi.fn(() => ({
+  usePushToTalkStatus: vi.fn(() => ({
     isActive: false,
     isKeyHeld: false,
     currentKeyDisplay: 'Space',
@@ -178,7 +178,7 @@ vi.mock('../../components/Common/UserAvatar', () => ({
 const { useVoice } = await import('../../contexts/VoiceContext');
 const { useResponsive } = await import('../../hooks/useResponsive');
 const { useVoiceConnection } = await import('../../hooks/useVoiceConnection');
-const { usePushToTalk } = await import('../../hooks/usePushToTalk');
+const { usePushToTalkStatus } = await import('../../hooks/usePushToTalk');
 
 describe('PersistentVideoOverlay', () => {
   beforeEach(() => {
@@ -193,7 +193,7 @@ describe('PersistentVideoOverlay', () => {
       state: mockConnectionState,
       actions: mockActions,
     } as never);
-    vi.mocked(usePushToTalk).mockReturnValue({
+    vi.mocked(usePushToTalkStatus).mockReturnValue({
       isActive: false,
       isKeyHeld: false,
       currentKeyDisplay: 'Space',
@@ -618,7 +618,7 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('float card mic button does not toggle mute while push-to-talk is active', async () => {
-      vi.mocked(usePushToTalk).mockReturnValue({
+      vi.mocked(usePushToTalkStatus).mockReturnValue({
         isActive: true,
         isKeyHeld: false,
         currentKeyDisplay: 'Space',

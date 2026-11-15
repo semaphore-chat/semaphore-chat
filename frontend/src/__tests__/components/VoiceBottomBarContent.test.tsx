@@ -133,7 +133,7 @@ vi.mock('../../hooks/useVoicePublishPermissions', () => ({
 }));
 
 vi.mock('../../hooks/usePushToTalk', () => ({
-  usePushToTalk: vi.fn(() => ({
+  usePushToTalkStatus: vi.fn(() => ({
     isActive: false,
     isKeyHeld: false,
     currentKeyDisplay: 'Space',
@@ -217,7 +217,7 @@ const { useLocalMediaState } = await import('../../hooks/useLocalMediaState');
 const { useResponsive } = await import('../../hooks/useResponsive');
 const { useReplayBufferState } = await import('../../contexts/ReplayBufferContext');
 const { useScreenShare } = await import('../../hooks/useScreenShare');
-const { usePushToTalk } = await import('../../hooks/usePushToTalk');
+const { usePushToTalkStatus } = await import('../../hooks/usePushToTalk');
 const { useVoicePublishPermissions } = await import('../../hooks/useVoicePublishPermissions');
 
 describe('VoiceBottomBarContent', () => {
@@ -253,7 +253,7 @@ describe('VoiceBottomBarContent', () => {
       deviceType: 'desktop',
       shouldUseTouchUI: false,
     } as never);
-    vi.mocked(usePushToTalk).mockReturnValue({
+    vi.mocked(usePushToTalkStatus).mockReturnValue({
       isActive: false,
       isKeyHeld: false,
       currentKeyDisplay: 'Space',
@@ -928,7 +928,7 @@ describe('VoiceBottomBarContent', () => {
     const mockPttRelease = vi.fn();
 
     function enableHoldToTalk() {
-      vi.mocked(usePushToTalk).mockReturnValue({
+      vi.mocked(usePushToTalkStatus).mockReturnValue({
         isActive: true,
         isKeyHeld: false,
         currentKeyDisplay: 'Space',
@@ -984,7 +984,7 @@ describe('VoiceBottomBarContent', () => {
     it('does NOT attach hold-to-talk for desktop PTT (no touch UI regression)', () => {
       // PTT active but desktop (keyboard) — mic button stays a keyboard-only
       // control with no onClick and no pointer transmit.
-      vi.mocked(usePushToTalk).mockReturnValue({
+      vi.mocked(usePushToTalkStatus).mockReturnValue({
         isActive: true,
         isKeyHeld: false,
         currentKeyDisplay: 'Space',
@@ -1234,12 +1234,6 @@ describe('VoiceBottomBarContent', () => {
       expect(camera).toBeEnabled();
       fireEvent.click(camera);
       expect(mockActions.toggleVideo).toHaveBeenCalled();
-    });
-
-    it('passes canSpeak to push-to-talk so PTT presses are ignored', () => {
-      vi.mocked(useVoicePublishPermissions).mockReturnValue(listenOnly);
-      renderWithProviders(<VoiceBottomBar />);
-      expect(usePushToTalk).toHaveBeenCalledWith({ canSpeak: false });
     });
   });
 });

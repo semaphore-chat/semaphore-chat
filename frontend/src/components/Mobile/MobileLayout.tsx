@@ -9,7 +9,8 @@
  * - Screen-based navigation (max 2 levels deep)
  * - Bottom navigation tabs (hidden on chat/search screens and while the
  *   on-screen keyboard is open)
- * - Voice bar when connected
+ * - Voice bar when connected (the call's audio and behaviour sit above the
+ *   layouts, in VoiceSessionLayer: Layout.tsx)
  *
  * Edge chrome (BottomChromeContext): the column stacks, top to bottom,
  * [top chrome padding] → screen → voice bar → bottom nav, all in normal flow,
@@ -19,13 +20,8 @@
 
 import React from 'react';
 import { Box } from '@mui/material';
-import { useVoiceRecovery } from '../../hooks/useVoiceRecovery';
 import { VoiceBottomBar } from '../Voice/VoiceBottomBar';
-import { AudioRenderer } from '../Voice/AudioRenderer';
 import { PersistentVideoOverlay } from '../Voice/PersistentVideoOverlay';
-import { TrackSubscriptionProvider } from '../Voice/TrackSubscriptionProvider';
-import { VoiceEventLogProvider } from '../../hooks/useVoiceEventLog';
-import { VoiceTestHooks } from '../../features/voice/VoiceTestHooks';
 import { MobileNavigationProvider } from './Navigation/MobileNavigationContext';
 import { MobileBottomNavigation } from './Navigation/MobileBottomNavigation';
 import { useBottomNavHidden } from './Navigation/useBottomNavHidden';
@@ -40,9 +36,6 @@ import {
 
 /** Inside MobileNavigationProvider: the nav's visibility depends on the screen. */
 const MobileLayoutColumn: React.FC = () => {
-  // Attempt to recover voice connection after page refresh
-  useVoiceRecovery();
-
   const topChromeHeight = useTopChromeHost();
   const navHidden = useBottomNavHidden(true);
   const keyboardOpen = useKeyboardInset() > 0;
@@ -66,38 +59,30 @@ const MobileLayoutColumn: React.FC = () => {
         paddingBottom: navHidden && !keyboardOpen ? SAFE_AREA_BOTTOM : 0,
       }}
     >
-      <TrackSubscriptionProvider>
-        <VoiceEventLogProvider>
-          <VoiceTestHooks />
-          {/* Community drawer - swipe from left edge */}
-          <MobileCommunityDrawer />
+      {/* Community drawer - swipe from left edge */}
+      <MobileCommunityDrawer />
 
-          {/* Screen container - main content area */}
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'hidden',
-              position: 'relative',
-            }}
-          >
-            <MobileScreenContainer />
-          </Box>
+      {/* Screen container - main content area */}
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        <MobileScreenContainer />
+      </Box>
 
-          {/* Voice bar (only shows when in call) — in flow, above the nav.
-              Collapsed (not unmounted) while the on-screen keyboard is up, so
-              typing gets the room back; the call itself is unaffected. */}
-          <Box data-testid="mobile-voice-bar-slot" sx={{ display: keyboardOpen ? 'none' : 'block', flexShrink: 0 }}>
-            <VoiceBottomBar inline />
-          </Box>
+      {/* Voice bar (only shows when in call) — in flow, above the nav.
+          Collapsed (not unmounted) while the on-screen keyboard is up, so
+          typing gets the room back; the call itself is unaffected. */}
+      <Box data-testid="mobile-voice-bar-slot" sx={{ display: keyboardOpen ? 'none' : 'block', flexShrink: 0 }}>
+        <VoiceBottomBar inline />
+      </Box>
 
-          {/* Audio renderer for remote participants */}
-          <AudioRenderer />
-
-          {/* Floating video overlay */}
-          <PersistentVideoOverlay />
-        </VoiceEventLogProvider>
-      </TrackSubscriptionProvider>
+      {/* Floating video overlay */}
+      <PersistentVideoOverlay />
 
       {/* Bottom navigation - hidden on chat/search screens */}
       <MobileBottomNavigation hideOnDetailScreens />

@@ -45,10 +45,9 @@ import { navigateAfterOverlays } from "../../hooks/useOverlayHistory";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useScreenShare } from "../../hooks/useScreenShare";
 import { useLocalMediaState } from "../../hooks/useLocalMediaState";
-import { useDeafenEffect } from "../../hooks/useDeafenEffect";
 import { useReplayBufferState } from "../../contexts/ReplayBufferContext";
 import { useDebugPanelShortcut } from "../../hooks/useDebugPanelShortcut";
-import { usePushToTalk } from "../../hooks/usePushToTalk";
+import { usePushToTalkStatus } from "../../hooks/usePushToTalk";
 import { useVoicePublishPermissions } from "../../hooks/useVoicePublishPermissions";
 import { DeviceSettingsDialog } from "./DeviceSettingsDialog";
 import { SoundboardButton } from "./SoundboardButton";
@@ -56,15 +55,9 @@ import { ScreenSourcePicker } from "./ScreenSourcePicker";
 import { CaptureReplayModal } from "./CaptureReplayModal";
 import { useResponsive } from "../../hooks/useResponsive";
 import { useHapticFeedback } from "../../hooks/useHapticFeedback";
-import { useWakeLock } from "../../hooks/useWakeLock";
 import { logger } from "../../utils/logger";
 import { LAYOUT_CONSTANTS, TOUCH_TARGETS } from "../../utils/breakpoints";
 import { useSpeaking } from "../../hooks/useSpeaking";
-import { useVoicePresenceHeartbeat } from "../../hooks/useVoicePresenceHeartbeat";
-import { useBackgroundVoiceKeepAlive } from "../../hooks/useBackgroundVoiceKeepAlive";
-import { useVoiceMediaSession } from "../../hooks/useVoiceMediaSession";
-import { useServerMuteEffect } from "../../hooks/useServerMuteEffect";
-import { useRemoteVolumeEffect } from "../../hooks/useRemoteVolumeEffect";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 import { MobileSheet } from "../Mobile/common/MobileSheet";
@@ -127,7 +120,7 @@ const VoiceBottomBarContent: React.FC = () => {
     currentKeyDisplay: pttKeyDisplay,
     pttPress,
     pttRelease,
-  } = usePushToTalk({ canSpeak: publish.canSpeak });
+  } = usePushToTalkStatus();
 
   const micBlocked = !publish.canSpeak && !isMicrophoneEnabled;
   const cameraBlocked = !publish.canVideo && !isCameraEnabled;
@@ -163,44 +156,10 @@ const VoiceBottomBarContent: React.FC = () => {
     ? publish.shareBlockedReason
     : screenShare.isScreenSharing ? "Stop screen share" : "Share screen";
 
-  // Prevent tab freeze / OS suspension while in voice
-  useBackgroundVoiceKeepAlive({ isConnected: state.isConnected });
-
-  // Keep the screen awake while connected (touch devices / web); no-op in
-  // Electron and where the Wake Lock API is unsupported.
-  useWakeLock(state.isConnected);
-
-  // Surface the call via the Media Session API (Android ongoing-call
-  // notification + higher background process priority, see #350)
-  useVoiceMediaSession({
-    isConnected: state.isConnected,
-    contextName: state.channelName ?? state.dmGroupName,
-    isMicrophoneEnabled,
-    onHangup: actions.leaveVoiceChannel,
-    onToggleMic: actions.toggleMute,
-  });
-
-  // Recover calls that silently died while backgrounded/locked (#350). Mounted
-  // in the always-mounted Layout.tsx instead of here — see the comment there —
-  // so the room.on(Disconnected) listener attaches as soon as a Room exists,
-  // not only once this (lazy, isConnected-gated) component mounts.
-
-  // Keep voice presence TTL alive in Redis while connected
-  useVoicePresenceHeartbeat({
-    channelId: state.currentChannelId,
-    dmGroupId: state.currentDmGroupId,
-    contextType: state.contextType,
-    room: state.room,
-  });
-
-  // Implement proper deafen functionality (mute received audio)
-  useDeafenEffect();
-
-  // Listen for server mute WS events and enforce on local user
-  useServerMuteEffect();
-
-  // Reapply per-user volume from localStorage when remote tracks change
-  useRemoteVolumeEffect();
+  // The call's behaviour (push-to-talk keys, keep-alive, wake lock, Media
+  // Session, presence heartbeat, deafen, server mute, volumes) is not here:
+  // it runs in VoiceSessionEffects, above every layout, so it keeps going
+  // whether or not this bar is on screen. This component only shows the call.
 
   // On phone the soundboard button lives in the (unmounted-when-closed) "more"
   // sheet, so warm its track up here instead — SoundboardButton does this on

@@ -8,12 +8,8 @@
 
 import React from 'react';
 import { Box } from '@mui/material';
-import { useVoiceRecovery } from '../../../hooks/useVoiceRecovery';
 import { VoiceBottomBar } from '../../Voice/VoiceBottomBar';
-import { AudioRenderer } from '../../Voice/AudioRenderer';
 import { PersistentVideoOverlay } from '../../Voice/PersistentVideoOverlay';
-import { TrackSubscriptionProvider } from '../../Voice/TrackSubscriptionProvider';
-import { VoiceEventLogProvider } from '../../../hooks/useVoiceEventLog';
 import { MobileNavigationProvider, useMobileNavigation } from '../Navigation/MobileNavigationContext';
 import MobileCommunityDrawer from '../Navigation/MobileCommunityDrawer';
 import { TabletSidebar } from './TabletSidebar';
@@ -30,9 +26,6 @@ import {
  */
 const TabletLayoutInner: React.FC = () => {
   const { state, lastCommunityId } = useMobileNavigation();
-
-  // Attempt to recover voice connection after page refresh
-  useVoiceRecovery();
 
   // Edge chrome (BottomChromeContext): top padding for the offline strip /
   // call banner; the voice bar in normal flow at the bottom. With no bottom
@@ -63,41 +56,35 @@ const TabletLayoutInner: React.FC = () => {
       <MobileCommunityDrawer />
 
       {/* Main content area */}
-      <TrackSubscriptionProvider>
-        <VoiceEventLogProvider>
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              display: 'flex',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Sidebar - navigation + channel list, visible on every app
-                screen. On DM / notification / profile screens (no community in
-                the route) it keeps showing the last community's channels.
-                Dedicated pages ('route': admin, community settings/create,
-                profile edit, friends) get the full width back, as they did
-                before the sidebar became persistent — they carry their own
-                navigation, and at 768–1199px a third column clips them. */}
-            {showSidebar && (
-              <TabletSidebar communityId={state.communityId ?? lastCommunityId} />
-            )}
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Sidebar - navigation + channel list, visible on every app
+            screen. On DM / notification / profile screens (no community in
+            the route) it keeps showing the last community's channels.
+            Dedicated pages ('route': admin, community settings/create,
+            profile edit, friends) get the full width back, as they did
+            before the sidebar became persistent — they carry their own
+            navigation, and at 768–1199px a third column clips them. */}
+        {showSidebar && (
+          <TabletSidebar communityId={state.communityId ?? lastCommunityId} />
+        )}
 
-            {/* Content area */}
-            <TabletContentArea showSidebar={showSidebar} />
-          </Box>
+        {/* Content area */}
+        <TabletContentArea showSidebar={showSidebar} />
+      </Box>
 
-          {/* Voice bar (only shows when in call) — in flow at the bottom */}
-          <VoiceBottomBar inline />
+      {/* Voice bar (only shows when in call) — in flow at the bottom. The
+          call's audio and behaviour sit above the layouts (VoiceSessionLayer). */}
+      <VoiceBottomBar inline />
 
-          {/* Audio renderer for remote participants */}
-          <AudioRenderer />
-
-          {/* Floating video overlay */}
-          <PersistentVideoOverlay />
-        </VoiceEventLogProvider>
-      </TrackSubscriptionProvider>
+      {/* Floating video overlay */}
+      <PersistentVideoOverlay />
     </Box>
   );
 };

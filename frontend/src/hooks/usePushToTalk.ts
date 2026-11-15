@@ -1,15 +1,21 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from 'react';
 import { useVoice, useVoiceDispatch } from '../contexts/VoiceContext';
 import { useRoom } from './useRoom';
 import { useVoiceSettings } from './useVoiceSettings';
+import { pushToTalkStore } from '../features/voice/pushToTalkStore';
 import { logger } from '../utils/logger';
 
 /**
- * Hook to handle Push to Talk functionality.
+ * The Push to Talk engine.
  *
  * When PTT mode is active and user is connected to voice,
  * this hook listens for the configured PTT key and controls
  * the microphone accordingly.
+ *
+ * Mount it exactly once per call: `VoiceSessionEffects` does, above every
+ * shell, so the key keeps working on any screen. It publishes the held state
+ * and its press/release to `pushToTalkStore`; UI reads them through
+ * `usePushToTalkStatus()` instead of mounting a second engine.
  *
  * @param options.canSpeak - false (no SPEAK in this channel, or timed out)
  *   ignores presses: the server would refuse the microphone anyway.
@@ -185,6 +191,16 @@ export function usePushToTalk(options: { canSpeak?: boolean } = {}) {
     }
   }, [isPushToTalk, voiceState.isConnected, voiceState.isServerMuted, voiceState.isDeafened, getRoom]);
 
+  // Share the held state and the transmit controls with the UI.
+  useEffect(() => {
+    pushToTalkStore.setKeyHeld(isKeyHeld);
+  }, [isKeyHeld]);
+  useEffect(() => () => pushToTalkStore.setKeyHeld(false), []);
+  useEffect(
+    () => pushToTalkStore.setControls({ press: pttPress, release: pttRelease }),
+    [pttPress, pttRelease],
+  );
+
   return {
     // Whether PTT mode is currently active (connected + PTT mode enabled)
     isActive,
@@ -202,5 +218,25 @@ export function usePushToTalk(options: { canSpeak?: boolean } = {}) {
     // keyboard path uses. Used by touch "hold-to-talk" UI.
     pttPress,
     pttRelease,
+  };
+}
+
+/**
+ * Push to Talk as the UI shows it: whether PTT is on for this call, whether
+ * the key is held, the key's name, and press/release for touch hold-to-talk.
+ * Reads the engine's state (see `usePushToTalk`); mounts no key listener.
+ */
+export function usePushToTalkStatus() {
+  const voiceState = useVoice();
+  const { inputMode, pushToTalkKeyDisplay, isPushToTalk } = useVoiceSettings();
+  const { isKeyHeld } = useSyncExternalStore(pushToTalkStore.subscribe, pushToTalkStore.getSnapshot);
+
+  return {
+    isActive: voiceState.isConnected && isPushToTalk,
+    isKeyHeld,
+    currentKeyDisplay: pushToTalkKeyDisplay,
+    inputMode,
+    pttPress: pushToTalkStore.press,
+    pttRelease: pushToTalkStore.release,
   };
 }
