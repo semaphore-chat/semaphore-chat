@@ -246,6 +246,6 @@ intensity.)
 
 1. **Never write a hex colour or a pixel number on a screen.** Pick the role
    or the token by name.
-2. **A colour need with no role goes through "Extending the system".** Do not
-   pick a close colour. The chapter is not written yet. Until it is, ask for
+2. **A colour need with no role goes through
+   [Extending the system](extending.md).** Do not pick a close colour. Ask for
    the role to be added.

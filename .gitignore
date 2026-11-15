@@ -112,3 +112,6 @@ docs-site/site/
 
 # Recorded by message-wire-contract.e2e-spec.ts; the copy the frontend replays lives in frontend/src/__tests__/fixtures
 backend/test/fixtures/
+
+# Copy of design/guide made by deploy-docs.yml (the docs site publishes the design guide)
+docs-site/docs/design-guide/
