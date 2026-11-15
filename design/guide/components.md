@@ -219,7 +219,8 @@ the row is one Tab stop (the selected tab), Left and Right and also Up and Down
 move to the next or previous tab and select it, wrapping round, Home and End go
 to the ends, and disabled tabs are skipped. There is no typeahead. When focus
 comes back to the row, it lands on the selected tab, also if `value` changed
-while focus was elsewhere.
+while focus was elsewhere. Tabbing in never changes the tab, and a tab is
+chosen on click, not when the pointer goes down.
 
 ### Underline or segmented
 
@@ -798,8 +799,8 @@ const list = useListFocus({
 </nav>
 ```
 
-- Rows in a keyboard list are links or buttons. Keep `disabled` on the row and
-  in `rows` the same.
+- Rows in a keyboard list are links or buttons; a plain row ignores `focus`.
+  Keep `disabled` on the row and in `rows` the same.
 - `focus` is opaque: pass what `rowFocus(id)` returns, nothing else. The row's
   own `onClick` still runs; put an action in `onClick` or in `onSelect`, not in
   both.

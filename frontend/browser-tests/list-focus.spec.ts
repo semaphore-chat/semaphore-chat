@@ -116,7 +116,7 @@ test.describe('@keyboard', () => {
     await page.getByRole('link', { name: 'general' }).focus();
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('button', { name: 'Mute lfg' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Mark lfg read' })).toBeFocused();
     await page.keyboard.press('ArrowLeft');
     await expect(page.getByRole('link', { name: 'lfg' })).toBeFocused();
     // One Tab leaves the list (past every row and trailing control) for the button after it.
@@ -177,5 +177,21 @@ test.describe('@keyboard', () => {
     await page.getByRole('button', { name: 'Clear' }).focus();
     await page.keyboard.press('Tab');
     await expect(page.getByRole('link', { name: 'general' })).toBeFocused();
+  });
+});
+
+test.describe('@keyboard', () => {
+  test('a focused trailing control that goes away (Mark read) hands focus to its row, not the page', async ({ page }) => {
+    await openStory(page, 'kit-list-focus--channel-list', VIEW);
+    await page.getByRole('link', { name: 'general' }).focus();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowRight');
+    const mark = page.getByRole('button', { name: 'Mark lfg read' });
+    await expect(mark).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(mark).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'lfg' })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('link', { name: 'clips' })).toBeFocused();
   });
 });

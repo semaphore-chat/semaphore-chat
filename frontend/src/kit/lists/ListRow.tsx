@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type JSX, type MouseEvent, type ReactNode, type Ref } from 'react';
+import { useCallback, useLayoutEffect, useRef, type JSX, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -10,6 +10,7 @@ import { SurfaceContext, tintBase, useSurface, type Surface } from '../theme/onS
 import { transientProps } from '../theme/transientProps';
 import {
   ROW_ATTRIBUTE,
+  restoreTrailingTabOrder,
   rowFocusProps,
   takeTrailingOutOfTabOrder,
   TRAILING_ATTRIBUTE,
@@ -230,22 +231,39 @@ export function ListRow({
   focus,
 }: ListRowProps): JSX.Element {
   const on = useSurface();
-  const roving = rowFocusProps(focus);
+  // Only a link or a button joins a keyboard list: a plain row is not interactive, so `focus` is ignored there.
+  const roving = href !== undefined || onClick !== undefined ? rowFocusProps(focus) : undefined;
+  const rovingOn = roving !== undefined;
+  const hasTrailing = trailing !== undefined;
   const trailingRef = useRef<HTMLSpanElement>(null);
-  // Every render: a control can mount in the slot later.
   useLayoutEffect(() => {
-    if (roving !== undefined) takeTrailingOutOfTabOrder(trailingRef.current);
-  });
-  const mainRef = (element: HTMLElement | null) => {
-    assignRef(ref, element);
-    roving?.ref(element);
-  };
+    const slot = trailingRef.current;
+    if (!rovingOn || slot === null) return undefined;
+    takeTrailingOutOfTabOrder(slot);
+    // A control can mount in the slot, or remount through its own state, without this row rendering again.
+    if (typeof MutationObserver === 'undefined') return () => restoreTrailingTabOrder(slot);
+    const observer = new MutationObserver(() => takeTrailingOutOfTabOrder(slot));
+    observer.observe(slot, { childList: true, subtree: true, attributes: true, attributeFilter: ['tabindex'] });
+    return () => {
+      observer.disconnect();
+      restoreTrailingTabOrder(slot);
+    };
+  }, [rovingOn, hasTrailing]);
+  const rovingRef = roving?.ref;
+  // Stable, so neither the caller's ref nor the list's is detached and attached again on every render.
+  const mainRef = useCallback(
+    (element: HTMLElement | null) => {
+      assignRef(ref, element);
+      rovingRef?.(element);
+    },
+    [ref, rovingRef],
+  );
   const handleClick = (event: MouseEvent<HTMLElement>) => {
     roving?.onClick(event);
     onClick?.();
   };
-  const focusProps =
-    roving === undefined ? {} : { tabIndex: disabled ? -1 : roving.tabIndex, onFocus: roving.onFocus };
+  // A disabled row gets no tabindex: it stays out of reach of the mouse and the keyboard, as before.
+  const focusProps = roving === undefined || disabled ? {} : { tabIndex: roving.tabIndex };
   const current = selected ? (href !== undefined ? 'page' : 'true') : undefined;
   // Selected keeps the on-accent ink whatever else is set.
   const tone = (dim: boolean, strong: boolean): 'row' | 'strong' | 'dim' =>

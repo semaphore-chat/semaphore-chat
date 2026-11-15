@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { screen } from '@testing-library/react';
-import { Badge, Icon, IconButton, ListRow, Pill, Text } from '../../kit';
+import { act, screen } from '@testing-library/react';
+import { Badge, Icon, IconButton, ListRow, Pill, Text, useListFocus } from '../../kit';
 import { derivePalette } from '../../theme/derive/derivePalette';
 import { parseHex } from '../../theme/derive/oklch';
 import { renderWithKit } from '../test-utils/renderWithKit';
@@ -214,5 +214,57 @@ describe('ListRow selected: kit children read on the accent pill', () => {
       </>,
     );
     expect(screen.getByText('in other')).toHaveStyle({ color: rgb(palette.textSecondary) });
+  });
+});
+
+describe('ListRow in a keyboard list (focus)', () => {
+  function InList(props: { disabled?: boolean; href?: string; plain?: boolean; onRef?: (element: HTMLElement | null) => void; keyboard?: boolean }) {
+    const list = useListFocus({ rows: [{ id: 'a', label: 'Alpha', disabled: props.disabled === true }], selected: null });
+    const kind = props.plain ? {} : props.href !== undefined ? { href: props.href } : { onClick: () => {} };
+    return (
+      <div {...list.listProps}>
+        <ListRow
+          primary="Alpha"
+          disabled={props.disabled}
+          ref={props.onRef}
+          {...kind}
+          focus={props.keyboard === false ? undefined : list.rowFocus('a')}
+          trailing={<IconButton icon="Ellipsis" label="More" onClick={() => {}} />}
+        />
+      </div>
+    );
+  }
+
+  it('a disabled link row stays unfocusable (no tabindex)', () => {
+    renderWithKit(<InList href="#a" disabled />);
+    expect(screen.getByRole('link', { name: 'Alpha' })).not.toHaveAttribute('tabindex');
+  });
+
+  it('a plain row ignores focus: it does not become a focusable element with no role', () => {
+    renderWithKit(<InList plain />);
+    expect(screen.getByText('Alpha').closest('[tabindex]')).toBeNull();
+  });
+
+  it('the trailing controls go back into the Tab order when the row leaves the list', () => {
+    const { rerender } = renderWithKit(<InList />);
+    expect(screen.getByRole('button', { name: 'More' })).toHaveAttribute('tabindex', '-1');
+    rerender(<InList keyboard={false} />);
+    expect(screen.getByRole('button', { name: 'More' })).not.toHaveAttribute('tabindex', '-1');
+  });
+
+  it('a trailing control that sets its own tabindex later is taken out again', async () => {
+    renderWithKit(<InList />);
+    const more = screen.getByRole('button', { name: 'More' });
+    more.setAttribute('tabindex', '0');
+    await act(async () => {});
+    expect(more).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('does not detach and re-attach the ref on every render', () => {
+    const onRef = vi.fn();
+    const { rerender } = renderWithKit(<InList onRef={onRef} />);
+    rerender(<InList onRef={onRef} />);
+    rerender(<InList onRef={onRef} />);
+    expect(onRef.mock.calls.filter(([element]) => element === null)).toHaveLength(0);
   });
 });

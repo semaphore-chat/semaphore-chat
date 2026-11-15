@@ -47,11 +47,14 @@ function ChannelListView({
   channels,
   selected,
   onSelect,
+  onMarkRead,
   focusOnMount = false,
 }: {
   channels: Channel[];
   selected: string | null;
   onSelect: (id: string) => void;
+  /** Marking a channel read takes its trailing controls away, the focused one too. */
+  onMarkRead?: (id: string) => void;
   focusOnMount?: boolean;
 }) {
   const list = useListFocus({ rows: toRows(channels), selected, onSelect });
@@ -82,7 +85,12 @@ function ChannelListView({
               channel.unread !== undefined ? (
                 <>
                   <Badge count={channel.unread} tone="accent" label={`${channel.unread} unread`} />
-                  <IconButton size="sm" icon="BellOff" label={`Mute ${channel.name}`} onClick={() => {}} />
+                  <IconButton
+                    size="sm"
+                    icon="Check"
+                    label={`Mark ${channel.name} read`}
+                    onClick={() => onMarkRead?.(channel.id)}
+                  />
                 </>
               ) : undefined
             }
@@ -95,10 +103,19 @@ function ChannelListView({
 
 function ChannelListDemo({ focusOnMount = false }: { focusOnMount?: boolean }) {
   const [selected, setSelected] = useState<string | null>('general');
+  const [channels, setChannels] = useState(CHANNELS);
+  const markRead = (id: string) =>
+    setChannels((before) => before.map((channel) => (channel.id === id ? { ...channel, unread: undefined } : channel)));
   return (
     <div style={{ width: 288, maxWidth: '100%' }}>
       <Island padding="md">
-        <ChannelListView channels={CHANNELS} selected={selected} onSelect={setSelected} focusOnMount={focusOnMount} />
+        <ChannelListView
+          channels={channels}
+          selected={selected}
+          onSelect={setSelected}
+          onMarkRead={markRead}
+          focusOnMount={focusOnMount}
+        />
         <div style={{ marginTop: 8 }}>
           <Button size="sm" variant="ghost" startIcon={<Icon name="Plus" />} onClick={() => {}}>
             Add channel
@@ -110,7 +127,7 @@ function ChannelListDemo({ focusOnMount = false }: { focusOnMount?: boolean }) {
 }
 
 const channelBody = (focusOnMount: boolean) => (
-  <Row label="Channels: Tab in, Up and Down, Home and End, type a name; Right reaches Mute on unread rows">
+  <Row label="Channels: Tab in, Up and Down, Home and End, type a name; Right reaches Mark read on unread rows">
     <ChannelListDemo focusOnMount={focusOnMount} />
   </Row>
 );
@@ -152,7 +169,7 @@ function PeopleDemo() {
           <span data-testid="opened">Opened: {opened.length === 0 ? 'nobody' : opened.join(', ')}</span>
         </Text>
       </div>
-      <div style={{ height: 1600 }} aria-hidden />
+      <div style={{ height: '200vh' }} aria-hidden />
     </div>
   );
 }

@@ -249,7 +249,6 @@ export function Tabs({
             aria-selected={isSelected}
             ref={roving?.ref}
             tabIndex={roving?.tabIndex}
-            onFocus={roving?.onFocus}
             onClick={roving?.onClick}
             disabled={tab.disabled}
             disableRipple

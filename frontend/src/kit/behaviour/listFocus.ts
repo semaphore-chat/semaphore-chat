@@ -193,14 +193,12 @@ export function stepListFocus(
   }
 
   if ('focusOut' in event) {
-    // Rule 18: focus left the list. The typed letters go (their timer too); an
-    // enabled selected row takes the Tab stop back (rule 6 on the next focusIn),
-    // otherwise the last focused row keeps it.
+    // Rule 18: focus left the list. The typed letters go (their timer too);
+    // nothing else: rule 6 decides where focus comes back, on entry.
     if (next.typeahead) {
       effects.push({ cancelTimer: { token: next.token } });
       next.typeahead = '';
     }
-    if (next.selected !== null && enabledIds(next.rows).includes(next.selected)) next.focused = null;
     return { state: next, effects };
   }
 
@@ -231,12 +229,11 @@ export function stepListFocus(
     // Rule 5: End focuses the last enabled row.
     focus(next, enabled[enabled.length - 1], params, effects);
   } else if ('focusIn' in event) {
-    // Rule 6: focus entering the list goes to the selected row if enabled,
-    // else the first enabled row, and never changes the selection.
-    if (focused === null) {
-      const { selected } = next;
-      next.focused = selected !== null && enabled.includes(selected) ? selected : enabled[0];
-    }
+    // Rule 6: focus entering the list, every time, goes to the selected row if
+    // enabled, else the focused row, else the first enabled row; never selects.
+    const { selected } = next;
+    if (selected !== null && enabled.includes(selected)) next.focused = selected;
+    else if (focused === null || !enabled.includes(focused)) next.focused = enabled[0];
   } else if ('type' in event) {
     // Rule 7: the character joins the buffer, folded (rule 16), and the timer
     // restarts with a new token.
@@ -258,10 +255,10 @@ export function stepListFocus(
       effects.push({ select: { id: focused } });
     }
   } else if ('focusRow' in event) {
-    // Rule 19: a row focused by other means than the keys is the focused row, as
-    // a focus move (rule 12 selects with selectionFollowsFocus on); a disabled or
-    // unknown row does nothing.
-    if (enabled.includes(event.focusRow.id)) focus(next, event.focusRow.id, params, effects);
+    // Rule 19: a row focused by other means than the keys is the focused row. It
+    // never selects (rule 12 is for keys and typeahead); a disabled or unknown row
+    // does nothing.
+    if (enabled.includes(event.focusRow.id)) next.focused = event.focusRow.id;
   } else if ('press' in event) {
     // Rule 13: a press on an enabled row focuses and selects it; on a disabled
     // or unknown row it does nothing.

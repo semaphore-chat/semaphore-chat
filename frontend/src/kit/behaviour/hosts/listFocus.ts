@@ -41,7 +41,10 @@ export interface ListFocusOptions {
   selectionFollowsFocus?: boolean;
   /** Typing letters jumps to a row. Default true. */
   typeahead?: boolean;
-  /** Called before a row is focused, so a virtualised list can render it. */
+  /**
+   * Called before a row is focused, so a virtualised list can render it. The host focuses it once it is rendered.
+   * A virtualised list must keep its Tab stop row (the focused or the selected row) rendered, or Tab skips the list.
+   */
   reveal?: (id: string) => void;
 }
 
@@ -55,7 +58,8 @@ export interface ListFocus {
   listProps: {
     onKeyDown: KeyboardEventHandler<HTMLElement>;
     onKeyUp: KeyboardEventHandler<HTMLElement>;
-    onFocus: FocusEventHandler<HTMLElement>;
+    /** Capture phase: entering the list is handled before any row sees the focus. */
+    onFocusCapture: FocusEventHandler<HTMLElement>;
     onBlur: FocusEventHandler<HTMLElement>;
   };
   rowFocus(id: string): RowFocus;
@@ -68,7 +72,6 @@ export interface RowFocusProps {
   tabIndex: number;
   ref: (element: HTMLElement | null) => void;
   onClick: (event: MouseEvent<HTMLElement>) => void;
-  onFocus: (event: FocusEvent<HTMLElement>) => void;
 }
 
 /** Kit-internal: the props a `RowFocus` stands for. */
@@ -82,13 +85,28 @@ export const TRAILING_ATTRIBUTE = 'data-kit-row-trailing';
 const TRAILING_FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
 
+const SAVED_TABINDEX = 'data-kit-saved-tabindex';
+
 /**
  * Kit-internal: trailing controls of a row in a roving list are not Tab stops
- * (the row is the one stop); Right and Left reach them from the row.
+ * (the row is the one stop); Right and Left reach them from the row. The
+ * control's own tabindex is kept, so `restoreTrailingTabOrder` can put it back.
  */
 export function takeTrailingOutOfTabOrder(slot: HTMLElement | null): void {
   slot?.querySelectorAll<HTMLElement>(TRAILING_FOCUSABLE).forEach((element) => {
-    if (element.getAttribute('tabindex') !== '-1') element.setAttribute('tabindex', '-1');
+    if (element.getAttribute('tabindex') === '-1') return;
+    if (!element.hasAttribute(SAVED_TABINDEX)) element.setAttribute(SAVED_TABINDEX, element.getAttribute('tabindex') ?? '');
+    element.setAttribute('tabindex', '-1');
+  });
+}
+
+/** Kit-internal: the row left the keyboard list; its trailing controls are Tab stops again. */
+export function restoreTrailingTabOrder(slot: HTMLElement | null): void {
+  slot?.querySelectorAll<HTMLElement>(`[${SAVED_TABINDEX}]`).forEach((element) => {
+    const saved = element.getAttribute(SAVED_TABINDEX) ?? '';
+    element.removeAttribute(SAVED_TABINDEX);
+    if (saved === '') element.removeAttribute('tabindex');
+    else element.setAttribute('tabindex', saved);
   });
 }
 
@@ -110,10 +128,17 @@ const HORIZONTAL_MOVES: Record<string, Event> = {
   ArrowLeft: { up: {} },
 };
 
-/** The row that holds the list's Tab stop: the focused row, else the selected row if enabled, else the first enabled. */
-function tabStopOf(state: State): string | null {
+/**
+ * The row that holds the list's Tab stop. While focus is in the list, the focused row. While it is outside, the row
+ * focus will enter on (rule 6): the selected row if enabled, else the focused row if enabled, else the first enabled.
+ */
+function tabStopOf(state: State, inside: boolean): string | null {
   const enabled = state.rows.filter((row) => !row.disabled).map((row) => row.id);
-  return state.focused ?? (state.selected !== null && enabled.includes(state.selected) ? state.selected : (enabled[0] ?? null));
+  const usable = (id: string | null): id is string => id !== null && enabled.includes(id);
+  if (inside && usable(state.focused)) return state.focused;
+  if (usable(state.selected)) return state.selected;
+  if (usable(state.focused)) return state.focused;
+  return enabled[0] ?? null;
 }
 
 function rowsKey(rows: readonly Row[]): string {
@@ -134,8 +159,11 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
   const clicks = new Map<string, (event: MouseEvent<HTMLElement>) => void>();
   let callbacks: Callbacks = {};
   let root: HTMLElement | null = null;
-  // The row element that last had focus: if it is removed while focused, focus follows the list's new row.
-  let lastRow: HTMLElement | null = null;
+  // The element in the list that last had focus (a row or a trailing control) and the row it belongs to: if it goes
+  // away while focused, focus goes to that row, else the pattern's row, never to the body.
+  let last: { element: HTMLElement; id: string } | null = null;
+  let inside = false;
+  let observer: MutationObserver | null = null;
   let pendingFocus: string | null = null;
   let swallowSpaceUp = false;
   let typeahead = true;
@@ -150,6 +178,36 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
       timers.start(machine, token, ms, () => machine.send({ timerFired: { token } }));
     } else if ('cancelTimer' in effect) timers.cancel(machine, effect.cancelTimer.token);
   });
+
+  function focusLost(): boolean {
+    const active = doc.activeElement;
+    return (active === null || active === doc.body) && last !== null && !last.element.isConnected;
+  }
+
+  /** Focus fell to the body because the focused element in the list went away: give it to the owning row. */
+  function recover(): void {
+    if (!focusLost() || last === null) return;
+    const state = machine.getState();
+    const enabled = state.rows.filter((row) => !row.disabled).map((row) => row.id);
+    const candidates = [last.id, state.focused, tabStopOf(state, false)];
+    for (const id of candidates) {
+      const element = id !== null && enabled.includes(id) ? elements.get(id) : undefined;
+      if (element?.isConnected) {
+        element.focus();
+        if (doc.activeElement === element) return;
+      }
+    }
+  }
+
+  function watch(list: HTMLElement): void {
+    if (root === list && observer !== null) return;
+    root = list;
+    observer?.disconnect();
+    if (typeof MutationObserver === 'undefined') return;
+    // Any commit can remove the focused element (a trailing control that unmounts on its own state): check after each.
+    observer = new MutationObserver(() => recover());
+    observer.observe(list, { childList: true, subtree: true });
+  }
 
   function focusInList(): boolean {
     const active = doc.activeElement;
@@ -199,11 +257,16 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>): void {
-    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.defaultPrevented) return;
+    // AltGr is reported as Ctrl+Alt on Windows; its letters (ł, ą, €) still type.
+    const altGraph = event.getModifierState?.('AltGraph') === true;
+    if ((event.altKey || event.ctrlKey || event.metaKey) && !altGraph) return;
+    // A key that is composing text (an IME) is the IME's.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     // Keys from a Menu opened from a trailing control bubble here through React's tree: not ours.
     const place = event.currentTarget.contains(event.target as Node) ? locate(event.target) : null;
     if (place === null) return;
-    root = event.currentTarget;
+    watch(event.currentTarget);
     const { key } = event;
     const move = (horizontal ? HORIZONTAL_MOVES : MOVES)[key];
     if (move !== undefined) {
@@ -215,7 +278,7 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
       if (moveAcross(place.id, key === 'ArrowRight', event.target as HTMLElement)) event.preventDefault();
       return;
     }
-    if (key === ' ' && typeahead && machine.getState().typeahead !== '') {
+    if (key === ' ' && place.part === 'row' && typeahead && machine.getState().typeahead !== '') {
       // Space continues the typed text ("general chat"): it must not press the row, on keydown or keyup.
       event.preventDefault();
       swallowSpaceUp = true;
@@ -224,12 +287,17 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
     }
     if ((key === ' ' || key === 'Enter') && place.part === 'row') {
       const element = elements.get(place.id);
+      // A held key activates once: a button or link would click again on every repeat.
+      if (event.repeat) {
+        event.preventDefault();
+        return;
+      }
       // A button clicks itself (Enter and Space) and a link follows itself (Enter); that click is the activation.
       const native = element instanceof HTMLButtonElement || (key === 'Enter' && isLink(element));
       if (element === undefined || native) return;
       // Space on a link scrolls the page natively: press the link instead. A plain row is pressed for both keys.
       event.preventDefault();
-      if (!event.repeat) element.click();
+      element.click();
       return;
     }
     if (typeahead && key !== ' ' && [...key].length === 1) {
@@ -248,29 +316,45 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
     }
   }
 
-  function onListFocus(event: FocusEvent<HTMLElement>): void {
-    root = event.currentTarget;
+  /**
+   * Capture phase, before any row's own focus handler. Entering from outside is `focusIn` (rule 6), sent first. Then,
+   * if the focus is on a row other than the pattern's focused row, or on a row's trailing control, that row is
+   * `focusRow` (it never selects). Tab lands on the Tab stop, which is rule 6's row, so it sends only `focusIn`; a click
+   * or a screen reader landing on another row sends `focusIn` and then `focusRow` for that row.
+   */
+  function onFocusCapture(event: FocusEvent<HTMLElement>): void {
+    const list = event.currentTarget;
+    watch(list);
     const from = event.relatedTarget;
-    if (from instanceof Node && event.currentTarget.contains(from)) return;
-    // Real focus is already where the browser put it (the tab stop, or the row a pointer is pressing).
-    machine.send({ focusIn: {} });
+    const entering = !(from instanceof Node && list.contains(from));
+    const place = locate(event.target);
+    if (pendingFocus !== null && place?.id !== pendingFocus) pendingFocus = null;
+    if (entering) {
+      inside = true;
+      machine.send({ focusIn: {} });
+    }
+    if (place === null) return;
+    last = { element: event.target as HTMLElement, id: place.id };
+    if (place.id !== machine.getState().focused) machine.send({ focusRow: { id: place.id } });
   }
 
   function onListBlur(event: FocusEvent<HTMLElement>): void {
     const to = event.relatedTarget;
     // Between rows, or to a row's trailing control: still in the list.
     if (to instanceof Node && event.currentTarget.contains(to)) return;
-    // Focus went somewhere else on purpose: a row removed later must not pull it back.
-    if (to instanceof Node) lastRow = null;
+    const left = event.target as HTMLElement;
+    if (to instanceof Node) last = null;
+    else {
+      // Focus went to nothing: a click on the page's background (forget the element, so a later change never takes
+      // focus), the window losing focus (keep it), or the element being removed (keep it, to recover).
+      queueMicrotask(() => {
+        if (left.isConnected && doc.hasFocus() && last?.element === left && doc.activeElement !== left) last = null;
+      });
+    }
+    inside = false;
+    swallowSpaceUp = false;
+    pendingFocus = null;
     machine.send({ focusOut: {} });
-  }
-
-  function onRowFocus(event: FocusEvent<HTMLElement>): void {
-    lastRow = event.currentTarget;
-    // A row focused by anything but our keys (a click, a screen reader, focus() from code): the pattern follows the
-    // real focus. Real focus is already there, so nothing is focused or revealed in return.
-    const place = locate(event.currentTarget);
-    if (place?.part === 'row' && place.id !== machine.getState().focused) machine.send({ focusRow: { id: place.id } });
   }
 
   function refFor(id: string): (element: HTMLElement | null) => void {
@@ -289,8 +373,10 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
     let click = clicks.get(id);
     if (click === undefined) {
       click = (event) => {
-        // A modified click (a new tab, a new window) or another button: the browser's, not a choice here.
-        if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        // A modified click on a link opens a new tab or window: the browser's, not a choice here. A button row has
+        // no such meaning, so a Ctrl- or Shift-click still chooses it (its own onClick runs too).
+        const modified = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+        if (event.button !== 0 || (modified && isLink(event.currentTarget))) return;
         // detail 0 is a click from Enter or Space (or assistive technology) rather than a pointer.
         if (event.detail === 0 && machine.getState().focused === id) machine.send({ activate: {} });
         else {
@@ -311,11 +397,14 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
     machine,
     onKeyDown,
     onKeyUp,
-    onListFocus,
+    onFocusCapture,
     onListBlur,
-    onRowFocus,
     refFor,
     clickFor,
+    /** The Tab stop for this state; whether focus is in the list changes only with focusIn and focusOut steps. */
+    tabStop(state: State): string | null {
+      return tabStopOf(state, inside);
+    },
     configure(next: { callbacks: Callbacks; typeahead: boolean; horizontal: boolean }): void {
       callbacks = next.callbacks;
       typeahead = next.typeahead;
@@ -327,26 +416,29 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
       if (key !== sentRows) {
         sentRows = key;
         const before = machine.getState().focused;
-        // Focus was on a row that this render removed: the browser dropped it to the body.
-        const lost = (doc.activeElement === null || doc.activeElement === doc.body) && lastRow !== null && !lastRow.isConnected;
-        const had = focusInList() || lost;
+        const had = focusInList();
         machine.send({ setRows: { rows } });
-        // After a focusOut the pattern has no focused row: a removal that dropped focus goes to the Tab stop.
-        const focused = machine.getState().focused ?? (lost ? tabStopOf(machine.getState()) : null);
-        if (had && focused !== null && (focused !== before || lost)) focusRow(focused);
+        // Rule 14 moved focus off a row that is gone or disabled while real focus is still in the list.
+        const { focused } = machine.getState();
+        if (had && focused !== null && focused !== before) focusRow(focused);
       }
       const known = selected !== null && machine.getState().rows.some((row) => row.id === selected);
       if (machine.getState().selected !== (known ? selected : null)) machine.send({ setSelected: { id: selected } });
+      // Every commit: the focused element may have gone (a row removed, a trailing control unmounted).
+      recover();
       if (pendingFocus !== null) {
         const id = pendingFocus;
-        pendingFocus = null;
-        if (machine.getState().focused === id) {
-          const element = elements.get(id);
-          if (element?.isConnected) element.focus();
+        const element = elements.get(id);
+        if (machine.getState().focused !== id) pendingFocus = null;
+        else if (element?.isConnected) {
+          // Kept until the row is rendered: a virtualiser may need more than one frame.
+          pendingFocus = null;
+          element.focus();
         }
       }
     },
     dispose(): void {
+      observer?.disconnect();
       timers.disposeAll(machine);
     },
   };
@@ -392,16 +484,20 @@ export function useListFocus(options: ListFocusOptions): ListFocus {
   });
   useEffect(() => () => host.dispose(), [host]);
 
-  const tabStop = tabStopOf(state);
+  const tabStop = host.tabStop(state);
 
   return {
-    listProps: { onKeyDown: host.onKeyDown, onKeyUp: host.onKeyUp, onFocus: host.onListFocus, onBlur: host.onListBlur },
+    listProps: {
+      onKeyDown: host.onKeyDown,
+      onKeyUp: host.onKeyUp,
+      onFocusCapture: host.onFocusCapture,
+      onBlur: host.onListBlur,
+    },
     rowFocus(id) {
       const props: RowFocusProps = {
         tabIndex: id === tabStop ? 0 : -1,
         ref: host.refFor(id),
         onClick: host.clickFor(id),
-        onFocus: host.onRowFocus,
       };
       return props as unknown as RowFocus;
     },

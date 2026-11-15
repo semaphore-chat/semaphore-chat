@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -28,11 +28,22 @@ interface ListProps extends Partial<Omit<ListFocusOptions, 'rows' | 'selected'>>
   selected?: string | null;
   /** Rows are links (`#id`) instead of buttons. */
   links?: boolean;
-  trailing?: boolean;
+  /** Trailing Mute and More buttons: on every row, or on the rows named. */
+  trailing?: boolean | string[];
   onRowClick?: (id: string) => void;
+  /** Changing it remounts every row element (same ids, labels and disabled). */
+  generation?: number;
 }
 
-function List({ rows = CHANNELS, selected = null, links = false, trailing = false, onRowClick, ...options }: ListProps) {
+function List({
+  rows = CHANNELS,
+  selected = null,
+  links = false,
+  trailing = false,
+  onRowClick,
+  generation = 0,
+  ...options
+}: ListProps) {
   const list = useListFocus({ rows, selected, ...options });
   return (
     <div role="list" aria-label="Channels" {...list.listProps}>
@@ -40,7 +51,7 @@ function List({ rows = CHANNELS, selected = null, links = false, trailing = fals
         {list.focused ?? ''}
       </output>
       {rows.map((item) => (
-        <div role="listitem" key={item.id}>
+        <div role="listitem" key={`${item.id}-${generation}`}>
           <ListRow
             primary={item.label}
             disabled={item.disabled}
@@ -48,7 +59,7 @@ function List({ rows = CHANNELS, selected = null, links = false, trailing = fals
             focus={list.rowFocus(item.id)}
             {...(links ? { href: `#${item.id}` } : { onClick: () => onRowClick?.(item.id) })}
             trailing={
-              trailing ? (
+              trailing === true || (Array.isArray(trailing) && trailing.includes(item.id)) ? (
                 <>
                   <IconButton icon="BellOff" label={`Mute ${item.label}`} onClick={() => {}} />
                   <IconButton icon="Ellipsis" label={`More for ${item.label}`} onClick={() => {}} />
@@ -185,8 +196,10 @@ describe('useListFocus: the Tab stop', () => {
     expect(active()).toBe(screen.getByRole('button', { name: 'Mute Games' }));
     expect(focused()).toBe('games');
     await user.tab();
-    // Out of the list: the pattern hands the stop back to the selected row.
-    expect(focused()).toBe('');
+    // Out of the list: the focused row stays; the Tab stop shows where focus will enter (the selected row).
+    expect(focused()).toBe('games');
+    expect(rowEl('General')).toHaveAttribute('tabindex', '0');
+    expect(rowEl('Games')).toHaveAttribute('tabindex', '-1');
   });
 });
 
@@ -317,8 +330,7 @@ describe('useListFocus: activation', () => {
     const { user } = renderWithKit(<Controlled selectionFollowsFocus onSelect={onSelect} />);
     focus(rowEl('General'));
     await user.keyboard('{ArrowDown}{End}');
-    // Focusing General from code is a focus move too (focusRow), so it selects as well.
-    expect(onSelect.mock.calls).toEqual([['general'], ['games'], ['random']]);
+    expect(onSelect.mock.calls).toEqual([['games'], ['random']]);
     expect(rowEl('Random')).toHaveAttribute('aria-current', 'true');
   });
 
@@ -531,18 +543,46 @@ describe('useListFocus: a row focused by other means (focusRow)', () => {
     expect(reveal.mock.calls).toEqual([['random']]);
   });
 
-  it('a row focused from code selects it when selection follows focus', () => {
+  it('a row focused from code never selects, also when selection follows focus', () => {
     const onSelect = vi.fn();
     renderWithKit(<Controlled selectionFollowsFocus onSelect={onSelect} />);
     focus(rowEl('Random'));
-    expect(onSelect.mock.calls).toEqual([['random']]);
-    expect(rowEl('Random')).toHaveAttribute('aria-current', 'true');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByTestId('focused').textContent).toBe('random');
   });
 
-  it('focusing a trailing control is not a row focus', () => {
-    renderWithKit(<List trailing />);
-    focus(screen.getByRole('button', { name: 'Mute Random' }));
-    expect(screen.getByTestId('focused').textContent).toBe('general');
+  it('a click on a trailing control makes its row the focused row, without selecting (Down goes on from there)', async () => {
+    const onSelect = vi.fn();
+    const { user } = renderWithKit(<List selected="general" trailing onSelect={onSelect} />);
+    await user.click(screen.getByRole('button', { name: 'Mute Games' }));
+    expect(screen.getByTestId('focused').textContent).toBe('games');
+    expect(rowEl('Games')).toHaveAttribute('tabindex', '0');
+    expect(rowEl('General')).toHaveAttribute('tabindex', '-1');
+    await user.keyboard('{ArrowDown}');
+    expect(active()).toBe(rowEl('Random'));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('entering by Tab lands on the Tab stop and chooses nothing; entering by a press on another row focuses that row only', async () => {
+    const onSelect = vi.fn();
+    const { user } = renderWithKit(
+      <>
+        <button type="button">Before</button>
+        <Controlled selectionFollowsFocus onSelect={onSelect} />
+      </>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Before' }));
+    await user.tab();
+    expect(active()).toBe(rowEl('General'));
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Before' }));
+    // Pointer down on Random: focus arrives there (focusIn, then focusRow); nothing is chosen until the click.
+    await user.pointer({ keys: '[MouseLeft>]', target: rowEl('Random') });
+    expect(active()).toBe(rowEl('Random'));
+    expect(screen.getByTestId('focused').textContent).toBe('random');
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.pointer({ keys: '[/MouseLeft]', target: rowEl('Random') });
+    expect(onSelect.mock.calls).toEqual([['random']]);
   });
 });
 
@@ -665,5 +705,193 @@ describe('useListFocus: trailing controls and reveal', () => {
     focus(rowEl('Row 0'));
     await user.keyboard('{End}');
     expect(active()).toBe(rowEl('Row 49'));
+  });
+});
+
+describe('useListFocus: where focus comes back (rule 6 on every entry)', () => {
+  const ui = (props: ListProps) => (
+    <>
+      <List {...props} />
+      <button type="button">After</button>
+    </>
+  );
+  async function leaveFrom(user: ReturnType<typeof userEvent.setup>, start: string, moves: string) {
+    focus(rowEl(start));
+    if (moves) await user.keyboard(moves);
+    await user.tab();
+    expect(active()).toBe(screen.getByRole('button', { name: 'After' }));
+  }
+
+  it('no selection when leaving, one set while away: the stop and Tab go to it', async () => {
+    const { user, rerender } = renderWithKit(ui({}));
+    await leaveFrom(user, 'General', '{ArrowDown}');
+    rerender(ui({ selected: 'random' }));
+    expect(rowEl('Random')).toHaveAttribute('tabindex', '0');
+    expect(rowEl('Games')).toHaveAttribute('tabindex', '-1');
+    await user.tab({ shift: true });
+    expect(active()).toBe(rowEl('Random'));
+  });
+
+  it('a selection cleared while away: back to the row focus left', async () => {
+    const { user, rerender } = renderWithKit(ui({ selected: 'general' }));
+    await leaveFrom(user, 'General', '{ArrowDown}');
+    expect(rowEl('General')).toHaveAttribute('tabindex', '0');
+    rerender(ui({ selected: null }));
+    expect(rowEl('Games')).toHaveAttribute('tabindex', '0');
+    await user.tab({ shift: true });
+    expect(active()).toBe(rowEl('Games'));
+  });
+
+  it('the selected row removed or disabled while away: back to the row focus left', async () => {
+    const { user, rerender } = renderWithKit(ui({ selected: 'random' }));
+    await leaveFrom(user, 'Games', '');
+    rerender(ui({ selected: 'random', rows: CHANNELS.filter((item) => item.id !== 'random') }));
+    expect(rowEl('Games')).toHaveAttribute('tabindex', '0');
+    await user.tab({ shift: true });
+    expect(active()).toBe(rowEl('Games'));
+    await user.tab();
+    rerender(ui({ selected: 'random', rows: CHANNELS.map((item) => (item.id === 'random' ? { ...item, disabled: true } : item)) }));
+    await user.tab({ shift: true });
+    expect(active()).toBe(rowEl('Games'));
+  });
+});
+
+describe('useListFocus: focus never falls to the page', () => {
+  it('a focused trailing control that goes away hands focus to its row', async () => {
+    const { user, rerender } = renderWithKit(<List trailing={['games']} />);
+    await user.click(screen.getByRole('button', { name: 'Mute Games' }));
+    rerender(<List trailing={[]} />);
+    expect(active()).toBe(rowEl('Games'));
+  });
+
+  it('a trailing control that unmounts through its own state (no list render) hands focus to its row', async () => {
+    function MarkRead({ label }: { label: string }) {
+      const [read, setRead] = useState(false);
+      return read ? null : <IconButton icon="Check" label={`Mark ${label} read`} onClick={() => setRead(true)} />;
+    }
+    function Self() {
+      const list = useListFocus({ rows: CHANNELS, selected: null });
+      return (
+        <div {...list.listProps}>
+          {CHANNELS.map((item) => (
+            <ListRow
+              key={item.id}
+              primary={item.label}
+              onClick={() => {}}
+              disabled={item.disabled}
+              focus={list.rowFocus(item.id)}
+              trailing={<MarkRead label={item.label} />}
+            />
+          ))}
+        </div>
+      );
+    }
+    const { user } = renderWithKit(<Self />);
+    await user.click(screen.getByRole('button', { name: 'Mark Games read' }));
+    // The MutationObserver runs after the commit.
+    await act(async () => {});
+    expect(active()).toBe(rowEl('Games'));
+  });
+
+  it('a focused row element replaced with the same id, label and state keeps the focus on that row', async () => {
+    const { user, rerender } = renderWithKit(<List />);
+    focus(rowEl('General'));
+    await user.keyboard('{ArrowDown}');
+    rerender(<List generation={1} />);
+    expect(active()).toBe(rowEl('Games'));
+  });
+
+  it('after focus left to the page background, a removed row never takes focus back', async () => {
+    const { rerender } = renderWithKit(<List />);
+    focus(rowEl('Games'));
+    act(() => rowEl('Games').blur());
+    await act(async () => {});
+    rerender(<List rows={CHANNELS.filter((item) => item.id !== 'games')} />);
+    expect(active()).toBe(document.body);
+  });
+});
+
+describe('useListFocus: keys, review fixes', () => {
+  it('Space on a trailing control while letters are pending is that control', () => {
+    vi.useFakeTimers();
+    renderWithKit(<List trailing />);
+    focus(rowEl('General'));
+    fireEvent.keyDown(rowEl('General'), { key: 'g' });
+    const mute = screen.getByRole('button', { name: 'Mute General' });
+    focus(mute);
+    expect(fireEvent.keyDown(mute, { key: ' ' })).toBe(true);
+    expect(active()).toBe(mute);
+  });
+
+  it('a held Enter or Space chooses once', () => {
+    const onSelect = vi.fn();
+    renderWithKit(<List onSelect={onSelect} />);
+    focus(rowEl('General'));
+    expect(fireEvent.keyDown(rowEl('General'), { key: 'Enter', repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(rowEl('General'), { key: ' ', repeat: true })).toBe(false);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('AltGr letters type; a key composing text is left to the IME', () => {
+    const rows = [row('a', 'Alpha'), row('l', 'łódź')];
+    renderWithKit(<List rows={rows} />);
+    focus(rowEl('Alpha'));
+    const altGr = new KeyboardEvent('keydown', { key: 'ł', ctrlKey: true, altKey: true, modifierAltGraph: true, bubbles: true, cancelable: true } as KeyboardEventInit);
+    act(() => {
+      rowEl('Alpha').dispatchEvent(altGr);
+    });
+    expect(active()).toBe(rowEl('łódź'));
+    focus(rowEl('Alpha'));
+    expect(fireEvent.keyDown(rowEl('Alpha'), { key: 'ArrowDown', isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(rowEl('Alpha'), { key: 'ArrowDown', keyCode: 229 })).toBe(true);
+    expect(active()).toBe(rowEl('Alpha'));
+  });
+
+  it('leaving the list forgets a swallowed Space keyup', () => {
+    vi.useFakeTimers();
+    renderWithKit(
+      <>
+        <List />
+        <button type="button">After</button>
+      </>,
+    );
+    focus(rowEl('General'));
+    fireEvent.keyDown(rowEl('General'), { key: 'g' });
+    fireEvent.keyDown(rowEl('General'), { key: ' ' });
+    focus(screen.getByRole('button', { name: 'After' }));
+    focus(rowEl('General'));
+    expect(fireEvent.keyUp(rowEl('General'), { key: ' ' })).toBe(true);
+  });
+
+  it('a Ctrl- or Shift-click on a button row still chooses it', () => {
+    const onSelect = vi.fn();
+    renderWithKit(<List onSelect={onSelect} />);
+    fireEvent.click(rowEl('Games'), { ctrlKey: true, detail: 1 });
+    fireEvent.click(rowEl('Random'), { shiftKey: true, detail: 1 });
+    expect(onSelect.mock.calls).toEqual([['games'], ['random']]);
+  });
+
+  it('a row that reveal renders two frames later is still focused', async () => {
+    function Slow() {
+      const rows = Array.from({ length: 30 }, (_, index) => row(`r${index}`, `Row ${index}`));
+      const [want, setWant] = useState<number | null>(null);
+      const [shown, setShown] = useState(5);
+      // The virtualiser asks for one frame, then renders on the next.
+      useEffect(() => {
+        if (want !== null && want >= shown) setShown(want + 1);
+      }, [want, shown]);
+      const list = useListFocus({ rows, selected: null, reveal: (id) => setWant(Number(id.slice(1))) });
+      return (
+        <div {...list.listProps}>
+          {rows.slice(0, shown).map((item) => (
+            <ListRow key={item.id} primary={item.label} onClick={() => {}} focus={list.rowFocus(item.id)} />
+          ))}
+        </div>
+      );
+    }
+    const { user } = renderWithKit(<Slow />);
+    focus(rowEl('Row 0'));
+    await user.keyboard('{End}');
+    expect(active()).toBe(rowEl('Row 29'));
   });
 });

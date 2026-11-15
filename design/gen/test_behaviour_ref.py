@@ -633,12 +633,6 @@ class ListFocusTest(unittest.TestCase):
         self.assertEqual(m.send("focusIn"), [])
         self.assertEqual((m.state["focused"], m.state["selected"]), ("b", "c"))
 
-    def test_r06_focus_in_with_a_row_focused_does_nothing(self):
-        m = self.machine([row("a"), row("b")])
-        m.send("end")
-        m.send("focusIn")
-        self.assertEqual(m.state["focused"], "b")
-
     def test_r07_typeahead_matches_a_prefix_ignoring_case(self):
         m = self.machine([row("g", "General"), row("ga", "Games"), row("r", "Random")])
         self.assertEqual(m.send("type", char="R"), [start_timer(1, 1000)])
@@ -808,25 +802,6 @@ class ListFocusTest(unittest.TestCase):
         self.assertEqual(m.send("setSelected", id="a"), [])
         self.assertEqual(m.state["selected"], "a")
 
-    def test_r18_focus_out_hands_the_tab_stop_back_to_the_selected_row(self):
-        m = self.machine([row("a"), row("b"), row("c")])
-        m.send("setSelected", id="a")
-        m.send("focusIn")
-        m.send("down")
-        self.assertEqual(m.send("focusOut"), [])
-        self.assertEqual((m.state["focused"], m.state["selected"]), (None, "a"))
-        m.send("setSelected", id="c")
-        m.send("focusIn")
-        self.assertEqual(m.state["focused"], "c")
-
-    def test_r18_with_no_usable_selection_the_last_focused_row_stays(self):
-        for selected in (None, "b"):
-            m = self.machine([row("a"), row("b", disabled=True), row("c")])
-            m.send("setSelected", id=selected)
-            m.send("end")
-            m.send("focusOut")
-            self.assertEqual((m.state["focused"], m.state["selected"]), ("c", selected))
-
     def test_r18_focus_out_clears_the_typed_letters_and_their_timer(self):
         m = self.machine([row("a", "Alpha"), row("b", "Beta")])
         m.send("type", char="b")
@@ -845,10 +820,33 @@ class ListFocusTest(unittest.TestCase):
             self.assertEqual(m.send("focusRow", id=ignored), [])
         self.assertEqual(m.state, before)
 
-    def test_r19_focus_row_selects_when_selection_follows_focus(self):
+    def test_r06_focus_in_every_time_prefers_the_selected_row(self):
+        m = self.machine([row("a"), row("b"), row("c")])
+        m.send("end")
+        m.send("focusIn")
+        self.assertEqual(m.state["focused"], "c")
+        m.send("setSelected", id="a")
+        self.assertEqual(m.send("focusIn"), [])
+        self.assertEqual((m.state["focused"], m.state["selected"]), ("a", "a"))
+
+    def test_r18_focus_out_keeps_focus_and_entry_decides(self):
+        m = self.machine([row("a"), row("b", disabled=True), row("c")])
+        m.send("end")
+        self.assertEqual(m.send("focusOut"), [])
+        self.assertEqual(m.state["focused"], "c")
+        m.send("setSelected", id="a")
+        m.send("focusIn")
+        self.assertEqual(m.state["focused"], "a")
+        m.send("end")
+        m.send("focusOut")
+        m.send("setSelected", id="b")
+        m.send("focusIn")
+        self.assertEqual(m.state["focused"], "c")
+
+    def test_r19_focus_row_never_selects_even_when_selection_follows_focus(self):
         m = self.machine([row("a"), row("b")], selectionFollowsFocus=True)
-        self.assertEqual(m.send("focusRow", id="b"), [{"select": {"id": "b"}}])
         self.assertEqual(m.send("focusRow", id="b"), [])
+        self.assertEqual((m.state["focused"], m.state["selected"]), ("b", None))
 
     def test_type_char_must_be_one_character(self):
         m = self.machine([row("a")])

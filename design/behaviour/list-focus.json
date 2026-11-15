@@ -59,7 +59,7 @@
     "Down moves to the next enabled row and Up to the previous one. With nothing focused, Down focuses the first enabled row and Up the last.",
     "At the ends, Down and Up stay put unless wrap is on; with wrap on (off by default) they go round to the other end.",
     "Home focuses the first enabled row and End the last.",
-    "Focus entering the list (focusIn) with no row focused goes to the selected row if it is enabled, otherwise to the first enabled row. It never changes the selection.",
+    "Focus entering the list (focusIn), every time, goes to the selected row if it is enabled, otherwise to the focused row (the row focus left from, which rules 14 and 15 keep enabled and present), otherwise to the first enabled row. It never changes the selection.",
     "Typing a character adds it, folded (rule 16), to the typeahead buffer and restarts the typeahead timer with a new token, cancelling the old one. Focus moves to the first enabled row, from the focused row onwards and going round, whose folded label starts with the buffer.",
     "When the buffer is one character, or one character repeated, typing steps through the rows that start with that character, from the row after the focused one.",
     "When no row matches, focus stays where it is and the buffer still grows.",
@@ -71,8 +71,8 @@
     "When the selected row is gone from the rows and no move selected another, the selection clears and deselect is emitted.",
     "Typeahead ignores case by folding: each character is mapped on its own with the Unicode default lower-case mapping, which does not depend on the locale (Python str.lower() applied to one character at a time, so the final-sigma rule never applies). Folded text is compared by Unicode scalar values, so an emoji matches only itself.",
     "setSelected sets the selection from outside the list, as a route or a value prop changes it: selected becomes id when id is a row (enabled or disabled), and null when id is null or names no row. It emits nothing, and the focus, the typeahead buffer and its timer are unchanged. It is not a key, so it applies in an empty or all-disabled list too.",
-    "focusOut (focus left the list) clears the typeahead buffer, cancelling its timer. When the selected row is enabled, it also clears focused, so focus entering again goes to the selected row (rule 6); otherwise focused stays, and focus entering again returns to the last focused row. It emits nothing else and never changes the selection. It is not a key, so it applies in an empty or all-disabled list too.",
-    "focusRow{id} tells the list that an enabled row received focus by other means than its keys: focused becomes that row, as a focus move (with selectionFollowsFocus on it also selects and emits select{id}, as rule 12). The typeahead buffer stays. A disabled or unknown row, or the row already focused, does nothing."
+    "focusOut (focus left the list) clears the typeahead buffer, cancelling its timer. Nothing else changes: the focused row stays, and where focus comes back is decided when it enters again (rule 6), so a selection set, cleared, removed or disabled while focus was away is taken into account. It is not a key, so it applies in an empty or all-disabled list too.",
+    "focusRow{id} tells the list that an enabled row received focus by other means than its keys (a click, a screen reader, focus() from code, or focus landing on one of the row's own controls): focused becomes that row. It never selects, also with selectionFollowsFocus on (rule 12 covers keys and typeahead only). The typeahead buffer stays. A disabled or unknown row, or the row already focused, does nothing."
   ],
   "scenarios": [
     {
@@ -902,7 +902,7 @@
       ]
     },
     {
-      "name": "the selection set from outside while focus is on another row",
+      "name": "the selection set from outside while a row has focus: focus stays until it enters again",
       "covers": [
         6,
         17
@@ -1202,7 +1202,60 @@
       ]
     },
     {
-      "name": "leaving the list, then the selection set from outside: focus comes back to the newly selected row",
+      "name": "focus entering again goes to a selection set while focus was away",
+      "covers": [
+        6,
+        17,
+        18
+      ],
+      "events": [
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "down": {}
+        },
+        {
+          "down": {}
+        },
+        {
+          "focusOut": {}
+        },
+        {
+          "setSelected": {
+            "id": "random"
+          }
+        },
+        {
+          "focusIn": {}
+        }
+      ]
+    },
+    {
+      "name": "focus entering again goes back to the row it left when the selection was cleared while away",
       "covers": [
         6,
         17,
@@ -1251,7 +1304,7 @@
         },
         {
           "setSelected": {
-            "id": "random"
+            "id": null
           }
         },
         {
@@ -1260,9 +1313,10 @@
       ]
     },
     {
-      "name": "leaving the list with no selection keeps the last focused row and clears the typed letters",
+      "name": "focus entering again when the selected row was removed while away",
       "covers": [
-        7,
+        6,
+        15,
         18
       ],
       "events": [
@@ -1293,31 +1347,47 @@
           }
         },
         {
-          "down": {}
-        },
-        {
-          "type": {
-            "char": "r"
+          "setSelected": {
+            "id": "random"
           }
-        },
-        {
-          "focusOut": {}
         },
         {
           "focusIn": {}
         },
         {
-          "timerFired": {
-            "token": 1
-          }
+          "up": {}
         },
         {
           "focusOut": {}
+        },
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              }
+            ]
+          }
+        },
+        {
+          "focusIn": {}
         }
       ]
     },
     {
-      "name": "leaving the list when the selected row is disabled keeps the last focused row",
+      "name": "focus entering again when the selected row was disabled while away",
       "covers": [
         6,
         18
@@ -1351,20 +1421,145 @@
         },
         {
           "setSelected": {
-            "id": "archive"
+            "id": "random"
           }
         },
         {
-          "down": {}
+          "focusIn": {}
         },
         {
-          "down": {}
+          "home": {}
+        },
+        {
+          "focusOut": {}
+        },
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": true
+              }
+            ]
+          }
+        },
+        {
+          "focusIn": {}
+        }
+      ]
+    },
+    {
+      "name": "focus entering again with no selection goes back to the row it left",
+      "covers": [
+        6,
+        18
+      ],
+      "events": [
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "focusIn": {}
+        },
+        {
+          "end": {}
         },
         {
           "focusOut": {}
         },
         {
           "focusIn": {}
+        }
+      ]
+    },
+    {
+      "name": "leaving the list drops the typed letters and their timer",
+      "covers": [
+        7,
+        10,
+        18
+      ],
+      "events": [
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "type": {
+            "char": "r"
+          }
+        },
+        {
+          "focusOut": {}
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "focusOut": {}
         },
         {
           "setRows": {
@@ -1449,7 +1644,7 @@
       ]
     },
     {
-      "name": "a row focused from outside when selection follows focus",
+      "name": "a row focused from outside never selects, also when selection follows focus",
       "covers": [
         12,
         19
@@ -1485,24 +1680,23 @@
           }
         },
         {
-          "focusRow": {
-            "id": "games"
-          }
-        },
-        {
-          "focusRow": {
-            "id": "games"
-          }
-        },
-        {
-          "setSelected": {
-            "id": "random"
-          }
+          "focusIn": {}
         },
         {
           "focusRow": {
             "id": "random"
           }
+        },
+        {
+          "down": {}
+        },
+        {
+          "focusRow": {
+            "id": "games"
+          }
+        },
+        {
+          "activate": {}
         }
       ]
     }

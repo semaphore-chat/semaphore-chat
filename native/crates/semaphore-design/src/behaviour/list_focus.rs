@@ -222,20 +222,11 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
     }
 
     if let Event::FocusOut = event {
-        // Rule 18: focus left the list. The typed letters go (their timer too); an enabled
-        // selected row takes the Tab stop back (rule 6 on the next focusIn), otherwise the last
-        // focused row keeps it.
+        // Rule 18: focus left the list. The typed letters go (their timer too); nothing else:
+        // rule 6 decides where focus comes back, on entry.
         if !next.typeahead.is_empty() {
             effects.push(Effect::CancelTimer { token: next.token });
             next.typeahead.clear();
-        }
-        let enabled = enabled_ids(&next.rows);
-        if next
-            .selected
-            .as_ref()
-            .is_some_and(|selected| enabled.contains(selected))
-        {
-            next.focused = None;
         }
         return (next, effects);
     }
@@ -251,11 +242,10 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
         // Handled above: every setRows, setSelected and focusOut event returns before this match.
         Event::SetRows { .. } | Event::SetSelected { .. } | Event::FocusOut => {}
         Event::FocusRow { id } => {
-            // Rule 19: a row focused by other means than the keys is the focused row, as a focus
-            // move (rule 12 selects with selectionFollowsFocus on); a disabled or unknown row
-            // does nothing.
+            // Rule 19: a row focused by other means than the keys is the focused row. It never
+            // selects (rule 12 is for keys and typeahead); a disabled or unknown row does nothing.
             if enabled.contains(id) {
-                focus(&mut next, id, params, &mut effects);
+                next.focused = Some(id.clone());
             }
         }
         Event::Down | Event::Up => {
@@ -305,15 +295,13 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
             }
         }
         Event::FocusIn => {
-            // Rule 6: focus entering the list goes to the selected row if enabled, else the
-            // first enabled row, and never changes the selection.
-            if focused.is_none() {
-                let selected = next.selected.clone();
-                let target = selected
-                    .filter(|selected| enabled.contains(selected))
-                    .or_else(|| enabled.first().cloned());
-                next.focused = target;
-            }
+            // Rule 6: focus entering the list, every time, goes to the selected row if enabled,
+            // else the focused row, else the first enabled row; it never changes the selection.
+            let selected = next.selected.clone();
+            next.focused = selected
+                .filter(|selected| enabled.contains(selected))
+                .or_else(|| focused.filter(|focused| enabled.contains(focused)))
+                .or_else(|| enabled.first().cloned());
         }
         Event::Type { char } => {
             // Rule 7: the character joins the buffer, folded (rule 16), and the timer restarts

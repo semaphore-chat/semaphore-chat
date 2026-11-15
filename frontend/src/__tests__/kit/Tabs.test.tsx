@@ -108,6 +108,31 @@ describe('Tabs', () => {
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Nothing' }));
   });
 
+  it.each(['missing', 'off'])('Tab into tabs whose value is %s calls nothing', async (value) => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(
+      <>
+        <button type="button">Before</button>
+        <Tabs label="Notify" tabs={TABS} value={value} onChange={onChange} />
+      </>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Before' }));
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'All' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('a tab is chosen on click, not when the pointer goes down', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(<Controlled onChange={onChange} />);
+    const mentions = screen.getByRole('tab', { name: /Mentions/ });
+    await user.pointer({ keys: '[MouseLeft>]', target: mentions });
+    expect(document.activeElement).toBe(mentions);
+    expect(onChange).not.toHaveBeenCalled();
+    await user.pointer({ keys: '[/MouseLeft]', target: mentions });
+    expect(onChange.mock.calls).toEqual([['mentions']]);
+  });
+
   it('Up and Down move between tabs too', async () => {
     const onChange = vi.fn();
     const { user } = renderWithKit(<Controlled onChange={onChange} />);
