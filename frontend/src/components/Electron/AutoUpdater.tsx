@@ -5,91 +5,48 @@
  * Only active when running in Electron
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { DESKTOP_TOAST_MAX_WIDTH } from '../../contexts/BottomChromeContext';
 import { Alert, Button, LinearProgress, Snackbar, Box, Typography } from '@mui/material';
 import { Download, Refresh } from '@mui/icons-material';
-import { logger } from '../../utils/logger';
 import { useElectronAPI } from '../../contexts/ElectronContext';
-import type { UpdateInfo } from '../../types/electron-api';
+import { connectAppUpdates, useAppUpdate } from '../../data/appUpdate';
+import { useShownShellKind } from '../../shell/shownShellKind';
 
+/**
+ * Holds the app's one subscription to the Electron updater (data/appUpdate.ts) and shows the
+ * update in old-look snackbars. While the new design's shell is shown it renders nothing (that
+ * shell shows the update in its banner row); the subscription stays.
+ */
 export const AutoUpdater = () => {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [updateDownloaded, setUpdateDownloaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isElectron, setIsElectron] = useState(false);
   const electronAPI = useElectronAPI();
+  const update = useAppUpdate();
+  const shownShell = useShownShellKind();
+  // Null outside Electron.
+  const isElectron = electronAPI !== null;
 
   useEffect(() => {
-    // Null outside Electron.
     if (!electronAPI) return;
-
-    setIsElectron(true);
-
-    if (
-      !electronAPI.onUpdateAvailable ||
-      !electronAPI.onDownloadProgress ||
-      !electronAPI.onUpdateDownloaded ||
-      !electronAPI.onUpdateError
-    ) {
-      return;
-    }
-
-    // Set up event listeners
-    const unsubUpdateAvailable = electronAPI.onUpdateAvailable((info) => {
-      logger.dev('Update available:', info);
-      setUpdateInfo(info);
-      setUpdateAvailable(true);
-      setDownloading(true);
-    });
-
-    const unsubDownloadProgress = electronAPI.onDownloadProgress((progress) => {
-      logger.dev('Download progress:', progress.percent);
-      setDownloadProgress(progress.percent);
-    });
-
-    const unsubUpdateDownloaded = electronAPI.onUpdateDownloaded((info) => {
-      logger.dev('Update downloaded:', info);
-      // Carries the version too: the renderer may have missed
-      // update-available (e.g. it reloaded mid-download)
-      setUpdateInfo(info);
-      setDownloading(false);
-      setUpdateDownloaded(true);
-    });
-
-    const unsubUpdateError = electronAPI.onUpdateError((err) => {
-      logger.error('Update error:', err);
-      setError(err.message || 'Failed to download update');
-      setDownloading(false);
-      setUpdateAvailable(false);
-    });
-
-    // Cleanup on unmount
-    return () => {
-      unsubUpdateAvailable();
-      unsubDownloadProgress();
-      unsubUpdateDownloaded();
-      unsubUpdateError();
-    };
+    return connectAppUpdates(electronAPI);
   }, [electronAPI]);
 
-  const handleInstallUpdate = () => {
-    electronAPI?.quitAndInstall?.();
-  };
+  const updateAvailable = update.downloading || update.ready;
+  const downloading = update.downloading;
+  const downloadProgress = update.progress;
+  const updateDownloaded = update.ready;
+  const error = update.errorMessage;
+  const updateInfo = update.version === null ? null : { version: update.version };
+
+  const handleInstallUpdate = update.install;
 
   const handleCheckForUpdates = () => {
     electronAPI?.checkForUpdates?.();
   };
 
-  const handleDismissError = () => {
-    setError(null);
-  };
+  const handleDismissError = update.dismissError;
 
   // Don't render anything if not in Electron
-  if (!isElectron) {
+  if (!isElectron || shownShell === 'lounge') {
     return null;
   }
 

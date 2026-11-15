@@ -12,15 +12,10 @@
  * would leave a call's video tiles with nowhere to show. Only the marker, a
  * test fixture, is registered.
  */
-import type { ComponentType } from 'react';
 import type { WidthRange } from '../kit/layout/breakpoints';
+import type { LoungeScreen } from './lounge/screen';
 
-/** Params of the matched pattern, as react-router's matchPath returns them. */
-export type LoungeParams = Readonly<Partial<Record<string, string>>>;
-
-export interface LoungeScreenProps {
-  readonly params: LoungeParams;
-}
+export type { LoungeParams, LoungeScreen, LoungeScreenProps } from './lounge/screen';
 
 export interface LoungeRoute {
   /**
@@ -31,8 +26,11 @@ export interface LoungeRoute {
   readonly path: string;
   /** Kit width ranges where this route is converted. Elsewhere the old shell shows it. Non-empty. */
   readonly widths: readonly [WidthRange, ...WidthRange[]];
-  /** The screen module, under shell/lounge/screens/. One chunk per screen. */
-  readonly load: () => Promise<{ default: ComponentType<LoungeScreenProps> }>;
+  /**
+   * The screen module, under shell/lounge/screens/. One chunk per screen. Its default export is the
+   * screen's descriptor (shell/lounge/screen.ts): the template and the screen's parts.
+   */
+  readonly load: () => Promise<{ default: LoungeScreen }>;
 }
 
 /** The path of the marker screen: a test fixture kept until the new design becomes the default. */

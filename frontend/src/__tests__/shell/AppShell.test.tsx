@@ -135,6 +135,8 @@ import { AppRoutes } from '../../routes';
 import { DesignPreviewPage } from '../../pages/debug/PWADebugPage';
 import { clearDesignPreview, setDesignPreview } from '../../shell/designPreview';
 import { renewLoungeRoot } from '../../shell/loungeRootLazy';
+import { LOUNGE_ROUTES } from '../../shell/loungeRoutes';
+import { readShownShellKind } from '../../shell/shownShellKind';
 
 // --- A viewport whose width can change, with real media-query listeners ------
 
@@ -287,7 +289,13 @@ interface RenderOptions {
   slowPageRoute?: boolean;
 }
 
-function renderShell({ route = '/community/c-1/channel/ch-1', inCall = true, withRoutes = false, slowPageRoute = false }: RenderOptions = {}) {
+function renderShell({
+  route = '/community/c-1/channel/ch-1',
+  inCall = true,
+  withRoutes = false,
+  slowPageRoute = false,
+  entries,
+}: RenderOptions & { entries?: string[] } = {}) {
   const { room, track } = createRoom();
   const setRoom = vi.fn();
   const roomContext = inCall
@@ -320,7 +328,7 @@ function renderShell({ route = '/community/c-1/channel/ch-1', inCall = true, wit
         </ThemeProvider>
       </Suspense>
     </ErrorBoundary>,
-    { routerProps: { initialEntries: [route] } },
+    { routerProps: entries ? { initialEntries: entries, initialIndex: entries.length - 1 } : { initialEntries: [route] } },
   );
   return { ...view, room, track, setRoom };
 }
@@ -416,6 +424,29 @@ describe('with the new design on', () => {
     const { container } = renderShell({ route: '/__lounge?design=lounge', inCall: false });
     await flush();
     expect(loungeShell(container)).not.toBeNull();
+  });
+
+  it("loads the current route's screen ahead of time too (M6), only for a registered route, never with the setting off", async () => {
+    createViewport(1440);
+    const marker = LOUNGE_ROUTES[0];
+    // A stub: the real screen module would pull the kit in after the test environment is gone (D8).
+    const load = vi.spyOn(marker, 'load').mockResolvedValue({
+      default: { template: 'bare', Body: () => null, useTitle: () => null },
+    });
+
+    const off = renderShell({ route: '/__lounge', inCall: false });
+    await flush();
+    expect(load).not.toHaveBeenCalled();
+    off.unmount();
+
+    setNewDesignStored(true);
+    const unconverted = renderShell({ route: '/settings', inCall: false });
+    await flush();
+    expect(load).not.toHaveBeenCalled();
+    act(() => handles.navigate!('/__lounge'));
+    await flush();
+    expect(load).toHaveBeenCalled();
+    unconverted.unmount();
   });
 
   it('the old shell also loads the new shell ahead of time once the new design is on', async () => {
@@ -650,11 +681,61 @@ describe('the call across a change of shell', () => {
     await flush();
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.queryByTestId('app-suspended')).toBeNull();
+    // The old-look spinner is on screen: the global chrome must not yield to a shell that is not shown.
+    expect(readShownShellKind()).toBe('classic');
     const audio = container.querySelector('audio');
     if (audio === null) throw new Error(container.innerHTML);
     expect(audio.isConnected).toBe(true);
     expect(track.attach).toHaveBeenCalledTimes(1);
     expect(counts.effectsMounts).toBe(1);
+    expect(counts.effectsUnmounts).toBe(0);
+  });
+});
+
+describe('history POP across the two shells (the phone Back, design risk 3)', () => {
+  it('Back from a lazy old-shell page to a new-design route never shows App\'s fallback, and keeps the call', async () => {
+    // Desktop: the harness's phone layout stubs out the page (MobileScreenContainer).
+    createViewport(1440);
+    renewSlowPage();
+    setDesignPreview('lounge');
+    // The user was on the marker, tapped into an old-shell page (a lazy chunk), and goes Back.
+    const { container, track, room } = renderShell({ withRoutes: true, slowPageRoute: true, entries: ['/__lounge', '/settings'] });
+    expect(await screen.findByTestId('page')).toBeInTheDocument();
+    await flush();
+    const audio = container.querySelector('audio');
+    expect(audio).not.toBeNull();
+    // The first render of a lazy page on a cold start suspends to App's fallback; that is page load, not a flip.
+    appSuspended.shown = 0;
+
+    act(() => handles.navigate!(-1));
+    await flush();
+    expect(loungeShell(container)).not.toBeNull();
+    expect(appSuspended.shown).toBe(0);
+    expect(container.querySelector('audio')).toBe(audio);
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    expect(track.detach).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
+    expect(counts.effectsMounts).toBe(1);
+    expect(counts.effectsUnmounts).toBe(0);
+  });
+
+  it('Back from a new-design route to an old-shell page that is still a lazy chunk never shows App\'s fallback', async () => {
+    // Desktop: the harness's phone layout stubs out the page (MobileScreenContainer).
+    createViewport(1440);
+    renewSlowPage();
+    setDesignPreview('lounge');
+    const { container, track, room } = renderShell({ withRoutes: true, slowPageRoute: true, entries: ['/settings', '/__lounge'] });
+    await flush();
+    expect(loungeShell(container)).not.toBeNull();
+    const audio = container.querySelector('audio');
+
+    act(() => handles.navigate!(-1));
+    expect(await screen.findByTestId('page')).toBeInTheDocument();
+    expect(loungeShell(container)).toBeNull();
+    expect(appSuspended.shown).toBe(0);
+    expect(container.querySelector('audio')).toBe(audio);
+    expect(track.detach).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
     expect(counts.effectsUnmounts).toBe(0);
   });
 });

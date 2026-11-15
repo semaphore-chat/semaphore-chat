@@ -28,7 +28,15 @@ island scrolls inside itself. The frame adds no landmark of its own.
 
 **The banner.** A frame can have a `banner`: a row above everything, for a
 notice about the whole app such as "reconnecting" or "update available". Put a
-kit Alert in it. It sits inside the safe area, takes its natural height, and the
+kit Alert in it. Several alerts stack, the most urgent first, a small gap
+apart, and only a few at once: at most two below the wide range (a phone, a
+tablet) and three at wide. The order, most urgent first, is a ringing call, a
+connection problem, a security notice, a failed update, an update ready, the
+offer to install, and download progress. The quiet ones (the install offer and
+download progress) show only when nothing else does. When more are pending than
+fit, the least urgent wait, unseen, and show when one above them goes; there is
+no "more" control. A connection problem that clears within a moment (a slow
+first connect, a short drop) never shows. It sits inside the safe area, takes its natural height, and the
 template below fills what is left, so no island is pushed off the screen. With
 no banner there is no row and no gap.
 

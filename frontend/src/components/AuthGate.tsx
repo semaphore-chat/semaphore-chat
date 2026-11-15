@@ -31,6 +31,7 @@ import { removeUnobservedQueries } from "../utils/clearSessionCaches";
 import { endLocalSession } from "../utils/endLocalSession";
 import { isSigningOut } from "../utils/signOutSession";
 import { settleOwedServerSignOut } from "../utils/serverSignOut";
+import { clearShellSessionState } from "../shell/sessionState";
 import { PAGE_LOAD_REFRESH_ROUNDS } from "../utils/sessionRefreshPolicy";
 import { SessionUnavailable } from "./SessionUnavailable";
 import type { LoginLocationState } from "../pages/LoginPage";
@@ -133,6 +134,10 @@ export function AuthGate() {
       logger.dev("[AuthGate] No token in memory, attempting silent refresh...");
       const status = await refreshSessionOnLoad(refreshAbort);
       if (status === null) return;
+      // The session ended between visits. No session on this page, so no
+      // endLocalSession: forget the new design's state of the one that ended,
+      // but keep a `?design=` link opened now (it outlives the login redirect).
+      if (status === "rejected") clearShellSessionState(queryClient, { keepDesignPreview: true });
       setAuthState(authStateAfterRefresh(status));
       return;
     }
@@ -159,7 +164,7 @@ export function AuthGate() {
     }
 
     endSession(null);
-  }, [endSession]);
+  }, [endSession, queryClient]);
 
   // Phase 2: Token validation (runs after onboarding check completes)
   useEffect(() => {

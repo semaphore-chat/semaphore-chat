@@ -10,6 +10,8 @@ import { renderWithProviders } from '../test-utils';
 import { VoiceProvider } from '../../contexts/VoiceProvider';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { IncomingCallProvider } from '../../contexts/IncomingCallContext';
+import { RoomContext } from '../../contexts/RoomContextDef';
 import type { LoungeChoice } from '../../shell/chooseShell';
 import { LOUNGE_ROUTES, type LoungeRoute } from '../../shell/loungeRoutes';
 
@@ -44,10 +46,15 @@ function renderLounge(choice: LoungeChoice, voiceState?: Partial<VoiceState>) {
   return renderWithProviders(
     <ErrorBoundary fallback={<div data-testid="outside-boundary" />}>
       <VoiceProvider initialState={voiceState}>
-        <Routes>
-          <Route path="/" element={<div data-testid="home" />} />
-          <Route path="*" element={<LoungeRoot choice={choice} />} />
-        </Routes>
+        {/* Above the new shell in the app (LayoutProviders): the banner row reads the ringing call. */}
+        <RoomContext.Provider value={{ room: null, setRoom: () => undefined, getRoom: () => null }}>
+          <IncomingCallProvider>
+            <Routes>
+              <Route path="/" element={<div data-testid="home" />} />
+              <Route path="*" element={<LoungeRoot choice={choice} />} />
+            </Routes>
+          </IncomingCallProvider>
+        </RoomContext.Provider>
       </VoiceProvider>
     </ErrorBoundary>,
     { routerProps: { initialEntries: [choice.route.path === marker.path ? '/__lounge' : '/x'] } },
@@ -77,9 +84,13 @@ describe('LoungeRoot', () => {
     const Crashing = () => {
       throw new Error('screen crashed');
     };
-    const route: LoungeRoute = { path: '/x', widths: ['wide'], load: async () => ({ default: Crashing }) };
+    const route: LoungeRoute = {
+      path: '/x',
+      widths: ['wide'],
+      load: async () => ({ default: { template: 'bare', Body: Crashing, useTitle: () => null } }),
+    };
     renderLounge({ kind: 'lounge', route, params: {} });
-    expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: "Couldn't show this screen" })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Back to the app' })).toBeInTheDocument();
     expect(screen.queryByTestId('outside-boundary')).toBeNull();
     expect(consoleError).toHaveBeenCalled();
@@ -87,7 +98,11 @@ describe('LoungeRoot', () => {
 
   it('passes the matched params to the screen', async () => {
     const Screen = ({ params }: { params: Record<string, string | undefined> }) => <p>{`community ${params.communityId}`}</p>;
-    const route: LoungeRoute = { path: '/x', widths: ['wide'], load: async () => ({ default: Screen }) };
+    const route: LoungeRoute = {
+      path: '/x',
+      widths: ['wide'],
+      load: async () => ({ default: { template: 'bare', Body: Screen, useTitle: () => null } }),
+    };
     renderLounge({ kind: 'lounge', route, params: { communityId: 'c-9' } });
     expect(await screen.findByText('community c-9')).toBeInTheDocument();
   });

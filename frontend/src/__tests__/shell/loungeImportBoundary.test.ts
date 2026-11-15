@@ -12,6 +12,7 @@
  * - `src/components/` or `src/pages/` (the classic UI),
  * - `@mui/icons-material` (the kit uses Lucide),
  * - `src/contexts/NotificationContext` (its module renders an MUI Snackbar),
+ * - `@mui/*` or `@emotion/*` imported by any module that is not in `src/kit/` (MUI is the kit's own),
  * - a `livekit-client` value import outside `src/shell/lounge/call/surface/`
  *   (the lazy call-surface chunk).
  */
@@ -41,9 +42,11 @@ const SOURCES = new Map(
  * Only the listed importer may reach it.
  */
 const EXCEPTIONS: Record<string, { from: string; why: string }> = {
-  'src/components/ErrorBoundary.tsx': {
-    from: 'src/shell/lounge/LoungeRoot.tsx',
-    why: "LoungeRoot's screen boundary (shipped with the marker screen); the shell frame PR replaces it with a kit one",
+  'src/contexts/ThemeContext.tsx': {
+    from: 'src/hooks/useAppearance.ts',
+    why:
+      "the user's appearance settings live in the app's ThemeProvider (App, already in the first load, so the " +
+      'chunk pays nothing); it builds the classic MUI theme too. Goes when the settings move to a store of their own',
   },
 };
 
@@ -100,6 +103,9 @@ function violation(target: string, importer: string, typeOnly: boolean): string 
   if (target.startsWith('src/components/') || target.startsWith('src/pages/')) return 'classic UI';
   if (target.startsWith('src/contexts/NotificationContext')) return 'renders an MUI Snackbar';
   if (target === '@mui/icons-material' || target.startsWith('@mui/icons-material/')) return 'MUI icons (the kit uses Lucide)';
+  // MUI is the kit's implementation: reached only through src/kit, never through another module.
+  const mui = target.startsWith('@mui/') || target.startsWith('@emotion/');
+  if (mui && !typeOnly && !importer.startsWith('src/kit/')) return 'MUI outside the kit';
   const livekit = target === 'livekit-client' || target.startsWith('livekit-client/');
   if (livekit && !typeOnly && !importer.startsWith('src/shell/lounge/call/surface/')) {
     return 'a livekit-client value outside the lazy call surface';
@@ -173,7 +179,7 @@ describe('the new shell and the data layer stay headless', () => {
       ['src/data/a.ts', "export const load = () => import('../components/Big');\nimport './b';"],
       ['src/data/b.ts', "import { x } from 'livekit-client/dist/x';\nimport { y } from './c.js';\nimport { z } from './missing';"],
       ['src/data/c.ts', "import { Z } from '../hooks/leaky';"],
-      ['src/hooks/leaky.ts', "import { Snackbar } from '../contexts/NotificationContext';"],
+      ['src/hooks/leaky.ts', "import { Snackbar } from '../contexts/NotificationContext';\nimport { useMediaQuery } from '@mui/material';"],
       ['src/components/Big.tsx', ''],
       ['src/contexts/NotificationContext.tsx', ''],
     ]);
@@ -182,6 +188,7 @@ describe('the new shell and the data layer stay headless', () => {
       'src/data/b.ts -> livekit-client/dist/x (a livekit-client value outside the lazy call surface)',
       'src/data/b.ts -> ./missing (unresolved import: the walker cannot see past it)',
       'src/data/c.ts -> src/hooks/leaky.ts -> src/contexts/NotificationContext.tsx (renders an MUI Snackbar)',
+      'src/data/c.ts -> src/hooks/leaky.ts -> @mui/material (MUI outside the kit)',
     ]);
   });
 
@@ -219,8 +226,10 @@ describe('the lint block for src/data and src/shell/lounge (eslint.config.js)', 
     ["import { stepToastQueue } from '../kit/behaviour/toastQueue';", 'src/data/x.ts'],
     ["import { ErrorBoundary } from '../../components/ErrorBoundary';", 'src/data/sub/x.ts'],
     ["import { ChannelRow } from '../../components/Channel/ChannelRow';", 'src/shell/lounge/x.tsx'],
-    // The ErrorBoundary exception is LoungeRoot's alone
     ["import { ErrorBoundary } from '../../components/ErrorBoundary';", 'src/shell/lounge/x.tsx'],
+    ["import { ErrorBoundary } from '../../components/ErrorBoundary';", 'src/shell/lounge/LoungeRoot.tsx'],
+    ["import { getSocketSingleton } from '../utils/socketSingleton';", 'src/data/x.ts'],
+    ["import { SocketProvider } from '../../utils/SocketProvider';", 'src/shell/lounge/x.tsx'],
   ])('rejects %s in %s', async (code, filePath) => {
     expect(await rulesHit(code, filePath)).toEqual(restricted);
   });
@@ -250,12 +259,9 @@ describe('the lint block for src/data and src/shell/lounge (eslint.config.js)', 
     expect(await rulesHit(code, 'src/data/x.ts')).toEqual([]);
   });
 
-  it("allows the listed exception in LoungeRoot.tsx only", async () => {
-    expect(
-      await rulesHit("import { ErrorBoundary } from '../../components/ErrorBoundary';\nexport const e = ErrorBoundary;", 'src/shell/lounge/LoungeRoot.tsx'),
-    ).toEqual([]);
-    expect(
-      await rulesHit("import { ChannelRow } from '../../components/Channel/ChannelRow';\nexport const e = ChannelRow;", 'src/shell/lounge/LoungeRoot.tsx'),
-    ).toEqual(['no-restricted-imports']);
+  it('lets a screen module export its descriptor beside its components', async () => {
+    const code = "export function Body() { return null; }\nconst screen = { template: 'bare', Body };\nexport default screen;";
+    const [result] = await new ESLint().lintText(code, { filePath: 'src/shell/lounge/screens/X.tsx' });
+    expect(result.messages.map((m) => m.ruleId)).not.toContain('react-refresh/only-export-components');
   });
 });

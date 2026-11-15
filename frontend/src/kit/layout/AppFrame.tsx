@@ -11,7 +11,8 @@ export interface AppFrameProps {
   children: ReactNode;
   /**
    * A row above everything, for a notice about the whole app such as "reconnecting" or "update available".
-   * Put a kit Alert in it. It takes its natural height inside the safe area; the layout below fills the rest.
+   * Put a kit Alert in it, or several: they stack, the first on top. It takes its natural height inside the
+   * safe area; the layout below fills the rest.
    */
   banner?: ReactNode;
 }
@@ -45,9 +46,13 @@ const Frame = styled('div')(({ theme }) => {
   };
 });
 
+/** Several alerts at once stack, the first on top, a small gap apart. */
 const Banner = styled('div')({
   flex: '0 0 auto',
   minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: `${tokens.space.sm}px`,
   marginBottom: `${tokens.layout.gutter}px`,
 });
 

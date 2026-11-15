@@ -20,6 +20,9 @@ import {
 } from '../../utils/sessionRefreshPolicy';
 import { stashDeepLinkRoute, takeStashedDeepLinkRoute } from '../../utils/deepLinkStash';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { STORAGE_KEY } from '../../theme/constants';
+import { readDesktopSignInNotice, showDesktopSignInNotice } from '../../data/signInNotice';
+import { appearanceSettingsControllerGetSettingsQueryKey } from '../../api-client/@tanstack/react-query.gen';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -733,6 +736,20 @@ describe('AuthGate', () => {
         });
         expect(accountQueryKeys(queryClient)).toEqual([]);
       }, 20_000);
+
+      it('"Sign in again" also forgets the new design state of the session (I5)', async () => {
+        await renderUntilUnavailable();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', newDesign: true }));
+        act(() => showDesktopSignInNotice());
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('login')).toBeInTheDocument();
+        });
+        expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toMatchObject({ newDesign: false });
+        expect(readDesktopSignInNotice()).toBe(false);
+      }, 20_000);
     });
 
     it('does not mount SocketProvider during refresh attempt', async () => {
@@ -914,6 +931,46 @@ describe('AuthGate', () => {
         expect(screen.getByTestId('login')).toBeInTheDocument();
       });
       expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+    });
+
+    it("forgets this browser's copy of the new design setting when the server ends the session (M4)", async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', newDesign: true }));
+      const { queryClient } = renderAuthGate();
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      queryClient.setQueryData(appearanceSettingsControllerGetSettingsQueryKey(), { newDesign: true } as never);
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toEqual({ mode: 'light', newDesign: false });
+      expect(queryClient.getQueryData(appearanceSettingsControllerGetSettingsQueryKey())).toBeUndefined();
+    });
+
+    it('dismisses a desktop sign-in notice still showing when the server ends the session (I5)', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      renderAuthGate();
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      act(() => showDesktopSignInNotice());
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(readDesktopSignInNotice()).toBe(false);
     });
 
     it('passes the reason the server gave to the login page', async () => {
@@ -1179,5 +1236,53 @@ describe('AuthGate', () => {
       await screen.findByTestId('home');
       expect(logouts).toBe(0);
     });
+  });
+});
+
+describe('AuthGate: a page load that finds the session gone (I5)', () => {
+  beforeEach(() => {
+    clearTokens();
+    localStorage.clear();
+    sessionStorage.clear();
+    endRefreshCooldown();
+    mockOnboardingOk();
+    server.use(
+      http.post(`${BASE_URL}/api/auth/refresh`, () =>
+        HttpResponse.json({ message: 'Invalid' }, { status: 401 }),
+      ),
+    );
+  });
+
+  function arrangeShellState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', newDesign: true }));
+    sessionStorage.setItem('semaphore-design-preview', 'lounge');
+    act(() => showDesktopSignInNotice());
+  }
+
+  it('a token the server rejects, then a refused refresh: the shared teardown forgets it all, the preview too', async () => {
+    setAccessToken(expiredToken());
+    mockProfileUnauthorized();
+    arrangeShellState();
+
+    renderAuthGate();
+    await waitFor(() => {
+      expect(screen.getByTestId('login')).toBeInTheDocument();
+    });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toMatchObject({ newDesign: false });
+    expect(readDesktopSignInNotice()).toBe(false);
+    // A session was held on this page: endLocalSession drops its preview with the rest
+    expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+  });
+
+  it('no token in memory (the refresh is refused): forgets the new design state, keeps a preview link opened now', async () => {
+    arrangeShellState();
+
+    renderAuthGate();
+    await waitFor(() => {
+      expect(screen.getByTestId('login')).toBeInTheDocument();
+    });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toMatchObject({ newDesign: false });
+    expect(readDesktopSignInNotice()).toBe(false);
+    expect(sessionStorage.getItem('semaphore-design-preview')).toBe('lounge');
   });
 });

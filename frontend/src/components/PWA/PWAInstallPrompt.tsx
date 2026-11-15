@@ -23,6 +23,7 @@ import {
   useToastPlacement,
   useToastQueue,
 } from '../../contexts/BottomChromeContext';
+import { useShownShellKind } from '../../shell/shownShellKind';
 
 /**
  * PWA Install Prompt Component
@@ -34,9 +35,13 @@ import {
  * - Hidden if app is already installed
  * - Queues behind the "Update available" toast (one snackbar at a time) and
  *   sits above the nav / voice bar / composer (BottomChromeContext)
+ * - Shows nothing (and holds no place in the queue) while the new design's shell is
+ *   shown: its banner row makes the offer
  */
 export const PWAInstallPrompt: React.FC = () => {
-  const { isInstallable, isIOS, install, dismiss } = useInstallPrompt();
+  const { isInstallable: installableAnywhere, isIOS, install, dismiss } = useInstallPrompt();
+  const classic = useShownShellKind() === 'classic';
+  const isInstallable = installableAnywhere && classic;
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const isMyTurn = useToastQueue('install', TOAST_PRIORITY.INSTALL, isInstallable);

@@ -79,6 +79,8 @@ export type { DialogCloseReason, SheetCloseReason } from './overlays/modal';
 export { ESCAPE_PRIORITY, useScreenEscape, useScreenFocusTarget } from './behaviour/hosts/overlay';
 export { useAnnounce } from './behaviour/hosts/announce';
 export { useToastClearance, useToasts } from './behaviour/hosts/toasts';
+export { useKitPalette } from './theme/useKitPalette';
+export type { Palette as KitPalette } from '../theme/derive/derivePalette';
 export type { ToastRequest, Toasts } from './behaviour/hosts/toasts';
 export { useListFocus } from './behaviour/hosts/listFocus';
 export type { BarFocus, ListFocus, ListFocusOptions, ListFocusRow, RowFocus } from './behaviour/hosts/listFocus';

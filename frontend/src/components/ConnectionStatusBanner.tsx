@@ -4,6 +4,7 @@ import { useTheme } from "@mui/material/styles";
 import { useSocketConnected } from "../hooks/useSocket";
 import { useResponsive } from "../hooks/useResponsive";
 import { BOTTOM_CHROME_ORDER, useBottomChromeOffset, useToastPlacement } from "../contexts/BottomChromeContext";
+import { useShownShellKind } from "../shell/shownShellKind";
 
 /**
  * "Reconnecting…" chip. Top of the bottom stack (BottomChromeContext): it
@@ -18,9 +19,12 @@ import { BOTTOM_CHROME_ORDER, useBottomChromeOffset, useToastPlacement } from ".
  * chip's own column, and the chip stacks above it. The phone layout (any width) has a full-width composer, so nothing is
  * skipped there. It always clears
  * the full-width nav and voice bar.
+ *
+ * Renders nothing while the new design's shell is shown: that shell has its own offline banner.
  */
 export const ConnectionStatusBanner: React.FC = () => {
   const isConnected = useSocketConnected();
+  const shownShell = useShownShellKind();
   const theme = useTheme();
   const { isMobile } = useResponsive();
   const { constrained: toastInSidebar } = useToastPlacement();
@@ -33,7 +37,7 @@ export const ConnectionStatusBanner: React.FC = () => {
         : [BOTTOM_CHROME_ORDER.COMPOSER],
   });
 
-  if (isConnected) return null;
+  if (isConnected || shownShell === "lounge") return null;
 
   return (
     <Chip
