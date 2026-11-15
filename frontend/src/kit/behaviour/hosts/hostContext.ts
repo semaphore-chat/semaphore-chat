@@ -3,6 +3,7 @@ import type { Announcer } from './announcer';
 import type { Ids } from './ids';
 import type { OverlayHost } from './overlay';
 import type { DocumentRouter } from './router';
+import type { ToastHost } from './toasts';
 import type { TimerService } from './timers';
 
 /** What the one `BehaviourHost` of a document offers to kit components and hooks. */
@@ -15,6 +16,8 @@ export interface BehaviourHostValue {
   readonly router: DocumentRouter;
   /** The overlay stack: layers, Escape, Tab, presses and focus return. */
   readonly overlay: OverlayHost;
+  /** The toast queue: `useToasts`, the region, the reasons to pause, F6. */
+  readonly toasts: ToastHost;
 }
 
 export const BehaviourHostContext = createContext<BehaviourHostValue | null>(null);

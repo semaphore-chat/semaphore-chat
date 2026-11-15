@@ -129,6 +129,8 @@ const noop = () => undefined;
  * important only in them: a reply draft belongs in the screen's own state. Left and centre are never rebuilt.
  * When the pane that holds focus stops being shown, focus moves to the pane now shown.
  * Optional slots count as absent when they are `undefined`, `null`, `false` or `''`.
+ * Toasts sit at the bottom centre of the pane that is the `main` (the centre, or the left pane on a phone showing
+ * it), so they never cover the left column, the call bar or the dock.
  * Render inside an `AppFrame`, which also keeps the bottom bar clear of the home indicator.
  */
 export function ThreeIslands({
@@ -175,13 +177,21 @@ export function ThreeIslands({
         hidden={!leftShown}
         inert={!leftShown}
         role={phone && phonePane === 'left' ? 'main' : undefined}
+        data-kit-toast-anchor={phone && phonePane === 'left' ? '' : undefined}
       >
         <Island as="nav" label={leftLabel} padding="md" scroll>
           {left}
         </Island>
       </PhonePane>
       {!phone && hasCall && <CallSlot data-slot="call-bar">{callBar}</CallSlot>}
-      <PhonePane ref={centreRef} tabIndex={-1} $area="centre" hidden={!centreShown} inert={!centreShown}>
+      <PhonePane
+        ref={centreRef}
+        tabIndex={-1}
+        $area="centre"
+        hidden={!centreShown}
+        inert={!centreShown}
+        data-kit-toast-anchor={centreShown ? '' : undefined}
+      >
         <Island as="main" label={centreLabel} padding="none" scroll>
           {centre}
         </Island>

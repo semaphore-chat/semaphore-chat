@@ -188,8 +188,35 @@ fn toast_state_to_json(state: &toast::State) -> String {
             "showing",
             state.showing.as_ref().map_or(Value::Null, toast_to_json),
         ),
+        (
+            "timer",
+            state
+                .timer
+                .map_or(Value::Null, |token| Value::int(i64::from(token))),
+        ),
         ("token", Value::int(i64::from(state.token))),
+        (
+            "waits",
+            Value::Array(
+                state
+                    .waits
+                    .iter()
+                    .map(|wait| wait.map_or(Value::Null, |token| Value::int(i64::from(token))))
+                    .collect(),
+            ),
+        ),
     ]))
+}
+
+/// A whole number that fits a `u32`, or null.
+fn optional_token(value: &Value, what: &str) -> Result<Option<u32>, String> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Int(number) => u32::try_from(*number)
+            .map(Some)
+            .map_err(|_| format!("{what}: expected a u32, got {number}")),
+        _ => Err(format!("{what}: expected a number or null")),
+    }
 }
 
 fn toast_state_from_json(value: &Value) -> Result<toast::State, String> {
@@ -202,8 +229,13 @@ fn toast_state_from_json(value: &Value) -> Result<toast::State, String> {
             .iter()
             .map(toast_from_json)
             .collect::<Result<_, String>>()?,
+        waits: canon::items(value, "waits")?
+            .iter()
+            .map(|wait| optional_token(wait, "waits"))
+            .collect::<Result<_, String>>()?,
         paused: canon::flag(value, "paused")?,
         token: canon::number(value, "token")?,
+        timer: optional_token(canon::field(value, "timer")?, "timer")?,
     })
 }
 
@@ -272,6 +304,7 @@ fn toast_params_from_json(value: &Value) -> Result<toast::Params, String> {
         duration_ms: canon::number(value, "durationMs")?,
         duration_with_action_ms: canon::number(value, "durationWithActionMs")?,
         max_queued: canon::count(value, "maxQueued")?,
+        max_wait_ms: canon::number(value, "maxWaitMs")?,
     })
 }
 
@@ -286,6 +319,7 @@ fn toast_params_to_json(params: &toast::Params) -> String {
             "maxQueued",
             Value::int(i64::try_from(params.max_queued).unwrap_or(i64::MAX)),
         ),
+        ("maxWaitMs", Value::int(i64::from(params.max_wait_ms))),
     ]))
 }
 

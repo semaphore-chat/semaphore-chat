@@ -7369,12 +7369,15 @@ export const behaviourVectors = {
       durationMs: 4000,
       durationWithActionMs: 8000,
       maxQueued: 3,
+      maxWaitMs: 8000,
     },
     initial: {
       paused: false,
       queue: [],
       showing: null,
+      timer: null,
       token: 0,
+      waits: [],
     },
     vectors: [
       {
@@ -7383,12 +7386,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -7411,7 +7417,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -7456,9 +7464,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -7475,13 +7494,20 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              token: 2,
+              timer: 3,
+              token: 3,
+              waits: [],
             },
             effects: [
               {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+              {
                 startTimer: {
                   ms: 8000,
-                  token: 2,
+                  token: 3,
                 },
               },
               {
@@ -7508,7 +7534,9 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              token: 2,
+              timer: 3,
+              token: 3,
+              waits: [],
             },
             effects: [],
           },
@@ -7521,8 +7549,31 @@ export const behaviourVectors = {
             state: {
               paused: false,
               queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: 3,
+              token: 3,
+              waits: [],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 3,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
               showing: null,
-              token: 2,
+              timer: null,
+              token: 3,
+              waits: [],
             },
             effects: [],
           },
@@ -7534,12 +7585,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -7562,7 +7616,9 @@ export const behaviourVectors = {
                 message: 'Uploading 1 file',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -7600,7 +7656,9 @@ export const behaviourVectors = {
                 message: 'Uploaded 1 file',
                 tone: 'positive',
               },
+              timer: 2,
               token: 2,
+              waits: [],
             },
             effects: [
               {
@@ -7638,7 +7696,9 @@ export const behaviourVectors = {
                 message: 'Uploaded 1 file',
                 tone: 'positive',
               },
+              timer: 2,
               token: 2,
+              waits: [],
             },
             effects: [],
           },
@@ -7650,12 +7710,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -7678,7 +7741,9 @@ export const behaviourVectors = {
                 message: 'You are offline',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -7716,7 +7781,9 @@ export const behaviourVectors = {
                 message: 'You are offline',
                 tone: 'neutral',
               },
+              timer: 2,
               token: 2,
+              waits: [],
             },
             effects: [
               {
@@ -7752,7 +7819,9 @@ export const behaviourVectors = {
                 message: 'You are offline',
                 tone: 'neutral',
               },
+              timer: 3,
               token: 3,
+              waits: [],
             },
             effects: [
               {
@@ -7783,12 +7852,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -7811,7 +7883,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -7856,9 +7930,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -7893,9 +7978,21 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -7930,7 +8027,42 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 3,
+              waits: [
+                3,
+              ],
             },
             effects: [],
           },
@@ -7942,12 +8074,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -7970,7 +8105,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -8015,9 +8152,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8052,9 +8200,21 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8095,9 +8255,22 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 4,
+              waits: [
+                2,
+                3,
+                4,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 4,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8138,9 +8311,27 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 5,
+              waits: [
+                2,
+                3,
+                5,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                cancelTimer: {
+                  token: 4,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 5,
+                },
+              },
+            ],
           },
         ],
       },
@@ -8150,12 +8341,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 2,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -8178,7 +8372,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -8223,9 +8419,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8260,9 +8467,21 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8297,9 +8516,26 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 4,
+              waits: [
+                3,
+                4,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 4,
+                },
+              },
+            ],
           },
         ],
       },
@@ -8309,12 +8545,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 2,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -8337,7 +8576,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -8382,9 +8623,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8419,9 +8671,21 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8462,9 +8726,22 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 4,
+              waits: [
+                2,
+                3,
+                4,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 4,
+                },
+              },
+            ],
           },
         ],
       },
@@ -8474,12 +8751,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -8502,7 +8782,9 @@ export const behaviourVectors = {
                 message: 'Message deleted',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -8547,9 +8829,20 @@ export const behaviourVectors = {
                 message: 'Message deleted',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8567,7 +8860,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'positive',
               },
-              token: 2,
+              timer: 3,
+              token: 3,
+              waits: [],
             },
             effects: [
               {
@@ -8576,9 +8871,14 @@ export const behaviourVectors = {
                 },
               },
               {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+              {
                 startTimer: {
                   ms: 4000,
-                  token: 2,
+                  token: 3,
                 },
               },
               {
@@ -8601,12 +8901,14 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
-              token: 2,
+              timer: null,
+              token: 3,
+              waits: [],
             },
             effects: [
               {
                 cancelTimer: {
-                  token: 2,
+                  token: 3,
                 },
               },
             ],
@@ -8619,12 +8921,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -8647,7 +8952,9 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
+              timer: null,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -8686,9 +8993,20 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              token: 1,
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8712,7 +9030,11 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              token: 1,
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
             effects: [],
           },
@@ -8736,7 +9058,11 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              token: 1,
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
             effects: [],
           },
@@ -8760,7 +9086,11 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              token: 2,
+              timer: null,
+              token: 3,
+              waits: [
+                2,
+              ],
             },
             effects: [],
           },
@@ -8780,13 +9110,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 3,
+              timer: 4,
+              token: 4,
+              waits: [],
             },
             effects: [
               {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+              {
                 startTimer: {
                   ms: 4000,
-                  token: 3,
+                  token: 4,
                 },
               },
               {
@@ -8806,12 +9143,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -8834,7 +9174,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -8879,9 +9221,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8899,9 +9252,17 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [],
             },
-            effects: [],
+            effects: [
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -8919,7 +9280,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [],
             },
             effects: [],
           },
@@ -8933,7 +9296,9 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
-              token: 1,
+              timer: null,
+              token: 2,
+              waits: [],
             },
             effects: [],
           },
@@ -8945,12 +9310,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -8961,7 +9329,9 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
+              timer: null,
               token: 0,
+              waits: [],
             },
             effects: [],
           },
@@ -8973,7 +9343,9 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
+              timer: null,
               token: 0,
+              waits: [],
             },
             effects: [],
           },
@@ -8997,7 +9369,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9028,7 +9402,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: null,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9051,7 +9427,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: null,
               token: 1,
+              waits: [],
             },
             effects: [],
           },
@@ -9070,7 +9448,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: null,
               token: 1,
+              waits: [],
             },
             effects: [],
           },
@@ -9087,7 +9467,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 2,
               token: 2,
+              waits: [],
             },
             effects: [
               {
@@ -9111,7 +9493,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 2,
               token: 2,
+              waits: [],
             },
             effects: [],
           },
@@ -9130,7 +9514,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 2,
               token: 2,
+              waits: [],
             },
             effects: [],
           },
@@ -9144,7 +9530,9 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
+              timer: null,
               token: 2,
+              waits: [],
             },
             effects: [],
           },
@@ -9156,12 +9544,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -9184,7 +9575,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9229,9 +9622,20 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -9253,7 +9657,11 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
             effects: [
               {
@@ -9279,9 +9687,16 @@ export const behaviourVectors = {
                 message: 'Couldn\'t send',
                 tone: 'danger',
               },
-              token: 2,
+              timer: null,
+              token: 3,
+              waits: [],
             },
             effects: [
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
               {
                 announce: {
                   action: null,
@@ -9302,7 +9717,9 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
-              token: 2,
+              timer: null,
+              token: 3,
+              waits: [],
             },
             effects: [],
           },
@@ -9326,13 +9743,15 @@ export const behaviourVectors = {
                 message: 'Copied',
                 tone: 'neutral',
               },
-              token: 3,
+              timer: 4,
+              token: 4,
+              waits: [],
             },
             effects: [
               {
                 startTimer: {
                   ms: 4000,
-                  token: 3,
+                  token: 4,
                 },
               },
               {
@@ -9352,12 +9771,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -9380,7 +9802,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9411,7 +9835,9 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
+              timer: null,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9432,7 +9858,9 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
+              timer: null,
               token: 1,
+              waits: [],
             },
             effects: [],
           },
@@ -9456,7 +9884,9 @@ export const behaviourVectors = {
                 message: 'Copied',
                 tone: 'neutral',
               },
+              timer: 2,
               token: 2,
+              waits: [],
             },
             effects: [
               {
@@ -9487,7 +9917,9 @@ export const behaviourVectors = {
                 message: 'Copied',
                 tone: 'neutral',
               },
+              timer: null,
               token: 2,
+              waits: [],
             },
             effects: [
               {
@@ -9510,7 +9942,9 @@ export const behaviourVectors = {
                 message: 'Copied',
                 tone: 'neutral',
               },
+              timer: 3,
               token: 3,
+              waits: [],
             },
             effects: [
               {
@@ -9529,12 +9963,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -9557,7 +9994,9 @@ export const behaviourVectors = {
                 message: 'Uploading',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9588,7 +10027,9 @@ export const behaviourVectors = {
                 message: 'Uploading',
                 tone: 'neutral',
               },
+              timer: null,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9618,7 +10059,9 @@ export const behaviourVectors = {
                 message: 'Uploaded',
                 tone: 'positive',
               },
+              timer: null,
               token: 2,
+              waits: [],
             },
             effects: [
               {
@@ -9643,7 +10086,9 @@ export const behaviourVectors = {
                 message: 'Uploaded',
                 tone: 'positive',
               },
+              timer: 3,
               token: 3,
+              waits: [],
             },
             effects: [
               {
@@ -9662,12 +10107,15 @@ export const behaviourVectors = {
           durationMs: 4000,
           durationWithActionMs: 8000,
           maxQueued: 3,
+          maxWaitMs: 8000,
         },
         initial: {
           paused: false,
           queue: [],
           showing: null,
+          timer: null,
           token: 0,
+          waits: [],
         },
         steps: [
           {
@@ -9690,7 +10138,9 @@ export const behaviourVectors = {
                 message: 'Message deleted',
                 tone: 'neutral',
               },
+              timer: 1,
               token: 1,
+              waits: [],
             },
             effects: [
               {
@@ -9735,9 +10185,20 @@ export const behaviourVectors = {
                 message: 'Message deleted',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
-            effects: [],
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
           },
           {
             event: {
@@ -9759,7 +10220,11 @@ export const behaviourVectors = {
                 message: 'Message deleted',
                 tone: 'neutral',
               },
-              token: 1,
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+              ],
             },
             effects: [
               {
@@ -9785,11 +10250,18 @@ export const behaviourVectors = {
                 message: 'Saved',
                 tone: 'neutral',
               },
-              token: 2,
+              timer: null,
+              token: 3,
+              waits: [],
             },
             effects: [
               {
                 returnFocus: {},
+              },
+              {
+                cancelTimer: {
+                  token: 2,
+                },
               },
               {
                 announce: {
@@ -9811,9 +10283,741 @@ export const behaviourVectors = {
               paused: false,
               queue: [],
               showing: null,
-              token: 2,
+              timer: null,
+              token: 3,
+              waits: [],
             },
             effects: [],
+          },
+        ],
+      },
+      {
+        name: 'a waiting success is dropped once it has waited too long',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+          maxWaitMs: 8000,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          timer: null,
+          token: 0,
+          waits: [],
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Retry',
+                  id: 's',
+                  message: 'Couldn\'t send',
+                  tone: 'danger',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 1,
+              waits: [],
+            },
+            effects: [
+              {
+                announce: {
+                  action: 'Retry',
+                  message: 'Couldn\'t send',
+                  politeness: 'assertive',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 2,
+              waits: [
+                2,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 3,
+              waits: [
+                3,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 3,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 3,
+              waits: [
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Couldn\'t upload',
+                  tone: 'danger',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              timer: null,
+              token: 3,
+              waits: [
+                null,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 's',
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Couldn\'t upload',
+                tone: 'danger',
+              },
+              timer: 4,
+              token: 4,
+              waits: [],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 4,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Couldn\'t upload',
+                  politeness: 'assertive',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'a toast that shows before its wait ends stays',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+          maxWaitMs: 8000,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          timer: null,
+          token: 0,
+          waits: [],
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Copied',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 1,
+              waits: [],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Copied',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Copied',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 1,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Saved',
+                tone: 'positive',
+              },
+              timer: 3,
+              token: 3,
+              waits: [],
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 3,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Saved',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Saved',
+                tone: 'positive',
+              },
+              timer: 3,
+              token: 3,
+              waits: [],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 3,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: null,
+              timer: null,
+              token: 3,
+              waits: [],
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'the wait goes on while the toast area is paused',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+          maxWaitMs: 8000,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          timer: null,
+          token: 0,
+          waits: [],
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Undo',
+                  id: 'a',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 1,
+              waits: [],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: 'Undo',
+                  message: 'Message deleted',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 2,
+              waits: [
+                2,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: 1,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              pause: {},
+            },
+            state: {
+              paused: true,
+              queue: [
+                {
+                  action: null,
+                  id: 'b',
+                  message: 'Saved',
+                  tone: 'positive',
+                },
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: null,
+              token: 3,
+              waits: [
+                2,
+                3,
+              ],
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              paused: true,
+              queue: [
+                {
+                  action: null,
+                  id: 'c',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'a',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              timer: null,
+              token: 3,
+              waits: [
+                3,
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 'a',
+              },
+            },
+            state: {
+              paused: true,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'c',
+                message: 'Copied',
+                tone: 'neutral',
+              },
+              timer: null,
+              token: 4,
+              waits: [],
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 3,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Copied',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              resume: {},
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'c',
+                message: 'Copied',
+                tone: 'neutral',
+              },
+              timer: 5,
+              token: 5,
+              waits: [],
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 5,
+                },
+              },
+            ],
           },
         ],
       },

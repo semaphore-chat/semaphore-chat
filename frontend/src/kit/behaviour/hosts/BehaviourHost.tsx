@@ -7,6 +7,7 @@ import { LiveRegionSlot } from './LiveRegionSlot';
 import { createOverlayHost } from './overlay';
 import { documentRouter } from './router';
 import { browserTimers } from './timers';
+import { createToastHost, joinHandlers } from './toasts';
 
 /**
  * The one behaviour host of a document, mounted by `KitProvider`. A nested
@@ -27,22 +28,27 @@ function createHost(): BehaviourHostValue {
   const owner = {};
   const ids = createIds();
   const router = documentRouter();
+  const announcer = createAnnouncer();
+  const overlay = createOverlayHost({ ids, doc: document, onOpen: () => router.touch(owner) });
   return {
     owner,
-    announcer: createAnnouncer(),
+    announcer,
     ids,
     timers: browserTimers,
     router,
-    overlay: createOverlayHost({ ids, doc: document, onOpen: () => router.touch(owner) }),
+    overlay,
+    toasts: createToastHost({ ids, timers: browserTimers, announcer, overlay, doc: document }),
   };
 }
 
 function RootHost({ children }: { children: ReactNode }): JSX.Element {
   const [host] = useState(createHost);
   useEffect(() => {
-    const off = host.router.register(host.owner, host.overlay.handlers);
+    const off = host.router.register(host.owner, joinHandlers(host.overlay.handlers, host.toasts.handlers));
+    const offToasts = host.toasts.connect();
     return () => {
       off();
+      offToasts();
       host.timers.disposeAll(host.owner);
     };
   }, [host]);

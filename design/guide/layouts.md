@@ -37,7 +37,11 @@ where the keyboard starts, and it gives up the home-indicator padding, because
 the bottom of the screen is now the keyboard. A template that has a dock bar
 leaves it out while the keyboard is up, so a composer keeps the room. The kit
 reads the keyboard's height from the browser (`useKeyboardInset`); a screen
-that needs it, such as a floating toast region, can read it too.
+that needs it can read it too. The toast region does not need to: it sits in
+the main island, which already ends above the keyboard.
+
+**Toasts.** The frame renders the toast region. See [Where toasts
+sit](#where-toasts-sit).
 
 Stories: `kit-app-frame--empty`, `kit-app-frame--with-banner`.
 
@@ -77,6 +81,62 @@ The templates share one idea about where things go.
   region is a Sheet, closed until the user opens it, so anything that lives only
   there is hidden.
 
+## Where toasts sit
+
+One rule at every width and on every template: a toast sits at the **bottom
+centre of the screen's main island**, a gutter above the island's bottom edge,
+and above anything pinned to the bottom of that island (the composer, the call
+controls, a settings footer). It is as wide as the island less a gutter on
+each side, and never wider than a small dialog (400 px).
+
+- **Phone.** The main island already ends above the call bar, the dock bar and
+  the keyboard, so the toast clears all of them. The stack from the bottom up
+  is: the keyboard (or the dock bar), the call bar, the composer, the toast.
+- **Compact and wide.** The toast floats over the bottom of the centre island.
+  It never sits over the left column (the call bar and its Leave), the dock or
+  the right island.
+- **Under a dialog or sheet.** The toast stays where it is, on the dimmed page
+  under the dialog, so it never covers the dialog's own buttons. It cannot be
+  reached and its timer waits until the dialog closes. Screen readers hear it
+  from inside the dialog.
+
+```
+Compact, in a call
++------+  +----------------------------------+
+| Dock |  |  Header                          |
++------+  |                                  |
++------+  |  Messages                        |
+| Left |  |                                  |
+|      |  |      +----------------------+    |
++------+  |      |  Toast               |    |
+| Call |  |      +----------------------+    |
++------+  |  [ Composer                    ] |
+          +----------------------------------+
+
+Phone, keyboard up
++----------------------+
+|  Messages            |
+|  +----------------+  |
+|  |  Toast         |  |
+|  +----------------+  |
+|  [ Composer      ]   |
++----------------------+
+|  Call bar            |
++----------------------+
+|  (keyboard)          |
++----------------------+
+```
+
+**For a screen.** Show toasts with `useToasts()` from the kit. Never render a
+Toast yourself and never position one. A template marks its main island; a
+screen marks its own bottom-pinned element with `useToastClearance(ref)` (the
+templates already do it for the stage controls and the settings footer).
+
+Stories: `kit-toast-region--in-call`, `kit-toast-region--in-call-light`,
+`kit-toast-region--phone-keyboard`, `kit-toast-region--sticky-danger`,
+`kit-toast-region--sticky-danger-light`, `kit-toast-region--queued`,
+`kit-toast-region--under-dialog`, `kit-toast-region--on-stage`.
+
 ## Three islands
 
 For a conversation, or for browsing a place: the chat screen, a channel, a
@@ -89,7 +149,7 @@ Wide (1200 and above)
 +------+  |                        |  |        |
 +------+  |        Centre          |  | Right  |
 | Left |  |      (the main)        |  | island |
-|      |  |                        |  |        |
+|      |  |      [ Toast ]         |  |        |
 +------+  +------------------------+  +--------+
 
 Compact (600 to 1199)
@@ -107,6 +167,7 @@ Phone (below 600): one pane at a time
 +----------------------+      +----------------------+
 |  Centre              |  or  |  Left                |
 |  (or Left)           |      |  (or Centre)         |
+|     [ Toast ]        |      |     [ Toast ]        |
 +----------------------+      +----------------------+
 |  Call bar (optional) |      |  Call bar (optional) |
 +----------------------+      +----------------------+
@@ -248,6 +309,7 @@ All widths
 |     (centred, never cropped)         |
 |                                      |
 |  Strip of small tiles (optional)     |
+|            [ Toast ]                 |
 |            Controls                  |
 +--------------------------------------+
 ```
@@ -306,8 +368,6 @@ use that.
 These are decided with the app shell, and they are not all built yet. Do not
 make up an answer on your own screen.
 
-- **Toasts.** Where a Toast appears on each template, and how it clears the
-  phone's dock bar and the on-screen keyboard.
 - **The viewport setting for the keyboard.** The frame follows the keyboard from
   what the browser reports, but the page's viewport setting (`index.html`, the
   `interactive-widget` option for Android) is an app-level change that is not
