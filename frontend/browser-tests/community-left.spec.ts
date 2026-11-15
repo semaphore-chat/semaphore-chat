@@ -33,13 +33,13 @@ test.describe('community-left @keyboard', () => {
     // The selected channel is the Tab stop
     expect(await focusedText(page)).toBe('lfg');
     await page.keyboard.press('ArrowDown');
-    expect(await focusedText(page)).toMatch(/mods$/);
+    expect(await focusedText(page)).toMatch(/^mods, unread, private, 1 mention/);
     await page.keyboard.press('Home');
     expect(await focusedText(page)).toBe('general');
     await page.keyboard.press('End');
-    expect(await focusedText(page)).toMatch(/staff-room$/);
+    expect(await focusedText(page)).toMatch(/^staff-room, private/);
     await page.keyboard.press('c');
-    expect(await focusedText(page)).toBe('clips');
+    expect(await focusedText(page)).toMatch(/^clips, unread, 2 mentions/);
     await page.keyboard.press('Tab');
     // Next stop after the list: the first voice card's button
     expect(await focusedName(page)).toBe('Leave Squad Up');
@@ -87,4 +87,20 @@ test('the user card stays at the foot of the island while 200 channels scroll', 
   expect(after?.y).toBeCloseTo(before?.y ?? 0, 0);
   const navBox = await island(page).boundingBox();
   expect((after?.y ?? 0) + (after?.height ?? 0)).toBeLessThanOrEqual((navBox?.y ?? 0) + (navBox?.height ?? 0));
+});
+
+test('resizing across the phone breakpoint keeps the island: its scroll position and the focused channel stay', async ({ page }) => {
+  await openStory(page, 'community-left--two-hundred-channels', { width: 1300, height: 800 });
+  const body = () => island(page).evaluate((nav) => (nav.firstElementChild as HTMLElement).scrollTop);
+  await island(page).evaluate((nav) => {
+    (nav.firstElementChild as HTMLElement).scrollTop = 600;
+  });
+  await page.getByRole('link', { name: /^channel-40\b/ }).focus();
+  const before = await body();
+  expect(before).toBeGreaterThan(0);
+  for (const width of [900, 390, 1300]) {
+    await page.setViewportSize({ width, height: 800 });
+    expect(await page.evaluate(() => document.activeElement?.textContent ?? '')).toMatch(/^channel-40\b/);
+    expect(await body()).toBeGreaterThan(0);
+  }
 });

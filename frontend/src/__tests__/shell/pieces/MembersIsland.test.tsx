@@ -36,8 +36,20 @@ import { UserProfileContext } from '../../../contexts/UserProfileContext';
 import { handleUserOnline, resetCommunityPresenceThrottle } from '../../../socket-hub/handlers/presenceHandlers';
 import type { MemberSummary } from '../../../data/members';
 import { MembersIsland, MembersIslandConnected } from '../../../shell/lounge/pieces/MembersIsland';
+import { communityMembersQueryKey } from '../../../utils/membershipQueryKeys';
 import { memberLine, seenLine } from '../../../shell/lounge/pieces/memberLines';
-import { loadController } from '../../../shell/lounge/pieces/community/lines';
+
+/** A load face for a view (the connected pieces get theirs from useQueryLoadState). */
+function loadController(status: 'pending' | 'error' | 'success', empty: boolean, retry: () => void) {
+  return {
+    status: status === 'pending' ? ('loading' as const) : status === 'error' ? ('error' as const) : empty ? ('empty' as const) : ('ready' as const),
+    error: null,
+    retryable: true,
+    refreshByUser: false,
+    refresh: () => undefined,
+    retry,
+  };
+}
 
 const BASE = 'http://localhost:3000';
 const NOW = Date.UTC(2026, 10, 15, 20, 30);
@@ -113,7 +125,9 @@ describe('MembersIsland (view)', () => {
     expect(screen.getByText('keeping the server warm')).toBeInTheDocument();
     expect(screen.getByText('In Squad Up')).toBeInTheDocument();
     expect(screen.getByText('Seen 2h ago')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Diego, offline' })).toBeInTheDocument();
+    // Each row's name carries the role, presence and line: "Samira, admin, online, keeping the server warm"
+    expect(screen.getByRole('button', { name: 'Samira, admin, online, keeping the server warm' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Diego, away, Seen 2h ago' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^aiko/ }));
     expect(onOpenProfile).toHaveBeenCalledWith('u-aiko');
     // The rows are the only buttons: no moderation action on a member
@@ -218,6 +232,61 @@ const groupOf = (name: string) =>
   screen.getByRole('button', { name: new RegExp(`^${name}\\b`) }).closest('[data-kit-list-row]')?.parentElement?.querySelector('h3')?.textContent;
 
 describe('MembersIslandConnected', () => {
+  it('orders as the classic list does: hosts by role, online first, then by name; around and away by name', async () => {
+    const people = [
+      ['u-z', 'zara', 'off', null],
+      ['u-g', 'gracie', 'on', 'mod'],
+      ['u-b', 'Bram', 'on', null],
+      ['u-s', 'Samira', 'on', 'admin'],
+      ['u-d', 'dropbear', 'off', 'mod'],
+      ['u-a', 'aiko', 'on', null],
+      ['u-c', 'chlo', 'off', null],
+      ['u-k', 'kwam3', 'on', 'mod'],
+    ] as const;
+    const roles: Record<string, unknown> = { admin: { id: 'r-admin', name: 'admin', position: 1, isDefault: false }, mod: { id: 'r-mod', name: 'mod', position: 5, isDefault: false } };
+    const online = Object.fromEntries(people.filter((p) => p[2] === 'on').map((p) => [p[0], true]));
+    server.use(
+      http.get(`${BASE}/api/membership/community/c-1`, () =>
+        HttpResponse.json({
+          members: people.map(([id, name, , role], i) => ({
+            id: `m-${i}`,
+            userId: id,
+            communityId: 'c-1',
+            joinedAt: '2026-01-01T00:00:00Z',
+            roles: role ? [memberRole, roles[role]] : [memberRole],
+            user: { id, username: name, displayName: null, avatarUrl: null, status: null, lastSeen: null },
+          })),
+        }),
+      ),
+      http.get(`${BASE}/api/presence/users/bulk`, () => HttpResponse.json({ presence: online })),
+      http.get(`${BASE}/api/channels/community/c-1`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/presence/community/c-1`, () => HttpResponse.json({ onlineUserIds: Object.keys(online), onlineCount: 5, memberCount: 8 })),
+    );
+    renderConnected();
+    await screen.findByRole('button', { name: /^zara/ });
+    const group = (title: string) =>
+      Array.from(screen.getByRole('heading', { name: title }).parentElement!.querySelectorAll('[data-kit-list-row] button')).map(
+        (b) => b.textContent?.replace(/^[A-Z0-9]{2}/, '').split(',')[0],
+      );
+    // Hosts: admin first; the mods online first (gracie, kwam3), then the offline mod (dropbear) stays a host
+    await waitFor(() => expect(group('Hosts')).toEqual(['Samira', 'gracie', 'kwam3', 'dropbear']));
+    expect(group('Around')).toEqual(['aiko', 'Bram']);
+    expect(group('Away')).toEqual(['chlo', 'zara']);
+  });
+
+  it('loaded members stay when a background refetch fails; the error face shows only with nothing to show', async () => {
+    serveMembers(5, { 'user-1': true });
+    const { queryClient } = renderConnected();
+    await screen.findByRole('button', { name: /^User 4/ });
+    server.use(http.get(`${BASE}/api/membership/community/c-1`, () => HttpResponse.json({ statusCode: 500 }, { status: 500 })));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: communityMembersQueryKey('c-1') }).catch(() => undefined);
+    });
+    await waitFor(() => expect(queryClient.getQueryState(communityMembersQueryKey('c-1'))?.status).toBe('error'));
+    expect(screen.queryByText("Couldn't load members")).toBeNull();
+    expect(screen.getByRole('button', { name: /^User 4/ })).toBeInTheDocument();
+  });
+
   it('"N around" is the community presence count, known before every page is loaded', async () => {
     serveMembers(300, {}, () => 42);
     renderConnected();
@@ -231,7 +300,7 @@ describe('MembersIslandConnected', () => {
     serveMembers(5, online);
     const { queryClient, user, openProfile } = renderConnected();
     await screen.findByRole('button', { name: /^User 4/ });
-    expect(screen.getByText('1 around')).toBeInTheDocument();
+    expect(await screen.findByText('1 around')).toBeInTheDocument();
     const away = screen.getByRole('heading', { name: 'Away' }).parentElement!;
     expect(within(away).getByRole('button', { name: /^User 4/ })).toBeInTheDocument();
 

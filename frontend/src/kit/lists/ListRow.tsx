@@ -8,6 +8,7 @@ import { mix } from '../theme/mix';
 import { focusRing } from '../theme/states';
 import { SurfaceContext, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
+import { visuallyHidden } from '../theme/a11y';
 import { assignRef } from '../behaviour/assignRef';
 import {
   ROW_ATTRIBUTE,
@@ -27,8 +28,14 @@ export interface ListRowProps {
   size?: 'md' | 'lg';
   /** The current item: the solid accent pill. Sets `aria-current`. */
   selected?: boolean;
-  /** Bolder primary line, in the full text colour. */
+  /** Bolder primary line, in the full text colour; the row's name says ", unread". */
   unread?: boolean;
+  /**
+   * What the trailing slot says, as words for the row's accessible name ("2 mentions", "admin"). `trailing` sits
+   * beside the link or button, outside its name, so a Badge's or Pill's meaning would be lost to a keyboard list;
+   * this puts it in: "clips, unread, 2 mentions", "Samira, admin, keeping the server warm".
+   */
+  trailingLabel?: string;
   /** Both lines dimmed. */
   muted?: boolean;
   disabled?: boolean;
@@ -177,6 +184,9 @@ const Trailing = styled('span')({
   '& > *': { minWidth: 0 },
 });
 
+/** Words for the accessible name only (the row's state, the trailing slot's meaning). */
+const Hidden = styled('span')({ ...visuallyHidden });
+
 const Column = styled('span')({
   display: 'flex',
   flexDirection: 'column',
@@ -224,6 +234,7 @@ export function ListRow({
   size = 'md',
   selected = false,
   unread = false,
+  trailingLabel,
   muted = false,
   disabled = false,
   href,
@@ -271,6 +282,10 @@ export function ListRow({
   const tone = (dim: boolean, strong: boolean): 'row' | 'strong' | 'dim' =>
     selected ? 'row' : dim ? 'dim' : strong ? 'strong' : 'row';
   const interactive = href !== undefined || onClick !== undefined;
+  // Words for the name only: ", unread" and the trailing slot's meaning, then a comma before the second line.
+  const spokenParts = [unread && !selected ? 'unread' : '', trailingLabel ?? ''].filter((part) => part !== '');
+  const spokenState =
+    spokenParts.length === 0 ? '' : `, ${spokenParts.join(', ')}${secondary !== undefined ? ',' : ''}`;
 
   const content = (
     <>
@@ -282,6 +297,7 @@ export function ListRow({
           $tone={tone(muted, unread && !selected)}
         >
           {primary}
+          {spokenState !== '' && <Hidden>{spokenState}</Hidden>}
         </Line>
         {secondary !== undefined && (
           <Line $type="meta" $weight={tokens.text.meta.weight} $tone={tone(muted, false)}>

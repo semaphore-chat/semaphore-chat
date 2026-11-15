@@ -13,7 +13,8 @@ interface IslandBase {
   scroll?: boolean;
   /**
    * A block that stays at the island's foot (the user's own card): with `scroll`, only the content above it
-   * scrolls. Inside the island's padding, a small gap below the content.
+   * scrolls. Inside the island's padding, a small gap below the content. Pass `null` while there is nothing to
+   * show (a width without it): the island keeps the same structure, so its content is never rebuilt.
    */
   footer?: ReactNode;
   id?: string;
@@ -93,7 +94,10 @@ export function Island({
   footer,
   id,
 }: IslandProps): JSX.Element {
-  const split = footer !== undefined && footer !== null && footer !== false;
+  // Split whenever the prop is given, even as null: the body element (and so the content's place in the tree) stays
+  // the same whether the footer shows or not.
+  const split = footer !== undefined;
+  const showFoot = split && footer !== null && footer !== false;
   return (
     <Root as={as} id={id} aria-label={label} $padding={padding} $scroll={scroll} $split={split}>
       <SurfaceContext value="surface">
@@ -102,7 +106,7 @@ export function Island({
             <Body $padding={padding} $scroll={scroll}>
               {children}
             </Body>
-            <Foot $padding={padding}>{footer}</Foot>
+            {showFoot && <Foot $padding={padding}>{footer}</Foot>}
           </>
         ) : (
           children

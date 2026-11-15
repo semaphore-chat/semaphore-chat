@@ -8,7 +8,7 @@
  */
 import { startTransition, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar, Card, Icon, IconButton, Stack, Text } from '../../../../kit';
+import { Avatar, Card, Icon, IconButton, Skeleton, Stack, Text } from '../../../../kit';
 import { useCallBarModel } from '../../../../data/callBar';
 import { callFromModel, callState } from './lines';
 import { useConnectionState } from '../../../../data/connection';
@@ -38,8 +38,21 @@ export interface UserCardProps {
 }
 
 export function UserCard({ name, src, online, line, call, onSettings }: UserCardProps): JSX.Element {
-  const shownName = name ?? 'Your profile';
   const state = call ? callState(call) : null;
+  if (name === null) {
+    return (
+      <Card padding="md">
+        <Stack direction="row" gap="sm">
+          <Skeleton shape="circle" size="md" />
+          <Stack gap="xs" fill>
+            <Skeleton shape="text" lines={2} />
+          </Stack>
+          <IconButton icon="Settings" label="Settings" size="sm" onClick={onSettings} />
+        </Stack>
+      </Card>
+    );
+  }
+  const shownName = name;
   return (
     <Card padding="md">
       <Stack direction="row" gap="sm">
@@ -76,7 +89,8 @@ export function UserCardConnected(): JSX.Element {
   const model = useCallBarModel(false);
   const { blobUrl } = useAuthenticatedImage(user?.avatarUrl ?? null);
 
-  const line = model ? `In ${model.place.name}` : (user?.status ?? null);
+  // While a join runs the card says so (the model already names the room being joined).
+  const line = model ? `${model.phase === 'connecting' ? 'Joining' : 'In'} ${model.place.name}` : (user?.status ?? null);
   return (
     <UserCard
       name={user ? user.displayName || user.username : null}

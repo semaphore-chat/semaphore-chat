@@ -3,23 +3,23 @@
  * the text channels and the voice rooms. The user's own card is the island's footer (the frame puts
  * `UserCardConnected` in ThreeIslands' `leftFooter` at compact and wide). The frame gives it the route's ids (no `useParams` in a piece).
  *
- * Data: `useCommunity`, `useCommunityActions` (the menu), `useCommunityMembers().aroundCount` (the
- * header's "N around", no number while it is null), `useCommunityChannels` (only the server's
+ * Data: `useCommunity`, `useCommunityActions` (the menu), `useCommunityPresence` (the header's
+ * "N around", no number while it is unknown), `useCommunityChannels` (only the server's
  * filtered list), `useUnreadSummary`, a `VoiceRoomCardConnected` per room.
  */
 import { startTransition, useCallback, useMemo, type JSX, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Button, Stack, Text } from '../../../../kit';
+import { Button, Stack, Text, useQueryLoadState } from '../../../../kit';
 import { useCommunity, useCommunityActions } from '../../../../data/communities';
-import { useCommunityChannels } from '../../../../data/channels';
-import { useCommunityMembers } from '../../../../data/members';
+import { sortCommunityChannels, useCommunityChannels } from '../../../../data/channels';
+import type { Channel } from '../../../../types/channel.type';
+import { useCommunityPresence, useIdentityCache } from '../../../../data/members';
 import { useUnreadSummary } from '../../../../data/unread';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
 import { isPermanentAccessError } from '../../../../utils/httpError';
 import { rememberActivatedRow } from '../../frame/routeMemory';
-import { loadController } from './lines';
 import { CommunityHeader, type CommunityAction, type CommunityHeaderProps } from './CommunityHeader';
-import { ChannelSection, type ChannelSectionProps } from './ChannelSection';
+import { ChannelSection, type ChannelItem, type ChannelSectionProps } from './ChannelSection';
 import { VoiceRoomCardConnected } from './VoiceRoomCard';
 
 export interface CommunityLeftProps {
@@ -70,17 +70,26 @@ export function CommunityLeftView({ access, header, channels, rooms, onLeave }: 
   );
 }
 
+const sameChannelItem = (a: ChannelItem, b: ChannelItem) =>
+  a.name === b.name && a.unread === b.unread && a.mentions === b.mentions && a.isPrivate === b.isPrivate && a.announcement === b.announcement;
+
+/** No text channel in the server's list (voice rooms have their own section). */
+const noTextChannels = (data: Channel[]) => sortCommunityChannels(data).text.length === 0;
+
 export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): JSX.Element {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { community, status: communityStatus, error: communityError } = useCommunity(communityId);
   const { canEdit } = useCommunityActions(communityId);
-  const { aroundCount } = useCommunityMembers(communityId);
-  const { text, voice, status, error, refetch } = useCommunityChannels(communityId);
+  // The community's own online count: no member pages, no instance-wide presence for a header.
+  const aroundCount = useCommunityPresence(communityId).data?.onlineCount ?? null;
+  const { text, voice, status, error, query } = useCommunityChannels(communityId);
   const unread = useUnreadSummary();
   const { blobUrl } = useAuthenticatedImage(community?.avatarFileId ?? null);
+  // Loaded channels stay through a failed refetch (a toast says so); the error face only with nothing to show.
+  const channelsState = useQueryLoadState(query, { notifyId: 'lounge-channels', resetKey: communityId, isEmpty: noTextChannels });
 
-  const channelItems = useMemo(
+  const freshItems = useMemo<ChannelItem[]>(
     () =>
       text.map((channel) => {
         const counts = unread.channel(channel.id);
@@ -90,10 +99,13 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
           unread: counts.unread > 0,
           mentions: counts.mentions,
           isPrivate: channel.isPrivate,
+          announcement: channel.preset === 'ANNOUNCEMENT',
         };
       }),
     [text, unread],
   );
+  // An unchanged channel keeps its object, so its memoised row skips the render.
+  const channelItems = useIdentityCache(freshItems, sameChannelItem);
 
   const actions = useMemo<CommunityAction[]>(() => (canEdit ? ['settings'] : []), [canEdit]);
   const onAction = useCallback(
@@ -124,7 +136,8 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
         selectedId: channelId,
         hrefFor,
         onActivate,
-        state: loadController(status, text.length === 0, refetch),
+        state: channelsState,
+        hasRooms: voice.length > 0,
       }}
       rooms={voice.map((room) => (
         <VoiceRoomCardConnected key={room.id} room={room} communityId={communityId} />

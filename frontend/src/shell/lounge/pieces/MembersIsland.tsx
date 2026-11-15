@@ -12,12 +12,13 @@
  * re-renders only the rows it touched (Profiler test, `__tests__/shell/pieces/MembersIsland.test.tsx`).
  */
 import { memo, useCallback, useContext, useMemo, type JSX } from 'react';
-import { Avatar, Button, ListRow, LoadState, Pill, Skeleton, Stack, Text, useListFocus, type LoadController, type RowFocus } from '../../../kit';
+import { Avatar, Button, ListRow, LoadState, Pill, Skeleton, Stack, Text, useQueryLoadState, useListFocus, type LoadController, type RowFocus } from '../../../kit';
 import { useCommunityMembers, type MemberSummary } from '../../../data/members';
 import { useAuthenticatedImage } from '../../../hooks/useAuthenticatedImage';
 import { UserProfileContext } from '../../../contexts/UserProfileContext';
-import { aroundLine, loadController } from './community/lines';
+import { aroundLine } from './community/lines';
 import { memberLine } from './memberLines';
+import { sameRowFocus } from './sameRowFocus';
 
 export interface MembersIslandProps {
   hosts: readonly MemberSummary[];
@@ -51,27 +52,19 @@ function MemberRowView({ member, now, focus, onOpen }: MemberRowProps): JSX.Elem
       primary={member.name}
       secondary={memberLine(member, now)}
       muted={away}
-      leading={<Avatar name={member.name} src={blobUrl ?? undefined} presence={away ? 'offline' : 'online'} />}
+      leading={<Avatar decorative name={member.name} src={blobUrl ?? undefined} presence={away ? 'offline' : 'online'} />}
       trailing={member.role ? <Pill size="sm">{member.role}</Pill> : undefined}
+      trailingLabel={[member.role, away ? 'away' : 'online'].filter(Boolean).join(', ')}
       onClick={onOpen ? () => onOpen(member.id) : undefined}
       focus={focus}
     />
   );
 }
 
-/** Shallow equality for an opaque value (the list's RowFocus: a tab index and two per-row stable callbacks). */
-function shallowSame(a: object, b: object): boolean {
-  if (a === b) return true;
-  const ka = Object.keys(a);
-  const kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
-  return ka.every((key) => (a as Record<string, unknown>)[key] === (b as Record<string, unknown>)[key]);
-}
-
 /** Re-renders only when its member, its tab stop or the clock changed. Exported for the render-count test. */
 export const MemberRow = memo(
   MemberRowView,
-  (a, b) => a.member === b.member && a.now === b.now && a.onOpen === b.onOpen && shallowSame(a.focus, b.focus),
+  (a, b) => a.member === b.member && a.now === b.now && a.onOpen === b.onOpen && sameRowFocus(a.focus, b.focus),
 );
 
 function MembersSkeleton(): JSX.Element {
@@ -170,6 +163,12 @@ export function MembersIsland({
   );
 }
 
+/** The membership pages hold nobody (the envelope or the pre-0.4.0 plain array). */
+function noMemberships(data: unknown): boolean {
+  const pages = (data as { pages?: unknown[] } | undefined)?.pages ?? [];
+  return pages.every((page) => (Array.isArray(page) ? page : ((page as { members?: unknown[] })?.members ?? [])).length === 0);
+}
+
 export interface MembersIslandConnectedProps {
   communityId: string;
 }
@@ -179,7 +178,12 @@ export function MembersIslandConnected({ communityId }: MembersIslandConnectedPr
   const profile = useContext(UserProfileContext);
   const openProfile = profile?.openProfile;
   const onOpenProfile = useCallback((id: string) => openProfile?.(id), [openProfile]);
-  const empty = members.hosts.length + members.around.length + members.away.length === 0;
+  // Loaded rows stay through a failed refetch (a toast says so); the error face shows only with nothing to show.
+  const state = useQueryLoadState(members.pagesQuery, {
+    notifyId: 'lounge-members',
+    resetKey: communityId,
+    isEmpty: noMemberships,
+  });
   return (
     <MembersIsland
       hosts={members.hosts}
@@ -189,7 +193,7 @@ export function MembersIslandConnected({ communityId }: MembersIslandConnectedPr
       allLoaded={members.allLoaded}
       onLoadMore={members.loadMore}
       loadingMore={members.loadingMore}
-      state={loadController(members.status, empty, members.refetch)}
+      state={state}
       onOpenProfile={openProfile ? onOpenProfile : undefined}
     />
   );

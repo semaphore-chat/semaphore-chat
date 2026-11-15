@@ -197,7 +197,10 @@ px tall. The centre takes the rest.
 **The left island's footer** (`leftFooter`) holds the user's own card at
 compact and wide: it stays at the island's foot while the channels and voice
 rooms above it scroll. It is part of the island; the call bar, when there is one,
-sits under the island and so under this footer. A phone has no user card.
+sits under the island and so under this footer. A phone has no user card; the
+island keeps its structure there (the footer is empty, not removed), so the
+channels and their scroll and focus survive a resize. Web kit only so far; the
+native kit has not caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).
 
 **The call bar** is the strip that shows you are in a voice room, with a mute
 control and Leave. It is optional. At compact and wide it sits at the bottom of

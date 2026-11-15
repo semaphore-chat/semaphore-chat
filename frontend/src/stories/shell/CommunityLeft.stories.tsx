@@ -131,11 +131,19 @@ export const NoPermission = () => <Left view={{ header: { ...HEADER, actions: []
 /** No "N around": the whole community's online count is not known. */
 export const NoAroundCount = () => <Left view={{ header: { ...HEADER, aroundCount: null } }} />;
 
-/** Five channels: two private, unread without a mention (bold) beside mentions, lfg selected. */
+/** Six channels: an announcement channel (megaphone), two private, unread without a mention (bold) beside mentions, lfg selected. */
 export const FiveChannels = () => <Left channels={{ channels: FIVE_CHANNELS, selectedId: 'ch-lfg' }} />;
+
+/** The server lists you in Squad Up but this device is not connected (you are in it on another device): Join stays. */
+export const HereOnAnotherDevice = () => (
+  <Left user={USER_IDLE} rooms={[room({ name: 'Squad Up', people: SQUAD }), AFK]} />
+);
 
 /** No channels yet (and no voice rooms). */
 export const ZeroChannels = () => <Left channels={{ channels: [], state: ready(true) }} rooms={[]} />;
+
+/** Voice rooms but no text channel: "No text channels yet". */
+export const NoTextChannels = () => <Left channels={{ channels: [], state: ready(true), hasRooms: true }} />;
 
 /** 200 channels: the island scrolls, the user card stays at its foot. */
 export const TwoHundredChannels = () => <Left channels={{ channels: manyChannels(200), selectedId: 'ch-3' }} />;
@@ -146,7 +154,7 @@ export const LongNames = () => (
     view={{ header: { ...HEADER, name: 'The Couch Co-op and Friends of the Couch International Society' } }}
     channels={{
       channels: [
-        { id: 'ch-long', name: LONG, unread: true, mentions: 120, isPrivate: true },
+        { id: 'ch-long', name: LONG, unread: true, mentions: 120, isPrivate: true, announcement: false },
         ...CHANNELS,
       ],
     }}

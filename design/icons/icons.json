@@ -55,6 +55,7 @@
     "TriangleAlert": "triangle-alert",
     "CircleAlert": "circle-alert",
     "CircleCheck": "circle-check",
-    "LoaderCircle": "loader-circle"
+    "LoaderCircle": "loader-circle",
+    "Megaphone": "megaphone"
   }
 }

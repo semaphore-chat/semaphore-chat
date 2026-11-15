@@ -9,14 +9,22 @@ import type { ChannelItem } from '../../shell/lounge/pieces/community/ChannelSec
 import type { VoiceRoomCardProps } from '../../shell/lounge/pieces/community/VoiceRoomCard';
 import type { UserCardProps } from '../../shell/lounge/pieces/community/UserCard';
 import type { CommunityHeaderProps } from '../../shell/lounge/pieces/community/CommunityHeader';
-import { loadController } from '../../shell/lounge/pieces/community/lines';
 import type { LoadController } from '../../kit';
 
 export const noop = () => undefined;
 
-export const ready = (empty = false): LoadController => loadController('success', empty, noop);
-export const loading = (): LoadController => loadController('pending', false, noop);
-export const failed = (): LoadController => loadController('error', false, noop);
+/** A load face for a view story (the app's come from the kit's useQueryLoadState). */
+const face = (status: LoadController['status']): LoadController => ({
+  status,
+  error: null,
+  retryable: true,
+  refreshByUser: false,
+  refresh: noop,
+  retry: noop,
+});
+export const ready = (empty = false): LoadController => face(empty ? 'empty' : 'ready');
+export const loading = (): LoadController => face('loading');
+export const failed = (): LoadController => face('error');
 
 export const YOU = 'u-alexk';
 
@@ -28,18 +36,19 @@ export const HEADER: CommunityHeaderProps = {
 };
 
 export const CHANNELS: ChannelItem[] = [
-  { id: 'ch-general', name: 'general', unread: false, mentions: 0, isPrivate: false },
-  { id: 'ch-clips', name: 'clips', unread: true, mentions: 2, isPrivate: false },
-  { id: 'ch-lfg', name: 'lfg', unread: false, mentions: 0, isPrivate: false },
-  { id: 'ch-memes', name: 'memes', unread: false, mentions: 0, isPrivate: false },
+  { id: 'ch-general', name: 'general', unread: false, mentions: 0, isPrivate: false, announcement: false },
+  { id: 'ch-clips', name: 'clips', unread: true, mentions: 2, isPrivate: false, announcement: false },
+  { id: 'ch-lfg', name: 'lfg', unread: false, mentions: 0, isPrivate: false, announcement: false },
+  { id: 'ch-memes', name: 'memes', unread: false, mentions: 0, isPrivate: false, announcement: false },
 ];
 
 /** Five, with a private channel and unread without a mention beside a mention. */
 export const FIVE_CHANNELS: ChannelItem[] = [
   ...CHANNELS.slice(0, 2),
-  { id: 'ch-lfg', name: 'lfg', unread: true, mentions: 0, isPrivate: false },
-  { id: 'ch-mods', name: 'mods', unread: true, mentions: 1, isPrivate: true },
-  { id: 'ch-staff', name: 'staff-room', unread: false, mentions: 0, isPrivate: true },
+  { id: 'ch-news', name: 'news', unread: true, mentions: 0, isPrivate: false, announcement: true },
+  { id: 'ch-lfg', name: 'lfg', unread: true, mentions: 0, isPrivate: false, announcement: false },
+  { id: 'ch-mods', name: 'mods', unread: true, mentions: 1, isPrivate: true, announcement: false },
+  { id: 'ch-staff', name: 'staff-room', unread: false, mentions: 0, isPrivate: true, announcement: false },
 ];
 
 export function manyChannels(count: number): ChannelItem[] {
@@ -49,6 +58,7 @@ export function manyChannels(count: number): ChannelItem[] {
     unread: i % 7 === 3,
     mentions: i % 23 === 5 ? (i % 4) + 1 : 0,
     isPrivate: i % 11 === 9,
+    announcement: i === 1,
   }));
 }
 

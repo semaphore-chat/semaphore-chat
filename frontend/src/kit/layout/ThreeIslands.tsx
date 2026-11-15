@@ -185,7 +185,7 @@ export function ThreeIslands({
         role={phone && phonePane === 'left' ? 'main' : undefined}
         data-kit-toast-anchor={phone && phonePane === 'left' ? '' : undefined}
       >
-        <Island as="nav" label={leftLabel} padding="md" scroll footer={leftFooter}>
+        <Island as="nav" label={leftLabel} padding="md" scroll footer={leftFooter ?? null}>
           {left}
         </Island>
       </PhonePane>

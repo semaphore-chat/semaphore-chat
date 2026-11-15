@@ -121,6 +121,13 @@ export const WithFooterLight = () => (
   </KitStage>
 );
 
+/** The same, tinted. */
+export const WithFooterTinted = () => (
+  <KitStage mode="dark" base="#0d9488" intensity="vibrant">
+    <FooterBody count={24} />
+  </KitStage>
+);
+
 export const Paddings = () => (
   <KitStage mode="dark">
     <Row label="padding none, md, lg">

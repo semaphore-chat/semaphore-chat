@@ -16,7 +16,7 @@
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
 import { useCallback, useMemo, useRef } from 'react';
-import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import {
   presenceControllerGetBulkPresenceOptions,
   presenceControllerGetCommunityPresenceOptions,
@@ -133,11 +133,13 @@ export interface CommunityMemberPages {
   loadingMore: boolean;
   loadMore(): void;
   refetch(): void;
+  /** The membership pages query itself, for a load face that keeps loaded rows through a failed refetch. */
+  query: UseQueryResult<unknown>;
 }
 
 /** The paginated membership list ("Show more" loads the next 100). */
 export function useCommunityMemberPages(communityId: string | undefined, enabled = true): CommunityMemberPages {
-  const { data, isLoading, error, status, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const query = useInfiniteQuery({
     queryKey: communityMembersQueryKey(communityId || ''),
     queryFn: async ({ pageParam, signal }) => {
       const { data } = await membershipControllerFindAllForCommunity({
@@ -156,6 +158,7 @@ export function useCommunityMemberPages(communityId: string | undefined, enabled
     // the 100/page size and user-driven "Show more" pacing.
     enabled: enabled && !!communityId,
   });
+  const { data, isLoading, error, status, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = query;
 
   const memberships = useMemo(
     () =>
@@ -185,6 +188,7 @@ export function useCommunityMemberPages(communityId: string | undefined, enabled
     loadingMore: isFetchingNextPage,
     loadMore,
     refetch: refetchPages,
+    query: query as UseQueryResult<unknown>,
   };
 }
 
@@ -226,6 +230,8 @@ export interface CommunityMembers {
   loadingMore: boolean;
   status: QueryStatus;
   refetch(): void;
+  /** The membership pages query (`useQueryLoadState`): loaded rows stay through a failed refetch. */
+  pagesQuery: UseQueryResult<unknown>;
 }
 
 const sameSummary = (a: MemberSummary, b: MemberSummary) =>
@@ -264,13 +270,34 @@ export function summarizeMembers(
     });
 }
 
-/** Pure: Hosts (by role position, stable) / Around / Away. */
+/** Member names in the order both shells list them (`localeCompare`, the classic member list's rule). */
+export function compareMemberNames(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+
+/** Within one role: online first, then by name (the classic member list's rule). */
+export function compareOnlineThenName(
+  a: { online: boolean; name: string },
+  b: { online: boolean; name: string },
+): number {
+  if (a.online !== b.online) return a.online ? -1 : 1;
+  return compareMemberNames(a.name, b.name);
+}
+
+/**
+ * Pure: Hosts (by role position; inside a role online first, then by name; an offline host stays a host) /
+ * Around and Away (each by name). The classic member list orders the same way and uses the same comparators.
+ */
 export function groupMembers(entries: readonly { summary: MemberSummary; rolePosition: number | null }[]) {
+  const online = (m: MemberSummary) => ({ online: m.presence === 'online', name: m.name });
   const hosts = entries
     .filter((e) => e.rolePosition !== null)
-    .sort((a, b) => a.rolePosition! - b.rolePosition!)
+    .sort((a, b) => a.rolePosition! - b.rolePosition! || compareOnlineThenName(online(a.summary), online(b.summary)))
     .map((e) => e.summary);
-  const rest = entries.filter((e) => e.rolePosition === null).map((e) => e.summary);
+  const rest = entries
+    .filter((e) => e.rolePosition === null)
+    .map((e) => e.summary)
+    .sort((a, b) => compareMemberNames(a.name, b.name));
   return {
     hosts,
     around: rest.filter((m) => m.presence === 'online'),
@@ -351,5 +378,6 @@ export function useCommunityMembers(communityId: string): CommunityMembers {
     loadingMore: pages.loadingMore,
     status,
     refetch,
+    pagesQuery: pages.query,
   };
 }

@@ -87,3 +87,10 @@ export const RowsLight = () => (
     <RowsBody />
   </KitStage>
 );
+
+/** The same, tinted. */
+export const RowsTinted = () => (
+  <KitStage mode="dark" base="#0d9488" intensity="vibrant">
+    <RowsBody />
+  </KitStage>
+);

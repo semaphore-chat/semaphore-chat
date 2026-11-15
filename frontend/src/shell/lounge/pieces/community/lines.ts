@@ -1,9 +1,10 @@
 /**
  * The words the community pieces put together from data: pure, so tests and stories share them.
  */
-import type { IconName, LoadController } from '../../../../kit';
+import type { IconName } from '../../../../kit';
 import type { CallBarModel } from '../../../../data/callBar';
 import type { UserCardCall, UserCardMic } from './UserCard';
+import type { ChannelItem } from './ChannelSection';
 
 export interface NamedPerson {
   id: string;
@@ -17,10 +18,14 @@ export function aroundLine(aroundCount: number | null): string | null {
 
 const SHOWN_NAMES = 3;
 
-/** "You, dropbear and pri", "dropbear and 9 more": you first, then the room's order. */
-export function peopleLine(people: readonly NamedPerson[], youId: string | null): string {
+/**
+ * "You, dropbear and pri", "dropbear and 9 more": you first, then the room's order. When the server lists you in a
+ * room this device is not connected to (you are in it on another device, or your presence is stale), you are
+ * "You on another device" (classic lists your name there and still offers Join).
+ */
+export function peopleLine(people: readonly NamedPerson[], youId: string | null, youAreHere = true): string {
   const you = people.filter((p) => p.id === youId);
-  const names = [...you.map(() => 'You'), ...people.filter((p) => p.id !== youId).map((p) => p.name || 'Unknown user')];
+  const names = [...you.map(() => (youAreHere ? 'You' : 'You on another device')), ...people.filter((p) => p.id !== youId).map((p) => p.name || 'Unknown user')];
   if (names.length <= SHOWN_NAMES) {
     return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
   }
@@ -35,20 +40,6 @@ export function talkingLine(people: readonly NamedPerson[], speaking: ReadonlySe
   if (names.length === 1) return `${names[0]} is talking`;
   if (names.length === 2) return `${names[0]} and ${names[1]} are talking`;
   return `${names[0]}, ${names[1]} and ${names.length - 2} more are talking`;
-}
-
-const noop = () => undefined;
-
-/** A load face from a query's status (the data hooks are not TanStack results). */
-export function loadController(status: 'pending' | 'error' | 'success', empty: boolean, retry: () => void): LoadController {
-  return {
-    status: status === 'pending' ? 'loading' : status === 'error' ? 'error' : empty ? 'empty' : 'ready',
-    error: null,
-    retryable: true,
-    refreshByUser: false,
-    refresh: noop,
-    retry,
-  };
 }
 
 /** What the card says about the call: deafened wins (you hear nothing and cannot speak), then the mic. */
@@ -80,5 +71,17 @@ export function callFromModel(model: CallBarModel): UserCardCall {
           ? 'on'
           : 'muted';
   return { mic, deafened: model.deafened, keyLabel: model.mic.keyLabel };
+}
+
+
+/** The words a row adds to its name after the channel's: its kind, privacy and mention count. */
+export function channelTrailingLabel(channel: ChannelItem, mentions: number): string {
+  return [
+    channel.announcement ? 'announcement channel' : null,
+    channel.isPrivate ? 'private' : null,
+    mentions > 0 ? (mentions === 1 ? '1 mention' : `${mentions} mentions`) : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
 }
 

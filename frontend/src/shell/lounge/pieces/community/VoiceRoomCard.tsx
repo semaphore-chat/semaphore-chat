@@ -8,13 +8,14 @@
  * are its buttons. Join is offered only when the classic pre-join screen would offer it
  * (`useChannelPermissions(...).can('connect')`).
  */
-import { useState, type JSX } from 'react';
-import { AvatarStack, Button, Card, Icon, Pill, Stack, Text, useToasts } from '../../../../kit';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { AvatarStack, Button, Card, Icon, Pill, Stack, Text, useToasts, useWidthRange } from '../../../../kit';
 import type { Channel } from '../../../../types/channel.type';
 import { useVoiceRoomPeople, useJoinVoiceRoom } from '../../../../data/voiceRoom';
 import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
 import { useVoiceConnection } from '../../../../hooks/useVoiceConnection';
 import { useCurrentUser } from '../../../../hooks/useCurrentUser';
+import { useVoiceNotice } from '../../../../data/voiceNotice';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
 import { peopleLine, talkingLine } from './lines';
 
@@ -40,7 +41,7 @@ export interface VoiceRoomCardProps {
   onLeave(): void;
 }
 
-export function VoiceRoomCard({
+function VoiceRoomCardView({
   name,
   people,
   youId,
@@ -51,6 +52,8 @@ export function VoiceRoomCard({
   onJoin,
   onLeave,
 }: VoiceRoomCardProps): JSX.Element {
+  // A touch-sized button on a phone; the column's compact rows elsewhere.
+  const size = useWidthRange() === 'phone' ? 'md' : 'sm';
   const talking = youAreHere ? talkingLine(people, speaking, youId) : null;
   const stack = people.map((p) => ({
     name: p.name,
@@ -61,13 +64,13 @@ export function VoiceRoomCard({
   let action: JSX.Element | null = null;
   if (youAreHere) {
     action = (
-      <Button variant="soft" size="sm" onClick={onLeave} aria-label={`Leave ${name}`}>
+      <Button variant="soft" size={size} onClick={onLeave} aria-label={`Leave ${name}`}>
         Leave
       </Button>
     );
   } else if (canJoin) {
     action = (
-      <Button variant="soft" size="sm" onClick={onJoin} loading={joining} aria-label={`Join ${name}`}>
+      <Button variant="soft" size={size} onClick={onJoin} loading={joining} aria-label={`Join ${name}`}>
         Join
       </Button>
     );
@@ -94,7 +97,7 @@ export function VoiceRoomCard({
           <AvatarStack people={stack} size="sm" />
           <Stack gap="xs" fill>
             <Text variant="meta" tone="secondary" truncate>
-              {peopleLine(people, youId)}
+              {peopleLine(people, youId, youAreHere)}
             </Text>
             {talking && (
               <Text variant="meta" tone="accent" truncate>
@@ -125,6 +128,12 @@ function useStackSources(people: readonly { avatarFileId: string | null }[]): (s
   return [a, b, c];
 }
 
+/**
+ * Memoised: during a call each speaking change reaches every room's hook, but only your own room's props change
+ * (people, speaking and the callbacks keep their identity elsewhere), so only that card renders again.
+ */
+export const VoiceRoomCard = memo(VoiceRoomCardView);
+
 export interface VoiceRoomCardConnectedProps {
   room: Channel;
   communityId: string;
@@ -136,42 +145,70 @@ export function VoiceRoomCardConnected({ room, communityId }: VoiceRoomCardConne
   const { can } = useChannelPermissions(communityId, room.id);
   const join = useJoinVoiceRoom();
   const { state, actions } = useVoiceConnection();
+  const notice = useVoiceNotice();
   const { user } = useCurrentUser();
   const toasts = useToasts();
-  const [pending, setPending] = useState(false);
-  const sources = useStackSources(people);
+  // How many joins from this card are running (a Try again while one runs must not clear the first's spinner).
+  const [pending, setPending] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [a, b, c] = useStackSources(people);
 
-  const joining = pending || (state.isConnecting && state.currentChannelId === room.id);
+  // The latest call state, read when Try again is pressed (never the state of the render that failed).
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  const startJoin = async (): Promise<void> => {
-    setPending(true);
+  const joining = pending > 0 || (state.isConnecting && state.currentChannelId === room.id);
+
+  const startJoin = useCallback(async (): Promise<void> => {
+    setPending((n) => n + 1);
     try {
       const outcome = await join(room, communityId);
-      // PR 7 shows the voice notice (useVoiceNotice) in the call slot; until then the failure is a toast.
-      if (outcome === 'failed') {
-        toasts.show({
-          id: 'voice-join-failed',
-          tone: 'danger',
-          message: `Couldn't join ${room.name}`,
-          action: { label: 'Try again', onAction: () => startJoin() },
-        });
-      }
+      if (outcome === 'failed') setFailed(true);
     } finally {
-      setPending(false);
+      setPending((n) => n - 1);
     }
-  };
+  }, [join, room, communityId]);
+
+  // PR 7 shows the voice notice in the call slot; until then a failed join from this card is a toast that says why
+  // (the notice's words) and offers Try again for this room, unless the user has since gone into another call.
+  useEffect(() => {
+    if (!failed) return;
+    setFailed(false);
+    const reason = notice && notice.retryTarget?.type !== 'dm' ? notice.message : null;
+    toasts.show({
+      id: 'voice-join-failed',
+      tone: 'danger',
+      message: reason ? `Couldn't join ${room.name}. ${reason}` : `Couldn't join ${room.name}`,
+      action: {
+        label: 'Try again',
+        onAction: () => {
+          const now = stateRef.current;
+          const elsewhere = (now.isConnected || now.isConnecting) && now.currentChannelId !== room.id;
+          if (!elsewhere) void startJoin();
+        },
+      },
+    });
+  }, [failed, notice, toasts, room.name, room.id, startJoin]);
+
+  const shown = useMemo(
+    () => people.map((p, i) => ({ id: p.id, name: p.name, src: [a, b, c][i] })),
+    [people, a, b, c],
+  );
+  const onJoin = useCallback(() => void startJoin(), [startJoin]);
+  const { leaveVoiceChannel } = actions;
+  const onLeave = useCallback(() => leaveVoiceChannel(), [leaveVoiceChannel]);
 
   return (
     <VoiceRoomCard
       name={room.name}
-      people={people.map((p, i) => ({ id: p.id, name: p.name, src: sources[i] }))}
+      people={shown}
       youId={user?.id ?? null}
       speaking={speaking}
       youAreHere={youAreHere}
       canJoin={can('connect')}
       joining={joining}
-      onJoin={() => void startJoin()}
-      onLeave={() => actions.leaveVoiceChannel()}
+      onJoin={onJoin}
+      onLeave={onLeave}
     />
   );
 }

@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   connect: true,
   callBar: null as unknown,
   aroundCount: 9 as number | null,
+  notice: null as unknown,
 }));
 vi.mock('../../../hooks/useVoiceConnection', () => ({
   useVoiceConnection: () => ({
@@ -43,6 +44,7 @@ vi.mock('../../../hooks/useVoiceConnection', () => ({
   }),
 }));
 vi.mock('../../../data/callBar', () => ({ useCallBarModel: () => mocks.callBar }));
+vi.mock('../../../data/voiceNotice', () => ({ useVoiceNotice: () => mocks.notice }));
 vi.mock('../../../features/roles/useUserPermissions', () => ({
   useCanPerformAction: (_type: string, _id: string | undefined, action: string) => mocks.permissions.has(action),
 }));
@@ -51,7 +53,7 @@ vi.mock('../../../hooks/useChannelPermissions', () => ({
 }));
 vi.mock('../../../data/members', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  useCommunityMembers: () => ({ aroundCount: mocks.aroundCount }),
+  useCommunityPresence: () => ({ data: mocks.aroundCount === null ? undefined : { onlineCount: mocks.aroundCount } }),
 }));
 vi.mock('../../../hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({ user: { id: 'u-alexk', username: 'alexk', displayName: null, avatarUrl: null, status: 'chilling' } }),
@@ -65,7 +67,7 @@ vi.mock('../../../utils/logger', () => ({
 
 import { AppFrame, KitProvider } from '../../../kit';
 import { SpeakingContext } from '../../../contexts/SpeakingContextDef';
-import { userControllerGetProfileQueryKey } from '../../../api-client/@tanstack/react-query.gen';
+import { userControllerGetProfileQueryKey, voicePresenceControllerGetChannelPresenceQueryKey } from '../../../api-client/@tanstack/react-query.gen';
 import { handleNewMessage } from '../../../socket-hub/handlers/messageHandlers';
 import { handleVoiceUserJoined } from '../../../socket-hub/handlers/voiceHandlers';
 import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityLeft';
@@ -73,8 +75,20 @@ import { CommunityHeader } from '../../../shell/lounge/pieces/community/Communit
 import { VoiceRoomCard } from '../../../shell/lounge/pieces/community/VoiceRoomCard';
 import { UserCard, UserCardConnected } from '../../../shell/lounge/pieces/community/UserCard';
 import { ChannelSection } from '../../../shell/lounge/pieces/community/ChannelSection';
-import { callFromModel, callState, loadController } from '../../../shell/lounge/pieces/community/lines';
+import { callFromModel, callState } from '../../../shell/lounge/pieces/community/lines';
 import { peopleLine, talkingLine, aroundLine } from '../../../shell/lounge/pieces/community/lines';
+
+/** A load face for a view (the connected pieces get theirs from useQueryLoadState). */
+function loadController(status: 'pending' | 'error' | 'success', empty: boolean, retry: () => void) {
+  return {
+    status: status === 'pending' ? ('loading' as const) : status === 'error' ? ('error' as const) : empty ? ('empty' as const) : ('ready' as const),
+    error: null,
+    retryable: true,
+    refreshByUser: false,
+    refresh: () => undefined,
+    retry,
+  };
+}
 
 const BASE = 'http://localhost:3000';
 const CREATED = '2026-01-01T00:00:00.000Z';
@@ -167,6 +181,7 @@ beforeEach(() => {
   mocks.connect = true;
   mocks.callBar = null;
   mocks.aroundCount = 9;
+  mocks.notice = null;
   mocks.joinVoiceChannel.mockResolvedValue(undefined);
   location = '';
 });
@@ -176,6 +191,8 @@ afterEach(() => {
 });
 
 const weight = (element: HTMLElement) => Number(getComputedStyle(element).fontWeight);
+/** A row's main line: the element whose own first text is the channel's name (its name adds hidden words after). */
+const line = (name: string) => screen.getAllByText((_, el) => !!el && el.childNodes[0]?.nodeValue === name)[0];
 
 describe('CommunityLeft (connected)', () => {
   it('a plain member: the header is a heading, not a button, and there is no menu', async () => {
@@ -190,8 +207,8 @@ describe('CommunityLeft (connected)', () => {
   it('only the channels the server returned: a private channel the user is not in never shows', async () => {
     serve({ channels: [general, clips, squad] });
     renderLeft();
-    await screen.findByRole('link', { name: 'clips' });
-    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['general', 'clips']);
+    await screen.findByRole('link', { name: /^clips\b/ });
+    expect(screen.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['#/community/c-1/channel/ch-general', '#/community/c-1/channel/ch-clips']);
     expect(screen.queryByText('mods')).toBeNull();
   });
 
@@ -212,13 +229,16 @@ describe('CommunityLeft (connected)', () => {
   it('channel rows: links to the channel routes, the selected one current, mentions counted, private marked', async () => {
     serve({ channels: [general, clips, mods, squad] });
     renderLeft('ch-general');
-    const clipsLink = await screen.findByRole('link', { name: 'clips' });
+    const clipsLink = await screen.findByRole('link', { name: /^clips\b/ });
     expect(clipsLink).toHaveAttribute('href', '#/community/c-1/channel/ch-clips');
-    expect(screen.getByRole('link', { name: 'general' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: /^general\b/ })).toHaveAttribute('aria-current', 'page');
     expect(await screen.findByRole('img', { name: '2 mentions' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Private channel mods' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'mods, private' })).toBeInTheDocument();
+    // The row's name carries what it shows
+    expect(screen.getByRole('link', { name: 'clips, unread, 2 mentions' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'general' })).toBeInTheDocument();
     // Unread is bold, read is not
-    await waitFor(() => expect(weight(within(clipsLink).getByText('clips'))).toBeGreaterThan(weight(screen.getByText('mods'))));
+    await waitFor(() => expect(weight(line('clips'))).toBeGreaterThan(weight(line('mods'))));
   });
 
   it('badges count text channels only (channelType): a voice room with unread and mentions shows neither', async () => {
@@ -239,8 +259,8 @@ describe('CommunityLeft (connected)', () => {
   it('the selected channel shows no unread or mention even with counts', async () => {
     serve();
     renderLeft('ch-clips');
-    await screen.findByRole('link', { name: 'clips' });
-    await waitFor(() => expect(screen.getByRole('link', { name: 'clips' })).toHaveAttribute('aria-current', 'page'));
+    await screen.findByRole('link', { name: /^clips\b/ });
+    await waitFor(() => expect(screen.getByRole('link', { name: /^clips\b/ })).toHaveAttribute('aria-current', 'page'));
     expect(screen.queryByRole('img', { name: /mention/ })).toBeNull();
   });
 
@@ -250,8 +270,8 @@ describe('CommunityLeft (connected)', () => {
     serve({ counts: [] });
     server.use(http.get(`${BASE}/api/read-receipts/unread-counts`, () => HttpResponse.json(counts)));
     const { queryClient } = renderLeft();
-    const lfgText = await screen.findByText('lfg');
-    const readWeight = weight(lfgText);
+    await screen.findByRole('link', { name: 'lfg' });
+    const readWeight = weight(line('lfg'));
     counts = [{ channelId: 'ch-lfg', communityId: 'c-1', unreadCount: 1, mentionCount: 0 }];
     await act(async () => {
       await handleNewMessage(
@@ -259,7 +279,8 @@ describe('CommunityLeft (connected)', () => {
         queryClient,
       );
     });
-    await waitFor(() => expect(weight(screen.getByText('lfg'))).toBeGreaterThan(readWeight));
+    await waitFor(() => expect(weight(line('lfg'))).toBeGreaterThan(readWeight));
+    expect(screen.getByRole('link', { name: 'lfg, unread' })).toBeInTheDocument();
   });
 
   it('a voice join (the real socket handler) adds the person to the room card', async () => {
@@ -317,16 +338,16 @@ describe('CommunityLeft (connected)', () => {
   it('the channel list is one Tab stop; Down, End and Home move along it', async () => {
     serve();
     const { user } = renderLeft('ch-clips');
-    await screen.findByRole('link', { name: 'lfg' });
+    await screen.findByRole('link', { name: /^lfg\b/ });
     const links = screen.getAllByRole('link');
     expect(links.filter((link) => link.tabIndex === 0)).toHaveLength(1);
-    act(() => screen.getByRole('link', { name: 'clips' }).focus());
+    act(() => screen.getByRole('link', { name: /^clips\b/ }).focus());
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('link', { name: 'lfg' })).toHaveFocus();
+    expect(screen.getByRole('link', { name: /^lfg\b/ })).toHaveFocus();
     await user.keyboard('{Home}');
-    expect(screen.getByRole('link', { name: 'general' })).toHaveFocus();
+    expect(screen.getByRole('link', { name: /^general\b/ })).toHaveFocus();
     await user.keyboard('{End}');
-    expect(screen.getByRole('link', { name: 'lfg' })).toHaveFocus();
+    expect(screen.getByRole('link', { name: /^lfg\b/ })).toHaveFocus();
   });
 
   it('not a member (403): says so and offers the way back', async () => {
@@ -349,13 +370,64 @@ describe('CommunityLeft (connected)', () => {
     expect(await screen.findByText("Couldn't load channels")).toBeInTheDocument();
     fail = false;
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('link', { name: 'general' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /^general\b/ })).toBeInTheDocument();
   });
 
   it('no channels: the empty state', async () => {
     serve({ channels: [] });
     renderLeft(null);
     expect(await screen.findByText(/No channels yet/)).toBeInTheDocument();
+  });
+});
+
+describe('CommunityLeft (review fixes)', () => {
+  it('loaded channels stay when a background refetch fails; a toast says so, not the error face', async () => {
+    serve();
+    const { queryClient } = renderLeft();
+    await screen.findByRole('link', { name: /^clips\b/ });
+    server.use(http.get(`${BASE}/api/channels/community/c-1`, () => HttpResponse.json({ statusCode: 500 }, { status: 500 })));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: [{ _id: 'channelsControllerFindAllForCommunity' }] }).catch(() => undefined);
+    });
+    expect((await screen.findAllByText(/Couldn't refresh/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Couldn't load channels")).toBeNull();
+    expect(screen.getByRole('link', { name: /^clips\b/ })).toBeInTheDocument();
+  });
+
+  it('an announcement channel wears the megaphone and says so in its name', async () => {
+    const news = createChannel({ id: 'ch-news', name: 'news', communityId: 'c-1', position: 3, preset: 'ANNOUNCEMENT', createdAt: CREATED });
+    serve({ channels: [general, news, squad] });
+    renderLeft();
+    expect(await screen.findByRole('link', { name: 'news, announcement channel' })).toBeInTheDocument();
+  });
+
+  it('in the room on another device: presence lists you, this device is not connected: "You on another device", Join stays', async () => {
+    serve({ squadPeople: [presenceUser('u-alexk', 'alexk'), presenceUser('u-dropbear', 'dropbear')] });
+    renderLeft();
+    expect(await screen.findByText('You on another device and dropbear')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Join Squad Up' })).toBeInTheDocument();
+    expect(screen.queryByText("You're here")).toBeNull();
+  });
+
+  it('a failed join says why; Try again never moves a user who has since joined another call', async () => {
+    mocks.joinVoiceChannel.mockRejectedValue(new Error('nope'));
+    mocks.notice = { id: 'join-failure:full', severity: 'error', title: "Couldn't join", message: 'The room is full.', retryTarget: null };
+    serve();
+    const { user, queryClient } = renderLeft();
+    await user.click(await screen.findByRole('button', { name: 'Join Squad Up' }));
+    expect(await screen.findByText("Couldn't join Squad Up. The room is full.")).toBeInTheDocument();
+    // Meanwhile the user joined another room (a presence update renders the card with the new call state)
+    mocks.voiceState = { isConnected: true, isConnecting: false, currentChannelId: 'vc-other', room: null };
+    act(() => {
+      queryClient.setQueryData(voicePresenceControllerGetChannelPresenceQueryKey({ path: { channelId: 'vc-squad' } }), {
+        channelId: 'vc-squad',
+        users: [presenceUser('u-dropbear', 'dropbear'), presenceUser('u-pri', 'pri')],
+        count: 2,
+      } as never);
+    });
+    await screen.findByText('dropbear and pri');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mocks.joinVoiceChannel).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -466,7 +538,7 @@ describe('the pieces (views)', () => {
 
 describe('200 channels', () => {
   it('render without virtualising in a measured time (reported)', () => {
-    const channels = Array.from({ length: 200 }, (_, i) => ({ id: `ch-${i}`, name: `channel-${i}`, unread: i % 7 === 0, mentions: i % 13, isPrivate: i % 11 === 0 }));
+    const channels = Array.from({ length: 200 }, (_, i) => ({ id: `ch-${i}`, name: `channel-${i}`, unread: i % 7 === 0, mentions: i % 13, isPrivate: i % 11 === 0, announcement: false }));
     let duration = 0;
     render(
       <Kit>
@@ -503,6 +575,30 @@ describe('UserCard (connected)', () => {
     expect(await screen.findByText('alexk')).toBeInTheDocument();
     expect(screen.getByText('In Squad Up')).toBeInTheDocument();
     expect(screen.getByText('Muted')).toBeInTheDocument();
+    mocks.callBar = null;
+  });
+
+  it('while joining it says "Joining <room>"; a moderator mute reads as such', async () => {
+    mocks.callBar = {
+      place: { kind: 'channel', name: 'Squad Up', channelId: 'vc-squad', communityId: 'c-1' },
+      phase: 'connecting',
+      mic: { on: false, tappable: false, blocked: false, serverMuted: true, mode: 'toggle', keyLabel: null, title: 'Server Muted' },
+      deafened: false,
+      actions: {},
+    };
+    const queryClient = createTestQueryClient();
+    const Hub = createTestHubWrapper({ queryClient, eventBus: createEventBus() });
+    render(
+      <Hub>
+        <MemoryRouter>
+          <Kit>
+            <UserCardConnected />
+          </Kit>
+        </MemoryRouter>
+      </Hub>,
+    );
+    expect(await screen.findByText('Joining Squad Up')).toBeInTheDocument();
+    expect(screen.getByText('Muted by a moderator')).toBeInTheDocument();
     mocks.callBar = null;
   });
 });
