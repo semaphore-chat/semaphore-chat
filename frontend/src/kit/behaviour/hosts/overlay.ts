@@ -51,10 +51,18 @@ export interface LayerOptions {
   /** Also counts as inside for a press: a Popover's anchor. */
   inside?: ReadonlyArray<HTMLElement | null>;
   /**
-   * The element focus returns to. Default: the element that has focus as the
-   * layer opens. A tooltip never has one.
+   * The element focus returns to, whatever has focus as the layer opens (a
+   * Popover's anchor). Default: the element that has focus as the layer opens.
+   * A tooltip never has one.
    */
   opener?: HTMLElement | null;
+  /**
+   * The element focus returns to when nothing had focus as the layer opened (a
+   * Menu's anchor: Safari does not focus a clicked button). Without it, the
+   * element the last main press landed on, if that press is recent (see
+   * `PRESS_OPENER_MS`).
+   */
+  fallbackOpener?: HTMLElement | null;
   /** The host asks the owner to close. Every reason but `parentClosed` may be refused. */
   onRequestClose: (reason: CloseReason) => void;
 }
@@ -88,6 +96,13 @@ interface ScreenEscape {
 
 export interface OverlayHost {
   readonly machine: Machine<State, Event>;
+  readonly doc: Document;
+  /**
+   * The focusable element the last main press landed on, while it may stand in
+   * for an opener: from its pointerdown until the next key press, the next focus
+   * change, or `PRESS_OPENER_MS` after its pointerup, whichever comes first.
+   */
+  pressedElement(): Element | null;
   /** The document listeners, for the router. */
   readonly handlers: RouterHandlers;
   /** A layer appeared. `opener` is the element focus returns to, or null. */
@@ -97,6 +112,9 @@ export interface OverlayHost {
   addScreenEscape(handler: () => boolean, priority: number): () => void;
   addScreenFocusTarget(ref: RefObject<HTMLElement | null>): () => void;
 }
+
+/** How long after a press's pointerup the pressed control may still stand in for an opener: one gesture. */
+export const PRESS_OPENER_MS = 1000;
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -109,10 +127,36 @@ function isMainPress(event: PointerEvent): boolean {
   return (event.button ?? 0) === 0 && event.isPrimary !== false;
 }
 
-function tryFocus(doc: Document, element: Element | null | undefined): boolean {
+/** Whether `element` can take focus: on the page, not disabled, not inert, and rendered. */
+export function canTakeFocus(element: Element | null | undefined): element is HTMLElement {
   if (!(element instanceof HTMLElement) || !element.isConnected) return false;
+  if (element.matches(':disabled') || element.closest('[inert], [hidden]') !== null) return false;
+  // `checkVisibility` covers display: none and visibility: hidden; jsdom lacks it.
+  const check = (element as HTMLElement & { checkVisibility?: (options?: object) => boolean }).checkVisibility;
+  return check === undefined || check.call(element, { visibilityProperty: true });
+}
+
+function tryFocus(doc: Document, element: Element | null | undefined): boolean {
+  if (!canTakeFocus(element)) return false;
   element.focus({ preventScroll: true });
   return doc.activeElement === element;
+}
+
+/** A layer is focused through its first focusable control, else its panel. */
+function focusPanel(doc: Document, panel: HTMLElement | null): boolean {
+  if (panel === null || !panel.isConnected) return false;
+  const first = Array.from(panel.querySelectorAll(FOCUSABLE)).find((element) => canTakeFocus(element));
+  return tryFocus(doc, first) || tryFocus(doc, panel);
+}
+
+/** The press is on the page's own scrollbar (the root element, outside its client box). */
+function onRootScrollbar(doc: Document, event: PointerEvent): boolean {
+  const root = doc.documentElement;
+  return event.target === root && (event.clientX >= root.clientWidth || event.clientY >= root.clientHeight) && root.clientWidth > 0;
+}
+
+function reportToConsole(error: unknown): void {
+  console.error('An overlay or screen callback threw while the overlay stack applied an effect:', error);
 }
 
 export function createOverlayHost(options: {
@@ -120,8 +164,16 @@ export function createOverlayHost(options: {
   doc: Document;
   /** The stack changed: Escape should come to this host. */
   onOpen: () => void;
+  /** Where a throwing owner or screen callback is reported; the stack carries on. */
+  onError?: (error: unknown) => void;
+  /** The clock for the pressed-element window. */
+  now?: () => number;
 }): OverlayHost {
-  const { ids, doc, onOpen } = options;
+  const { ids, doc, onOpen, onError = reportToConsole, now = () => Date.now() } = options;
+  // The last main press: its focusable target, and when it came up (null while held).
+  let lastPress: { element: Element; upAt: number | null } | null = null;
+  // The layer the opener of the layer now closing was in: tried when the opener cannot take focus.
+  let closingOpenerLayer: string | null = null;
   const registry = new Map<string, Registration>();
   const openers = new Map<string, Element>();
   const screenEscapes: ScreenEscape[] = [];
@@ -136,7 +188,7 @@ export function createOverlayHost(options: {
   // Layers told to close by `parentClosed` that have not gone yet, and the focus
   // move waiting for them: a closing child modal still traps focus until it goes.
   const closing = new Set<string>();
-  let waitingRestore: { to: string | null } | null = null;
+  let waitingRestore: { to: string | null; openerLayer: string | null } | null = null;
 
   function screenTarget(): void {
     const target = focusTargets[focusTargets.length - 1]?.current;
@@ -144,12 +196,37 @@ export function createOverlayHost(options: {
     tryFocus(doc, doc.querySelector('main, [role="main"]'));
   }
 
-  function restoreFocus(to: string | null): void {
+  /** Calls an owner's or a screen's callback; a throw is reported and the stack carries on. */
+  function guarded<T>(callback: () => T, fallback: T): T {
+    try {
+      return callback();
+    } catch (error) {
+      onError(error);
+      return fallback;
+    }
+  }
+
+  /** The topmost dialog or sheet still in the stack, if any. */
+  function topModal(): string | null {
+    const { layers } = machine.getState();
+    for (let i = layers.length - 1; i >= 0; i--) {
+      if (layers[i].kind === 'dialog' || layers[i].kind === 'sheet') return layers[i].id;
+    }
+    return null;
+  }
+
+  function restoreFocus(to: string | null, openerLayer: string | null): void {
     if (to !== null) {
-      const opener = openers.get(to);
-      if (opener !== undefined && tryFocus(doc, opener)) return;
-      const panel = registry.get(to)?.panel();
-      if (panel?.isConnected === true && tryFocus(doc, panel.querySelector(FOCUSABLE) ?? panel)) return;
+      if (tryFocus(doc, openers.get(to))) return;
+      if (focusPanel(doc, registry.get(to)?.panel() ?? null)) return;
+    }
+    // The opener (or its layer) cannot take focus: the layer the opener was in.
+    if (openerLayer !== null && openerLayer !== to && focusPanel(doc, registry.get(openerLayer)?.panel() ?? null)) return;
+    // Never the screen while a dialog or sheet is open (rule 16): the topmost one.
+    const modal = topModal();
+    if (modal !== null) {
+      focusPanel(doc, registry.get(modal)?.panel() ?? null);
+      return;
     }
     screenTarget();
   }
@@ -158,14 +235,15 @@ export function createOverlayHost(options: {
     if ('requestClose' in effect) {
       closeRequests += 1;
       const { id, reason } = effect.requestClose;
-      if (reason === 'parentClosed' && registry.has(id)) closing.add(id);
-      registry.get(id)?.onRequestClose(reason);
+      const registration = registry.get(id);
+      if (reason === 'parentClosed' && registration !== undefined) closing.add(id);
+      if (registration !== undefined) guarded(() => registration.onRequestClose(reason), undefined);
     } else if ('restoreFocus' in effect) {
-      if (closing.size > 0) waitingRestore = { to: effect.restoreFocus.to };
-      else restoreFocus(effect.restoreFocus.to);
+      if (closing.size > 0) waitingRestore = { to: effect.restoreFocus.to, openerLayer: closingOpenerLayer };
+      else restoreFocus(effect.restoreFocus.to, closingOpenerLayer);
     } else if ('passToScreen' in effect) {
       const chain = [...screenEscapes].sort((a, b) => a.priority - b.priority || a.order - b.order);
-      screenTook = chain.some((entry) => entry.handler());
+      screenTook = chain.some((entry) => guarded(() => entry.handler(), false));
     }
   }
 
@@ -215,30 +293,48 @@ export function createOverlayHost(options: {
 
   const handlers: RouterHandlers = {
     keydown(event) {
+      lastPress = null;
+      // Ctrl, Alt or Meta make another shortcut (Ctrl+Tab switches tabs); Shift+Tab is still Tab.
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
       if (event.key === 'Escape') {
+        // A held Escape closes one layer, not the whole stack and then the screen's chain.
+        if (event.repeat) return;
         closeRequests = 0;
         screenTook = false;
-        machine.send({
-          escape: {
-            composing: event.isComposing || event.keyCode === 229,
-            focusOwnsEscape: event.defaultPrevented,
-          },
-        });
-        // Used: old window listeners (and the browser) skip it.
-        if (closeRequests > 0 || screenTook) event.preventDefault();
+        try {
+          machine.send({
+            escape: {
+              composing: event.isComposing || event.keyCode === 229,
+              focusOwnsEscape: event.defaultPrevented,
+            },
+          });
+        } finally {
+          // Used: old window listeners (and the browser) skip it.
+          if (closeRequests > 0 || screenTook) event.preventDefault();
+        }
       } else if (event.key === 'Tab') {
         closeRequests = 0;
-        machine.send({ tab: {} });
-        // Tab closed a menu: focus goes back to the opener, not on to the next control.
-        if (closeRequests > 0) event.preventDefault();
+        try {
+          machine.send({ tab: {} });
+        } finally {
+          // Tab closed a menu: focus goes back to the opener, not on to the next control.
+          if (closeRequests > 0) event.preventDefault();
+        }
       }
     },
+    focusin(event) {
+      // Focus moved: the pressed control no longer stands in for the opener (unless focus went to it).
+      if (lastPress !== null && event.target !== lastPress.element) lastPress = null;
+    },
     pointerdown(event) {
-      if (!isMainPress(event)) return;
+      if (!isMainPress(event) || onRootScrollbar(doc, event)) return;
+      const target = event.target instanceof Element ? event.target.closest(FOCUSABLE) : null;
+      lastPress = target === null ? null : { element: target, upAt: null };
       press = { insideId: layerAt(event.target, true), opened };
     },
     pointerup(event) {
       if (!isMainPress(event)) return;
+      if (lastPress !== null && lastPress.upAt === null) lastPress.upAt = now();
       const down = press;
       press = null;
       // A press is down and up in the same layer, with no layer opened in between
@@ -255,11 +351,17 @@ export function createOverlayHost(options: {
 
   return {
     machine,
+    doc,
     handlers,
+    pressedElement() {
+      if (lastPress === null || !lastPress.element.isConnected) return null;
+      if (lastPress.upAt !== null && now() - lastPress.upAt > PRESS_OPENER_MS) return null;
+      return lastPress.element;
+    },
     open(id, registration, opener, parent) {
       registry.set(id, registration);
       const tooltip = registration.kind === 'tooltip';
-      const openerElement = tooltip ? null : opener;
+      const openerElement = tooltip ? null : (opener ?? null);
       let openerId: string | null = null;
       if (openerElement !== null) {
         openerId = ids.forElement(openerElement);
@@ -278,17 +380,23 @@ export function createOverlayHost(options: {
         // children to go lets the parent's focus move happen.
         registry.delete(id);
         if (closing.delete(id) && closing.size === 0 && waitingRestore !== null) {
-          const { to } = waitingRestore;
+          const { to, openerLayer } = waitingRestore;
           waitingRestore = null;
-          restoreFocus(to);
+          restoreFocus(to, openerLayer);
         }
         return;
       }
       const opener = layer.opener === null ? undefined : openers.get(layer.opener);
       const focus = focusPosition(layers, id);
-      machine.send({ closed: { id, openerPresent: opener?.isConnected === true, focus } });
-      registry.delete(id);
-      pruneOpeners();
+      closingOpenerLayer = layer.openerLayer;
+      try {
+        // Present means it can take focus: a disabled, hidden or inert opener sends focus to its layer.
+        machine.send({ closed: { id, openerPresent: canTakeFocus(opener), focus } });
+      } finally {
+        closingOpenerLayer = null;
+        registry.delete(id);
+        pruneOpeners();
+      }
     },
     addScreenEscape(handler, priority) {
       escapeOrder += 1;
@@ -318,6 +426,11 @@ export function createOverlayHost(options: {
  * trap of a closing modal has let go (its effects are inside, so they clean up
  * first), and after a layer opened in the same commit (a Dialog from a Menu
  * item) has joined the stack.
+ *
+ * The parent of a layer must be in the stack before the layer opens. A child's
+ * layout effect runs before its parent's, so this holds only because MUI's
+ * Portal and Popper mount their content one commit after the overlay itself:
+ * the parent's `open` is sent first. Own portals (approach B) must keep that.
  */
 export function useOverlayLayer(options: LayerOptions): LayerHandle {
   const { overlay, ids } = useBehaviourHost();
@@ -334,7 +447,7 @@ export function useOverlayLayer(options: LayerOptions): LayerHandle {
   const committed = useRef(false);
   const focusedAtOpen = useRef<Element | null>(null);
   if (shown && !committed.current) {
-    focusedAtOpen.current = document.activeElement;
+    focusedAtOpen.current = overlay.doc.activeElement;
   }
 
   // A forced close lasts until the owner closes the layer itself.
@@ -345,9 +458,10 @@ export function useOverlayLayer(options: LayerOptions): LayerHandle {
   useLayoutEffect(() => {
     committed.current = shown;
     if (!shown) return;
-    const given = latest.current.opener;
+    const { opener: given, fallbackOpener } = latest.current;
     const active = focusedAtOpen.current;
-    const opener = given ?? (active !== null && active !== document.body ? active : null);
+    const focused = active !== null && active !== overlay.doc.body ? active : null;
+    const opener = given ?? focused ?? fallbackOpener ?? overlay.pressedElement();
     overlay.open(
       id,
       {
@@ -364,6 +478,7 @@ export function useOverlayLayer(options: LayerOptions): LayerHandle {
         },
         inside: () => latest.current.inside ?? [],
         onRequestClose: (reason) => {
+          // Set first: a forced close holds even if the owner's callback throws.
           if (reason === 'parentClosed') setForced(true);
           latest.current.onRequestClose(reason);
         },

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { Button, Popover, Sheet, SelectField, TextField, media, type ModalCloseReason } from '../../kit';
+import { Button, Popover, Sheet, SelectField, TextField, media, type SheetCloseReason } from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { rulesFor } from './cssRules';
@@ -15,7 +15,7 @@ afterEach(() => {
   consoleError.mockRestore();
 });
 
-function Harness({ onClose, actions, long = false }: { onClose?: (reason?: ModalCloseReason) => void; actions?: boolean; long?: boolean }) {
+function Harness({ onClose, actions, long = false }: { onClose?: (reason: SheetCloseReason) => void; actions?: boolean; long?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>

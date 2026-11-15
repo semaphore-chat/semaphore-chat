@@ -100,7 +100,7 @@ it does what the effect's description says to do instead.
 |`announce{message, politeness, action}`|Have screen readers read the message, then the action's label if there is one ("Message deleted. Undo"). `assertive` interrupts; `polite` waits.|
 |`returnFocus{}`|Put focus back on the element that had it before focus entered the toast area. If that has gone, focus the screen's own focus target.|
 |`requestClose{id, reason}`|Tell the layer's owner. For `escape`, `pressOutside`, `scrim` and `tab`, the owner may refuse (unsaved changes). For `parentClosed`, the owner must close the layer: it has already left the stack.|
-|`restoreFocus{to}`|Focus the element or layer named by `to`. A layer is focused through its own first focusable control, or its panel. `to: null` means the screen's own focus target: the main content of the screen (on a chat screen, the message composer). If the same step also asked layers to close with `parentClosed`, move focus once they have gone: a closing menu or select list still holds focus inside itself until it does.|
+|`restoreFocus{to}`|Focus the element or layer named by `to`. A layer is focused through its first control that can take focus, or its panel. `to: null` means the screen's own focus target: the main content of the screen (on a chat screen, the message composer). If the element cannot take focus after all, focus the layer its opener was in. Never focus the screen while a dialog or sheet is still open: focus the topmost one instead.|
 |`passToScreen{key}`|Run the screen's own Escape chain: close the docked panel, then mark the channel as read.|
 |`run{attempt}`|Start the action. Always report `succeeded{attempt}` or `failed{attempt, message}` for it, exactly once. A timeout, a lost connection or the screen going away is reported as `failed`. Without a result the dialog can never close.|
 |`done{}`|The confirmed action worked. The dialog is already closed; show its result if the screen does (for example a toast).|
@@ -124,7 +124,8 @@ it does what the effect's description says to do instead.
   the screen). A select list or menu drawn somewhere else on the page (a portal)
   is still a layer of its own, with the layer it belongs to as its parent.
   `closed{id, openerPresent, focus}` when a layer has gone: `openerPresent` says
-  whether the layer's opener, as the stack holds it now, is still on the page;
+  whether the layer's opener, as the stack holds it now, is still on the page
+  and can take focus (not disabled, hidden or inert);
   `focus` is `inside` when focus is in the layer or a layer it owns, `lost` when
   focus is on the page body or went with the layer, and `outside` when the user
   moved it somewhere else. Focus in any part of a layer counts as inside it: on
@@ -137,10 +138,17 @@ it does what the effect's description says to do instead.
   `insideId` is the innermost layer the press landed in, or null; a press on a
   popover's anchor counts as inside the popover. A press is the main button (or
   the first finger or pen on the screen) going down and coming up in the same
-  layer, with no layer opening in between; a right or middle press is not one,
-  and closes nothing. So a
-  drag from a dialog onto the dimmed page is not a press, and nor is the press
-  that opens a select list under the pointer. `tab` for Tab or Shift+Tab.
+  layer; a right or middle press is not one, and closes nothing. So a drag from
+  a dialog onto the dimmed page is not a press. `tab` for Tab or Shift+Tab.
+  Escape and Tab with Ctrl, Alt or Meta held are other shortcuts (Ctrl+Tab
+  switches tabs) and send nothing; a held Escape sends one `escape`, not one per
+  repeat.
+- **The opener when nothing had focus.** Some platforms do not focus a button
+  when it is clicked (Safari). When focus is on the page body as a layer opens,
+  the opener is the layer's own fallback (a Menu's anchor), else the control the
+  last main press landed on, while that press is recent: from its press until
+  the next key press, the next focus change, or one second after the pointer
+  came up.
 - **Escape that the stack used.** When `escape` asks a layer to close, or the
   screen's chain used the key, the host marks the key as handled
   (`preventDefault()` on the web), so older listeners on the page leave it
@@ -306,9 +314,21 @@ user presses Escape: the dialog closes and focus goes back to the More button.
 and SelectField list meet every row (`frontend/src/kit/behaviour/hosts/overlay.ts`),
 and each rule has a test that drives the real components
 (`frontend/src/__tests__/kit/behaviour/hosts/overlay.test.tsx`). The focus trap
-with layers inside a dialog, Escape during composition, and the press a menu
-swallows still need a real browser to prove; those tests wait for the browser
-harness. The native client has no host yet.
+with layers inside a dialog, Escape during composition, a drag onto the dimmed
+page, the press a menu swallows, focus return when a click focuses nothing, and
+the live region inside the topmost layer run in real browsers
+(`frontend/browser-tests/overlay-stack.spec.ts`). The native client has no host
+yet.
+
+Two things the web host does because of how MUI works, not because the pattern
+asks for them. A native host need not copy them:
+
+- A press during which a layer opened is not a press. MUI's select list opens
+  when the pointer goes down, under the pointer, and would otherwise close as
+  it comes up.
+- When a step asks child layers to close with `parentClosed` and also moves
+  focus, focus moves once the children have gone: a closing MUI menu still
+  holds focus inside itself until then.
 
 ## Confirm destructive
 

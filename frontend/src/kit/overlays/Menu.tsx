@@ -105,7 +105,14 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
   // The menu's modal root: its live-region slot goes there, outside the list MUI manages.
   const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
   const paper = useRef<HTMLDivElement>(null);
-  const { forcedClosed } = useOverlayLayer({ kind: 'menu', open, panel: paper, onRequestClose: () => onClose() });
+  const { forcedClosed } = useOverlayLayer({
+    kind: 'menu',
+    open,
+    panel: paper,
+    // Safari does not focus a clicked button: then focus returns to the anchor.
+    fallbackOpener: anchor,
+    onRequestClose: () => onClose(),
+  });
   const shown = open && !forcedClosed;
   return (
     // A portal: reset to the menu's own layer, whatever it was opened from.

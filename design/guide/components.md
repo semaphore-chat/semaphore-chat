@@ -879,10 +879,11 @@ Rules for the actions:
 
 The parent decides whether the dialog closes. `onClose` is called on Escape and
 on a press on the dimmed page, and the dialog stays open until `open` is false.
-`onClose` says why: `'escape'` or `'scrim'`. A dialog opened from inside another
-layer (a Popover, say) closes when that layer closes; then `onClose` is called
-with no reason, and the dialog is already closed whatever `open` says, until
-`open` goes false.
+`onClose` says why: `'escape'` or `'scrim'`, which the parent may refuse (unsaved
+changes), or `'parentClosed'`. A dialog opened from inside another layer (a
+Popover, say) closes when that layer closes; then `onClose('parentClosed')` is a
+notice, not a request: the dialog is already closed whatever `open` says, so set
+`open` to false, even when there are unsaved changes.
 
 A select list, a Menu, a Popover or a Tooltip may open from inside a Dialog.
 Escape closes that layer first and the Dialog on the next press. The dialog has
@@ -892,7 +893,7 @@ confirmation too; keep the safe action first.
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`open`|true, false|none (required)|Whether the dialog is showing.|
-|`onClose`|a function, given `'escape'` or `'scrim'`|none (required)|Called on Escape and on a press on the dimmed page.|
+|`onClose`|a function, given `'escape'`, `'scrim'` or `'parentClosed'`|none (required)|Called on Escape, on a press on the dimmed page, and when the layer it was opened from closes.|
 |`title`|text|none (required)|Names the dialog. It is the heading.|
 |`description`|text|none|A line under the title that says more.|
 |`children`|content|none|The body, such as a field. It sits between the description and the actions.|
@@ -1097,12 +1098,13 @@ plan's job, not the kit's).
 The parent decides whether the sheet closes. `onClose` is called on Escape, on a
 press on the dimmed page and on the Close button, and says which: `'escape'`,
 `'scrim'` or `'button'`. Like a Dialog, a sheet opened from inside another layer
-closes with it, and `onClose` is then called with no reason.
+closes with it, and `onClose` is then called with `'parentClosed'`: a notice, not
+a request.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`open`|true, false|none (required)|Whether the sheet is showing.|
-|`onClose`|a function, given `'escape'`, `'scrim'` or `'button'`|none (required)|Called on Escape, on a press on the dimmed page and on Close.|
+|`onClose`|a function, given `'escape'`, `'scrim'`, `'button'` or `'parentClosed'`|none (required)|Called on Escape, on a press on the dimmed page, on Close, and when the layer it was opened from closes.|
 |`title`|text|none (required)|Names the sheet. It is the heading.|
 |`children`|content|none (required)|The body. It scrolls.|
 |`actions`|Buttons|none|The buttons, in a row pinned to the bottom. On a phone they stack.|
@@ -1269,6 +1271,8 @@ lists below say what each overlay still gets from MUI and the browser.
   Tab key. A right or middle press outside does not close it.
 - An item that opens a Dialog: the menu closes under the dialog without moving
   focus, and the dialog returns focus to the menu's button when it closes.
+- Where a click does not focus the button (Safari), focus still returns to the
+  menu's anchor.
 - Typing letters collects into a prefix; the same letter again steps through the
   matches. Matching is not case sensitive. MUI resets the prefix after about half
   a second; the shared rule is one second (the typeahead timing, see

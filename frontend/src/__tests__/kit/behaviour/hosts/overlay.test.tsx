@@ -6,7 +6,7 @@
  * the events it sends and the effects it carries out (onClose called, focus
  * moved, the key used or passed on).
  */
-import { useRef, useState, type ReactNode } from 'react';
+import { StrictMode, useRef, useState, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import {
@@ -23,7 +23,7 @@ import {
   useScreenEscape,
   useScreenFocusTarget,
   type MenuEntry,
-  type ModalCloseReason,
+  type SheetCloseReason,
 } from '../../../../kit';
 import { useBehaviourHost } from '../../../../kit/behaviour/hosts/hostContext';
 import type { BehaviourHostValue } from '../../../../kit/behaviour/hosts/hostContext';
@@ -130,7 +130,7 @@ function OwnDialog({
   children,
 }: {
   name: string;
-  onClose?: (reason?: ModalCloseReason) => void;
+  onClose?: (reason: SheetCloseReason) => void;
   refuse?: boolean;
   children?: ReactNode;
 }) {
@@ -1177,6 +1177,423 @@ describe('overlay stack scenarios, replayed through the DOM', () => {
   // parent that is not in the stack is rule 19's test above (a layer opening
   // inside a dialog that is fading out); the scenario's other events are covered there.
 });
+
+describe('review fixes', () => {
+  const mouse = { button: 0, pointerType: 'mouse', isPrimary: true };
+  /** A click as Safari makes it: the button is pressed and clicked, but never focused. */
+  function clickWithoutFocus(element: Element): void {
+    fireEvent.pointerDown(element, mouse);
+    fireEvent.pointerUp(element, mouse);
+    fireEvent.click(element);
+  }
+
+  it('I1: an opener that can no longer take focus sends focus to its layer, never beneath the dialog', async () => {
+    const composerFocused = vi.fn();
+    function Screen() {
+      const composer = useRef<HTMLInputElement>(null);
+      useScreenFocusTarget(composer);
+      const [saving, setSaving] = useState(false);
+      const [menu, setMenu] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <TextField ref={composer} label="Message" value="" onChange={() => {}} />
+          <Dialog open onClose={() => {}} title="Move dialog" actions={<Button>Done</Button>}>
+            <TextField label="Note" value="" onChange={() => {}} />
+            <Button ref={setAnchor} disabled={saving} onClick={() => setMenu(true)}>
+              Move
+            </Button>
+            <Menu
+              open={menu}
+              anchor={anchor}
+              onClose={() => setMenu(false)}
+              label="Move to"
+              items={[{ id: 'archive', label: 'Archive', onSelect: () => setSaving(true) }]}
+            />
+          </Dialog>
+        </>
+      );
+    }
+    const { user } = renderWithKit(<Screen />);
+    screen.getByRole('textbox', { name: 'Message', hidden: true }).addEventListener('focus', composerFocused);
+    await user.click(await screen.findByRole('button', { name: 'Move' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Note' })).toHaveFocus());
+    expect(composerFocused).not.toHaveBeenCalled();
+  });
+
+  it('I1: a popover whose anchor is hidden while it is open returns focus to the dialog it is in', async () => {
+    function Screen() {
+      const composer = useRef<HTMLInputElement>(null);
+      useScreenFocusTarget(composer);
+      const [open, setOpen] = useState(false);
+      const [hidden, setHidden] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <TextField ref={composer} label="Message" value="" onChange={() => {}} />
+          <Dialog open onClose={() => {}} title="Edit dialog" actions={<Button>Done</Button>}>
+            <button ref={setAnchor} type="button" hidden={hidden} onClick={() => setOpen(true)}>
+              Colour
+            </button>
+            <Popover open={open} anchor={anchor} onClose={() => setOpen(false)} label="Colour panel">
+              <Button
+                onClick={() => {
+                  setHidden(true);
+                  setOpen(false);
+                }}
+              >
+                Pick and hide
+              </Button>
+            </Popover>
+          </Dialog>
+        </>
+      );
+    }
+    const { user } = renderWithKit(<Screen />);
+    await user.click(await screen.findByRole('button', { name: 'Colour' }));
+    await user.click(await screen.findByRole('button', { name: 'Pick and hide' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Colour panel' })).not.toBeInTheDocument());
+    await waitFor(() => expect(button('Done')).toHaveFocus());
+  });
+
+  it('I2: a menu and a dialog opened by a click that focused nothing return focus to what was clicked', async () => {
+    const { user } = renderWithKit(
+      <>
+        <OwnMenu name="More" />
+        <OwnDialog name="Delete" />
+        <OwnSheetButton />
+      </>,
+    );
+    for (const [name, role, title] of [
+      ['More', 'menu', undefined],
+      ['Delete', 'dialog', 'Delete dialog'],
+      ['Browse', 'dialog', 'Browse sheet'],
+    ] as const) {
+      expect(document.activeElement).toBe(document.body);
+      const trigger = button(name);
+      clickWithoutFocus(trigger);
+      await screen.findByRole(role, title === undefined ? {} : { name: title });
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(trigger).toHaveFocus());
+      act(() => trigger.blur());
+      await waitFor(() => expect(screen.queryByRole(role)).not.toBeInTheDocument());
+    }
+  });
+
+  it('I2: a menu opened with nothing focused and no recent press returns focus to its anchor', async () => {
+    let openMenu = () => {};
+    function Screen() {
+      const composer = useRef<HTMLInputElement>(null);
+      useScreenFocusTarget(composer);
+      const [open, setOpen] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+      openMenu = () => setOpen(true);
+      return (
+        <>
+          <TextField ref={composer} label="Message" value="" onChange={() => {}} />
+          <Button ref={setAnchor}>Row actions</Button>
+          <Menu open={open} anchor={anchor} onClose={() => setOpen(false)} label="Row" items={[{ id: 'a', label: 'Archive', onSelect: () => {} }]} />
+        </>
+      );
+    }
+    const { user } = renderWithKit(<Screen />);
+    expect(document.activeElement).toBe(document.body);
+    act(() => openMenu());
+    await screen.findByRole('menu');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(button('Row actions')).toHaveFocus());
+  });
+
+  it('I2: a press stops standing in for the opener after a key press, a focus change, or PRESS_OPENER_MS', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      let openDialog = () => {};
+      function Screen() {
+        const composer = useRef<HTMLInputElement>(null);
+        useScreenFocusTarget(composer);
+        const [open, setOpen] = useState(false);
+        openDialog = () => setOpen(true);
+        return (
+          <>
+            <TextField ref={composer} label="Message" value="" onChange={() => {}} />
+            <Button>Row</Button>
+            <Dialog open={open} onClose={() => setOpen(false)} title="Later" actions={<Button>Ok</Button>} />
+          </>
+        );
+      }
+      renderWithKit(
+        <>
+          <Probe />
+          <Screen />
+        </>,
+      );
+      const row = button('Row');
+      const opener = async (before: () => void) => {
+        clickWithoutFocus(row);
+        before();
+        act(() => openDialog());
+        await screen.findByRole('dialog', { name: 'Later' });
+        const id = layers()[0].opener;
+        escape();
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+        act(() => (document.activeElement as HTMLElement).blur());
+        return id;
+      };
+      expect(await opener(() => {})).toBe(host.ids.forElement(row));
+      expect(await opener(() => fireEvent.keyDown(document.body, { key: 'a' }))).toBeNull();
+      // Focus moved elsewhere (and away again): the press no longer counts.
+      expect(
+        await opener(() =>
+          act(() => {
+            const message = screen.getByRole('textbox', { name: 'Message' });
+            message.focus();
+            message.blur();
+          }),
+        ),
+      ).toBeNull();
+      expect(await opener(() => vi.setSystemTime(Date.now() + 1500))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('I3: an owner callback that throws is reported once; the other layers still close, focus returns, the key is used', async () => {
+    consoleError.mockImplementation(() => {});
+    const boom = new Error('owner failed');
+    const onCalm = vi.fn();
+    function Screen() {
+      const [dialog, setDialog] = useState(false);
+      const [a, setA] = useState<HTMLElement | null>(null);
+      const [b, setB] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <Probe />
+          <Button onClick={() => setDialog(true)}>Edit</Button>
+          <Dialog
+            open={dialog}
+            onClose={() => setDialog(false)}
+            title="Edit dialog"
+            actions={<Button onClick={() => setDialog(false)}>Close Edit</Button>}
+          >
+            <Button ref={setA}>Calm anchor</Button>
+            <Button ref={setB}>Angry anchor</Button>
+            <Popover open anchor={a} onClose={onCalm} label="Calm panel">
+              <span>calm</span>
+            </Popover>
+            {/* Opened last, so it is asked first; its owner throws. */}
+            <Popover
+              open={b !== null}
+              anchor={b}
+              onClose={() => {
+                throw boom;
+              }}
+              label="Angry panel"
+            >
+              <span>angry</span>
+            </Popover>
+          </Dialog>
+        </>
+      );
+    }
+    const { user } = renderWithKit(<Screen />);
+    const edit = button('Edit');
+    await user.click(edit);
+    await screen.findByRole('dialog', { name: 'Angry panel' });
+    expect(kinds()).toEqual(['dialog', 'popover', 'popover']);
+    // Escape asks the angry popover: it throws, the error is reported, the key is still used.
+    expect(escape()).toBe(false);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError.mock.calls[0]).toContain(boom);
+    const close = screen.getByText('Close Edit').closest('button') as HTMLElement;
+    act(() => close.focus());
+    fireEvent.click(close);
+    expect(consoleError).toHaveBeenCalledTimes(2);
+    expect(onCalm).toHaveBeenCalledTimes(1);
+    expect(layers()).toEqual([]);
+    await waitFor(() => expect(edit).toHaveFocus());
+    await waitFor(() => expect(screen.queryByText('angry')).not.toBeInTheDocument());
+    consoleError.mockClear();
+  });
+
+  it('I3: a screen Escape step that throws is reported and the chain goes on', () => {
+    consoleError.mockImplementation(() => {});
+    const next = vi.fn(() => true);
+    function Steps() {
+      useScreenEscape(() => {
+        throw new Error('step failed');
+      }, ESCAPE_PRIORITY.panel);
+      useScreenEscape(next, ESCAPE_PRIORITY.conversation);
+      return null;
+    }
+    renderWithKit(<Steps />);
+    expect(escape()).toBe(false);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    consoleError.mockClear();
+  });
+
+  it('Escape and Tab with Ctrl, Alt or Meta, and a repeated Escape, do nothing; Shift+Tab still closes a menu', async () => {
+    const onPopover = vi.fn();
+    const onMenu = vi.fn();
+    const { user } = renderWithKit(
+      <>
+        <OwnPopover name="Emoji" onClose={onPopover} />
+        <OwnMenu name="More" onClose={onMenu} />
+      </>,
+    );
+    await user.click(button('Emoji'));
+    for (const init of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }, { repeat: true }]) {
+      expect(escape(init)).toBe(true);
+    }
+    expect(onPopover).not.toHaveBeenCalled();
+    escape();
+    expect(onPopover).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await user.click(button('More'));
+    await screen.findByRole('menu');
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Tab', ctrlKey: true });
+    expect(onMenu).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Tab', shiftKey: true });
+    expect(onMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it("a dialog closed because its parent closed gets onClose('parentClosed')", async () => {
+    const onDialog = vi.fn();
+    function Screen() {
+      const [popover, setPopover] = useState(true);
+      const [dialog, setDialog] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <Button ref={setAnchor}>Invite</Button>
+          <Popover open={popover} anchor={anchor} onClose={() => setPopover(false)} label="Invite panel">
+            <Button onClick={() => setDialog(true)}>Create</Button>
+            <Dialog
+              open={dialog}
+              onClose={(reason) => {
+                onDialog(reason);
+                setDialog(false);
+              }}
+              title="Create dialog"
+              actions={<Button onClick={() => setPopover(false)}>Close the popover</Button>}
+            />
+          </Popover>
+        </>
+      );
+    }
+    const { user } = renderWithKit(<Screen />);
+    await user.click(await screen.findByRole('button', { name: 'Create' }));
+    await activate('Close the popover');
+    expect(onDialog).toHaveBeenCalledWith('parentClosed');
+    expect(onDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('under StrictMode (effects run twice on mount) layers that mount open are in the stack once; Escape and focus return hold', async () => {
+    const onDialog = vi.fn();
+    function Screen() {
+      const [show, setShow] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+      const [popover, setPopover] = useState(true);
+      return (
+        <>
+          <Button onClick={() => setShow(true)}>Edit</Button>
+          {/* Mounted open: StrictMode mounts, unmounts and remounts their effects. */}
+          {show && (
+            <Dialog
+              open
+              onClose={(reason) => {
+                onDialog(reason);
+                setShow(false);
+              }}
+              title="Edit dialog"
+              actions={<Button>Done</Button>}
+            >
+              <Button ref={setAnchor}>Colour</Button>
+              <Popover open={popover} anchor={anchor} onClose={() => setPopover(false)} label="Colour panel">
+                <Button>Red</Button>
+              </Popover>
+            </Dialog>
+          )}
+        </>
+      );
+    }
+    const { user } = renderWithKit(
+      <>
+        <Probe />
+        <StrictMode>
+          <Screen />
+          <MenuToDialog withComposer />
+        </StrictMode>
+      </>,
+    );
+    const edit = button('Edit');
+    await user.click(edit);
+    await screen.findByRole('dialog', { name: 'Colour panel' });
+    expect(kinds()).toEqual(['dialog', 'popover']);
+    const [dialog, popover] = layers();
+    expect(popover.parent).toBe(dialog.id);
+    escape();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Colour panel' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Colour' })).toHaveFocus());
+    escape();
+    expect(onDialog).toHaveBeenCalledWith('escape');
+    await waitFor(() => expect(edit).toHaveFocus());
+    expect(layers()).toEqual([]);
+    // And a layer opened on an update (the usual case) under StrictMode: menu item to dialog.
+    await user.click(button('Options'));
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(button('Cancel')).toHaveFocus());
+    expect(kinds()).toEqual(['dialog']);
+    escape();
+    await waitFor(() => expect(button('Options')).toHaveFocus());
+  });
+
+  it('unmounting a dialog that holds an open popover empties the stack and returns focus to its opener', async () => {
+    function Screen() {
+      const [show, setShow] = useState(false);
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <Probe />
+          <Button onClick={() => setShow(true)}>Edit</Button>
+          {show && (
+            <Dialog open onClose={() => setShow(false)} title="Edit dialog" actions={<Button onClick={() => setShow(false)}>Gone</Button>}>
+              <Button ref={setAnchor}>Colour</Button>
+              <Popover open anchor={anchor} onClose={() => {}} label="Colour panel">
+                <span>swatches</span>
+              </Popover>
+            </Dialog>
+          )}
+        </>
+      );
+    }
+    const { user } = renderWithKit(<Screen />);
+    const edit = button('Edit');
+    await user.click(edit);
+    await screen.findByRole('dialog', { name: 'Colour panel' });
+    expect(kinds()).toEqual(['dialog', 'popover']);
+    const gone = screen.getByText('Gone').closest('button') as HTMLElement;
+    act(() => gone.focus());
+    fireEvent.click(gone);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(layers()).toEqual([]);
+    await waitFor(() => expect(edit).toHaveFocus());
+  });
+});
+
+function OwnSheetButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Browse</Button>
+      <Sheet open={open} title="Browse sheet" onClose={() => setOpen(false)}>
+        Rows
+      </Sheet>
+    </>
+  );
+}
 
 function MenuToDialog({ withComposer = false }: { withComposer?: boolean }) {
   const composer = useRef<HTMLInputElement>(null);

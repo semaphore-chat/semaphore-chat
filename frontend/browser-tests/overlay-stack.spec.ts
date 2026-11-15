@@ -65,6 +65,8 @@ test.describe('a dialog with layers inside', { tag: '@keyboard' }, () => {
     await page.keyboard.press('Escape');
     await expect(log(page)).toHaveText('menu closed · popover closed · dialog closed (escape)');
     await expect(page.getByRole('dialog', { name: 'Edit channel' })).toBeHidden();
+    // The dialog opened with the page (no opener) and the story names no focus target: focus is not left in it.
+    expect(await page.evaluate(() => !!document.activeElement?.closest('.MuiDialog-container'))).toBe(false);
   });
 });
 
@@ -104,7 +106,7 @@ test('Escape while an input method composes does not close the popover', async (
   await cdp.detach();
 });
 
-test('a drag onto or off the scrim is not a press; a press on it closes the dialog; a right press does nothing', async ({
+test('a drag onto or off the scrim is not a press; a press on it closes the dialog; a right press does nothing', { tag: '@keyboard' }, async ({
   page,
 }) => {
   await openStory(page, 'kit-overlay-stack--scrim-press', DESKTOP);
@@ -169,8 +171,9 @@ test('a select list that opens under the pointer on press-down stays open; a pre
   await page.mouse.down();
   await expect(page.getByRole('listbox')).toBeVisible();
   await page.mouse.up();
-  // Give a wrong close every chance to land: the list's fade is the fast timing.
-  await page.waitForTimeout(300);
+  // A wrong close on pointerup would fade the list out: wait until its fade-in has finished, then check.
+  const paper = page.locator('.MuiMenu-paper');
+  await expect.poll(() => paper.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
   await expect(page.getByRole('listbox')).toBeVisible();
 
   await page.mouse.click(8, DESKTOP.height - 8);
@@ -198,4 +201,55 @@ test('the live-region slot of the topmost layer is not hidden from assistive tec
   const listSlot = slots.find((slot) => slot.inList);
   expect(listSlot, JSON.stringify(slots)).toBeDefined();
   expect(listSlot?.hidden, JSON.stringify(slots)).toBe(false);
+});
+
+test.describe('focus return', { tag: '@keyboard' }, () => {
+  test('a menu item that disables the menu button keeps focus in the dialog, never on the composer behind', async ({ page }) => {
+    await openStory(page, 'kit-overlay-stack--menu-disables-its-button', DESKTOP);
+    await page.locator('[data-testid="composer"] input').evaluate((input) => {
+      input.addEventListener('focus', () => document.body.setAttribute('data-composer-focused', 'yes'));
+    });
+    await page.getByRole('button', { name: 'Move' }).click();
+    await page.getByRole('menuitem', { name: 'Archive' }).click();
+    await expect(page.getByRole('menu')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Saving' })).toBeDisabled();
+    await expect.poll(async () => (await focusPlace(page)).inPanel).toBe(true);
+    await expect(page.getByRole('textbox', { name: 'Note' })).toBeFocused();
+    expect(await page.evaluate(() => document.body.getAttribute('data-composer-focused'))).toBeNull();
+  });
+
+  test('a menu or dialog opened by a click that focuses nothing (as Safari does) returns focus to its button', async ({ page }) => {
+    await openStory(page, 'kit-overlay-stack--menu-swallows-press', DESKTOP);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.MuiMenu-root')).toHaveCount(0);
+    // Safari (macOS and iOS) does not focus a button on click; Playwright's WebKit on Linux does. Cancelling
+    // mousedown on buttons stops the focus in every engine, and leaves the click.
+    const safariClicks = () =>
+      page.evaluate(() => {
+        document.addEventListener('mousedown', (event) => {
+          if ((event.target as Element).closest('button')) event.preventDefault();
+        }, true);
+        (document.activeElement as HTMLElement | null)?.blur();
+      });
+    await safariClicks();
+    const options = page.getByRole('button', { name: 'Options' });
+    await options.click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toBeHidden();
+    await expect(options).toBeFocused();
+
+    await openStory(page, 'kit-overlay-stack--scrim-press', DESKTOP);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Leave the call?' })).toBeHidden();
+    await safariClicks();
+    const again = page.getByRole('button', { name: 'Open again' });
+    await again.click();
+    await expect(page.getByRole('dialog', { name: 'Leave the call?' })).toBeVisible();
+    // The click did not focus it (it is hidden from the accessibility tree now, so read activeElement).
+    expect(await page.evaluate(() => document.activeElement?.textContent)).not.toBe('Open again');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Leave the call?' })).toBeHidden();
+    await expect(again).toBeFocused();
+  });
 });

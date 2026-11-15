@@ -10,11 +10,15 @@ import { OverlayContainerContext } from './overlayContainer';
 import { fadeTransition, reducedMotion } from './surface';
 
 /**
- * Why a Dialog or Sheet asks to close: Escape, a press on the dimmed page, or
- * its own Close button (a Sheet). Absent when the layer it was opened from
- * closed, which closes it too.
+ * Why a Dialog closes: Escape or a press on the dimmed page (requests the
+ * parent may refuse), or `'parentClosed'`: the layer it was opened from closed,
+ * so it has closed too (a command: it renders closed whatever `open` says until
+ * `open` goes false).
  */
-export type ModalCloseReason = 'escape' | 'scrim' | 'button';
+export type DialogCloseReason = 'escape' | 'scrim' | 'parentClosed';
+
+/** Why a Sheet closes: a Dialog's reasons, or its own Close button. */
+export type SheetCloseReason = DialogCloseReason | 'button';
 
 /**
  * What a Dialog and a Sheet share. The overlay stack decides (see
@@ -30,7 +34,8 @@ export type ModalCloseReason = 'escape' | 'scrim' | 'button';
 export interface ModalProps {
   kind: 'dialog' | 'sheet';
   open: boolean;
-  onClose: (reason?: ModalCloseReason) => void;
+  /** A Sheet's Close button calls its own `onClose('button')`; this never sends `'button'`. */
+  onClose: (reason: DialogCloseReason) => void;
   /** The id of the element that names the modal. */
   labelledBy: string;
   /** The id of the element that describes it. */
@@ -67,8 +72,8 @@ export function Modal({
     // A press on the scrim focuses the container: focus there is still in the modal.
     root,
     onRequestClose: (reason) => {
-      if (reason === 'escape' || reason === 'scrim') onClose(reason);
-      else if (reason === 'parentClosed') onClose();
+      // 'pressOutside' and 'tab' never come for a dialog or sheet.
+      if (reason === 'escape' || reason === 'scrim' || reason === 'parentClosed') onClose(reason);
     },
   });
   return (

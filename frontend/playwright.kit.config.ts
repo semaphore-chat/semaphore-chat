@@ -8,7 +8,9 @@ import { defineConfig, devices } from '@playwright/test';
  * `<ticket>-ladle`, KIT_BASE_URL set by the script). In CI: `ladle build` then this config with
  * KIT_STATIC=1, which serves build-ladle/ with `ladle preview`.
  *
- * Chromium runs every spec; Firefox runs the specs tagged @keyboard (focus and Tab order differ most there).
+ * Chromium runs every spec; Firefox and WebKit run the specs tagged @keyboard (focus and Tab order differ most
+ * there). Playwright's WebKit on Linux focuses a clicked button, unlike Safari: a spec that needs Safari's click
+ * emulates it (overlay-stack.spec.ts).
  */
 const PORT = 61000;
 const baseURL = process.env.KIT_BASE_URL ?? `http://127.0.0.1:${PORT}`;
@@ -36,6 +38,7 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] }, grep: /@keyboard/ },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] }, grep: /@keyboard/ },
   ],
   webServer: process.env.KIT_STATIC
     ? {

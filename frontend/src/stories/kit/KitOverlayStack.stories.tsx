@@ -4,8 +4,18 @@
  * composes, a drag onto the scrim, the press a menu swallows). Each story
  * writes what happened in a log line, so a browser test can read it.
  */
-import { useState, type JSX } from 'react';
-import { Button, Dialog, Menu, Popover, SelectField, Text, TextField, type ModalCloseReason } from '../../kit';
+import { useRef, useState, type JSX } from 'react';
+import {
+  Button,
+  Dialog,
+  Menu,
+  Popover,
+  SelectField,
+  Text,
+  TextField,
+  useScreenFocusTarget,
+  type SheetCloseReason,
+} from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 import { KitStage } from '../fixtures/kitStory';
 import { PageBehind } from './kitOverlayAnchor';
@@ -39,8 +49,8 @@ function NestedLayers() {
       <Button onClick={() => setDialog(true)}>Edit channel</Button>
       <Dialog
         open={dialog}
-        onClose={(reason?: ModalCloseReason) => {
-          add(`dialog closed (${reason ?? 'parent'})`);
+        onClose={(reason: SheetCloseReason) => {
+          add(`dialog closed (${reason})`);
           setDialog(false);
         }}
         title="Edit channel"
@@ -158,8 +168,8 @@ function ScrimDialog() {
       </div>
       <Dialog
         open={open}
-        onClose={(reason?: ModalCloseReason) => {
-          add(`dialog closed (${reason ?? 'parent'})`);
+        onClose={(reason: SheetCloseReason) => {
+          add(`dialog closed (${reason})`);
           setOpen(false);
         }}
         title="Leave the call?"
@@ -230,5 +240,63 @@ function MenuOverButton() {
 export const MenuSwallowsPress = () => (
   <KitStage mode="dark">
     <MenuOverButton />
+  </KitStage>
+);
+
+function MenuDisablingItsButton() {
+  const [log, add] = useLog();
+  const composer = useRef<HTMLInputElement>(null);
+  useScreenFocusTarget(composer);
+  const [saving, setSaving] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [anchor, ref] = useAnchor();
+  const [message, setMessage] = useState('');
+  return (
+    <>
+      <Log lines={log} />
+      <div data-testid="composer">
+        <TextField ref={composer} label="Message" value={message} onChange={setMessage} />
+      </div>
+      <Dialog
+        open
+        onClose={(reason) => add(`dialog asked to close (${reason})`)}
+        title="Move conversation"
+        description="Archive disables Move while it saves; focus must stay in here."
+        actions={<Button variant="primary">Done</Button>}
+      >
+        <TextField label="Note" value="" onChange={() => {}} />
+        <div style={{ marginTop: tokens.space.md }}>
+          <Button ref={ref} disabled={saving} onClick={() => setMenu(true)}>
+            {saving ? 'Saving' : 'Move'}
+          </Button>
+        </div>
+        <Menu
+          open={menu}
+          anchor={anchor}
+          onClose={() => {
+            add('menu closed');
+            setMenu(false);
+          }}
+          label="Move to"
+          items={[
+            {
+              id: 'archive',
+              label: 'Archive',
+              onSelect: () => {
+                add('archive');
+                setSaving(true);
+              },
+            },
+          ]}
+        />
+      </Dialog>
+    </>
+  );
+}
+
+/** A Menu in a Dialog whose item disables the Menu's button: focus stays in the dialog, not the composer behind. */
+export const MenuDisablesItsButton = () => (
+  <KitStage mode="dark">
+    <MenuDisablingItsButton />
   </KitStage>
 );

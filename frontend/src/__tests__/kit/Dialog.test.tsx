@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { Button, Dialog, IconButton, SelectField, TextField, Tooltip, type DialogProps, type ModalCloseReason } from '../../kit';
+import { Button, Dialog, IconButton, SelectField, TextField, Tooltip, type DialogProps, type DialogCloseReason } from '../../kit';
 import { derivePalette } from '../../theme/derive/derivePalette';
 import { parseHex } from '../../theme/derive/oklch';
 import { tokens } from '../../theme/generated/tokens';
@@ -20,7 +20,7 @@ function Harness({
   onClose,
   size,
   description = 'This removes the channel for everyone.',
-}: { onClose?: (reason?: ModalCloseReason) => void; size?: DialogProps['size']; description?: string }) {
+}: { onClose?: (reason: DialogCloseReason) => void; size?: DialogProps['size']; description?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>

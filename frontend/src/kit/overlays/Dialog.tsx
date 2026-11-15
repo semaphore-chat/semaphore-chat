@@ -3,18 +3,17 @@ import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { shadow } from '../theme/shadow';
-import { Modal, type ModalCloseReason } from './modal';
+import { Modal, type DialogCloseReason } from './modal';
 import { ModalTitle, actionsStack, gutterContainer, panelBase } from './modalParts';
 
 export interface DialogProps {
   open: boolean;
   /**
    * Called on Escape (`'escape'`) and on a press on the scrim (`'scrim'`); the
-   * parent decides whether to close. Called with no reason when the layer the
-   * dialog was opened from closes: then it is already closed, and `open` should
-   * follow.
+   * parent decides whether to close. `'parentClosed'`: the layer the dialog was
+   * opened from closed, so it has closed already; set `open` false.
    */
-  onClose: (reason?: ModalCloseReason) => void;
+  onClose: (reason: DialogCloseReason) => void;
   /** Names the dialog. */
   title: string;
   /** Describes it, for assistive technology and the eye. */
