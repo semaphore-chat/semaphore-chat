@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Tabs, tabElementId, type TabItem } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
@@ -64,7 +64,8 @@ describe('Tabs', () => {
   it('arrows, Home and End move focus and selection, skipping disabled tabs and wrapping', async () => {
     const onChange = vi.fn();
     const { user } = renderWithKit(<Controlled onChange={onChange} />);
-    screen.getByRole('tab', { name: 'All' }).focus();
+    // Focusing a tab is a step of the list host (focusIn), so it updates state: inside act.
+    act(() => screen.getByRole('tab', { name: 'All' }).focus());
 
     await user.keyboard('{ArrowRight}');
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Mentions/ }));

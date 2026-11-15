@@ -1,6 +1,6 @@
 {
   "pattern": "listFocus",
-  "doc": "Keyboard focus and selection in a list of rows, such as a menu, a channel list or a picker: arrows, Home and End, typeahead, and what happens when the rows change under the focus.",
+  "doc": "Keyboard focus and selection in a list of rows, such as a menu, a channel list or a picker: arrows, Home and End, typeahead, and what happens when the rows change under the focus, and the selection set from outside the list.",
   "params": {
     "wrap": false,
     "selectionFollowsFocus": false,
@@ -31,6 +31,9 @@
     "activate": {},
     "press": {
       "id": "string: a pointer press on a row"
+    },
+    "setSelected": {
+      "id": "string | null: the screen's selection, set from outside the list (a route, a value prop)"
     }
   },
   "effects": {
@@ -62,7 +65,8 @@
     "A press on an enabled row focuses and selects it and emits select{id}. A press on a disabled or unknown row does nothing.",
     "When the rows change and the focused row is gone or now disabled, focus moves to the nearest enabled row after it in the old order that is still there, otherwise the nearest one before it, otherwise the first enabled row, otherwise nothing. With selectionFollowsFocus on, the selection moves with it and select{id} is emitted; with it off, the selection stays.",
     "When the selected row is gone from the rows and no move selected another, the selection clears and deselect is emitted.",
-    "Typeahead ignores case by folding: each character is mapped on its own with the Unicode default lower-case mapping, which does not depend on the locale (Python str.lower() applied to one character at a time, so the final-sigma rule never applies). Folded text is compared by Unicode scalar values, so an emoji matches only itself."
+    "Typeahead ignores case by folding: each character is mapped on its own with the Unicode default lower-case mapping, which does not depend on the locale (Python str.lower() applied to one character at a time, so the final-sigma rule never applies). Folded text is compared by Unicode scalar values, so an emoji matches only itself.",
+    "setSelected sets the selection from outside the list, as a route or a value prop changes it: selected becomes id when id is a row (enabled or disabled), and null when id is null or names no row. It emits nothing, and the focus, the typeahead buffer and its timer are unchanged. It is not a key, so it applies in an empty or all-disabled list too."
   ],
   "scenarios": [
     {
@@ -887,6 +891,306 @@
         {
           "type": {
             "char": "t"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the selection set from outside while focus is on another row",
+      "covers": [
+        6,
+        17
+      ],
+      "events": [
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "setSelected": {
+            "id": "games"
+          }
+        },
+        {
+          "focusIn": {}
+        },
+        {
+          "down": {}
+        },
+        {
+          "setSelected": {
+            "id": "general"
+          }
+        },
+        {
+          "focusIn": {}
+        },
+        {
+          "activate": {}
+        }
+      ]
+    },
+    {
+      "name": "the selection set from outside when it follows focus",
+      "covers": [
+        12,
+        17
+      ],
+      "params": {
+        "selectionFollowsFocus": true
+      },
+      "events": [
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "down": {}
+        },
+        {
+          "setSelected": {
+            "id": "random"
+          }
+        },
+        {
+          "down": {}
+        },
+        {
+          "setSelected": {
+            "id": "random"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the selection set to null",
+      "covers": [
+        15,
+        17
+      ],
+      "events": [
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "press": {
+            "id": "games"
+          }
+        },
+        {
+          "setSelected": {
+            "id": null
+          }
+        },
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "the selection set to an id that is not a row",
+      "covers": [
+        2,
+        17
+      ],
+      "events": [
+        {
+          "setSelected": {
+            "id": "random"
+          }
+        },
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              }
+            ]
+          }
+        },
+        {
+          "setSelected": {
+            "id": "random"
+          }
+        },
+        {
+          "setSelected": {
+            "id": "archive"
+          }
+        },
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "setSelected": {
+            "id": "random"
+          }
+        },
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "archive",
+                "label": "Archive",
+                "disabled": true
+              }
+            ]
+          }
+        },
+        {
+          "setSelected": {
+            "id": "archive"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the selection set while typeahead is pending",
+      "covers": [
+        7,
+        10,
+        17
+      ],
+      "events": [
+        {
+          "setRows": {
+            "rows": [
+              {
+                "id": "general",
+                "label": "General",
+                "disabled": false
+              },
+              {
+                "id": "games",
+                "label": "Games",
+                "disabled": false
+              },
+              {
+                "id": "random",
+                "label": "Random",
+                "disabled": false
+              }
+            ]
+          }
+        },
+        {
+          "type": {
+            "char": "g"
+          }
+        },
+        {
+          "setSelected": {
+            "id": "random"
+          }
+        },
+        {
+          "type": {
+            "char": "a"
+          }
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "setSelected": {
+            "id": null
+          }
+        },
+        {
+          "timerFired": {
+            "token": 2
           }
         }
       ]

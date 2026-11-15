@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type JSX, type KeyboardEvent } from 'react';
+import { useId, useLayoutEffect, useRef, type JSX } from 'react';
 import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
@@ -7,6 +7,7 @@ import { kitTheme } from '../theme/KitProvider';
 import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { focusRing, interactiveStates } from '../theme/states';
 import { transientProps } from '../theme/transientProps';
+import { rowFocusProps, useListFocus } from '../behaviour/hosts/listFocus';
 
 export interface TabItem {
   id: string;
@@ -161,8 +162,9 @@ const Count = styled('span')({
 });
 
 /**
- * Tabs with a roving tabindex: arrows, Home and End move focus and select
- * (selection follows focus); disabled tabs are skipped. Controlled by `value`.
+ * Tabs on the list focus pattern: one Tab stop, the arrows (Left and Right,
+ * and Up and Down), Home and End move focus and select (selection follows
+ * focus), wrapping round; disabled tabs are skipped. Controlled by `value`.
  */
 export function Tabs({
   tabs,
@@ -178,20 +180,18 @@ export function Tabs({
   const generatedId = useId();
   const baseId = id ?? generatedId;
   const tooltipId = useDescribedBy(undefined);
-  const enabled = tabs.filter((tab) => !tab.disabled);
-  const selected = enabled.find((tab) => tab.id === value);
-  // With no valid selection the first enabled tab stays reachable.
-  const tabStop = selected?.id ?? enabled[0]?.id;
-
-  const select = (index: number) => {
-    const tab = enabled[index];
-    if (tab === undefined) {
-      return;
-    }
-    const nodes = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)');
-    nodes?.[index]?.focus();
-    onChange(tab.id);
-  };
+  const rovingList = useListFocus({
+    rows: tabs.map((tab) => ({ id: tab.id, label: tab.label, disabled: tab.disabled === true })),
+    selected: value,
+    // Clicking or pressing Enter on the tab that is already selected does nothing.
+    onSelect: (tabId) => {
+      if (tabId !== value) onChange(tabId);
+    },
+    orientation: 'horizontal',
+    wrap: true,
+    selectionFollowsFocus: true,
+    typeahead: false,
+  });
 
   // Keep the selected tab inside the scrolling list, on mount and whenever
   // `value` changes. scrollLeft, not scrollIntoView, which would scroll the page too.
@@ -221,39 +221,20 @@ export function Tabs({
     return () => observer.disconnect();
   }, [value]);
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const current = enabled.findIndex((tab) => tab.id === document.activeElement?.getAttribute('data-tab'));
-    if (current === -1) {
-      return;
-    }
-    const last = enabled.length - 1;
-    const targets: Record<string, number> = {
-      ArrowRight: current === last ? 0 : current + 1,
-      ArrowLeft: current === 0 ? last : current - 1,
-      Home: 0,
-      End: last,
-    };
-    const target = targets[event.key];
-    if (target === undefined) {
-      return;
-    }
-    event.preventDefault();
-    select(target);
-  };
-
   return (
     <List
       ref={listRef}
       id={id}
       role="tablist"
       aria-label={label}
-      onKeyDown={handleKeyDown}
+      {...rovingList.listProps}
       $on={on}
       $variant={variant}
       $fullWidth={fullWidth}
     >
       {tabs.map((tab) => {
         const isSelected = tab.id === value;
+        const roving = rowFocusProps(rovingList.rowFocus(tab.id));
         return (
           <Tab
             key={tab.id}
@@ -266,13 +247,11 @@ export function Tabs({
             aria-label={tab.count === undefined ? undefined : `${tab.label}, ${tab.count}`}
             data-tab={tab.id}
             aria-selected={isSelected}
-            tabIndex={tab.id === tabStop ? 0 : -1}
+            ref={roving?.ref}
+            tabIndex={roving?.tabIndex}
+            onFocus={roving?.onFocus}
+            onClick={roving?.onClick}
             disabled={tab.disabled}
-            onClick={() => {
-              if (!isSelected) {
-                onChange(tab.id);
-              }
-            }}
             disableRipple
             $on={on}
             $variant={variant}

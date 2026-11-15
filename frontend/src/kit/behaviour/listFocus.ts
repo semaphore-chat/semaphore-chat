@@ -41,7 +41,8 @@ export type Event =
   | { type: { char: string } }
   | { timerFired: { token: number } }
   | { activate: Record<string, never> }
-  | { press: { id: string } };
+  | { press: { id: string } }
+  | { setSelected: { id: string | null } };
 
 export type Effect =
   | { select: { id: string } }
@@ -66,6 +67,7 @@ const EVENT_NAMES = [
   'timerFired',
   'activate',
   'press',
+  'setSelected',
 ] as const;
 
 export const DEFAULT_PARAMS: Params = {
@@ -174,6 +176,15 @@ export function stepListFocus(
       next.selected = null;
       effects.push({ deselect: {} });
     }
+    return { state: next, effects };
+  }
+
+  if ('setSelected' in event) {
+    // Rule 17: the selection set from outside: a row's id (enabled or not),
+    // else null. Nothing is emitted; focus and typeahead stay. Not a key, so
+    // rule 2 does not stop it.
+    const { id } = event.setSelected;
+    next.selected = id !== null && next.rows.some((row) => row.id === id) ? id : null;
     return { state: next, effects };
   }
 

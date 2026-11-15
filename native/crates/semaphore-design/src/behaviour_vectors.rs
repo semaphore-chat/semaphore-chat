@@ -777,6 +777,196 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     },
                 ],
             },
+            Vector {
+                name: "the selection set from outside while focus is on another row",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"games\"}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"games\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"focusIn\":{}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"games\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"down\":{}}",
+                        state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"games\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"general\"}}",
+                        state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"general\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"focusIn\":{}}",
+                        state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"general\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"activate\":{}}",
+                        state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"random\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"select\":{\"id\":\"random\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "the selection set from outside when it follows focus",
+                params: "{\"selectionFollowsFocus\":true,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"down\":{}}",
+                        state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"general\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"select\":{\"id\":\"general\"}}]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"random\"}}",
+                        state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"random\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"down\":{}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"games\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"select\":{\"id\":\"games\"}}]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"random\"}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"random\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "the selection set to null",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"press\":{\"id\":\"games\"}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"games\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"select\":{\"id\":\"games\"}}]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":null}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}]}}",
+                        state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "the selection set to an id that is not a row",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"random\"}}",
+                        state: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"random\"}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"archive\"}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"}],\"selected\":\"archive\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"archive\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"random\"}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"random\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"deselect\":{}}]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"archive\"}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":true,\"id\":\"archive\",\"label\":\"Archive\"}],\"selected\":\"archive\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "the selection set while typeahead is pending",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"g\"}}",
+                        state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":1,\"typeahead\":\"g\"}",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":\"random\"}}",
+                        state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"random\",\"token\":1,\"typeahead\":\"g\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"a\"}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"random\",\"token\":2,\"typeahead\":\"ga\"}",
+                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":1000,\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"timerFired\":{\"token\":1}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"random\",\"token\":2,\"typeahead\":\"ga\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"setSelected\":{\"id\":null}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":2,\"typeahead\":\"ga\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"timerFired\":{\"token\":2}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":2,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                ],
+            },
         ],
     },
     Pattern {

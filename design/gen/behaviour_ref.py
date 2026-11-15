@@ -469,6 +469,7 @@ LIST_EVENTS = (
     "timerFired",
     "activate",
     "press",
+    "setSelected",
 )
 
 
@@ -551,6 +552,14 @@ def step_list_focus(state: dict, event: dict, params: dict) -> tuple[dict, Effec
             # Rule 15: a selected row that is gone clears the selection: deselect.
             state["selected"] = None
             effects.append(_effect("deselect"))
+        return state, effects
+
+    if name == "setSelected":
+        # Rule 17: the selection set from outside: a row's id (enabled or not),
+        # else null. Nothing is emitted; focus and typeahead stay. Not a key, so
+        # rule 2 does not stop it.
+        row_id = fields["id"]
+        state["selected"] = row_id if row_id in {row["id"] for row in state["rows"]} else None
         return state, effects
 
     enabled = _enabled(state["rows"])

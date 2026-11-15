@@ -885,6 +885,9 @@ fn list_event_from_json(value: &Value) -> Result<list::Event, String> {
         "press" => list::Event::Press {
             id: canon::text(fields, "id")?.to_owned(),
         },
+        "setSelected" => list::Event::SetSelected {
+            id: canon::optional_text(fields, "id")?.map(str::to_owned),
+        },
         other => return Err(format!("unknown event {other:?}")),
     })
 }
@@ -989,6 +992,86 @@ fn list_focus_reproduces_every_vector() {
 #[test]
 fn list_focus_step_does_not_mutate_its_input() {
     check_step_does_not_mutate::<ListFocus>();
+}
+
+/// Hand-built states no host should produce (a focused row that is gone or disabled, a selected
+/// id that is not a row, the last token) must not make any event panic, setSelected included.
+#[test]
+fn list_focus_tolerates_states_it_never_makes() {
+    let row = |id: &str, disabled: bool| list::Row {
+        id: id.to_owned(),
+        label: id.to_owned(),
+        disabled,
+    };
+    let states = [
+        list::State {
+            rows: Vec::new(),
+            focused: Some("gone".to_owned()),
+            selected: Some("gone".to_owned()),
+            typeahead: "x".to_owned(),
+            token: u32::MAX,
+        },
+        list::State {
+            rows: vec![row("a", true), row("b", false)],
+            focused: Some("a".to_owned()),
+            selected: Some("zzz".to_owned()),
+            typeahead: String::new(),
+            token: 0,
+        },
+        list::State {
+            rows: vec![row("a", false), row("a", false)],
+            focused: Some("zzz".to_owned()),
+            selected: None,
+            typeahead: "aa".to_owned(),
+            token: 7,
+        },
+    ];
+    let events = [
+        list::Event::SetSelected { id: None },
+        list::Event::SetSelected {
+            id: Some("a".to_owned()),
+        },
+        list::Event::SetSelected {
+            id: Some("zzz".to_owned()),
+        },
+        list::Event::SetSelected {
+            id: Some(String::new()),
+        },
+        list::Event::FocusIn,
+        list::Event::Up,
+        list::Event::Down,
+        list::Event::Home,
+        list::Event::End,
+        list::Event::Type { char: 'a' },
+        list::Event::TimerFired { token: u32::MAX },
+        list::Event::Activate,
+        list::Event::Press { id: "a".to_owned() },
+        list::Event::SetRows { rows: Vec::new() },
+    ];
+    for wrap in [false, true] {
+        for selection_follows_focus in [false, true] {
+            let params = list::Params {
+                wrap,
+                selection_follows_focus,
+                ..list::Params::default()
+            };
+            for state in &states {
+                for event in &events {
+                    let _ = list::step(state, event, &params);
+                }
+            }
+        }
+    }
+    let (next, effects) = list::step(
+        &states[1],
+        &list::Event::SetSelected {
+            id: Some("a".to_owned()),
+        },
+        &list::Params::default(),
+    );
+    assert_eq!(next.selected.as_deref(), Some("a"));
+    assert_eq!(next.focused.as_deref(), Some("a"));
+    assert!(effects.is_empty());
 }
 
 #[test]

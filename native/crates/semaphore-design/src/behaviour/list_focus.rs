@@ -53,6 +53,10 @@ pub enum Event {
     Press {
         id: String,
     },
+    /// The selection set from outside the list (a route, a value prop); `None` clears it.
+    SetSelected {
+        id: Option<String>,
+    },
 }
 
 /// What the list asks of its surroundings.
@@ -201,6 +205,16 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
         return (next, effects);
     }
 
+    if let Event::SetSelected { id } = event {
+        // Rule 17: the selection set from outside: a row's id (enabled or not), else none.
+        // Nothing is emitted; focus and typeahead stay. Not a key, so rule 2 does not stop it.
+        next.selected = id
+            .as_ref()
+            .filter(|id| next.rows.iter().any(|row| row.id == **id))
+            .cloned();
+        return (next, effects);
+    }
+
     let enabled = enabled_ids(&next.rows);
     // Rule 2: with no enabled rows, every key does nothing.
     if enabled.is_empty() && !matches!(event, Event::TimerFired { .. }) {
@@ -209,8 +223,8 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
     let focused = next.focused.clone();
 
     match event {
-        // Handled above: every setRows event returns before this match.
-        Event::SetRows { .. } => {}
+        // Handled above: every setRows and setSelected event returns before this match.
+        Event::SetRows { .. } | Event::SetSelected { .. } => {}
         Event::Down | Event::Up => {
             // Rule 3: Down moves to the next enabled row, Up to the previous one; with nothing
             // focused, Down takes the first and Up the last.
