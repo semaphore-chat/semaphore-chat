@@ -39,6 +39,23 @@ export function KitStage({
   );
 }
 
+/**
+ * The page a layout story renders on: only the KitProvider. The layout's AppFrame paints the ground and
+ * pads and fills the viewport itself, so a KitStage (which does both) would double them.
+ */
+export function KitFrameStage({
+  mode = 'dark',
+  base = '#8E75FF',
+  intensity = 'minimal',
+  children,
+}: KitStageProps): JSX.Element {
+  return (
+    <KitProvider base={base} mode={mode} intensity={intensity}>
+      {children}
+    </KitProvider>
+  );
+}
+
 /** A labelled, wrapping flex row, so states sit side by side and wrap at phone width. */
 export function Row({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
