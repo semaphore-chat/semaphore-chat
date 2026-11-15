@@ -1,0 +1,143 @@
+import type { JSX } from 'react';
+import MuiMenu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+import { styled, type Theme } from '@mui/material/styles';
+import { tokens } from '../../theme/generated/tokens';
+import { Icon } from '../display/Icon';
+import { KeyCap } from '../display/KeyCap';
+import type { IconName } from '../icons/generated';
+import { kitTheme } from '../theme/KitProvider';
+import { transientProps } from '../theme/transientProps';
+import {
+  ANCHOR_GAP,
+  fadeTransition,
+  menuItemStyle,
+  overlaySurface,
+  placementOrigins,
+  reducedMotion,
+  type Placement,
+} from './surface';
+
+export type MenuEntry =
+  | {
+      id: string;
+      label: string;
+      icon?: IconName;
+      /** Keys shown at the right, one KeyCap each: `['Shift', 'D']`. */
+      shortcut?: string[];
+      tone?: 'default' | 'danger';
+      disabled?: boolean;
+      onSelect: () => void;
+    }
+  | { id: string; divider: true };
+
+export interface MenuProps {
+  open: boolean;
+  /** The element the menu opens from; focus returns to whatever had it when the menu opened. */
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  /** Names the menu for assistive technology. */
+  label: string;
+  items: MenuEntry[];
+  placement?: Placement;
+}
+
+const Item = styled(MenuItem, {
+  shouldForwardProp: transientProps,
+})<{ $danger: boolean }>(({ theme, $danger }) => {
+  const { palette } = kitTheme(theme);
+  return {
+    ...menuItemStyle(kitTheme(theme)),
+    ...($danger && { color: palette.danger }),
+    '& > .icon': {
+      display: 'inline-flex',
+      color: $danger ? palette.danger : palette.textSecondary,
+    },
+  };
+});
+
+const Keys = styled('span')({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: `${tokens.space['2xs']}px`,
+  marginLeft: `${tokens.space.lg}px`,
+});
+
+const Divider = styled('li')(({ theme }) => ({
+  listStyle: 'none',
+  height: `${tokens.border.hairline}px`,
+  margin: `${tokens.space.xs}px 0`,
+  background: kitTheme(theme).palette.hairline,
+}));
+
+const paperSx = (theme: Theme) => ({
+  ...overlaySurface(kitTheme(theme)),
+  ...reducedMotion,
+});
+
+const listSx = { padding: `${tokens.space.xs}px` };
+
+/**
+ * A menu of actions that opens from an `anchor`. MUI's Menu supplies the
+ * behaviour: focus moves to the first item, the arrows, Home, End and typing a
+ * letter move it, a disabled item is skipped, Escape and an outside press close
+ * it and focus returns to the opener. Choosing an item calls `onSelect`, then
+ * `onClose`.
+ */
+export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-start' }: MenuProps): JSX.Element {
+  const { anchorOrigin, transformOrigin } = placementOrigins(placement);
+  const gap = placement.startsWith('bottom') ? ANCHOR_GAP : -ANCHOR_GAP;
+  return (
+    <MuiMenu
+      open={open}
+      anchorEl={anchor}
+      onClose={onClose}
+      anchorOrigin={anchorOrigin}
+      transformOrigin={transformOrigin}
+      marginThreshold={tokens.layout.gutter}
+      transitionDuration={tokens.motion.fast}
+      {...fadeTransition}
+      slotProps={{
+        paper: { sx: [paperSx, { marginTop: `${gap}px` }] },
+        list: { 'aria-label': label, sx: listSx },
+      }}
+    >
+      {items.map((entry) => {
+        if ('divider' in entry) {
+          return <Divider key={entry.id} role="separator" />;
+        }
+        const danger = entry.tone === 'danger';
+        return (
+          <Item
+            key={entry.id}
+            $danger={danger}
+            disabled={entry.disabled}
+            // MUI relies on CSS pointer-events to keep a disabled item from
+            // being chosen; an assistive technology's synthetic click skips CSS.
+            onClick={() => {
+              if (entry.disabled) {
+                return;
+              }
+              entry.onSelect();
+              onClose();
+            }}
+          >
+            {entry.icon !== undefined && (
+              <span className="icon">
+                <Icon name={entry.icon} size="md" />
+              </span>
+            )}
+            <span className="label">{entry.label}</span>
+            {entry.shortcut !== undefined && (
+              <Keys>
+                {entry.shortcut.map((key) => (
+                  <KeyCap key={key}>{key}</KeyCap>
+                ))}
+              </Keys>
+            )}
+          </Item>
+        );
+      })}
+    </MuiMenu>
+  );
+}

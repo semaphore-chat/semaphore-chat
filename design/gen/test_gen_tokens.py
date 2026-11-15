@@ -366,6 +366,8 @@ class RenderTsTest(unittest.TestCase):
         self.assertIn("hoverOnFill: 0.16,", out)
         self.assertIn("  avatar: {\n    xs: 20,", out)
         self.assertIn("focusOffset: 2,", out)
+        self.assertIn("dialogSm: 400,", out)
+        self.assertIn("dialogMd: 560,", out)
         # The new groups follow the old ones, in source order.
         for earlier, later in (("layout", "icon"), ("icon", "avatar"), ("avatar", "border"), ("border", "state")):
             self.assertLess(out.index(f"  {earlier}: {{"), out.index(f"  {later}: {{"))
@@ -381,6 +383,7 @@ class RenderRsTest(unittest.TestCase):
     def test_rs_constant_names(self):
         out = gen.render_rs(gen.load(REAL))
         for line in ("pub const SPACE_2XS: f32 = 2.0;", "pub const LAYOUT_LEFT_COLUMN: f32 = 288.0;",
+                     "pub const LAYOUT_DIALOG_SM: f32 = 400.0;", "pub const LAYOUT_DIALOG_MD: f32 = 560.0;",
                      "pub const MOTION_FAST_MS: u32 = 120;", 'pub const FONT_HEADING: &str = "Bricolage Grotesque";'):
             self.assertIn(line, out)
 

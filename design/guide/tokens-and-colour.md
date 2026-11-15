@@ -113,6 +113,8 @@ The Layouts chapter, which says what changes at each width, is not written yet.
 |leftColumn|288|Width of the left column|
 |rightColumn|264|Width of the right column|
 |dock|60|Height of the dock, the rounded bar of pinned communities|
+|dialogSm|400|Widest a small dialog gets (a confirmation)|
+|dialogMd|560|Widest a medium dialog gets (one with a form)|
 
 ### Icon sizes
 

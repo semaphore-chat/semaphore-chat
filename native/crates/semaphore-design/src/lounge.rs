@@ -198,6 +198,12 @@ pub const LAYOUT_RIGHT_COLUMN: f32 = 264.0;
 /// `layout.dock`, px.
 pub const LAYOUT_DOCK: f32 = 60.0;
 
+/// `layout.dialogSm`, px.
+pub const LAYOUT_DIALOG_SM: f32 = 400.0;
+
+/// `layout.dialogMd`, px.
+pub const LAYOUT_DIALOG_MD: f32 = 560.0;
+
 /// `icon.xs`, px.
 pub const ICON_XS: f32 = 14.0;
 

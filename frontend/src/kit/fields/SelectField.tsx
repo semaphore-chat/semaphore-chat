@@ -6,9 +6,7 @@ import { styled, type Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
 import { kitTheme } from '../theme/KitProvider';
-import { interactiveStates } from '../theme/states';
-import { mix } from '../theme/mix';
-import { shadow } from '../theme/shadow';
+import { ANCHOR_GAP, menuItemStyle, overlaySurface } from '../overlays/surface';
 import { FieldBox, type FieldBoxProps } from './FieldBox';
 import { FieldShell } from './FieldShell';
 
@@ -60,59 +58,12 @@ function Chevron({ className }: { className?: string }): JSX.Element {
   );
 }
 
-const Item = styled(MenuItem)(({ theme }) => {
-  const { palette } = kitTheme(theme);
-  const states = interactiveStates({
-    palette,
-    under: palette.surface,
-    hover: tokens.state.hover,
-    pressed: tokens.state.pressed,
-  });
-  return {
-    boxSizing: 'border-box',
-    display: 'flex',
-    alignItems: 'center',
-    gap: `${tokens.space.sm}px`,
-    minHeight: `${tokens.control.md}px`,
-    padding: `0 ${tokens.space.md}px`,
-    // MUI's MenuItem resets min-height at its `sm` breakpoint; hold the row height there too.
-    [theme.breakpoints.up('sm')]: { minHeight: `${tokens.control.md}px` },
-    borderRadius: `${tokens.radius.md}px`,
-    background: 'transparent',
-    fontFamily: theme.typography.fontFamily,
-    fontSize: `${tokens.text.body.size}px`,
-    lineHeight: `${tokens.text.body.line}px`,
-    color: palette.text,
-    ...states,
-    // MUI tints a selected item (and its hover, and focus-visible) with the
-    // primary colour. Selected reads as the accent label and a Check, so the
-    // tint is cleared; the rules below are the kit's own hover and focus
-    // states, and they match MUI's specificity so they win.
-    '&.Mui-selected, &.Mui-selected:hover': { background: 'transparent', color: palette.accentText },
-    '@media (hover: hover)': {
-      ...states['@media (hover: hover)'],
-      '&.Mui-selected:hover': { background: mix(palette.text, palette.surface, tokens.state.hover) },
-    },
-    '&.Mui-focusVisible, &.Mui-selected.Mui-focusVisible': {
-      background: mix(palette.text, palette.surface, tokens.state.pressed),
-    },
-    '&.Mui-disabled': { opacity: tokens.state.disabled },
-    '& > .label': { flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
-  };
-});
+const Item = styled(MenuItem)(({ theme }) => menuItemStyle(kitTheme(theme)));
 
-const paperSx = (theme: Theme) => {
-  const lounge = kitTheme(theme);
-  const { palette } = lounge;
-  return {
-    marginTop: `${tokens.space.xs}px`,
-    background: palette.surface,
-    backgroundImage: 'none',
-    border: `${tokens.border.hairline}px solid ${palette.hairline}`,
-    borderRadius: `${tokens.radius.card}px`,
-    boxShadow: shadow(lounge, 'overlay'),
-  };
-};
+const paperSx = (theme: Theme) => ({
+  marginTop: `${ANCHOR_GAP}px`,
+  ...overlaySurface(kitTheme(theme)),
+});
 
 const listSx = { padding: `${tokens.space.xs}px` };
 
