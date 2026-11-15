@@ -1,12 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { Snackbar, Alert, AlertColor } from "@mui/material";
+import { logger } from "../utils/logger";
 
 interface NotificationContextType {
   showNotification: (message: string, severity?: AlertColor) => void;
 }
 
-const NotificationContext = createContext<NotificationContextType | undefined>(
+export const NotificationContext = createContext<NotificationContextType | undefined>(
   undefined
 );
 
@@ -16,6 +17,19 @@ export const useNotification = () => {
     throw new Error(
       "useNotification must be used within a NotificationProvider"
     );
+  }
+  return context;
+};
+
+/**
+ * The notification API, or undefined outside a NotificationProvider (call
+ * effects that also run in isolated tests). Warns in development, so a frame
+ * mounted outside the provider does not lose its notices quietly.
+ */
+export const useOptionalNotification = () => {
+  const context = useContext(NotificationContext);
+  if (!context && import.meta.env.DEV && import.meta.env.MODE !== "test") {
+    logger.warn("[Notification] used outside a NotificationProvider: notices are dropped");
   }
   return context;
 };

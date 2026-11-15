@@ -10,6 +10,7 @@ import { useBackgroundVoiceKeepAlive } from "../../hooks/useBackgroundVoiceKeepA
 import { useVoiceMediaSession } from "../../hooks/useVoiceMediaSession";
 import { useServerMuteEffect } from "../../hooks/useServerMuteEffect";
 import { useRemoteVolumeEffect } from "../../hooks/useRemoteVolumeEffect";
+import { useScreenShareSession } from "../../hooks/useScreenShareSession";
 
 /**
  * What a call does while it is active (connected, in a channel or DM),
@@ -51,6 +52,10 @@ const ActiveCallEffects: React.FC = () => {
 
   // Listen for server mute WS events and enforce on local user
   useServerMuteEffect();
+
+  // A screen share's audio-failed notice, own-share reveal and Electron
+  // selection clean-up (the picker stays with the share button)
+  useScreenShareSession();
 
   return null;
 };

@@ -3,6 +3,7 @@ import {
   readReceiptsControllerGetUnreadCountsQueryKey,
   notificationsControllerGetUnreadCountQueryKey,
   notificationsControllerGetNotificationsQueryKey,
+  presenceControllerGetBulkPresenceQueryKey,
 } from '../../api-client/@tanstack/react-query.gen';
 import type { PaginatedMessagesResponseDto } from '../../api-client/types.gen';
 import { isDetachedFromLiveEdge } from '../../utils/messageCacheUpdaters';
@@ -45,6 +46,13 @@ export function handleReconnect(queryClient: QueryClient): void {
   });
   queryClient.invalidateQueries({
     queryKey: notificationsControllerGetNotificationsQueryKey(),
+  });
+
+  // Online presence: USER_OFFLINE / USER_ONLINE missed during the gap would
+  // otherwise show people in the wrong state until the 60 s stale time lapses.
+  // One key serves every member list (bulk presence).
+  queryClient.invalidateQueries({
+    queryKey: presenceControllerGetBulkPresenceQueryKey(),
   });
 
   // Voice presence (safety net for missed events during disconnect)

@@ -5,7 +5,7 @@ import { BOTTOM_CHROME_ORDER, useMeasuredChromeItem } from "../../contexts/Botto
 import { LAYOUT_CONSTANTS } from "../../utils/breakpoints";
 import { VOICE_BAR_HEIGHT } from "../../constants/layout";
 import { VoiceNotice } from "./VoiceNotice";
-import { describeVoiceNotice } from "./voiceNoticeModel";
+import { describeVoiceNotice } from "../../features/voice/voiceNoticeModel";
 
 // The real bottom-bar UI (VoiceBottomBarContent) pulls in every voice-session
 // hook — including several that statically import livekit-client for runtime
