@@ -5,7 +5,17 @@
  * Types and constants are in ../theme/constants.ts to comply with React Fast Refresh.
  */
 
-import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  useSyncExternalStore,
+  ReactNode,
+} from 'react';
 import { ACCENT_PRIMARY, nearestAccent } from '@semaphore-chat/shared';
 import { logger } from '../utils/logger';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
@@ -122,25 +132,29 @@ function systemPrefersDark(): boolean {
 /**
  * The OS light/dark preference, followed only while `enabled`: the listener
  * exists exactly as long as "match system" is on, and updates live.
+ *
+ * Read with `useSyncExternalStore` so the answer is right in the same render
+ * in which "match system" turns on (for example when the server's settings
+ * arrive): a state updated from an effect would paint one frame in the wrong
+ * mode first.
  */
 function useSystemPrefersDark(enabled: boolean): boolean {
-  // `matchMedia` only runs here when the answer is used; the effect updates it
-  // as soon as "match system" turns on.
-  const [prefersDark, setPrefersDark] = useState(() => enabled && systemPrefersDark());
-  useEffect(() => {
-    if (!enabled || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const query = window.matchMedia(DARK_SCHEME_QUERY);
-    const update = () => setPrefersDark(query.matches);
-    update();
-    // Safari before 14 has no `addEventListener` on a MediaQueryList.
-    if (typeof query.addEventListener === 'function') {
-      query.addEventListener('change', update);
-      return () => query.removeEventListener('change', update);
-    }
-    query.addListener(update);
-    return () => query.removeListener(update);
-  }, [enabled]);
-  return prefersDark;
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (!enabled || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+      const query = window.matchMedia(DARK_SCHEME_QUERY);
+      // Safari before 14 has no `addEventListener` on a MediaQueryList.
+      if (typeof query.addEventListener === 'function') {
+        query.addEventListener('change', onChange);
+        return () => query.removeEventListener('change', onChange);
+      }
+      query.addListener(onChange);
+      return () => query.removeListener(onChange);
+    },
+    [enabled]
+  );
+  const getSnapshot = useCallback(() => enabled && systemPrefersDark(), [enabled]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }
 
 interface ThemeProviderProps {
