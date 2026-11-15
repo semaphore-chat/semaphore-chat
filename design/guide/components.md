@@ -6,8 +6,7 @@ kit looks and behaves the same in both.
 
 Screens are built only from kit components. Do not make a one-off button,
 field or label for a single screen. If you need something the kit does not
-cover, do not improvise: follow "Extending the system" (a chapter that is not
-written yet). The kit's provider supplies the colours and fonts to everything
+cover, do not improvise: follow [Extending the system](extending.md). The kit's provider supplies the colours and fonts to everything
 inside it.
 
 The live examples are the kit stories in `frontend/src/stories/kit/`. A story

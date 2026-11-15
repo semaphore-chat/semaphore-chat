@@ -70,6 +70,14 @@ nav:
       - UI Review Screenshots: contributing/ui-review.md
       - Code Patterns: contributing/code-patterns.md
       - Regenerating Screenshots: contributing/regenerating-screenshots.md
+  - Design guide:
+      - Overview: design-guide/README.md
+      - Principles: design-guide/principles.md
+      - Components: design-guide/components.md
+      - Tokens and colour: design-guide/tokens-and-colour.md
+      - Writing: design-guide/writing.md
+      - Extending the system: design-guide/extending.md
+      - Exceptions: design-guide/exceptions.md
   - Security: security.md
   - License: license.md
 

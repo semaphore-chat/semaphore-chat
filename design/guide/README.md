@@ -5,17 +5,28 @@ not need to know the code. You do need to use the same colours, sizes and
 shapes as the rest of the app, so that a new screen looks like it was always
 there.
 
-The guide is written in chapters. Only one chapter exists so far.
+The guide is written in chapters. Some are not written yet.
 
 |Chapter|What it covers|Status|
 |---|---|---|
-|Principles|The ideas behind the look of the app|not written yet|
+|[Principles](principles.md)|The ideas behind the look of the app, and what we never do|written|
 |Layouts|The page layouts a screen can use|not written yet|
 |Behaviour|How things move, respond and change state|not written yet|
 |[Components](components.md)|The building blocks: buttons, fields, cards and so on|written (33 components)|
 |[Tokens and colour](tokens-and-colour.md)|Every size, shape, type style, timing and colour role, and when to use each|written|
-|Writing|How the words on a screen should read|not written yet|
-|Extending the system|How to add something the guide does not cover|not written yet|
+|[Writing](writing.md)|How the words on a screen should read|written|
+|[Extending the system](extending.md)|How to add something the guide does not cover|written|
+
+## Start here
+
+**To design a screen,** read [Principles](principles.md) first. Then read
+"How a screen is built" in [Components](components.md). Then pick the
+components you need, one by one, and open their stories.
+
+**To add something to the system,** read [Extending the system](extending.md)
+first. It says what to try before you add anything, and how to add it. The
+places where a screen has left the system on purpose are listed in
+[Design exceptions](exceptions.md).
 
 ## Three rules
 

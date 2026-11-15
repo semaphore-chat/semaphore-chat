@@ -561,6 +561,14 @@ Frontend server state is managed entirely through TanStack Query (React Query). 
 
 - Remove orphan containers when using docker to run commands
 
+## Design system
+
+The design guide is in `design/guide/` (published on the docs site as "Design guide"). Any UI work follows the `design-system` skill (`.claude/skills/design-system`). Three rules:
+
+- Nothing off-system on a screen: no raw colour, no pixel number, no one-off component. Use the kit, the tokens and the palette roles.
+- MUI is imported only inside `frontend/src/kit`.
+- A missing token, component, variant, behaviour or layout goes through `design/guide/extending.md`: add it to the system first, in both clients.
+
 ## Cutting a release
 
 Releases are cut from `main` by pushing an annotated `vX.Y.Z` tag; CI builds and publishes everything from the tag. Follow these steps in order, and confirm the version and the tag push with Mike (it publishes images, the desktop release and the chart).

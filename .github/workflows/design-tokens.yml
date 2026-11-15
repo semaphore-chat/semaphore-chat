@@ -5,6 +5,12 @@ name: Design tokens
 # generated file that was not regenerated leaves the clients out of step, so
 # this workflow fails when `gen_tokens.py --check` reports a stale or missing
 # output. It needs no dependency install: the generator is standard library only.
+#
+# It also checks design/guide/exceptions.md, the list of `design-exception:`
+# comments in the clients' source. That page changes when someone adds such a
+# comment, so the workflow runs for any change under frontend/src or
+# native/crates. The job takes seconds and needs no install, so running it often
+# is cheaper than letting the list go stale.
 on:
   pull_request:
     branches: [main]
@@ -17,6 +23,8 @@ on:
       - 'native/crates/semaphore-design/src/colour_vectors.rs'
       - 'native/crates/semaphore-design/src/lounge_icons.rs'
       - 'native/crates/semaphore-design/assets/lucide/**'
+      - 'frontend/src/**'
+      - 'native/crates/**'
       - '.github/workflows/design-tokens.yml'
   push:
     branches: [main]
@@ -29,6 +37,8 @@ on:
       - 'native/crates/semaphore-design/src/colour_vectors.rs'
       - 'native/crates/semaphore-design/src/lounge_icons.rs'
       - 'native/crates/semaphore-design/assets/lucide/**'
+      - 'frontend/src/**'
+      - 'native/crates/**'
       - '.github/workflows/design-tokens.yml'
 
 concurrency:
@@ -54,3 +64,6 @@ jobs:
 
       - name: Check generated tokens are up to date
         run: python3 design/gen/gen_tokens.py --check
+
+      - name: Check the design exceptions list is up to date
+        run: python3 design/gen/list_exceptions.py --check

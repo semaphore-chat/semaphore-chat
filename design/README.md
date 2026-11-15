@@ -82,6 +82,10 @@ dotted path (for example `error: text.body.font: unknown font 'bodyy'`, or
 `error: colour.modes.dark.accentL: expected lo < hi, got [0.8, 0.6]`),
 exits 1, and writes nothing.
 
+`design/gen/list_exceptions.py` is separate from the token generator. It scans
+the clients' source for `design-exception:` comments and writes
+`design/guide/exceptions.md` (`--check` verifies it, as above).
+
 Tests for the generator and its renderers:
 
 ```bash
@@ -90,8 +94,8 @@ python3 -m unittest discover -s design/gen -p 'test_*.py' -v
 
 ## CI
 
-`.github/workflows/design-tokens.yml` runs the tests above and
-`gen_tokens.py --check` on every pull request and push to `main` that touches
+`.github/workflows/design-tokens.yml` runs the tests above,
+`gen_tokens.py --check` and `list_exceptions.py --check` on every pull request and push to `main` that touches
 `design/**`, any generated file or the workflow itself. When it fails with
 `stale:` or `missing:` for an output, run `python3 design/gen/gen_tokens.py`,
 commit the regenerated file together with the change that caused it, and push.
