@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generate the design token outputs from `design/tokens.json` and `design/colour.json`.
+"""Generate the design token outputs from `design/tokens.json`, `design/colour.json`
+and the behaviour patterns in `design/behaviour/`.
 
 `design/tokens.json` is the single source of truth for spacing, radii,
 control sizes, fonts, text styles, shadows, motion, breakpoints, layout, icon, avatar
@@ -841,6 +842,13 @@ def _encoded(text: str) -> bytes:
     return text.replace("\r\n", "\n").encode("utf-8").rstrip(b"\r\n") + b"\n"
 
 
+def _behaviour_module() -> ModuleType:
+    """The behaviour renderer, imported when `run` needs it rather than at module load."""
+    import gen_behaviour
+
+    return gen_behaviour
+
+
 def run(root: Path, check: bool) -> int:
     """Render every output below `root`; with `check`, only report drift."""
     root = Path(root)
@@ -852,8 +860,13 @@ def run(root: Path, check: bool) -> int:
     # as one `error:` line, whatever state the icon module is in.
     icons = _icons_module()
     sources["icons"] = icons.load_icons(root)
+    # The behaviour patterns resolve their durations against the loaded motion
+    # tokens, and their vectors come from running `behaviour_ref` over each scenario.
+    behaviour = _behaviour_module()
+    sources["behaviour"] = behaviour.load_patterns(root, sources["tokens"])
     outputs = dict(OUTPUTS)
     outputs.update(icons.renderers(sources["icons"]))
+    outputs.update(behaviour.renderers(sources["behaviour"]))
     # Render everything first so a failing renderer leaves no half-written output.
     rendered = [
         (Path(path), _encoded(render(sources))) for path, render in sorted(outputs.items())

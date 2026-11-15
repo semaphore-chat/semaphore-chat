@@ -26,7 +26,7 @@ screen. There is one path, and it is the same for a person and for an LLM.
 |Token value|A size, radius, type style, timing, colour role or icon that has no name yet|`design/tokens.json` (or `design/colour.json`, `design/icons/`), and the generator `design/gen/gen_tokens.py`. The tables in [Tokens and colour](tokens-and-colour.md)|
 |Component|A building block the kit lacks|`frontend/src/kit` (web) and the native kit `native/crates/semaphore-ui/src/kit`. An entry in [Components](components.md)|
 |Variant|A new option of an existing component (a new `variant`, `size` or `tone`)|The component, in both kits, and its table in [Components](components.md)|
-|Behaviour|How things respond: what Escape does, how a confirmation works, how an empty or error state shows|The Behaviour chapter of this guide (not written yet) and the code it describes|
+|Behaviour|How things respond: what Escape does, how a confirmation works, how an empty or error state shows|The [Behaviour](behaviour.md) chapter of this guide, its pattern files in `design/behaviour/` and the code it describes|
 |Layout template|A new arrangement of islands for a whole screen|The Layouts chapter of this guide (not written yet) and the layout components|
 
 A new colour is not a new kind. It is a token value: a colour need that has no

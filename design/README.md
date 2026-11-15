@@ -24,6 +24,9 @@ every registered output through the `OUTPUTS` mapping:
 |`frontend/src/kit/icons/generated.ts`|web client (`export const iconNodes`, the shape elements; `IconName`, `iconNames`)|
 |`native/crates/semaphore-design/src/lounge_icons.rs`|Rust client (`LoungeIcon`: `ALL`, `name`, `asset_path`, `svg`)|
 |`native/crates/semaphore-design/assets/lucide/<file>.svg`|Rust client (one asset per icon, `currentColor` replaced by `#000`)|
+|`design/vectors/behaviour.json`|the shared behaviour vectors, the contract for the reducer ports|
+|`frontend/src/kit/behaviour/generated/vectors.ts`|web client (`export const behaviourVectors`, the same data)|
+|`native/crates/semaphore-design/src/behaviour_vectors.rs`|Rust client (the same data as canonical JSON strings, test-only)|
 
 The icon outputs follow `design/icons/icons.json` (see
 [`icons/README.md`](icons/README.md)): `design/gen/gen_icons.py` validates the
@@ -66,6 +69,67 @@ port that disagrees with a vector is wrong. Never edit a vector, the
 reference or `colour.json` to make a port pass; fix the port, or change the
 reference and its parameters and regenerate.
 
+## Behaviour
+
+`design/behaviour/<pattern>.json` holds one interaction pattern each (toast
+queue, overlay stack, confirm destructive, list focus, load state), named in
+kebab case after its camelCase `pattern`. A file holds `pattern`, `doc`,
+`params` (a whole number, a boolean, `motion.<name>`, which resolves to that
+token's milliseconds, or any other non-empty string, which is a literal such as
+an id), `state`, `events` and `effects` (name -> field -> type
+description), `rules` (numbered sentences, from 1) and `scenarios`. The
+plain-language guide is [`guide/behaviour.md`](guide/behaviour.md).
+
+`design/gen/behaviour_ref.py` is the definition of every pattern, not a
+generated file: one pure `step_<pattern>(state, event, params) -> (state,
+effects)` each, with `initial_<pattern>(params)`, registered in `PATTERNS`.
+Timers are effects (`startTimer{token, ms}`, `cancelTimer{token}`) that come
+back as `timerFired{token}` events; a stale token does nothing.
+`design/gen/test_behaviour_ref.py` pins it with hand-written expectations, one
+test `test_rNN_...` or more per rule.
+
+**Scenarios become vectors.** A scenario is the source of a vector: a `name`,
+`covers` (the rule numbers it shows), its `events`, and optionally `params`
+(overrides of the defaults) and `initial` (state fields merged over the
+initial state). `gen_behaviour.py`, called by `gen_tokens.py`, validates every
+file (each scenario event is a declared event with exactly its fields, names
+are unique, every rule is covered by a scenario, the declared events are the
+ones the reference handles; errors start `behaviour.<pattern>`), runs each
+scenario through the reference, checks the states and effects it returns
+against the declarations, and writes the full vectors: for each pattern its
+default `params`, its `initial` state and its `vectors`, each with `name`,
+`params` in full, `initial` and `steps` of `{event, state, effects}`. The
+expectations are never typed by hand. **The vectors are the contract for the
+ports:** a port that disagrees with one is wrong.
+
+**Canonical form.** Behaviour data holds only objects, lists, strings, whole
+numbers (at most 2^53 - 1 either way), booleans and null; the validator rejects
+fractions, strings with control characters (U+0000 to U+001F) and strings with
+lone surrogates (every string is Unicode scalar values). Its canonical JSON form, which the Rust
+output uses and a port's tests produce to compare:
+
+- object keys sorted by code point (all keys are ASCII camelCase names);
+- no whitespace anywhere outside strings;
+- whole numbers in plain decimal: `-` for a negative, no leading zeros, no
+  exponent, no fraction;
+- strings in double quotes, with only `"` and `\` escaped (as `\"` and
+  `\\`); every other character as itself, in UTF-8;
+- `null`, `true`, `false`; list order kept.
+
+Every value has exactly one canonical text, and a reader of canonical text
+accepts nothing else: it rejects `-0` (zero is `0`), keys out of order or
+repeated, whitespace, other escapes (`\n`, `\u0041`), fractions and exponents.
+
+In Python this is `json.dumps(value, sort_keys=True, separators=(",", ":"),
+ensure_ascii=False)` (`gen_behaviour.canonical`). The JSON and TypeScript
+outputs keep the structure in a fixed order (`name`, `params`, `initial`,
+`steps`; `event`, `state`, `effects`) with the data inside in sorted key
+order; compare them with deep equality. The Rust output has no JSON dependency:
+each params, initial state, event, state and effect list is a `&str` in the
+canonical form. A Rust port serialises its own state and effects canonically
+and compares strings; to build its input events and params from the strings,
+its tests need a small reader for this restricted form, written test-side.
+
 ## Regenerate
 
 ```bash
@@ -102,9 +166,10 @@ commit the regenerated file together with the change that caused it, and push.
 
 ## Never edit generated files by hand
 
-Every generated file except `design/vectors/colour.json` (comments are not
-valid JSON) starts with a header naming the source document it comes from
-(`design/tokens.json`, `design/colour.json` or `design/icons/icons.json`) and
+Every generated file except `design/vectors/colour.json` and
+`design/vectors/behaviour.json` (comments are not valid JSON) starts with a header naming the source document it comes from
+(`design/tokens.json`, `design/colour.json`, `design/icons/icons.json` or
+`design/behaviour/*.json`) and
 `design/gen/gen_tokens.py`. The icon assets carry no header, so the staleness
 check covers them instead. A wrong generated file means a wrong generator or a
 wrong source value: change one of those and re-run the generator. A hand edit

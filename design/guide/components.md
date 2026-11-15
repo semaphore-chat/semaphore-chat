@@ -612,8 +612,8 @@ A passing notice about something that just happened.
 **Do not use it when** the message belongs to a place on the page or must stay
 until the user acts. Use Alert.
 
-A Toast is only the look of one notice. Where toasts appear, how long they stay
-and how they stack belong to the Behaviour chapter, which is not written yet.
+A Toast is only the look of one notice. How long toasts stay and how they queue
+belong to the [Behaviour](behaviour.md#toast-queue) chapter.
 A `danger` toast interrupts screen readers when it appears. The others wait for
 a pause. `announce={false}` makes a toast a quiet note, for one that is already
 on the page at load.
@@ -1111,9 +1111,10 @@ Stories: `kit-sheet--all-communities`, `kit-sheet--with-actions`,
 
 The web kit gets a lot of behaviour for free from the browser and from MUI, and
 none of it is written down in the components. The native client draws every
-control itself, so it has to implement each behaviour below on its own. They
-will become shared behaviour tables that both clients are tested against; until
-then this list is the spec for the native side.
+control itself, so it has to implement each behaviour below on its own. Some of
+it is now in the shared behaviour tables (see [Behaviour](behaviour.md)), which
+both clients are tested against. For the rest, this list is the spec for the
+native side.
 
 ### Select menu
 
@@ -1250,8 +1251,10 @@ then this list is the spec for the native side.
 - Escape is ignored while an input method is composing text, and only the
   topmost layer handles it.
 - When it closes, focus goes back to whatever had it before the menu opened.
-- Typing letters collects into a prefix for about half a second; the same letter
-  again steps through the matches. Matching is not case sensitive.
+- Typing letters collects into a prefix; the same letter again steps through the
+  matches. Matching is not case sensitive. MUI resets the prefix after about half
+  a second; the shared rule is one second (the typeahead timing, see
+  [List focus](behaviour.md#list-focus)).
 - While the menu is open the page behind it does not scroll, and the page is
   hidden from assistive technology.
 - The menu sits just below the anchor, or just above it for the `top` placements.

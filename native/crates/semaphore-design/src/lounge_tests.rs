@@ -10,6 +10,10 @@ fn lounge_shape_and_layout_values() {
     assert_eq!(LAYOUT_LEFT_COLUMN, 288.0);
     assert_eq!((LAYOUT_DIALOG_SM, LAYOUT_DIALOG_MD), (400.0, 560.0));
     assert_eq!(MOTION_FAST_MS, 120);
+    assert_eq!(
+        (MOTION_TYPEAHEAD_MS, MOTION_TOAST_MS, MOTION_TOAST_ACTION_MS),
+        (1000, 4000, 8000)
+    );
 }
 
 #[test]
