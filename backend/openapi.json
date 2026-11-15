@@ -15092,6 +15092,14 @@
             "nullable": true,
             "description": "The community the channel belongs to; null for direct-message entries."
           },
+          "channelType": {
+            "description": "The channel's type; absent for direct-message entries. Badges count TEXT channels only (as the classic sidebar shows them).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChannelType"
+              }
+            ]
+          },
           "unreadCount": {
             "type": "integer"
           },

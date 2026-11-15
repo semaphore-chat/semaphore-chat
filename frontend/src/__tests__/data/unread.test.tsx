@@ -87,6 +87,17 @@ describe('useUnreadSummary', () => {
     await waitFor(() => expect(result.current.community('c-1').hasUnread).toBe(true));
   });
 
+  it('counts text channels only (a voice channel has no badge in the classic rows), and untyped entries', () => {
+    const entries = [
+      { channelId: 't', communityId: 'c', channelType: 'TEXT' as const, unreadCount: 1, mentionCount: 1 },
+      { channelId: 'v', communityId: 'c', channelType: 'VOICE' as const, unreadCount: 4, mentionCount: 3 },
+      { channelId: 'u', communityId: 'c', unreadCount: 0, mentionCount: 2 },
+    ];
+    expect(groupUnreadByCommunity(entries).get('c')).toEqual({ mentions: 3, hasUnread: true });
+    expect(inboxUnread(entries)).toEqual({ directMessages: 0, mentions: 3, total: 3 });
+    expect(groupUnreadByCommunity([entries[1]]).get('c')).toBeUndefined();
+  });
+
   it('counts the inbox as DM unread + channel mentions, a DM once', async () => {
     const { result } = setup();
     await waitFor(() => expect(result.current.summary.inbox).toEqual({ directMessages: 5, mentions: 2, total: 7 }));

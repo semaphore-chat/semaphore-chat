@@ -44,13 +44,21 @@ export interface UnreadSummary {
 
 const NO_COMMUNITY_UNREAD: CommunityUnread = { mentions: 0, hasUnread: false };
 
+/**
+ * Badges count text channels only, as the classic channel rows show them (`ChannelRow`: a voice row has no badge or
+ * unread mark). An entry without a type (one the socket handlers inserted, refetched at once) counts.
+ */
+function countsAsTextChannel(entry: UnreadCountDto): boolean {
+  return entry.channelType === undefined || entry.channelType === 'TEXT';
+}
+
 /** Pure: channel entries grouped by community (DM entries and untagged entries are left out). */
 export function groupUnreadByCommunity(
   entries: readonly UnreadCountDto[] | undefined,
 ): Map<string, CommunityUnread> {
   const groups = new Map<string, CommunityUnread>();
   for (const entry of entries ?? []) {
-    if (!entry.channelId || !entry.communityId) continue;
+    if (!entry.channelId || !entry.communityId || !countsAsTextChannel(entry)) continue;
     const key = entry.communityId;
     const group = groups.get(key) ?? { mentions: 0, hasUnread: false };
     groups.set(key, {
@@ -67,7 +75,7 @@ export function inboxUnread(entries: readonly UnreadCountDto[] | undefined): Inb
   let mentions = 0;
   for (const entry of entries ?? []) {
     if (entry.directMessageGroupId) directMessages += entry.unreadCount;
-    else if (entry.channelId) mentions += entry.mentionCount;
+    else if (entry.channelId && countsAsTextChannel(entry)) mentions += entry.mentionCount;
   }
   return { directMessages, mentions, total: directMessages + mentions };
 }

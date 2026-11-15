@@ -4,9 +4,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { act, fireEvent, screen } from '@testing-library/react';
-import { Dock, DockDivider, DockItem, IconButton, Stack, Text, useListFocus } from '../../kit';
+import { Dock, DockDivider, DockItem, IconButton, Sheet, Stack, Text, useListFocus } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
-import { rawCssFor } from './cssRules';
+import { rawCssFor, rulesFor } from './cssRules';
+import { derivePalette, type IntensityName, type ModeName } from '../../theme/derive/derivePalette';
+import { contrastRatio, parseHex } from '../../theme/derive/oklch';
 
 let consoleError: MockInstance;
 beforeEach(() => {
@@ -108,6 +110,64 @@ describe('Dock start and end', () => {
   });
 });
 
+describe('Dock wheel', () => {
+  function setup(sizes: { scrollWidth: number; clientWidth: number }) {
+    const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(() => sizes.scrollWidth);
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => sizes.clientWidth);
+    renderWithKit(
+      <Dock label="d" start={<IconButton icon="Inbox" label="Inbox" />}>
+        {['a', 'b', 'c', 'd'].map((name) => (
+          <DockItem key={name} name={name} />
+        ))}
+      </Dock>,
+    );
+    return () => {
+      scrollWidth.mockRestore();
+      clientWidth.mockRestore();
+    };
+  }
+
+  it('turns a vertical wheel into a sideways scroll while the middle overflows, and takes the event from the page', () => {
+    const restore = setup({ scrollWidth: 600, clientWidth: 200 });
+    try {
+      const region = scroller();
+      expect(fireEvent.wheel(region, { deltaY: 120 })).toBe(false);
+      expect(region.scrollLeft).toBe(120);
+      expect(fireEvent.wheel(region, { deltaY: -50 })).toBe(false);
+      expect(region.scrollLeft).toBe(70);
+      // Lines (a mouse wheel in some browsers) count as 16 px each
+      fireEvent.wheel(region, { deltaY: 3, deltaMode: 1 });
+      expect(region.scrollLeft).toBe(118);
+    } finally {
+      restore();
+    }
+  });
+
+  it('lets the event through at the end it is moving to, for a sideways wheel, a pinch, and when nothing overflows', () => {
+    const sizes = { scrollWidth: 600, clientWidth: 200 };
+    const restore = setup(sizes);
+    try {
+      const region = scroller();
+      // At the start, scrolling back: the page gets it
+      expect(fireEvent.wheel(region, { deltaY: -40 })).toBe(true);
+      region.scrollLeft = 400;
+      // At the end, scrolling on: the page gets it
+      expect(fireEvent.wheel(region, { deltaY: 40 })).toBe(true);
+      expect(region.scrollLeft).toBe(400);
+      // A trackpad's sideways part is the browser's own scroll
+      expect(fireEvent.wheel(region, { deltaX: 30, deltaY: -10 })).toBe(true);
+      // Ctrl + wheel is a zoom
+      expect(fireEvent.wheel(region, { deltaY: -40, ctrlKey: true })).toBe(true);
+      sizes.scrollWidth = 200;
+      region.scrollLeft = 0;
+      expect(fireEvent.wheel(region, { deltaY: 40 })).toBe(true);
+      expect(region.scrollLeft).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('IconButton badge and current', () => {
   it('a badge shows the count over the corner and adds it to the name; 0 shows nothing', () => {
     const { rerender } = renderWithKit(<IconButton icon="Inbox" label="Inbox" badge={9} />);
@@ -140,6 +200,45 @@ describe('IconButton badge and current', () => {
   });
 });
 
+describe('focus on a current item', () => {
+  const focusOffset = (element: Element) =>
+    rulesFor(element, ':focus-visible')
+      .map((rule) => rule.style.outlineOffset)
+      .filter(Boolean)
+      .pop();
+
+  it('IconButton: the focus ring is offset past the current ring (2 px gap + 2 px ring), then the focus offset', () => {
+    renderWithKit(
+      <>
+        <IconButton icon="Inbox" label="current" current />
+        <IconButton icon="Inbox" label="plain" />
+      </>,
+    );
+    // The current ring's band reaches 4 px out; the outline starts at 6 px, so a 2 px surface gap separates them.
+    expect(focusOffset(screen.getByRole('button', { name: 'current, current' }))).toBe('6px');
+    expect(focusOffset(screen.getByRole('button', { name: 'plain' }))).toBe('2px');
+  });
+
+  it('DockItem: its ring is a border inside the item, so the usual outside offset already clears it', () => {
+    renderWithKit(<DockItem name="Couch Co-op" current onClick={() => undefined} />);
+    expect(focusOffset(screen.getByRole('button', { name: 'Couch Co-op, current' }))).toBe('2px');
+  });
+
+  it('the focus colour stands out (3:1) from the surface and the ground it sits on, on every palette', () => {
+    const bases = ['#8E75FF', '#0d9488', '#FF9A6B', '#E0C060', '#6BC5E0', '#888888'];
+    const modes: ModeName[] = ['dark', 'light'];
+    const intensities: IntensityName[] = ['minimal', 'balanced', 'vibrant'];
+    for (const base of bases)
+      for (const mode of modes)
+        for (const intensity of intensities) {
+          const palette = derivePalette(base, mode, intensity);
+          const label = `${base} ${mode} ${intensity}`;
+          expect(contrastRatio(parseHex(palette.focus), parseHex(palette.surface)), label).toBeGreaterThanOrEqual(3);
+          expect(contrastRatio(parseHex(palette.focus), parseHex(palette.ground)), label).toBeGreaterThanOrEqual(3);
+        }
+  });
+});
+
 describe('DockItem unreadLabel', () => {
   it('"mentions" words the count in the name and the badge; the default stays "unread"', () => {
     renderWithKit(
@@ -169,5 +268,21 @@ describe('Stack', () => {
     expect(style.flexDirection).toBe('column');
     expect(style.gap).toBe('16px');
     expect(stack.children).toHaveLength(2);
+  });
+});
+
+describe('Sheet top', () => {
+  it('renders `top` between the title and the scrolling body, outside the body', async () => {
+    renderWithKit(
+      <Sheet open onClose={() => undefined} title="All communities" top={<Text>Fixed part</Text>}>
+        <Text>Row one</Text>
+      </Sheet>,
+    );
+    const fixed = await screen.findByText('Fixed part');
+    const body = document.querySelector<HTMLElement>('[data-kit-sheet-body]')!;
+    expect(body).toContainElement(screen.getByText('Row one'));
+    expect(body).not.toContainElement(fixed);
+    expect(fixed.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(getComputedStyle(body).overflowY).toBe('auto');
   });
 });

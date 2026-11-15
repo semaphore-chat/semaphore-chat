@@ -6,7 +6,7 @@ import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
-import { interactiveStates } from '../theme/states';
+import { focusRing, interactiveStates } from '../theme/states';
 import { standOutFill, useSurface, type Surface } from '../theme/onSurface';
 import { buttonLook, type ButtonVariant } from './buttonLook';
 import { Spinner } from '../display/Spinner';
@@ -57,6 +57,8 @@ const TOUCH_OUTSET = (tokens.control.md - tokens.control.sm) / 2;
 /** The current ring: as DockItem's, a surface gap then `border.selected` of accent, drawn outside the button. */
 const RING = tokens.border.selected;
 const RING_GAP = (tokens.control.md - tokens.avatar.md) / 2;
+/** The focus ring's offset on a current button: past the current ring, then the usual focus offset. */
+const CURRENT_FOCUS_OFFSET = RING_GAP + RING + tokens.border.focusOffset;
 
 /** The count over the corner, ringed in the surface colour, placed as on a DockItem. */
 const BadgeSlot = styled('span')(({ theme }) => ({
@@ -132,6 +134,9 @@ const Root = styled(ButtonBase, {
     }),
     ...($current && {
       boxShadow: `0 0 0 ${RING_GAP}px ${palette.surface}, 0 0 0 ${RING_GAP + RING}px ${palette.accent}`,
+      // The current ring covers the band the focus ring would draw in: move the focus ring outside it, with the
+      // focus offset as its own gap, so keyboard focus on the current item always shows.
+      '&:focus-visible': focusRing(palette, CURRENT_FOCUS_OFFSET),
     }),
     '&:disabled': {
       opacity: tokens.state.disabled,

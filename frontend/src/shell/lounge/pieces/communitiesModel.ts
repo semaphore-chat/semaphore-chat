@@ -45,3 +45,12 @@ export function matchesFilter(name: string, filter: string): boolean {
   const query = filter.trim().toLocaleLowerCase();
   return query === '' || name.toLocaleLowerCase().includes(query);
 }
+
+/** How long typing must pause before the filter's result is announced. */
+export const FILTER_ANNOUNCE_DELAY_MS = 600;
+
+/** What the filter's result says to a screen reader: the count, or that nothing matches. */
+export function filterAnnouncement(query: string, count: number): string {
+  if (count === 0) return `No community called “${query}”`;
+  return count === 1 ? '1 community' : `${count} communities`;
+}

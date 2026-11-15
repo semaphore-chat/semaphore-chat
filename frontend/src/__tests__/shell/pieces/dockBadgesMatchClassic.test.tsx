@@ -36,13 +36,16 @@ vi.mock('../../../api-client/client.gen', async (importOriginal) => {
 });
 // The account menu at the rail's foot is not part of the badge rule.
 vi.mock('../../../components/Desktop/RailUserMenu', () => ({ RailUserMenu: () => null }));
+// Who is in the voice room is not part of the badge rule either (it needs the profile dialog's provider).
+vi.mock('../../../components/Voice/VoiceChannelUserList', () => ({ VoiceChannelUserList: () => null }));
 
 const BASE = 'http://localhost:3000';
 
 const CHANNELS = {
   'c-1': [createChannel({ id: 'ch-couch-general', name: 'general', type: 'TEXT', communityId: 'c-1' }), createChannel({ id: 'ch-couch-clips', name: 'clips', type: 'TEXT', communityId: 'c-1' })],
   'c-2': [createChannel({ id: 'ch-lumen-general', name: 'general', type: 'TEXT', communityId: 'c-2' }), createChannel({ id: 'ch-lumen-design', name: 'design', type: 'TEXT', communityId: 'c-2' })],
-  'c-3': [createChannel({ id: 'ch-lan-lfg', name: 'lfg', type: 'TEXT', communityId: 'c-3' })],
+  // A voice channel with unread and mentions: the classic row shows neither, so neither does the dock.
+  'c-3': [createChannel({ id: 'ch-lan-lfg', name: 'lfg', type: 'TEXT', communityId: 'c-3' }), createChannel({ id: 'ch-lan-voice', name: 'Squad Up', type: 'VOICE', communityId: 'c-3' })],
 } as const;
 
 const NAMES = { 'c-1': 'Couch Co-op', 'c-2': 'Lumen Studio', 'c-3': 'Friday LAN' } as const;
@@ -54,7 +57,8 @@ const COUNTS = [
   { channelId: 'ch-couch-clips', communityId: 'c-1', unreadCount: 0, mentionCount: 0 },
   { channelId: 'ch-lumen-general', communityId: 'c-2', unreadCount: 6, mentionCount: 2 },
   { channelId: 'ch-lumen-design', communityId: 'c-2', unreadCount: 1, mentionCount: 1 },
-  { channelId: 'ch-lan-lfg', communityId: 'c-3', unreadCount: 4, mentionCount: 0 },
+  { channelId: 'ch-lan-lfg', communityId: 'c-3', channelType: 'TEXT', unreadCount: 4, mentionCount: 0 },
+  { channelId: 'ch-lan-voice', communityId: 'c-3', channelType: 'VOICE', unreadCount: 7, mentionCount: 5 },
   { directMessageGroupId: 'dm-aiko', unreadCount: 3, mentionCount: 3 },
   { directMessageGroupId: 'dm-kwam3', unreadCount: 2, mentionCount: 0 },
 ];

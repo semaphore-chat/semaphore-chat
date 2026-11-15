@@ -160,3 +160,22 @@ export const Phone = () => (
     </Open>
   </Page>
 );
+
+/** `top`: a heading and a search field fixed above a long body; only the rows scroll. */
+export const WithTop = () => {
+  const [query, setQuery] = useState('');
+  return (
+    <Page mode="dark">
+      <Sheet
+        open
+        onClose={() => undefined}
+        title="All communities"
+        top={<TextField label="Search communities" labelHidden shape="round" startIcon="Search" placeholder="Find a community" value={query} onChange={setQuery} />}
+      >
+        {Array.from({ length: 40 }, (_, index) => (
+          <ListRow key={index} primary={`Community ${index + 1}`} secondary="Quiet" size="lg" onClick={() => undefined} />
+        ))}
+      </Sheet>
+    </Page>
+  );
+};

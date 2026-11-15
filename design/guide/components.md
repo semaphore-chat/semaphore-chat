@@ -166,7 +166,7 @@ screen readers.
 |`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list: today the Dock's. The button is then one stop of the list's single Tab stop. A disabled button ignores it. See [Dock](#dock).|
 |`badge`|a number|none|A count over the button's corner, the same danger Badge a DockItem shows (the Dock's Inbox). 0, or a number that is not finite, shows nothing. The count is added to the name: "Inbox, 9 unread".|
 |`badgeMeaning`|`unread`, `mentions`|`unread`|What `badge` counts, in the name: "9 unread", or "1 mention" / "2 mentions".|
-|`current`|true, false|false|The place you are in, for an item on the Dock: the accent ring a current DockItem has (a surface gap, then the accent), ", current" in the name before the count, and `aria-current="page"`. Not a toggle: use `selected` for that.|
+|`current`|true, false|false|The place you are in, for an item on the Dock: the accent ring a current DockItem has (a surface gap, then the accent), ", current" in the name before the count, and `aria-current="page"`. Not a toggle: use `selected` for that. With keyboard focus the focus ring moves outside the current ring (its usual offset, past the ring), so the two never overlap. Web kit only so far.|
 
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
@@ -174,9 +174,9 @@ Web kit only so far; the native kit has not caught up (see
 Stories: `kit-icon-button--variants`, `kit-icon-button--states`,
 `kit-icon-button--focused`, `kit-icon-button--variants-light`,
 `kit-icon-button--variants-tinted`, `kit-icon-button--badge-and-current`,
-`kit-icon-button--badge-and-current-light`.
-
-`badge`, `badgeMeaning` and `current`: web kit only so far.
+`kit-icon-button--badge-and-current-light`, `kit-icon-button--badge-and-current-tinted`,
+`kit-icon-button--current-focused`, `kit-icon-button--current-focused-light`,
+`kit-icon-button--current-focused-tinted`.
 
 ## KeyCap
 
@@ -978,7 +978,7 @@ It is layout only: no surface, no padding, no semantics of its own.
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
 
-Stories: `kit-stack--gaps`, `kit-stack--gaps-light`.
+Stories: `kit-stack--gaps`, `kit-stack--gaps-light`, `kit-stack--gaps-tinted`.
 
 ## Which overlay
 
@@ -1388,8 +1388,10 @@ const list = useListFocus({
 - There is no helper to build `rows`: the ids and labels are the app's own, and
   a helper would only be the `map` above. The mistakes are in leaving items out,
   and the guide and the tests say so.
-- Clicking in the gap between two items focuses the bar; the arrows then scroll
-  it sideways like any scroller until the next Tab or click puts focus on an item.
+- Clicking in the gap between two items of the scrolling middle focuses that
+  region; the arrows then scroll it sideways like any scroller until the next Tab
+  or click puts focus on an item. A click in the gap beside a `start` or `end`
+  item focuses nothing.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -1399,7 +1401,7 @@ Stories: `kit-dock--communities`, `kit-dock--overflow`, `kit-dock--phone-bar`,
 `kit-dock--communities-light`, `kit-dock--communities-tinted`,
 `kit-dock--focus-twelve`, `kit-dock--focus-twelve-light`, `kit-dock--focus-sixty`,
 `kit-dock--focus-sixty-phone`, `kit-dock--fixed-ends`, `kit-dock--fixed-ends-light`,
-`kit-dock--fixed-ends-phone`.
+`kit-dock--fixed-ends-phone`, `kit-dock--fixed-ends-tinted`.
 
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
@@ -1486,6 +1488,7 @@ a request.
 |`title`|text|none (required)|Names the sheet. It is the heading.|
 |`children`|content|none (required)|The body. It scrolls.|
 |`actions`|Buttons|none|The buttons, in a row pinned to the bottom. On a phone they stack.|
+|`top`|content|none|Content fixed under the title, above the scrolling body, such as a heading and a search field that filters the body. It never scrolls out of view. Web kit only so far.|
 |`size`|`md`, `lg`|`md`|The width. `md` is 560 pixels and `lg` is 800.|
 
 When there are no `actions`, focus starts on the Close button (the panel is not
@@ -1493,7 +1496,7 @@ a control). With actions, focus lands on the sheet itself, so Close is the first
 Tab stop. A select list, a Menu, a Popover or a Tooltip may open from inside a
 Sheet, as in a Dialog.
 
-Stories: `kit-sheet--all-communities`, `kit-sheet--with-actions`,
+Stories: `kit-sheet--all-communities`, `kit-sheet--with-actions`, `kit-sheet--with-top`,
 `kit-sheet--long-content`, `kit-sheet--phone`, `kit-sheet--all-communities-light`,
 `kit-sheet--all-communities-tinted`.
 
@@ -1767,6 +1770,10 @@ lists below say what each overlay still gets from MUI and the browser.
   region is `tabindex="-1"`.
 - `start` and `end` items sit outside the scrolling region. The fade at an edge
   is a CSS mask that follows the scroll position.
+- A mouse wheel turns vertically: while the middle overflows, a vertical wheel
+  with no sideways part scrolls it sideways, as far as it can go. At the end it is
+  moving to, or when nothing overflows, the wheel goes on to the page. A
+  trackpad's sideways scroll and Ctrl + wheel (zoom) are the browser's.
 
 ### Sheet
 

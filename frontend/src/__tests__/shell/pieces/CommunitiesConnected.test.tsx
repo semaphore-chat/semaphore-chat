@@ -297,4 +297,41 @@ describe('AllCommunitiesSheetConnected', () => {
     expect((await screen.findAllByText("Couldn't refresh. Try again.", undefined, { timeout: 3000 })).length).toBeGreaterThan(0);
     expect(within(sheet).getByRole('link', { name: /^Couch Co-op/ })).toBeInTheDocument();
   });
+
+  it('a filter typed before the frame closes the sheet by itself is gone on the next open (M6)', async () => {
+    serve({ communities: Array.from({ length: 12 }, (_, index) => ({ ...COMMUNITIES[0], id: `c-${index + 1}`, name: `Community ${index + 1}` })) });
+    const tree = (open: boolean) => (
+      <VoiceProvider>
+        <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
+          <AppFrame>
+            <AllCommunitiesSheetConnected open={open} onClose={() => undefined} currentId={null} />
+          </AppFrame>
+        </KitProvider>
+      </VoiceProvider>
+    );
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'me', username: 'alexk' } as never);
+    const { user, rerender } = renderWithProviders(tree(true), { queryClient });
+    const field = await screen.findByRole('searchbox', { name: 'Find a community' });
+    await user.type(field, '12');
+    rerender(tree(false));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    rerender(tree(true));
+    expect(await screen.findByRole('searchbox', { name: 'Find a community' })).toHaveValue('');
+  });
+});
+
+describe('ShellDockConnected, zero communities', () => {
+  it('a user in no community whose background refetch fails sees no load error (M2)', async () => {
+    serve({ communities: [] });
+    const { queryClient } = renderPieces(null);
+    await waitFor(() => expect(dockNames()).toEqual(['Inbox, 7 unread', 'All communities']));
+    server.use(http.get(`${BASE}/api/community/mine`, () => HttpResponse.json({ message: 'no' }, { status: 500 })));
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: [{ _id: 'communityControllerFindAllMine' }] });
+    });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(screen.queryAllByText("Couldn't load your communities")).toHaveLength(0);
+    expect(dockNames()).toEqual(['Inbox, 7 unread', 'All communities']);
+  });
 });

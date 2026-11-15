@@ -8,7 +8,7 @@
  * `AllCommunitiesSheet` is the view (closed props, stories); `AllCommunitiesSheetConnected` reads
  * `src/data`. The frame holds `open`.
  */
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Avatar,
@@ -21,6 +21,7 @@ import {
   Stack,
   Text,
   TextField,
+  useAnnounce,
   useListFocus,
   useQueryLoadState,
   useWidthRange,
@@ -43,6 +44,8 @@ import {
   FOOT_ROWS,
   SHEET_TITLE,
   dockRowId,
+  filterAnnouncement,
+  FILTER_ANNOUNCE_DELAY_MS,
   isFootRow,
   matchesFilter,
   mentionText,
@@ -95,7 +98,6 @@ function Body({
   canCreate,
   useLoad,
   filter,
-  onFilterChange,
   showSettings,
   onActivate,
 }: BodyProps): JSX.Element {
@@ -123,8 +125,10 @@ function Body({
   );
   const list = useListFocus({ rows, selected: currentId, onSelect: onActivate });
 
-  // Opened with many communities: the current one's row is scrolled into view inside the sheet's body, once,
-  // when the list first shows (a later refresh leaves the user's scroll alone).
+  // Opened with many communities: the current one's row is brought to the middle of the sheet's scrolling body,
+  // once, when the list first shows (a later refresh leaves the user's scroll alone). The heading and the filter
+  // sit above the body (the Sheet's `top`), so they stay in view. scrollTop, not scrollIntoView, which can scroll
+  // any scrollable ancestor (the page).
   const listRef = useRef<HTMLDivElement>(null);
   const revealed = useRef(false);
   const ready = load.status === 'ready' || load.status === 'refreshing';
@@ -132,8 +136,22 @@ function Body({
     if (revealed.current || !ready) return;
     revealed.current = true;
     const row = listRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
-    row?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    const body = listRef.current?.closest<HTMLElement>('[data-kit-sheet-body]');
+    if (!row || !body) return;
+    const rowBox = row.getBoundingClientRect();
+    const bodyBox = body.getBoundingClientRect();
+    if (rowBox.top >= bodyBox.top && rowBox.bottom <= bodyBox.bottom) return;
+    body.scrollTop += rowBox.top - bodyBox.top - (bodyBox.height - rowBox.height) / 2;
   }, [ready]);
+
+  // Filter results are said politely once typing pauses: the count, or that nothing matches.
+  const announce = useAnnounce();
+  const query = filter.trim();
+  useEffect(() => {
+    if (!filtering || query === '' || !ready) return undefined;
+    const timer = setTimeout(() => announce(filterAnnouncement(query, shown.length)), FILTER_ANNOUNCE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [announce, filtering, query, shown.length, ready]);
 
   const footRows = (
     <>
@@ -166,27 +184,18 @@ function Body({
 
   return (
     <>
-      {filtering && (
-        // Outside the list's element: the list's typeahead must not take the field's keys.
-        <TextField
-          label="Find a community"
-          labelHidden
-          type="search"
-          shape="round"
-          startIcon="Search"
-          placeholder="Find a community"
-          value={filter}
-          onChange={onFilterChange}
-        />
-      )}
       <div ref={listRef} {...list.listProps}>
         <LoadState
           state={load}
           label="Communities"
           errorTitle="Couldn't load your communities"
-          skeleton={Array.from({ length: ROW_SKELETONS }, (_, index) => (
-            <Skeleton key={index} shape="rect" height="lg" />
-          ))}
+          skeleton={
+            <Stack gap="xs">
+              {Array.from({ length: ROW_SKELETONS }, (_, index) => (
+                <Skeleton key={index} shape="rect" height="lg" />
+              ))}
+            </Stack>
+          }
           empty={
             <p>
               <Text tone="secondary">
@@ -228,16 +237,37 @@ function Body({
 }
 
 export function AllCommunitiesSheet({ open, onClose, instanceName, username, ...body }: AllCommunitiesSheetProps): JSX.Element {
+  const filtering = body.communities.length > FILTER_THRESHOLD;
   return (
-    <Sheet open={open} onClose={onClose} title={SHEET_TITLE}>
-      <Stack gap="lg">
-        <ListRow
-          primary={instanceName}
-          secondary={username === null ? undefined : `as ${username}`}
-          leading={<Avatar decorative name={instanceName} size="sm" shape="rounded" />}
-        />
-        <Body {...body} />
-      </Stack>
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={SHEET_TITLE}
+      // Fixed above the scrolling list: the heading and the filter never scroll out of view.
+      top={
+        <Stack gap="md">
+          <ListRow
+            primary={instanceName}
+            secondary={username === null ? undefined : `as ${username}`}
+            leading={<Avatar decorative name={instanceName} size="sm" shape="rounded" />}
+          />
+          {filtering && (
+            // Outside the list's element: the list's typeahead must not take the field's keys.
+            <TextField
+              label="Find a community"
+              labelHidden
+              type="search"
+              shape="round"
+              startIcon="Search"
+              placeholder="Find a community"
+              value={body.filter}
+              onChange={body.onFilterChange}
+            />
+          )}
+        </Stack>
+      }
+    >
+      <Body {...body} />
     </Sheet>
   );
 }
@@ -260,6 +290,12 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
   const range = useWidthRange();
   const { pathname } = useLocation();
   const [filter, setFilter] = useState('');
+  // A closed sheet forgets its filter, however it was closed (the frame may set `open` false itself).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (!open) setFilter('');
+  }
   const { pictures, onUrl } = useCommunityPictures();
 
   const items = useMemo<SheetCommunity[]>(
@@ -286,7 +322,6 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
 
   const close = useCallback(
     (reason: SheetCloseReason) => {
-      setFilter('');
       onClose(reason);
     },
     [onClose],

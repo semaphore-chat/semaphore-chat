@@ -730,6 +730,52 @@ describe('ReadReceiptsService', () => {
       expect(mockDatabase.message.groupBy).toHaveBeenCalledTimes(2);
     });
 
+    it('tags each channel entry with its type, so badges can count TEXT channels only', async () => {
+      const communityId = 'community-123';
+      const membership = {
+        ...MembershipFactory.build({ userId, communityId }),
+      } as any;
+      mockDatabase.readReceipt.findMany.mockResolvedValue([]);
+      mockDatabase.membership.findMany.mockResolvedValue([membership]);
+      channelAccessService.visibleChannelIds.mockResolvedValue([
+        'ch-text',
+        'ch-voice',
+      ]);
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: 'ch-text', communityId, type: 'TEXT' },
+        { id: 'ch-voice', communityId, type: 'VOICE' },
+      ]);
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
+      mockDatabase.notification.groupBy.mockResolvedValueOnce([]);
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.groupBy.mockResolvedValueOnce([
+        { channelId: 'ch-text', _count: { channelId: 2 } },
+        { channelId: 'ch-voice', _count: { channelId: 1 } },
+      ]);
+
+      const result = await service.getUnreadCounts(userId);
+
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: { id: true, communityId: true, type: true },
+        }),
+      );
+      expect(result).toContainEqual({
+        channelId: 'ch-text',
+        communityId,
+        channelType: 'TEXT',
+        unreadCount: 2,
+        mentionCount: 0,
+      });
+      expect(result).toContainEqual({
+        channelId: 'ch-voice',
+        communityId,
+        channelType: 'VOICE',
+        unreadCount: 1,
+        mentionCount: 0,
+      });
+    });
+
     it('should handle channels without read receipts', async () => {
       const communityId = 'community-123';
       const channelId = 'channel-no-receipt';
@@ -979,7 +1025,7 @@ describe('ReadReceiptsService', () => {
       expect(mockDatabase.channel.findMany).toHaveBeenCalledTimes(1);
       expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
         where: { id: { in: ['ch-1', 'ch-2', 'ch-3'] } },
-        select: { id: true, communityId: true },
+        select: { id: true, communityId: true, type: true },
       });
     });
   });

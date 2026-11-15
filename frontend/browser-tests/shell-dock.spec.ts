@@ -219,3 +219,86 @@ test.describe('Inbox and All always visible, no badge clipped', () => {
     await expect.poll(mask).toMatch(/^linear-gradient\(to right, (transparent|rgba\(0, 0, 0, 0\)) 0/);
   });
 });
+
+test.describe('focus on the current item stays visible', () => {
+  test('the current Inbox: the focus outline starts outside the current ring (a surface gap between them)', async ({ page }) => {
+    await openStory(page, 'shell-dock--inbox-current', { width: 1440, height: 900 });
+    await tabIntoDock(page);
+    expect(await focusedName(page)).toBe('Inbox, current, 9 unread');
+    const box = await page.evaluate(() => {
+      const element = document.activeElement as HTMLElement;
+      const style = getComputedStyle(element);
+      // The current ring is box-shadow spreads; its outer edge is the largest spread.
+      const spreads = [...style.boxShadow.matchAll(/(-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px/g)].map((m) => Number(m[4]));
+      return {
+        outline: style.outlineStyle,
+        outlineWidth: parseFloat(style.outlineWidth),
+        outlineStart: parseFloat(style.outlineOffset),
+        ringEnd: Math.max(0, ...spreads),
+      };
+    });
+    expect(box.outline).toBe('solid');
+    expect(box.outlineWidth).toBeGreaterThan(0);
+    expect(box.ringEnd).toBeGreaterThan(0);
+    expect(box.outlineStart).toBeGreaterThan(box.ringEnd);
+  });
+
+  test('a current community: its ring is a border inside the item, the outline outside the item', async ({ page }) => {
+    await openStory(page, 'shell-dock--mentions-and-new', { width: 1440, height: 900 });
+    await tabIntoDock(page);
+    expect(await focusedName(page)).toBe('Couch Co-op, current');
+    const box = await page.evaluate(() => {
+      const style = getComputedStyle(document.activeElement as HTMLElement);
+      return { outline: style.outlineStyle, outlineStart: parseFloat(style.outlineOffset), border: parseFloat(style.borderTopWidth) };
+    });
+    expect(box.outline).toBe('solid');
+    expect(box.border).toBeGreaterThan(0);
+    expect(box.outlineStart).toBeGreaterThan(0);
+  });
+});
+
+test.describe('a mouse wheel scrolls the middle sideways', () => {
+  test('a vertical wheel over the middle moves it sideways; at its end the page scrolls instead', async ({ page }) => {
+    await openStory(page, 'shell-dock--twelve', { width: 1440, height: 900 });
+    await page.evaluate(() => {
+      const filler = document.createElement('div');
+      filler.style.cssText = 'height:3000px';
+      document.body.appendChild(filler);
+    });
+    const region = dock(page).locator('[data-kit-dock-scroll]');
+    const scrollLeft = () => region.evaluate((element) => element.scrollLeft);
+    await region.evaluate((element) => {
+      element.scrollLeft = 0;
+    });
+    const box = (await region.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 120);
+    await expect.poll(scrollLeft).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    // At the end: the wheel goes on to the page
+    await region.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+    await page.mouse.wheel(0, 120);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  });
+});
+
+test('how many communities are wholly visible beside the fixed Inbox and All (recorded for the owner)', async ({ page }) => {
+  const counts: Record<number, number> = {};
+  for (const view of WIDTHS) {
+    await openStory(page, 'shell-dock--sixty', view);
+    await dock(page).evaluate((nav) => {
+      nav.querySelector<HTMLElement>('[data-kit-dock-scroll]')!.scrollLeft = 0;
+    });
+    counts[view.width] = await dock(page).evaluate((nav) => {
+      const region = nav.querySelector<HTMLElement>('[data-kit-dock-scroll]')!.getBoundingClientRect();
+      return [...nav.querySelectorAll<HTMLElement>('[data-kit-dock-scroll] a')].filter((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.left >= region.left && rect.right <= region.right;
+      }).length;
+    });
+  }
+  console.log(`visible communities at 390/820/1440: ${counts[390]}/${counts[820]}/${counts[1440]}`);
+  expect(counts[390]).toBeGreaterThan(0);
+});

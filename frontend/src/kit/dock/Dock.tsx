@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { barFocusProps, type BarFocus } from '../behaviour/hosts/listFocus';
@@ -31,6 +31,9 @@ export interface DockProps {
    */
   focus?: BarFocus;
 }
+
+/** A wheel "line" (deltaMode 1) in pixels, as browsers treat it. */
+const LINE_HEIGHT = 16;
 
 /** The fade at a scrolled edge, and the room kept beside an item scrolled into view. */
 const FADE = tokens.space.xl;
@@ -173,6 +176,26 @@ export function Dock({ label, children, start, end, bottomBar = false, focus }: 
     });
     observer.observe(bar);
     return () => observer.disconnect();
+  }, []);
+
+  // A mouse wheel turns vertically; the bar scrolls sideways. While the middle overflows, a vertical wheel with no
+  // sideways part scrolls it sideways, as far as it can go; at its end (or when nothing overflows) the event is left
+  // alone, so the page scrolls. Non-passive, so the sideways scroll can take the event from the page.
+  useEffect(() => {
+    const bar = ref.current;
+    if (bar === null) return undefined;
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaX !== 0 || event.deltaY === 0 || event.ctrlKey) return;
+      const room = bar.scrollWidth - bar.clientWidth;
+      if (room <= 1) return;
+      const step = event.deltaMode === 1 ? event.deltaY * LINE_HEIGHT : event.deltaMode === 2 ? event.deltaY * bar.clientWidth : event.deltaY;
+      const canMove = step > 0 ? bar.scrollLeft < room - 1 : bar.scrollLeft > 1;
+      if (!canMove) return;
+      event.preventDefault();
+      bar.scrollLeft = Math.max(0, Math.min(room, bar.scrollLeft + step));
+    };
+    bar.addEventListener('wheel', onWheel, { passive: false });
+    return () => bar.removeEventListener('wheel', onWheel);
   }, []);
 
   return (

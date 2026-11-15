@@ -85,7 +85,7 @@ test.describe('phone', () => {
   });
 });
 
-test('sixty communities: the sheet opens with the current community\'s row in view', async ({ page }) => {
+test('sixty communities: opens with the current row in view, the heading and filter still in view, the page not scrolled', async ({ page }) => {
   for (const view of [PHONE, TABLET, { width: 1440, height: 900 }]) {
     await openStory(page, 'all-communities-sheet--sixty', view);
     await expect(sheet(page)).toBeVisible();
@@ -93,15 +93,22 @@ test('sixty communities: the sheet opens with the current community\'s row in vi
     await expect(row).toHaveAttribute('href', '#/community/c-55');
     await expect
       .poll(() =>
-        row.evaluate((element) => {
-          let body: HTMLElement | null = element.parentElement;
-          while (body && getComputedStyle(body).overflowY !== 'auto') body = body.parentElement;
-          if (!body) return false;
+        sheet(page).evaluate((dialog) => {
+          const body = dialog.querySelector<HTMLElement>('[data-kit-sheet-body]')!;
+          const current = dialog.querySelector<HTMLElement>('a[aria-current="page"]')!;
+          const field = dialog.querySelector<HTMLElement>('input[type="search"]')!;
+          const panel = dialog.getBoundingClientRect();
           const outer = body.getBoundingClientRect();
-          const inner = element.getBoundingClientRect();
-          return body.scrollTop > 0 && inner.top >= outer.top && inner.bottom <= outer.bottom;
+          const inner = current.getBoundingClientRect();
+          const filter = field.getBoundingClientRect();
+          return {
+            scrolledToCurrent: body.scrollTop > 0,
+            currentInBody: inner.top >= outer.top && inner.bottom <= outer.bottom,
+            filterInPanel: filter.top >= panel.top && filter.bottom <= outer.top + 1,
+            pageScroll: window.scrollY + document.documentElement.scrollTop,
+          };
         }),
       )
-      .toBe(true);
+      .toEqual({ scrolledToCurrent: true, currentInBody: true, filterInPanel: true, pageScroll: 0 });
   }
 });

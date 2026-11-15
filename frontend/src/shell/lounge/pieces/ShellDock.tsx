@@ -7,7 +7,7 @@
  *
  * `ShellDock` is the view (closed props, stories); `ShellDockConnected` reads `src/data`.
  */
-import { useCallback, useEffect, useMemo, type JSX } from 'react';
+import { memo, useCallback, useEffect, useMemo, type JSX } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Dock,
@@ -18,6 +18,7 @@ import {
   useListFocus,
   useToasts,
   useWidthRange,
+  type RowFocus,
 } from '../../../kit';
 import { useMyCommunities } from '../../../data/myCommunities';
 import { useUnreadSummary } from '../../../data/unread';
@@ -61,12 +62,64 @@ const NONE: readonly DockCommunity[] = [];
 /** How many placeholder circles stand for the communities while they load. */
 const SKELETONS = 3;
 
-/** The ref callback that marks a dock item for RouteFocus's remembered row (DockItem takes no data attributes). */
-function markRow(id: string) {
-  return (element: HTMLElement | null) => {
-    element?.setAttribute(LOUNGE_ROW_ATTRIBUTE, dockRowId(id));
-  };
+/**
+ * The ref callback that marks a dock item for RouteFocus's remembered row (DockItem takes no data attributes). One
+ * per id for the app's life, so an item's ref never changes and is never detached and attached again.
+ */
+const markers = new Map<string, (element: HTMLElement | null) => void>();
+function markRow(id: string): (element: HTMLElement | null) => void {
+  let marker = markers.get(id);
+  if (marker === undefined) {
+    marker = (element) => element?.setAttribute(LOUNGE_ROW_ATTRIBUTE, dockRowId(id));
+    markers.set(id, marker);
+  }
+  return marker;
 }
+
+interface CommunityItemProps {
+  id: string;
+  name: string;
+  src: string | undefined;
+  mentions: number;
+  newMessages: boolean;
+  current: boolean;
+  focus: RowFocus;
+}
+
+/** Shallow equality of two plain objects (the list's opaque `focus` holds a tab index and two per-id callbacks). */
+function shallowEqual(a: object, b: object): boolean {
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((key) => Object.is(left[key], right[key]));
+}
+
+/**
+ * One community on the dock, memoised: a change to one community's counts re-renders that item only (the list's
+ * `focus` is a new object each render with the same contents, so it is compared by contents).
+ */
+const CommunityItem = memo(
+  function CommunityItem({ id, name, src, mentions, newMessages, current, focus }: CommunityItemProps): JSX.Element {
+    return (
+      <DockItem
+        ref={markRow(id)}
+        name={name}
+        src={src}
+        href={`#/community/${id}`}
+        current={current}
+        unread={mentions}
+        unreadLabel="mentions"
+        newMessages={newMessages}
+        focus={focus}
+      />
+    );
+  },
+  (previous, next) => {
+    const { focus: previousFocus, ...previousRest } = previous;
+    const { focus: nextFocus, ...nextRest } = next;
+    return shallowEqual(previousRest, nextRest) && shallowEqual(previousFocus, nextFocus);
+  },
+);
 
 export function ShellDock({
   communities,
@@ -80,17 +133,19 @@ export function ShellDock({
   onActivate,
 }: ShellDockProps): JSX.Element {
   const shown = status === 'ready' ? communities : NONE;
+  // The rows change only when the ids or names do, not on every count change.
+  const rowKey = shown.map((community) => `${community.id}\u0000${community.name}`).join('\u0001');
   const rows = useMemo(
     () => [
       { id: INBOX_ROW, label: 'Inbox', disabled: false },
       ...shown.map((community) => ({ id: community.id, label: community.name, disabled: false })),
       { id: ALL_ROW, label: ALL_LABEL, disabled: false },
     ],
-    [shown],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rowKey stands for the ids and names of `shown`
+    [rowKey],
   );
   const currentId = current === null ? null : current.kind === 'inbox' ? INBOX_ROW : current.id;
   const list = useListFocus({ rows, selected: currentId, orientation: 'horizontal', onSelect: onActivate });
-  const refs = useMemo(() => new Map(shown.map((community) => [community.id, markRow(community.id)])), [shown]);
 
   const hasItems = shown.length > 0 || status === 'loading';
   return (
@@ -130,16 +185,14 @@ export function ShellDock({
       {status === 'loading' &&
         Array.from({ length: SKELETONS }, (_, index) => <Skeleton key={index} shape="circle" size="md" />)}
       {shown.map((community) => (
-        <DockItem
+        <CommunityItem
           key={community.id}
-          ref={refs.get(community.id)}
+          id={community.id}
           name={community.name}
           src={community.src}
-          href={`#/community/${community.id}`}
-          current={current?.kind === 'community' && current.id === community.id}
-          unread={community.mentions}
-          unreadLabel="mentions"
+          mentions={community.mentions}
           newMessages={community.newMessages}
+          current={current?.kind === 'community' && current.id === community.id}
           focus={list.rowFocus(community.id)}
         />
       ))}
@@ -159,7 +212,7 @@ const LOAD_ERROR_TOAST = 'dock-communities';
 
 /** The dock from the server's list and the one unread query. */
 export function ShellDockConnected({ current, onOpenAll, allOpen = false }: ShellDockConnectedProps): JSX.Element {
-  const { communities, status, refetch } = useMyCommunities();
+  const { communities, status, refetch, query } = useMyCommunities();
   const unread = useUnreadSummary();
   const range = useWidthRange();
   const navigate = useNavigate();
@@ -183,7 +236,8 @@ export function ShellDockConnected({ current, onOpenAll, allOpen = false }: Shel
   );
 
   // A first load that failed: the dock keeps Inbox and All, and a toast offers to try again.
-  const failed = status === 'error' && communities.length === 0;
+  // Not "no communities": a user in none whose background refetch fails still has a loaded (empty) list.
+  const failed = status === 'error' && query.data === undefined;
   useEffect(() => {
     if (!failed) return undefined;
     toasts.show({

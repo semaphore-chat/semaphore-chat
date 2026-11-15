@@ -13,6 +13,7 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { RoomName } from '@/common/utils/room-name.util';
 import { ServerEvents } from '@semaphore-chat/shared';
 import type { UserEntity } from '@/user/dto/user-response.dto';
+import type { ChannelType } from '@prisma/client';
 
 type ReadReceiptAuthor = Pick<
   UserEntity,
@@ -24,6 +25,8 @@ export interface UnreadCount {
   directMessageGroupId?: string;
   /** Community of `channelId`; null for DM entries. */
   communityId?: string | null;
+  /** The channel's type (TEXT or VOICE); absent for DM entries. */
+  channelType?: ChannelType;
   unreadCount: number;
   mentionCount: number;
   lastReadMessageId?: string;
@@ -339,12 +342,13 @@ export class ReadReceiptsService {
       channelIds.length > 0
         ? await this.databaseService.channel.findMany({
             where: { id: { in: channelIds } },
-            select: { id: true, communityId: true },
+            select: { id: true, communityId: true, type: true },
           })
         : [];
     const channelCommunities = new Map(
       channels.map((c) => [c.id, c.communityId]),
     );
+    const channelTypes = new Map(channels.map((c) => [c.id, c.type]));
 
     // Get all DM groups the user is a member of
     const dmGroupMemberships =
@@ -455,6 +459,7 @@ export class ReadReceiptsService {
       unreadCounts.push({
         channelId: count.channelId!,
         communityId: channelCommunities.get(count.channelId!) ?? null,
+        channelType: channelTypes.get(count.channelId!),
         unreadCount: count._count.channelId,
         mentionCount: channelMentionMap.get(count.channelId!) ?? 0,
       });
@@ -513,6 +518,7 @@ export class ReadReceiptsService {
         unreadCounts.push({
           channelId,
           communityId: channelCommunities.get(channelId) ?? null,
+          channelType: channelTypes.get(channelId),
           unreadCount: countMap.get(channelId) ?? 0,
           mentionCount: channelMentionMap.get(channelId) ?? 0,
         });
@@ -533,6 +539,7 @@ export class ReadReceiptsService {
           return {
             channelId: receipt.channelId,
             communityId: channelCommunities.get(receipt.channelId) ?? null,
+            channelType: channelTypes.get(receipt.channelId),
             unreadCount: count,
             mentionCount: channelMentionMap.get(receipt.channelId) ?? 0,
             lastReadMessageId: receipt.lastReadMessageId,

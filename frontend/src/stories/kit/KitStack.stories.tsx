@@ -35,3 +35,16 @@ export const GapsLight = () => (
     </div>
   </KitStage>
 );
+
+/** The same, tinted. */
+export const GapsTinted = () => (
+  <KitStage mode="dark" base="#0d9488" intensity="vibrant">
+    <div style={{ width: tokens.layout.leftColumn }}>
+      <Stack gap="lg">
+        <Text variant="section">Couch Co-op</Text>
+        <TextField label="Find a community" labelHidden value="" onChange={() => undefined} placeholder="Find a community" shape="round" />
+        <ListRow primary="general" onClick={() => undefined} />
+      </Stack>
+    </div>
+  </KitStage>
+);

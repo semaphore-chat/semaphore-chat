@@ -339,3 +339,15 @@ export const FixedEndsPhone = () => (
     </div>
   </Page>
 );
+
+/** Fixed ends on a tinted palette. */
+export const FixedEndsTinted = () => (
+  <Page mode="dark" base="#0d9488" intensity="vibrant">
+    <div style={{ width: tokens.layout.leftColumn }}>
+      <SlotBar count={12} current={5} />
+    </div>
+    <div style={{ width: tokens.layout.leftColumn }}>
+      <SlotBar count={3} current={0} inboxCurrent />
+    </div>
+  </Page>
+);
