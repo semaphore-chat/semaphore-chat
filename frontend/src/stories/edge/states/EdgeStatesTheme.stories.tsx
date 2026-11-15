@@ -6,8 +6,8 @@
  * them (see `fixtures/edge/states.ts`), independent of Ladle's theme toggle.
  */
 import { edgeScreen } from '../../fixtures/edge/states';
+import type { StoryTheme } from '../../fixtures/types';
 import { withOpenedContextRead } from '../../fixtures/modifiers';
-import type { ThemeSettings } from '../../../theme/constants';
 import {
   bigCommunityScenario,
   primaryCommunity,
@@ -19,8 +19,8 @@ const s = bigCommunityScenario;
 // The open DM is read (`withOpenedContextRead`): the app clears what it shows, so seeding dm-1
 // unread would leave the rail's Direct Messages badge racing that clear.
 const dmChatScenario = withOpenedContextRead(s, firstDmGroup.id);
-const light: ThemeSettings = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
-const dark: ThemeSettings = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
+const light: StoryTheme = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
+const dark: StoryTheme = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
 
 const screens = {
   channelChat: `/community/${primaryCommunity.id}/channel/${generalChannel.id}`,

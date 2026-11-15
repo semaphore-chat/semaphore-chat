@@ -3,7 +3,6 @@
  * channel, none for a read one; text colour at 80%. Light and dark.
  */
 import { edgeScreen } from '../../fixtures/edge/states';
-import type { ThemeSettings } from '../../../theme/constants';
 import {
   navBase,
   navHandlers,
@@ -11,10 +10,10 @@ import {
   withAllChannelsUnread,
   NAV_COMMUNITY,
 } from '../../fixtures/edge/nav';
-import type { Scenario } from '../../fixtures/types';
+import type { Scenario, StoryTheme } from '../../fixtures/types';
 
-const light: ThemeSettings = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
-const dark: ThemeSettings = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
+const light: StoryTheme = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
+const dark: StoryTheme = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
 
 const TEXT = ['general', 'announcements', 'design-review', 'random', 'support', 'releases'];
 const base = withAllChannelsUnread(withChannels(navBase(), NAV_COMMUNITY, TEXT, ['Lounge', 'Stage']), NAV_COMMUNITY);

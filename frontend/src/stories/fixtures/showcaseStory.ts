@@ -35,7 +35,6 @@ import type { LocalParticipant, Participant, RemoteParticipant, Room } from 'liv
 import { ACCENT_PRIMARY, ClientEvents, ServerEvents } from '@semaphore-chat/shared';
 import type { AppearanceSettingsResponseDto } from '../../api-client/types.gen';
 import { ThemeProvider } from '../../contexts/ThemeContext';
-import type { ThemeSettings } from '../../theme/constants';
 import type { VoiceState } from '../../contexts/VoiceContext';
 import { RoomContext } from '../../contexts/RoomContextDef';
 import { SpeakingProvider } from '../../contexts/SpeakingContext';
@@ -49,10 +48,10 @@ import type { LadleStoryComponent } from './screenStory';
 import { showcaseFileHandlers } from './showcaseArt';
 import { SHOWCASE_ONLINE_IDS, showcaseScenario } from './showcase';
 import { showcaseGifHandlers } from './showcaseGifs';
-import type { Scenario, ScenarioUser } from './types';
+import type { Scenario, ScenarioUser, StoryTheme } from './types';
 
 /** The showcase's default look: dark, violet accent (matches the docs site), balanced intensity. */
-export const SHOWCASE_THEME: ThemeSettings = { mode: 'dark', accentColor: 'purple', intensity: 'balanced' };
+export const SHOWCASE_THEME: StoryTheme = { mode: 'dark', accentColor: 'purple', intensity: 'balanced' };
 
 // ─────────────────────────────────────────────────────────────────────────
 // Socket
@@ -333,7 +332,7 @@ function liveHandlers(scenario: Scenario, live: LiveState): HttpHandler[] {
 // Handlers
 // ─────────────────────────────────────────────────────────────────────────
 
-function appearanceHandler(scenario: Scenario, theme: ThemeSettings): HttpHandler {
+function appearanceHandler(scenario: Scenario, theme: StoryTheme): HttpHandler {
   return http.get('/api/appearance-settings', () =>
     HttpResponse.json({
       id: 'appearance-1',
@@ -590,7 +589,7 @@ function ShowcaseControls({
 
 export interface ShowcaseOptions {
   scenario?: Scenario;
-  theme?: ThemeSettings;
+  theme?: StoryTheme;
   voiceState?: Partial<VoiceState>;
   /** Voice participants (me first). Requires `voiceState` to be "connected". */
   voice?: { me: ShowcaseVoicer; remotes: ShowcaseVoicer[]; autoConversation?: string[] };

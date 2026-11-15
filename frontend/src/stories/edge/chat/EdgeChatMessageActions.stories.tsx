@@ -7,12 +7,12 @@
 import React, { useEffect } from 'react';
 import GlobalStyles from '@mui/material/GlobalStyles';
 import { edgeScreen } from '../../fixtures/edge/states';
-import type { ThemeSettings } from '../../../theme/constants';
+import type { StoryTheme } from '../../fixtures/types';
 import { bigCommunityScenario as s, primaryCommunity, generalChannel } from '../../fixtures/scenarios';
 import { useDriver, findMessageRow, openMessageActions, wait, mediaSettled } from '../../fixtures/edge/chat';
 
-const light: ThemeSettings = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
-const dark: ThemeSettings = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
+const light: StoryTheme = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
+const dark: StoryTheme = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
 const chatPath = `/community/${primaryCommunity.id}/channel/${generalChannel.id}`;
 
 /**
