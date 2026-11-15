@@ -167,6 +167,19 @@ screen readers.
 |`badge`|a number|none|A count over the button's corner, the same danger Badge a DockItem shows (the Dock's Inbox). 0, or a number that is not finite, shows nothing. The count is added to the name: "Inbox, 9 unread".|
 |`badgeMeaning`|`unread`, `mentions`|`unread`|What `badge` counts, in the name: "9 unread", or "1 mention" / "2 mentions".|
 |`current`|true, false|false|The place you are in, for an item on the Dock: the accent ring a current DockItem has (a surface gap, then the accent), ", current" in the name before the count, and `aria-current="page"`. Not a toggle: use `selected` for that. With keyboard focus the focus ring moves outside the current ring (its usual offset, past the ring), so the two never overlap. Web kit only so far.|
+|`hold`|`{ onStart, onEnd }`|none|Makes it a press-and-hold control (hold to talk). See below.|
+
+**Press and hold.** With `hold` the button is held, not clicked: `onStart` runs
+when a finger, pen or the main mouse button goes down on it, and `onEnd` runs
+exactly once when that hold ends. The pointer is captured, so sliding off the
+button keeps the hold, and lifting it anywhere ends it. The hold also ends when
+the pointer is cancelled (a call, the system taking the gesture), when capture
+is lost, when the button becomes disabled or stops being a hold control, and
+when it unmounts, so nothing is left held with no finger on it. The button does
+not scroll the page, select text or open the long-press menu. It has no pressed
+state of its own: show a hold that is running with `variant` (the call bar uses
+`primary` while it transmits). Keys do not hold it. Use it only where holding is
+the action (hold to talk); for anything else use a plain button.
 
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
@@ -176,7 +189,8 @@ Stories: `kit-icon-button--variants`, `kit-icon-button--states`,
 `kit-icon-button--variants-tinted`, `kit-icon-button--badge-and-current`,
 `kit-icon-button--badge-and-current-light`, `kit-icon-button--badge-and-current-tinted`,
 `kit-icon-button--current-focused`, `kit-icon-button--current-focused-light`,
-`kit-icon-button--current-focused-tinted`.
+`kit-icon-button--current-focused-tinted`, `kit-icon-button--hold`,
+`kit-icon-button--hold-light`.
 
 ## KeyCap
 

@@ -65,6 +65,13 @@
  *       too: the marker must be found in some lazy chunk and the font names in
  *       some lazy stylesheet, or the check proves nothing.
  *
+ *   (e) The new shell's call surface (shell/lounge/call/surface) is its own lazy
+ *       chunk: found by the marker "lounge-call-surface", in exactly one asset
+ *       that is not eager and is not the LoungeRoot chunk. And the new shell's
+ *       chunk does not statically import the livekit-client chunk (entering the
+ *       Lounge must not fetch LiveKit; only the call surface or the classic call
+ *       code may). Prints the sizes of the lounge chunks it found.
+ *
  * Usage: pnpm run check:bundle-budget   (after pnpm run build)
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -313,6 +320,49 @@ if (existsSync(ASSETS_DIR)) {
     console.log(
       `[check-bundle-budget] New design shell (assets/${loungeChunks.join(", ")}) and kit fonts ` +
         `(assets/${fontStyles.join(", ")}) are lazy: not in the entry, a preloaded chunk or an index.html stylesheet — good.`
+    );
+  }
+}
+
+// --- (e) the call surface is its own lazy chunk; the new shell does not pull LiveKit in statically ---
+{
+  const LOUNGE_MARKER = "semaphore-lounge-root";
+  const SURFACE_MARKER = "lounge-call-surface";
+  const strip = (ref) => ref.replace(/^\.?\//, "");
+  const eager = new Set([
+    ...scriptSrcs,
+    ...[...indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]),
+  ].map((ref) => strip(ref).replace(/^assets\//, "")));
+  const js = (existsSync(ASSETS_DIR) ? readdirSync(ASSETS_DIR) : []).filter((f) => f.endsWith(".js"));
+  const read = (f) => readFileSync(join(ASSETS_DIR, f), "utf-8");
+  const surface = js.filter((f) => read(f).includes(SURFACE_MARKER));
+  const root = js.filter((f) => read(f).includes(LOUNGE_MARKER));
+  const livekit = js.filter((f) => read(f).includes(LIVEKIT_CHUNK_MARKER));
+  const kb = (f) => `${(read(f).length / 1024).toFixed(1)} KB`;
+  let ok = true;
+  const report = (message) => {
+    console.error(`[check-bundle-budget] ${message}`);
+    ok = false;
+    hadFailure = true;
+  };
+  if (surface.length !== 1) {
+    report(`Expected the call surface ("${SURFACE_MARKER}") in exactly one chunk, found ${surface.length}: ${surface.join(", ")}.`);
+  } else {
+    if (eager.has(surface[0])) report(`The call surface chunk assets/${surface[0]} is loaded on every page.`);
+    if (root.includes(surface[0])) report(`The call surface is inside the new shell's chunk (assets/${surface[0]}): it must be its own lazy chunk.`);
+  }
+  for (const f of root) {
+    for (const lk of livekit) {
+      const name = lk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`(from|import)\\s*["']\\./${name}["']`).test(read(f))) {
+        report(`The new shell's chunk assets/${f} statically imports the livekit-client chunk (assets/${lk}).`);
+      }
+    }
+  }
+  if (ok) {
+    console.log(
+      `[check-bundle-budget] Call surface is its own lazy chunk (assets/${surface[0]}, ${kb(surface[0])}); ` +
+        `new shell ${root.map((f) => `assets/${f} (${kb(f)})`).join(", ")} does not import LiveKit statically — good.`
     );
   }
 }

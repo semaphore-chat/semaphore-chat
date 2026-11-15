@@ -8,7 +8,7 @@ import { createRoutesFromChildren, matchRoutes, type RouteObject } from 'react-r
 import type { ReactElement } from 'react';
 import { AppRoutes } from '../../routes';
 import { chooseShell } from '../../shell/chooseShell';
-import { LOUNGE_MARKER_PATH, LOUNGE_ROUTES, type LoungeRoute } from '../../shell/loungeRoutes';
+import { LOUNGE_CALL_FIXTURE_PATH, LOUNGE_MARKER_PATH, LOUNGE_ROUTES, type LoungeRoute } from '../../shell/loungeRoutes';
 import type { WidthRange } from '../../kit/layout/breakpoints';
 
 const WIDTHS: WidthRange[] = ['phone', 'compact', 'wide'];
@@ -99,17 +99,17 @@ describe('the registry (LOUNGE_ROUTES)', () => {
     for (const route of LOUNGE_ROUTES) expect(route.widths.length).toBeGreaterThan(0);
   });
 
-  it('registers only the marker for now (no real screen before the new shell has a call surface)', () => {
-    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([LOUNGE_MARKER_PATH]);
+  it('registers only the test fixtures for now: the marker and the call-slot fixture', () => {
+    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([LOUNGE_MARKER_PATH, LOUNGE_CALL_FIXTURE_PATH]);
   });
 
-  it("every registered real path is an old screen in routes.tsx, and the marker is the old shell's not-found page", () => {
+  it("every registered real path is an old screen in routes.tsx, and the fixtures are the old shell's not-found page", () => {
     for (const route of LOUNGE_ROUTES) {
       const sample = route.path.replace(/:(\w+)/g, 'x-$1');
       const matches = matchRoutes(table, sample) ?? [];
       const leaf = matches[matches.length - 1]?.route;
-      if (route.path === LOUNGE_MARKER_PATH) {
-        expect(leaf?.path, 'the marker falls through to *').toBe('*');
+      if (route.path === LOUNGE_MARKER_PATH || route.path === LOUNGE_CALL_FIXTURE_PATH) {
+        expect(leaf?.path, `the fixture ${route.path} falls through to *`).toBe('*');
       } else {
         expect(leaf?.path, `${route.path} must exist in routes.tsx`).not.toBe('*');
         expect(leaf, `${route.path} must exist in routes.tsx`).toBeDefined();

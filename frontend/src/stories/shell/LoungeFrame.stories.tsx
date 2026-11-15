@@ -1,11 +1,10 @@
 /**
  * The Lounge frame (shell/lounge/frame/LoungeFrame.tsx): a route's screen descriptor rendered into
  * its template. `bare` is the marker filling the frame; `threeIslands` is the chat template with the
- * shell's pieces in their slots. The pieces are placeholders until PRs 5-7: here each slot shows its
- * name, so the screenshots show where the dock, the community, the members and the call bar sit at
- * phone, tablet and desktop width. In the app the placeholders render nothing. The community left island
- * and the members (PR 6) are the real, connected pieces, on the mock-ups' people and places
- * (`fixtures/loungeCommunityHandlers.ts`).
+ * shell's pieces in their slots: the dock, the community left island and the members (PR 6) are the real,
+ * connected pieces, on the mock-ups' people and places (`fixtures/loungeCommunityHandlers.ts`). The call slot is
+ * real (PR 7) and empty out of a call, so it has no row here; its own stories (call-bar--*, call-surface--*,
+ * voice-notice-bar--*) show it.
  */
 import { useRef, type JSX } from 'react';
 import { IncomingCallProvider } from '../../contexts/IncomingCallContext';

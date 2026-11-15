@@ -208,6 +208,26 @@ the left column, under the left island. On a phone it sits between the pane on
 show and the dock bar, and it stays on screen whichever pane is shown, so the
 user can always reach Leave. With no call bar there is no row and no gap.
 
+In the app the call bar shows the room and what is happening (joining, who is
+talking, reconnecting with Cancel, "Hold V to talk", or why the mic is blocked),
+the mute control (on a touch layout under push-to-talk, a hold-to-talk control)
+and Open call view and Leave, at every width, so mute never depends on which
+left island is shown. Deafen is on the phone bar; at compact and wide it is on
+the user's own card in the left island. While a join is still connecting the
+bar shows only the room and "Joining…". The camera, starting a screen share,
+the soundboard, replay capture, device settings and the debug panel are not in
+the bar: "Open call view" goes to the full call screen, which has them, and
+device settings are also in Settings.
+
+Above the bar, in the same slot, the call's video appears while someone in the
+call shares a screen or has a camera on, or you share your screen. A share or
+camera you do not watch is offered with Watch, and nothing is received until
+the user chooses it. A watched one shows its picture, with Stop watching, which
+stops receiving every picture shown (unlike the old app's close button on the
+video overlay, which only hid it). Your own share has Stop sharing. Out of a
+call, the slot shows the voice notice instead: a join that failed or why the
+call ended, with Retry when trying again can help, and Dismiss.
+
 **What goes where**
 
 |Region|Goes here|Does not go here|

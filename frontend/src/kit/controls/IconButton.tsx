@@ -1,4 +1,14 @@
-import { useCallback, type AriaAttributes, type JSX, type MouseEvent, type MouseEventHandler, type Ref } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type AriaAttributes,
+  type JSX,
+  type MouseEvent,
+  type MouseEventHandler,
+  type PointerEvent,
+  type Ref,
+} from 'react';
 import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
@@ -19,6 +29,15 @@ import { rowFocusProps, type RowFocus } from '../behaviour/hosts/listFocus';
 export type IconButtonSize = 'sm' | 'md' | 'lg';
 export type IconButtonVariant = Extract<ButtonVariant, 'ghost' | 'soft' | 'primary' | 'danger'>;
 
+/**
+ * Press and hold (hold to talk): `onStart` when a pointer goes down on the button, `onEnd` exactly once when
+ * that hold ends, wherever the pointer is by then.
+ */
+export interface IconButtonHold {
+  onStart: () => void;
+  onEnd: () => void;
+}
+
 export interface IconButtonProps {
   icon: IconName;
   /** The accessible name: an icon alone names nothing. */
@@ -35,6 +54,12 @@ export interface IconButtonProps {
   /** Joins a keyboard list (a Dock): `useListFocus(...).rowFocus(id)`. The button becomes one stop of the list's single Tab stop. */
   focus?: RowFocus;
   title?: string;
+  /**
+   * Makes it a press-and-hold control (hold to talk). The pointer is captured on press, so sliding off the button
+   * keeps the hold; it ends when the pointer is lifted or cancelled, when capture is lost, when the button becomes
+   * disabled or when it unmounts. No long-press menu, no text selection, no scrolling from the button.
+   */
+  hold?: IconButtonHold;
   'aria-expanded'?: AriaAttributes['aria-expanded'];
   'aria-haspopup'?: 'menu' | 'dialog' | 'listbox' | true;
   'aria-controls'?: AriaAttributes['aria-controls'];
@@ -77,11 +102,12 @@ interface RootProps {
   $size: IconButtonSize;
   $selected: boolean;
   $on: Surface;
+  $hold: boolean;
 }
 
 const Root = styled(ButtonBase, {
   shouldForwardProp: transientProps,
-})<RootProps>(({ theme, $variant, $size, $selected, $on, $current }) => {
+})<RootProps>(({ theme, $variant, $size, $selected, $on, $current, $hold }) => {
   const { palette } = kitTheme(theme);
   const look = buttonLook(palette, $variant, $on);
   // On the accent pill a ghost or soft button reads as the on-accent ink; a soft one keeps a faint
@@ -138,6 +164,13 @@ const Root = styled(ButtonBase, {
       // focus offset as its own gap, so keyboard focus on the current item always shows.
       '&:focus-visible': focusRing(palette, CURRENT_FOCUS_OFFSET),
     }),
+    // A hold control: the finger on it must not scroll, select text or open the long-press menu.
+    ...($hold && {
+      touchAction: 'none',
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
+      WebkitTouchCallout: 'none',
+    }),
     '&:disabled': {
       opacity: tokens.state.disabled,
       pointerEvents: 'none',
@@ -168,6 +201,7 @@ export function IconButton({
   id,
   focus,
   title,
+  hold,
   'aria-expanded': ariaExpanded,
   'aria-haspopup': ariaHaspopup,
   'aria-controls': ariaControls,
@@ -193,6 +227,31 @@ export function IconButton({
     },
     [ref, rovingRef],
   );
+
+  // Hold: the latest callbacks given (a re-render mid-hold, even one that drops `hold`, must end the hold it
+  // started) and whether one is running.
+  const holdRef = useRef(hold);
+  if (hold) holdRef.current = hold;
+  const holdingRef = useRef(false);
+  const endHold = useCallback(() => {
+    if (!holdingRef.current) return;
+    holdingRef.current = false;
+    holdRef.current?.onEnd();
+  }, []);
+  const startHold = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!hold || disabled || busy || holdingRef.current) return;
+    // The main button of a mouse or pen; any touch.
+    if (event.pointerType !== 'touch' && event.button !== 0) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    holdingRef.current = true;
+    hold.onStart();
+  };
+  // Ends a running hold when the button becomes disabled or busy, stops being a hold control, or unmounts.
+  const holdAllowed = hold !== undefined && !disabled && !busy;
+  useEffect(() => {
+    if (!holdAllowed) endHold();
+  }, [holdAllowed, endHold]);
+  useEffect(() => endHold, [endHold]);
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
@@ -221,12 +280,18 @@ export function IconButton({
       id={id}
       tabIndex={roving?.tabIndex}
       title={title}
+      onPointerDown={hold ? startHold : undefined}
+      onPointerUp={hold ? endHold : undefined}
+      onPointerCancel={hold ? endHold : undefined}
+      onLostPointerCapture={hold ? endHold : undefined}
+      onContextMenu={hold ? (event: MouseEvent<HTMLButtonElement>) => event.preventDefault() : undefined}
       disableRipple
       $variant={variant}
       $size={size}
       $selected={selected === true}
       $on={on}
       $current={current}
+      $hold={hold !== undefined}
     >
       {busy ? (
         <Spinner size={ICON_SIZE[size]} />
