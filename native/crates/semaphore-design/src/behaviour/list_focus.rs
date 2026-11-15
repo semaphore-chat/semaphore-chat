@@ -57,6 +57,12 @@ pub enum Event {
     SetSelected {
         id: Option<String>,
     },
+    /// Focus left the list.
+    FocusOut,
+    /// A row received focus by other means than the list's keys.
+    FocusRow {
+        id: String,
+    },
 }
 
 /// What the list asks of its surroundings.
@@ -215,6 +221,25 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
         return (next, effects);
     }
 
+    if let Event::FocusOut = event {
+        // Rule 18: focus left the list. The typed letters go (their timer too); an enabled
+        // selected row takes the Tab stop back (rule 6 on the next focusIn), otherwise the last
+        // focused row keeps it.
+        if !next.typeahead.is_empty() {
+            effects.push(Effect::CancelTimer { token: next.token });
+            next.typeahead.clear();
+        }
+        let enabled = enabled_ids(&next.rows);
+        if next
+            .selected
+            .as_ref()
+            .is_some_and(|selected| enabled.contains(selected))
+        {
+            next.focused = None;
+        }
+        return (next, effects);
+    }
+
     let enabled = enabled_ids(&next.rows);
     // Rule 2: with no enabled rows, every key does nothing.
     if enabled.is_empty() && !matches!(event, Event::TimerFired { .. }) {
@@ -223,8 +248,16 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
     let focused = next.focused.clone();
 
     match event {
-        // Handled above: every setRows and setSelected event returns before this match.
-        Event::SetRows { .. } | Event::SetSelected { .. } => {}
+        // Handled above: every setRows, setSelected and focusOut event returns before this match.
+        Event::SetRows { .. } | Event::SetSelected { .. } | Event::FocusOut => {}
+        Event::FocusRow { id } => {
+            // Rule 19: a row focused by other means than the keys is the focused row, as a focus
+            // move (rule 12 selects with selectionFollowsFocus on); a disabled or unknown row
+            // does nothing.
+            if enabled.contains(id) {
+                focus(&mut next, id, params, &mut effects);
+            }
+        }
         Event::Down | Event::Up => {
             // Rule 3: Down moves to the next enabled row, Up to the previous one; with nothing
             // focused, Down takes the first and Up the last.

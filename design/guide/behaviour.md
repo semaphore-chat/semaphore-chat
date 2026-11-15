@@ -485,6 +485,13 @@ Rules:
   no `select` is emitted, and focus and the typed letters stay where they are.
   An id that names no row means nothing is selected; once the row arrives, the
   host sets it again.
+- When focus leaves the list (`focusOut`), the typed letters are dropped. If a
+  usable row is selected, the next time focus enters it goes to that row, so a
+  selection changed while the user was away is where they come back. With no
+  usable selection, focus comes back to the row it left.
+- When a row gets focus some other way than the list's keys (a click, a screen
+  reader, code; `focusRow`), that row becomes the focused row, so the arrows go
+  on from there. It selects only in a list that selects as focus moves.
 - "Case does not matter" means each character is put in lower case on its own,
   the same way in every language (Python's `str.lower()` on one character at a
   time). Characters are then compared exactly, so an emoji only matches itself.
@@ -506,6 +513,7 @@ Random.
 |Typeahead|One character per `type`; the timer runs as the effects say|
 |Selection|`select` and `deselect` acted on; the host reads `focused` to move real focus|
 |Selection from outside|`setSelected` whenever the screen's selection differs from the pattern's, also after `setRows`|
+|Focus in and out|`focusOut` when focus moves outside the list (not between its rows or to a row's controls); `focusRow` when a row gets focus that the host did not move there|
 
 **The web host** (`useListFocus` in `frontend/src/kit/behaviour/hosts/listFocus.ts`):
 
@@ -530,6 +538,10 @@ Random.
   it; the focus then scrolls it into view.
 - In a vertical list, a row's trailing controls are not Tab stops: Right goes
   from the row into them and Left back.
+- Focus leaving the list container (`focusout` to anything outside it, or to
+  nothing) is `focusOut`; a row's own `focus` event, when that row is not the
+  pattern's focused row, is `focusRow`. Neither moves or reveals anything: real
+  focus is already where it is.
 
 ## Load state
 

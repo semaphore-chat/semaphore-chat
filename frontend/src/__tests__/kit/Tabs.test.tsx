@@ -90,6 +90,34 @@ describe('Tabs', () => {
     expect(onChange).toHaveBeenLastCalledWith('none');
   });
 
+  it('after the user left the tabs, a value changed from outside is where Tab comes back', async () => {
+    const ui = (value: string) => (
+      <>
+        <Tabs label="Notify" tabs={TABS} value={value} onChange={() => {}} />
+        <button type="button">After</button>
+      </>
+    );
+    const { user, rerender } = renderWithKit(ui('all'));
+    act(() => screen.getByRole('tab', { name: 'All' }).focus());
+    await user.keyboard('{ArrowRight}');
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'After' }));
+    rerender(ui('none'));
+    expect(screen.getByRole('tab', { name: 'Nothing' })).toHaveAttribute('tabindex', '0');
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Nothing' }));
+  });
+
+  it('Up and Down move between tabs too', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(<Controlled onChange={onChange} />);
+    act(() => screen.getByRole('tab', { name: 'All' }).focus());
+    await user.keyboard('{ArrowDown}');
+    expect(onChange).toHaveBeenLastCalledWith('mentions');
+    await user.keyboard('{ArrowUp}');
+    expect(onChange).toHaveBeenLastCalledWith('all');
+  });
+
   it('a disabled tab is disabled and ignores clicks', async () => {
     const onChange = vi.fn();
     renderWithKit(<Controlled onChange={onChange} />);

@@ -42,7 +42,9 @@ export type Event =
   | { timerFired: { token: number } }
   | { activate: Record<string, never> }
   | { press: { id: string } }
-  | { setSelected: { id: string | null } };
+  | { setSelected: { id: string | null } }
+  | { focusOut: Record<string, never> }
+  | { focusRow: { id: string } };
 
 export type Effect =
   | { select: { id: string } }
@@ -68,6 +70,8 @@ const EVENT_NAMES = [
   'activate',
   'press',
   'setSelected',
+  'focusOut',
+  'focusRow',
 ] as const;
 
 export const DEFAULT_PARAMS: Params = {
@@ -188,6 +192,18 @@ export function stepListFocus(
     return { state: next, effects };
   }
 
+  if ('focusOut' in event) {
+    // Rule 18: focus left the list. The typed letters go (their timer too); an
+    // enabled selected row takes the Tab stop back (rule 6 on the next focusIn),
+    // otherwise the last focused row keeps it.
+    if (next.typeahead) {
+      effects.push({ cancelTimer: { token: next.token } });
+      next.typeahead = '';
+    }
+    if (next.selected !== null && enabledIds(next.rows).includes(next.selected)) next.focused = null;
+    return { state: next, effects };
+  }
+
   const enabled = enabledIds(next.rows);
   // Rule 2: with no enabled rows, every key does nothing.
   if (enabled.length === 0 && !('timerFired' in event)) return { state: next, effects };
@@ -241,6 +257,11 @@ export function stepListFocus(
       next.selected = focused;
       effects.push({ select: { id: focused } });
     }
+  } else if ('focusRow' in event) {
+    // Rule 19: a row focused by other means than the keys is the focused row, as
+    // a focus move (rule 12 selects with selectionFollowsFocus on); a disabled or
+    // unknown row does nothing.
+    if (enabled.includes(event.focusRow.id)) focus(next, event.focusRow.id, params, effects);
   } else if ('press' in event) {
     // Rule 13: a press on an enabled row focuses and selects it; on a disabled
     // or unknown row it does nothing.

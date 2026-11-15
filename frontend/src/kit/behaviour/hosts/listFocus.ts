@@ -110,6 +110,12 @@ const HORIZONTAL_MOVES: Record<string, Event> = {
   ArrowLeft: { up: {} },
 };
 
+/** The row that holds the list's Tab stop: the focused row, else the selected row if enabled, else the first enabled. */
+function tabStopOf(state: State): string | null {
+  const enabled = state.rows.filter((row) => !row.disabled).map((row) => row.id);
+  return state.focused ?? (state.selected !== null && enabled.includes(state.selected) ? state.selected : (enabled[0] ?? null));
+}
+
 function rowsKey(rows: readonly Row[]): string {
   return JSON.stringify(rows.map((row) => [row.id, row.label, row.disabled]));
 }
@@ -252,12 +258,19 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
 
   function onListBlur(event: FocusEvent<HTMLElement>): void {
     const to = event.relatedTarget;
+    // Between rows, or to a row's trailing control: still in the list.
+    if (to instanceof Node && event.currentTarget.contains(to)) return;
     // Focus went somewhere else on purpose: a row removed later must not pull it back.
-    if (to instanceof Node && !event.currentTarget.contains(to)) lastRow = null;
+    if (to instanceof Node) lastRow = null;
+    machine.send({ focusOut: {} });
   }
 
   function onRowFocus(event: FocusEvent<HTMLElement>): void {
     lastRow = event.currentTarget;
+    // A row focused by anything but our keys (a click, a screen reader, focus() from code): the pattern follows the
+    // real focus. Real focus is already there, so nothing is focused or revealed in return.
+    const place = locate(event.currentTarget);
+    if (place?.part === 'row' && place.id !== machine.getState().focused) machine.send({ focusRow: { id: place.id } });
   }
 
   function refFor(id: string): (element: HTMLElement | null) => void {
@@ -318,7 +331,8 @@ export function createListFocusHost(timers: TimerService, doc: Document, params:
         const lost = (doc.activeElement === null || doc.activeElement === doc.body) && lastRow !== null && !lastRow.isConnected;
         const had = focusInList() || lost;
         machine.send({ setRows: { rows } });
-        const { focused } = machine.getState();
+        // After a focusOut the pattern has no focused row: a removal that dropped focus goes to the Tab stop.
+        const focused = machine.getState().focused ?? (lost ? tabStopOf(machine.getState()) : null);
         if (had && focused !== null && (focused !== before || lost)) focusRow(focused);
       }
       const known = selected !== null && machine.getState().rows.some((row) => row.id === selected);
@@ -378,9 +392,7 @@ export function useListFocus(options: ListFocusOptions): ListFocus {
   });
   useEffect(() => () => host.dispose(), [host]);
 
-  const enabled = state.rows.filter((row) => !row.disabled).map((row) => row.id);
-  const tabStop =
-    state.focused ?? (state.selected !== null && enabled.includes(state.selected) ? state.selected : (enabled[0] ?? null));
+  const tabStop = tabStopOf(state);
 
   return {
     listProps: { onKeyDown: host.onKeyDown, onKeyUp: host.onKeyUp, onFocus: host.onListFocus, onBlur: host.onListBlur },

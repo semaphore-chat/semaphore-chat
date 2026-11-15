@@ -885,6 +885,10 @@ fn list_event_from_json(value: &Value) -> Result<list::Event, String> {
         "press" => list::Event::Press {
             id: canon::text(fields, "id")?.to_owned(),
         },
+        "focusOut" => list::Event::FocusOut,
+        "focusRow" => list::Event::FocusRow {
+            id: canon::text(fields, "id")?.to_owned(),
+        },
         "setSelected" => list::Event::SetSelected {
             id: canon::optional_text(fields, "id")?.map(str::to_owned),
         },
@@ -1047,6 +1051,11 @@ fn list_focus_tolerates_states_it_never_makes() {
         list::Event::Activate,
         list::Event::Press { id: "a".to_owned() },
         list::Event::SetRows { rows: Vec::new() },
+        list::Event::FocusOut,
+        list::Event::FocusRow { id: "a".to_owned() },
+        list::Event::FocusRow {
+            id: "zzz".to_owned(),
+        },
     ];
     for wrap in [false, true] {
         for selection_follows_focus in [false, true] {

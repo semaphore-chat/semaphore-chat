@@ -470,6 +470,8 @@ LIST_EVENTS = (
     "activate",
     "press",
     "setSelected",
+    "focusOut",
+    "focusRow",
 )
 
 
@@ -562,6 +564,17 @@ def step_list_focus(state: dict, event: dict, params: dict) -> tuple[dict, Effec
         state["selected"] = row_id if row_id in {row["id"] for row in state["rows"]} else None
         return state, effects
 
+    if name == "focusOut":
+        # Rule 18: focus left the list. The typed letters go (their timer too);
+        # an enabled selected row takes the Tab stop back (rule 6 on the next
+        # focusIn), otherwise the last focused row keeps it.
+        if state["typeahead"]:
+            effects.append(_effect("cancelTimer", token=state["token"]))
+            state["typeahead"] = ""
+        if state["selected"] in _enabled(state["rows"]):
+            state["focused"] = None
+        return state, effects
+
     enabled = _enabled(state["rows"])
     # Rule 2: with no enabled rows, every key does nothing.
     if not enabled and name != "timerFired":
@@ -621,6 +634,13 @@ def step_list_focus(state: dict, event: dict, params: dict) -> tuple[dict, Effec
         if focused is not None:
             state["selected"] = focused
             effects.append(_effect("select", id=focused))
+
+    elif name == "focusRow":
+        # Rule 19: a row focused by other means than the keys is the focused row,
+        # as a focus move (rule 12 selects with selectionFollowsFocus on); a
+        # disabled or unknown row does nothing.
+        if fields["id"] in enabled:
+            _focus(state, fields["id"], params, effects)
 
     elif name == "press":
         # Rule 13: a press on an enabled row focuses and selects it; on a disabled

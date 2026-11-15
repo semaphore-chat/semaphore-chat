@@ -36,6 +36,9 @@ function List({ rows = CHANNELS, selected = null, links = false, trailing = fals
   const list = useListFocus({ rows, selected, ...options });
   return (
     <div role="list" aria-label="Channels" {...list.listProps}>
+      <output data-testid="focused" hidden>
+        {list.focused ?? ''}
+      </output>
       {rows.map((item) => (
         <div role="listitem" key={item.id}>
           <ListRow
@@ -118,7 +121,7 @@ describe('useListFocus: the Tab stop', () => {
     expect(active()).toBe(rowEl('Random'));
   });
 
-  it('follows focus: the last focused row is the stop when Tab comes back', async () => {
+  it('with a selection, Tab comes back to the selected row after the user moved and left (focusOut)', async () => {
     const { user } = renderWithKit(
       <>
         <List selected="general" />
@@ -132,8 +135,58 @@ describe('useListFocus: the Tab stop', () => {
     expect(rowEl('Games')).toHaveAttribute('tabindex', '0');
     expect(rowEl('General')).toHaveAttribute('tabindex', '-1');
     await user.tab();
+    expect(rowEl('General')).toHaveAttribute('tabindex', '0');
+    await user.tab({ shift: true });
+    expect(active()).toBe(rowEl('General'));
+  });
+
+  it('with no selection, Tab comes back to the last focused row', async () => {
+    const { user } = renderWithKit(
+      <>
+        <List />
+        <button type="button">After</button>
+      </>,
+    );
+    focus(rowEl('General'));
+    await user.keyboard('{ArrowDown}');
+    await user.tab();
     await user.tab({ shift: true });
     expect(active()).toBe(rowEl('Games'));
+  });
+
+  it('leaving, then a selection set from outside: Tab comes back to the newly selected row', async () => {
+    const ui = (selected: string) => (
+      <>
+        <List selected={selected} />
+        <button type="button">After</button>
+      </>
+    );
+    const { user, rerender } = renderWithKit(ui('general'));
+    focus(rowEl('General'));
+    await user.keyboard('{ArrowDown}');
+    await user.tab();
+    rerender(ui('random'));
+    await user.tab({ shift: true });
+    expect(active()).toBe(rowEl('Random'));
+  });
+
+  it('moving between rows or into a trailing control is not leaving the list', async () => {
+    const { user } = renderWithKit(
+      <>
+        <List selected="general" trailing />
+        <button type="button">After</button>
+      </>,
+    );
+    const focused = () => screen.getByTestId('focused').textContent;
+    focus(rowEl('General'));
+    await user.keyboard('{ArrowDown}');
+    expect(focused()).toBe('games');
+    await user.keyboard('{ArrowRight}');
+    expect(active()).toBe(screen.getByRole('button', { name: 'Mute Games' }));
+    expect(focused()).toBe('games');
+    await user.tab();
+    // Out of the list: the pattern hands the stop back to the selected row.
+    expect(focused()).toBe('');
   });
 });
 
@@ -264,7 +317,8 @@ describe('useListFocus: activation', () => {
     const { user } = renderWithKit(<Controlled selectionFollowsFocus onSelect={onSelect} />);
     focus(rowEl('General'));
     await user.keyboard('{ArrowDown}{End}');
-    expect(onSelect.mock.calls).toEqual([['games'], ['random']]);
+    // Focusing General from code is a focus move too (focusRow), so it selects as well.
+    expect(onSelect.mock.calls).toEqual([['general'], ['games'], ['random']]);
     expect(rowEl('Random')).toHaveAttribute('aria-current', 'true');
   });
 
@@ -377,6 +431,24 @@ describe('useListFocus: typeahead', () => {
     expect(fireEvent.keyUp(rowEl('General chat'), { key: ' ' })).toBe(true);
   });
 
+  it('leaving the list drops the letters typed so far', () => {
+    const rows = [row('general', 'General'), row('random', 'Random'), row('rgb', 'RGB')];
+    setup(
+      <>
+        <List rows={rows} />
+        <button type="button">After</button>
+      </>,
+    );
+    focus(rowEl('General'));
+    press('r');
+    expect(active()).toBe(rowEl('Random'));
+    focus(screen.getByRole('button', { name: 'After' }));
+    focus(rowEl('Random'));
+    // Fresh letters: "g" is General, not "rg" (no match, focus would stay on Random).
+    press('g');
+    expect(active()).toBe(rowEl('General'));
+  });
+
   it('typeahead: false leaves letters alone', () => {
     setup(<List typeahead={false} />);
     focus(rowEl('General'));
@@ -443,6 +515,34 @@ describe('useListFocus: the selection set from outside', () => {
     const { rerender } = renderWithKit(<List selected="random" />);
     rerender(<List selected={null} />);
     expect(rowEl('General')).toHaveAttribute('tabindex', '0');
+  });
+});
+
+describe('useListFocus: a row focused by other means (focusRow)', () => {
+  it('a row focused from code is where the arrows start; nothing is chosen or revealed', async () => {
+    const onSelect = vi.fn();
+    const reveal = vi.fn();
+    const { user } = renderWithKit(<List onSelect={onSelect} reveal={reveal} />);
+    focus(rowEl('Games'));
+    expect(rowEl('Games')).toHaveAttribute('tabindex', '0');
+    await user.keyboard('{ArrowDown}');
+    expect(active()).toBe(rowEl('Random'));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(reveal.mock.calls).toEqual([['random']]);
+  });
+
+  it('a row focused from code selects it when selection follows focus', () => {
+    const onSelect = vi.fn();
+    renderWithKit(<Controlled selectionFollowsFocus onSelect={onSelect} />);
+    focus(rowEl('Random'));
+    expect(onSelect.mock.calls).toEqual([['random']]);
+    expect(rowEl('Random')).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('focusing a trailing control is not a row focus', () => {
+    renderWithKit(<List trailing />);
+    focus(screen.getByRole('button', { name: 'Mute Random' }));
+    expect(screen.getByTestId('focused').textContent).toBe('general');
   });
 });
 

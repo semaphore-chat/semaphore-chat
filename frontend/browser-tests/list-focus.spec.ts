@@ -122,8 +122,9 @@ test.describe('@keyboard', () => {
     // One Tab leaves the list (past every row and trailing control) for the button after it.
     await page.keyboard.press('Tab');
     await expect(page.getByRole('button', { name: 'Add channel' })).toBeFocused();
+    // Back in: the Tab stop went back to the selected row when focus left (focusOut).
     await page.keyboard.press('Shift+Tab');
-    await expect(page.getByRole('link', { name: 'lfg' })).toBeFocused();
+    await expect(page.getByRole('link', { name: 'general' })).toBeFocused();
   });
 });
 
@@ -160,4 +161,21 @@ test('the selection set from outside moves the pill and the Tab stop; focus stay
   await page.getByRole('button', { name: 'Clear' }).focus();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'memes' })).toBeFocused();
+});
+
+test.describe('@keyboard', () => {
+  test('leave the list, change the selection from outside, Tab back: focus lands on the newly selected row', async ({ page }) => {
+    await openStory(page, 'kit-list-focus--selection-from-outside', VIEW);
+    await page.getByRole('link', { name: 'clips' }).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('link', { name: 'memes' })).toBeFocused();
+    // Out of the list, backwards, onto Clear; then a selection from outside.
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByRole('button', { name: 'Clear' })).toBeFocused();
+    await page.getByRole('button', { name: 'Go to #general' }).click();
+    await expect(page.getByRole('link', { name: 'general' })).toHaveAttribute('aria-current', 'page');
+    await page.getByRole('button', { name: 'Clear' }).focus();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'general' })).toBeFocused();
+  });
 });

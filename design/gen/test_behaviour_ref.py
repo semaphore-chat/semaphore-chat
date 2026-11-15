@@ -808,6 +808,48 @@ class ListFocusTest(unittest.TestCase):
         self.assertEqual(m.send("setSelected", id="a"), [])
         self.assertEqual(m.state["selected"], "a")
 
+    def test_r18_focus_out_hands_the_tab_stop_back_to_the_selected_row(self):
+        m = self.machine([row("a"), row("b"), row("c")])
+        m.send("setSelected", id="a")
+        m.send("focusIn")
+        m.send("down")
+        self.assertEqual(m.send("focusOut"), [])
+        self.assertEqual((m.state["focused"], m.state["selected"]), (None, "a"))
+        m.send("setSelected", id="c")
+        m.send("focusIn")
+        self.assertEqual(m.state["focused"], "c")
+
+    def test_r18_with_no_usable_selection_the_last_focused_row_stays(self):
+        for selected in (None, "b"):
+            m = self.machine([row("a"), row("b", disabled=True), row("c")])
+            m.send("setSelected", id=selected)
+            m.send("end")
+            m.send("focusOut")
+            self.assertEqual((m.state["focused"], m.state["selected"]), ("c", selected))
+
+    def test_r18_focus_out_clears_the_typed_letters_and_their_timer(self):
+        m = self.machine([row("a", "Alpha"), row("b", "Beta")])
+        m.send("type", char="b")
+        self.assertEqual(m.send("focusOut"), [cancel_timer(1)])
+        self.assertEqual((m.state["typeahead"], m.state["token"]), ("", 1))
+        self.assertEqual(m.send("focusOut"), [])
+        self.assertEqual(m.send("timerFired", token=1), [])
+
+    def test_r19_focus_row_moves_focus_without_selecting(self):
+        m = self.machine([row("a", "Alpha"), row("b", "Beta"), row("c", disabled=True)])
+        m.send("type", char="a")
+        self.assertEqual(m.send("focusRow", id="b"), [])
+        self.assertEqual((m.state["focused"], m.state["selected"], m.state["typeahead"]), ("b", None, "a"))
+        before = copy.deepcopy(m.state)
+        for ignored in ("c", "zzz", "b"):
+            self.assertEqual(m.send("focusRow", id=ignored), [])
+        self.assertEqual(m.state, before)
+
+    def test_r19_focus_row_selects_when_selection_follows_focus(self):
+        m = self.machine([row("a"), row("b")], selectionFollowsFocus=True)
+        self.assertEqual(m.send("focusRow", id="b"), [{"select": {"id": "b"}}])
+        self.assertEqual(m.send("focusRow", id="b"), [])
+
     def test_type_char_must_be_one_character(self):
         m = self.machine([row("a")])
         for bad in ("", "AB", "😀😀"):

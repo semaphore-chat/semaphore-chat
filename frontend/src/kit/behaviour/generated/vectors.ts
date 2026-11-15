@@ -4966,6 +4966,1452 @@ export const behaviourVectors = {
           },
         ],
       },
+      {
+        name: 'leaving the list, then the selection set from outside: focus comes back to the newly selected row',
+        params: {
+          selectionFollowsFocus: false,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'general',
+                    label: 'General',
+                  },
+                  {
+                    disabled: false,
+                    id: 'games',
+                    label: 'Games',
+                  },
+                  {
+                    disabled: true,
+                    id: 'archive',
+                    label: 'Archive',
+                  },
+                  {
+                    disabled: false,
+                    id: 'random',
+                    label: 'Random',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              setSelected: {
+                id: 'general',
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'general',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusIn: {},
+            },
+            state: {
+              focused: 'general',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'general',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              down: {},
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'general',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusOut: {},
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'general',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              setSelected: {
+                id: 'random',
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'random',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusIn: {},
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'random',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'leaving the list with no selection keeps the last focused row and clears the typed letters',
+        params: {
+          selectionFollowsFocus: false,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'general',
+                    label: 'General',
+                  },
+                  {
+                    disabled: false,
+                    id: 'games',
+                    label: 'Games',
+                  },
+                  {
+                    disabled: true,
+                    id: 'archive',
+                    label: 'Archive',
+                  },
+                  {
+                    disabled: false,
+                    id: 'random',
+                    label: 'Random',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              down: {},
+            },
+            state: {
+              focused: 'general',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: 'r',
+              },
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: 'r',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              focusOut: {},
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: '',
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              focusIn: {},
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 1,
+              },
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusOut: {},
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: '',
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'leaving the list when the selected row is disabled keeps the last focused row',
+        params: {
+          selectionFollowsFocus: false,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'general',
+                    label: 'General',
+                  },
+                  {
+                    disabled: false,
+                    id: 'games',
+                    label: 'Games',
+                  },
+                  {
+                    disabled: true,
+                    id: 'archive',
+                    label: 'Archive',
+                  },
+                  {
+                    disabled: false,
+                    id: 'random',
+                    label: 'Random',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              setSelected: {
+                id: 'archive',
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'archive',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              down: {},
+            },
+            state: {
+              focused: 'general',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'archive',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              down: {},
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'archive',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusOut: {},
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'archive',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusIn: {},
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'archive',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              setRows: {
+                rows: [],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [
+              {
+                deselect: {},
+              },
+            ],
+          },
+          {
+            event: {
+              focusOut: {},
+            },
+            state: {
+              focused: null,
+              rows: [],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'a row focused from outside the list\'s keys',
+        params: {
+          selectionFollowsFocus: false,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'general',
+                    label: 'General',
+                  },
+                  {
+                    disabled: false,
+                    id: 'games',
+                    label: 'Games',
+                  },
+                  {
+                    disabled: true,
+                    id: 'archive',
+                    label: 'Archive',
+                  },
+                  {
+                    disabled: false,
+                    id: 'random',
+                    label: 'Random',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'games',
+              },
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              down: {},
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'archive',
+              },
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'nope',
+              },
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'random',
+              },
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: 'g',
+              },
+            },
+            state: {
+              focused: 'general',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: 'g',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'general',
+              },
+            },
+            state: {
+              focused: 'general',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: 'g',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'general',
+              },
+            },
+            state: {
+              focused: 'general',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: 'g',
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'a row focused from outside when selection follows focus',
+        params: {
+          selectionFollowsFocus: true,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'general',
+                    label: 'General',
+                  },
+                  {
+                    disabled: false,
+                    id: 'games',
+                    label: 'Games',
+                  },
+                  {
+                    disabled: true,
+                    id: 'archive',
+                    label: 'Archive',
+                  },
+                  {
+                    disabled: false,
+                    id: 'random',
+                    label: 'Random',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'games',
+              },
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'games',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [
+              {
+                select: {
+                  id: 'games',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'games',
+              },
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'games',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              setSelected: {
+                id: 'random',
+              },
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'random',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              focusRow: {
+                id: 'random',
+              },
+            },
+            state: {
+              focused: 'random',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'general',
+                  label: 'General',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: 'Games',
+                },
+                {
+                  disabled: true,
+                  id: 'archive',
+                  label: 'Archive',
+                },
+                {
+                  disabled: false,
+                  id: 'random',
+                  label: 'Random',
+                },
+              ],
+              selected: 'random',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+        ],
+      },
     ],
   },
   loadState: {
