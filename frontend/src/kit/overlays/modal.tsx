@@ -2,6 +2,7 @@ import { useState, type JSX, type ReactNode } from 'react';
 import MuiDialog from '@mui/material/Dialog';
 import type { CSSObject, Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
+import { LiveRegionSlot } from '../behaviour/hosts/LiveRegionSlot';
 import { kitTheme } from '../theme/KitProvider';
 import { SurfaceContext } from '../theme/onSurface';
 import { OverlayContainerContext } from './overlayContainer';
@@ -13,7 +14,8 @@ import { fadeTransition, reducedMotion } from './surface';
  * press on the scrim call `onClose`, and focus returns to the opener. This adds
  * the kit's scrim and fade, the heading style, and the element that layers
  * opened from inside (a Popover, Tooltip, Menu or SelectField list) render in,
- * so the focus trap lets focus into them.
+ * so the focus trap lets focus into them. It also holds a live-region slot, so
+ * an announcement made while it is open is read from inside it.
  */
 export interface ModalProps {
   open: boolean;
@@ -61,6 +63,7 @@ export function Modal({
       {/* The panel is a portal: context from where it was opened crosses it, so reset to the panel's own layer. */}
       <SurfaceContext value="surface">
         <OverlayContainerContext value={layer}>{children}</OverlayContainerContext>
+        <LiveRegionSlot scope="layer" active={open} />
       </SurfaceContext>
     </MuiDialog>
   );

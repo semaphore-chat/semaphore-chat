@@ -4,6 +4,7 @@ import { derivePalette, type IntensityName, type ModeName } from '../../theme/de
 import { createLoungeTheme, type LoungeTheme } from './createLoungeTheme';
 // The kit bundles its own fonts; import them wherever a KitProvider renders.
 import '../fonts';
+import { BehaviourHost } from '../behaviour/hosts/BehaviourHost';
 
 export interface KitProviderProps {
   base: string;
@@ -26,7 +27,11 @@ export function KitProvider({ base, mode, intensity, children }: KitProviderProp
     [base, mode, intensity],
   );
   const themeFn = useCallback(() => theme, [theme]);
-  return <ThemeProvider theme={themeFn}>{children}</ThemeProvider>;
+  return (
+    <ThemeProvider theme={themeFn}>
+      <BehaviourHost>{children}</BehaviourHost>
+    </ThemeProvider>
+  );
 }
 
 /**

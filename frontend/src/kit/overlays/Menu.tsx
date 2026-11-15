@@ -1,8 +1,10 @@
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
+import { createPortal } from 'react-dom';
 import MuiMenu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import { styled, type Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
+import { LiveRegionSlot } from '../behaviour/hosts/LiveRegionSlot';
 import { Icon } from '../display/Icon';
 import { KeyCap } from '../display/KeyCap';
 import type { IconName } from '../icons/generated';
@@ -97,6 +99,8 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
   const gap = placement.startsWith('bottom') ? ANCHOR_GAP : -ANCHOR_GAP;
   // Inside a Dialog the menu renders in the Dialog, where its focus trap lets focus in.
   const container = useOverlayContainer();
+  // The menu's modal root: its live-region slot goes there, outside the list MUI manages.
+  const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
   return (
     // A portal: reset to the menu's own layer, whatever it was opened from.
     <SurfaceContext value="surface">
@@ -111,6 +115,7 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
       transitionDuration={tokens.motion.fast}
       {...fadeTransition}
       slotProps={{
+        root: { ref: setModalRoot },
         paper: { sx: [paperSx, { marginTop: `${gap}px` }] },
         list: { 'aria-label': label, sx: listSx },
       }}
@@ -152,6 +157,7 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
         );
       })}
     </MuiMenu>
+    {modalRoot !== null && createPortal(<LiveRegionSlot scope="layer" active={open} />, modalRoot)}
     </SurfaceContext>
   );
 }
