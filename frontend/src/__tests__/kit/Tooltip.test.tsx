@@ -1,6 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { Button, Checkbox, IconButton, RadioGroup, SelectField, Slider, Switch, Tabs, TextField, Tooltip } from '../../kit';
+import {
+  Button,
+  Checkbox,
+  ESCAPE_PRIORITY,
+  IconButton,
+  RadioGroup,
+  SelectField,
+  Slider,
+  Switch,
+  Tabs,
+  TextField,
+  Tooltip,
+  useScreenEscape,
+} from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 let consoleError: MockInstance;
@@ -51,18 +64,37 @@ describe('Tooltip', () => {
     expect(button()).not.toHaveAttribute('aria-describedby');
   });
 
-  it('hides on Escape without closing anything around it', async () => {
-    const outer = vi.fn();
+  it('hides on Escape and uses the key up: the screen chain does not get it', async () => {
+    const onScreen = vi.fn(() => true);
+    function ScreenEscape() {
+      useScreenEscape(onScreen, ESCAPE_PRIORITY.panel);
+      return null;
+    }
     const { user } = renderWithKit(
-      <div role="presentation" onKeyDown={outer}>
+      <>
+        <ScreenEscape />
         <Subject />
-      </div>,
+      </>,
     );
+    await user.tab();
+    await screen.findByRole('tooltip');
+    expect(fireEvent.keyDown(button(), { key: 'Escape' })).toBe(false);
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    expect(onScreen).not.toHaveBeenCalled();
+    expect(button()).toHaveFocus();
+  });
+
+  it('after Escape it stays hidden until focus leaves and comes back', async () => {
+    const { user } = renderWithKit(<Subject />);
     await user.tab();
     await screen.findByRole('tooltip');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
-    expect(outer).not.toHaveBeenCalled();
+    fireEvent.focusIn(button());
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    await user.tab();
+    await user.tab({ shift: true });
+    expect(await screen.findByRole('tooltip')).toBeInTheDocument();
   });
 
   it('shows after a delay on mouse hover and hides when the pointer leaves', async () => {

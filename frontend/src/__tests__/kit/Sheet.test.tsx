@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { Button, Popover, Sheet, SelectField, TextField, media } from '../../kit';
+import { Button, Popover, Sheet, SelectField, TextField, media, type ModalCloseReason } from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { rulesFor } from './cssRules';
@@ -15,15 +15,15 @@ afterEach(() => {
   consoleError.mockRestore();
 });
 
-function Harness({ onClose, actions, long = false }: { onClose?: () => void; actions?: boolean; long?: boolean }) {
+function Harness({ onClose, actions, long = false }: { onClose?: (reason?: ModalCloseReason) => void; actions?: boolean; long?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button onClick={() => setOpen(true)}>All communities</Button>
       <Sheet
         open={open}
-        onClose={() => {
-          onClose?.();
+        onClose={(reason) => {
+          onClose?.(reason);
           setOpen(false);
         }}
         title="All communities"
@@ -73,16 +73,18 @@ describe('Sheet', () => {
     await user.click(opener());
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('escape');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(document.activeElement).toBe(opener());
   });
 
-  it('the Close button calls onClose', async () => {
+  it("the Close button calls onClose('button')", async () => {
     const onClose = vi.fn();
     const { user } = renderWithKit(<Harness onClose={onClose} />);
     await user.click(opener());
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('button');
   });
 
   it('a press on the scrim calls onClose; a press inside does not', async () => {
@@ -93,6 +95,7 @@ describe('Sheet', () => {
     expect(onClose).not.toHaveBeenCalled();
     await user.click(screen.getByRole('dialog').parentElement as HTMLElement);
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('scrim');
   });
 
   it('locks the page scroll while open and releases it on close', async () => {

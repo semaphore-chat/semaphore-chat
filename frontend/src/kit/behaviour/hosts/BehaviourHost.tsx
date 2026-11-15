@@ -4,6 +4,7 @@ import { createAnnouncer } from './announcer';
 import { BehaviourHostContext, type BehaviourHostValue } from './hostContext';
 import { createIds } from './ids';
 import { LiveRegionSlot } from './LiveRegionSlot';
+import { createOverlayHost } from './overlay';
 import { documentRouter } from './router';
 import { browserTimers } from './timers';
 
@@ -13,8 +14,8 @@ import { browserTimers } from './timers';
  * regions in the page root), the id counters and the timer owner, and it
  * registers with the document router.
  *
- * The router has nothing to say yet: the overlay, toast, confirm, list and load
- * hosts register their handlers here as they arrive.
+ * The overlay stack's handlers (Escape, Tab, presses) are registered here; the
+ * toast, confirm, list and load hosts add theirs as they arrive.
  */
 export function BehaviourHost({ children }: { children: ReactNode }): JSX.Element {
   const outer = useContext(BehaviourHostContext);
@@ -23,19 +24,23 @@ export function BehaviourHost({ children }: { children: ReactNode }): JSX.Elemen
 }
 
 function createHost(): BehaviourHostValue {
+  const owner = {};
+  const ids = createIds();
+  const router = documentRouter();
   return {
-    owner: {},
+    owner,
     announcer: createAnnouncer(),
-    ids: createIds(),
+    ids,
     timers: browserTimers,
-    router: documentRouter(),
+    router,
+    overlay: createOverlayHost({ ids, doc: document, onOpen: () => router.touch(owner) }),
   };
 }
 
 function RootHost({ children }: { children: ReactNode }): JSX.Element {
   const [host] = useState(createHost);
   useEffect(() => {
-    const off = host.router.register(host.owner, {});
+    const off = host.router.register(host.owner, host.overlay.handlers);
     return () => {
       off();
       host.timers.disposeAll(host.owner);

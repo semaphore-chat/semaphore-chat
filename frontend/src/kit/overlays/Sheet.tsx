@@ -5,13 +5,18 @@ import { IconButton } from '../controls/IconButton';
 import { kitTheme } from '../theme/KitProvider';
 import { shadow } from '../theme/shadow';
 import { transientProps } from '../theme/transientProps';
-import { Modal } from './modal';
+import { Modal, type ModalCloseReason } from './modal';
 import { ModalTitle, PHONE, SAFE_BOTTOM, actionsStack, gutterContainer, panelBase } from './modalParts';
 
 export interface SheetProps {
   open: boolean;
-  /** Called on Escape, on a press on the scrim and on the Close button; the parent decides whether to close. */
-  onClose: () => void;
+  /**
+   * Called on Escape (`'escape'`), on a press on the scrim (`'scrim'`) and on the
+   * Close button (`'button'`); the parent decides whether to close. Called with
+   * no reason when the layer the sheet was opened from closes: then it is
+   * already closed, and `open` should follow.
+   */
+  onClose: (reason?: ModalCloseReason) => void;
   /** Names the sheet. */
   title: string;
   children: ReactNode;
@@ -57,7 +62,7 @@ const Actions = styled('div')(({ theme }) => ({
 }));
 
 /** The title and Close. With no actions row, Close takes focus when the sheet opens (the panel is not a control). */
-function Head({ titleId, title, onClose, focusClose }: { titleId: string; title: string; onClose: () => void; focusClose: boolean }): JSX.Element {
+function Head({ titleId, title, onClose, focusClose }: { titleId: string; title: string; onClose: (reason: ModalCloseReason) => void; focusClose: boolean }): JSX.Element {
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (focusClose) {
@@ -67,7 +72,7 @@ function Head({ titleId, title, onClose, focusClose }: { titleId: string; title:
   return (
     <Header>
       <ModalTitle id={titleId}>{title}</ModalTitle>
-      <IconButton ref={close} icon="X" label="Close" onClick={onClose} />
+      <IconButton ref={close} icon="X" label="Close" onClick={() => onClose('button')} />
     </Header>
   );
 }
@@ -86,6 +91,7 @@ export function Sheet({ open, onClose, title, children, actions, size = 'md' }: 
   const titleId = `${useId()}-title`;
   return (
     <Modal
+      kind="sheet"
       open={open}
       onClose={onClose}
       labelledBy={titleId}

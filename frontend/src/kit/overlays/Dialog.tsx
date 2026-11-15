@@ -3,13 +3,18 @@ import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { shadow } from '../theme/shadow';
-import { Modal } from './modal';
+import { Modal, type ModalCloseReason } from './modal';
 import { ModalTitle, actionsStack, gutterContainer, panelBase } from './modalParts';
 
 export interface DialogProps {
   open: boolean;
-  /** Called on Escape and on a press on the scrim; the parent decides whether to close. */
-  onClose: () => void;
+  /**
+   * Called on Escape (`'escape'`) and on a press on the scrim (`'scrim'`); the
+   * parent decides whether to close. Called with no reason when the layer the
+   * dialog was opened from closes: then it is already closed, and `open` should
+   * follow.
+   */
+  onClose: (reason?: ModalCloseReason) => void;
   /** Names the dialog. */
   title: string;
   /** Describes it, for assistive technology and the eye. */
@@ -54,9 +59,10 @@ function Foot({ children }: { children: ReactNode }): JSX.Element {
 }
 
 /**
- * A modal dialog over a dimmed page. MUI's Dialog supplies the behaviour (see
+ * A modal dialog over a dimmed page, a layer of the overlay stack (see
  * `Modal`): the page behind is inert and does not scroll, Tab cycles inside,
- * Escape and a press on the scrim call `onClose`, and focus returns to the opener.
+ * Escape and a press on the scrim call `onClose`, and focus returns to the
+ * opener.
  *
  * A Popover, Tooltip, Menu or SelectField list opened from inside render within
  * the Dialog, so its focus trap lets focus into them; Escape closes the
@@ -76,6 +82,7 @@ export function Dialog({
   const descriptionId = description ? `${uid}-description` : undefined;
   return (
     <Modal
+      kind="dialog"
       open={open}
       onClose={onClose}
       labelledBy={titleId}

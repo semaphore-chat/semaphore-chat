@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { Announcer } from './announcer';
 import type { Ids } from './ids';
+import type { OverlayHost } from './overlay';
 import type { DocumentRouter } from './router';
 import type { TimerService } from './timers';
 
@@ -12,6 +13,8 @@ export interface BehaviourHostValue {
   readonly ids: Ids;
   readonly timers: TimerService;
   readonly router: DocumentRouter;
+  /** The overlay stack: layers, Escape, Tab, presses and focus return. */
+  readonly overlay: OverlayHost;
 }
 
 export const BehaviourHostContext = createContext<BehaviourHostValue | null>(null);

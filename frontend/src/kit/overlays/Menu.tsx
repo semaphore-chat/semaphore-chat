@@ -1,10 +1,11 @@
-import { useState, type JSX } from 'react';
+import { useRef, useState, type JSX } from 'react';
 import { createPortal } from 'react-dom';
 import MuiMenu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import { styled, type Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { LiveRegionSlot } from '../behaviour/hosts/LiveRegionSlot';
+import { useOverlayLayer } from '../behaviour/hosts/overlay';
 import { Icon } from '../display/Icon';
 import { KeyCap } from '../display/KeyCap';
 import type { IconName } from '../icons/generated';
@@ -88,11 +89,13 @@ const paperSx = (theme: Theme) => ({
 const listSx = { padding: `${tokens.space.xs}px` };
 
 /**
- * A menu of actions that opens from an `anchor`. MUI's Menu supplies the
- * behaviour: focus moves to the first item, the arrows, Home, End and typing a
- * letter move it, a disabled item is skipped, Escape and an outside press close
- * it and focus returns to the opener. Choosing an item calls `onSelect`, then
- * `onClose`.
+ * A menu of actions that opens from an `anchor`, a layer of the overlay stack.
+ * The stack decides when it closes (Escape, a press outside, Tab) and where
+ * focus goes after (back to whatever had it when the menu opened). MUI's Menu
+ * draws it, keeps the press outside from reaching the page (its invisible
+ * backdrop), and supplies the list keys: focus moves to the first item, the
+ * arrows, Home, End and typing a letter move it, a disabled item is skipped.
+ * Choosing an item calls `onSelect`, then `onClose`.
  */
 export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-start' }: MenuProps): JSX.Element {
   const { anchorOrigin, transformOrigin } = placementOrigins(placement);
@@ -101,14 +104,19 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
   const container = useOverlayContainer();
   // The menu's modal root: its live-region slot goes there, outside the list MUI manages.
   const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
+  const paper = useRef<HTMLDivElement>(null);
+  const { forcedClosed } = useOverlayLayer({ kind: 'menu', open, panel: paper, onRequestClose: () => onClose() });
+  const shown = open && !forcedClosed;
   return (
     // A portal: reset to the menu's own layer, whatever it was opened from.
     <SurfaceContext value="surface">
     <MuiMenu
-      open={open}
+      open={shown}
       anchorEl={anchor}
       container={container}
-      onClose={onClose}
+      // No onClose: MUI's reasons (escapeKeyDown, backdropClick, tabKeyDown) are not ours to act on.
+      disableEscapeKeyDown
+      disableRestoreFocus
       anchorOrigin={anchorOrigin}
       transformOrigin={transformOrigin}
       marginThreshold={tokens.layout.gutter}
@@ -116,7 +124,7 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
       {...fadeTransition}
       slotProps={{
         root: { ref: setModalRoot },
-        paper: { sx: [paperSx, { marginTop: `${gap}px` }] },
+        paper: { sx: [paperSx, { marginTop: `${gap}px` }], ref: paper },
         list: { 'aria-label': label, sx: listSx },
       }}
     >
@@ -157,7 +165,7 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
         );
       })}
     </MuiMenu>
-    {modalRoot !== null && createPortal(<LiveRegionSlot scope="layer" active={open} />, modalRoot)}
+    {modalRoot !== null && createPortal(<LiveRegionSlot scope="layer" active={shown} />, modalRoot)}
     </SurfaceContext>
   );
 }

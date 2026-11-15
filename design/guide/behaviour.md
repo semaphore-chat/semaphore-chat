@@ -29,12 +29,25 @@ called a host.
 - The reducers exist in both clients: `frontend/src/kit/behaviour/` (web) and
   `native/crates/semaphore-design/src/behaviour/` (native). Both are tested
   against the vectors.
-- No host exists yet, in either client. The hosts (a toast host, an Escape
-  handler for the overlay stack and so on) arrive with the new shell.
-- Until then, today's screens still handle these things by hand. On the web
-  they behave as MUI does, and that differs from these rules in places. For
-  example, MUI lets an Escape pressed over a tooltip also close the dialog
-  below it, and its menu typeahead resets after half a second, not one.
+- The web kit has the overlay stack's host (`frontend/src/kit/behaviour/hosts/`).
+  Every kit Tooltip, Menu, Popover, Dialog, Sheet and SelectField list is a
+  layer, and one set of page listeners sends Escape, Tab and presses to the
+  stack. MUI still draws the overlays, keeps Tab inside a modal, stops the page
+  scrolling and hides it from screen readers. It no longer decides when a layer
+  closes or where focus goes after.
+- Screens join the stack through two hooks from the kit: `useScreenEscape` adds
+  a step to the screen's Escape chain (`ESCAPE_PRIORITY.panel` closes the docked
+  panel, `ESCAPE_PRIORITY.conversation` marks as read), and
+  `useScreenFocusTarget` names where focus goes when nothing else can take it
+  (the composer on a chat screen).
+- The other hosts (toasts, confirm, list focus, load state) do not exist yet,
+  and the native client has none. They arrive with the new shell.
+- Until then, today's screens still handle these things by hand, and they use
+  MUI overlays, not the kit's. They behave as MUI does, which differs from these
+  rules in places. For example, MUI lets an Escape pressed over a tooltip also
+  close the dialog below it, and its menu typeahead resets after half a second,
+  not one. The kit Menu still uses MUI's list keys, and so its half second too,
+  until it moves to the list focus pattern.
 
 When a screen moves to the new shell, it stops handling Escape, toasts and
 confirmations by hand and uses the pattern instead.
@@ -87,7 +100,7 @@ it does what the effect's description says to do instead.
 |`announce{message, politeness, action}`|Have screen readers read the message, then the action's label if there is one ("Message deleted. Undo"). `assertive` interrupts; `polite` waits.|
 |`returnFocus{}`|Put focus back on the element that had it before focus entered the toast area. If that has gone, focus the screen's own focus target.|
 |`requestClose{id, reason}`|Tell the layer's owner. For `escape`, `pressOutside`, `scrim` and `tab`, the owner may refuse (unsaved changes). For `parentClosed`, the owner must close the layer: it has already left the stack.|
-|`restoreFocus{to}`|Focus the element or layer named by `to`. A layer is focused through its own first focusable control, or its panel. `to: null` means the screen's own focus target: the main content of the screen (on a chat screen, the message composer).|
+|`restoreFocus{to}`|Focus the element or layer named by `to`. A layer is focused through its own first focusable control, or its panel. `to: null` means the screen's own focus target: the main content of the screen (on a chat screen, the message composer). If the same step also asked layers to close with `parentClosed`, move focus once they have gone: a closing menu or select list still holds focus inside itself until it does.|
 |`passToScreen{key}`|Run the screen's own Escape chain: close the docked panel, then mark the channel as read.|
 |`run{attempt}`|Start the action. Always report `succeeded{attempt}` or `failed{attempt, message}` for it, exactly once. A timeout, a lost connection or the screen going away is reported as `failed`. Without a result the dialog can never close.|
 |`done{}`|The confirmed action worked. The dialog is already closed; show its result if the screen does (for example a toast).|
@@ -114,12 +127,22 @@ it does what the effect's description says to do instead.
   whether the layer's opener, as the stack holds it now, is still on the page;
   `focus` is `inside` when focus is in the layer or a layer it owns, `lost` when
   focus is on the page body or went with the layer, and `outside` when the user
-  moved it somewhere else. `escape{composing, focusOwnsEscape}` for each Escape
-  press: `composing` is the key event's composing flag, and `focusOwnsEscape` is
-  true when the focused control uses Escape itself (an open mention list or
-  autocomplete, a message in edit mode). `pressOutside{insideId}` for a press:
+  moved it somewhere else. Focus in any part of a layer counts as inside it: on
+  the web, a press on the dimmed page puts focus on the dialog's own container.
+  `escape{composing, focusOwnsEscape}` for each Escape press: `composing` is the
+  key event's composing flag, and `focusOwnsEscape` is true when the focused
+  control uses Escape itself (an open mention list or autocomplete, a message
+  in edit mode). On the web a control says so by calling `preventDefault()` on
+  the key, not `stopPropagation()`. `pressOutside{insideId}` for a press:
   `insideId` is the innermost layer the press landed in, or null; a press on a
-  popover's anchor counts as inside the popover. `tab` for Tab or Shift+Tab.
+  popover's anchor counts as inside the popover. A press is the pointer going
+  down and coming up in the same layer, with no layer opening in between. So a
+  drag from a dialog onto the dimmed page is not a press, and nor is the press
+  that opens a select list under the pointer. `tab` for Tab or Shift+Tab.
+- **Escape that the stack used.** When `escape` asks a layer to close, or the
+  screen's chain used the key, the host marks the key as handled
+  (`preventDefault()` on the web), so older listeners on the page leave it
+  alone. When nothing used it, the key goes on.
 - **Tab in a menu.** When `tab` returns `requestClose(menu, 'tab')`, the host
   consumes the key: focus does not move on, and goes back to the opener through
   `restoreFocus` when the menu closes. When `tab` returns nothing, the key moves
@@ -276,6 +299,14 @@ user presses Escape: the dialog closes and focus goes back to the More button.
 |Tab|Consumed when it closes a menu|
 |Closing|`closed` reports `openerPresent` and `focus`; `parentClosed` is always obeyed|
 |Focus|`restoreFocus` focuses the element, the layer, or (null) the screen's focus target|
+
+**Where it stands.** On the web, the kit's Tooltip, Menu, Popover, Dialog, Sheet
+and SelectField list meet every row (`frontend/src/kit/behaviour/hosts/overlay.ts`),
+and each rule has a test that drives the real components
+(`frontend/src/__tests__/kit/behaviour/hosts/overlay.test.tsx`). The focus trap
+with layers inside a dialog, Escape during composition, and the press a menu
+swallows still need a real browser to prove; those tests wait for the browser
+harness. The native client has no host yet.
 
 ## Confirm destructive
 
