@@ -10,6 +10,14 @@ import type {
 import type { Channel } from '../../types/channel.type';
 import type { Message } from '../../types/message.type';
 import type { DirectMessageGroup } from '../../types/direct-message.type';
+import type { ThemeSettings } from '../../theme/constants';
+
+/**
+ * The named appearance a story asks for. The story fixtures serve it as
+ * appearance settings with `baseColor` set to the accent's primary, so the
+ * base colour always follows the picked accent.
+ */
+export type StoryTheme = Pick<ThemeSettings, 'mode' | 'accentColor' | 'intensity'>;
 
 /** A user as returned by the profile/user-list endpoints (email is profile-only). */
 export type ScenarioUser = UserEntity & { email: string };

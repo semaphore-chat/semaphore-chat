@@ -5,7 +5,7 @@
  * to comply with React Fast Refresh requirements.
  */
 
-import { ACCENT_PRIMARY } from '@semaphore-chat/shared';
+import { ACCENT_NAMES, ACCENT_PRIMARY } from '@semaphore-chat/shared';
 
 export type ThemeMode = 'dark' | 'light';
 export type AccentColor =
@@ -27,6 +27,31 @@ export interface ThemeSettings {
   mode: ThemeMode;
   accentColor: AccentColor;
   intensity: ThemeIntensity;
+  /** Any `#rrggbb`; the old shell shows the nearest named accent. */
+  baseColor: string;
+  /** Follow the operating system's light/dark preference. */
+  matchSystem: boolean;
+  /** Use the new design. */
+  newDesign: boolean;
+}
+
+const BASE_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+/** `value` as a lower-case `#rrggbb`, or `null` when it isn't a six-digit hex colour. */
+export function normalizeBaseColor(value: unknown): string | null {
+  return typeof value === 'string' && BASE_COLOR_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
+export function isThemeMode(value: unknown): value is ThemeMode {
+  return value === 'dark' || value === 'light';
+}
+
+export function isAccentColor(value: unknown): value is AccentColor {
+  return typeof value === 'string' && (ACCENT_NAMES as readonly string[]).includes(value);
+}
+
+export function isThemeIntensity(value: unknown): value is ThemeIntensity {
+  return value === 'minimal' || value === 'balanced' || value === 'vibrant';
 }
 
 export interface AccentColorInfo {
@@ -57,4 +82,7 @@ export const defaultSettings: ThemeSettings = {
   mode: 'dark',
   accentColor: 'teal',
   intensity: 'minimal',
+  baseColor: ACCENT_PRIMARY.teal,
+  matchSystem: false,
+  newDesign: false,
 };

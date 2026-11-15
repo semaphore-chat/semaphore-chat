@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import { edgeScreen } from '../../fixtures/edge/states';
-import type { ThemeSettings } from '../../../theme/constants';
+import type { StoryTheme } from '../../fixtures/types';
 import { bigCommunityScenario as s, primaryCommunity, generalChannel } from '../../fixtures/scenarios';
 import {
   useDriver,
@@ -22,8 +22,8 @@ import {
   FOUR_LINE_DRAFT,
 } from '../../fixtures/edge/chat';
 
-const light: ThemeSettings = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
-const dark: ThemeSettings = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
+const light: StoryTheme = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
+const dark: StoryTheme = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
 const chatPath = `/community/${primaryCommunity.id}/channel/${generalChannel.id}`;
 
 // Twenty short lines: far taller than 40% of any viewport, so the cap shows.
