@@ -6,7 +6,7 @@ interface NotificationContextType {
   showNotification: (message: string, severity?: AlertColor) => void;
 }
 
-const NotificationContext = createContext<NotificationContextType | undefined>(
+export const NotificationContext = createContext<NotificationContextType | undefined>(
   undefined
 );
 
@@ -19,6 +19,9 @@ export const useNotification = () => {
   }
   return context;
 };
+
+/** The notification API, or undefined outside a NotificationProvider (call effects that also run in isolated tests). */
+export const useOptionalNotification = () => useContext(NotificationContext);
 
 interface NotificationProviderProps {
   children: React.ReactNode;

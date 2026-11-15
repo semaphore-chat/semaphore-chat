@@ -1,11 +1,8 @@
-import React, { useCallback } from "react";
+import React from "react";
 import { Alert, AlertTitle, Button, IconButton } from "@mui/material";
 import { Close } from "@mui/icons-material";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
-import { useVoiceConnection } from "../../hooks/useVoiceConnection";
-import { useVoiceDispatch, VoiceActionType } from "../../contexts/VoiceContext";
-import { logger } from "../../utils/logger";
-import { describeVoiceNotice } from "./voiceNoticeModel";
+import { useVoiceNotice } from "../../data/voiceNotice";
 
 /**
  * The one place voice failures are shown: a failed join (what went wrong and
@@ -23,36 +20,10 @@ const touchTarget = {
 };
 
 export const VoiceNotice: React.FC = () => {
-  const { state, actions } = useVoiceConnection();
-  const { dispatch } = useVoiceDispatch();
-  const notice = describeVoiceNotice(state);
-
-  const dismiss = useCallback(() => {
-    dispatch({ type: VoiceActionType.ClearVoiceNotice });
-  }, [dispatch]);
-
-  const retryTarget = notice?.retryTarget ?? null;
-  const retry = useCallback(async () => {
-    if (!retryTarget) return;
-    try {
-      if (retryTarget.type === "dm") {
-        await actions.joinDmVoice(retryTarget.dmGroupId, retryTarget.dmGroupName);
-      } else {
-        await actions.joinVoiceChannel(
-          retryTarget.channelId,
-          retryTarget.channelName,
-          retryTarget.communityId,
-          retryTarget.isPrivate,
-          retryTarget.createdAt,
-        );
-      }
-    } catch (error) {
-      // A new failure replaces this notice.
-      logger.warn("[Voice] Retry failed:", error);
-    }
-  }, [actions, retryTarget]);
+  const notice = useVoiceNotice();
 
   if (!notice) return null;
+  const { retryTarget, retry, dismiss } = notice;
 
   return (
     <Alert
@@ -64,7 +35,7 @@ export const VoiceNotice: React.FC = () => {
       action={
         <>
           {retryTarget && (
-            <Button color="inherit" size="small" onClick={retry} disabled={state.isConnecting} sx={touchTarget}>
+            <Button color="inherit" size="small" onClick={retry} disabled={notice.joining} sx={touchTarget}>
               Retry
             </Button>
           )}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useId, useRef, Suspense, lazy } from "react";
+import React, { useState, useCallback, useEffect, useId, Suspense, lazy } from "react";
 import { visuallyHidden } from "@mui/utils";
 import {
   Box,
@@ -47,7 +47,6 @@ import { useScreenShare } from "../../hooks/useScreenShare";
 import { useLocalMediaState } from "../../hooks/useLocalMediaState";
 import { useReplayBufferState } from "../../contexts/ReplayBufferContext";
 import { useDebugPanelShortcut } from "../../hooks/useDebugPanelShortcut";
-import { usePushToTalkStatus } from "../../hooks/usePushToTalk";
 import { useVoicePublishPermissions } from "../../hooks/useVoicePublishPermissions";
 import { DeviceSettingsDialog } from "./DeviceSettingsDialog";
 import { SoundboardButton } from "./SoundboardButton";
@@ -57,9 +56,7 @@ import { useResponsive } from "../../hooks/useResponsive";
 import { useHapticFeedback } from "../../hooks/useHapticFeedback";
 import { logger } from "../../utils/logger";
 import { LAYOUT_CONSTANTS, TOUCH_TARGETS } from "../../utils/breakpoints";
-import { useSpeaking } from "../../hooks/useSpeaking";
-import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { useCallBarModel } from "../../data/callBar";
 import { MobileSheet } from "../Mobile/common/MobileSheet";
 import { soundboardPlayer } from "../../features/voice/soundboardPlayer";
 import { ConnectionQualityIndicator } from "./ConnectionQualityIndicator";
@@ -97,12 +94,13 @@ const VoiceBottomBarContent: React.FC = () => {
   const { isCameraEnabled, isMicrophoneEnabled } = useLocalMediaState();
   const { isMobile, shouldUseTouchUI } = useResponsive();
   const haptic = useHapticFeedback();
-  const { user: currentUser } = useCurrentUser();
-  const { isSpeaking } = useSpeaking();
   // Channel voice permissions (SPEAK / VIDEO / SCREEN_SHARE; a timeout
   // removes all three but keeps listening). A control is disabled only when
   // it would turn something ON, so a stray live track can still be stopped.
   const publish = useVoicePublishPermissions();
+  // Where the call is, its phase and the mic's state and labels: the same
+  // model the new shell's call bar renders (data/callBar).
+  const model = useCallBarModel(shouldUseTouchUI);
   const [settingsAnchor, setSettingsAnchor] = useState<null | HTMLElement>(
     null
   );
@@ -114,41 +112,15 @@ const VoiceBottomBarContent: React.FC = () => {
 
   // Use extracted hooks for cleaner organization
   const { showDebugPanel } = useDebugPanelShortcut();
-  const {
-    isActive: isPTTActive,
-    isKeyHeld: isPTTKeyHeld,
-    currentKeyDisplay: pttKeyDisplay,
-    pttPress,
-    pttRelease,
-  } = usePushToTalkStatus();
-
-  const micBlocked = !publish.canSpeak && !isMicrophoneEnabled;
   const cameraBlocked = !publish.canVideo && !isCameraEnabled;
   const shareBlocked = !publish.canShare && !screenShare.isScreenSharing;
 
-  // On touch devices the PTT key can't be pressed, so the mic button becomes a
-  // hold-to-talk control. Desktop PTT (keyboard) and non-PTT tap-to-mute are
-  // unaffected.
-  const isHoldToTalk = isPTTActive && shouldUseTouchUI;
-
-  // Tooltip text, also the buttons' accessible names (the disabled-button
-  // <span> wrapper takes the Tooltip's own aria-label)
-  const micTitle = micBlocked
-    ? publish.speakBlockedReason
-    : state.isServerMuted
-      ? "Server Muted — contact a moderator"
-      : isHoldToTalk
-        ? (isPTTKeyHeld ? "Transmitting..." : "Hold to talk")
-        : isPTTActive
-          ? (isPTTKeyHeld ? "Transmitting..." : `Hold ${pttKeyDisplay} to talk`)
-          : (!isMicrophoneEnabled ? "Unmute" : "Mute");
-  // Accessible names stay fixed ("Mute", "Deafen", "Camera", "Share screen")
-  // with aria-pressed carrying the state; the extra context the tooltip
-  // shows (a permission block, push-to-talk, server mute) is the
-  // description. Hold-to-talk isn't a toggle, so it keeps its own name.
-  const micLabel = isHoldToTalk && !micBlocked ? "Hold to talk" : "Mute";
+  // Tooltip text and accessible names for camera and share. The mic's come
+  // from the model (see the descriptions below): names stay fixed ("Mute",
+  // "Camera", "Share screen") with aria-pressed carrying the state, and the
+  // extra context a tooltip shows (a permission block, push-to-talk, server
+  // mute) is the description.
   const descIds = { mic: useId(), camera: useId(), share: useId() };
-  const micDescription = micTitle === "Mute" || micTitle === "Unmute" || micTitle === micLabel ? "" : micTitle;
   const cameraTitle = cameraBlocked
     ? publish.videoBlockedReason
     : isCameraEnabled ? "Turn off camera" : "Turn on camera";
@@ -172,9 +144,6 @@ const VoiceBottomBarContent: React.FC = () => {
 
   // Automatically manage replay buffer when screen sharing
   const { isReplayBufferActive } = useReplayBufferState();
-
-  // Check if the current user is speaking
-  const isCurrentUserSpeaking = currentUser ? isSpeaking(currentUser.id) : false;
 
   // Define callbacks before any early returns (React hooks must be called unconditionally)
   const handleSettingsClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
@@ -220,23 +189,22 @@ const VoiceBottomBarContent: React.FC = () => {
   // (which enforces the server-mute guard), release re-mutes. Pointer capture
   // keeps transmit tied to this button even if the finger slides off it, so
   // release is driven by pointerup / pointercancel / lostpointercapture — not
-  // pointerleave, which would end the hold mid-slide. holdEngagedRef makes the
-  // release path idempotent across those overlapping events.
-  const holdEngagedRef = useRef(false);
+  // pointerleave, which would end the hold mid-slide. The model's holdEnd
+  // makes the release path idempotent across those overlapping events.
+  const holdStart = model?.actions.holdStart;
+  const holdEnd = model?.actions.holdEnd;
   const handlePttPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    if (state.isServerMuted) return;
+    if (state.isServerMuted || !holdStart) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    holdEngagedRef.current = true;
     haptic.medium();
-    void pttPress?.();
-  }, [state.isServerMuted, haptic, pttPress]);
+    holdStart();
+  }, [state.isServerMuted, haptic, holdStart]);
 
   const handlePttPointerUp = useCallback(() => {
-    if (!holdEngagedRef.current) return;
-    holdEngagedRef.current = false;
+    // holdEnd is false when no hold is running (idempotent across the events)
+    if (!holdEnd?.()) return;
     haptic.light();
-    void pttRelease?.();
-  }, [haptic, pttRelease]);
+  }, [haptic, holdEnd]);
 
   // Check if browser supports audio output switching (setSinkId)
   const supportsSpeakerToggle = isMobile && 'setSinkId' in HTMLMediaElement.prototype;
@@ -264,17 +232,26 @@ const VoiceBottomBarContent: React.FC = () => {
     }
   }, [isSpeakerphone, actions]);
 
-  // Show bar if connected to either a channel or DM
-  if (!state.isConnected || (!state.currentChannelId && !state.currentDmGroupId)) {
+  // Show bar if connected to either a channel or DM (the model is null
+  // with neither)
+  if (!state.isConnected || !model) {
     return null;
   }
 
-  // Determine display name and type
-  const displayName = state.contextType === VoiceSessionType.Dm
-    ? state.dmGroupName || 'Direct Message'
-    : state.channelName || 'Voice Channel';
+  const { mic } = model;
+  const micBlocked = mic.blocked;
+  const isPTTActive = mic.mode !== "toggle";
+  // On touch devices the PTT key can't be pressed, so the mic button becomes
+  // a hold-to-talk control. Desktop PTT (keyboard) and non-PTT tap-to-mute
+  // are unaffected.
+  const isHoldToTalk = mic.mode === "holdToTalk";
+  const isPTTKeyHeld = mic.transmitting;
+  const micTitle = mic.title;
+  const micLabel = mic.label;
+  const micDescription = mic.description ?? "";
 
-  const displayType = state.contextType === VoiceSessionType.Dm ? 'DM Voice Call' : 'Voice Connected';
+  const displayName = model.place.name;
+  const displayType = model.kindLabel;
 
   // An automatic rejoin after the connection dropped (see
   // useVoiceForegroundResync). Cancel hangs up. Inline under the name on
@@ -288,7 +265,7 @@ const VoiceBottomBarContent: React.FC = () => {
     >
       <CircularProgress size={10} thickness={6} color="warning" sx={{ flexShrink: 0 }} />
       <Typography variant="caption" color="warning.main" noWrap sx={{ minWidth: 0 }}>
-        Reconnecting voice ({state.reconnect.attempt})…
+        Reconnecting voice ({model.reconnectAttempt})…
       </Typography>
       <Button
         size="small"
@@ -388,7 +365,7 @@ const VoiceBottomBarContent: React.FC = () => {
                 aria-label={micLabel}
                 aria-pressed={isHoldToTalk && !micBlocked ? undefined : !isMicrophoneEnabled}
                 aria-describedby={micDescription ? descIds.mic : undefined}
-                onClick={isPTTActive || state.isServerMuted ? undefined : actions.toggleMute}
+                onClick={mic.tappable ? actions.toggleMute : undefined}
                 onPointerDown={isHoldToTalk ? handlePttPointerDown : undefined}
                 onPointerUp={isHoldToTalk ? handlePttPointerUp : undefined}
                 onPointerCancel={isHoldToTalk ? handlePttPointerUp : undefined}
@@ -412,10 +389,10 @@ const VoiceBottomBarContent: React.FC = () => {
                       : (!isMicrophoneEnabled ? "error.contrastText" : "text.primary"),
                   minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                   minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
-                  border: (isMicrophoneEnabled && isCurrentUserSpeaking) || isPTTKeyHeld
+                  border: mic.speaking || isPTTKeyHeld
                     ? `2px solid ${theme.palette.semantic.status.positive}`
                     : "2px solid transparent",
-                  boxShadow: (isMicrophoneEnabled && isCurrentUserSpeaking) || isPTTKeyHeld
+                  boxShadow: mic.speaking || isPTTKeyHeld
                     ? `0 0 8px ${theme.palette.semantic.status.positive}`
                     : "none",
                   transition: "all 0.2s ease",

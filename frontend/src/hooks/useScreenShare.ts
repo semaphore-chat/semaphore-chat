@@ -6,17 +6,19 @@
  *
  * - In Electron: Shows custom source picker with advanced settings
  * - In Web: Uses native browser getDisplayMedia picker
+ *
+ * Only the controls and the picker. What a share does to the call (the
+ * audio-failed notice, opening the video panel on your own share, clearing
+ * the Electron selection) runs in useScreenShareSession, mounted once per
+ * call by VoiceSessionEffects.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useVoiceConnection } from './useVoiceConnection';
 import { useLocalMediaState } from './useLocalMediaState';
 import { hasElectronFeature, isWayland } from '../utils/platform';
-import { ScreenShareSettings } from '../components/Voice/ScreenSourcePicker';
+import type { ScreenShareSettings } from '../components/Voice/ScreenSourcePicker';
 import { setScreenShareConfig, clearScreenShareConfig } from '../utils/screenShareState';
-import { useNotification } from '../contexts/NotificationContext';
-import { useVoice } from '../contexts/VoiceContext';
-import { playSound, Sounds } from './useSound';
 import { logger } from '../utils/logger';
 
 interface UseScreenShareReturn {
@@ -36,24 +38,6 @@ export const useScreenShare = (): UseScreenShareReturn => {
   const { actions } = useVoiceConnection();
   const { isScreenShareEnabled } = useLocalMediaState();
   const [showSourcePicker, setShowSourcePicker] = useState(false);
-  const { showNotification } = useNotification();
-
-  // Track if audio capture failed (USB headset in exclusive mode, etc.)
-  const { screenShareAudioFailed } = useVoice();
-  const prevAudioFailedRef = useRef(false);
-
-  // Show notification when audio capture fails
-  useEffect(() => {
-    if (screenShareAudioFailed && !prevAudioFailedRef.current) {
-      playSound(Sounds.error);
-      showNotification(
-        'Screen audio capture failed. This may be due to your audio device settings. Sharing screen without audio.',
-        'warning'
-      );
-    }
-    prevAudioFailedRef.current = screenShareAudioFailed;
-  }, [screenShareAudioFailed, showNotification]);
-
   /**
    * Start screen sharing
    * - Electron: Shows source picker dialog first
@@ -127,29 +111,6 @@ export const useScreenShare = (): UseScreenShareReturn => {
   const handleSourcePickerClose = useCallback(() => {
     setShowSourcePicker(false);
   }, []);
-
-  /**
-   * Clean up screen share config when screen sharing stops
-   */
-  useEffect(() => {
-    if (!isScreenShareEnabled) {
-      clearScreenShareConfig();
-    }
-  }, [isScreenShareEnabled]);
-
-  /**
-   * Open the video panel when our own screen share starts, so the sharer
-   * sees what they are broadcasting (remote viewers get the same via
-   * useTrackSubscription's TrackPublished handler)
-   */
-  const { revealVideoTiles } = actions;
-  const prevScreenShareEnabledRef = useRef(isScreenShareEnabled);
-  useEffect(() => {
-    if (isScreenShareEnabled && !prevScreenShareEnabledRef.current) {
-      revealVideoTiles();
-    }
-    prevScreenShareEnabledRef.current = isScreenShareEnabled;
-  }, [isScreenShareEnabled, revealVideoTiles]);
 
   return {
     isScreenSharing: isScreenShareEnabled,

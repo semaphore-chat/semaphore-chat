@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { readReceiptsControllerGetUnreadCountsOptions } from "../api-client/@tanstack/react-query.gen";
 import type { UnreadCountDto } from "../api-client";
@@ -19,25 +19,26 @@ export function useReadReceipts() {
     return map;
   }, [unreadCounts]);
 
-  const unreadCount = (id?: string): number => {
+  // Stable while the counts are unchanged, so readers can memoize on them.
+  const unreadCount = useCallback((id?: string): number => {
     if (!id) return 0;
     return byId.get(id)?.unreadCount ?? 0;
-  };
+  }, [byId]);
 
-  const mentionCount = (id?: string): number => {
+  const mentionCount = useCallback((id?: string): number => {
     if (!id) return 0;
     return byId.get(id)?.mentionCount ?? 0;
-  };
+  }, [byId]);
 
-  const lastReadMessageId = (id?: string): string | undefined => {
+  const lastReadMessageId = useCallback((id?: string): string | undefined => {
     if (!id) return undefined;
     return byId.get(id)?.lastReadMessageId ?? undefined;
-  };
+  }, [byId]);
 
-  const hasUnread = (id?: string): boolean => {
+  const hasUnread = useCallback((id?: string): boolean => {
     if (!id) return false;
     return (byId.get(id)?.unreadCount ?? 0) > 0;
-  };
+  }, [byId]);
 
   const totalDmUnreadCount = useMemo(() => {
     if (!unreadCounts) return 0;

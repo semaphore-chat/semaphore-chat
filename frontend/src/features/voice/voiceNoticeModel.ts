@@ -3,8 +3,8 @@ import {
   type VoiceJoinTarget,
   type VoiceState,
 } from "../../contexts/VoiceContext";
-import { VOICE_FAILURE_COPY } from "../../features/voice/joinFailure";
-import { VOICE_END_DETAILS, VOICE_END_MESSAGES } from "../../features/voice/voiceEndReason";
+import { VOICE_FAILURE_COPY } from "./joinFailure";
+import { VOICE_END_DETAILS, VOICE_END_MESSAGES } from "./voiceEndReason";
 
 /**
  * What the voice notice shows: the last failed join, or why the last call

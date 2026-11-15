@@ -19,6 +19,51 @@ const reducerStepPattern = {
     'Only the hosts in src/kit/behaviour/hosts/ may call a reducer step (design/guide/behaviour.md, "Applying a step"). Types are fine to import.',
 }
 
+// What src/data and src/shell/lounge may not import (design report §2).
+// `components` is the classic-UI pattern (a regex: a gitignore-style group
+// cannot re-include a file under an excluded directory), passed in because the
+// Lounge chunk carries one listed exception.
+function headlessPatterns(components) {
+  return [
+    {
+      group: ['@mui/*', '@mui/**', '@emotion/*'],
+      message: 'Import from src/kit. MUI is used only inside the kit (design/guide).',
+    },
+    reducerStepPattern,
+    {
+      regex: components,
+      message: 'src/data and src/shell/lounge are headless: no classic components (move the logic into src/data).',
+    },
+    { group: ['**/pages', '**/pages/**'], message: 'No classic pages in src/data or src/shell/lounge.' },
+    {
+      group: ['**/Layout*', '**/theme', '**/theme/**'],
+      message: 'No classic layouts or the classic MUI theme in src/data or src/shell/lounge.',
+    },
+    { group: ['**/kit/*', '**/kit/**'], message: "Import the kit from its public index ('src/kit')." },
+    {
+      group: ['**/hooks/useResponsive'],
+      message: "Classic breakpoints: use the kit's useWidthRange.",
+    },
+    {
+      group: ['**/hooks/useScreenShare'],
+      message: 'useScreenShare owns the classic source picker; stop a share with the call bar model.',
+    },
+    {
+      group: ['**/utils/SocketContext'],
+      message: 'No raw socket: read the query cache (kept live by socket-hub) or useServerEvent.',
+    },
+    {
+      group: ['**/hooks/useSocket'],
+      importNames: ['useSocket'],
+      message: 'No raw socket: read the query cache (kept live by socket-hub) or useServerEvent.',
+    },
+    {
+      group: ['**/contexts/NotificationContext'],
+      message: 'Its module renders an MUI Snackbar; the new shell reaches toasts through the notification sink.',
+    },
+  ]
+}
+
 // jsx-a11y's own "recommended" preset ships most rules at 'error'. This repo
 // runs it at 'warn' (downgrade every enabled rule's severity but keep each
 // rule's own options, and leave anything explicitly 'off' alone), so the
@@ -151,6 +196,51 @@ export default tseslint.config(
                 'Import from src/kit. MUI is used only inside the kit (design/guide).',
             },
             reducerStepPattern,
+          ],
+        },
+      ],
+    },
+  },
+  // The shared data layer (src/data) and the new shell's chunk (src/shell/lounge)
+  // stay headless: no classic UI, no MUI, no classic theme or breakpoints, no
+  // raw socket, no screen-share picker, no old snackbar (design report §2).
+  // This object replaces the MUI block's no-restricted-imports options for these
+  // files, so it restates the MUI and reducer-step patterns. Transitive imports
+  // are checked by src/__tests__/shell/loungeImportBoundary.test.ts.
+  {
+    files: ['src/data/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: headlessPatterns('(^|/)components(/|$)') }],
+    },
+  },
+  {
+    files: ['src/shell/lounge/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          // LoungeRoot's screen error boundary predates this rule; the shell
+          // frame replaces it with a kit one.
+          patterns: headlessPatterns('(^|/)components(/(?!ErrorBoundary$)|$)'),
+        },
+      ],
+    },
+  },
+  // livekit-client: types only, except in the lazy call-surface chunk.
+  {
+    files: ['src/data/**/*.{ts,tsx}', 'src/shell/lounge/**/*.{ts,tsx}'],
+    ignores: ['src/shell/lounge/call/surface/**'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'livekit-client',
+              allowTypeImports: true,
+              message:
+                'livekit-client values load only in the lazy call surface (src/shell/lounge/call/surface). Import types with `import type`.',
+            },
           ],
         },
       ],

@@ -172,35 +172,7 @@ describe('useScreenShare', () => {
     expect(mockToggleScreenShare).toHaveBeenCalled();
   });
 
-  it('clears config when sharing stops', async () => {
-    mockIsScreenShareEnabled = true;
-    const { rerender } = renderUseScreenShare();
-
-    // Simulate sharing stopping
-    mockIsScreenShareEnabled = false;
-    rerender();
-
-    expect(mockClearScreenShareConfig).toHaveBeenCalled();
-  });
-
-  it('reveals the video panel (show + un-collapse) when own screen share starts', () => {
-    const { rerender } = renderUseScreenShare();
-    expect(mockRevealVideoTiles).not.toHaveBeenCalled();
-
-    // Simulate sharing starting
-    mockIsScreenShareEnabled = true;
-    rerender();
-
-    expect(mockRevealVideoTiles).toHaveBeenCalled();
-  });
-
-  it('does not reveal the video panel when sharing stops', () => {
-    mockIsScreenShareEnabled = true;
-    const { rerender } = renderUseScreenShare();
-
-    mockIsScreenShareEnabled = false;
-    rerender();
-
-    expect(mockRevealVideoTiles).not.toHaveBeenCalled();
-  });
+  // What a share does to the call (clear the selection when it stops, reveal
+  // the video panel on your own share, the audio-failed notice) moved to
+  // useScreenShareSession: see useScreenShareSession.test.ts.
 });
