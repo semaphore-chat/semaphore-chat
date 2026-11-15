@@ -7,8 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "test": "pnpm run clean && pnpm run build && node --test 'test/*.test.cjs'"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

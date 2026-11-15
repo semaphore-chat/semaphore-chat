@@ -10,10 +10,20 @@ type UpsertArgs = {
   update: Record<string, unknown>;
 };
 
+/** The transaction client the service's interactive `$transaction` gets. */
+type TransactionClient = {
+  userAppearanceSettings: {
+    findUnique: jest.Mock;
+    upsert: jest.Mock<Promise<UserAppearanceSettings>, [UpsertArgs]>;
+  };
+};
+
 describe('AppearanceSettingsService', () => {
   let service: AppearanceSettingsService;
   let databaseService: Mocked<DatabaseService>;
   let upsert: jest.Mock<Promise<UserAppearanceSettings>, [UpsertArgs]>;
+  let findUnique: jest.Mock;
+  let transactionClient: TransactionClient;
 
   const mockSettings: UserAppearanceSettings = {
     id: 'settings-1',
@@ -45,13 +55,19 @@ describe('AppearanceSettingsService', () => {
     databaseService = unitRef.get(DatabaseService);
 
     upsert = jest.fn();
-    // The service only calls `upsert`; replace the generated Prisma delegate
-    // with this mock so its calls (and their payloads) can be asserted.
-    (
-      databaseService as unknown as {
-        userAppearanceSettings: { upsert: typeof upsert };
-      }
-    ).userAppearanceSettings = { upsert };
+    findUnique = jest.fn().mockResolvedValue(null);
+    transactionClient = { userAppearanceSettings: { findUnique, upsert } };
+    // The service calls `upsert` directly for reads and inside an interactive
+    // `$transaction` for writes; replace the generated Prisma delegate with
+    // this mock so its calls (and their payloads) can be asserted.
+    const delegate = databaseService as unknown as {
+      userAppearanceSettings: TransactionClient['userAppearanceSettings'];
+      $transaction: (
+        callback: (tx: TransactionClient) => Promise<UserAppearanceSettings>,
+      ) => Promise<UserAppearanceSettings>;
+    };
+    delegate.userAppearanceSettings = transactionClient.userAppearanceSettings;
+    delegate.$transaction = (callback) => callback(transactionClient);
   });
 
   afterEach(() => {
@@ -63,7 +79,7 @@ describe('AppearanceSettingsService', () => {
   });
 
   describe('getUserSettings', () => {
-    it('returns settings via upsert', async () => {
+    it('creates a new row with the violet base, purple accent and both flags off', async () => {
       upsert.mockResolvedValue(mockSettings);
 
       const result = await service.getUserSettings('user-1');
@@ -86,22 +102,6 @@ describe('AppearanceSettingsService', () => {
         create: { ...defaultCreate, userId: 'user-42' },
         update: {},
       });
-    });
-
-    it('creates a new row with the violet base, purple accent and both flags off', async () => {
-      upsert.mockResolvedValue({ ...mockSettings, ...defaultCreate });
-
-      const result = await service.getUserSettings('user-1');
-
-      expect(upsert).toHaveBeenCalledWith({
-        where: { userId: 'user-1' },
-        create: defaultCreate,
-        update: {},
-      });
-      expect(result.baseColor).toBe('#8e75ff');
-      expect(result.accentColor).toBe('purple');
-      expect(result.matchSystem).toBe(false);
-      expect(result.newDesign).toBe(false);
     });
   });
 
@@ -185,7 +185,8 @@ describe('AppearanceSettingsService', () => {
       });
     });
 
-    it('an accentColor alone sets baseColor to that accent primary', async () => {
+    it('an accentColor alone sets baseColor to that accent primary when no row exists yet', async () => {
+      findUnique.mockResolvedValue(null);
       upsert.mockResolvedValue(mockSettings);
 
       await service.updateUserSettings('user-1', { accentColor: 'slate' });
@@ -198,6 +199,52 @@ describe('AppearanceSettingsService', () => {
           baseColor: '#64748b',
         },
         update: { accentColor: 'slate', baseColor: '#64748b' },
+      });
+    });
+
+    it('keeps a custom baseColor when an old client repeats the stored accent', async () => {
+      // The stored base is '#123456', whose nearest accent is slate: an old
+      // client that echoes all three fields while changing mode or intensity
+      // must not reset the user's custom colour.
+      findUnique.mockResolvedValue({ accentColor: 'slate' });
+      upsert.mockResolvedValue(mockSettings);
+
+      await service.updateUserSettings('user-1', {
+        themeMode: 'light',
+        accentColor: 'slate',
+        intensity: 'minimal',
+      });
+
+      expect(findUnique).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        select: { accentColor: true },
+      });
+      expect(upsert).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        create: {
+          userId: 'user-1',
+          themeMode: 'light',
+          accentColor: 'slate',
+          intensity: 'minimal',
+        },
+        update: {
+          themeMode: 'light',
+          accentColor: 'slate',
+          intensity: 'minimal',
+        },
+      });
+    });
+
+    it('derives baseColor from the new accent when the accent changes', async () => {
+      findUnique.mockResolvedValue({ accentColor: 'slate' });
+      upsert.mockResolvedValue(mockSettings);
+
+      await service.updateUserSettings('user-1', { accentColor: 'rose' });
+
+      expect(upsert).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        create: { userId: 'user-1', accentColor: 'rose', baseColor: '#f43f5e' },
+        update: { accentColor: 'rose', baseColor: '#f43f5e' },
       });
     });
 

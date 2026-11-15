@@ -34,27 +34,39 @@ export class AppearanceSettingsService {
    *
    * The two colour fields are kept consistent here, once, so every client sees
    * the same result: a `baseColor` wins and derives `accentColor` (an
-   * `accentColor` in the same request is ignored), while an `accentColor` on
-   * its own derives `baseColor` from the accent's primary.
+   * `accentColor` in the same request is ignored), while a *changed*
+   * `accentColor` derives `baseColor` from the accent's primary.
+   *
+   * An accent equal to the stored one changes nothing: older clients PATCH all
+   * three fields on every mode or intensity change, and that echo must not
+   * reset a custom base colour. The read and the write share one transaction.
    */
   async updateUserSettings(
     userId: string,
     dto: UpdateAppearanceSettingsDto,
   ): Promise<UserAppearanceSettings> {
-    let data: UpdateAppearanceSettingsDto = dto;
-    if (dto.baseColor !== undefined) {
-      data = { ...dto, accentColor: nearestAccent(dto.baseColor) };
-    } else if (dto.accentColor !== undefined) {
-      data = {
-        ...dto,
-        baseColor: ACCENT_PRIMARY[dto.accentColor as AccentName],
-      };
-    }
+    return this.databaseService.$transaction(async (tx) => {
+      let data: UpdateAppearanceSettingsDto = dto;
+      if (dto.baseColor !== undefined) {
+        data = { ...dto, accentColor: nearestAccent(dto.baseColor) };
+      } else if (dto.accentColor !== undefined) {
+        const stored = await tx.userAppearanceSettings.findUnique({
+          where: { userId },
+          select: { accentColor: true },
+        });
+        if (stored?.accentColor !== dto.accentColor) {
+          data = {
+            ...dto,
+            baseColor: ACCENT_PRIMARY[dto.accentColor as AccentName],
+          };
+        }
+      }
 
-    return this.databaseService.userAppearanceSettings.upsert({
-      where: { userId },
-      create: { userId, ...data },
-      update: data,
+      return tx.userAppearanceSettings.upsert({
+        where: { userId },
+        create: { userId, ...data },
+        update: data,
+      });
     });
   }
 }

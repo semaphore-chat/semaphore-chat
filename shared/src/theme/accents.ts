@@ -39,25 +39,41 @@ export const ACCENT_PRIMARY: Readonly<Record<AccentName, string>> = {
   slate: '#64748b',
 };
 
+/**
+ * Chroma below which a base colour counts as a grey. A near-grey has no
+ * meaningful hue, so it maps to `slate` whatever its lightness; slate's own
+ * primary (C ≈ 0.041) is above it and still maps to itself by distance.
+ */
+export const LOW_CHROMA = 0.03;
+
 /** `#rrggbb` to OKLab `[L, a, b]`; throws RangeError for anything else. */
 function toOklab(hex: string): [number, number, number] {
   const [L, C, h] = toOklch(parseHex(hex));
   return [L, C * Math.cos(h), C * Math.sin(h)];
 }
 
-const ACCENT_LAB = ACCENT_NAMES.map((name) => toOklab(ACCENT_PRIMARY[name]));
+// Computed on first use rather than at module load, so importing the shared
+// package (which re-exports this module) stays free of side effects.
+let accentLab: readonly [number, number, number][] | undefined;
+
+function accentLabCoordinates(): readonly [number, number, number][] {
+  accentLab ??= ACCENT_NAMES.map((name) => toOklab(ACCENT_PRIMARY[name]));
+  return accentLab;
+}
 
 /**
  * The accent whose primary is nearest `base` in OKLab (Euclidean distance on
- * L, a, b). Ties go to the earlier name in `ACCENT_NAMES`; an invalid colour
- * throws `RangeError`.
+ * L, a, b). A base without a meaningful chroma is `slate`; ties go to the
+ * earlier name in `ACCENT_NAMES`; an invalid colour throws `RangeError`.
  */
 export function nearestAccent(base: string): AccentName {
   const [L, a, b] = toOklab(base);
+  if (Math.hypot(a, b) < LOW_CHROMA) return 'slate';
+  const accents = accentLabCoordinates();
   let nearest: AccentName = ACCENT_NAMES[0];
   let nearestDistance = Number.POSITIVE_INFINITY;
   for (let i = 0; i < ACCENT_NAMES.length; i++) {
-    const [l, aa, bb] = ACCENT_LAB[i];
+    const [l, aa, bb] = accents[i];
     const distance = (L - l) ** 2 + (a - aa) ** 2 + (b - bb) ** 2;
     if (distance < nearestDistance) {
       nearestDistance = distance;

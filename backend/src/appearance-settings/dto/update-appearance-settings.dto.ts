@@ -1,5 +1,5 @@
 import {
-  IsOptional,
+  ValidateIf,
   IsIn,
   IsBoolean,
   Matches,
@@ -9,12 +9,12 @@ import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateAppearanceSettingsDto {
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsIn(['dark', 'light'])
   @ApiPropertyOptional({ enum: ['dark', 'light'], enumName: 'ThemeMode' })
   themeMode?: string;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsIn([
     'teal',
     'blue',
@@ -48,7 +48,7 @@ export class UpdateAppearanceSettingsDto {
   })
   accentColor?: string;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsIn(['minimal', 'balanced', 'vibrant'])
   @ApiPropertyOptional({
     enum: ['minimal', 'balanced', 'vibrant'],
@@ -56,7 +56,7 @@ export class UpdateAppearanceSettingsDto {
   })
   intensity?: string;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsString()
   @Matches(/^#[0-9a-fA-F]{6}$/, {
     message: 'baseColor must be a #rrggbb colour',
@@ -66,13 +66,14 @@ export class UpdateAppearanceSettingsDto {
   )
   @ApiPropertyOptional({
     type: String,
-    pattern: '^#[0-9a-f]{6}$',
+    pattern: '^#[0-9a-fA-F]{6}$',
     example: '#8e75ff',
-    description: 'Base colour as lowercase #rrggbb',
+    description:
+      'Base colour as six hex digits, either case; stored as lowercase #rrggbb',
   })
   baseColor?: string;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsBoolean()
   @ApiPropertyOptional({
     type: Boolean,
@@ -80,7 +81,7 @@ export class UpdateAppearanceSettingsDto {
   })
   matchSystem?: boolean;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsBoolean()
   @ApiPropertyOptional({
     type: Boolean,

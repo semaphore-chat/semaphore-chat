@@ -83,6 +83,26 @@ describe('UpdateAppearanceSettingsDto', () => {
     }
   });
 
+  it('should reject null for every field instead of passing it through', async () => {
+    const properties = [
+      'themeMode',
+      'accentColor',
+      'intensity',
+      'baseColor',
+      'matchSystem',
+      'newDesign',
+    ] as const;
+
+    for (const property of properties) {
+      const dto = plainToInstance(UpdateAppearanceSettingsDto, {
+        [property]: null,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].property).toBe(property);
+    }
+  });
+
   it('should accept boolean matchSystem and newDesign', async () => {
     const dto = createDto({ matchSystem: true, newDesign: false });
     const errors = await validate(dto);

@@ -14,4 +14,13 @@ UPDATE "UserAppearanceSettings" SET "baseColor" = CASE "accentColor"
   WHEN 'emerald' THEN '#10b981' WHEN 'cyan' THEN '#06b6d4' WHEN 'slate' THEN '#64748b'
   ELSE '#3b82f6' END;
 
+-- A row whose accent no client knows got the blue fallback above; make it
+-- consistent by naming that accent too, instead of keeping the unknown string
+-- next to the blue base.
+UPDATE "UserAppearanceSettings" SET "accentColor" = 'blue'
+  WHERE "accentColor" NOT IN (
+    'teal', 'blue', 'indigo', 'purple', 'rose', 'red',
+    'orange', 'amber', 'lime', 'emerald', 'cyan', 'slate'
+  );
+
 ALTER TABLE "UserAppearanceSettings" ALTER COLUMN "accentColor" SET DEFAULT 'purple';

@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Appearance settings gained a `baseColor` (any lowercase `#rrggbb` colour), `matchSystem` (follow the operating system's light/dark setting) and `newDesign` ("try the new design"). `PATCH /appearance-settings` keeps `accentColor` equal to the accent nearest `baseColor`, so clients that only know the named accents keep working; sending `accentColor` alone sets `baseColor` to that accent's primary. `GET /appearance-settings` returns all three fields.
+- Appearance settings gained a `baseColor` (any lowercase `#rrggbb` colour), `matchSystem` (follow the operating system's light/dark setting) and `newDesign` ("try the new design"). `PATCH /appearance-settings` keeps `accentColor` equal to the accent nearest `baseColor`, so clients that only know the named accents keep working; changing `accentColor` to a different accent sets `baseColor` to that accent's primary. Older app versions keep working and do not reset a custom colour: they repeat the accent they already had when the user only changes the mode or intensity, and the server leaves `baseColor` untouched unless the accent actually changes. `GET /appearance-settings` returns all three fields.
 
 ## [0.10.0] - 2026-11-13
 

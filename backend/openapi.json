@@ -16686,9 +16686,9 @@
           },
           "baseColor": {
             "type": "string",
-            "pattern": "^#[0-9a-f]{6}$",
+            "pattern": "^#[0-9a-fA-F]{6}$",
             "example": "#8e75ff",
-            "description": "Base colour as lowercase #rrggbb"
+            "description": "Base colour as six hex digits, either case; stored as lowercase #rrggbb"
           },
           "matchSystem": {
             "type": "boolean",
