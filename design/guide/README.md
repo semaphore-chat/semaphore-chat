@@ -5,12 +5,12 @@ not need to know the code. You do need to use the same colours, sizes and
 shapes as the rest of the app, so that a new screen looks like it was always
 there.
 
-The guide is written in chapters. Some are not written yet.
+The guide is written in chapters.
 
 |Chapter|What it covers|Status|
 |---|---|---|
 |[Principles](principles.md)|The ideas behind the look of the app, and what we never do|written|
-|Layouts|The page layouts a screen can use|not written yet|
+|[Layouts](layouts.md)|The templates a screen is built on, and what each does at phone, tablet and desktop width|written (three templates and the sheet over a screen)|
 |[Behaviour](behaviour.md)|How things respond: toasts, overlays and Escape, confirmations, list focus, loading, and what a client must do to follow it|written; the reducers exist in both clients, no screen uses them yet|
 |[Components](components.md)|The building blocks: buttons, fields, cards and so on|written (33 components)|
 |[Tokens and colour](tokens-and-colour.md)|Every size, shape, type style, timing and colour role, and when to use each|written|
@@ -19,8 +19,9 @@ The guide is written in chapters. Some are not written yet.
 
 ## Start here
 
-**To design a screen,** read [Principles](principles.md) first. Then read
-"How a screen is built" in [Components](components.md). Then pick the
+**To design a screen,** read [Principles](principles.md) first. Then pick a
+template in [Layouts](layouts.md). Then read "How a screen is built" in
+[Components](components.md). Then pick the
 components you need, one by one, and open their stories. For how a screen
 responds (Escape, toasts, confirmations, loading), read [Behaviour](behaviour.md).
 
@@ -35,7 +36,7 @@ places where a screen has left the system on purpose are listed in
    and timing comes from the guide. If you need something that is not there,
    do not make it up. Ask for it to be added to the system first.
 2. **Every screen names its layout template.** A screen says which layout it
-   uses. It does not invent its own. (The Layouts chapter is not written yet.)
+   uses. It does not invent its own. See [Layouts](layouts.md).
 3. **Examples are the live stories.** The examples to copy are the working
    stories in the code (`frontend/src/stories/`), not pictures in a document.
    A picture goes out of date. A story is built from the real code.

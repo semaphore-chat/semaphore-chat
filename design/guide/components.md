@@ -57,7 +57,8 @@ only thing that does.
 |Overlay|A Dialog, a Sheet or another floating panel|`surface`, with a border and a shadow|
 
 The gap between islands belongs to the layout, not to the island. See
-[Tokens and colour](tokens-and-colour.md) for the palette roles.
+[Tokens and colour](tokens-and-colour.md) for the palette roles. The layout
+templates that arrange islands into a screen are in [Layouts](layouts.md).
 
 Kit pieces know which layer they sit on and adjust their own colours, so a
 designer never picks a different colour for a button because it is on a card.
