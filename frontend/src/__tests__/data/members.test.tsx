@@ -12,6 +12,9 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
   };
 });
 
+const voice = vi.hoisted(() => ({ state: { isConnected: false, currentChannelId: null as string | null } }));
+vi.mock('../../hooks/useVoiceConnection', () => ({ useVoiceConnection: () => ({ state: voice.state, actions: {} }) }));
+
 import { useCommunityMembers, computeDisplayRole, keepIdentity, groupMembers } from '../../data/members';
 import { handleUserOnline } from '../../socket-hub/handlers/presenceHandlers';
 
@@ -86,8 +89,10 @@ describe('useCommunityMembers', () => {
     ]);
     expect(result.current.around.map((m) => m.id)).toEqual(['user-1']);
     expect(result.current.away.map((m) => m.id)).toEqual(['user-3', 'user-5']);
-    expect(result.current.aroundCount).toBe(2);
+    expect(result.current.loadedAroundCount).toBe(2);
     expect(result.current.allLoaded).toBe(true);
+    // Every page is loaded, so the count is the community's
+    expect(result.current.aroundCount).toBe(2);
     expect(result.current.around[0]).toEqual({
       id: 'user-1',
       name: 'User 1',
@@ -113,6 +118,9 @@ describe('useCommunityMembers', () => {
     const { result } = renderMembers();
     await waitFor(() => expect(result.current.away.length + result.current.around.length).toBe(100));
     expect(result.current.allLoaded).toBe(false);
+    // One page of three: what is loaded is not the community, so no community-wide count
+    expect(result.current.loadedAroundCount).toBe(0);
+    expect(result.current.aroundCount).toBeNull();
 
     act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.away.length + result.current.around.length).toBe(200));
@@ -120,6 +128,7 @@ describe('useCommunityMembers', () => {
     await waitFor(() => expect(result.current.around.map((m) => m.id)).toEqual(['user-250']));
     expect(result.current.allLoaded).toBe(true);
     expect(result.current.aroundCount).toBe(1);
+    expect(result.current.loadedAroundCount).toBe(1);
     // One bulk request, never a list of ids
     expect(new Set(presenceRequests)).toEqual(new Set(['bulk']));
   });
@@ -193,7 +202,7 @@ describe('member helpers', () => {
     expect([...second.cache.keys()]).toEqual(['a', 'c']);
   });
 
-  it('groupMembers counts online hosts in "around"', () => {
+  it('groupMembers counts online hosts in the loaded count', () => {
     const summary = (id: string, presence: 'online' | 'offline') => ({
       id, name: id, avatarFileId: null, role: null, presence, statusText: null, lastSeen: null, inRoom: null,
     });
@@ -201,7 +210,7 @@ describe('member helpers', () => {
       { summary: summary('h', 'online'), rolePosition: 1 },
       { summary: summary('x', 'offline'), rolePosition: null },
     ]);
-    expect(grouped.aroundCount).toBe(1);
+    expect(grouped.loadedAroundCount).toBe(1);
     expect(grouped.hosts.map((m) => m.id)).toEqual(['h']);
     expect(grouped.away.map((m) => m.id)).toEqual(['x']);
   });

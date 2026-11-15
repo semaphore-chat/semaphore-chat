@@ -116,7 +116,7 @@ describe('handleReconnect', () => {
     );
   });
 
-  it('invalidates all 8 query types in a single call', () => {
+  it('invalidates all 9 query types in a single call', () => {
     // Message queries only invalidate when present in cache and at the live
     // edge (see the reset test above for the detached case).
     queryClient.setQueryData(channelMessagesQueryKey('chan-1'), createInfiniteData([createMessage()]));
@@ -124,7 +124,8 @@ describe('handleReconnect', () => {
 
     handleReconnect(queryClient);
 
-    // 8 invalidation calls — one per stale data source (added message readers)
-    expect(invalidateSpy).toHaveBeenCalledTimes(8);
+    // 9 invalidation calls — one per stale data source (added message readers,
+    // then bulk presence)
+    expect(invalidateSpy).toHaveBeenCalledTimes(9);
   });
 });

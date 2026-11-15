@@ -55,8 +55,11 @@ function stripComments(source: string): string {
 interface ImportRef {
   specifier: string;
   typeOnly: boolean;
+  /** `import('...')`: a lazy chunk. Checked where it points, not walked into. */
+  dynamic?: boolean;
 }
 
+const DYNAMIC_IMPORT = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
 const FROM_STATEMENT = /\b(import|export)\s+(type\s+)?([^'";]*?)\bfrom\s+['"]([^'"]+)['"]/g;
 const SIDE_EFFECT_IMPORT = /\bimport\s+['"]([^'"]+)['"]/g;
 
@@ -77,15 +80,17 @@ export function importsOf(source: string): ImportRef[] {
     refs.push({ specifier, typeOnly: Boolean(typeKeyword) || allTypeSpecifiers });
   }
   for (const match of code.matchAll(SIDE_EFFECT_IMPORT)) refs.push({ specifier: match[1], typeOnly: false });
+  for (const match of code.matchAll(DYNAMIC_IMPORT)) refs.push({ specifier: match[1], typeOnly: false, dynamic: true });
   return refs;
 }
 
 /** A relative specifier as a source file in the tree, or null (assets, JSON, unknown). */
-function resolve(from: string, specifier: string): string | null {
+function resolve(from: string, specifier: string, sources: ReadonlyMap<string, string>): string | null {
   const dir = from.split('/').slice(0, -1).join('/');
   const base = normalize(`${dir}/${specifier.split('?')[0]}`);
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`]) {
-    if (SOURCES.has(candidate)) return candidate;
+  const stem = base.replace(/\.js$/, '');
+  for (const candidate of [base, `${stem}.ts`, `${stem}.tsx`, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`]) {
+    if (sources.has(candidate)) return candidate;
   }
   return null;
 }
@@ -95,15 +100,16 @@ function violation(target: string, importer: string, typeOnly: boolean): string 
   if (target.startsWith('src/components/') || target.startsWith('src/pages/')) return 'classic UI';
   if (target.startsWith('src/contexts/NotificationContext')) return 'renders an MUI Snackbar';
   if (target === '@mui/icons-material' || target.startsWith('@mui/icons-material/')) return 'MUI icons (the kit uses Lucide)';
-  if (target === 'livekit-client' && !typeOnly && !importer.startsWith('src/shell/lounge/call/surface/')) {
+  const livekit = target === 'livekit-client' || target.startsWith('livekit-client/');
+  if (livekit && !typeOnly && !importer.startsWith('src/shell/lounge/call/surface/')) {
     return 'a livekit-client value outside the lazy call surface';
   }
   return null;
 }
 
 /** Every forbidden path from the files under `prefix`, as "a -> b -> target (reason)". */
-export function forbiddenPaths(prefix: string): string[] {
-  const roots = [...SOURCES.keys()].filter((path) => path.startsWith(prefix));
+export function forbiddenPaths(prefix: string, sources: ReadonlyMap<string, string> = SOURCES): string[] {
+  const roots = [...sources.keys()].filter((path) => path.startsWith(prefix));
   const parent = new Map<string, string | null>(roots.map((root) => [root, null]));
   const queue = [...roots];
   const found: string[] = [];
@@ -115,15 +121,23 @@ export function forbiddenPaths(prefix: string): string[] {
 
   while (queue.length > 0) {
     const file = queue.shift()!;
-    for (const { specifier, typeOnly } of importsOf(SOURCES.get(file)!)) {
+    for (const { specifier, typeOnly, dynamic } of importsOf(sources.get(file)!)) {
       if (!specifier.startsWith('.')) {
-        const reason = violation(specifier, file, typeOnly);
+        // A lazy livekit chunk is fine anywhere; a lazy classic UI module is not.
+        const reason = dynamic && specifier.startsWith('livekit-client') ? null : violation(specifier, file, typeOnly);
         if (reason) found.push(`${[...chain(file), specifier].join(' -> ')} (${reason})`);
         continue;
       }
       if (typeOnly) continue;
-      const target = resolve(file, specifier);
-      if (target === null || parent.has(target)) continue;
+      const target = resolve(file, specifier, sources);
+      if (target === null) {
+        // Assets (CSS, JSON, images, ?raw) are fine; a source module we cannot find would hide its imports.
+        if (!/\.(css|json|svg|png|webp|jpe?g|woff2?|wav|mp3)(\?.*)?$|\?/.test(specifier)) {
+          found.push(`${[...chain(file), specifier].join(' -> ')} (unresolved import: the walker cannot see past it)`);
+        }
+        continue;
+      }
+      if (parent.has(target)) continue;
       const exception = EXCEPTIONS[target];
       if (exception && exception.from === file) continue;
       const reason = violation(target, file, typeOnly);
@@ -131,6 +145,8 @@ export function forbiddenPaths(prefix: string): string[] {
         found.push(`${[...chain(file), target].join(' -> ')} (${reason})`);
         continue;
       }
+      // A lazy chunk is its own boundary: checked where it points (above), not walked into.
+      if (dynamic) continue;
       parent.set(target, file);
       queue.push(target);
     }
@@ -152,6 +168,23 @@ describe('the new shell and the data layer stay headless', () => {
     expect(forbiddenPaths('src/shell/lounge/')).toEqual([]);
   });
 
+  it('catches what a direct-import lint cannot: dynamic, subpath, transitive and unresolved', () => {
+    const tree = new Map([
+      ['src/data/a.ts', "export const load = () => import('../components/Big');\nimport './b';"],
+      ['src/data/b.ts', "import { x } from 'livekit-client/dist/x';\nimport { y } from './c.js';\nimport { z } from './missing';"],
+      ['src/data/c.ts', "import { Z } from '../hooks/leaky';"],
+      ['src/hooks/leaky.ts', "import { Snackbar } from '../contexts/NotificationContext';"],
+      ['src/components/Big.tsx', ''],
+      ['src/contexts/NotificationContext.tsx', ''],
+    ]);
+    expect(forbiddenPaths('src/data/', tree)).toEqual([
+      'src/data/a.ts -> src/components/Big.tsx (classic UI)',
+      'src/data/b.ts -> livekit-client/dist/x (a livekit-client value outside the lazy call surface)',
+      'src/data/b.ts -> ./missing (unresolved import: the walker cannot see past it)',
+      'src/data/c.ts -> src/hooks/leaky.ts -> src/contexts/NotificationContext.tsx (renders an MUI Snackbar)',
+    ]);
+  });
+
   it('reads imports the way the walker needs', () => {
     expect(importsOf("import type { Room } from 'livekit-client';")).toEqual([{ specifier: 'livekit-client', typeOnly: true }]);
     expect(importsOf("import { type Room, type Track } from 'livekit-client';")[0].typeOnly).toBe(true);
@@ -160,7 +193,7 @@ describe('the new shell and the data layer stay headless', () => {
     expect(importsOf("export { a } from './a';")[0].specifier).toBe('./a');
     expect(importsOf("import './side-effect';")).toEqual([{ specifier: './side-effect', typeOnly: false }]);
     expect(importsOf("// import { Room } from 'livekit-client'\nconst url = 'http://x';")).toEqual([]);
-    expect(importsOf("const m = await import('./lazy');")).toEqual([]);
+    expect(importsOf("const m = await import('./lazy');")).toEqual([{ specifier: './lazy', typeOnly: false, dynamic: true }]);
   });
 });
 
@@ -186,6 +219,8 @@ describe('the lint block for src/data and src/shell/lounge (eslint.config.js)', 
     ["import { stepToastQueue } from '../kit/behaviour/toastQueue';", 'src/data/x.ts'],
     ["import { ErrorBoundary } from '../../components/ErrorBoundary';", 'src/data/sub/x.ts'],
     ["import { ChannelRow } from '../../components/Channel/ChannelRow';", 'src/shell/lounge/x.tsx'],
+    // The ErrorBoundary exception is LoungeRoot's alone
+    ["import { ErrorBoundary } from '../../components/ErrorBoundary';", 'src/shell/lounge/x.tsx'],
   ])('rejects %s in %s', async (code, filePath) => {
     expect(await rulesHit(code, filePath)).toEqual(restricted);
   });
@@ -198,6 +233,9 @@ describe('the lint block for src/data and src/shell/lounge (eslint.config.js)', 
     expect(
       await rulesHit("import { Room } from 'livekit-client';\nexport const r = Room;", 'src/shell/lounge/call/surface/x.ts'),
     ).toEqual([]);
+    expect(await rulesHit("import { x } from 'livekit-client/dist/sub';\nexport const r = x;", 'src/data/x.ts')).toEqual([
+      '@typescript-eslint/no-restricted-imports',
+    ]);
   });
 
   it('allows the headless layer its own imports', async () => {
@@ -212,9 +250,12 @@ describe('the lint block for src/data and src/shell/lounge (eslint.config.js)', 
     expect(await rulesHit(code, 'src/data/x.ts')).toEqual([]);
   });
 
-  it("allows only LoungeRoot's listed exception in the Lounge chunk", async () => {
+  it("allows the listed exception in LoungeRoot.tsx only", async () => {
     expect(
-      await rulesHit("import { ErrorBoundary } from '../../components/ErrorBoundary';\nexport const e = ErrorBoundary;", 'src/shell/lounge/x.tsx'),
+      await rulesHit("import { ErrorBoundary } from '../../components/ErrorBoundary';\nexport const e = ErrorBoundary;", 'src/shell/lounge/LoungeRoot.tsx'),
     ).toEqual([]);
+    expect(
+      await rulesHit("import { ChannelRow } from '../../components/Channel/ChannelRow';\nexport const e = ChannelRow;", 'src/shell/lounge/LoungeRoot.tsx'),
+    ).toEqual(['no-restricted-imports']);
   });
 });

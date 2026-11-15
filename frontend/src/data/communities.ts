@@ -11,12 +11,13 @@ import { RBAC_ACTIONS } from '../constants/rbacActions';
 export interface CommunityActions {
   /** Community settings (classic: the edit button, `UPDATE_COMMUNITY`). */
   canEdit: boolean;
-  /** Create an invite to this community (`CREATE_INVITE`). */
+  /** Create an invite: the community's `CREATE_INVITE`, or instance invite authority (`CREATE_INSTANCE_INVITE`), as the server accepts. */
   canInvite: boolean;
 }
 
-export function useCommunityActions(communityId: string | undefined): CommunityActions {
+export function useCommunityActions(communityId: string): CommunityActions {
   const canEdit = useCanPerformAction('COMMUNITY', communityId, RBAC_ACTIONS.UPDATE_COMMUNITY);
-  const canInvite = useCanPerformAction('COMMUNITY', communityId, RBAC_ACTIONS.CREATE_INVITE);
-  return { canEdit, canInvite };
+  const canInviteHere = useCanPerformAction('COMMUNITY', communityId, RBAC_ACTIONS.CREATE_INVITE);
+  const canInviteInstance = useCanPerformAction('INSTANCE', undefined, RBAC_ACTIONS.CREATE_INSTANCE_INVITE);
+  return { canEdit, canInvite: canInviteHere || canInviteInstance };
 }

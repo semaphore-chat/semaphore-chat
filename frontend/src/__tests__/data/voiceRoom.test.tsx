@@ -196,6 +196,22 @@ describe('useJoinVoiceRoom', () => {
     expect(voice.joinVoiceChannel).toHaveBeenCalledWith('vc-1', 'Squad Up', 'c-route', true, room.createdAt);
   });
 
+  it('a second tap while the first join runs starts no second join', async () => {
+    let finish!: () => void;
+    voice.joinVoiceChannel.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useJoinVoiceRoom(), { wrapper });
+
+    const first = result.current(room);
+    await expect(result.current(room)).resolves.toBe('busy');
+    finish();
+    await expect(first).resolves.toBe('joined');
+    expect(voice.joinVoiceChannel).toHaveBeenCalledTimes(1);
+    // Free again afterwards
+    voice.joinVoiceChannel.mockResolvedValue(undefined);
+    await expect(result.current(room)).resolves.toBe('joined');
+  });
+
   it('does not join again when you are already here', async () => {
     voice.state = { isConnected: true, currentChannelId: 'vc-1', room: null };
     const { wrapper } = setup();

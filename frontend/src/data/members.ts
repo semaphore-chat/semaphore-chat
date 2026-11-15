@@ -19,6 +19,7 @@ import {
 import { membershipControllerFindAllForCommunity } from '../api-client/sdk.gen';
 import type { MembershipResponseDto, RoleDto } from '../api-client/types.gen';
 import { communityMembersQueryKey, MEMBER_LIST_PAGE_SIZE } from '../utils/membershipQueryKeys';
+import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import { useCommunityChannels, type QueryStatus } from './channels';
 
 export interface MemberDisplayRole {
@@ -169,15 +170,24 @@ export interface MemberSummary {
   inRoom: string | null;
 }
 
+/**
+ * The community's members **of the loaded pages** (the first 100 until
+ * `loadMore`): complete only when `allLoaded`. There is no community-wide
+ * online count on the server yet, so a whole-community number is offered only
+ * once every page is loaded (`aroundCount`); before that, show
+ * `loadedAroundCount` as "N+" next to "Show more".
+ */
 export interface CommunityMembers {
-  /** Members with a role (any presence), by role priority then name order from the server. */
+  /** Loaded members with a role (any presence), by role priority, then server order. */
   hosts: MemberSummary[];
-  /** Online members without a role. */
+  /** Loaded online members without a role. */
   around: MemberSummary[];
-  /** Offline members without a role. */
+  /** Loaded offline members without a role. */
   away: MemberSummary[];
-  /** Online members, hosts included ("9 around"). */
-  aroundCount: number;
+  /** Online members among the loaded pages, hosts included. */
+  loadedAroundCount: number;
+  /** Online members in the whole community, hosts included ("9 around"): null until every page is loaded. */
+  aroundCount: number | null;
   allLoaded: boolean;
   loadMore(): void;
   loadingMore: boolean;
@@ -232,7 +242,7 @@ export function groupMembers(entries: readonly { summary: MemberSummary; rolePos
     hosts,
     around: rest.filter((m) => m.presence === 'online'),
     away: rest.filter((m) => m.presence === 'offline'),
-    aroundCount: entries.filter((e) => e.summary.presence === 'online').length,
+    loadedAroundCount: entries.filter((e) => e.summary.presence === 'online').length,
   };
 }
 
@@ -241,13 +251,18 @@ export function useCommunityMembers(communityId: string): CommunityMembers {
   const pages = useCommunityMemberPages(communityId);
   const presence = useBulkPresence((pages.memberships?.length ?? 0) > 0);
   const { voice } = useCommunityChannels(communityId);
+  const { state: voiceState } = useVoiceConnection();
+  // Your own room: no 120 s poll (LiveKit is the live source there, see
+  // useVoiceRoomPeople); its presence entry still loads once and the voice
+  // socket handlers keep it patched.
+  const ownRoomId = voiceState.isConnected ? voiceState.currentChannelId : null;
 
   // Who is in which of this community's rooms (the same presence queries the
   // left island's voice cards read, so no extra requests).
   const rooms = useQueries({
     queries: voice.map((room) => ({
       ...voicePresenceControllerGetChannelPresenceOptions({ path: { channelId: room.id } }),
-      refetchInterval: 120_000,
+      refetchInterval: room.id === ownRoomId ? (false as const) : 120_000,
     })),
   });
   const roomData = rooms.map((r) => r.data);
@@ -281,17 +296,21 @@ export function useCommunityMembers(communityId: string): CommunityMembers {
       : pages.status === 'pending' || (presence.status === 'pending' && presence.fetchStatus !== 'idle')
         ? 'pending'
         : 'success';
-  const { refetch: refetchPresence } = presence;
+  const { refetch: refetchPresence, error: presenceError } = presence;
+  const { error: pagesError, refetch: refetchPages } = pages;
+  const refetch = useCallback(() => {
+    if (pagesError) refetchPages();
+    if (presenceError) void refetchPresence();
+  }, [pagesError, refetchPages, presenceError, refetchPresence]);
+  const allLoaded = pages.status === 'success' && !pages.hasMore;
 
   return {
     ...grouped,
-    allLoaded: pages.status === 'success' && !pages.hasMore,
+    aroundCount: allLoaded ? grouped.loadedAroundCount : null,
+    allLoaded,
     loadMore: pages.loadMore,
     loadingMore: pages.loadingMore,
     status,
-    refetch: () => {
-      if (pages.error) pages.refetch();
-      if (presence.error) void refetchPresence();
-    },
+    refetch,
   };
 }

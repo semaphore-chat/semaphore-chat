@@ -22,10 +22,12 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 
 const BASE = 'http://localhost:3000';
 
-let latest: { members: MemberData[]; hasMore?: boolean; onLoadMore?: () => void } = { members: [] };
+let latest: { members: MemberData[]; hasMore?: boolean; isLoading?: boolean; onLoadMore?: () => void } = { members: [] };
+let loadingHistory: boolean[] = [];
 vi.mock('../../components/Message/MemberList', () => ({
   default: (props: typeof latest) => {
     latest = props;
+    loadingHistory.push(!!props.isLoading);
     return <div data-testid="member-list-mock">{props.members.length}</div>;
   },
 }));
@@ -42,6 +44,7 @@ const members = Array.from({ length: TOTAL }, (_, i) => ({
 
 describe('MemberListContainer presence past 200 members', () => {
   it('shows the 250th member online after loading every page', async () => {
+    loadingHistory = [];
     const presenceRequests: string[] = [];
     server.use(
       http.get(`${BASE}/api/membership/community/community-1`, ({ request }) => {
@@ -80,5 +83,29 @@ describe('MemberListContainer presence past 200 members', () => {
     await waitFor(() => expect(latest.members.find((m) => m.id === 'user-250')?.isOnline).toBe(true));
     expect(latest.members.filter((m) => m.isOnline)).toHaveLength(1);
     expect(presenceRequests).not.toContain('ids');
+  });
+
+  it('keeps the list on screen across "Show more" (no skeleton flash): visible change from main', async () => {
+    loadingHistory = [];
+    server.use(
+      http.get(`${BASE}/api/membership/community/community-1`, ({ request }) => {
+        const start = Number(new URL(request.url).searchParams.get('continuationToken') || '0');
+        const next = start + 100;
+        return HttpResponse.json({ members: members.slice(start, next), continuationToken: next < TOTAL ? String(next) : undefined });
+      }),
+      http.get(`${BASE}/api/presence/users/:userIds`, () => HttpResponse.json({ presence: {} })),
+    );
+    renderWithProviders(
+      <MemberListContainer contextType={VoiceSessionType.Channel} contextId="channel-1" communityId="community-1" isPrivate={false} />,
+    );
+    await waitFor(() => expect(screen.getByTestId('member-list-mock')).toHaveTextContent('100'));
+    const firstLoaded = loadingHistory.lastIndexOf(true) + 1;
+
+    act(() => latest.onLoadMore?.());
+    await waitFor(() => expect(screen.getByTestId('member-list-mock')).toHaveTextContent('200'));
+
+    // On main the per-ids presence key changed with every page, so the whole
+    // list went back to its loading skeleton; with bulk presence it never does.
+    expect(loadingHistory.slice(firstLoaded)).not.toContain(true);
   });
 });

@@ -21,7 +21,14 @@ describe('useCommunityActions', () => {
     expect(renderHook(() => useCommunityActions('c-1')).result.current).toEqual({ canEdit: true, canInvite: false });
     expect(useCanPerformAction).toHaveBeenCalledWith('COMMUNITY', 'c-1', 'UPDATE_COMMUNITY');
     expect(useCanPerformAction).toHaveBeenCalledWith('COMMUNITY', 'c-1', 'CREATE_INVITE');
+    expect(useCanPerformAction).toHaveBeenCalledWith('INSTANCE', undefined, 'CREATE_INSTANCE_INVITE');
     // Another community's grant does not leak
     expect(renderHook(() => useCommunityActions('c-2')).result.current.canEdit).toBe(false);
+  });
+
+  it('offers invites with instance invite authority too (the server accepts it)', () => {
+    granted.clear();
+    granted.add('INSTANCE:undefined:CREATE_INSTANCE_INVITE');
+    expect(renderHook(() => useCommunityActions('c-1')).result.current).toEqual({ canEdit: false, canInvite: true });
   });
 });

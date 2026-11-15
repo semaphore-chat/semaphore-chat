@@ -128,11 +128,15 @@ export function useCallBarModel(touch: boolean): CallBarModel | null {
     };
   }, [state.contextType, state.currentChannelId, state.currentDmGroupId, state.channelName, state.dmGroupName, state.communityId]);
 
+  // No community known (a channel call before its context arrived): the home
+  // page, never a "/community/null/..." route.
   const callViewPath = !place
     ? '/'
     : place.kind === 'dm'
       ? `/direct-messages/${place.dmGroupId}`
-      : `/community/${place.communityId}/channel/${place.channelId}`;
+      : place.communityId
+        ? `/community/${place.communityId}/channel/${place.channelId}`
+        : '/';
 
   const { revealVideoTiles, toggleScreenShare } = actions;
   const openCallView = useCallback(() => {
@@ -142,6 +146,22 @@ export function useCallBarModel(touch: boolean): CallBarModel | null {
   const stopSharing = useCallback(() => {
     if (isScreenShareEnabled) void toggleScreenShare();
   }, [isScreenShareEnabled, toggleScreenShare]);
+
+  const { toggleMute, toggleDeafen, leaveVoiceChannel, cancelReconnect } = actions;
+  // Stable while the call's actions are, so memo'd children of the bar can skip renders.
+  const barActions = useMemo<CallBarActions>(
+    () => ({
+      toggleMute,
+      toggleDeafen,
+      leave: leaveVoiceChannel,
+      cancel: cancelReconnect,
+      stopSharing,
+      openCallView,
+      holdStart,
+      holdEnd,
+    }),
+    [toggleMute, toggleDeafen, leaveVoiceChannel, cancelReconnect, stopSharing, openCallView, holdStart, holdEnd],
+  );
 
   const room = state.room;
   const talking = useMemo(() => {
@@ -192,16 +212,7 @@ export function useCallBarModel(touch: boolean): CallBarModel | null {
     deafened: state.isDeafened,
     sharingScreen: isScreenShareEnabled,
     talking,
-    actions: {
-      toggleMute: actions.toggleMute,
-      toggleDeafen: actions.toggleDeafen,
-      leave: actions.leaveVoiceChannel,
-      cancel: actions.cancelReconnect,
-      stopSharing,
-      openCallView,
-      holdStart,
-      holdEnd,
-    },
+    actions: barActions,
     callViewPath,
   };
 }

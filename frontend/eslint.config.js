@@ -208,22 +208,17 @@ export default tseslint.config(
   // files, so it restates the MUI and reducer-step patterns. Transitive imports
   // are checked by src/__tests__/shell/loungeImportBoundary.test.ts.
   {
-    files: ['src/data/**/*.{ts,tsx}'],
+    files: ['src/data/**/*.{ts,tsx}', 'src/shell/lounge/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { patterns: headlessPatterns('(^|/)components(/|$)') }],
     },
   },
+  // The one exception, in the one file: LoungeRoot's screen error boundary
+  // predates this rule; the shell frame replaces it with a kit one.
   {
-    files: ['src/shell/lounge/**/*.{ts,tsx}'],
+    files: ['src/shell/lounge/LoungeRoot.tsx'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          // LoungeRoot's screen error boundary predates this rule; the shell
-          // frame replaces it with a kit one.
-          patterns: headlessPatterns('(^|/)components(/(?!ErrorBoundary$)|$)'),
-        },
-      ],
+      'no-restricted-imports': ['error', { patterns: headlessPatterns('(^|/)components(/(?!ErrorBoundary$)|$)') }],
     },
   },
   // livekit-client: types only, except in the lazy call-surface chunk.
@@ -237,6 +232,14 @@ export default tseslint.config(
           paths: [
             {
               name: 'livekit-client',
+              allowTypeImports: true,
+              message:
+                'livekit-client values load only in the lazy call surface (src/shell/lounge/call/surface). Import types with `import type`.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['livekit-client/*'],
               allowTypeImports: true,
               message:
                 'livekit-client values load only in the lazy call surface (src/shell/lounge/call/surface). Import types with `import type`.',

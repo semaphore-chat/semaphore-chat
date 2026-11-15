@@ -4,7 +4,7 @@
  * The one channel row used by every channel list: the desktop sidebar
  * (`Channel`), the phone channel screen and the tablet sidebar
  * (`ChannelCategoryList`). It renders the unread pill and bold name, the
- * mention badge (from `useUnreadSummary`), a lock for private channels and the
+ * mention badge (from `useChannelUnread`), a lock for private channels and the
  * participants nested under voice channels.
  *
  * `variant="touch"` gives a 44px minimum row height and slightly larger type
@@ -35,7 +35,7 @@ import {
 // always-mounted mobile layout — the barrel would drag livekit into the entry.
 import { VoiceChannelUserList } from "../Voice/VoiceChannelUserList";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
-import { useUnreadSummary } from "../../data/unread";
+import { useChannelUnread } from "../../data/unread";
 import { useJoinVoiceRoom } from "../../data/voiceRoom";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 
@@ -105,7 +105,7 @@ export function ChannelRow({
   const navigate = useNavigate();
   const { revealVideoTiles } = useVoiceConnection().actions;
   const joinVoiceRoom = useJoinVoiceRoom();
-  const unread = useUnreadSummary().channel(channel.id);
+  const unread = useChannelUnread(channel.id);
 
   const isText = channel.type === ChannelKind.TEXT;
   const isVoice = channel.type === ChannelKind.VOICE;
@@ -128,7 +128,7 @@ export function ChannelRow({
     // A failed join has already logged and played the error sound; the
     // voice notice (VoiceNotice) explains the failure and offers Retry.
     const outcome = await joinVoiceRoom(channel, communityId);
-    if (outcome === "failed") return;
+    if (outcome === "failed" || outcome === "busy") return;
     navigate(path);
     // Already connected: open the channel's stage and reveal the tiles
     if (outcome === "alreadyHere") revealVideoTiles();

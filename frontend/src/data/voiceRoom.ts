@@ -10,7 +10,7 @@
  * No livekit-client values: the room arrives through the voice context and its
  * events are named through `features/voice/livekitEvents`.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { voicePresenceControllerGetChannelPresenceOptions } from '../api-client/@tanstack/react-query.gen';
@@ -204,7 +204,8 @@ export function useVoiceRoomPeople(channel: Pick<Channel, 'id' | 'type'>): Voice
   };
 }
 
-export type JoinVoiceRoomOutcome = 'joined' | 'alreadyHere' | 'failed';
+/** `busy`: a join started from this hook is still running (a double tap). */
+export type JoinVoiceRoomOutcome = 'joined' | 'alreadyHere' | 'failed' | 'busy';
 
 /**
  * Join a community voice room. Never navigates (the classic row navigates on
@@ -219,9 +220,13 @@ export function useJoinVoiceRoom(): (
   const { state, actions } = useVoiceConnection();
   const { currentChannelId, isConnected } = state;
   const { joinVoiceChannel } = actions;
+  // One join at a time per caller: a second tap while the first runs does nothing.
+  const joiningRef = useRef(false);
   return useCallback(
     async (channel, communityId = channel.communityId) => {
       if (currentChannelId === channel.id && isConnected) return 'alreadyHere';
+      if (joiningRef.current) return 'busy';
+      joiningRef.current = true;
       try {
         await joinVoiceChannel(channel.id, channel.name, communityId, channel.isPrivate || false, channel.createdAt);
         return 'joined';
@@ -229,6 +234,8 @@ export function useJoinVoiceRoom(): (
         logger.error('Failed to join voice channel:', error);
         playSound(Sounds.error);
         return 'failed';
+      } finally {
+        joiningRef.current = false;
       }
     },
     [currentChannelId, isConnected, joinVoiceChannel],

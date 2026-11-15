@@ -37,6 +37,7 @@ vi.mock('../../hooks/useSound', () => ({
 }));
 
 import { useScreenShareSession, SCREEN_SHARE_AUDIO_FAILED_MESSAGE } from '../../hooks/useScreenShareSession';
+import { useScreenShare } from '../../hooks/useScreenShare';
 import { NotificationContext } from '../../contexts/NotificationContext';
 
 const showNotification = vi.fn();
@@ -110,5 +111,20 @@ describe('useScreenShareSession', () => {
     mockAudioFailed = true;
     expect(() => rerender()).not.toThrow();
     expect(mockPlaySound).toHaveBeenCalledWith('error');
+  });
+
+  it('useScreenShare (the bar\'s picker hook) runs none of these effects: no double toast, reveal or clean-up', () => {
+    const { rerender } = renderHook(() => useScreenShare(), { wrapper: withNotifications });
+    mockClearScreenShareConfig.mockClear();
+    mockAudioFailed = true;
+    mockIsScreenShareEnabled = true;
+    rerender();
+    mockIsScreenShareEnabled = false;
+    rerender();
+
+    expect(showNotification).not.toHaveBeenCalled();
+    expect(mockPlaySound).not.toHaveBeenCalled();
+    expect(mockRevealVideoTiles).not.toHaveBeenCalled();
+    expect(mockClearScreenShareConfig).not.toHaveBeenCalled();
   });
 });

@@ -235,3 +235,20 @@ describe('useCallBarModel: the mic', () => {
     expect(model().result.current!.mic.blocked).toBe(false);
   });
 });
+
+describe('useCallBarModel: identity and routes', () => {
+  it('keeps the same actions object across renders while the call is unchanged', () => {
+    const { result, rerender } = model();
+    const before = result.current!.actions;
+    rerender();
+    expect(result.current!.actions).toBe(before);
+  });
+
+  it('never builds a "/community/null/..." route', () => {
+    m.state = { ...IN_CHANNEL, communityId: null };
+    const bar = model().result.current!;
+    expect(bar.callViewPath).toBe('/');
+    bar.actions.openCallView();
+    expect(mockNavigate).toHaveBeenCalledWith('/');
+  });
+});

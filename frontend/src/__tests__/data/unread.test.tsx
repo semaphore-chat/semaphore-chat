@@ -12,7 +12,7 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
   };
 });
 
-import { useUnreadSummary, useNotificationCount, groupUnreadByCommunity, inboxUnread } from '../../data/unread';
+import { useUnreadSummary, useChannelUnread, useNotificationCount, groupUnreadByCommunity, inboxUnread } from '../../data/unread';
 import { useReadReceipts } from '../../hooks/useReadReceipts';
 import { handleNewMessage, handleReadReceiptUpdated } from '../../socket-hub/handlers/messageHandlers';
 import { userControllerGetProfileQueryKey } from '../../api-client/@tanstack/react-query.gen';
@@ -23,8 +23,6 @@ const COUNTS = [
   { channelId: 'ch-general', communityId: 'c-1', unreadCount: 3, mentionCount: 2 },
   { channelId: 'ch-random', communityId: 'c-1', unreadCount: 1, mentionCount: 0 },
   { channelId: 'ch-other', communityId: 'c-2', unreadCount: 0, mentionCount: 0 },
-  // An entry from a server without `communityId` on the DTO yet (design F3)
-  { channelId: 'ch-legacy', unreadCount: 4, mentionCount: 1 },
   // A DM: its unread counts once in the inbox, even though it also made a notification (F5)
   { directMessageGroupId: 'dm-1', unreadCount: 5, mentionCount: 5 },
 ];
@@ -48,17 +46,50 @@ describe('useUnreadSummary', () => {
     expect(result.current.summary.channel(undefined)).toEqual({ unread: 0, mentions: 0 });
   });
 
-  it('groups channels by community, and entries without communityId under null', async () => {
+  it('groups channels by community', async () => {
     const { result } = setup();
     await waitFor(() => expect(result.current.summary.community('c-1')).toEqual({ mentions: 2, hasUnread: true }));
     expect(result.current.summary.community('c-2')).toEqual({ mentions: 0, hasUnread: false });
-    expect(result.current.summary.community(null)).toEqual({ mentions: 1, hasUnread: true });
     expect(result.current.summary.community('c-unknown')).toEqual({ mentions: 0, hasUnread: false });
+  });
+
+  it('counts an entry the socket inserted without communityId for no community until the refetch tags it', async () => {
+    let counts: unknown[] = [{ channelId: 'ch-general', communityId: 'c-1', unreadCount: 0, mentionCount: 0 }];
+    server.use(http.get(`${BASE}/api/read-receipts/unread-counts`, () => HttpResponse.json(counts)));
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'me', username: 'me' } as never);
+    const { result } = renderHook(() => useUnreadSummary(), { wrapper: createTestWrapper({ queryClient }) });
+    await waitFor(() => expect(result.current.channel('ch-general').unread).toBe(0));
+
+    // A message in a channel the cache has no entry for: the handler adds one
+    // without communityId and invalidates; the refetch brings the tagged entry.
+    counts = [...counts, { channelId: 'ch-new', communityId: 'c-1', unreadCount: 1, mentionCount: 0 }];
+    let release!: () => void;
+    const refetchHeld = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get(`${BASE}/api/read-receipts/unread-counts`, async () => {
+        await refetchHeld;
+        return HttpResponse.json(counts);
+      }),
+    );
+    await act(async () => {
+      await handleNewMessage(
+        { message: { id: 'm-2', channelId: 'ch-new', directMessageGroupId: null, authorId: 'someone' } as never },
+        queryClient,
+      );
+    });
+
+    // Before the refetch lands: counted for the channel, for no community
+    await waitFor(() => expect(result.current.channel('ch-new').unread).toBe(1));
+    expect(result.current.community('c-1').hasUnread).toBe(false);
+    // After it: the community has it
+    release();
+    await waitFor(() => expect(result.current.community('c-1').hasUnread).toBe(true));
   });
 
   it('counts the inbox as DM unread + channel mentions, a DM once', async () => {
     const { result } = setup();
-    await waitFor(() => expect(result.current.summary.inbox).toEqual({ directMessages: 5, mentions: 3, total: 8 }));
+    await waitFor(() => expect(result.current.summary.inbox).toEqual({ directMessages: 5, mentions: 2, total: 7 }));
   });
 
   it('changes in the same render as useReadReceipts when a socket message arrives', async () => {
@@ -89,7 +120,7 @@ describe('useUnreadSummary', () => {
     });
 
     await waitFor(() => expect(result.current.summary.channel('ch-general')).toEqual({ unread: 0, mentions: 0 }));
-    expect(result.current.summary.inbox.mentions).toBe(1);
+    expect(result.current.summary.inbox.mentions).toBe(0);
   });
 
   it('keeps the same object while the counts are unchanged (safe to memoize on)', async () => {
@@ -98,6 +129,13 @@ describe('useUnreadSummary', () => {
     const before = result.current.summary;
     rerender();
     expect(result.current.summary).toBe(before);
+  });
+
+  it('useChannelUnread reads one channel', async () => {
+    server.use(http.get(`${BASE}/api/read-receipts/unread-counts`, () => HttpResponse.json(COUNTS)));
+    const queryClient = createTestQueryClient();
+    const { result } = renderHook(() => useChannelUnread('ch-general'), { wrapper: createTestWrapper({ queryClient }) });
+    await waitFor(() => expect(result.current).toEqual({ unread: 3, mentions: 2 }));
   });
 
   it('is empty before the counts load', () => {

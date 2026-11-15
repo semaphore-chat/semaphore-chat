@@ -124,7 +124,7 @@ React contexts provide cross-cutting state:
 
 **Messaging**: `useMessages`, `useSendMessage`, `useMentionAutocomplete`, `useMessagePermissions`, `useMessageVisibility`, `useMessageFileUpload`
 
-**Voice**: `useVoiceConnection`, `useRoom`, `useScreenShare`, `useLocalMediaState`, `useDeviceSettings`, `useDeviceTest`, `usePushToTalk`, `useSpeakingDetection`, `useVoiceParticipantCount`, `useVoicePresenceHeartbeat`, `useVoiceRecovery`, `useVoiceSettings`, `useParticipantTracks`, `useDeafenEffect`
+**Voice**: `useVoiceConnection`, `useRoom`, `useScreenShare` (the controls and the Electron picker), `useScreenShareSession` (what a share does to the call: the audio-failed notice, opening the video panel on your own share; mounted once per call by `VoiceSessionEffects`), `useLocalMediaState`, `useDeviceSettings`, `useDeviceTest`, `usePushToTalk`, `useSpeakingDetection`, `useVoiceParticipantCount`, `useVoicePresenceHeartbeat`, `useVoiceRecovery`, `useVoiceSettings`, `useParticipantTracks`, `useDeafenEffect`
 
 **Real-time**: `useSocket`, `useTypingUsers`, `useTypingEmitter`, `useNotifications`, `useNotificationSideEffects`, `useAutoMarkNotificationsRead`, `useReadReceipts`
 
@@ -135,6 +135,10 @@ React contexts provide cross-cutting state:
 **UI**: `useResponsive`, `useSwipeGesture`, `useHapticFeedback`, `useDebounce`, `useThemeSync`, `usePWA`, `usePWAInstall`
 
 **Profile**: `useCurrentUser`, `useProfileForm`, `useCommunityForm`
+
+### The shared data layer (`src/data/`)
+
+Headless hooks that both the classic screens and the new design's shell read, so the two can never disagree: `useUnreadSummary` / `useChannelUnread` (unread per channel, per community, the inbox), `useCommunityChannels` (text and voice, in position order), `useVoiceRoomPeople` (LiveKit in your own room, server presence elsewhere) and `useJoinVoiceRoom`, `useCommunityMembers` (Hosts / Around / Away of the loaded pages; bulk presence), `useCallBarModel` and `useVoiceNotice` (the call bar and the voice notice), `useCommunityActions`. They read the same query keys the socket handlers keep live and never open their own socket subscription. `src/data` may not import MUI, the kit, components or pages: an ESLint block and `__tests__/shell/loungeImportBoundary.test.ts` (which also follows transitive imports) enforce it.
 
 ### Sending messages and attachments
 
