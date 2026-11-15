@@ -2,10 +2,12 @@ import type { JSX, ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Button } from '../controls/Button';
+import { BUTTON_PADDING } from '../controls/buttonPadding';
 import { IconButton } from '../controls/IconButton';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
 import { Icon, type IconTone } from './Icon';
+import { liveRole } from './live';
 
 export type AlertSeverity = 'info' | 'success' | 'warning' | 'danger';
 
@@ -15,6 +17,12 @@ export interface AlertProps {
   children: ReactNode;
   action?: { label: string; onClick: () => void };
   onClose?: () => void;
+  /**
+   * Speak when it appears (default). Pass `false` for an alert that is already
+   * on the page when it loads, so a screen reader does not read it out on every
+   * visit; it is then a quiet `note`.
+   */
+  announce?: boolean;
 }
 
 const LOOK: Record<AlertSeverity, { icon: IconName; tone: IconTone }> = {
@@ -63,21 +71,28 @@ const Title = styled('div')({
 const ActionRow = styled('div')({
   display: 'flex',
   // The text button has its own side padding: pull it back so its label lines up with the text above.
-  margin: `${tokens.space.sm}px 0 0 ${-tokens.space.md}px`,
+  margin: `${tokens.space.sm}px 0 0 ${-BUTTON_PADDING.sm}px`,
 });
 
-/** The close button is 32 tall; pull it up so its icon lines up with the first line of text. */
+/** What a small icon button has around its icon: (control - icon) / 2 on each side. */
+const CLOSE_INSET = (tokens.control.sm - tokens.icon.sm) / 2;
+
+/**
+ * The close button is `control.sm` tall: pull it up so its centre meets the
+ * first line of text, and right by the space around its icon so the icon
+ * (not the button box) sits on the padding edge.
+ */
 const CloseSlot = styled('span')({
   flexShrink: 0,
   marginTop: `${-(tokens.control.sm - tokens.text.body.line) / 2}px`,
-  marginRight: `${-tokens.space.sm}px`,
+  marginRight: `${-CLOSE_INSET}px`,
 });
 
-/** An inline message banner. Warnings and errors interrupt (`alert`); info and success wait (`status`). */
-export function Alert({ severity, title, children, action, onClose }: AlertProps): JSX.Element {
+/** An inline message banner. Warnings and errors interrupt (`alert`); info and success wait (`status`); `announce={false}` makes it a quiet `note`. */
+export function Alert({ severity, title, children, action, onClose, announce = true }: AlertProps): JSX.Element {
   const look = LOOK[severity];
   return (
-    <Root role={severity === 'warning' || severity === 'danger' ? 'alert' : 'status'}>
+    <Root role={liveRole(severity === 'warning' || severity === 'danger', announce)}>
       <IconSlot>
         <Icon name={look.icon} size="lg" tone={look.tone} />
       </IconSlot>

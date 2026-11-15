@@ -38,27 +38,37 @@ describe('AvatarStack', () => {
 
   it('is one group named by the first names and the rest', () => {
     renderWithKit(<AvatarStack people={PEOPLE} max={3} />);
-    expect(screen.getByRole('group', { name: 'aiko, dropbear, gracie and 2 more' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'aiko, dropbear, gracie and 2 more' })).toBeInTheDocument();
     // The avatars inside add no names of their own.
-    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.getAllByRole('img')).toHaveLength(1);
   });
 
   it('uses the label when given', () => {
     renderWithKit(<AvatarStack people={PEOPLE} label="In the voice room" />);
-    expect(screen.getByRole('group', { name: 'In the voice room' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'In the voice room' })).toBeInTheDocument();
   });
 
   it('shows no +N when everyone fits', () => {
     renderWithKit(<AvatarStack people={PEOPLE.slice(0, 2)} />);
     expect(screen.queryByText(/^\+/)).toBeNull();
-    expect(screen.getByRole('group', { name: 'aiko and dropbear' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'aiko and dropbear' })).toBeInTheDocument();
   });
 
   it('names one person and renders nothing for nobody', () => {
     const { container, rerender } = renderWithKit(<AvatarStack people={PEOPLE.slice(0, 1)} />);
-    expect(screen.getByRole('group', { name: 'aiko' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'aiko' })).toBeInTheDocument();
     rerender(<AvatarStack people={[]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('joins names with "and" explicitly, so a comma inside a name stays inside it', () => {
+    renderWithKit(<AvatarStack people={[{ name: 'Smith, John' }, { name: 'bob' }]} />);
+    expect(screen.getByRole('img', { name: 'Smith, John and bob' })).toBeInTheDocument();
+  });
+
+  it('names a blank person as the avatar does', () => {
+    renderWithKit(<AvatarStack people={[{ name: '' }, { name: 'bob' }, { name: '  ' }]} />);
+    expect(screen.getByRole('img', { name: 'Unknown user, bob and Unknown user' })).toBeInTheDocument();
   });
 
   it('copes with a max of 0 or below, or NaN', () => {

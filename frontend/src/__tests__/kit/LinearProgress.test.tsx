@@ -32,6 +32,19 @@ describe('LinearProgress', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', expected);
   });
 
+  it.each([
+    [150, '0%'],
+    [100, '0%'],
+    [50, '-50%'],
+    [0, '-100%'],
+    [Number.NaN, '-100%'],
+    [-20, '-100%'],
+  ])('paints value %s as a full-width bar moved to translateX(%s), keeping round ends', (value, shift) => {
+    renderWithKit(<LinearProgress label="p" value={value} />);
+    const bar = screen.getByRole('progressbar').firstElementChild as HTMLElement;
+    expect(bar).toHaveStyle({ width: '100%', transform: `translateX(${shift})` });
+  });
+
   it('omits aria-valuenow when indeterminate', () => {
     renderWithKit(<LinearProgress label="Working" />);
     expect(screen.getByRole('progressbar', { name: 'Working' })).not.toHaveAttribute('aria-valuenow');

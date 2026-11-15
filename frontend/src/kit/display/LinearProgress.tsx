@@ -14,7 +14,7 @@ export interface LinearProgressProps {
   tone?: LinearProgressTone;
 }
 
-/** The share of the track the sliding bar covers (and the static bar under reduced motion). */
+/** The share of the track the sliding bar covers. */
 const INDETERMINATE_SHARE = 40;
 /** The bar travels from just off the left edge to just past the right, as a share of its own width. */
 const TRAVEL_FROM = -100;
@@ -61,14 +61,20 @@ const Bar = styled('div', { shouldForwardProp: transientProps })<BarProps>(
         ...base,
         width: `${INDETERMINATE_SHARE}%`,
         animation: `${slide} ${4 * tokens.motion.slow}ms linear infinite`,
-        '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+        // Still frame: a full, dimmed bar. A short bar at the left would read as "40% done"; this reads as "busy, unknown".
+        '@media (prefers-reduced-motion: reduce)': {
+          animation: 'none',
+          width: '100%',
+          opacity: tokens.state.disabled,
+        },
       };
     }
+    // A full-width bar slid left by what is missing: the right end stays round at any value
+    // (scaling it would squash the ends), and the track clips the rest. Transform only.
     return {
       ...base,
       width: '100%',
-      transformOrigin: 'left center',
-      transform: `scaleX(${$ratio})`,
+      transform: `translateX(${$ratio * 100 - 100}%)`,
       transition: `transform ${tokens.motion.base}ms`,
       '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
     };

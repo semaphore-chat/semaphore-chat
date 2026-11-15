@@ -95,6 +95,21 @@ export const Fallbacks = () => (
   </KitStage>
 );
 
+/** A small logo on a transparent background: a white ring and a dot, no fill. */
+const TRANSPARENT_LOGO =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='13' fill='none' stroke='%23ffffff' stroke-width='4'/><circle cx='20' cy='20' r='4' fill='%23ffffff'/></svg>";
+
+/** An image with a transparent background: the initials must not show through it. */
+export const TransparentImage = () => (
+  <KitStage mode="dark">
+    <Row label="On the community colour, then on no colour">
+      <Avatar name="Couch Co-op" shape="rounded" colour="#FF9A6B" src={TRANSPARENT_LOGO} size="xl" />
+      <Avatar name="Couch Co-op" shape="rounded" src={TRANSPARENT_LOGO} size="xl" />
+      <Avatar name="Couch Co-op" colour="#6FB1F5" src={TRANSPARENT_LOGO} />
+    </Row>
+  </KitStage>
+);
+
 /** Stacks of people: five with the default max, two that all fit, and a big size. */
 export const Stack = () => (
   <KitStage mode="dark">

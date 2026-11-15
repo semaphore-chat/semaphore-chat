@@ -23,6 +23,12 @@ describe('Toast', () => {
     expect(screen.getByRole(role)).toHaveTextContent('Saved');
   });
 
+  it('is a quiet note with announce false', () => {
+    renderWithKit(<Toast message="Saved" tone="danger" announce={false} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('note')).toHaveTextContent('Saved');
+  });
+
   it('calls the action handler', async () => {
     const onClick = vi.fn();
     const { user } = renderWithKit(<Toast message="Deleted" action={{ label: 'Undo', onClick }} />);

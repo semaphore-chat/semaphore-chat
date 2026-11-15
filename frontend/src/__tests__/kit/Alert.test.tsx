@@ -23,6 +23,20 @@ describe('Alert', () => {
     expect(screen.getByRole(role)).toHaveTextContent('Something happened');
   });
 
+  it.each([['info'], ['success'], ['warning'], ['danger']] as const)(
+    'a %s alert present at page load (announce false) is a quiet note',
+    (severity) => {
+      renderWithKit(
+        <Alert severity={severity} announce={false}>
+          Static
+        </Alert>,
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(screen.getByRole('note')).toHaveTextContent('Static');
+    },
+  );
+
   it('renders the title and the body', () => {
     renderWithKit(
       <Alert severity="info" title="Heads up">

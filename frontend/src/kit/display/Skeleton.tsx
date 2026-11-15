@@ -10,6 +10,9 @@ export type SkeletonProps =
   | { shape: 'circle'; size?: AvatarSize }
   | { shape: 'rect'; height?: keyof typeof tokens.control };
 
+/** Most text lines a skeleton draws; anything above (or not a number) is clamped. */
+const MAX_LINES = 20;
+
 const pulse = keyframes({
   '0%, 100%': { opacity: 1 },
   '50%': { opacity: tokens.state.disabled },
@@ -33,8 +36,14 @@ const Placeholder = styled('div', { shouldForwardProp: transientProps })<{
 const Lines = styled('div')({
   display: 'flex',
   flexDirection: 'column',
-  gap: `${tokens.space.xs}px`,
   width: '100%',
+});
+
+/** One line of text's height, so the placeholder is as tall as the text that replaces it; the bar sits inset in it. */
+const LineSlot = styled('div')({
+  display: 'flex',
+  alignItems: 'center',
+  height: `${tokens.text.body.line}px`,
 });
 
 /** Placeholder shapes for content that is loading. Hidden from assistive technology: pair it with a named status elsewhere. */
@@ -52,11 +61,14 @@ export function Skeleton(props: SkeletonProps): JSX.Element {
       />
     );
   }
-  const count = Math.max(1, Math.floor(props.lines ?? 1));
+  const requested = props.lines ?? 1;
+  const count = Number.isFinite(requested) ? Math.min(MAX_LINES, Math.max(1, Math.floor(requested))) : requested > 0 ? MAX_LINES : 1;
   return (
     <Lines aria-hidden="true">
       {Array.from({ length: count }, (_, index) => (
-        <Placeholder key={index} $radius={tokens.radius.sm} $height={tokens.text.body.line} />
+        <LineSlot key={index}>
+          <Placeholder $radius={tokens.radius.sm} $height={tokens.text.body.line - 2 * tokens.space.xs} />
+        </LineSlot>
       ))}
     </Lines>
   );

@@ -4,6 +4,7 @@ import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { transientProps } from '../theme/transientProps';
 import type { IconName } from '../icons/generated';
+import { dotStyle } from './dot';
 import { Icon } from './Icon';
 
 export type PillTone = 'neutral' | 'accent' | 'danger' | 'positive' | 'warning';
@@ -26,7 +27,7 @@ interface RootProps {
 const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
   ({ theme, $tone, $size }) => {
     const { palette } = kitTheme(theme);
-    const type = $size === 'sm' ? tokens.text.tag : { ...tokens.text.small, weight: 600 };
+    const type = $size === 'sm' ? tokens.text.tag : { ...tokens.text.small, weight: tokens.text.bodyStrong.weight };
     const height = $size === 'sm' ? tokens.icon.lg : tokens.icon.xl;
     const looks: Record<PillTone, { background: string; color: string }> = {
       neutral: { background: palette.fill, color: palette.textSecondary },
@@ -39,6 +40,7 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
       display: 'inline-flex',
       alignItems: 'center',
       flexShrink: 0,
+      maxWidth: '100%',
       gap: `${tokens.space.xs}px`,
       boxSizing: 'border-box',
       height: `${height}px`,
@@ -54,13 +56,14 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
   },
 );
 
-const Dot = styled('span')({
-  flexShrink: 0,
-  width: `${tokens.space.sm}px`,
-  height: `${tokens.space.sm}px`,
-  borderRadius: `${tokens.radius.full}px`,
-  // The same colour as the text, so the dot always matches its tone.
-  background: 'currentColor',
+// The same colour as the text, so the dot always matches its tone.
+const Dot = styled('span')(dotStyle('currentColor'));
+
+/** The label gives way (an ellipsis) before the pill outgrows its row. */
+const Label = styled('span')({
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 });
 
 /**
@@ -73,7 +76,7 @@ export function Pill({ children, tone = 'neutral', dot = false, icon, size = 'md
     <Root $tone={tone} $size={size}>
       {dot && <Dot aria-hidden="true" />}
       {icon !== undefined && <Icon name={icon} size={size === 'sm' ? 'xs' : 'sm'} />}
-      <span>{children}</span>
+      <Label>{children}</Label>
     </Root>
   );
 }

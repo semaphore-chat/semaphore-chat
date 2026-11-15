@@ -3,6 +3,7 @@ import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { transientProps } from '../theme/transientProps';
+import { dotStyle } from './dot';
 
 export interface BadgeProps {
   count?: number;
@@ -28,14 +29,7 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
     const background = $tone === 'accent' ? palette.accent : palette.danger;
     const ink = $tone === 'accent' ? palette.onAccent : palette.onDanger;
     if ($dot) {
-      return {
-        display: 'inline-block',
-        flexShrink: 0,
-        width: `${tokens.space.sm}px`,
-        height: `${tokens.space.sm}px`,
-        borderRadius: `${tokens.radius.full}px`,
-        background,
-      };
+      return { display: 'inline-block', ...dotStyle(background) };
     }
     const type = tokens.text.tag;
     return {

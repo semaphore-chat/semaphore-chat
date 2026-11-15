@@ -5,6 +5,7 @@ import { kitTheme } from '../theme/KitProvider';
 import { readableBackground } from '../theme/readable';
 import { transientProps } from '../theme/transientProps';
 import { Icon, type IconSize } from './Icon';
+import { UNNAMED } from './unnamed';
 
 export type AvatarSize = keyof typeof tokens.avatar;
 export type Presence = 'online' | 'away' | 'offline' | 'speaking';
@@ -23,9 +24,6 @@ export interface AvatarProps {
   decorative?: boolean;
 }
 
-/** Name used when the name is blank, so the avatar is never an unlabelled image. */
-const UNNAMED = 'Unknown user';
-
 const ICON_FOR_SIZE: Record<AvatarSize, IconSize> = { xs: 'xs', sm: 'sm', md: 'md', lg: 'lg', xl: 'xl' };
 
 /** The slice of `Intl.Segmenter` used here; the project's TS lib predates it. */
@@ -43,18 +41,29 @@ function graphemes(text: string): string[] {
   return segmenter === null ? Array.from(text) : Array.from(segmenter.segment(text), (part) => part.segment);
 }
 
+/** A grapheme that can stand as an initial: starts with a letter, a number or a pictograph. */
+const INITIAL = /^[\p{L}\p{N}\p{Extended_Pictographic}]/u;
+
+/** Upper-case one grapheme, keeping it as written if that would make it longer (`ß` is not `SS`). */
+function upper(grapheme: string): string {
+  const cased = grapheme.toLocaleUpperCase();
+  return graphemes(cased).length === 1 ? cased : grapheme;
+}
+
 /**
  * The letters an avatar shows: the first letter of the first two words, or the
  * first two letters of a single word, upper-cased. Counted in graphemes, so an
- * accented letter, a CJK character or an emoji is one. Blank gives ''.
+ * accented letter, a CJK character or an emoji is one. Punctuation and symbols
+ * are skipped (`(mike)` is "MI"), and a word with no letter is not a word.
+ * Nothing left gives ''.
  */
 function initialsOf(name: string): string {
-  const words = name.split(/\s+/).filter((word) => word !== '');
-  const letters =
-    words.length >= 2
-      ? [graphemes(words[0])[0], graphemes(words[1])[0]]
-      : graphemes(words[0] ?? '').slice(0, 2);
-  return letters.join('').toLocaleUpperCase();
+  const words = name
+    .split(/\s+/)
+    .map((word) => graphemes(word).filter((grapheme) => INITIAL.test(grapheme)))
+    .filter((letters) => letters.length > 0);
+  const letters = words.length >= 2 ? [words[0][0], words[1][0]] : (words[0] ?? []).slice(0, 2);
+  return letters.map(upper).join('');
 }
 
 /** The face's type: tag for the small sizes, meta semibold for the middle, section for the largest. */
@@ -65,7 +74,7 @@ function typeFor(size: AvatarSize) {
   if (size === 'xl') {
     return tokens.text.section;
   }
-  return { ...tokens.text.meta, weight: 600 };
+  return { ...tokens.text.meta, weight: tokens.text.bodyStrong.weight };
 }
 
 function radiusFor(shape: 'circle' | 'rounded', size: AvatarSize): number {
@@ -103,12 +112,14 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
 
 interface FaceProps {
   $size: AvatarSize;
+  /** The image has loaded: the initials stay in the layout but are no longer painted, so a transparent image shows no letters. */
+  $covered: boolean;
   /** The person's own colour, when they have one. */
   $colour: string | undefined;
 }
 
 const Face = styled('span', { shouldForwardProp: transientProps })<FaceProps>(
-  ({ theme, $size, $colour }) => {
+  ({ theme, $size, $colour, $covered }) => {
     const { palette } = kitTheme(theme);
     const type = typeFor($size);
     // The person's colour, nudged in lightness only as far as the initials need.
@@ -124,7 +135,7 @@ const Face = styled('span', { shouldForwardProp: transientProps })<FaceProps>(
       overflow: 'hidden',
       borderRadius: 'inherit',
       background: own?.background ?? palette.fill,
-      color: own?.ink ?? palette.textSecondary,
+      color: $covered ? 'transparent' : (own?.ink ?? palette.textSecondary),
       fontFamily: `'${type.family}', ${theme.typography.fontFamily}`,
       fontSize: `${type.size}px`,
       lineHeight: `${type.line}px`,
@@ -148,29 +159,53 @@ interface DotProps {
   $presence: Exclude<Presence, 'speaking'>;
 }
 
+/**
+ * Presence by shape as well as colour: online a filled dot, away a filled dot
+ * with a bar across it, offline a hollow ring. A ground-coloured ring
+ * (outside the dot, a shadow) separates it from the avatar.
+ */
 const Dot = styled('span', { shouldForwardProp: transientProps })<DotProps>(
   ({ theme, $size, $presence }) => {
     const { palette } = kitTheme(theme);
-    const colours = { online: palette.positive, away: palette.warning, offline: palette.textDim };
     const diameter = $size === 'xs' ? tokens.space.sm : tokens.space.md;
     const outset = `-${tokens.border.hairline}px`;
+    const offline = $presence === 'offline';
     return {
       position: 'absolute',
       right: outset,
       bottom: outset,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       boxSizing: 'border-box',
       width: `${diameter}px`,
       height: `${diameter}px`,
       borderRadius: `${tokens.radius.full}px`,
-      background: colours[$presence],
-      border: `${tokens.border.selected}px solid ${palette.ground}`,
+      background: offline ? palette.ground : $presence === 'online' ? palette.positive : palette.warning,
+      border: offline ? `${tokens.border.selected}px solid ${palette.textDim}` : 'none',
+      boxShadow: `0 0 0 ${tokens.border.selected}px ${palette.ground}`,
+    };
+  },
+);
+
+/** Away's bar: the dot's width less a ring on each side, as high as a ring is thick, in the ground colour. */
+const AwayBar = styled('span', { shouldForwardProp: transientProps })<{ $size: AvatarSize }>(
+  ({ theme, $size }) => {
+    const { palette } = kitTheme(theme);
+    const diameter = $size === 'xs' ? tokens.space.sm : tokens.space.md;
+    return {
+      width: `${diameter - 2 * tokens.border.selected}px`,
+      height: `${tokens.border.selected}px`,
+      background: palette.ground,
     };
   },
 );
 
 /**
  * A person's or community's picture: an image over their initials, which
- * stay underneath so a missing or broken image never shifts the layout.
+ * stay underneath so a missing or broken image never shifts the layout (once
+ * the image has loaded they stop being painted, so a transparent logo shows
+ * no letters).
  * Initials on a data colour take whichever of the page and text colours
  * contrasts more. Named `name` (plus the presence) unless `decorative`.
  */
@@ -184,6 +219,7 @@ export function Avatar({
   decorative = false,
 }: AvatarProps): JSX.Element {
   const [failedSrc, setFailedSrc] = useState<string | undefined>(undefined);
+  const [loadedSrc, setLoadedSrc] = useState<string | undefined>(undefined);
   const showPhoto = src !== undefined && src !== '' && failedSrc !== src;
 
   const initials = initialsOf(name);
@@ -199,12 +235,22 @@ export function Avatar({
       $radius={radiusFor(shape, size)}
       $speaking={presence === 'speaking'}
     >
-      <Face $size={size} $colour={colour}>
+      <Face $size={size} $colour={colour} $covered={showPhoto && loadedSrc === src}>
         {initials === '' ? <Icon name="User" size={ICON_FOR_SIZE[size]} /> : initials}
-        {showPhoto && <Photo src={src} alt="" draggable={false} onError={() => setFailedSrc(src)} />}
+        {showPhoto && (
+          <Photo
+            src={src}
+            alt=""
+            draggable={false}
+            onLoad={() => setLoadedSrc(src)}
+            onError={() => setFailedSrc(src)}
+          />
+        )}
       </Face>
       {presence !== undefined && presence !== 'speaking' && (
-        <Dot aria-hidden="true" $size={size} $presence={presence} />
+        <Dot aria-hidden="true" data-presence={presence} $size={size} $presence={presence}>
+          {presence === 'away' && <AwayBar data-presence-bar="" $size={size} />}
+        </Dot>
       )}
     </Root>
   );

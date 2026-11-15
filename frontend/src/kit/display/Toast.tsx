@@ -7,6 +7,7 @@ import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
 import { shadow } from '../theme/shadow';
 import { Icon, type IconTone } from './Icon';
+import { liveRole } from './live';
 
 export type ToastTone = 'neutral' | 'positive' | 'danger';
 
@@ -15,6 +16,8 @@ export interface ToastProps {
   tone?: ToastTone;
   action?: { label: string; onClick: () => void };
   onClose?: () => void;
+  /** Speak when it appears (default). `false` makes it a quiet `note`, for a notice already on the page at load. */
+  announce?: boolean;
 }
 
 const MARK: Partial<Record<ToastTone, { icon: IconName; tone: IconTone }>> = {
@@ -58,10 +61,10 @@ const Fixed = styled('span')({
  * One floating notice. Presentational only: where it appears, how long it
  * stays and how notices queue belong to the behaviour layer.
  */
-export function Toast({ message, tone = 'neutral', action, onClose }: ToastProps): JSX.Element {
+export function Toast({ message, tone = 'neutral', action, onClose, announce = true }: ToastProps): JSX.Element {
   const mark = MARK[tone];
   return (
-    <Root role={tone === 'danger' ? 'alert' : 'status'}>
+    <Root role={liveRole(tone === 'danger', announce)}>
       {mark && (
         <Fixed>
           <Icon name={mark.icon} size="lg" tone={mark.tone} />

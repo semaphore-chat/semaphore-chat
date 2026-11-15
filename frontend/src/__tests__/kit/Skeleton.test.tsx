@@ -26,6 +26,16 @@ describe('Skeleton', () => {
     expect(container.firstElementChild?.children).toHaveLength(3);
   });
 
+  it.each([[0], [-3], [Number.NaN], [Number.POSITIVE_INFINITY], [1e9], [2.7]])(
+    'keeps lines=%s within a sane range',
+    (lines) => {
+      const { container } = renderWithKit(<Skeleton shape="text" lines={lines} />);
+      const count = container.firstElementChild?.children.length ?? 0;
+      expect(count).toBeGreaterThanOrEqual(1);
+      expect(count).toBeLessThanOrEqual(20);
+    },
+  );
+
   it('renders one line by default', () => {
     const { container } = renderWithKit(<Skeleton shape="text" />);
     expect(container.firstElementChild?.children).toHaveLength(1);

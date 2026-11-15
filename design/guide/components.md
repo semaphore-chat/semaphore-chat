@@ -376,10 +376,17 @@ circles. Communities are rounded squares. If the picture is missing or fails
 to load, the initials stay in its place and the layout does not move. A blank
 name gives a person icon.
 
-Presence is shown by a small dot (`online`, `away`, `offline`) or, for
-`speaking`, by a ring around the avatar. The state is always also in the
-accessible name, for example "Ana Ruiz, away". It is never carried by colour
-alone.
+Presence is shown by a small dot at the bottom right, and each state has its
+own shape as well as its own colour. `online` is a filled green dot. `away` is
+a filled amber dot with a bar across it. `offline` is a hollow grey ring. For
+`speaking` the whole avatar gets a green ring. The state is always also in the
+accessible name, for example "Ana Ruiz, away".
+
+When the picture has loaded, the initials are no longer painted, so a logo with
+a transparent background shows no letters through it. The community colour still
+shows behind such a logo. Before the picture loads, and when it fails, the
+initials show. Punctuation and symbols at the start of a name are skipped, so
+"(mike)" gives "MI".
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -392,8 +399,8 @@ alone.
 |`decorative`|true, false|false|Hides the avatar from screen readers. Use it only when the person's name is written right beside it.|
 
 Stories: `kit-avatar--sizes`, `kit-avatar--presence`,
-`kit-avatar--communities`, `kit-avatar--fallbacks`, `kit-avatar--sizes-light`,
-`kit-avatar--presence-tinted`.
+`kit-avatar--communities`, `kit-avatar--fallbacks`, `kit-avatar--transparent-image`,
+`kit-avatar--sizes-light`, `kit-avatar--presence-tinted`.
 
 ## AvatarStack
 
@@ -405,8 +412,9 @@ channel or the members of a conversation, in a small space.
 **Do not use it when** each person needs to be read or pressed on their own.
 Use a list of rows with an Avatar each.
 
-The stack is named as a whole, for example "Ana, Ben and 2 more". The avatars
-inside it are decorative. A stack with no people shows nothing.
+The stack is named as a whole, for example "Ana, Ben and 2 more". It is one
+image to a screen reader, and the avatars inside it are decorative. A blank name
+is read as "Unknown user". A stack with no people shows nothing.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -479,7 +487,8 @@ Spinner for you.
 Skeleton. Do not use it when the wait spans a region or has a known length. Use
 LinearProgress.
 
-It takes the colour of the text around it. Without a `label` it is decoration
+It takes the colour of the text around it. The ring is a fixed arc that turns;
+it does not grow and shrink, and it stops under reduced motion. Without a `label` it is decoration
 and is hidden from screen readers. Give a `label` when the spinner is the only
 sign that something is busy.
 
@@ -501,7 +510,9 @@ along it is. Leave the value out when you do not, and the bar slides.
 Spinner. Do not use it when content is loading in place. Use Skeleton.
 
 It always has a `label` that says what is in progress. A value outside 0 to 100
-is held to that range.
+is held to that range. The bar keeps rounded ends at every value. Under reduced
+motion the sliding bar becomes a full, dimmed bar, which reads as "busy" and
+not as a number.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -529,7 +540,7 @@ decides which other option applies.
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`shape`|`text`, `circle`, `rect`|none (required)|The shape of the placeholder.|
-|`lines`|a number|1|For `text`: how many lines.|
+|`lines`|a number|1|For `text`: how many lines, from 1 to 20 (anything else is held to that range). Each line is as tall as a line of body text.|
 |`size`|`xs`, `sm`, `md`, `lg`, `xl`|`md`|For `circle`: the same sizes as Avatar.|
 |`height`|`sm`, `md`, `lg`|`lg`|For `rect`: the same heights as a control, 32, 40 or 48 pixels.|
 
@@ -554,9 +565,13 @@ that field.
 |`children`|text or content|none (required)|The message.|
 |`action`|a `label` and an `onClick`|none|One action, shown as a text button under the message.|
 |`onClose`|a function|none|Adds a Dismiss button. Without it the alert cannot be dismissed.|
+|`announce`|true, false|true|Whether screen readers speak it when it appears.|
 
 `warning` and `danger` interrupt screen readers when they appear. `info` and
-`success` wait for a pause.
+`success` wait for a pause. Screen readers speak a live message when it shows
+up, so a banner that is already on the page when it loads would be read out on
+every visit. For those, pass `announce={false}`: the alert becomes a quiet note.
+Leave it on for an alert that appears because something happened.
 
 Stories: `kit-alert--severities`, `kit-alert--severities-light`,
 `kit-alert--severities-tinted`, `kit-alert--with-actions`,
@@ -575,7 +590,8 @@ until the user acts. Use Alert.
 A Toast is only the look of one notice. Where toasts appear, how long they stay
 and how they stack belong to the Behaviour chapter, which is not written yet.
 A `danger` toast interrupts screen readers when it appears. The others wait for
-a pause.
+a pause. `announce={false}` makes a toast a quiet note, for one that is already
+on the page at load.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -583,6 +599,7 @@ a pause.
 |`tone`|`neutral`, `positive`, `danger`|`neutral`|The colour role. `positive` and `danger` add an icon.|
 |`action`|a `label` and an `onClick`|none|One action, shown as a text button, such as "Undo".|
 |`onClose`|a function|none|Adds a Dismiss button.|
+|`announce`|true, false|true|Whether screen readers speak it when it appears.|
 
 Stories: `kit-toast--tones`, `kit-toast--tones-light`,
 `kit-toast--tones-tinted`, `kit-toast--long-message`.
@@ -641,6 +658,70 @@ then this list is the spec for the native side.
 
 - A press anywhere on the row of a checkbox, switch or radio, the text included,
   activates the control. A disabled row does nothing.
+
+### Avatar
+
+- The initials: split the name on whitespace and keep, in each word, only the
+  graphemes that start with a letter, a number or a pictograph. Two or more
+  words give the first grapheme of the first two words; one word gives its first
+  two. Each is upper-cased for the locale, but kept as written if upper-casing
+  would make it longer (`ß` stays `ß`). Nothing left gives the User icon, and the
+  accessible name is "Unknown user" for a blank name.
+- The colour search: take the two inks (page and text colours) and call the one
+  with less contrast on black the darker. If the darker ink reads better on the
+  colour, move the colour lighter, otherwise darker, in steps of 0.002 of
+  lightness (Oklch) up to 500 steps. At each step take the better ink and stop at
+  the first that reaches 4.5:1. Keep hue and chroma; chroma drops only where the
+  lightness leaves the colour range. Stop at black or white. A colour that
+  already passes is used as given. If none passes, use the neutral look. Cache
+  the answer per colour and inks.
+- The dot is `space.sm` across for `xs` and `space.md` for the others, and sits
+  `border.hairline` outside the bottom right corner, with a `border.selected`
+  ring in the page colour around it. Offline has a `border.selected` border in
+  the dim text colour around a page-coloured centre. Away has a bar across the
+  middle, `border.selected` high and the dot's width less two borders wide.
+- The speaking ring is drawn outside the avatar's box: a page-coloured gap
+  `border.selected` wide, then a ring of the same width in green. It can be
+  clipped by a parent that hides overflow and overlaps its neighbours.
+- A loaded picture hides the initials (they keep their place); a failed one
+  shows them; a new `src` starts again.
+
+### Avatar stack
+
+- Each avatar sits in a ring of `border.selected` in the page colour and
+  overlaps the one before by `space.sm`.
+- The name: one name is itself, two are "A and B", three or more are "A, B and
+  C", with "and" explicit and not found by looking for a comma in the text. When
+  some are hidden, the shown names are joined by commas and followed by "and N
+  more", or "N people" when none is shown. Blank names read "Unknown user".
+
+### Badge
+
+- The number is floored. Zero, a negative or NaN shows nothing, unless it is a
+  dot. A `max` below 1 or NaN means 99. Above `max` it reads "max+".
+
+### Progress and loading
+
+- LinearProgress clamps the value to 0 to 100, with NaN as 0. The bar is full
+  width and moved left by what is missing, so the right end stays round. The
+  indeterminate bar is 40 percent wide and travels from just off the left edge to
+  just past the right, in a straight line, over four times the slow timing. Under
+  reduced motion it is a full bar at the disabled opacity, still.
+- Skeleton pulses its opacity from 1 to the disabled opacity and back over four
+  times the slow timing, easing in and out, and is still under reduced motion.
+  Text lines are one body line high each, with the bar inset by `space.xs`
+  above and below.
+- Spinner is a fixed arc turning at a constant rate. Its stroke is 5/44 of
+  its size (5 of the 44 units MUI draws the circle in).
+
+### Alert and Toast
+
+- The role: `danger` and `warning` alerts (a `danger` toast) are `alert`; the
+  rest are `status`. With `announce` off, all are `note`.
+- Alert's text button is pulled back by the button's side padding, so its label
+  lines up with the text above. The close button is pulled up so its centre
+  meets the first line of text, and right by the space around its icon, so the
+  icon sits on the padding edge.
 
 ### Buttons
 

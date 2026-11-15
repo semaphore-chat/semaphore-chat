@@ -94,6 +94,83 @@ describe('Avatar', () => {
     expect(container.querySelector('img')).toHaveAttribute('src', 'https://example.test/b.png');
   });
 
+  it('marks each presence with its own shape, not only a colour', () => {
+    const { container } = renderWithKit(
+      <>
+        <Avatar name="a" presence="online" />
+        <Avatar name="b" presence="away" />
+        <Avatar name="c" presence="offline" />
+        <Avatar name="d" presence="speaking" />
+        <Avatar name="e" />
+      </>,
+    );
+    const dots = [...container.querySelectorAll('[data-presence]')];
+    expect(dots.map((dot) => dot.getAttribute('data-presence'))).toEqual(['online', 'away', 'offline']);
+    for (const dot of dots) {
+      expect(dot).toHaveAttribute('aria-hidden', 'true');
+    }
+    // Only away has the bar across the dot.
+    expect(dots.map((dot) => dot.querySelector('[data-presence-bar]') !== null)).toEqual([false, true, false]);
+    const [online, , offline] = dots as HTMLElement[];
+    // Offline is hollow: a ring in textDim around a ground-coloured centre; online is filled.
+    const palette = derivePalette('#8E75FF', 'dark', 'minimal');
+    expect(getComputedStyle(online).backgroundColor).toBe(`rgb(${parseHex(palette.positive).join(', ')})`);
+    expect(getComputedStyle(offline).backgroundColor).toBe(`rgb(${parseHex(palette.ground).join(', ')})`);
+    expect(getComputedStyle(offline).borderColor).toBe(`rgb(${parseHex(palette.textDim).join(', ')})`);
+  });
+
+  it('sizes the away bar from tokens', () => {
+    const { container } = renderWithKit(<Avatar name="b" presence="away" />);
+    const bar = container.querySelector('[data-presence-bar]') as HTMLElement;
+    expect(bar).toHaveStyle({ height: `${tokens.border.selected}px` });
+    expect(bar).toHaveStyle({ width: `${tokens.space.md - 2 * tokens.border.selected}px` });
+  });
+
+  it('hides the initials once the image has loaded, and shows them before and after an error', () => {
+    const { container } = renderWithKit(<Avatar name="aiko" src="https://example.test/a.png" />);
+    const face = screen.getByText('AI');
+    expect(getComputedStyle(face).color).not.toBe('rgba(0, 0, 0, 0)');
+    const image = container.querySelector('img') as HTMLImageElement;
+    fireEvent.load(image);
+    expect(getComputedStyle(face).color).toBe('rgba(0, 0, 0, 0)');
+  });
+
+  it('shows the initials again when a loaded src is replaced by one that fails', () => {
+    const { container, rerender } = renderWithKit(<Avatar name="aiko" src="https://example.test/a.png" />);
+    fireEvent.load(container.querySelector('img') as HTMLImageElement);
+    rerender(<Avatar name="aiko" src="https://example.test/b.png" />);
+    expect(getComputedStyle(screen.getByText('AI')).color).not.toBe('rgba(0, 0, 0, 0)');
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    expect(getComputedStyle(screen.getByText('AI')).color).not.toBe('rgba(0, 0, 0, 0)');
+  });
+
+  it('keeps the same box when the image fails', () => {
+    const { container } = renderWithKit(<Avatar name="aiko" size="lg" src="https://example.test/a.png" />);
+    const root = screen.getByRole('img', { name: 'aiko' });
+    const box = () => ({ width: getComputedStyle(root).width, height: getComputedStyle(root).height });
+    const before = box();
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    expect(box()).toEqual(before);
+    expect(before.width).toBe(`${tokens.avatar.lg}px`);
+  });
+
+  it.each([
+    ['(mike)', 'MI'],
+    ['@x', 'X'],
+    ['ßa', 'ßA'],
+    ['- Ana -', 'AN'],
+    ['- Ana Bo', 'AB'],
+  ])('skips leading symbols and keeps one grapheme per letter: %j gives %j', (name, initials) => {
+    renderWithKit(<Avatar name={name} />);
+    expect(screen.getByText(initials)).toBeInTheDocument();
+  });
+
+  it('keeps the neutral look when a Tinted palette cannot make the colour readable', () => {
+    renderWithKit(<Avatar name="Zed" colour="#777777" />, { base: '#0d9488', intensity: 'vibrant' });
+    const face = getComputedStyle(screen.getByText('ZE'));
+    expect(contrastRatio(channels(face.color), channels(face.backgroundColor))).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('is sized from tokens.avatar', () => {
     renderWithKit(
       <>
