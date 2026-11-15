@@ -655,11 +655,13 @@ describe('AuthGate', () => {
         localStorage.setItem('refreshToken', 'stored-refresh-token');
         await renderUntilUnavailable();
 
+        sessionStorage.setItem('semaphore-design-preview', 'lounge');
         fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
 
         await waitFor(() => {
           expect(screen.getByTestId('login')).toBeInTheDocument();
         });
+        expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
         expect(localStorage.getItem('refreshToken')).toBeNull();
         expect(getAccessToken()).toBeNull();
       }, 20_000);
@@ -759,6 +761,25 @@ describe('AuthGate', () => {
       });
       expect(mockDisconnectSocket).toHaveBeenCalled();
       expect(getAccessToken()).toBeNull();
+    });
+
+    it("clears this tab's design preview when the server ends the session", async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      renderAuthGate();
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      sessionStorage.setItem('semaphore-design-preview', 'lounge');
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
     });
 
     it('passes the reason the server gave to the login page', async () => {

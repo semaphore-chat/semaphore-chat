@@ -28,6 +28,7 @@ import { SpeakingProvider } from "../contexts/SpeakingContext";
 import { ThreadPanelProvider } from "../contexts/ThreadPanelProvider";
 import { UserProfileProvider } from "../contexts/UserProfileProvider";
 import { logger } from "../utils/logger";
+import { clearDesignPreview } from "../shell/designPreview";
 import { PAGE_LOAD_REFRESH_ROUNDS } from "../utils/sessionRefreshPolicy";
 import { SessionUnavailable } from "./SessionUnavailable";
 import type { LoginLocationState } from "../pages/LoginPage";
@@ -124,6 +125,8 @@ export function AuthGate() {
     return onAuthFailure((reason) => {
       disconnectSocket();
       clearTokens();
+      // The next account signed in on this tab must not inherit the design preview.
+      clearDesignPreview();
       setSignOutReason(reason ?? null);
       setAuthState(AuthState.Unauthenticated);
     });
@@ -193,6 +196,7 @@ export function AuthGate() {
     refreshAbort.current?.abort();
     disconnectSocket();
     clearTokens();
+    clearDesignPreview();
     setSignOutReason(null);
     setAuthState(AuthState.Unauthenticated);
   }

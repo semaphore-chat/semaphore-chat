@@ -1,6 +1,5 @@
 import { Suspense, useState } from "react";
 import CssBaseline from "@mui/material/CssBaseline";
-import { CircularProgress, Box } from "@mui/material";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import AutoUpdater from "./components/Electron/AutoUpdater";
 import { ConnectionWizard } from "./components/Electron/ConnectionWizard";
@@ -9,8 +8,9 @@ import { hasServers } from "./utils/serverStorage";
 import { isElectron } from "./utils/platform";
 import { useDeepLinks } from "./hooks/useDeepLinks";
 import { useBlockWindowDrops } from "./hooks/useBlockWindowDrops";
+import { useDesignPreviewParam } from "./shell/designPreview";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { AppErrorFallback } from "./components/AppErrorFallback";
+import { AppErrorFallback, AppLoadingFallback } from "./components/AppErrorFallback";
 import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { AppRoutes } from "./routes";
 
@@ -25,6 +25,9 @@ function App() {
   useDeepLinks();
   // Desktop: a file dropped outside the message box must not open in the window
   useBlockWindowDrops();
+  // `?design=lounge|classic|reset`: this tab's design preview (shell/designPreview.ts).
+  // Here, above the sign-in gate, so a preview link survives the login redirect.
+  useDesignPreviewParam();
 
   return (
     <ThemeProvider>
@@ -55,11 +58,7 @@ function App() {
             {/* PWA install / update / offline chrome — each piece also has its
                 own silent boundary, so a crash there never blanks the app. */}
             <AppChrome />
-            <Suspense fallback={
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--full-dvh)' }}>
-                <CircularProgress />
-              </Box>
-            }>
+            <Suspense fallback={<AppLoadingFallback />}>
               <RouteErrorBoundary>
                 <AppRoutes />
               </RouteErrorBoundary>

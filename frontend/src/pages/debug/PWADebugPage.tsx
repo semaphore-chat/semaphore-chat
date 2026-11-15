@@ -31,7 +31,14 @@ import {
   CircularProgress,
   Stack,
   Paper,
+  FormControlLabel,
+  Switch,
+  Link,
 } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
+import { useTheme } from '../../contexts/ThemeContext';
+import { clearDesignPreview, useDesignPreview } from '../../shell/designPreview';
+import { LOUNGE_MARKER_PATH } from '../../shell/loungeRoutes';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
@@ -460,5 +467,59 @@ const PWADebugPage: React.FC = () => {
     </Box>
   );
 };
+
+const PREVIEW_LABEL = {
+  lounge: 'New design, for this tab only',
+  classic: 'Old design, for this tab only',
+} as const;
+
+/**
+ * The switch for the new design while it is hidden: "saved to your account"
+ * goes through the normal appearance settings (synced to the server and the
+ * user's other devices by useThemeSync), and this tab's preview override
+ * (`?design=` links) can be cleared here.
+ */
+export const DesignPreviewCard: React.FC = () => {
+  const { newDesign, setNewDesign } = useTheme();
+  const preview = useDesignPreview();
+  return (
+    <Card>
+      <CardContent>
+        <Typography variant="h6" component="h2" gutterBottom>Design preview</Typography>
+        <Divider sx={{ mb: 2 }} />
+        <FormControlLabel
+          control={<Switch checked={newDesign} onChange={(event) => setNewDesign(event.target.checked)} />}
+          label="New design (saved to your account)"
+        />
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 2, flexWrap: 'wrap' }}>
+          <Typography variant="body2" data-testid="design-preview-override">
+            <strong>This tab:</strong> {preview === null ? 'Follows your account' : PREVIEW_LABEL[preview]}
+          </Typography>
+          {preview !== null && (
+            <Button size="small" variant="outlined" onClick={clearDesignPreview}>
+              Clear
+            </Button>
+          )}
+        </Stack>
+        <Typography variant="body2" sx={{ mt: 2 }}>
+          <Link component={RouterLink} to={LOUNGE_MARKER_PATH}>
+            Open the new design's preview screen
+          </Link>
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+};
+
+/**
+ * /debug/design, inside the app shell (unlike /debug/pwa), so turning the new
+ * design on or off in the middle of a call keeps the call's audio and
+ * behaviour mounted. Reachable by URL only.
+ */
+export const DesignPreviewPage: React.FC = () => (
+  <Box sx={{ p: 3, maxWidth: 900, mx: 'auto' }}>
+    <DesignPreviewCard />
+  </Box>
+);
 
 export default PWADebugPage;

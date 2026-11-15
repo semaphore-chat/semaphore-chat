@@ -7,6 +7,7 @@ import { clearSavedConnection } from "../features/voice/voiceActions";
 import { clearTokens, getElectronRefreshToken } from "../utils/tokenService";
 import { isElectron } from "../utils/platform";
 import { clearComposerDrafts } from "./useComposerDraft";
+import { clearDesignPreview } from "../shell/designPreview";
 import type { LoginLocationState } from "../pages/LoginPage";
 
 /**
@@ -49,6 +50,8 @@ export function useLogout() {
       // Unsent drafts are per browser tab, not per user: drop them so the
       // next account signed in on this tab never sees them.
       clearComposerDrafts();
+      // Likewise this tab's design preview (`?design=` links).
+      clearDesignPreview();
       if (loginState) navigate("/login", { state: loginState });
       else navigate("/login");
     }

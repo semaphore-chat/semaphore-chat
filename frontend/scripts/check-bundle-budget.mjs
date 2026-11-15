@@ -55,6 +55,16 @@
  *       useLocalMediaState.ts all statically reachable from always-mounted
  *       providers/mobile screens despite the entry chunk itself being clean).
  *
+ *   (d) The new design's shell stays out of the first page load. With the
+ *       "new design" setting off (every user today), shell/lounge/LoungeRoot
+ *       and the kit's fonts must never be requested. So none of: the marker
+ *       string LoungeRoot exports ("semaphore-lounge-root"), the kit font
+ *       names ("Bricolage Grotesque", "Figtree") may appear in the entry
+ *       chunk, in a modulepreloaded chunk or in a stylesheet index.html links,
+ *       and index.html must not reference a kit font file. Positively checked
+ *       too: the marker must be found in some lazy chunk and the font names in
+ *       some lazy stylesheet, or the check proves nothing.
+ *
  * Usage: pnpm run check:bundle-budget   (after pnpm run build)
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -229,8 +239,86 @@ if (existsSync(ASSETS_DIR)) {
   }
 }
 
+// --- (d) the new design's shell and the kit fonts are not in the first load ---
+{
+  const LOUNGE_MARKER = "semaphore-lounge-root";
+  const KIT_FONT_NAMES = ["Bricolage Grotesque", "Figtree"];
+  const KIT_FONT_FILE = /(bricolage-grotesque|figtree)[^"']*\.woff2?/i;
+
+  const strip = (ref) => ref.replace(/^\.?\//, "");
+  const eagerScripts = new Set([
+    ...scriptSrcs,
+    ...[...indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]),
+  ].map(strip));
+  const eagerStyles = new Set(
+    [...indexHtml.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"/g)].map((m) => strip(m[1])),
+  );
+
+  let hadLoungeFailure = false;
+  const report = (message) => {
+    console.error(`[check-bundle-budget] ${message}`);
+    hadLoungeFailure = true;
+    hadFailure = true;
+  };
+
+  for (const ref of eagerScripts) {
+    const path = join(DIST_DIR, ref);
+    if (!existsSync(path)) continue;
+    const contents = readFileSync(path, "utf-8");
+    if (contents.includes(LOUNGE_MARKER)) {
+      report(
+        `${ref} (loaded on every page) contains "${LOUNGE_MARKER}": shell/lounge/LoungeRoot is in the first ` +
+          `load. Only shell/loungeRootChunk.ts may import it, through import().`
+      );
+    }
+    for (const font of KIT_FONT_NAMES) {
+      if (contents.includes(font)) {
+        report(
+          `${ref} (loaded on every page) names the kit font "${font}": something eager imports the kit ` +
+            `(src/kit or theme/generated/tokens). Only shell/lounge/** may import the kit.`
+        );
+      }
+    }
+  }
+  for (const ref of eagerStyles) {
+    const path = join(DIST_DIR, ref);
+    if (!existsSync(path)) continue;
+    const contents = readFileSync(path, "utf-8");
+    for (const font of KIT_FONT_NAMES) {
+      if (contents.includes(font)) {
+        report(`${ref} (linked from index.html) declares the kit font "${font}": the kit fonts load on every page.`);
+      }
+    }
+  }
+  if (KIT_FONT_FILE.test(indexHtml)) {
+    report(`dist/index.html references a kit font file (${indexHtml.match(KIT_FONT_FILE)[0]}).`);
+  }
+
+  // Positive checks: without these the scans above could pass on a build that has no new shell at all.
+  const assetFiles = existsSync(ASSETS_DIR) ? readdirSync(ASSETS_DIR) : [];
+  const loungeChunks = assetFiles
+    .filter((f) => f.endsWith(".js"))
+    .filter((f) => readFileSync(join(ASSETS_DIR, f), "utf-8").includes(LOUNGE_MARKER));
+  const fontStyles = assetFiles
+    .filter((f) => f.endsWith(".css"))
+    .filter((f) => KIT_FONT_NAMES.every((font) => readFileSync(join(ASSETS_DIR, f), "utf-8").includes(font)));
+  if (loungeChunks.length === 0) {
+    report(`No asset contains "${LOUNGE_MARKER}": the new shell's chunk was not found, so (d) cannot be checked.`);
+  }
+  if (fontStyles.length === 0) {
+    report(`No stylesheet declares the kit fonts: the new shell's font CSS was not found, so (d) cannot be checked.`);
+  }
+
+  if (!hadLoungeFailure) {
+    console.log(
+      `[check-bundle-budget] New design shell (assets/${loungeChunks.join(", ")}) and kit fonts ` +
+        `(assets/${fontStyles.join(", ")}) are lazy: not in the entry, a preloaded chunk or an index.html stylesheet — good.`
+    );
+  }
+}
+
 if (hadFailure) {
   fail("Bundle budget check failed — see errors above.");
 }
 
-console.log("[check-bundle-budget] PASS — entry chunk and eager total are within budget and free of livekit/hls code, and livekit is not eagerly fetched.");
+console.log("[check-bundle-budget] PASS — entry chunk and eager total are within budget and free of livekit/hls code, livekit is not eagerly fetched, and the new design shell and kit fonts stay lazy.");

@@ -204,6 +204,15 @@ describe('useLogout', () => {
     expect(sessionStorage.getItem('unrelated')).toBe('keep');
   });
 
+  it("clears this tab's design preview so the next user on this tab does not inherit it", async () => {
+    sessionStorage.setItem('semaphore-design-preview', 'lounge');
+    const { result } = renderUseLogout();
+    await act(async () => {
+      await result.current.handleLogout();
+    });
+    expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+  });
+
   it('passes login state on, e.g. the desktop sign-in page to come back to', async () => {
     const { result } = renderUseLogout();
 
