@@ -12,7 +12,7 @@ import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
 import { buttonLook, type ButtonVariant } from './buttonLook';
-import { Spinner } from './Spinner';
+import { Spinner } from '../display/Spinner';
 import { transientProps } from '../theme/transientProps';
 
 export type { ButtonVariant } from './buttonLook';
@@ -187,12 +187,12 @@ export function Button({
       $fullWidth={fullWidth}
     >
       {startIcon !== undefined && (
-        <IconSlot>{spinnerInIconSlot ? <Spinner size={tokens.icon.sm} /> : startIcon}</IconSlot>
+        <IconSlot>{spinnerInIconSlot ? <Spinner size="sm" /> : startIcon}</IconSlot>
       )}
       <Label $hidden={spinnerOverLabel}>{children}</Label>
       {spinnerOverLabel && (
         <SpinnerOverlay>
-          <Spinner size={tokens.icon.sm} />
+          <Spinner size="sm" />
         </SpinnerOverlay>
       )}
     </Root>
