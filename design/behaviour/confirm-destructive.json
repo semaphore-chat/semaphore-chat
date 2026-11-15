@@ -1,0 +1,103 @@
+{
+  "pattern": "confirmDestructive",
+  "doc": "A dialog that asks before something that cannot be undone, runs it, and stays open with the error when it fails. While the action runs, nothing closes the dialog.",
+  "params": {},
+  "state": {
+    "phase": "idle | confirming | working | failed: idle is closed; the others show the dialog",
+    "error": "string | null: the failure shown in the dialog",
+    "attempt": "int: the number of the latest run; only its result counts"
+  },
+  "events": {
+    "request": {},
+    "confirm": {},
+    "cancel": { "reason": "button | escape | scrim" },
+    "succeeded": { "attempt": "int" },
+    "failed": { "attempt": "int", "message": "string" }
+  },
+  "effects": {
+    "run": { "attempt": "int: start the action, and report its result with this number" },
+    "done": {}
+  },
+  "rules": [
+    "The dialog is closed (idle) until request opens it (confirming). request while it is open does nothing.",
+    "confirm while confirming starts the action: working, a new attempt number, and run{attempt}.",
+    "While working, the confirm button is busy: a second confirm does nothing.",
+    "While working, nothing closes the dialog: cancel by the button, Escape or the scrim does nothing.",
+    "cancel while confirming or failed closes the dialog (idle) and clears the error. Escape and a press on the scrim are both a cancel.",
+    "succeeded for the current attempt closes the dialog (idle) and emits done.",
+    "failed for the current attempt keeps the dialog open, in failed, showing the error message.",
+    "confirm while failed retries: working, the error cleared, a new attempt number and run{attempt}.",
+    "A result for any other attempt, or one that arrives when nothing is working, does nothing."
+  ],
+  "scenarios": [
+    {
+      "name": "confirm and succeed",
+      "covers": [1, 2, 6],
+      "events": [
+        { "request": {} },
+        { "request": {} },
+        { "confirm": {} },
+        { "succeeded": { "attempt": 1 } }
+      ]
+    },
+    {
+      "name": "nothing interrupts the work",
+      "covers": [3, 4],
+      "events": [
+        { "request": {} },
+        { "confirm": {} },
+        { "confirm": {} },
+        { "cancel": { "reason": "escape" } },
+        { "cancel": { "reason": "scrim" } },
+        { "cancel": { "reason": "button" } },
+        { "succeeded": { "attempt": 1 } }
+      ]
+    },
+    {
+      "name": "cancel before confirming",
+      "covers": [5],
+      "events": [
+        { "request": {} },
+        { "cancel": { "reason": "escape" } },
+        { "request": {} },
+        { "cancel": { "reason": "scrim" } }
+      ]
+    },
+    {
+      "name": "failure keeps the dialog open and retry succeeds",
+      "covers": [7, 8, 6],
+      "events": [
+        { "request": {} },
+        { "confirm": {} },
+        { "failed": { "attempt": 1, "message": "Couldn't delete the channel" } },
+        { "confirm": {} },
+        { "succeeded": { "attempt": 2 } }
+      ]
+    },
+    {
+      "name": "cancel after a failure",
+      "covers": [7, 5],
+      "events": [
+        { "request": {} },
+        { "confirm": {} },
+        { "failed": { "attempt": 1, "message": "You are offline" } },
+        { "cancel": { "reason": "button" } }
+      ]
+    },
+    {
+      "name": "stale results do nothing",
+      "covers": [9],
+      "events": [
+        { "succeeded": { "attempt": 0 } },
+        { "request": {} },
+        { "confirm": {} },
+        { "failed": { "attempt": 1, "message": "Timed out" } },
+        { "confirm": {} },
+        { "succeeded": { "attempt": 1 } },
+        { "failed": { "attempt": 1, "message": "Timed out" } },
+        { "succeeded": { "attempt": 2 } },
+        { "succeeded": { "attempt": 2 } }
+      ]
+    }
+  ]
+}

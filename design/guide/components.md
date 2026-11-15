@@ -612,8 +612,8 @@ A passing notice about something that just happened.
 **Do not use it when** the message belongs to a place on the page or must stay
 until the user acts. Use Alert.
 
-A Toast is only the look of one notice. Where toasts appear, how long they stay
-and how they stack belong to the Behaviour chapter, which is not written yet.
+A Toast is only the look of one notice. How long toasts stay and how they queue
+belong to the [Behaviour](behaviour.md#toast-queue) chapter.
 A `danger` toast interrupts screen readers when it appears. The others wait for
 a pause. `announce={false}` makes a toast a quiet note, for one that is already
 on the page at load.

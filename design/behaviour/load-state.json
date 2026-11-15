@@ -1,0 +1,122 @@
+{
+  "pattern": "loadState",
+  "doc": "What a screen shows while it loads from the server: loading, empty, error, ready or refreshing. An error only replaces the screen when there is nothing to show.",
+  "params": {},
+  "state": {
+    "status": "loading | empty | error | ready | refreshing: refreshing still shows the old content",
+    "error": "string | null: the message the error screen shows",
+    "token": "int: the token of the latest fetch; only its result counts",
+    "fetching": "bool: a fetch is in flight"
+  },
+  "events": {
+    "start": {},
+    "refresh": {},
+    "retry": {},
+    "succeeded": { "token": "int", "empty": "bool: the answer has nothing in it" },
+    "failed": { "token": "int", "message": "string" }
+  },
+  "effects": {
+    "fetch": { "token": "int: fetch, and report the result with this token" },
+    "notify": { "message": "string: a toast, for an error the screen does not show" }
+  },
+  "rules": [
+    "A screen starts as loading, before any fetch.",
+    "start (the screen opens, or what it shows changes, such as another channel) discards what is shown, from any state: loading, the error cleared, a new token and fetch{token}.",
+    "refresh while ready keeps the content on screen: refreshing, a new token and fetch{token}.",
+    "refresh while empty keeps the empty screen, with no busy sign: still empty, a new token and fetch{token}.",
+    "refresh while error is a retry.",
+    "refresh while a fetch is in flight does nothing.",
+    "retry while error loads again: loading, the error cleared, a new token and fetch{token}. retry in any other state does nothing.",
+    "succeeded for the current fetch shows the empty screen when the answer is empty, and the content otherwise.",
+    "failed for the current fetch while loading, when there is nothing to show, replaces the skeleton with the error screen and its message.",
+    "failed for the current fetch during a refresh keeps what is shown (the old content, or the empty screen) and raises notify{message} instead.",
+    "A result with any other token, or one that arrives when no fetch is in flight, does nothing."
+  ],
+  "scenarios": [
+    {
+      "name": "first load shows the content",
+      "covers": [1, 2, 8],
+      "events": [
+        { "start": {} },
+        { "succeeded": { "token": 1, "empty": false } }
+      ]
+    },
+    {
+      "name": "first load is empty",
+      "covers": [1, 8],
+      "events": [
+        { "start": {} },
+        { "succeeded": { "token": 1, "empty": true } }
+      ]
+    },
+    {
+      "name": "error then retry",
+      "covers": [9, 7],
+      "events": [
+        { "start": {} },
+        { "failed": { "token": 1, "message": "Couldn't load messages" } },
+        { "retry": {} },
+        { "succeeded": { "token": 2, "empty": false } },
+        { "retry": {} }
+      ]
+    },
+    {
+      "name": "refresh keeps the content",
+      "covers": [3, 6, 8],
+      "events": [
+        { "start": {} },
+        { "succeeded": { "token": 1, "empty": false } },
+        { "refresh": {} },
+        { "refresh": {} },
+        { "succeeded": { "token": 2, "empty": true } }
+      ]
+    },
+    {
+      "name": "an error during a refresh keeps the content",
+      "covers": [3, 10],
+      "events": [
+        { "start": {} },
+        { "succeeded": { "token": 1, "empty": false } },
+        { "refresh": {} },
+        { "failed": { "token": 2, "message": "You are offline" } }
+      ]
+    },
+    {
+      "name": "refreshing an empty screen",
+      "covers": [4, 10, 6],
+      "events": [
+        { "start": {} },
+        { "succeeded": { "token": 1, "empty": true } },
+        { "refresh": {} },
+        { "refresh": {} },
+        { "failed": { "token": 2, "message": "You are offline" } },
+        { "refresh": {} },
+        { "succeeded": { "token": 3, "empty": false } }
+      ]
+    },
+    {
+      "name": "refresh while error is a retry",
+      "covers": [5, 6],
+      "events": [
+        { "start": {} },
+        { "refresh": {} },
+        { "failed": { "token": 1, "message": "Couldn't load members" } },
+        { "refresh": {} }
+      ]
+    },
+    {
+      "name": "start discards a fetch in flight",
+      "covers": [2, 11],
+      "events": [
+        { "start": {} },
+        { "succeeded": { "token": 1, "empty": false } },
+        { "refresh": {} },
+        { "start": {} },
+        { "succeeded": { "token": 2, "empty": false } },
+        { "failed": { "token": 2, "message": "Late" } },
+        { "succeeded": { "token": 3, "empty": true } },
+        { "succeeded": { "token": 3, "empty": false } }
+      ]
+    }
+  ]
+}

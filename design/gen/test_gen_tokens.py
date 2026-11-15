@@ -28,6 +28,7 @@ GEN_DIR = REPO / "design" / "gen"
 REAL = REPO / "design" / "tokens.json"
 REAL_COLOUR = REPO / "design" / "colour.json"
 REAL_ICONS = REPO / "design" / "icons"
+REAL_BEHAVIOUR = REPO / "design" / "behaviour"
 
 
 def set_value(path: str, value: object):
@@ -70,6 +71,7 @@ class TempSource(unittest.TestCase):
         self.colour_source.write_text(REAL_COLOUR.read_text(encoding="utf-8"), encoding="utf-8")
         shutil.copytree(REAL_ICONS, self.root / "design" / "icons")
         self.icons_source = self.root / "design" / "icons" / "icons.json"
+        shutil.copytree(REAL_BEHAVIOUR, self.root / "design" / "behaviour")
 
     def edit(self, change) -> None:
         data = json.loads(self.source.read_text(encoding="utf-8"))
@@ -123,6 +125,17 @@ class RealFileTest(unittest.TestCase):
         )
         self.assertEqual(list(t)[-4:], ["icon", "avatar", "border", "state"])  # after the old groups
         self.assertEqual(t["avatar"], {"xs": 20, "sm": 28, "md": 36, "lg": 44, "xl": 64})
+
+
+class MotionTokensTest(unittest.TestCase):
+    def test_behaviour_durations_are_motion_tokens(self):
+        # The toast and typeahead timings the behaviour patterns refer to.
+        motion = gen.load(REAL)["motion"]
+        self.assertEqual(
+            (motion["typeahead"], motion["toast"], motion["toastAction"]), (500, 4000, 8000)
+        )
+        self.assertIn("pub const MOTION_TOAST_ACTION_MS: u32 = 8000;", gen.render_rs(gen.load(REAL)))
+        self.assertIn("toastAction: 8000,", gen.render_ts(gen.load(REAL)))
 
 
 class RolesTest(unittest.TestCase):

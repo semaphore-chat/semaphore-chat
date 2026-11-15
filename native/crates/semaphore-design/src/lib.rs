@@ -10,12 +10,17 @@
 //! `design/gen/gen_tokens.py` too. `derive` is the hand-written palette derivation, a port of
 //! `design/gen/colour_ref.py`.
 //!
+//! The test-only `behaviour_vectors` holds the shared behaviour vectors from `design/behaviour/`,
+//! as canonical JSON strings, for the behaviour reducers' ports to be tested against.
+//!
 //! `lounge_icons` is the shared Lucide set from `design/icons/icons.json`, with one SVG asset per
 //! icon below `assets/lucide/`.
 //!
 //! No dependencies, and no GPUI: this is the data, not the mapping onto a renderer (see unit U8).
 //! See `native/docs/slice-units/U2-design.md`.
 
+#[cfg(test)]
+mod behaviour_vectors;
 pub mod colour_params;
 #[cfg(test)]
 mod colour_vectors;

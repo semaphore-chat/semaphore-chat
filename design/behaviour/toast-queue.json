@@ -1,0 +1,155 @@
+{
+  "pattern": "toastQueue",
+  "doc": "One toast on screen at a time; the rest wait in order. Each toast leaves on its own after its timer, or when the user dismisses it, and the timer stops while the pointer or focus is on it.",
+  "params": {
+    "durationMs": "motion.toast",
+    "durationWithActionMs": "motion.toastAction",
+    "maxQueued": 3
+  },
+  "state": {
+    "showing": "Toast | null: the toast on screen",
+    "queue": "Toast[]: the toasts waiting, oldest first",
+    "paused": "bool: the pointer or focus is on the toast area; false whenever nothing is showing",
+    "token": "int: the token of the latest timer; only that one counts when it fires"
+  },
+  "events": {
+    "show": { "toast": "Toast: {id: string, tone: neutral | positive | danger, message: string, action: string | null (the action's label)}" },
+    "dismiss": { "id": "string: the toast's Dismiss button or its action was pressed" },
+    "timerFired": { "token": "int" },
+    "pause": {},
+    "resume": {}
+  },
+  "effects": {
+    "startTimer": { "token": "int", "ms": "int" },
+    "cancelTimer": { "token": "int" },
+    "announce": { "message": "string", "politeness": "polite | assertive" }
+  },
+  "rules": [
+    "One toast shows at a time. A toast shown while nothing is showing appears at once: it takes the next timer token, starts its timer and is announced.",
+    "A toast shown while another is showing waits at the end of the queue, in the order it arrived. Nothing is announced until it shows.",
+    "A toast with the same id as the showing toast replaces it in place: the old timer is cancelled, a new one starts with a new token, and the new message is announced.",
+    "A toast with the same id as a queued toast replaces that queued toast in its place in the queue, with no effects.",
+    "The queue holds at most maxQueued toasts. When a new toast would make it longer, the oldest queued toast that is not danger is dropped; when every queued toast is danger, the oldest is dropped.",
+    "A neutral or positive toast stays for durationMs. A toast with an action stays for durationWithActionMs.",
+    "A danger toast is announced assertively and every other toast politely. A danger toast still dismisses itself, after durationWithActionMs.",
+    "Dismissing the showing toast cancels its timer and shows the next queued toast, or nothing when the queue is empty.",
+    "Dismissing a queued toast removes it from the queue. Dismissing an id that is neither showing nor queued does nothing.",
+    "When the timer fires with the current token, the showing toast leaves as if dismissed, without a cancelTimer. A timer with any other token does nothing.",
+    "pause (the pointer or focus enters the toast) cancels the timer. pause while already paused, or while nothing is showing, does nothing.",
+    "resume (the pointer and focus have both left) starts the timer again with the full duration and a new token, never the time that was left. resume while not paused does nothing.",
+    "The pause belongs to the toast area, not to one toast: a toast that takes the place of a dismissed one while paused shows without a timer until resume. When the last toast leaves, the pause ends."
+  ],
+  "scenarios": [
+    {
+      "name": "second toast waits",
+      "covers": [1, 2, 6, 7, 10],
+      "events": [
+        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
+        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
+        { "timerFired": { "token": 1 } },
+        { "timerFired": { "token": 1 } },
+        { "timerFired": { "token": 2 } }
+      ]
+    },
+    {
+      "name": "same id replaces the showing toast",
+      "covers": [3],
+      "events": [
+        { "show": { "toast": { "id": "up", "tone": "neutral", "message": "Uploading 1 file", "action": null } } },
+        { "show": { "toast": { "id": "up", "tone": "positive", "message": "Uploaded 1 file", "action": null } } },
+        { "timerFired": { "token": 1 } }
+      ]
+    },
+    {
+      "name": "same id replaces a queued toast in place",
+      "covers": [4],
+      "events": [
+        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
+        { "show": { "toast": { "id": "b", "tone": "neutral", "message": "2 new messages", "action": null } } },
+        { "show": { "toast": { "id": "c", "tone": "neutral", "message": "Copied", "action": null } } },
+        { "show": { "toast": { "id": "b", "tone": "neutral", "message": "3 new messages", "action": null } } }
+      ]
+    },
+    {
+      "name": "a full queue drops the oldest non-danger toast",
+      "covers": [5],
+      "events": [
+        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
+        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
+        { "show": { "toast": { "id": "c", "tone": "neutral", "message": "Copied", "action": null } } },
+        { "show": { "toast": { "id": "d", "tone": "positive", "message": "Joined", "action": null } } },
+        { "show": { "toast": { "id": "e", "tone": "neutral", "message": "Pinned", "action": null } } }
+      ]
+    },
+    {
+      "name": "a queue of danger toasts drops the oldest",
+      "covers": [5],
+      "params": { "maxQueued": 2 },
+      "events": [
+        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
+        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
+        { "show": { "toast": { "id": "c", "tone": "danger", "message": "Couldn't upload", "action": null } } },
+        { "show": { "toast": { "id": "d", "tone": "danger", "message": "Disconnected", "action": null } } }
+      ]
+    },
+    {
+      "name": "a toast with an action stays longer",
+      "covers": [6, 8],
+      "events": [
+        { "show": { "toast": { "id": "del", "tone": "neutral", "message": "Message deleted", "action": "Undo" } } },
+        { "show": { "toast": { "id": "a", "tone": "positive", "message": "Saved", "action": null } } },
+        { "dismiss": { "id": "del" } },
+        { "dismiss": { "id": "a" } }
+      ]
+    },
+    {
+      "name": "dismissing a queued or unknown toast",
+      "covers": [9],
+      "events": [
+        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
+        { "show": { "toast": { "id": "b", "tone": "neutral", "message": "Copied", "action": null } } },
+        { "dismiss": { "id": "b" } },
+        { "dismiss": { "id": "zzz" } },
+        { "timerFired": { "token": 1 } }
+      ]
+    },
+    {
+      "name": "pause and resume restart the full duration",
+      "covers": [11, 12],
+      "events": [
+        { "pause": {} },
+        { "resume": {} },
+        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
+        { "pause": {} },
+        { "pause": {} },
+        { "timerFired": { "token": 1 } },
+        { "resume": {} },
+        { "resume": {} },
+        { "timerFired": { "token": 1 } },
+        { "timerFired": { "token": 2 } }
+      ]
+    },
+    {
+      "name": "the pause carries to the next toast and ends with the last",
+      "covers": [13, 8],
+      "events": [
+        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
+        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
+        { "pause": {} },
+        { "dismiss": { "id": "a" } },
+        { "dismiss": { "id": "b" } },
+        { "show": { "toast": { "id": "c", "tone": "neutral", "message": "Copied", "action": null } } }
+      ]
+    },
+    {
+      "name": "replacing the showing toast while paused",
+      "covers": [3, 13],
+      "events": [
+        { "show": { "toast": { "id": "up", "tone": "neutral", "message": "Uploading", "action": null } } },
+        { "pause": {} },
+        { "show": { "toast": { "id": "up", "tone": "positive", "message": "Uploaded", "action": null } } },
+        { "resume": {} }
+      ]
+    }
+  ]
+}

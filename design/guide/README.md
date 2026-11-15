@@ -11,7 +11,7 @@ The guide is written in chapters. Some are not written yet.
 |---|---|---|
 |[Principles](principles.md)|The ideas behind the look of the app, and what we never do|written|
 |Layouts|The page layouts a screen can use|not written yet|
-|Behaviour|How things move, respond and change state|not written yet|
+|[Behaviour](behaviour.md)|How things respond: toasts, overlays and Escape, confirmations, list focus, loading|written|
 |[Components](components.md)|The building blocks: buttons, fields, cards and so on|written (33 components)|
 |[Tokens and colour](tokens-and-colour.md)|Every size, shape, type style, timing and colour role, and when to use each|written|
 |[Writing](writing.md)|How the words on a screen should read|written|

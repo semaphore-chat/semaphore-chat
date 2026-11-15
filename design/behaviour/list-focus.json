@@ -1,0 +1,260 @@
+{
+  "pattern": "listFocus",
+  "doc": "Keyboard focus and selection in a list of rows, such as a menu, a channel list or a picker: arrows, Home and End, typeahead, and what happens when the rows change under the focus.",
+  "params": {
+    "wrap": false,
+    "selectionFollowsFocus": false,
+    "typeaheadMs": "motion.typeahead"
+  },
+  "state": {
+    "rows": "Row[]: in display order. Row = {id: string, label: string, disabled: bool}",
+    "focused": "string | null: the focused row; never a disabled one",
+    "selected": "string | null: the selected row",
+    "typeahead": "string: the letters typed so far, lowercased",
+    "token": "int: the token of the latest typeahead timer"
+  },
+  "events": {
+    "setRows": { "rows": "Row[]: the new rows, after an add, a removal or a change" },
+    "focusIn": {},
+    "up": {},
+    "down": {},
+    "home": {},
+    "end": {},
+    "type": { "char": "string: one printable character" },
+    "timerFired": { "token": "int" },
+    "activate": {},
+    "press": { "id": "string: a pointer press on a row" }
+  },
+  "effects": {
+    "select": { "id": "string: the row was chosen" },
+    "startTimer": { "token": "int", "ms": "int" },
+    "cancelTimer": { "token": "int" }
+  },
+  "rules": [
+    "Only enabled rows take focus: every movement skips disabled rows.",
+    "With no rows, or only disabled rows, every key does nothing and nothing is focused.",
+    "Down moves to the next enabled row and Up to the previous one. With nothing focused, Down focuses the first enabled row and Up the last.",
+    "At the ends, Down and Up stay put unless wrap is on; with wrap on (off by default) they go round to the other end.",
+    "Home focuses the first enabled row and End the last.",
+    "Focus entering the list (focusIn) with no row focused goes to the selected row if it is enabled, otherwise to the first enabled row. It never changes the selection.",
+    "Typing a character adds it, lowercased, to the typeahead buffer and restarts the typeahead timer with a new token, cancelling the old one. Focus moves to the first enabled row, from the focused row onwards and going round, whose label starts with the buffer, ignoring case.",
+    "When the buffer is one letter, or one letter repeated, typing steps through the rows that start with that letter, from the row after the focused one.",
+    "When no row matches, focus stays where it is and the buffer still grows.",
+    "When the typeahead timer fires with the current token, the buffer empties. Any other token does nothing.",
+    "With selectionFollowsFocus off (the default), moving focus never selects. activate (Enter or Space) selects the focused row and emits select{id}, even when it was already selected. activate with nothing focused does nothing.",
+    "With selectionFollowsFocus on, every focus move by a key or by typeahead also selects the new row and emits select{id}.",
+    "A press on an enabled row focuses and selects it and emits select{id}. A press on a disabled or unknown row does nothing.",
+    "When the rows change and the focused row is gone or now disabled, focus moves to the nearest enabled row after it in the old order that is still there, otherwise the nearest one before it, otherwise the first enabled row, otherwise nothing. The selection does not follow this move.",
+    "When the selected row is gone from the rows, the selection clears, with no effect."
+  ],
+  "scenarios": [
+    {
+      "name": "arrows skip disabled rows and stop at the ends",
+      "covers": [1, 3, 4, 11],
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "general", "label": "general", "disabled": false },
+          { "id": "archive", "label": "archive", "disabled": true },
+          { "id": "random", "label": "random", "disabled": false }
+        ] } },
+        { "down": {} },
+        { "down": {} },
+        { "down": {} },
+        { "up": {} },
+        { "up": {} },
+        { "activate": {} },
+        { "activate": {} }
+      ]
+    },
+    {
+      "name": "up with nothing focused takes the last row",
+      "covers": [3, 11],
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Copy link", "disabled": false },
+          { "id": "b", "label": "Mark as read", "disabled": false },
+          { "id": "c", "label": "Leave", "disabled": true }
+        ] } },
+        { "activate": {} },
+        { "up": {} }
+      ]
+    },
+    {
+      "name": "wrap goes round",
+      "covers": [4],
+      "params": { "wrap": true },
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Copy link", "disabled": false },
+          { "id": "b", "label": "Mark as read", "disabled": false },
+          { "id": "c", "label": "Mute", "disabled": false }
+        ] } },
+        { "up": {} },
+        { "down": {} },
+        { "up": {} }
+      ]
+    },
+    {
+      "name": "empty and all-disabled lists do nothing",
+      "covers": [2],
+      "events": [
+        { "down": {} },
+        { "home": {} },
+        { "type": { "char": "a" } },
+        { "focusIn": {} },
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Copy link", "disabled": true },
+          { "id": "b", "label": "Mark as read", "disabled": true }
+        ] } },
+        { "up": {} },
+        { "end": {} },
+        { "activate": {} },
+        { "press": { "id": "a" } }
+      ]
+    },
+    {
+      "name": "home and end",
+      "covers": [5, 1],
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Alice", "disabled": true },
+          { "id": "b", "label": "Bob", "disabled": false },
+          { "id": "c", "label": "Carol", "disabled": false },
+          { "id": "d", "label": "Dan", "disabled": true }
+        ] } },
+        { "end": {} },
+        { "home": {} }
+      ]
+    },
+    {
+      "name": "focus entering the list",
+      "covers": [6, 13],
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Alice", "disabled": false },
+          { "id": "b", "label": "Bob", "disabled": false }
+        ] } },
+        { "focusIn": {} },
+        { "press": { "id": "b" } },
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Alice", "disabled": false },
+          { "id": "b", "label": "Bob", "disabled": true }
+        ] } },
+        { "press": { "id": "b" } },
+        { "press": { "id": "zzz" } },
+        { "focusIn": {} }
+      ]
+    },
+    {
+      "name": "focus entering goes to the selected row",
+      "covers": [6],
+      "initial": {
+        "rows": [
+          { "id": "a", "label": "Alice", "disabled": false },
+          { "id": "b", "label": "Bob", "disabled": false }
+        ],
+        "selected": "b"
+      },
+      "events": [
+        { "focusIn": {} },
+        { "focusIn": {} }
+      ]
+    },
+    {
+      "name": "focus entering skips a disabled selected row",
+      "covers": [6, 15],
+      "initial": {
+        "rows": [
+          { "id": "a", "label": "Alice", "disabled": false },
+          { "id": "b", "label": "Bob", "disabled": true }
+        ],
+        "selected": "b"
+      },
+      "events": [
+        { "focusIn": {} },
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Alice", "disabled": false }
+        ] } }
+      ]
+    },
+    {
+      "name": "typeahead",
+      "covers": [7, 9, 10],
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "general", "label": "General", "disabled": false },
+          { "id": "games", "label": "Games", "disabled": false },
+          { "id": "random", "label": "Random", "disabled": false },
+          { "id": "garden", "label": "Garden", "disabled": true }
+        ] } },
+        { "type": { "char": "R" } },
+        { "type": { "char": "a" } },
+        { "type": { "char": "x" } },
+        { "timerFired": { "token": 2 } },
+        { "timerFired": { "token": 3 } },
+        { "type": { "char": "g" } },
+        { "type": { "char": "a" } }
+      ]
+    },
+    {
+      "name": "a repeated letter steps through the matches",
+      "covers": [8],
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "general", "label": "General", "disabled": false },
+          { "id": "games", "label": "Games", "disabled": false },
+          { "id": "garden", "label": "Garden", "disabled": true },
+          { "id": "gifs", "label": "gifs", "disabled": false },
+          { "id": "random", "label": "Random", "disabled": false }
+        ] } },
+        { "type": { "char": "g" } },
+        { "type": { "char": "g" } },
+        { "type": { "char": "g" } },
+        { "type": { "char": "g" } }
+      ]
+    },
+    {
+      "name": "selection follows focus",
+      "covers": [12],
+      "params": { "selectionFollowsFocus": true },
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "general", "label": "General", "disabled": false },
+          { "id": "random", "label": "Random", "disabled": false }
+        ] } },
+        { "down": {} },
+        { "down": {} },
+        { "down": {} },
+        { "type": { "char": "g" } },
+        { "focusIn": {} }
+      ]
+    },
+    {
+      "name": "a removed row moves focus to the next row, then the previous",
+      "covers": [14, 15],
+      "events": [
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Alice", "disabled": false },
+          { "id": "b", "label": "Bob", "disabled": false },
+          { "id": "c", "label": "Carol", "disabled": true },
+          { "id": "d", "label": "Dan", "disabled": false }
+        ] } },
+        { "press": { "id": "b" } },
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Alice", "disabled": false },
+          { "id": "c", "label": "Carol", "disabled": true },
+          { "id": "d", "label": "Dan", "disabled": false }
+        ] } },
+        { "setRows": { "rows": [
+          { "id": "a", "label": "Alice", "disabled": false },
+          { "id": "c", "label": "Carol", "disabled": true },
+          { "id": "d", "label": "Dan", "disabled": true }
+        ] } },
+        { "setRows": { "rows": [
+          { "id": "x", "label": "Xavier", "disabled": false }
+        ] } },
+        { "setRows": { "rows": [] } }
+      ]
+    }
+  ]
+}

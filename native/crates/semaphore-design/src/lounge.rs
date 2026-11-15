@@ -177,6 +177,15 @@ pub const MOTION_BASE_MS: u32 = 200;
 /// `motion.slow`, ms.
 pub const MOTION_SLOW_MS: u32 = 320;
 
+/// `motion.typeahead`, ms.
+pub const MOTION_TYPEAHEAD_MS: u32 = 500;
+
+/// `motion.toast`, ms.
+pub const MOTION_TOAST_MS: u32 = 4000;
+
+/// `motion.toastAction`, ms.
+pub const MOTION_TOAST_ACTION_MS: u32 = 8000;
+
 /// `breakpoint.phone`, px.
 pub const BREAKPOINT_PHONE: f32 = 600.0;
 
