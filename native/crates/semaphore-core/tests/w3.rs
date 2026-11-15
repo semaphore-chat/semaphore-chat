@@ -10,9 +10,9 @@ use common::w3::{FakeLoopback, appearance_json, profile_json, session_json};
 use common::*;
 use semaphore_core::backend::BackendError;
 use semaphore_core::model::{
-    AccentColor, AppearancePatch, BrowserSignInFailure, BrowserSignInView, DraftFile, ImageChange,
-    LoadState, NewCommunity, ProfileImage, ProfilePatch, RegisterForm, RegistrationMode, Rgb,
-    SessionState, ThemeIntensity, ThemeMode, ViewKey,
+    AccentColor, Appearance, AppearancePatch, BrowserSignInFailure, BrowserSignInView, DraftFile,
+    ImageChange, LoadState, NewCommunity, ProfileImage, ProfilePatch, RegisterForm,
+    RegistrationMode, Rgb, SessionState, ThemeIntensity, ThemeMode, ViewKey,
 };
 use semaphore_core::platform::{CoreError, CoreEvent, LoopbackPage};
 use semaphore_wire::enums::ErrorCode;
@@ -354,6 +354,34 @@ async fn the_probe_learns_an_instance_with_no_users_needs_setup() {
     // A token is never kept or shown.
     assert!(!format!("{info:?}").contains("a-setup-token"));
     assert!(!format!("{:?}", rig.events.take()).contains("a-setup-token"));
+}
+
+#[tokio::test]
+async fn a_server_older_than_the_setup_token_switch_still_needs_setup() {
+    // `setupTokenRequired` came with the setup-token switch, so a server older than it sends
+    // `needsSetup` and `hasUsers` only. Failing the whole read over the missing field made a fresh
+    // instance look set up, and the app would try to sign in to it.
+    let rig = Rig::new();
+    rig.backend
+        .w3
+        .answer("public_settings", settings(false, "OPEN"));
+    rig.backend.w3.answer(
+        "onboarding_status",
+        json!({ "needsSetup": true, "hasUsers": false }),
+    );
+    let info = rig.core.probe_server("http://server".into()).await.unwrap();
+    assert!(info.needs_setup);
+}
+
+#[test]
+fn the_setup_status_carries_the_token_requirement_when_it_is_sent() {
+    fn status(value: Value) -> semaphore_wire::types::OnboardingStatusDto {
+        serde_json::from_value(value).expect("a status decodes")
+    }
+    let asking = json!({ "needsSetup": true, "hasUsers": false, "setupTokenRequired": true });
+    assert!(status(asking).setup_token_required);
+    let open = json!({ "needsSetup": true, "hasUsers": false, "setupTokenRequired": false });
+    assert!(!status(open).setup_token_required);
 }
 
 #[tokio::test]
@@ -1068,8 +1096,99 @@ async fn an_appearance_patch_sends_one_colour_field() {
     assert_eq!(sent(&rig), json!({ "themeMode": "light" }));
 }
 
-// --- Creating a community, instance permissions ---
+#[tokio::test]
+async fn an_appearance_change_shows_its_colour_pair_before_the_server_answers() {
+    // The server keeps the pair in step; while its answer is on its way the overlay does the same,
+    // so the theme never shows an accent beside a base colour that does not belong to it.
+    let rig = Rig::new().signed_in().await;
+    async fn shown_while_pending(rig: &Rig, patch: AppearancePatch) -> Appearance {
+        let hold = rig.backend.w3.hold("update_appearance");
+        let pending = rig.core.update_appearance(patch);
+        let (result, shown) = tokio::join!(pending, async {
+            tokio::task::yield_now().await;
+            let shown = rig.core.appearance().appearance;
+            hold.send(()).unwrap();
+            shown
+        });
+        result.unwrap();
+        shown
+    }
 
+    let rgb = |hex: &str| Rgb::parse(hex).expect("`#rrggbb`");
+    // Each answer is the pair the server would store for its request.
+    let answer = |accent: &str, base: &str| {
+        let mut value = appearance_json("dark", accent, "minimal");
+        value["baseColor"] = json!(base);
+        value
+    };
+
+    // A named accent derives its primary as the base, as the server will.
+    rig.backend
+        .w3
+        .answer("update_appearance", answer("rose", "#f43f5e"));
+    let shown = shown_while_pending(
+        &rig,
+        AppearancePatch {
+            accent: Some(AccentColor::Rose),
+            ..AppearancePatch::default()
+        },
+    )
+    .await;
+    assert_eq!(shown.accent, AccentColor::Rose);
+    assert_eq!(shown.base, rgb("#f43f5e"));
+
+    // A base colour derives the nearest accent, as the server will.
+    rig.backend
+        .w3
+        .answer("update_appearance", answer("amber", "#ff9a6b"));
+    let shown = shown_while_pending(
+        &rig,
+        AppearancePatch {
+            base: Some(rgb("#ff9a6b")),
+            ..AppearancePatch::default()
+        },
+    )
+    .await;
+    assert_eq!(shown.base, rgb("#ff9a6b"));
+    assert_eq!(shown.accent, AccentColor::Amber);
+
+    // An accent beside a base never reaches the server, so the base's accent is the one shown.
+    let custom = rgb("#123456");
+    let derived = AccentColor::nearest_to(custom);
+    assert_ne!(derived, AccentColor::Rose);
+    rig.backend
+        .w3
+        .answer("update_appearance", answer(derived.name(), "#123456"));
+    let shown = shown_while_pending(
+        &rig,
+        AppearancePatch {
+            base: Some(custom),
+            accent: Some(AccentColor::Rose),
+            ..AppearancePatch::default()
+        },
+    )
+    .await;
+    assert_eq!(shown.base, custom);
+    assert_eq!(shown.accent, derived);
+
+    // An accent equal to the stored one changes nothing: an older client's echo must not reset a
+    // custom base colour, as on the server.
+    rig.backend
+        .w3
+        .answer("update_appearance", answer(derived.name(), "#123456"));
+    let shown = shown_while_pending(
+        &rig,
+        AppearancePatch {
+            accent: Some(derived),
+            ..AppearancePatch::default()
+        },
+    )
+    .await;
+    assert_eq!(shown.base, custom);
+    assert_eq!(shown.accent, derived);
+}
+
+// --- Creating a community, instance permissions ---
 fn created() -> Value {
     json!({ "id": COMMUNITY, "name": "New", "description": null, "avatar": null, "banner": null,
             "createdAt": "2026-11-11T00:00:00Z" })

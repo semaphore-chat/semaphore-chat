@@ -4743,25 +4743,6 @@ pub mod types {
         pub direct_message_group_id: ::std::option::Option<::std::string::String>,
         pub scope: semaphore_wire::enums::NotificationsReadScope,
     }
-    ///`OnboardingStatusDto`
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-    pub struct OnboardingStatusDto {
-        #[serde(rename = "hasUsers")]
-        pub has_users: bool,
-        #[serde(rename = "needsSetup")]
-        pub needs_setup: bool,
-        ///Only sent when REQUIRE_SETUP_TOKEN=false and setup is needed.
-        #[serde(
-            rename = "setupToken",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub setup_token: ::std::option::Option<::std::string::String>,
-        /**True (the default, REQUIRE_SETUP_TOKEN) when the operator must enter the
-        setup token printed in the backend logs: `setupToken` is then never sent.*/
-        #[serde(rename = "setupTokenRequired")]
-        pub setup_token_required: bool,
-    }
     ///`PaginatedMembershipsResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct PaginatedMembershipsResponseDto {

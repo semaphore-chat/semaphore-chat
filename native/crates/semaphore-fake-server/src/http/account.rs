@@ -265,6 +265,10 @@ async fn update_appearance(
     let user_id = inner.user_of(bearer_token(&headers));
     let now = inner.now();
     let mut accounts = lock(&inner.accounts);
+    // `updateUserSettings` compares the accent with the one `findUnique` reads, and that finds no
+    // row before the first read: an accent in a first PATCH is then a change, and derives its
+    // primary, even when it is the accent a new row would have started with.
+    let stored = accounts.appearance.contains_key(&user_id);
     let row = accounts.appearance_for(&user_id, now);
     if let Some(mode) = dto.theme_mode {
         row.theme_mode = mode.as_str().into_owned();
@@ -288,13 +292,12 @@ async fn update_appearance(
         let accent = crate::appearance::nearest_accent(&base)
             .expect("the contract's pattern makes baseColor #rrggbb");
         row.base_color = base;
-        row.accent_color = accent.to_owned();
+        row.accent_color = accent;
     } else if let Some(accent) = dto.accent_color {
         let accent = accent.as_str().into_owned();
-        if row.accent_color != accent {
-            row.base_color = crate::appearance::primary(&accent)
-                .expect("a known accent has a primary colour")
-                .to_owned();
+        if !stored || row.accent_color != accent {
+            row.base_color =
+                crate::appearance::primary(&accent).expect("a known accent has a primary colour");
             row.accent_color = accent;
         }
     }

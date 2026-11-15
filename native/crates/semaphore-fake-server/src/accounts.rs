@@ -317,8 +317,7 @@ impl Accounts {
                     // `DEFAULT_BASE_COLOR` in `appearance-settings.service.ts`, and the accent its
                     // nearest primary names (purple).
                     accent_color: crate::appearance::nearest_accent(DEFAULT_BASE_COLOR)
-                        .expect("the default base colour is #rrggbb")
-                        .to_owned(),
+                        .expect("the default base colour is #rrggbb"),
                     base_color: DEFAULT_BASE_COLOR.to_owned(),
                     created_at: now,
                     id,

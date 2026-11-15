@@ -50,23 +50,6 @@ fn mode(raw: &str) -> ThemeMode {
     }
 }
 
-fn accent(raw: &str) -> AccentColor {
-    match raw {
-        "blue" => AccentColor::Blue,
-        "indigo" => AccentColor::Indigo,
-        "purple" => AccentColor::Purple,
-        "rose" => AccentColor::Rose,
-        "red" => AccentColor::Red,
-        "orange" => AccentColor::Orange,
-        "amber" => AccentColor::Amber,
-        "lime" => AccentColor::Lime,
-        "emerald" => AccentColor::Emerald,
-        "cyan" => AccentColor::Cyan,
-        "slate" => AccentColor::Slate,
-        _ => AccentColor::Teal,
-    }
-}
-
 fn intensity(raw: &str) -> ThemeIntensity {
     match raw {
         "balanced" => ThemeIntensity::Balanced,
@@ -123,7 +106,7 @@ fn session_row(session: &wire::SessionInfoDto, busy: bool) -> SessionRow {
 /// The server's row as the model shows it. A server older than the base colour sends none: the
 /// accent it names keeps working, and its primary is the base, as the web's `useThemeSync`.
 fn appearance_of(dto: &wire::AppearanceSettingsResponseDto) -> Appearance {
-    let accent = accent(&dto.accent_color);
+    let accent = AccentColor::parse(&dto.accent_color).unwrap_or_default();
     Appearance {
         mode: mode(&dto.theme_mode),
         accent,
@@ -146,14 +129,20 @@ impl State {
             if let Some(mode) = patch.mode {
                 appearance.mode = mode;
             }
-            if let Some(accent) = patch.accent {
-                appearance.accent = accent;
-            }
             if let Some(intensity) = patch.intensity {
                 appearance.intensity = intensity;
             }
+            // The server's `updateUserSettings` rules, so the pair shown now is the pair it will
+            // answer with: a base wins (the request drops an accent beside it) and derives the
+            // nearest accent, a *changed* accent derives its primary, and an echo changes neither.
             if let Some(base) = patch.base {
                 appearance.base = base;
+                appearance.accent = AccentColor::nearest_to(base);
+            } else if let Some(accent) = patch.accent
+                && appearance.accent != accent
+            {
+                appearance.accent = accent;
+                appearance.base = accent.primary();
             }
             if let Some(match_system) = patch.match_system {
                 appearance.match_system = match_system;

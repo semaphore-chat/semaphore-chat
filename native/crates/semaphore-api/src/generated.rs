@@ -7891,7 +7891,7 @@ impl Client {
     */
     pub async fn onboarding_controller_get_status<'a>(
         &'a self,
-    ) -> Result<ResponseValue<types::OnboardingStatusDto>, Error<()>> {
+    ) -> Result<ResponseValue<semaphore_wire::overrides::OnboardingStatusDto>, Error<()>> {
         let url = format!("{}/api/onboarding/status", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(

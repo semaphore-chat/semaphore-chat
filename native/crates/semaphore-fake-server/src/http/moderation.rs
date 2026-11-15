@@ -451,14 +451,17 @@ fn ban_by(
             reason.clone(),
             json!({ "expiresAt": expires_at }),
         );
+        // Who banned them and why stay with them; the community only until when.
         let mut payload = rbac::moderation_payload(&community_id, &user_id, &actor, &reason);
+        let mut community_payload = json!({ "communityId": &community_id, "userId": &user_id });
         if let Some(at) = expires_at {
             payload["expiresAt"] = json!(at);
+            community_payload["expiresAt"] = json!(at);
         }
         // Theirs first, from their own room, then the removal, then the community's.
-        inner.emit_to_user(&user_id, "userBanned", payload.clone());
+        inner.emit_to_user(&user_id, "userBanned", payload);
         crate::calls::remove_from_community(inner, &community_id, &user_id);
-        inner.emit_to_others(&user_id, "userBanned", payload);
+        inner.emit_to_others(&user_id, "userBanned", community_payload);
         Ok(success("User banned successfully"))
     });
     w5_reply(inner, result)
@@ -617,11 +620,19 @@ fn timeout_by(
             reason.clone(),
             json!({ "durationSeconds": seconds, "expiresAt": expires_at }),
         );
+        // The target hears who timed them out and why; the community only until when.
         let mut payload = rbac::moderation_payload(&community_id, &user_id, &actor, &reason);
         payload["durationSeconds"] = json!(seconds);
         payload["expiresAt"] = json!(expires_at);
+        let community_payload = json!({
+            "communityId": &community_id,
+            "userId": &user_id,
+            "durationSeconds": seconds,
+            "expiresAt": expires_at,
+        });
+        inner.emit_to_user(&user_id, "userTimedOut", payload);
         let room = rbac::members(inner, &community_id);
-        inner.emit_to_users(&room, "userTimedOut", payload);
+        inner.emit_to_users(&room, "userTimedOut", community_payload);
         Ok(success("User timed out successfully"))
     });
     w5_reply(inner, result)
@@ -667,11 +678,17 @@ async fn remove_timeout(
             reason.clone(),
             Value::Null,
         );
+        // The target hears who lifted it and why; the community only that it is lifted.
+        inner.emit_to_user(
+            &user_id,
+            "timeoutRemoved",
+            rbac::moderation_payload(&community_id, &user_id, &actor, &reason),
+        );
         let room = rbac::members(&inner, &community_id);
         inner.emit_to_users(
             &room,
             "timeoutRemoved",
-            rbac::moderation_payload(&community_id, &user_id, &actor, &reason),
+            json!({ "communityId": &community_id, "userId": &user_id }),
         );
         Ok(success("Timeout removed successfully"))
     });

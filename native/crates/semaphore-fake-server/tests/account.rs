@@ -1243,6 +1243,52 @@ async fn the_base_colour_and_match_system_round_trip() {
     assert_eq!(api.get("/api/appearance-settings", &token).await.1, changed);
 }
 
+#[tokio::test]
+async fn a_first_patch_with_an_accent_derives_its_base_as_the_backend_does() {
+    // `updateUserSettings` reads the stored accent with `findUnique`, which finds no row before
+    // the first read: an accent in a first PATCH then differs from "no stored accent" and derives
+    // `ACCENT_PRIMARY`. That holds for purple too, whose primary is not a new row's base colour,
+    // so a default row made first would keep the wrong base.
+    let api = api().await;
+    api.server.seed_invite(InviteSeed::new("D"));
+    api.public_post(
+        "/api/users",
+        json!({ "code": "D", "username": "newcomer", "password": "Password123!" }),
+    )
+    .await;
+    let (token, _) = api.login("newcomer", "Password123!", None).await;
+    let (status, row) = api
+        .send(
+            reqwest::Method::PATCH,
+            "/api/appearance-settings",
+            &token,
+            json!({ "accentColor": "purple" }),
+        )
+        .await;
+    assert_eq!(status, 200, "{row}");
+    assert_eq!(
+        (&row["accentColor"], &row["baseColor"]),
+        (&json!("purple"), &json!("#8b5cf6"))
+    );
+    // The rest of the row is still the server's defaults.
+    assert_eq!(
+        (
+            &row["themeMode"],
+            &row["intensity"],
+            &row["matchSystem"],
+            &row["newDesign"]
+        ),
+        (
+            &json!("dark"),
+            &json!("minimal"),
+            &json!(false),
+            &json!(false)
+        )
+    );
+    // And that row is the one read afterwards, not the defaults.
+    assert_eq!(api.get("/api/appearance-settings", &token).await.1, row);
+}
+
 // ----- sign in with browser --------------------------------------------------------------------
 
 async fn redeem(api: &Api, code: &str, verifier: &str) -> (u16, Value) {

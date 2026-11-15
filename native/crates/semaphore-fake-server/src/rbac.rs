@@ -495,7 +495,8 @@ pub(crate) fn log(
     });
 }
 
-/// The payload of the moderation events: an absent reason is no field (`undefined`).
+/// The payload of the moderation events as the target hears it: who acted, and why when given
+/// (an absent reason is no field, `undefined`). The community's copy of each carries neither.
 pub(crate) fn moderation_payload(
     community_id: &str,
     user_id: &str,
