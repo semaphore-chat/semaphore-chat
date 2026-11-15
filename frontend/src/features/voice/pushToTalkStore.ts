@@ -16,7 +16,8 @@ export interface PushToTalkSnapshot {
 }
 
 export interface PushToTalkControls {
-  press: () => Promise<void>;
+  /** Resolves true when the press started a hold, false when it was ignored. */
+  press: () => Promise<boolean>;
   release: () => Promise<void>;
 }
 
@@ -60,9 +61,12 @@ export const pushToTalkStore = {
     };
   },
 
-  /** Start transmitting (touch hold-to-talk). No-op when no engine is mounted. */
-  press(): Promise<void> {
-    return controls ? controls.press() : Promise.resolve();
+  /**
+   * Start transmitting (touch hold-to-talk). Resolves true when a hold
+   * started; false when it was ignored or no engine is mounted.
+   */
+  press(): Promise<boolean> {
+    return controls ? controls.press() : Promise.resolve(false);
   },
 
   /** Stop transmitting. No-op when no engine is mounted. */

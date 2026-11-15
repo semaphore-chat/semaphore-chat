@@ -34,7 +34,7 @@ const HEIGHT = 900;
 declare global {
   interface Window {
     __gumCount?: number;
-    __probeAudio?: HTMLAudioElement | null;
+    __probeAudios?: HTMLAudioElement[];
   }
 }
 
@@ -89,10 +89,10 @@ test.describe('Layout changes mid-call', () => {
       .toBeGreaterThan(0);
     const before = await a.page.evaluate(() => {
       (window.__lkRoom as unknown as Record<string, unknown>).__probe = 'layout-resize';
-      window.__probeAudio = document.querySelector('audio');
+      window.__probeAudios = Array.from(document.querySelectorAll('audio'));
       return {
         gum: window.__gumCount ?? -1,
-        audioCount: document.querySelectorAll('audio').length,
+        audioCount: window.__probeAudios.length,
       };
     });
     expect(before.gum).toBeGreaterThan(0);
@@ -100,7 +100,7 @@ test.describe('Layout changes mid-call', () => {
     for (const [width, layout] of [
       [1000, 'tablet'], // crosses 1200
       [700, 'phone'], // crosses 768
-      [390, 'phone'], // crosses 600
+      [390, 'phone'], // crosses 600 (the same layout today; the new design's phone range starts here)
       [1440, 'desktop'], // all the way back
     ] as const) {
       await a.page.setViewportSize({ width, height: HEIGHT });
@@ -111,10 +111,14 @@ test.describe('Layout changes mid-call', () => {
         state: window.__lkRoom?.state ?? 'none',
         gum: window.__gumCount ?? -1,
         audioCount: document.querySelectorAll('audio').length,
-        sameAudio:
-          !!window.__probeAudio &&
-          window.__probeAudio.isConnected &&
-          document.querySelector('audio') === window.__probeAudio,
+        // Every <audio> element is the one tagged before the first resize, still in the page.
+        sameAudio: (() => {
+          const now = Array.from(document.querySelectorAll('audio'));
+          const tagged = window.__probeAudios ?? [];
+          return tagged.length > 0 && now.length === tagged.length && now.every((el, i) => el === tagged[i] && el.isConnected);
+        })(),
+        // And none of them stopped playing.
+        anyPaused: Array.from(document.querySelectorAll('audio')).some((el) => el.paused),
       }));
       expect(now, `at ${width}px`).toEqual({
         probe: 'layout-resize',
@@ -122,10 +126,49 @@ test.describe('Layout changes mid-call', () => {
         gum: before.gum,
         audioCount: before.audioCount,
         sameAudio: true,
+        anyPaused: false,
       });
 
       await waitForAudioFlow(a, b);
       await waitForAudioFlow(b, a);
     }
+  });
+
+  test('a touch hold-to-talk held while the layout changes ends with the mic off', async () => {
+    a = await launchParticipant(TEST_USER, 'sample-a.wav');
+    b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
+    await a.page.setViewportSize({ width: 1440, height: HEIGHT });
+    // Push-to-talk mode: below 768 px the mic button becomes "Hold to talk".
+    await a.page.evaluate(() =>
+      localStorage.setItem(
+        'semaphore_voice_settings',
+        JSON.stringify({ inputMode: 'push_to_talk', pushToTalkKey: 'Backquote', pushToTalkKeyDisplay: '`' }),
+      ),
+    );
+    await joinVoiceChannel(a, CH);
+    await joinVoiceChannel(b, CH);
+
+    const micOn = () => a.page.evaluate(() => window.__lkRoom?.localParticipant.isMicrophoneEnabled ?? null);
+    await expect.poll(micOn, { message: 'PTT starts with the mic off' }).toBe(false);
+
+    // Phone layout: hold the mic button down.
+    await a.page.setViewportSize({ width: 390, height: HEIGHT });
+    const hold = a.page.getByRole('button', { name: 'Hold to talk' }).first();
+    await expect(hold).toBeVisible();
+    const box = (await hold.boundingBox())!;
+    await a.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await a.page.mouse.down();
+    await expect.poll(micOn, { message: 'holding transmits' }).toBe(true);
+    await waitForAudioFlow(b, a);
+
+    // The layout changes under the finger: that bar (and the button holding the
+    // pointer capture) leaves the page, so its pointerup never comes. The mic
+    // must still end off, not stay live with nothing held.
+    await a.page.setViewportSize({ width: 1440, height: HEIGHT });
+    await expect.poll(() => currentLayout(a)).toBe('desktop');
+    await expect.poll(micOn, { message: 'the mic is released when the holding bar goes away' }).toBe(false);
+    await a.page.mouse.up();
+    expect(await micOn()).toBe(false);
+    expect(await a.page.evaluate(() => window.__lkRoom?.state)).toBe('connected');
   });
 });

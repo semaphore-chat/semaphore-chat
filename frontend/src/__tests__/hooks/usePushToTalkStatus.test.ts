@@ -156,6 +156,64 @@ describe('usePushToTalkStatus', () => {
     expect(mockSetMicrophoneEnabled).not.toHaveBeenCalled();
   });
 
+  it('a reader that unmounts mid-hold ends the hold (touch hold-to-talk across a layout change)', async () => {
+    renderHook(() => usePushToTalk());
+    const reader = renderHook(() => usePushToTalkStatus());
+    await act(async () => {
+      await reader.result.current.pttPress();
+    });
+    expect(mockSetMicrophoneEnabled).toHaveBeenLastCalledWith(true);
+    expect(pushToTalkStore.getSnapshot().isKeyHeld).toBe(true);
+
+    // The bar unmounts with the finger still down: its pointerup never comes.
+    await act(async () => {
+      reader.unmount();
+    });
+    expect(mockSetMicrophoneEnabled).toHaveBeenLastCalledWith(false);
+    expect(pushToTalkStore.getSnapshot().isKeyHeld).toBe(false);
+  });
+
+  it('a reader that released already does not release again on unmount', async () => {
+    renderHook(() => usePushToTalk());
+    const reader = renderHook(() => usePushToTalkStatus());
+    await act(async () => {
+      await reader.result.current.pttPress();
+      await reader.result.current.pttRelease();
+    });
+    mockSetMicrophoneEnabled.mockClear();
+    await act(async () => {
+      reader.unmount();
+    });
+    expect(mockSetMicrophoneEnabled).not.toHaveBeenCalled();
+  });
+
+  it("a reader leaves a keyboard hold alone on unmount (it is not the reader's)", async () => {
+    renderHook(() => usePushToTalk());
+    const reader = renderHook(() => usePushToTalkStatus());
+    await act(async () => {
+      pressKey();
+    });
+    mockSetMicrophoneEnabled.mockClear();
+    await act(async () => {
+      reader.unmount();
+    });
+    expect(mockSetMicrophoneEnabled).not.toHaveBeenCalled();
+    expect(pushToTalkStore.getSnapshot().isKeyHeld).toBe(true);
+  });
+
+  it('an ignored press (server-muted) owns no hold, so unmount releases nothing', async () => {
+    mockVoiceState = { isConnected: true, isServerMuted: true };
+    renderHook(() => usePushToTalk());
+    const reader = renderHook(() => usePushToTalkStatus());
+    await act(async () => {
+      await reader.result.current.pttPress();
+    });
+    await act(async () => {
+      reader.unmount();
+    });
+    expect(mockSetMicrophoneEnabled).not.toHaveBeenCalled();
+  });
+
   it('reports PTT as active only while connected in push-to-talk mode, with the key name', () => {
     const { result, rerender } = renderHook(() => usePushToTalkStatus());
     expect(result.current.isActive).toBe(true);
@@ -190,8 +248,8 @@ describe('pushToTalkStore', () => {
   });
 
   it('an older engine unregistering does not remove a newer one', async () => {
-    const first = { press: vi.fn(async () => {}), release: vi.fn(async () => {}) };
-    const second = { press: vi.fn(async () => {}), release: vi.fn(async () => {}) };
+    const first = { press: vi.fn(async () => true), release: vi.fn(async () => {}) };
+    const second = { press: vi.fn(async () => true), release: vi.fn(async () => {}) };
     const unregisterFirst = pushToTalkStore.setControls(first);
     pushToTalkStore.setControls(second);
     unregisterFirst();

@@ -30,6 +30,32 @@ function toWarnOnly(rules) {
   )
 }
 
+// The Electron bridge selectors (see the config object that uses them below).
+const electronBridgeSelectors = [
+  {
+    selector: "MemberExpression[property.name='electronAPI']",
+    message:
+      'Use getElectronAPI() (utils/electronBridge), useElectronAPI() (contexts/ElectronContext) or utils/platform instead of reading window.electronAPI; in tests, setElectronAPIOverride() or <ElectronProvider> with createFakeElectronAPI().',
+  },
+  {
+    selector:
+      "VariableDeclarator[init.name=/^(window|globalThis|self)$/] > ObjectPattern > Property[key.name='electronAPI']",
+    message:
+      'Use getElectronAPI() (utils/electronBridge) or useElectronAPI() (contexts/ElectronContext) instead of destructuring electronAPI from window.',
+  },
+]
+
+// usePushToTalk is the push-to-talk engine (key listeners, mode switches) and
+// runs once per call, in components/Voice/VoiceSessionEffects.tsx. A second
+// caller would add a second set of key listeners and share one held flag in
+// pushToTalkStore. UI reads it through usePushToTalkStatus().
+const pushToTalkEngineSelector = {
+  selector: "ImportSpecifier[imported.name='usePushToTalk']",
+  message:
+    'usePushToTalk is the push-to-talk engine and is mounted only by VoiceSessionEffects. In UI, use usePushToTalkStatus() (same module).',
+}
+const PUSH_TO_TALK_ENGINE_FILES = ['src/components/Voice/VoiceSessionEffects.tsx', 'src/__tests__/**']
+
 export default tseslint.config(
   { ignores: ['dist', 'src/api-client', 'coverage', '.ladle/public', '.ux-shots'] },
   {
@@ -69,24 +95,23 @@ export default tseslint.config(
   // useElectronAPI() (components/hooks) or the utils/platform checks; tests
   // use setElectronAPIOverride() / <ElectronProvider> with
   // createFakeElectronAPI() instead of assigning the global.
+  //
+  // The same rule also keeps the push-to-talk engine to its one call site
+  // (pushToTalkEngineSelector above); the second object restates only the
+  // Electron selectors for the files allowed to import the engine, because a
+  // config object replaces a rule's options instead of merging them.
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/utils/electronBridge.ts', 'src/__tests__/utils/electronBridge.test.ts'],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "MemberExpression[property.name='electronAPI']",
-          message:
-            'Use getElectronAPI() (utils/electronBridge), useElectronAPI() (contexts/ElectronContext) or utils/platform instead of reading window.electronAPI; in tests, setElectronAPIOverride() or <ElectronProvider> with createFakeElectronAPI().',
-        },
-        {
-          selector:
-            "VariableDeclarator[init.name=/^(window|globalThis|self)$/] > ObjectPattern > Property[key.name='electronAPI']",
-          message:
-            'Use getElectronAPI() (utils/electronBridge) or useElectronAPI() (contexts/ElectronContext) instead of destructuring electronAPI from window.',
-        },
-      ],
+      'no-restricted-syntax': ['error', ...electronBridgeSelectors, pushToTalkEngineSelector],
+    },
+  },
+  {
+    files: PUSH_TO_TALK_ENGINE_FILES,
+    ignores: ['src/__tests__/utils/electronBridge.test.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...electronBridgeSelectors],
     },
   },
   // MUI is the kit's implementation detail: src/kit builds the Lounge design

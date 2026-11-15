@@ -4,7 +4,7 @@
  * Session, the presence heartbeat, deafen, server mute and per-user volume.
  * Before, these lived in VoiceBottomBarContent and stopped with the bar.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { act, render, waitFor } from '@testing-library/react';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
@@ -42,8 +42,13 @@ vi.mock('../../hooks/useVoiceEventLog', () => ({
 }));
 vi.mock('../../features/voice/VoiceTestHooks', () => ({ VoiceTestHooks: () => null }));
 vi.mock('../../components/Voice/AudioRenderer', () => ({ AudioRenderer: () => null }));
+vi.mock('../../utils/logger', () => ({
+  logger: { dev: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
 import { VoiceSessionLayer } from '../../components/Voice/VoiceSessionLayer';
+import { voiceSessionEffectsChunk } from '../../components/Voice/voiceSessionEffectsChunk';
+import { logger } from '../../utils/logger';
 import { usePushToTalk } from '../../hooks/usePushToTalk';
 import { useBackgroundVoiceKeepAlive } from '../../hooks/useBackgroundVoiceKeepAlive';
 import { useWakeLock } from '../../hooks/useWakeLock';
@@ -150,22 +155,128 @@ describe('VoiceSessionEffects (mounted by VoiceSessionLayer)', () => {
     expect(usePushToTalk).toHaveBeenLastCalledWith({ canSpeak: false });
   });
 
-  it('runs none of them outside a call, or while connected with no channel or DM', async () => {
-    voice.state = { ...IN_A_CHANNEL, isConnected: false };
+  it('runs none of them with no call and no Room', async () => {
+    voice.state = { ...IN_A_CHANNEL, isConnected: false, room: null };
     const { unmount } = renderLayerAlone();
     // The chunk is loaded, so a (wrong) mount would show up now.
     await settleLazyChunk();
     unmount();
 
-    voice.state = { ...IN_A_CHANNEL, currentChannelId: null };
+    voice.state = { ...IN_A_CHANNEL, currentChannelId: null, room: null };
     renderLayerAlone();
     await settleLazyChunk();
 
     for (const hook of SESSION_HOOKS) expect(hook).not.toHaveBeenCalled();
   });
 
+  it('enforces deafen and per-user volume as soon as a Room exists, before the call is active; the rest waits', async () => {
+    // setRoom() has run, the mic is being set up: isConnected is still false.
+    voice.state = { ...IN_A_CHANNEL, isConnected: false, isConnecting: true };
+    renderLayerAlone();
+
+    await waitFor(() => expect(useDeafenEffect).toHaveBeenCalled());
+    expect(useRemoteVolumeEffect).toHaveBeenCalled();
+    for (const hook of [
+      usePushToTalk,
+      useBackgroundVoiceKeepAlive,
+      useWakeLock,
+      useVoiceMediaSession,
+      useVoicePresenceHeartbeat,
+      useServerMuteEffect,
+    ]) {
+      expect(hook).not.toHaveBeenCalled();
+    }
+  });
+
   it('renders the children beside it (the layer adds no UI of its own)', () => {
     const { getByTestId } = renderLayerAlone();
     expect(getByTestId('no-voice-ui')).toBeInTheDocument();
+  });
+});
+
+/** Records anything that reaches it: the app-level boundary in miniature. */
+class OuterBoundary extends React.Component<{ onError: (e: unknown) => void; children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    this.props.onError(error);
+  }
+  render() {
+    return this.state.failed ? <div data-testid="app-crashed" /> : this.props.children;
+  }
+}
+
+describe('VoiceSessionEffects chunk failing to load', () => {
+  const chunkError = () => new Error('Failed to fetch dynamically imported module');
+  let appErrors: unknown[];
+
+  function renderInApp() {
+    appErrors = [];
+    return render(
+      <OuterBoundary onError={(e) => appErrors.push(e)}>
+        <VoiceSessionLayer>
+          <div data-testid="no-voice-ui" />
+        </VoiceSessionLayer>
+      </OuterBoundary>,
+    );
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('loads it again after one failure, and the call gets its effects', async () => {
+    const load = vi.spyOn(voiceSessionEffectsChunk, 'load').mockRejectedValueOnce(chunkError());
+    const { queryByTestId } = renderInApp();
+
+    await waitFor(() => expect(useVoicePresenceHeartbeat).toHaveBeenCalled());
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(appErrors).toEqual([]);
+    expect(queryByTestId('app-crashed')).toBeNull();
+  });
+
+  it('after the retry fails too: logs, renders nothing, and the error never reaches the app', async () => {
+    const load = vi.spyOn(voiceSessionEffectsChunk, 'load').mockRejectedValue(chunkError());
+    const { getByTestId, queryByTestId } = renderInApp();
+
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(appErrors).toEqual([]);
+    expect(queryByTestId('app-crashed')).toBeNull();
+    expect(getByTestId('no-voice-ui')).toBeInTheDocument();
+    for (const hook of SESSION_HOOKS) expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('after giving up, the next call tries again', async () => {
+    const load = vi.spyOn(voiceSessionEffectsChunk, 'load').mockRejectedValue(chunkError());
+    const { rerender } = renderInApp();
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+
+    // The call ends, the network is back, a new call starts.
+    load.mockRestore();
+    voice.state = { ...IN_A_CHANNEL, isConnected: false, room: null };
+    rerender(
+      <OuterBoundary onError={(e) => appErrors.push(e)}>
+        <VoiceSessionLayer>
+          <div data-testid="no-voice-ui" />
+        </VoiceSessionLayer>
+      </OuterBoundary>,
+    );
+    await settleLazyChunk();
+    voice.state = { ...IN_A_CHANNEL };
+    rerender(
+      <OuterBoundary onError={(e) => appErrors.push(e)}>
+        <VoiceSessionLayer>
+          <div data-testid="no-voice-ui" />
+        </VoiceSessionLayer>
+      </OuterBoundary>,
+    );
+
+    await waitFor(() => expect(useVoicePresenceHeartbeat).toHaveBeenCalled());
+    expect(appErrors).toEqual([]);
   });
 });
