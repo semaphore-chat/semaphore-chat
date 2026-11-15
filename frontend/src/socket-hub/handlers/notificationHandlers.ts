@@ -104,6 +104,7 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
     const contextId = payload.channelId || payload.directMessageGroupId;
     if (contextId) {
       const unreadCountsQueryKey = readReceiptsControllerGetUnreadCountsQueryKey();
+      let inserted = false;
       queryClient.setQueryData(
         unreadCountsQueryKey,
         (old: UnreadCountDto[] | undefined) => {
@@ -119,6 +120,7 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
             };
             return next;
           }
+          inserted = true;
           return [
             ...old,
             {
@@ -130,6 +132,11 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
           ];
         },
       );
+      // The payload carries no communityId, so refetch once to let the
+      // server's row fill in the entry synthesized above.
+      if (inserted) {
+        void queryClient.invalidateQueries({ queryKey: unreadCountsQueryKey });
+      }
     }
   }
 };

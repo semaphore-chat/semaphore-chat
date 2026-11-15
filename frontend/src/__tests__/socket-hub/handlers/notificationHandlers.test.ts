@@ -302,6 +302,52 @@ describe('notificationHandlers', () => {
       expect(newEntry!.unreadCount).toBe(0);
     });
 
+    it('invalidates the unread counts once when it inserts a new entry', () => {
+      queryClient.setQueryData(notificationsKey, makeNotificationList([]));
+      queryClient.setQueryData(
+        readReceiptsKey,
+        makeUnreadCounts([{ channelId: 'ch-other', communityId: 'community-1', unreadCount: 1, mentionCount: 0 }]),
+      );
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      handleNewNotification(
+        makeNotificationPayload({
+          notificationId: 'notif-6',
+          type: NotificationType.USER_MENTION,
+          channelId: 'ch-new',
+          read: false,
+        }),
+        queryClient,
+      );
+
+      expect(invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: readReceiptsKey });
+    });
+
+    it('updates an existing entry without invalidating and keeps its communityId', () => {
+      queryClient.setQueryData(notificationsKey, makeNotificationList([]));
+      queryClient.setQueryData(
+        readReceiptsKey,
+        makeUnreadCounts([{ channelId: 'ch-1', communityId: 'community-1', unreadCount: 2, mentionCount: 0 }]),
+      );
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      handleNewNotification(
+        makeNotificationPayload({
+          notificationId: 'notif-7',
+          type: NotificationType.USER_MENTION,
+          channelId: 'ch-1',
+          read: false,
+        }),
+        queryClient,
+      );
+
+      expect(invalidateSpy).not.toHaveBeenCalled();
+      expect(queryClient.getQueryData<UnreadCountDto[]>(readReceiptsKey)).toEqual([
+        { channelId: 'ch-1', communityId: 'community-1', unreadCount: 2, mentionCount: 1 },
+      ]);
+    });
+
     it('returns old data unchanged when notifications cache is undefined', () => {
       // Do not seed the notifications cache at all
       const payload = makeNotificationPayload({ notificationId: 'notif-1' });

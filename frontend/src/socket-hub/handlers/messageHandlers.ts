@@ -101,6 +101,7 @@ export const handleNewMessage: SocketEventHandler<
   }
 
   const unreadQueryKey = readReceiptsControllerGetUnreadCountsQueryKey();
+  let inserted = false;
   queryClient.setQueryData(unreadQueryKey, (old: UnreadCountDto[] | undefined) => {
     if (!old) return old;
     const index = old.findIndex(
@@ -111,6 +112,7 @@ export const handleNewMessage: SocketEventHandler<
       next[index] = { ...next[index], unreadCount: next[index].unreadCount + 1 };
       return next;
     }
+    inserted = true;
     return [
       ...old,
       {
@@ -121,6 +123,14 @@ export const handleNewMessage: SocketEventHandler<
       },
     ];
   });
+
+  // The message payload names the channel, not its community, so an entry
+  // synthesized above has no communityId. Refetch the list once such an entry
+  // exists so the server's row fills it in; an increment of an entry that is
+  // already there keeps its communityId and refetches nothing.
+  if (inserted) {
+    void queryClient.invalidateQueries({ queryKey: unreadQueryKey });
+  }
 };
 
 export const handleUpdateMessage: SocketEventHandler<typeof ServerEvents.UPDATE_MESSAGE> = async (

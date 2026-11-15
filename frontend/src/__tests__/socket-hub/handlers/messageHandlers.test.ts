@@ -196,6 +196,60 @@ describe('messageHandlers', () => {
       expect(unread![0].unreadCount).toBe(0);
     });
 
+    describe('unread count entries and their community', () => {
+      const unreadKey = readReceiptsControllerGetUnreadCountsQueryKey();
+
+      it('refetches the list after inserting an entry the socket payload cannot complete', async () => {
+        const queryClient = new QueryClient();
+        queryClient.setQueryData(
+          channelMessagesQueryKey('ch-1'),
+          makeInfiniteData([makeMessage({ id: 'old-1' })]),
+        );
+        queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'me' });
+        // The channel the message lands in is not in the list yet, so the
+        // handler has to synthesize its entry — without a communityId, which
+        // the payload never carries.
+        queryClient.setQueryData(unreadKey, [
+          { channelId: 'ch-other', communityId: 'community-1', unreadCount: 0, mentionCount: 0 },
+        ]);
+        const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+        const newMsg = makeMessage({ id: 'new-1', channelId: 'ch-1', authorId: 'other' });
+        await handleNewMessage({ message: newMsg as never }, queryClient);
+
+        const unread = queryClient.getQueryData<{ channelId?: string; unreadCount: number }[]>(
+          unreadKey,
+        );
+        expect(unread!.find((c) => c.channelId === 'ch-1')).toMatchObject({ unreadCount: 1 });
+        // ...so the server's value (which names the community) is fetched.
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: unreadKey });
+      });
+
+      it('increments an existing entry in place, keeping its communityId, without refetching', async () => {
+        const queryClient = new QueryClient();
+        queryClient.setQueryData(
+          channelMessagesQueryKey('ch-1'),
+          makeInfiniteData([makeMessage({ id: 'old-1' })]),
+        );
+        queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'me' });
+        queryClient.setQueryData(unreadKey, [
+          { channelId: 'ch-1', communityId: 'community-1', unreadCount: 3, mentionCount: 0 },
+        ]);
+        const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+        const newMsg = makeMessage({ id: 'new-1', channelId: 'ch-1', authorId: 'other' });
+        await handleNewMessage({ message: newMsg as never }, queryClient);
+
+        const unread = queryClient.getQueryData<{ channelId?: string; communityId?: string | null; unreadCount: number }[]>(
+          unreadKey,
+        );
+        expect(unread).toEqual([
+          { channelId: 'ch-1', communityId: 'community-1', unreadCount: 4, mentionCount: 0 },
+        ]);
+        expect(invalidateSpy).not.toHaveBeenCalled();
+      });
+    });
+
     describe('unread suppression for the actively-viewed context (transient badge flash)', () => {
       let hasFocusSpy: ReturnType<typeof vi.spyOn>;
 
