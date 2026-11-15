@@ -2,37 +2,46 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { NavigateFunction } from "react-router-dom";
 import { disconnectSocket } from "./socketSingleton";
 import { clearSavedConnection } from "../features/voice/voiceActions";
-import { clearTokens, getElectronRefreshToken } from "./tokenService";
+import { getElectronRefreshToken, markServerSignOutOwed } from "./tokenService";
 import { isElectron } from "./platform";
-import { clearComposerDrafts } from "../hooks/useComposerDraft";
-import { clearDesignPreview } from "../shell/designPreview";
-import { clearSessionCaches } from "./clearSessionCaches";
+import { endLocalSession } from "./endLocalSession";
+import { requestServerLogout } from "./serverSignOut";
 import type { LoginLocationState } from "../pages/LoginPage";
 
 export interface SignOutSessionOptions {
   queryClient: QueryClient;
   voiceConnected: boolean;
   leaveVoice: () => Promise<unknown>;
-  /** Calls the logout endpoint; gets the Electron refresh token (undefined on the web). */
-  logout: (refreshToken: string | undefined) => Promise<unknown>;
   navigate: NavigateFunction;
   /** Router state for the login page (e.g. where to return to after signing in as someone else) */
   loginState?: LoginLocationState;
 }
 
-/**
- * The one user-initiated sign-out sequence (useLogout and the mobile profile
- * panel share it so they cannot drift): leave voice (best effort), drop the
- * local voice connection and socket, call the logout endpoint (best effort,
- * with the Electron refresh token in the body), then always clear tokens,
- * per-tab state and the caches and navigate to /login. Local sign-out
- * completes even if the server-side revocation fails.
- */
-export async function signOutSession({
+let inProgress: Promise<void> | null = null;
+const listeners = new Set<() => void>();
+
+function setInProgress(value: Promise<void> | null) {
+  inProgress = value;
+  listeners.forEach((listener) => listener());
+}
+
+/** Whether a user-initiated sign-out is running. */
+export function isSigningOut(): boolean {
+  return inProgress !== null;
+}
+
+/** Subscribe to isSigningOut() changes (for useSyncExternalStore). */
+export function subscribeSigningOut(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+async function run({
   queryClient,
   voiceConnected,
   leaveVoice,
-  logout,
   navigate,
   loginState,
 }: SignOutSessionOptions): Promise<void> {
@@ -43,25 +52,43 @@ export async function signOutSession({
       // Best effort — don't block logout
     }
   }
+  // Before the logout call: no rejoin and no socket events (the server's
+  // SESSION_TERMINATED for this very logout) while it runs
   clearSavedConnection();
   disconnectSocket();
+  let confirmed = false;
   try {
     // Electron clients must send refresh token in body since cookies don't work cross-origin
     const refreshToken = isElectron() ? (await getElectronRefreshToken()) ?? undefined : undefined;
-    await logout(refreshToken);
+    confirmed = await requestServerLogout(refreshToken);
   } catch {
-    // Best effort — the server-side session revocation can fail (network
-    // error, already-expired session), but local logout must still complete.
+    // Reading the Electron refresh token failed: nothing was sent
   } finally {
-    clearTokens();
-    // Unsent drafts are per browser tab, not per user: drop them so the
-    // next account signed in on this tab never sees them.
-    clearComposerDrafts();
-    // Likewise this tab's design preview (`?design=` links).
-    clearDesignPreview();
-    // And the previous account's server state (profile, communities, DMs...).
-    clearSessionCaches(queryClient);
+    // On the web only the server can delete the httpOnly refresh cookie:
+    // until it confirms, the cookie must not sign anyone back in. (Electron
+    // deletes its stored refresh token in clearTokens.)
+    if (!confirmed && !isElectron()) markServerSignOutOwed();
+    endLocalSession(queryClient);
     if (loginState) navigate("/login", { state: loginState });
     else navigate("/login");
   }
+}
+
+/**
+ * The one user-initiated sign-out sequence (useLogout, behind every sign-out
+ * control): leave voice (best effort), forget the saved voice connection and
+ * drop the socket, call the logout endpoint (at most LOGOUT_REQUEST_TIMEOUT_MS,
+ * with the Electron refresh token in the body), then always run the shared
+ * local teardown (endLocalSession) and navigate to /login. Local sign-out
+ * completes promptly even if the server can't be reached; on the web the
+ * server sign-out is then owed (see serverSignOut.ts).
+ *
+ * A call while one is running returns the running one: a second click does
+ * nothing.
+ */
+export function signOutSession(options: SignOutSessionOptions): Promise<void> {
+  if (inProgress) return inProgress;
+  const promise = run(options).finally(() => setInProgress(null));
+  setInProgress(promise);
+  return promise;
 }

@@ -114,6 +114,20 @@ describe('REST 401 interceptor (configureApiClient)', () => {
     expect(authFailure).toHaveBeenCalledTimes(1);
   });
 
+  it('after the session ended on this page, neither refreshes a 401 nor reports the failure again', async () => {
+    let refreshes = 0;
+    server.use(protectedEndpoint('fresh'), refreshEndpoint(200, 'fresh', () => refreshes++));
+    tokenService.clearTokens(); // a sign-out's teardown
+
+    const result = await client.get({ url: PROTECTED });
+
+    expect(result.response?.status).toBe(401);
+    expect(refreshes).toBe(0);
+    expect(mockRefreshSessionWithRetry).not.toHaveBeenCalled();
+    expect(authFailure).not.toHaveBeenCalled();
+    expect(tokenService.getAccessToken()).toBeNull();
+  });
+
   it.each(['/login', '/register', '/join/abc', '/onboarding'])(
     'does not sign out on a public route (%s)',
     async (route) => {

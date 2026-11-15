@@ -1,21 +1,22 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { authControllerLogoutMutation } from "../api-client/@tanstack/react-query.gen";
 import { useVoiceConnection } from "./useVoiceConnection";
-import { signOutSession } from "../utils/signOutSession";
+import { isSigningOut, signOutSession, subscribeSigningOut } from "../utils/signOutSession";
 import type { LoginLocationState } from "../pages/LoginPage";
 
 /**
- * Encapsulates the app's logout flow: leave voice (best effort), tear down
- * the local voice connection + socket state, call the logout mutation
- * (best effort, sending the Electron refresh token in the body when
- * applicable), then always clear tokens and navigate to /login — local
- * logout completes even if the server-side revocation fails.
+ * The app's logout flow (signOutSession): leave voice, call the logout
+ * endpoint (with a timeout), then always end the local session and navigate
+ * to /login.
+ *
+ * `logoutLoading` is true while any sign-out runs (shared by every control);
+ * `handleLogout` during one returns the running one.
  */
 export function useLogout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { mutateAsync: logout, isPending: logoutLoading } = useMutation(authControllerLogoutMutation());
+  const logoutLoading = useSyncExternalStore(subscribeSigningOut, isSigningOut);
   const { state: voiceState, actions: voiceActions } = useVoiceConnection();
 
   /**
@@ -27,7 +28,6 @@ export function useLogout() {
       queryClient,
       voiceConnected: voiceState.isConnected,
       leaveVoice: voiceActions.leaveVoiceChannel,
-      logout: (refreshToken) => logout({ body: { refreshToken } }),
       navigate,
       loginState,
     });

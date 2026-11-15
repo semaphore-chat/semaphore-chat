@@ -3,9 +3,11 @@ import { getValidRequestBody } from './api-client/core/utils.gen';
 import { getApiBaseUrl } from './config/env';
 import {
   getAccessToken,
+  hasSessionEnded,
   refreshSessionWithRetry,
   notifyAuthFailure,
 } from './utils/tokenService';
+import { whenServerSignOutSettled } from './utils/serverSignOut';
 import { DEVICE_ID_HEADER, getDeviceId } from './utils/deviceId';
 import { clientTypeHeaders } from './utils/clientType';
 
@@ -85,13 +87,20 @@ export function configureApiClient() {
   const clientBaseUrl = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl;
   client.setConfig({ baseUrl: clientBaseUrl });
 
-  client.interceptors.request.use((request) => {
+  client.interceptors.request.use(async (request) => {
+    const path = new URL(request.url, window.location.origin).pathname;
+    // While an owed server sign-out is being retried (page load after a
+    // failed logout), requests wait for it: its response deletes the refresh
+    // cookie, and must not delete one a sign-in sets meanwhile.
+    if (path !== '/api/auth/logout') {
+      await whenServerSignOutSettled();
+    }
     const token = getAccessToken();
     if (token) {
       request.headers.set('Authorization', `Bearer ${token}`);
     }
     // Auth endpoints (sign-in starts a session) learn which install this is
-    if (new URL(request.url, window.location.origin).pathname.startsWith('/api/auth/')) {
+    if (path.startsWith('/api/auth/')) {
       request.headers.set(DEVICE_ID_HEADER, getDeviceId());
       for (const [name, value] of Object.entries(clientTypeHeaders())) {
         request.headers.set(name, value);
@@ -110,6 +119,13 @@ export function configureApiClient() {
     // without this interceptor for login/register/refresh.
     const url = new URL(request.url, window.location.origin);
     if (url.pathname.startsWith('/api/auth/')) {
+      return response;
+    }
+
+    // The session ended on this page (sign-out, or the server ended it) and
+    // no new one started: a request fired during or after the teardown must
+    // not refresh with the old session's cookie, nor report the failure again.
+    if (!getAccessToken() && hasSessionEnded()) {
       return response;
     }
 

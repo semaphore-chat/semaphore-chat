@@ -10,7 +10,7 @@ import { logger } from '../utils/logger';
  * Hook that attempts to recover voice connection after page refresh.
  *
  * Checks localStorage for saved connection state and attempts to rejoin
- * if the connection was made within the last 5 minutes.
+ * if the connection was made within the last 5 minutes by the signed-in user.
  *
  * Usage: Call this hook at the Layout level after auth is confirmed.
  */
@@ -37,6 +37,15 @@ export function useVoiceRecovery() {
     // Check for saved connection
     const savedConnection = getSavedConnection();
     if (!savedConnection) return;
+
+    // Only the user who was connected rejoins: never someone who signed in
+    // after them on this device (or a record that doesn't say whose it is)
+    if (!savedConnection.userId || savedConnection.userId !== user.id) {
+      logger.info('[VoiceRecovery] Ignoring a saved connection of another user');
+      recoveryAttempted.current = true;
+      clearSavedConnection();
+      return;
+    }
 
     // Mark as attempted so we don't retry
     recoveryAttempted.current = true;

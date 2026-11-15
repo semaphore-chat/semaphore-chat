@@ -215,7 +215,7 @@ const OtherUserProfile: React.FC<{ userId: string }> = ({ userId }) => {
 /** The current user's own profile with settings, admin and logout. */
 const OwnProfile: React.FC<{ userData: UserEntity | undefined }> = ({ userData }) => {
   const navigate = useNavigate();
-  const { handleLogout } = useLogout();
+  const { handleLogout, logoutLoading } = useLogout();
 
   const handleEditProfile = () => {
     navigate('/profile/edit');
@@ -315,6 +315,8 @@ const OwnProfile: React.FC<{ userData: UserEntity | undefined }> = ({ userData }
             <ListItem disablePadding>
               <ListItemButton
                 onClick={() => void handleLogout()}
+                disabled={logoutLoading}
+                aria-busy={logoutLoading}
                 sx={{
                   minHeight: TOUCH_TARGETS.RECOMMENDED,
                   color: 'error.main',
@@ -323,7 +325,7 @@ const OwnProfile: React.FC<{ userData: UserEntity | undefined }> = ({ userData }
                 <ListItemIcon>
                   <LogoutIcon sx={{ color: 'error.main' }} />
                 </ListItemIcon>
-                <ListItemText primary="Logout" />
+                <ListItemText primary={logoutLoading ? 'Logging out…' : 'Logout'} />
               </ListItemButton>
             </ListItem>
           </List>

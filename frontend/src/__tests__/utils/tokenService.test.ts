@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../utils/logger', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), dev: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -15,7 +15,8 @@ import {
   onAuthFailure,
   notifyAuthFailure,
   isRefreshing,
-  redirectToLogin,
+  hasSessionEnded,
+  getAccessTokenUserId,
 } from '../../utils/tokenService';
 import { logger } from '../../utils/logger';
 
@@ -295,37 +296,33 @@ describe('tokenService', () => {
     });
   });
 
-  // ─── redirectToLogin ──────────────────────────────────────────
+  // ─── hasSessionEnded ──────────────────────────────────────────
 
-  describe('redirectToLogin', () => {
-    let originalHash: string;
+  describe('hasSessionEnded', () => {
+    it('is set by clearTokens and reset by the next setAccessToken', () => {
+      setAccessToken('at');
+      expect(hasSessionEnded()).toBe(false);
+      clearTokens();
+      expect(hasSessionEnded()).toBe(true);
+      setAccessToken('next');
+      expect(hasSessionEnded()).toBe(false);
+    });
+  });
 
-    beforeEach(() => {
-      originalHash = window.location.hash;
+  // ─── getAccessTokenUserId ─────────────────────────────────────
+
+  describe('getAccessTokenUserId', () => {
+    it("returns the token's sub", () => {
+      setAccessToken(makeJwt({ sub: 'user-a' }));
+      expect(getAccessTokenUserId()).toBe('user-a');
     });
 
-    afterEach(() => {
-      window.location.hash = originalHash;
-    });
-
-    it('clears tokens', () => {
-      setAccessToken('my-token');
-      localStorage.setItem('refreshToken', 'rt');
-      redirectToLogin();
-      expect(getAccessToken()).toBeNull();
-      expect(localStorage.getItem('refreshToken')).toBeNull();
-    });
-
-    it('sets window.location.hash to #/login', () => {
-      setAccessToken('my-token');
-      redirectToLogin();
-      expect(window.location.hash).toBe('#/login');
-    });
-
-    it('does not change hash if already on #/login', () => {
-      window.location.hash = '#/login';
-      redirectToLogin();
-      expect(window.location.hash).toBe('#/login');
+    it('returns null without a token, without a sub, or for an unreadable token', () => {
+      expect(getAccessTokenUserId()).toBeNull();
+      setAccessToken(makeJwt({ exp: 1 }));
+      expect(getAccessTokenUserId()).toBeNull();
+      setAccessToken('not-a-jwt');
+      expect(getAccessTokenUserId()).toBeNull();
     });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { Routes, Route } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
@@ -117,5 +117,35 @@ describe('MobileProfilePanel sign-out', () => {
     expect(getAccessToken()).toBeNull();
     expect(mockDisconnectSocket).toHaveBeenCalled();
     expect(queryClient.getQueryCache().getAll()).toEqual([]);
+  });
+
+  it('is disabled and busy while the logout call runs; another tap does nothing', async () => {
+    let requests = 0;
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    server.use(
+      http.post('http://localhost:3000/api/auth/logout', async () => {
+        requests++;
+        await answered;
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    const { user } = renderPanel();
+
+    await clickLogout(user);
+
+    const row = (await screen.findByText('Logging out…')).closest('[role="button"]') as HTMLElement;
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(row).toHaveAttribute('aria-busy', 'true');
+    // A tap can't reach it (pointer-events: none); even an activation that does is a no-op
+    fireEvent.click(row);
+    await waitFor(() => expect(requests).toBe(1));
+    expect(screen.queryByTestId('login')).not.toBeInTheDocument();
+
+    answer();
+    expect(await screen.findByTestId('login')).toBeInTheDocument();
+    expect(requests).toBe(1);
   });
 });

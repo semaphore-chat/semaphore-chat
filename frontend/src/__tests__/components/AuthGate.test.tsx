@@ -10,7 +10,10 @@ import {
   getAccessToken,
   clearTokens,
   endRefreshCooldown,
+  markServerSignOutOwed,
+  isServerSignOutOwed,
 } from '../../utils/tokenService';
+import { useQuery } from '@tanstack/react-query';
 import {
   MAX_SESSION_REFRESH_ATTEMPTS,
   PAGE_LOAD_REFRESH_ROUNDS,
@@ -25,6 +28,12 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
     client: createClient(createConfig({ baseUrl: 'http://localhost:3000' })),
   };
 });
+
+let mockSigningOut = false;
+vi.mock('../../utils/signOutSession', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isSigningOut: () => mockSigningOut,
+}));
 
 // Mock disconnectSocket so we can verify it's called on auth failure
 const mockDisconnectSocket = vi.fn();
@@ -147,6 +156,8 @@ describe('AuthGate', () => {
     localStorage.clear();
     vi.clearAllMocks();
     socketProviderMounted = false;
+    mockSigningOut = false;
+    sessionStorage.clear();
     mockDisconnectSocket.mockReset();
     takeStashedDeepLinkRoute(); // discard any leftover stash from a prior test
     // tokenService is shared by every test: no pause left by a failed one
@@ -474,6 +485,8 @@ describe('AuthGate', () => {
     it('clears both access and refresh tokens on failed refresh', async () => {
       setAccessToken(expiredToken());
       localStorage.setItem('refreshToken', 'old-refresh-token');
+      localStorage.setItem('semaphore_voice_connection', JSON.stringify({ userId: 'user1', contextType: 'channel', channelId: 'ch-a', timestamp: Date.now() }));
+      sessionStorage.setItem('semaphore:composerDraft:channel:c1', 'draft');
 
       mockOnboardingOk();
       mockProfileUnauthorized();
@@ -490,6 +503,9 @@ describe('AuthGate', () => {
       });
       expect(getAccessToken()).toBeNull();
       expect(localStorage.getItem('refreshToken')).toBeNull();
+      // The rest of the per-user teardown runs on this path too
+      expect(localStorage.getItem('semaphore_voice_connection')).toBeNull();
+      expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
     });
 
     it('clears the query cache when the refresh is rejected', async () => {
@@ -690,12 +706,16 @@ describe('AuthGate', () => {
         await renderUntilUnavailable();
 
         sessionStorage.setItem('semaphore-design-preview', 'lounge');
+        localStorage.setItem('semaphore_voice_connection', JSON.stringify({ userId: 'user1', contextType: 'channel', channelId: 'ch-a', timestamp: Date.now() }));
+        sessionStorage.setItem('semaphore:composerDraft:channel:c1', 'draft');
         fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
 
         await waitFor(() => {
           expect(screen.getByTestId('login')).toBeInTheDocument();
         });
         expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+        expect(localStorage.getItem('semaphore_voice_connection')).toBeNull();
+        expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
         expect(localStorage.getItem('refreshToken')).toBeNull();
         expect(getAccessToken()).toBeNull();
       }, 20_000);
@@ -800,6 +820,9 @@ describe('AuthGate', () => {
         expect(screen.getByTestId('home')).toBeInTheDocument();
       });
 
+      localStorage.setItem('semaphore_voice_connection', JSON.stringify({ userId: 'user1', contextType: 'channel', channelId: 'ch-a', timestamp: Date.now() }));
+      sessionStorage.setItem('semaphore:composerDraft:channel:c1', 'draft');
+
       act(() => {
         notifyAuthFailure();
       });
@@ -809,6 +832,9 @@ describe('AuthGate', () => {
       });
       expect(mockDisconnectSocket).toHaveBeenCalled();
       expect(getAccessToken()).toBeNull();
+      // No rejoin into this voice call, no draft for whoever signs in next
+      expect(localStorage.getItem('semaphore_voice_connection')).toBeNull();
+      expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
     });
 
     it('clears the query cache when the server ends the session, after tokens and socket', async () => {
@@ -1010,6 +1036,148 @@ describe('AuthGate', () => {
         communityId: 'commA',
         channelId: 'chanA',
       });
+    });
+  });
+
+  // ─── Re-entry and the window before unmount (I4) ───────────────
+
+  describe('while and after the session ends', () => {
+    it('a second auth failure (a request fired during the teardown) neither reruns it nor drops the reason', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      renderAuthGate('/', queryClient);
+      await screen.findByTestId('home');
+      const clear = vi.spyOn(queryClient, 'clear');
+
+      act(() => {
+        notifyAuthFailure('ACCOUNT_BANNED');
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveTextContent('Login Page (ACCOUNT_BANNED)');
+      });
+      expect(clear).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores auth failures while a manual sign-out runs (no "session ended" on the login page)', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      renderAuthGate();
+      await screen.findByTestId('home');
+      mockSigningOut = true;
+
+      act(() => {
+        notifyAuthFailure('LOGGED_OUT');
+      });
+
+      expect(screen.getByTestId('home')).toBeInTheDocument();
+      expect(getAccessToken()).not.toBeNull();
+    });
+
+    it('drops queries the signed-in screens rebuilt before they unmounted, keeps the login page\'s own', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      function LoginWithSettings() {
+        const { data } = useQuery({ queryKey: ['publicSettings'], queryFn: async () => ({ ok: true }) });
+        return <div data-testid="login">{data ? 'settings loaded' : 'loading'}</div>;
+      }
+      renderWithProviders(
+        <Routes>
+          <Route element={<AuthGate />}>
+            <Route path="/" element={<div data-testid="home">Home</div>} />
+          </Route>
+          <Route path="/login" element={<LoginWithSettings />} />
+        </Routes>,
+        { routerProps: { initialEntries: ['/'] }, queryClient },
+      );
+      await screen.findByTestId('home');
+      // A still-mounted signed-in screen re-renders right after the clear
+      // and rebuilds its query (getOptimisticResult) before it unmounts
+      const clear = queryClient.clear.bind(queryClient);
+      vi.spyOn(queryClient, 'clear').mockImplementation(() => {
+        clear();
+        queryClient.setQueryData(['communities'], [{ id: 'c1' }]);
+      });
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveTextContent('settings loaded');
+      });
+      await waitFor(() => {
+        expect(queryClient.getQueryData(['communities'])).toBeUndefined();
+      });
+      expect(queryClient.getQueryData(['publicSettings'])).toEqual({ ok: true });
+    });
+  });
+
+  // ─── A web sign-out the server never confirmed (I3) ─────────────
+
+  describe('when a server sign-out is still owed', () => {
+    let refreshes = 0;
+    let logouts = 0;
+
+    beforeEach(() => {
+      refreshes = 0;
+      logouts = 0;
+      mockOnboardingOk();
+      // The refresh cookie still holds the signed-out session
+      server.use(
+        http.post(`${BASE_URL}/api/auth/refresh`, () => {
+          refreshes++;
+          return HttpResponse.json({ accessToken: validToken() });
+        }),
+      );
+      markServerSignOutOwed();
+    });
+
+    function logoutAnswers(status: number) {
+      server.use(
+        http.post(`${BASE_URL}/api/auth/logout`, () => {
+          logouts++;
+          return HttpResponse.json({ message: 'x' }, { status });
+        }),
+      );
+    }
+
+    it('a reload does not sign back in: it retries the logout, then shows the login page', async () => {
+      logoutAnswers(201);
+      renderAuthGate();
+
+      await screen.findByTestId('login');
+      expect(logouts).toBe(1);
+      expect(refreshes).toBe(0);
+      expect(getAccessToken()).toBeNull();
+      expect(socketProviderMounted).toBe(false);
+      // The server confirmed: nothing owed any more
+      expect(isServerSignOutOwed()).toBe(false);
+    });
+
+    it('still shows the login page (never the old session) when the retry fails, and keeps the flag', async () => {
+      logoutAnswers(503);
+      renderAuthGate();
+
+      await screen.findByTestId('login');
+      expect(logouts).toBe(1);
+      expect(refreshes).toBe(0);
+      expect(isServerSignOutOwed()).toBe(true);
+    });
+
+    it('signing in deliberately afterwards works', async () => {
+      logoutAnswers(503);
+      // The login page's sign-in sets the new session's token
+      setAccessToken(validToken());
+      expect(isServerSignOutOwed()).toBe(false);
+
+      renderAuthGate();
+
+      await screen.findByTestId('home');
+      expect(logouts).toBe(0);
     });
   });
 });

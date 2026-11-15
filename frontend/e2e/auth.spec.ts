@@ -13,6 +13,7 @@ import {
   isAuthenticated,
   loginViaApi,
   createTestCommunity,
+  createWorld,
   generateTestName,
 } from './fixtures';
 
@@ -161,6 +162,8 @@ test.describe('Authentication', () => {
       const { accessToken } = await loginViaApi(request, TEST_USER);
       const communityName = generateTestName('signout');
       const community = await createTestCommunity(request, { name: communityName }, accessToken);
+      // A community B is in too: its entry in B's rail shows B's list has rendered
+      const shared = await createWorld(request);
 
       const signIn = async (credentials: { username: string; password: string }) => {
         await page.locator('#username').fill(credentials.username);
@@ -204,8 +207,10 @@ test.describe('Authentication', () => {
       await signIn(MEMBER_USER);
       await expect(page.locator('body')).not.toContainText(communityName);
 
-      // And again once the lists have settled.
-      await page.waitForLoadState('networkidle');
+      // And again once B's community list has rendered (B's own community is in the rail).
+      await expect(page.getByRole('button', { name: shared.communityName }).first()).toBeVisible({
+        timeout: 15000,
+      });
       await expect(page.locator('body')).not.toContainText(communityName);
       expect(await page.evaluate(() => (window as unknown as { __leaked: boolean }).__leaked)).toBe(
         false,

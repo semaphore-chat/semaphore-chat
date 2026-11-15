@@ -6,14 +6,30 @@ import { abortAllAttachmentSends } from "./attachmentSend";
  * account (profile, communities, DMs, unread counts, cached messages), so the
  * next account signed in on this tab never sees it, even briefly.
  *
- * Call it from every path that ends a session, after the socket is
- * disconnected and the tokens are cleared, and before navigating to the login
- * page. In-flight queries are cancelled first so a late response can't
- * repopulate the cache. Pending attachment uploads are aborted and dropped too.
+ * Part of endLocalSession(); call that, not this, to end a session.
+ * `clear()` removes every query, and removing a query cancels its in-flight
+ * fetch silently (query-core 5.x: `QueryCache.remove` -> `Query.destroy` ->
+ * `cancel({ silent: true })`), so a late response can't repopulate the cache
+ * and imperative `fetchQuery` callers aren't rejected with CancelledError.
+ * Pending attachment uploads are aborted and dropped too.
  */
 export function clearSessionCaches(queryClient: QueryClient): void {
-  void queryClient.cancelQueries();
   queryClient.clear();
   // In-flight uploads and their pending tiles belong to the account too.
   abortAllAttachmentSends();
+}
+
+/**
+ * After the signed-in screens have unmounted: drop every query no mounted
+ * component observes. A signed-in screen that re-rendered between the
+ * sign-out's clear() and its unmount rebuilt its query (and may have fired a
+ * token-less fetch); this removes it, and cancels that fetch. Queries the
+ * now-mounted screens (the login page's public settings) observe are kept.
+ */
+export function removeUnobservedQueries(queryClient: QueryClient): void {
+  const cache = queryClient.getQueryCache();
+  for (const query of cache.getAll()) {
+    if (query.getObserversCount() === 0) cache.remove(query);
+  }
+  queryClient.getMutationCache().clear();
 }

@@ -38,4 +38,16 @@ export function useAppBadge(baseTitle: string): void {
   useEffect(() => {
     document.title = unreadCount > 0 ? `(${unreadCount}) ${baseTitle}` : baseTitle;
   }, [unreadCount, baseTitle]);
+
+  // Unmounted (signed out): the count is this account's, so take it off the
+  // icon and the title rather than leave it for the login page
+  useEffect(
+    () => () => {
+      document.title = baseTitle;
+      if ('clearAppBadge' in navigator) {
+        (navigator as Navigator & { clearAppBadge: () => Promise<void> }).clearAppBadge().catch(() => {});
+      }
+    },
+    [baseTitle],
+  );
 }
