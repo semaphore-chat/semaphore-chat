@@ -101,13 +101,16 @@ const BadgeSlot = styled('span')(({ theme }) => ({
   boxShadow: `0 0 0 ${RING}px ${kitTheme(theme).palette.surface}`,
 }));
 
-/** The "new messages" dot: where the count badge would sit, in the accent colour, ringed in the surface colour. */
+/**
+ * The "new messages" dot: at the corner of the item, in the accent colour, ringed in the surface colour. It is
+ * pushed out by half of `space.xs` so that on the current item, whose ring is the same accent, it clears the ring.
+ */
 const NewDot = styled('span')(({ theme }) => {
   const { palette } = kitTheme(theme);
   return {
     position: 'absolute',
-    top: 0,
-    right: 0,
+    top: `${-tokens.space.xs / 2}px`,
+    right: `${-tokens.space.xs / 2}px`,
     ...dotStyle(palette.accent),
     boxShadow: `0 0 0 ${RING}px ${palette.surface}`,
   };

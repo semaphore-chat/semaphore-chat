@@ -76,7 +76,7 @@ const ActionRow = styled('div')({
   display: 'flex',
   // Wraps at a narrow width instead of overflowing; the rows of buttons stay close.
   flexWrap: 'wrap',
-  gap: `0 ${tokens.space.sm}px`,
+  gap: `${tokens.space.xs}px ${tokens.space.sm}px`,
   // The text button has its own side padding: pull it back so its label lines up with the text above.
   margin: `${tokens.space.sm}px 0 0 ${-BUTTON_PADDING.sm}px`,
 });

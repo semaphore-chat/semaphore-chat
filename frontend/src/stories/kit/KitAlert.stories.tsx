@@ -133,3 +133,15 @@ export const SecondaryActionLong = () => (
     </div>
   </KitStage>
 );
+
+/** One action whose label is longer than the row: cut with an ellipsis inside the alert. */
+export const SecondaryActionOneLong = () => (
+  <KitStage mode="dark">
+    <div style={{ ...stack, width: 220 }}>
+      <Alert severity="warning" action={{ label: 'Join the call in Squad Up with dropbear and pri', onClick: noop }}>
+        dropbear is calling you.
+      </Alert>
+    </div>
+  </KitStage>
+);
+

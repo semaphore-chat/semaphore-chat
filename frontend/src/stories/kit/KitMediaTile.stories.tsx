@@ -115,3 +115,49 @@ export const LongLabel = () => (
     </div>
   </KitStage>
 );
+
+const SizesBody = () => (
+  <>
+    {[120, 160, 180, 220].map((width) => (
+      <Row key={width} label={`${width} px wide: the avatar and padding step down, then the name goes`}>
+        <div style={{ width }}>
+          <Tile kind="avatar" label="dropbear" />
+        </div>
+        <div style={{ width }}>
+          <Tile kind="camera" label="pri" video hue={200} />
+        </div>
+      </Row>
+    ))}
+    <Row label="Full width">
+      <div style={{ width: '100%' }}>
+        <Tile kind="avatar" label="dropbear" />
+      </div>
+    </Row>
+  </>
+);
+
+/** An avatar tile at 120, 160, 180, 220 px and full width: nothing is cut off at any size. */
+export const SmallTiles = () => (
+  <KitStage mode="dark">
+    <SizesBody />
+  </KitStage>
+);
+
+export const SmallTilesLight = () => (
+  <KitStage mode="light">
+    <SizesBody />
+  </KitStage>
+);
+
+/** The tile is bigger than the viewport allows: two avatar tiles side by side on a phone. */
+export const PhonePair = () => (
+  <KitStage mode="dark">
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: tokens.space.md, width: '100%' }}>
+      <Tile kind="avatar" label="dropbear" speaking />
+      <Tile kind="avatar" label="Squad Up: pri" />
+      <Tile kind="camera" label="aiko" video hue={30} />
+      <Tile kind="avatar" label="kwam3" />
+    </div>
+  </KitStage>
+);
+

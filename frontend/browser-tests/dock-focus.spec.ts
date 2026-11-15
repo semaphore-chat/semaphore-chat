@@ -42,6 +42,12 @@ for (const story of ['kit-dock--focus-twelve', 'kit-dock--focus-sixty']) {
 
     test('arrows, Home and End move along the bar and keep the focused item in view; the page does not scroll', async ({ page }) => {
       await openStory(page, story, VIEW);
+      // Make the page scrollable both ways, so a focus() that scrolls the page would show.
+      await page.evaluate(() => {
+        const filler = document.createElement('div');
+        filler.style.cssText = 'width:4000px;height:4000px';
+        document.body.appendChild(filler);
+      });
       await page.keyboard.press('Tab');
       const current = await focusedName(page);
       expect(await inView(page, current ?? '')).toBe(true);
@@ -55,7 +61,7 @@ for (const story of ['kit-dock--focus-twelve', 'kit-dock--focus-sixty']) {
       await page.keyboard.press('Home');
       expect(await focusedName(page)).toBe('Inbox');
       expect(await inView(page, 'Inbox')).toBe(true);
-      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
     });
   });
 }

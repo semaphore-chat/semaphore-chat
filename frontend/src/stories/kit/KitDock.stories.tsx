@@ -1,4 +1,4 @@
-import { useState, type JSX, type ReactNode } from 'react';
+import { useState, type ComponentProps, type JSX, type ReactNode } from 'react';
 import { Badge, Button, Dock, DockDivider, DockItem, IconButton, useListFocus } from '../../kit';
 import type { IntensityName, ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
@@ -29,7 +29,9 @@ const COMMUNITIES = [
   { name: 'Wavelength', colour: '#F08FC0' },
 ];
 
-function Bar({ items = COMMUNITIES }: { items?: readonly (typeof COMMUNITIES[number] & { newMessages?: boolean })[] }): JSX.Element {
+type BarItem = ComponentProps<typeof DockItem>;
+
+function Bar({ items = COMMUNITIES }: { items?: readonly BarItem[] }): JSX.Element {
   return (
     <Dock label="Pinned communities">
       <Inbox />
@@ -133,7 +135,7 @@ function FocusBar({ count, current }: { count: number; current: number }): JSX.E
   const list = useListFocus({ rows, selected: chosen, orientation: 'horizontal', onSelect: setChosen });
   return (
     <>
-      <Dock label="Pinned communities" listProps={list.listProps}>
+      <Dock label="Pinned communities" focus={list.bar}>
         <IconButton icon="Inbox" label="Inbox" variant="primary" focus={list.rowFocus('inbox')} />
         <DockDivider />
         {names.map((name, index) => (
@@ -205,29 +207,50 @@ const NEW_MESSAGES = [
   { name: 'Wavelength', colour: '#F08FC0' },
 ];
 
-/** "New messages" dot: Trailheads (dot), Lumen Studio (a count too: the badge wins), Friday LAN (dot and reconnecting). */
-export const NewMessages = () => (
-  <Page mode="dark">
-    <Row label="Pinned communities">
+const CURRENT_DOT = NEW_MESSAGES.map((item, index) => (index === 0 ? { ...item, newMessages: true } : item));
+const CURRENT_COUNT = NEW_MESSAGES.map((item, index) => (index === 0 ? { ...item, unread: 3 } : item));
+const CURRENT_BOTH = NEW_MESSAGES.map((item, index) => (index === 0 ? { ...item, unread: 3, newMessages: true } : item));
+
+const NewMessagesBody = () => (
+  <>
+    <Row label="Pinned communities: Trailheads has a dot, Lumen Studio a count (the badge wins), Friday LAN a dot and reconnecting">
       <Wide>
         <Bar items={NEW_MESSAGES} />
       </Wide>
     </Row>
+    <Row label="The current community with a dot (Couch Co-op)">
+      <Wide>
+        <Bar items={CURRENT_DOT} />
+      </Wide>
+    </Row>
+    <Row label="The current community with a count">
+      <Wide>
+        <Bar items={CURRENT_COUNT} />
+      </Wide>
+    </Row>
+    <Row label="The current community with a count and a dot: the count wins">
+      <Wide>
+        <Bar items={CURRENT_BOTH} />
+      </Wide>
+    </Row>
+  </>
+);
+
+/** "New messages" dot, alone and on the current community; a count wins over it. */
+export const NewMessages = () => (
+  <Page mode="dark">
+    <NewMessagesBody />
   </Page>
 );
 
 export const NewMessagesLight = () => (
   <Page mode="light">
-    <Wide>
-      <Bar items={NEW_MESSAGES} />
-    </Wide>
+    <NewMessagesBody />
   </Page>
 );
 
 export const NewMessagesTinted = () => (
   <Page mode="dark" base="#0d9488" intensity="vibrant">
-    <Wide>
-      <Bar items={NEW_MESSAGES} />
-    </Wide>
+    <NewMessagesBody />
   </Page>
 );

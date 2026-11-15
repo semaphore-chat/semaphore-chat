@@ -81,7 +81,7 @@ export { useAnnounce } from './behaviour/hosts/announce';
 export { useToastClearance, useToasts } from './behaviour/hosts/toasts';
 export type { ToastRequest, Toasts } from './behaviour/hosts/toasts';
 export { useListFocus } from './behaviour/hosts/listFocus';
-export type { ListFocus, ListFocusOptions, ListFocusRow, RowFocus } from './behaviour/hosts/listFocus';
+export type { BarFocus, ListFocus, ListFocusOptions, ListFocusRow, RowFocus } from './behaviour/hosts/listFocus';
 export { Island } from './surfaces/Island';
 export type { IslandProps } from './surfaces/Island';
 export { Card } from './surfaces/Card';

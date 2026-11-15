@@ -120,4 +120,15 @@ describe('AvatarStack speaking (K6)', () => {
     renderWithKit(<AvatarStack label="In Squad Up" people={crew} />);
     expect(screen.getByRole('img', { name: 'In Squad Up' })).toBeInTheDocument();
   });
+
+  it('names at most three speakers: more are "A, B and N more"', () => {
+    const many = ['pri', 'dropbear', 'aiko', 'kwam3', 'alexk'].map((name) => ({ name, speaking: true }));
+    renderWithKit(<AvatarStack people={many} max={2} />);
+    expect(screen.getByRole('img', { name: 'pri, dropbear and 3 more, pri, dropbear and 3 more are talking' })).toBeInTheDocument();
+  });
+
+  it('is its own stacking context, so a raised speaker cannot paint over what is outside the stack', () => {
+    renderWithKit(<AvatarStack people={crew} />);
+    expect(getComputedStyle(screen.getByRole('img')).isolation).toBe('isolate');
+  });
 });

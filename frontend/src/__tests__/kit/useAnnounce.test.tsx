@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
-import { useAnnounce } from '../../kit';
+import { Button, Dialog, useAnnounce } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 const region = (container: HTMLElement, politeness: 'polite' | 'assertive') =>
@@ -55,5 +55,22 @@ describe('useAnnounce (K4)', () => {
     const { rerender } = renderWithKit(<Probe />);
     rerender(<Probe />);
     expect(seen[1]).toBe(seen[0]);
+  });
+
+  it('is heard from inside a Dialog: the text lands in the Dialog\'s own live region (the page behind is hidden)', async () => {
+    function Inside() {
+      const announce = useAnnounce();
+      return (
+        <Button onClick={() => announce('Saved')}>save</Button>
+      );
+    }
+    const { user } = renderWithKit(
+      <Dialog open onClose={() => undefined} title="Rename" actions={<Button>ok</Button>}>
+        <Inside />
+      </Dialog>,
+    );
+    await user.click(screen.getByRole('button', { name: 'save' }));
+    const dialog = screen.getByRole('dialog');
+    await waitFor(() => expect(dialog.querySelector('[aria-live="polite"]')).toHaveTextContent('Saved'));
   });
 });

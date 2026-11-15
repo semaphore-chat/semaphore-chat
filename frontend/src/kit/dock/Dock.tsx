@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
-import type { ListFocus } from '../behaviour/hosts/listFocus';
+import { barFocusProps, type BarFocus } from '../behaviour/hosts/listFocus';
 import { kitTheme } from '../theme/KitProvider';
 import { SurfaceContext } from '../theme/onSurface';
 import { shadow } from '../theme/shadow';
@@ -18,10 +18,10 @@ export interface DockProps {
    */
   bottomBar?: boolean;
   /**
-   * Makes the bar one keyboard list: `useListFocus({ orientation: 'horizontal', ... }).listProps`, with each item's
-   * `focus` set from `rowFocus(id)`. One Tab stop; Left, Right, Home and End move between items.
+   * Makes the bar one keyboard list: `useListFocus({ orientation: 'horizontal', ... }).bar`, with each item's `focus`
+   * set from `rowFocus(id)`. One Tab stop; Left, Right, Home and End move between items.
    */
-  listProps?: ListFocus['listProps'];
+  focus?: BarFocus;
 }
 
 const Root = styled('nav', { shouldForwardProp: transientProps })<{ $bottomBar: boolean }>(({ theme, $bottomBar }) => {
@@ -69,8 +69,9 @@ export function DockDivider(): JSX.Element {
  * current item (`aria-current="page"`) in view on mount and whenever that
  * changes; a scroll the user made is left alone otherwise.
  */
-export function Dock({ label, children, bottomBar = false, listProps }: DockProps): JSX.Element {
+export function Dock({ label, children, bottomBar = false, focus }: DockProps): JSX.Element {
   const ref = useRef<HTMLElement>(null);
+  const keys = barFocusProps(focus);
   const shown = useRef<Element | null>(null);
 
   // scrollLeft, not scrollIntoView, which would scroll the page too.
@@ -118,8 +119,11 @@ export function Dock({ label, children, bottomBar = false, listProps }: DockProp
       aria-label={label}
       $bottomBar={bottomBar}
       // Firefox makes a scrolling bar a Tab stop of its own; as one keyboard list the bar must not be.
-      tabIndex={listProps === undefined ? undefined : -1}
-      {...listProps}
+      tabIndex={keys === undefined ? undefined : -1}
+      onKeyDown={keys?.onKeyDown}
+      onKeyUp={keys?.onKeyUp}
+      onFocusCapture={keys?.onFocusCapture}
+      onBlur={keys?.onBlur}
     >
       <SurfaceContext value="surface">{children}</SurfaceContext>
     </Root>

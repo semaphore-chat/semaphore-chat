@@ -18,6 +18,14 @@ export interface AvatarStackProps {
 
 const DEFAULT_MAX = 3;
 
+/** Up to three speakers by name; more are "A, B and 4 more", so the name stays short. */
+const MAX_NAMED_TALKING = 3;
+function joinTalking(names: string[]): string {
+  return names.length <= MAX_NAMED_TALKING
+    ? joinNames(names)
+    : `${names.slice(0, MAX_NAMED_TALKING - 1).join(', ')} and ${names.length - (MAX_NAMED_TALKING - 1)} more`;
+}
+
 /** "A", "A and B", "A, B and C": "and" before the last, never found by searching the text for a comma. */
 function joinNames(names: string[]): string {
   return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
@@ -29,6 +37,8 @@ interface SizeProps {
 }
 
 const Group = styled('span')({
+  // A raised speaker stays inside the stack's own stacking context: it never paints over a sticky header.
+  isolation: 'isolate',
   display: 'inline-flex',
   alignItems: 'center',
 });
@@ -93,7 +103,7 @@ export function AvatarStack({ people, max = DEFAULT_MAX, size = 'sm', label }: A
   const summary =
     talking.length === 0
       ? who
-      : `${who}, ${joinNames(talking)} ${talking.length === 1 ? 'is' : 'are'} talking`;
+      : `${who}, ${joinTalking(talking)} ${talking.length === 1 ? 'is' : 'are'} talking`;
 
   return (
     <Group role="img" aria-label={label ?? summary}>

@@ -1,10 +1,11 @@
-import type { JSX, Ref } from 'react';
+import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { SurfaceContext, standOutFill, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
-import { Avatar } from './Avatar';
+import { Avatar, type AvatarSize } from './Avatar';
+import { UNNAMED } from './unnamed';
 import { SPEAKING_ATTRIBUTE, speakingRing } from './speaking';
 
 export interface MediaTileProps {
@@ -15,14 +16,26 @@ export interface MediaTileProps {
   /** Someone is talking: the speaking ring, and ", speaking" in the name. */
   speaking?: boolean;
   /**
-   * Gives the caller the `<video>` element of a `screen` or `camera` tile, to attach a stream to. A video
-   * element is drawn only when this is set (and never for `avatar`).
+   * A callback ref for the tile's `<video>` element (a `screen` or `camera` tile): called with the element when it
+   * is drawn and with `null` when it goes. The element is drawn only while this is set, and never for `avatar`, and
+   * it is replaced whenever `kind` crosses `avatar`, this is set or unset, or the tile remounts: attach the stream
+   * in the callback, detach on `null`. (A ref object would not be told about the new element.)
    */
-  videoRef?: Ref<HTMLVideoElement>;
+  videoRef?: (element: HTMLVideoElement | null) => void;
 }
 
 /** The shape of video: width to height. */
 const RATIO = '16 / 9';
+
+/** What the centred avatar, gap and label take (`space.md` padding each side, `space.sm` between, one meta line). */
+const stackHeight = (avatar: AvatarSize, padding: number) =>
+  2 * padding + tokens.avatar[avatar] + tokens.space.sm + tokens.text.meta.line;
+/** The tile width at which a 16:9 box is as high as that stack. */
+const widthFor = (height: number) => Math.ceil((height * 16) / 9);
+/** Tile widths (container query breakpoints): below the first the avatar steps down, then the padding, then the label goes. */
+const FITS_XL = widthFor(stackHeight('xl', tokens.space.md));
+const FITS_LG = widthFor(stackHeight('lg', tokens.space.md));
+const FITS_MD = widthFor(stackHeight('md', tokens.space.sm));
 
 const Root = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface; $speaking: boolean }>(
   ({ theme, $on, $speaking }) => {
@@ -32,6 +45,8 @@ const Root = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface
       boxSizing: 'border-box',
       width: '100%',
       aspectRatio: RATIO,
+      // The avatar tile fits its contents to the tile's own width (see FITS_*).
+      containerType: 'inline-size',
       borderRadius: `${tokens.radius.card}px`,
       ...($speaking && { boxShadow: speakingRing(palette, tintBase(palette, $on)) }),
     };
@@ -61,7 +76,7 @@ const Video = styled('video', { shouldForwardProp: transientProps })<{ $contain:
   objectFit: $contain ? 'contain' : 'cover',
 }));
 
-/** What shows without video: the avatar (for `avatar`) and the label, centred. */
+/** What shows without video: the avatar (for `avatar`) and the label, centred. Padding steps down in a small tile. */
 const Centre = styled('div')({
   position: 'absolute',
   inset: 0,
@@ -72,7 +87,18 @@ const Centre = styled('div')({
   gap: `${tokens.space.sm}px`,
   padding: `${tokens.space.md}px`,
   minWidth: 0,
+  [`@container (max-width: ${FITS_LG - 1}px)`]: { padding: `${tokens.space.sm}px` },
 });
+
+/**
+ * One avatar per step, one shown: xl, then lg, then md as the tile narrows. (CSS cannot change an Avatar's size,
+ * so each is drawn and the others are `display: none`: hidden ones are also out of the accessibility tree.)
+ */
+const AvatarStep = styled('span', { shouldForwardProp: transientProps })<{ $step: 'xl' | 'lg' | 'md' }>(({ $step }) => ({
+  display: $step === 'xl' ? 'inline-flex' : 'none',
+  [`@container (max-width: ${FITS_XL - 1}px)`]: { display: $step === 'lg' ? 'inline-flex' : 'none' },
+  [`@container (max-width: ${FITS_LG - 1}px)`]: { display: $step === 'md' ? 'inline-flex' : 'none' },
+}));
 
 const labelStyle = (theme: Parameters<typeof kitTheme>[0]) => ({
   fontFamily: theme.typography.fontFamily,
@@ -85,7 +111,11 @@ const labelStyle = (theme: Parameters<typeof kitTheme>[0]) => ({
   maxWidth: '100%',
 });
 
-const CentreLabel = styled('span')(({ theme }) => labelStyle(theme));
+/** Below FITS_MD the label no longer fits beside the avatar: it goes (the group's name still carries it). */
+const CentreLabel = styled('span')(({ theme }) => ({
+  ...labelStyle(theme),
+  [`@container (max-width: ${FITS_MD - 1}px)`]: { display: 'none' },
+}));
 
 /** Over video the label sits on its own opaque chip, so it reads on any picture. */
 const Caption = styled('span')(({ theme }) => {
@@ -112,10 +142,11 @@ const Caption = styled('span')(({ theme }) => {
 export function MediaTile({ label, kind, speaking = false, videoRef }: MediaTileProps): JSX.Element {
   const on = useSurface();
   const hasVideo = kind !== 'avatar' && videoRef !== undefined;
+  const name = label.trim() === '' ? UNNAMED : label;
   return (
     <Root
       role="group"
-      aria-label={speaking ? `${label}, speaking` : label}
+      aria-label={speaking ? `${name}, speaking` : name}
       {...(speaking && { [SPEAKING_ATTRIBUTE]: '' })}
       $on={on}
       $speaking={speaking}
@@ -126,12 +157,24 @@ export function MediaTile({ label, kind, speaking = false, videoRef }: MediaTile
           {hasVideo ? (
             <>
               <Video ref={videoRef} autoPlay muted playsInline aria-hidden="true" $contain={kind === 'screen'} />
-              <Caption>{label}</Caption>
+              <Caption aria-hidden="true">{label}</Caption>
             </>
           ) : (
             <Centre>
-              {kind === 'avatar' && <Avatar name={label} size="xl" decorative />}
-              <CentreLabel>{label}</CentreLabel>
+              {kind === 'avatar' && (
+                <>
+                  <AvatarStep $step="xl">
+                    <Avatar name={name} size="xl" decorative />
+                  </AvatarStep>
+                  <AvatarStep $step="lg">
+                    <Avatar name={name} size="lg" decorative />
+                  </AvatarStep>
+                  <AvatarStep $step="md">
+                    <Avatar name={name} size="md" decorative />
+                  </AvatarStep>
+                </>
+              )}
+              <CentreLabel aria-hidden="true">{label}</CentreLabel>
             </Centre>
           )}
         </SurfaceContext>

@@ -21,7 +21,7 @@ function FocusDock({ onPick = () => undefined }: { onPick?: (id: string) => void
   return (
     <>
       <button type="button">before</button>
-      <Dock label="Communities" listProps={list.listProps}>
+      <Dock label="Communities" focus={list.bar}>
         <IconButton icon="Inbox" label="Inbox" focus={list.rowFocus('inbox')} />
         <DockDivider />
         {NAMES.map((name, index) =>
@@ -77,7 +77,7 @@ describe('a Dock on the list focus host (K1)', () => {
     function One() {
       const list = useListFocus({ rows: [{ id: 'a', label: 'a', disabled: false }], selected: null, onSelect: (id) => picked.push(id) });
       return (
-        <Dock label="d" listProps={list.listProps}>
+        <Dock label="d" focus={list.bar}>
           <DockItem name="a" onClick={clicked} focus={list.rowFocus('a')} />
         </Dock>
       );
@@ -134,14 +134,60 @@ describe('DockItem newMessages (K2)', () => {
   });
 });
 
-describe('Dock listProps', () => {
+describe('Dock focus (the bar)', () => {
   it('the bar itself is not a Tab stop (Firefox makes a scrolling bar one)', () => {
     renderWithKit(<FocusDock />);
     expect(screen.getByRole('navigation', { name: 'Communities' })).toHaveAttribute('tabindex', '-1');
   });
 
-  it('a Dock without listProps has no tabindex of its own', () => {
+  it('a Dock without focus has no tabindex of its own', () => {
     renderWithKit(<Dock label="d">{null}</Dock>);
     expect(screen.getByRole('navigation')).not.toHaveAttribute('tabindex');
+  });
+});
+
+describe('IconButton focus with disabled and loading', () => {
+  function Mixed({ onPick }: { onPick: (id: string) => void }) {
+    const rows = [
+      { id: 'a', label: 'A', disabled: false },
+      { id: 'b', label: 'B', disabled: true },
+      { id: 'c', label: 'C', disabled: false },
+    ];
+    const list = useListFocus({ rows, selected: 'a', orientation: 'horizontal', onSelect: onPick });
+    return (
+      <Dock label="d" focus={list.bar}>
+        <IconButton icon="Inbox" label="A" focus={list.rowFocus('a')} />
+        <IconButton icon="Inbox" label="B" disabled focus={list.rowFocus('b')} />
+        <IconButton icon="Inbox" label="C" loading focus={list.rowFocus('c')} />
+      </Dock>
+    );
+  }
+
+  it('arrows skip a disabled button, and a disabled one is not a tab stop', async () => {
+    const { user } = renderWithKit(<Mixed onPick={() => undefined} />);
+    expect(screen.getByRole('button', { name: 'B' })).toBeDisabled();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'A' })).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('button', { name: 'C' })).toHaveFocus();
+  });
+
+  it('a busy button keeps its place in the list but a click on it chooses nothing', async () => {
+    const picked: string[] = [];
+    const { user } = renderWithKit(<Mixed onPick={(id) => picked.push(id)} />);
+    await user.click(screen.getByRole('button', { name: 'C' }));
+    expect(picked).toEqual([]);
+  });
+});
+
+describe('Dock bar props', () => {
+  it('only the four list handlers reach the bar: the key handler works, nothing else is added', async () => {
+    const { user } = renderWithKit(<FocusDock />);
+    const nav = screen.getByRole('navigation', { name: 'Communities' });
+    expect(nav.getAttributeNames().sort()).toEqual(['aria-label', 'class', 'tabindex']);
+    await user.tab();
+    await user.tab();
+    await user.keyboard('{End}');
+    expect(screen.getByRole('button', { name: 'All communities' })).toHaveFocus();
   });
 });

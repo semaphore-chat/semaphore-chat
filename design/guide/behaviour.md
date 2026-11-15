@@ -59,7 +59,11 @@ called a host.
   host's announcer, so it is heard from inside a Dialog or Sheet too. Outside a
   `KitProvider` it does nothing. Use it for what a screen change does that nothing
   on screen announces (a route change, "Joined Squad Up"), not for a message that
-  has a component (Alert, Toast announce themselves).
+  has a component (Alert, Toast announce themselves). Call it from an event
+  handler or an effect, never while rendering (a re-render would say it again).
+  Two calls in the same frame at the same politeness say only the last one. Web
+  kit only so far; the native kit has not caught up (see
+  [Extending the system](extending.md#the-native-kit-is-catching-up)).
 - The native client has no hosts yet. They arrive with its new shell.
 - Until then, today's screens still handle these things by hand, and they use
   MUI overlays, not the kit's. They behave as MUI does, which differs from these
