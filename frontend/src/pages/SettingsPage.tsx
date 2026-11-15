@@ -35,6 +35,8 @@ import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
 import { clearTokens } from '../utils/tokenService';
+import { useQueryClient } from '@tanstack/react-query';
+import { clearShellSessionState } from '../shell/sessionState';
 import { normalizeUrlForComparison } from '../config/env';
 import { FormPageShell, type FormPageSection } from '../components/Common/PageShell';
 import { useScrollSpy } from '../hooks/useScrollSpy';
@@ -163,6 +165,7 @@ const AppearanceSettings: React.FC = () => {
 };
 
 const SettingsPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const [isElectronApp, setIsElectronApp] = useState(false);
   const { isDesktop } = useResponsive();
 
@@ -308,6 +311,8 @@ const SettingsPage: React.FC = () => {
         normalizeUrlForComparison(currentBackendUrl ?? '')
       ) {
         clearTokens();
+        // The new design's state of this server's session goes with it (I5).
+        clearShellSessionState(queryClient);
         try {
           await getElectronAPI()?.deleteRefreshToken?.();
         } catch {

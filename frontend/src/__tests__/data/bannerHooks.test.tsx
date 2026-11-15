@@ -30,7 +30,7 @@ vi.mock('../../api-client/sdk.gen', async (importOriginal) => ({
   dmVoicePresenceControllerDeclineDmVoiceCall: call.decline,
 }));
 
-import { useConnectionState } from '../../data/connection';
+import { forgetConnectionHistory, useConnectionState, useRecordConnectionHistory } from '../../data/connection';
 import { useIncomingCallPrompt } from '../../data/incomingCall';
 import { connectAppUpdates, useAppUpdate } from '../../data/appUpdate';
 import { dismissDesktopSignInNotice, showDesktopSignInNotice, useDesktopSignInBanner } from '../../data/signInNotice';
@@ -45,16 +45,28 @@ beforeEach(() => {
 });
 
 describe('useConnectionState', () => {
-  it('is reconnecting while the socket is down', () => {
+  it('connecting until the socket has connected once, reconnecting after a drop, connecting again after the session ends', () => {
     let connected = false;
     const wrapper = ({ children }: { children: ReactNode }) => (
       <SocketContext.Provider value={{ socket: null, isConnected: connected }}>{children}</SocketContext.Provider>
     );
-    const { result, rerender } = renderHook(() => useConnectionState(), { wrapper });
-    expect(result.current).toBe('reconnecting');
+    const { result, rerender } = renderHook(
+      () => {
+        useRecordConnectionHistory();
+        return useConnectionState();
+      },
+      { wrapper },
+    );
+    expect(result.current).toBe('connecting');
     connected = true;
     rerender();
     expect(result.current).toBe('connected');
+    connected = false;
+    rerender();
+    expect(result.current).toBe('reconnecting');
+    act(() => forgetConnectionHistory());
+    rerender();
+    expect(result.current).toBe('connecting');
   });
 });
 

@@ -8,7 +8,7 @@
  * VoiceProvider. Fake: the user's appearance, the current user, the pieces (mount counters), the socket.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { useEffect, useMemo } from 'react';
+import { StrictMode, useEffect, useMemo, type ReactNode } from 'react';
 import { act, screen, waitFor } from '@testing-library/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { renderWithProviders } from '../test-utils';
@@ -18,6 +18,11 @@ import { RoomContext } from '../../contexts/RoomContextDef';
 import { IncomingCallProvider } from '../../contexts/IncomingCallContext';
 import { BottomChromeProvider } from '../../contexts/BottomChromeContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { VoiceActionType, useVoiceDispatch } from '../../contexts/VoiceContext';
+import { SecureStorageWarning } from '../../components/Electron/SecureStorageWarning';
+import { createFakeElectronAPI, emitOnSubscribe } from '../test-utils/fakeElectronAPI';
+import { connectAppUpdates } from '../../data/appUpdate';
+import { forgetAllAnnouncements } from '../../shell/bannerMemory';
 import { ConnectionStatusBanner } from '../../components/ConnectionStatusBanner';
 import { useThemeColorMeta } from '../../hooks/useThemeColorMeta';
 import { derivePalette } from '../../theme/derive/derivePalette';
@@ -83,11 +88,16 @@ vi.mock('../../shell/lounge/pieces/MembersIsland', async () => {
 
 // --- Fixture screens -----------------------------------------------------------
 
+/** Renders of the screens' centres: the banner row's changes must not reach them (I6). */
+const centreRenders = { count: 0 };
+
 function HomeCentre({ params }: LoungeScreenProps) {
+  centreRenders.count += 1;
   return <h1>{`Home of ${params.communityId}`}</h1>;
 }
 
 function ChannelCentre({ params }: LoungeScreenProps) {
+  centreRenders.count += 1;
   const chrome = useScreenChrome();
   return (
     <>
@@ -126,11 +136,16 @@ const ROUTES: LoungeRoute[] = [
 
 // --- The harness ---------------------------------------------------------------
 
-const handles: { navigate?: ReturnType<typeof useNavigate>; show?: ReturnType<typeof useNotification>['showNotification'] } = {};
+const handles: {
+  navigate?: ReturnType<typeof useNavigate>;
+  show?: ReturnType<typeof useNotification>['showNotification'];
+  voice?: ReturnType<typeof useVoiceDispatch>['dispatch'];
+} = {};
 
 function Handles() {
   handles.navigate = useNavigate();
   handles.show = useNotification().showNotification;
+  handles.voice = useVoiceDispatch().dispatch;
   return null;
 }
 
@@ -147,8 +162,19 @@ function ClassicThemeColor({ color }: { color: string }) {
   return null;
 }
 
-function renderFrame(path: string, options: { socket?: ReturnType<typeof createMockSocket>; connected?: boolean; themeColor?: string } = {}) {
-  const tree = (themeColor: string) => (
+function renderFrame(
+  path: string,
+  options: {
+    socket?: ReturnType<typeof createMockSocket>;
+    connected?: boolean;
+    themeColor?: string;
+    extra?: ReactNode;
+    electron?: ReturnType<typeof createFakeElectronAPI>;
+    strict?: boolean;
+  } = {},
+) {
+  const wrap = (node: ReactNode) => (options.strict ? <StrictMode>{node}</StrictMode> : <>{node}</>);
+  const tree = (themeColor: string) => wrap(
     <BottomChromeProvider>
       <VoiceProvider>
         <RoomContext.Provider value={{ room: null, setRoom: () => undefined, getRoom: () => null }}>
@@ -157,17 +183,19 @@ function renderFrame(path: string, options: { socket?: ReturnType<typeof createM
             <ClassicThemeColor color={themeColor} />
             {/* AuthGate's old-look chip, above AppShell in the app. */}
             <ConnectionStatusBanner />
+            {options.extra}
             <Switch />
           </IncomingCallProvider>
         </RoomContext.Provider>
       </VoiceProvider>
-    </BottomChromeProvider>
+    </BottomChromeProvider>,
   );
   const socket = options.socket ?? createMockSocket();
   const view = renderWithProviders(tree(options.themeColor ?? '#101010'), {
     routerProps: { initialEntries: [path] },
     socket,
     isSocketConnected: options.connected ?? true,
+    electronAPI: options.electron,
   });
   return { ...view, socket, setThemeColor: (color: string) => view.rerender(tree(color)) };
 }
@@ -197,6 +225,8 @@ beforeEach(() => {
   pieces.members = 0;
   pieces.leftProps.length = 0;
   forgetActivatedRows();
+  forgetAllAnnouncements();
+  centreRenders.count = 0;
   document.querySelector('meta[name="theme-color"]')?.remove();
   consoleError.mockClear();
 });
@@ -256,7 +286,7 @@ describe('descriptors', () => {
     ROUTES.unshift(crashing);
     try {
       renderFrame('/fx/community/c-1');
-      expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: "Couldn't show this screen" })).toBeInTheDocument();
       expect(screen.getByRole('navigation', { name: 'Community' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Dock item' })).toBeInTheDocument();
     } finally {
@@ -325,6 +355,26 @@ describe('route focus', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'random' })).toHaveFocus());
   });
 
+  it('a navigation while a dialog is open leaves focus in the dialog and announces nothing over it', async () => {
+    renderFrame('/fx/community/c-1', {
+      extra: (
+        <div role="dialog" aria-modal="true" aria-label="Edit profile">
+          <button type="button">Save profile</button>
+        </div>
+      ),
+    });
+    await screen.findByRole('heading', { name: 'Home of c-1' });
+    await waitFor(() => expect(politeRegion()).toHaveTextContent('Home of c-1'));
+    const save = screen.getByRole('button', { name: 'Save profile' });
+    act(() => save.focus());
+
+    await go('/fx/community/c-1/channel/ch-random');
+    await screen.findByRole('heading', { name: 'Channel ch-random' });
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    expect(save).toHaveFocus();
+    expect(politeRegion()).not.toHaveTextContent('Channel ch-random');
+  });
+
   it('on entry with nothing remembered, focus goes to the heading (the marker)', async () => {
     renderFrame('/settings');
     await go('/__lounge');
@@ -355,12 +405,25 @@ describe('theme-color', () => {
 });
 
 describe('the global chrome while the new shell is shown', () => {
-  it('offline at a Lounge route: the kit Alert, and no old-look chip', async () => {
+  it('socket down at a Lounge route before the first connect: nothing for a moment, then "Connecting…", never the old chip', async () => {
     const { container } = renderFrame('/__lounge', { connected: false });
     await screen.findByRole('heading', { name: 'New design preview' });
-    expect(screen.getByRole('alert')).toHaveTextContent("You're offline. Reconnecting…");
+    expect(screen.queryByRole('note')).toBeNull();
+    expect(await screen.findByText('Connecting…', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText('Reconnecting...')).toBeNull();
     expect(container.querySelector('[class*="MuiChip"], [class*="MuiSnackbar"], [class*="MuiPaper"]')).toBeNull();
+  });
+
+  it('the browser offline at a Lounge route: "You\'re offline" at once', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    try {
+      renderFrame('/__lounge');
+      await screen.findByRole('heading', { name: 'New design preview' });
+      expect(screen.getByRole('note')).toHaveTextContent("You're offline.");
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+    }
   });
 
   it('offline at an old-shell route: the old chip, as before', () => {
@@ -435,5 +498,115 @@ describe('the shown shell', () => {
     expect(readShownShellKind()).toBe('classic');
     expect(seen).toContain('/__lounge:lounge');
     expect(seen[seen.length - 1]).toBe('/settings:classic');
+  });
+});
+
+describe('a notice across a shell flip (I1)', () => {
+  it('a notice showing in the old snackbar moves to a kit toast when the Lounge appears, shown once', async () => {
+    renderFrame('/settings');
+    act(() => handles.show!('Profile saved', 'success'));
+    expect((await screen.findByText('Profile saved')).closest('[class*="MuiSnackbar"]')).not.toBeNull();
+
+    await go('/__lounge');
+    await screen.findByRole('heading', { name: 'New design preview' });
+    const toast = await screen.findByText('Profile saved', { selector: '[data-kit-toast-region] *' });
+    expect(toast).toBeInTheDocument();
+    expect(document.querySelector('[class*="MuiSnackbar"]')).toBeNull();
+    expect(screen.getAllByText('Profile saved').filter((el) => el.closest('[data-kit-live-slot]') === null)).toHaveLength(1);
+  });
+
+  it('a kit toast showing when the user leaves the Lounge moves to the old snackbar, not read out again', async () => {
+    renderFrame('/__lounge');
+    await screen.findByRole('heading', { name: 'New design preview' });
+    act(() => handles.show!("Couldn't save your profile", 'error'));
+    await screen.findByText("Couldn't save your profile", { selector: '[data-kit-toast-region] *' });
+
+    await go('/settings');
+    const old = await screen.findByText("Couldn't save your profile");
+    const snackbarAlert = old.closest('[class*="MuiAlert-root"]');
+    expect(snackbarAlert).not.toBeNull();
+    // Already announced by the toast: shown, not spoken again.
+    expect(snackbarAlert).toHaveAttribute('aria-live', 'off');
+    expect(snackbarAlert).toHaveAttribute('role', 'status');
+  });
+
+  it('the secure-storage warning raised at sign-in shows on a Lounge start route', async () => {
+    localStorage.setItem('semaphore:secureStorageWarningPending', 'true');
+    renderFrame('/__lounge', { extra: <SecureStorageWarning />, electron: createFakeElectronAPI() });
+    await screen.findByRole('heading', { name: 'New design preview' });
+    expect(
+      await screen.findByText(/Secure credential storage is unavailable/, { selector: '[data-kit-toast-region] *' }),
+    ).toBeInTheDocument();
+    localStorage.clear();
+  });
+});
+
+describe('error boundaries reset on the path (I4)', () => {
+  it('a crash in channel A is cleared when the user goes to channel B (same route pattern)', async () => {
+    consoleError.mockImplementation(() => undefined);
+    const Picky = ({ params }: LoungeScreenProps) => {
+      if (params.channelId === 'a') throw new Error('bad data in channel a');
+      return <h1>{`Channel ${params.channelId}`}</h1>;
+    };
+    const picky: LoungeRoute = {
+      path: '/fx/community/:communityId/channel/:channelId',
+      widths: ALL,
+      load: async () => ({ default: { ...channelScreen, Centre: Picky } }),
+    };
+    ROUTES.unshift(picky);
+    try {
+      renderFrame('/fx/community/c-1/channel/a');
+      expect(await screen.findByRole('heading', { name: "Couldn't show this screen" })).toBeInTheDocument();
+      await go('/fx/community/c-1/channel/b');
+      expect(await screen.findByRole('heading', { name: 'Channel b' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: "Couldn't show this screen" })).toBeNull();
+    } finally {
+      ROUTES.shift();
+    }
+    consoleError.mockReset();
+  });
+});
+
+describe('the banner row does not re-render the screen (I6)', () => {
+  it('a voice state change and update progress re-render zero screen components', async () => {
+    let progress: (p: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void = () => undefined;
+    renderFrame('/fx/community/c-1');
+    await screen.findByRole('heading', { name: 'Home of c-1' });
+    let disconnect = () => undefined as void;
+    act(() => {
+      disconnect = connectAppUpdates(
+        createFakeElectronAPI({
+          onUpdateAvailable: emitOnSubscribe({ version: '1.4.0' }),
+          onDownloadProgress: (cb: typeof progress) => {
+            progress = cb;
+            return () => undefined;
+          },
+        }),
+      );
+    });
+    const before = centreRenders.count;
+    const leftBefore = pieces.leftProps.length;
+
+    act(() => handles.voice!({ type: VoiceActionType.SetShowVideoTiles, payload: true }));
+    act(() => handles.voice!({ type: VoiceActionType.SetDeafened, payload: true }));
+    for (const percent of [10, 20, 30]) {
+      act(() => progress({ percent, bytesPerSecond: 1, transferred: percent, total: 100 }));
+    }
+    expect(centreRenders.count).toBe(before);
+    expect(pieces.leftProps.length).toBe(leftBefore);
+    act(() => disconnect());
+  });
+});
+
+describe('under StrictMode', () => {
+  it('the shell is shown once mounted and classic after, and a notice still becomes one toast', async () => {
+    const { unmount } = renderFrame('/__lounge', { strict: true });
+    await screen.findByRole('heading', { name: 'New design preview' });
+    expect(readShownShellKind()).toBe('lounge');
+    act(() => handles.show!('Saved', 'success'));
+    await screen.findByText('Saved', { selector: '[data-kit-toast-region] *' });
+    expect(screen.getAllByText('Saved').filter((el) => el.closest('[data-kit-live-slot]') === null)).toHaveLength(1);
+    unmount();
+    expect(readShownShellKind()).toBe('classic');
   });
 });

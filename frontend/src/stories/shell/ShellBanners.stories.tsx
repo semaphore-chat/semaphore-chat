@@ -14,14 +14,14 @@ import { KitFrameStage } from '../fixtures/kitStory';
 
 const noop = () => undefined;
 
-const incomingCall: ShellBannersModel['incomingCall'] = { callerName: 'pri', onJoin: noop, onDecline: noop };
+const incomingCall: ShellBannersModel['incomingCall'] = { callerName: 'pri', groupName: 'pri', onJoin: noop, onDecline: noop };
 const signIn: ShellBannersModel['signIn'] = {
   message: "A desktop app just signed in to your account. If this wasn't you, change your password.",
   onDismiss: noop,
 };
 const downloading: ShellBannersModel['update'] = { state: 'downloading', progress: 42 };
 const ready: ShellBannersModel['update'] = { state: 'ready', version: '0.11.0', onRestart: noop };
-const failed: ShellBannersModel['update'] = { state: 'error', message: 'Cannot download update', onDismiss: noop };
+const failed: ShellBannersModel['update'] = { state: 'error', onDismiss: noop };
 const webUpdate: ShellBannersModel['webUpdate'] = { onReload: noop };
 const install: ShellBannersModel['install'] = { ios: false, onInstall: noop, onDismiss: noop };
 const installIos: ShellBannersModel['install'] = { ios: true, onInstall: noop, onDismiss: noop };
@@ -44,8 +44,17 @@ function Row({ mode, model }: { mode: ModeName; model: Partial<ShellBannersModel
 /** A direct-message call ringing: Join and Decline. */
 export const Incoming = () => <Row mode="dark" model={{ incomingCall }} />;
 
-/** The connection is down. */
-export const Offline = () => <Row mode="dark" model={{ offline: true }} />;
+/** The browser has no network. */
+export const Offline = () => <Row mode="dark" model={{ connection: 'offline' }} />;
+
+/** The network is up but the server cannot be reached (after a connection was lost). */
+export const Unreachable = () => <Row mode="dark" model={{ connection: 'unreachable' }} />;
+
+/** The first connect is taking longer than a moment. */
+export const Connecting = () => <Row mode="dark" model={{ connection: 'connecting' }} />;
+
+/** The server unreachable, light. */
+export const ConnectionLight = () => <Row mode="light" model={{ connection: 'unreachable' }} />;
 
 /** A desktop app signed in to the account: stays until dismissed. */
 export const SignIn = () => <Row mode="dark" model={{ signIn }} />;
@@ -59,15 +68,23 @@ export const UpdateReady = () => <Row mode="dark" model={{ update: ready }} />;
 /** The download failed. */
 export const UpdateError = () => <Row mode="dark" model={{ update: failed }} />;
 
-/** Two at once: the call above the offline notice. */
-export const TwoAtOnce = () => <Row mode="dark" model={{ incomingCall, offline: true }} />;
+/** Two at once: the call above the connection notice. */
+export const TwoAtOnce = () => <Row mode="dark" model={{ incomingCall, connection: 'unreachable' }} />;
 
 /** Two at once, light. */
-export const TwoAtOnceLight = () => <Row mode="light" model={{ incomingCall, offline: true }} />;
+export const TwoAtOnceLight = () => <Row mode="light" model={{ incomingCall, connection: 'unreachable' }} />;
 
-/** Every kind at once, light: the order, and how much of the frame the row can take. */
-export const AllLight = () => (
-  <Row mode="light" model={{ incomingCall, offline: true, signIn, update: ready, webUpdate, install }} />
+/**
+ * Six pending at once (a call, the server unreachable, a desktop sign-in, an update ready, a web update,
+ * the install offer): two show on a phone or tablet, three at wide, by priority; the rest wait.
+ */
+export const SixPending = () => (
+  <Row mode="dark" model={{ incomingCall, connection: 'unreachable', signIn, update: ready, webUpdate, install }} />
+);
+
+/** Six pending, light. */
+export const SixPendingLight = () => (
+  <Row mode="light" model={{ incomingCall, connection: 'unreachable', signIn, update: ready, webUpdate, install }} />
 );
 
 /** A new web version is waiting (the browser app): Reload. */

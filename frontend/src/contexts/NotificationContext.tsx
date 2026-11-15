@@ -1,8 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useLayoutEffect, useRef } from "react";
 import { Snackbar, Alert, AlertColor } from "@mui/material";
 import { logger } from "../utils/logger";
-import { currentNotificationSink } from "./notificationSink";
+import { publishNotice } from "./noticeChannel";
 import { useShownShellKind } from "../shell/shownShellKind";
 
 interface NotificationContextType {
@@ -46,20 +46,28 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [severity, setSeverity] = useState<AlertColor>("info");
-  // While the new design's shell is shown its sink takes notifications (kit toasts) and this
-  // old-look snackbar renders nothing; it is closed then, so it never comes back with a stale message.
+  // One notice at a time, the latest wins (contexts/noticeChannel.ts). While the new design's shell is
+  // shown it presents the notice as a kit toast and this snackbar renders nothing; the notice stays open
+  // here until a presenter has shown it for its time, so a flip either way hands it over, never drops it.
   const lounge = useShownShellKind() === "lounge";
-  useEffect(() => {
-    if (lounge) setOpen(false);
-  }, [lounge]);
+  const [key, setKey] = useState(0);
+  const keyRef = useRef(0);
+  const [announced, setAnnounced] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    publishNotice(open ? { key, message, severity, announced: announced === key } : null, {
+      dismiss: (k) => {
+        if (k === keyRef.current) setOpen(false);
+      },
+      markAnnounced: (k) => setAnnounced(k),
+    });
+  }, [open, key, message, severity, announced]);
+  useLayoutEffect(() => () => publishNotice(null, null), []);
 
   const showNotification = useCallback(
     (msg: string, sev: AlertColor = "info") => {
-      const sink = currentNotificationSink();
-      if (sink) {
-        sink(msg, sev);
-        return;
-      }
+      keyRef.current += 1;
+      setKey(keyRef.current);
       setMessage(msg);
       setSeverity(sev);
       setOpen(true);
@@ -87,7 +95,13 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           onClose={handleClose}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         >
-          <Alert onClose={handleClose} severity={severity} sx={{ width: "100%" }}>
+          <Alert
+            onClose={handleClose}
+            severity={severity}
+            sx={{ width: "100%" }}
+            // Handed over from the new shell's toast, which read it out already: show it, do not speak it again.
+            {...(announced === key ? { role: "status", "aria-live": "off" as const } : {})}
+          >
             {message}
           </Alert>
         </Snackbar>

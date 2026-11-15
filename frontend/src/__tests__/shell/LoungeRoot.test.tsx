@@ -90,7 +90,7 @@ describe('LoungeRoot', () => {
       load: async () => ({ default: { template: 'bare', Body: Crashing, useTitle: () => null } }),
     };
     renderLounge({ kind: 'lounge', route, params: {} });
-    expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: "Couldn't show this screen" })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Back to the app' })).toBeInTheDocument();
     expect(screen.queryByTestId('outside-boundary')).toBeNull();
     expect(consoleError).toHaveBeenCalled();

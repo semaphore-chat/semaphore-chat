@@ -11,6 +11,7 @@ import { useThemeSync } from '../hooks/useThemeSync';
 import { useAppBadge } from '../hooks/useAppBadge';
 import { usePushResync } from '../hooks/usePushResync';
 import { useDesktopSignInNotice } from '../hooks/useDesktopSignInNotice';
+import { useRecordConnectionHistory } from '../data/connection';
 import { LayoutProviders } from '../components/LayoutProviders';
 import { VoiceSessionLayer } from '../components/Voice/VoiceSessionLayer';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -68,6 +69,8 @@ const LoungeShell: React.FC<{ choice: LoungeChoice }> = ({ choice }) => {
 /** Has to sit inside LayoutProviders: it needs their socket. */
 const DesktopSignInNotice: React.FC = () => {
   useDesktopSignInNotice();
+  // Whether the socket has connected this session: the new shell tells "connecting" from "reconnecting".
+  useRecordConnectionHistory();
   return null;
 };
 

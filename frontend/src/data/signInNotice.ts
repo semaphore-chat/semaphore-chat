@@ -26,6 +26,11 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+/** Whether the notice is pending (for tests and the session teardown). */
+export function readDesktopSignInNotice(): boolean {
+  return pending;
+}
+
 /** Shows the notice (a second sign-in while it shows keeps the one notice). */
 export function showDesktopSignInNotice(): void {
   set(true);

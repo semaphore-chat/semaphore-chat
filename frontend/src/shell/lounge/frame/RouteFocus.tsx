@@ -4,8 +4,9 @@
  *
  * On a new path:
  * 1. On entry (this frame just mounted), the row remembered for the path (routeMemory) takes focus.
- * 2. Otherwise, if focus is still on an element inside a shown `nav` of the frame (the dock or the
- *    left island: the user is moving through a list), it stays.
+ * 2. Otherwise, if focus is in an open dialog or sheet, or still on an element inside a shown `nav` of
+ *    the frame (the dock or the left island: the user is moving through a list), it stays; over a dialog
+ *    nothing is announced either.
  * 3. Otherwise focus goes to the shown main's `h1` (made focusable with tabindex -1, no focus ring), or to the shown
  *    pane when the screen has no heading.
  * Then, once the screen's title is known, it is announced politely. The heading is also the screen's
@@ -78,6 +79,10 @@ export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null 
       }
     }
     const active = document.activeElement;
+    // A dialog or sheet is open (MUI marks the page behind it aria-hidden): never pull focus out of it.
+    if (active !== null && active.closest('[role="dialog"], [aria-modal="true"]') !== null) {
+      return;
+    }
     if (active !== null && root.contains(active) && active.closest('nav') !== null && shown(active)) {
       return;
     }
@@ -86,6 +91,11 @@ export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null 
 
   useEffect(() => {
     if (!announcePending.current || title === null) return;
+    // Not over an open dialog: the user is in it, the screen behind changed.
+    if (document.activeElement?.closest('[role="dialog"], [aria-modal="true"]')) {
+      announcePending.current = false;
+      return;
+    }
     announcePending.current = false;
     announce(title);
   }, [announce, pathname, title]);

@@ -7,14 +7,14 @@
  * router wraps its updates in `startTransition`), so a screen still loading keeps the current one on
  * screen and the frame never blanks; only a first entry shows nothing for a moment.
  */
-import { Suspense, useCallback, useLayoutEffect, useState, type JSX, type RefObject } from 'react';
+import { Suspense, useCallback, useLayoutEffect, useState, type JSX, type ReactNode, type RefObject } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AppFrame } from '../../../kit';
+import { AppFrame, useWidthRange } from '../../../kit';
 import type { LoungeChoice } from '../../chooseShell';
 import type { LoungeRoute } from '../../loungeRoutes';
 import type { LoungeParams, LoungeScreen, UseScreenTitle } from '../screen';
 import { ShellBanners } from '../pieces/ShellBanners';
-import { hasBanners, useShellBannersModel } from '../pieces/shellBannersModel';
+import { useShellBannersModel, visibleBanners } from '../pieces/shellBannersModel';
 import { ScreenBoundary } from './ScreenBoundary';
 import { ScreenError } from './ScreenError';
 import { ShellEffects } from './ShellEffects';
@@ -94,7 +94,7 @@ function ScreenFrame({ choice, rootRef }: { choice: LoungeChoice; rootRef: RefOb
       {screen.template === 'bare' ? (
         <screen.Body params={choice.params} />
       ) : (
-        <ThreeIslandsFrame screen={screen} params={choice.params} routeKey={routeKey} title={title} />
+        <ThreeIslandsFrame screen={screen} params={choice.params} resetKey={pathname} title={title} />
       )}
       <RouteFocus rootRef={rootRef} pathname={pathname} title={title} />
     </>
@@ -107,19 +107,43 @@ export interface LoungeFrameProps {
   rootRef: RefObject<HTMLElement | null>;
 }
 
+/**
+ * AppFrame with the banner row. The banner model reads the call, the connection, the update progress and
+ * more, all of which change often: only this component re-renders for them (I6). The screen is its
+ * `children`, an element made by LoungeFrame, so React skips it when only the banners change.
+ */
+function ShellBannerSlot({ children }: { children: ReactNode }): JSX.Element {
+  const banners = useShellBannersModel();
+  const range = useWidthRange();
+  const hasAny = visibleBanners(banners, range).length > 0;
+  return <AppFrame banner={hasAny ? <ShellBanners {...banners} /> : undefined}>{children}</AppFrame>;
+}
+
 export function LoungeFrame({ choice, rootRef }: LoungeFrameProps): JSX.Element {
   useState(retryFailedScreens);
-  const banners = useShellBannersModel();
+  // The path, not the route pattern: a crash on one channel is cleared on the next (I4), as the old
+  // shell's RouteErrorBoundary does.
+  const { pathname } = useLocation();
   return (
     <>
       <ShellEffects />
-      <AppFrame banner={hasBanners(banners) ? <ShellBanners {...banners} /> : undefined}>
-        <ScreenBoundary resetKey={choice.route.path} fallback={<ScreenError />}>
+      <ShellBannerSlot>
+        <ScreenBoundary
+          resetKey={pathname}
+          fallback={(reset) => (
+            <ScreenError
+              onRetry={() => {
+                retryFailedScreens();
+                reset();
+              }}
+            />
+          )}
+        >
           <Suspense fallback={null}>
             <ScreenFrame choice={choice} rootRef={rootRef} />
           </Suspense>
         </ScreenBoundary>
-      </AppFrame>
+      </ShellBannerSlot>
     </>
   );
 }

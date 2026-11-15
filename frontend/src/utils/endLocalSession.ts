@@ -3,9 +3,7 @@ import { clearSavedConnection } from "../features/voice/voiceActions";
 import { disconnectSocket } from "./socketSingleton";
 import { clearTokens } from "./tokenService";
 import { clearComposerDrafts } from "../hooks/useComposerDraft";
-import { clearDesignPreview } from "../shell/designPreview";
-import { forgetNewDesignSetting } from "../contexts/newDesignCache";
-import { dismissDesktopSignInNotice } from "../data/signInNotice";
+import { clearShellSessionState } from "../shell/sessionState";
 import { clearSessionCaches } from "./clearSessionCaches";
 
 /**
@@ -18,10 +16,12 @@ import { clearSessionCaches } from "./clearSessionCaches";
  * 2. disconnect the socket,
  * 3. clear the tokens (and mark the session ended, see hasSessionEnded),
  * 4. drop the composer drafts (per tab, not per user),
- * 5. drop this tab's design preview,
- * 6. forget this browser's copy of the account's "new design" setting and a
- *    desktop sign-in notice still showing (M4),
- * 7. clear the query cache and abort pending uploads.
+ * 5. forget the new design's state of this session (clearShellSessionState):
+ *    this tab's design preview, this browser's copy of the account's "new
+ *    design" setting (storage, cached query, ThemeProvider value), a desktop
+ *    sign-in notice still showing, the connection history and which banners
+ *    were read out,
+ * 6. clear the query cache and abort pending uploads.
  *
  * Idempotent. Navigation to the login page is the caller's.
  */
@@ -30,8 +30,6 @@ export function endLocalSession(queryClient: QueryClient): void {
   disconnectSocket();
   clearTokens();
   clearComposerDrafts();
-  clearDesignPreview();
-  forgetNewDesignSetting(queryClient);
-  dismissDesktopSignInNotice();
+  clearShellSessionState(queryClient);
   clearSessionCaches(queryClient);
 }

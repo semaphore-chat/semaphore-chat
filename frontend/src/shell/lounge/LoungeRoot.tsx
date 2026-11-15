@@ -7,8 +7,8 @@
  * looks for LOUNGE_ROOT_MARKER to prove it stays out of the first page load.
  *
  * Import boundary (design §2): this chunk imports the kit (its index only), src/data, the headless
- * hooks, the api client, shared and the router; never components/, pages/ or MUI. Enforced by
- * eslint/lounge-frame-boundary.js and __tests__/shell/loungeFrameImportBoundary.test.ts.
+ * hooks, the api client, shared and the router; never components/, pages/ or MUI. Enforced by the
+ * headless block in eslint.config.js and __tests__/shell/loungeImportBoundary.test.ts.
  */
 import { useRef, type JSX } from 'react';
 import { KitProvider } from '../../kit';

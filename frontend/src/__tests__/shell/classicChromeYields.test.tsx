@@ -130,7 +130,7 @@ describe('the old-look global chrome yields to the new shell and comes back', ()
     expect(screen.getByText('Downloading update... 60%')).toBeInTheDocument();
   });
 
-  it('the notification snackbar: hidden and closed while the new shell shows, then as before', () => {
+  it('the notification snackbar: hidden while the new shell shows, and the same notice back after (not lost)', () => {
     let show: ReturnType<typeof useNotification>['showNotification'] = () => undefined;
     function Notifier() {
       show = useNotification().showNotification;
@@ -142,8 +142,8 @@ describe('the old-look global chrome yields to the new shell and comes back', ()
     lounge();
     expect(screen.queryByText('Saved')).toBeNull();
     classic();
-    // Closed, not brought back with a stale message.
-    expect(screen.queryByText('Saved')).toBeNull();
+    // Nobody presented it meanwhile (no new shell mounted here): it is still the notice, so it shows.
+    expect(screen.getByText('Saved')).toBeInTheDocument();
     act(() => show('Saved again', 'info'));
     expect(screen.getByText('Saved again')).toBeInTheDocument();
   });
@@ -218,5 +218,10 @@ describe('the old-look global chrome yields to the new shell and comes back', ()
     act(() => serverEvent.handler!());
     expect(screen.queryByText(/desktop app just signed in/i)).toBeNull();
     expect(notice.result.current?.message).toMatch(/desktop app just signed in/i);
+
+    // Back in the old shell before it was dismissed: the snackbar shows it, the banner is spent.
+    classic();
+    expect(screen.getByText(/desktop app just signed in/i)).toBeInTheDocument();
+    expect(notice.result.current).toBeNull();
   });
 });

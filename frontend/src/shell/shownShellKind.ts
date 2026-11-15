@@ -4,8 +4,8 @@
  * auto-updater (App), the incoming-call banner (LayoutProviders). Those old-look views render
  * nothing while the new design's shell is shown; the new shell draws its own (ShellBanners, kit toasts).
  *
- * "Shown" means the new shell has committed to the screen: LoungeRoot publishes `'lounge'` in a layout
- * effect when it mounts and `'classic'` when it unmounts (or when Suspense hides it). While the new
+ * "Shown" means the new shell has committed to the screen: its ShellEffects (shell/lounge/frame) publishes
+ * `'lounge'` in a layout effect when it mounts and `'classic'` when it unmounts (or when Suspense hides it). While the new
  * shell's chunk loads, or after it crashed, the old-look fallbacks show and the value stays `'classic'`.
  * With the new design off nothing ever publishes, so it is `'classic'` for good.
  *

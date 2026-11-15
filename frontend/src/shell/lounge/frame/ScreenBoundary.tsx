@@ -1,7 +1,7 @@
 /**
  * The new shell's error boundary around a screen (or a screen's centre). Kit-free and without the
  * old app's ErrorBoundary, which lives in components/ (outside the new shell's import boundary).
- * It clears its error when `resetKey` changes (another route), so the frame around it stays mounted.
+ * It clears its error when `resetKey` changes (another path), so the frame around it stays mounted.
  */
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { logger } from '../../../utils/logger';
@@ -9,7 +9,8 @@ import { logger } from '../../../utils/logger';
 interface ScreenBoundaryProps {
   /** A change clears a caught error: the route's path. */
   resetKey: string;
-  fallback: ReactNode;
+  /** What shows instead; a function gets `reset`, which clears the error and renders the children again. */
+  fallback: ReactNode | ((reset: () => void) => ReactNode);
   children: ReactNode;
 }
 
@@ -38,7 +39,13 @@ export class ScreenBoundary extends Component<ScreenBoundaryProps, ScreenBoundar
     logger.error('[Lounge] A screen crashed:', error, info.componentStack);
   }
 
+  private reset = (): void => {
+    this.setState({ error: null, key: null });
+  };
+
   render(): ReactNode {
-    return this.state.error !== null ? this.props.fallback : this.props.children;
+    if (this.state.error === null) return this.props.children;
+    const { fallback } = this.props;
+    return typeof fallback === 'function' ? fallback(this.reset) : fallback;
   }
 }

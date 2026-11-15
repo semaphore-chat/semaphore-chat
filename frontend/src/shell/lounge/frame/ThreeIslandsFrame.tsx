@@ -22,8 +22,8 @@ import { ScreenError } from './ScreenError';
 export interface ThreeIslandsFrameProps {
   screen: ThreeIslandsScreen;
   params: LoungeParams;
-  /** The matched route's pattern: a crashed centre is cleared on the next route. */
-  routeKey: string;
+  /** The path: a crashed centre is cleared on the next path (another channel too). */
+  resetKey: string;
   title: string | null;
 }
 
@@ -32,7 +32,7 @@ function dockCurrent(screen: ThreeIslandsScreen, params: LoungeParams): DockCurr
   return params.communityId ? { kind: 'community', id: params.communityId } : null;
 }
 
-export function ThreeIslandsFrame({ screen, params, routeKey, title }: ThreeIslandsFrameProps): JSX.Element {
+export function ThreeIslandsFrame({ screen, params, resetKey, title }: ThreeIslandsFrameProps): JSX.Element {
   const range = useWidthRange();
   // Null until the user (or the screen) chooses: the template's default (shown at wide, closed below).
   const [rightChoice, setRightChoice] = useState<boolean | null>(null);
@@ -79,7 +79,7 @@ export function ThreeIslandsFrame({ screen, params, routeKey, title }: ThreeIsla
         }
         leftLabel={screen.place === 'community' ? 'Community' : 'Inbox'}
         centre={
-          <ScreenBoundary resetKey={routeKey} fallback={<ScreenError inIsland />}>
+          <ScreenBoundary resetKey={resetKey} fallback={(reset) => <ScreenError inIsland onRetry={reset} />}>
             <Suspense fallback={<CentreSkeleton />}>{Centre === null ? null : <Centre params={params} />}</Suspense>
           </ScreenBoundary>
         }
