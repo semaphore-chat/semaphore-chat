@@ -75,6 +75,8 @@ export const tokens = {
     leftColumn: 288,
     rightColumn: 264,
     dock: 60,
+    dialogSm: 400,
+    dialogMd: 560,
   },
   icon: {
     xs: 14,

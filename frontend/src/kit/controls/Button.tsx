@@ -6,6 +6,7 @@ import type {
   ReactNode,
   Ref,
 } from 'react';
+import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
@@ -147,6 +148,7 @@ export function Button({
   children,
 }: ButtonProps): JSX.Element {
   const busy = loading && !disabled;
+  const describedBy = useDescribedBy(undefined);
   // Disabled wins over loading: a disabled button shows no spinner.
   const spinnerInIconSlot = busy && startIcon !== undefined;
   const spinnerOverLabel = busy && startIcon === undefined;
@@ -174,6 +176,7 @@ export function Button({
       aria-haspopup={ariaHaspopup}
       aria-controls={ariaControls}
       aria-pressed={ariaPressed}
+      aria-describedby={describedBy}
       id={id}
       title={title}
       disableRipple

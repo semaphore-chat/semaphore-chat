@@ -5,6 +5,8 @@ it('carries the Lounge shape and layout values', () => {
   expect(tokens.radius).toEqual({ sm: 6, md: 10, field: 14, card: 18, island: 24, full: 9999 });
   expect(tokens.space['2xs']).toBe(2);
   expect(tokens.layout.leftColumn).toBe(288);
+  expect(tokens.layout.dialogSm).toBe(400);
+  expect(tokens.layout.dialogMd).toBe(560);
   expect(tokens.control.md).toBe(40);
 });
 

@@ -8,6 +8,7 @@ fn lounge_shape_and_layout_values() {
     );
     assert_eq!(SPACE_2XS, 2.0);
     assert_eq!(LAYOUT_LEFT_COLUMN, 288.0);
+    assert_eq!((LAYOUT_DIALOG_SM, LAYOUT_DIALOG_MD), (400.0, 560.0));
     assert_eq!(MOTION_FAST_MS, 120);
 }
 

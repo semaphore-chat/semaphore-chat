@@ -3,6 +3,7 @@ import { styled } from '@mui/material/styles';
 import { iconNodes, type IconName } from '../icons/generated';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
 import { transientProps } from '../theme/transientProps';
 
 export type IconSize = keyof typeof tokens.icon;
@@ -26,11 +27,14 @@ export interface IconProps {
 
 interface RootProps {
   $tone: IconTone;
+  $ink: SurfaceInk;
 }
+
+const NEUTRAL: ReadonlySet<IconTone> = new Set(['default', 'secondary', 'dim', 'accent']);
 
 const Root = styled('svg', {
   shouldForwardProp: transientProps,
-})<RootProps>(({ theme, $tone }) => {
+})<RootProps>(({ theme, $tone, $ink }) => {
   const { palette } = kitTheme(theme);
   const tones: Record<Exclude<IconTone, 'inherit'>, string> = {
     default: palette.text,
@@ -43,8 +47,11 @@ const Root = styled('svg', {
   };
   return {
     flexShrink: 0,
-    // inherit leaves `color` unset, so the icon paints the text it sits in.
-    ...($tone === 'inherit' ? {} : { color: tones[$tone] }),
+    // inherit leaves `color` unset, so the icon paints the text it sits in. On the accent pill the
+    // neutral and accent tones read as the on-accent ink; status tones keep their meaning.
+    ...($tone === 'inherit'
+      ? {}
+      : { color: $ink === 'onAccent' && NEUTRAL.has($tone) ? palette.onAccent : tones[$tone] }),
   };
 });
 
@@ -54,6 +61,7 @@ const Root = styled('svg', {
  * `label` only when nothing around it names it.
  */
 export function Icon({ name, size = 'md', tone = 'inherit', label }: IconProps): JSX.Element {
+  const ink = useSurfaceInk();
   const nodes = iconNodes[name];
   const dimension = tokens.icon[size];
   // An empty or whitespace-only label names nothing; the icon stays decorative.
@@ -72,6 +80,7 @@ export function Icon({ name, size = 'md', tone = 'inherit', label }: IconProps):
       width={dimension}
       height={dimension}
       $tone={tone}
+      $ink={ink}
       {...accessibility}
     >
       {nodes.map(([tag, attrs], index) =>

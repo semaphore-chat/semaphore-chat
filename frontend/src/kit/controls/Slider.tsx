@@ -1,4 +1,5 @@
 import { useId, type ChangeEvent, type CSSProperties, type JSX, type KeyboardEvent, type Ref } from 'react';
+import { useDescribedBy } from '../overlays/tooltipDescription';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -133,6 +134,7 @@ export function Slider({
 }: SliderProps): JSX.Element {
   const uid = useId();
   const inputId = id ?? `${uid}-input`;
+  const describedBy = useDescribedBy(undefined);
   const text = formatValue ? formatValue(value) : String(value);
   const span = max - min;
   const fraction = span > 0 ? clamp((value - min) / span, 0, 1) : 0;
@@ -190,6 +192,7 @@ export function Slider({
         step={step}
         value={value}
         disabled={disabled}
+        aria-describedby={describedBy}
         aria-valuetext={text}
         aria-valuenow={value}
         aria-valuemin={min}

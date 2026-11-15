@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, type JSX, type KeyboardEvent } from 'react';
+import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
@@ -172,6 +173,7 @@ export function Tabs({
   const listRef = useRef<HTMLDivElement>(null);
   const generatedId = useId();
   const baseId = id ?? generatedId;
+  const tooltipId = useDescribedBy(undefined);
   const enabled = tabs.filter((tab) => !tab.disabled);
   const selected = enabled.find((tab) => tab.id === value);
   // With no valid selection the first enabled tab stays reachable.
@@ -254,6 +256,7 @@ export function Tabs({
             role="tab"
             id={tabElementId(baseId, tab.id)}
             aria-controls={tab.panelId}
+            aria-describedby={tooltipId}
             // "Mentions, 3": a bare count would read as "Mentions3".
             aria-label={tab.count === undefined ? undefined : `${tab.label}, ${tab.count}`}
             data-tab={tab.id}

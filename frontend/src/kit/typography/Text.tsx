@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
 import { transientProps } from '../theme/transientProps';
 
 export type TextVariant = keyof typeof tokens.text;
@@ -29,12 +30,13 @@ interface RootProps {
   $variant: TextVariant;
   $tone: TextTone;
   $truncate: boolean;
+  $ink: SurfaceInk;
 }
 
 const Root = styled('span', {
   // `as` must be excluded here: emotion then swaps the element instead of forwarding it.
   shouldForwardProp: (prop) => prop !== 'as' && transientProps(prop),
-})<RootProps>(({ theme, $variant, $tone, $truncate }) => {
+})<RootProps>(({ theme, $variant, $tone, $truncate, $ink }) => {
   const { palette } = kitTheme(theme);
   const style = tokens.text[$variant];
   const colours: Record<TextTone, string> = {
@@ -50,7 +52,8 @@ const Root = styled('span', {
     fontSize: `${style.size}px`,
     lineHeight: `${style.line}px`,
     fontWeight: style.weight,
-    color: colours[$tone],
+    // On the accent pill every tone but danger reads as the on-accent ink.
+    color: $ink === 'onAccent' && $tone !== 'danger' ? palette.onAccent : colours[$tone],
     ...($truncate && {
       display: 'block',
       minWidth: 0,
@@ -69,12 +72,14 @@ export function Text({
   truncate = false,
   children,
 }: TextProps): JSX.Element {
+  const ink = useSurfaceInk();
   return (
     <Root
       as={as ?? DEFAULT_ELEMENT[variant] ?? 'span'}
       $variant={variant}
       $tone={tone}
       $truncate={truncate}
+      $ink={ink}
     >
       {children}
     </Root>

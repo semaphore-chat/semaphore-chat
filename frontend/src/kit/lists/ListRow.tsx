@@ -1,0 +1,287 @@
+import type { JSX, MouseEvent, ReactNode, Ref } from 'react';
+import { styled } from '@mui/material/styles';
+import { tokens } from '../../theme/generated/tokens';
+import { kitTheme } from '../theme/KitProvider';
+import { TooltipDescriptionContext } from '../overlays/tooltipDescription';
+import { reducedMotion } from '../overlays/surface';
+import { mix } from '../theme/mix';
+import { focusRing } from '../theme/states';
+import { SurfaceInkContext } from '../theme/surfaceInk';
+import { transientProps } from '../theme/transientProps';
+
+export interface ListRowProps {
+  primary: string;
+  secondary?: string;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  /** `md` is one line (control md high); `lg` has room for two. */
+  size?: 'md' | 'lg';
+  /** The current item: the solid accent pill. Sets `aria-current`. */
+  selected?: boolean;
+  /** Bolder primary line, in the full text colour. */
+  unread?: boolean;
+  /** Both lines dimmed. */
+  muted?: boolean;
+  disabled?: boolean;
+  /** Renders a link. */
+  href?: string;
+  /** Renders a button. */
+  onClick?: () => void;
+  ref?: Ref<HTMLElement>;
+  id?: string;
+}
+
+interface LookProps {
+  $size: 'md' | 'lg';
+  $selected: boolean;
+  $interactive: boolean;
+  $disabled: boolean;
+}
+
+/**
+ * The whole row: background, hover and selection live here so a trailing slot sits inside the pill.
+ * It is a stacking context (`zIndex: 0`) so the link or button's stretched layer can sit behind the
+ * text yet above this background.
+ */
+const Wrapper = styled('div', { shouldForwardProp: transientProps })<LookProps>(
+  ({ theme, $size, $selected, $interactive, $disabled }) => {
+    const { palette } = kitTheme(theme);
+    const under = $selected ? palette.accent : palette.surface;
+    return {
+      ...reducedMotion,
+      position: 'relative',
+      zIndex: 0,
+      display: 'flex',
+      alignItems: 'center',
+      boxSizing: 'border-box',
+      width: '100%',
+      minWidth: 0,
+      gap: `${tokens.space.sm}px`,
+      minHeight: `${$size === 'md' ? tokens.control.md : tokens.control.lg}px`,
+      padding: `0 ${tokens.space.md}px 0 ${tokens.space.xs}px`,
+      borderRadius: `${$size === 'md' ? tokens.radius.full : tokens.radius.card}px`,
+      background: $selected ? palette.accent : 'transparent',
+      color: $selected ? palette.onAccent : palette.textSecondary,
+      transition: `background-color ${tokens.motion.fast}ms`,
+      // Hover is the row's. Pressed and the focus ring belong to the link or button (see `mainStyle`):
+      // pressing a trailing control must not show the row as pressed.
+      ...($interactive &&
+        !$disabled && {
+          '@media (hover: hover)': {
+            '&:hover': {
+              background: mix(
+                palette.text,
+                under,
+                $selected ? tokens.state.hoverOnFill : tokens.state.hover,
+              ),
+            },
+          },
+        }),
+      ...($disabled && { opacity: tokens.state.disabled }),
+    };
+  },
+);
+
+const mainStyle = (theme: Parameters<typeof kitTheme>[0], interactive: boolean) => {
+  const { palette } = kitTheme(theme);
+  // Pressed tint over the row's own colour. Selected is on the accent pill: its pressed tint is the on-fill one.
+  const pressed = (selected: boolean) =>
+    mix(palette.text, selected ? palette.accent : palette.surface, selected ? tokens.state.pressedOnFill : tokens.state.pressed);
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    flex: '1 1 auto',
+    minWidth: 0,
+    alignSelf: 'stretch',
+    gap: `${tokens.space.sm}px`,
+    boxSizing: 'border-box',
+    margin: 0,
+    padding: 0,
+    border: 'none',
+    background: 'none',
+    borderRadius: 'inherit',
+    color: 'inherit',
+    font: 'inherit',
+    textAlign: 'start',
+    textDecoration: 'none',
+    cursor: interactive ? 'pointer' : 'default',
+    '&:focus-visible': { outline: 'none' },
+    '&:disabled, &[aria-disabled="true"]': { cursor: 'default' },
+    // The stretched layer: it covers the whole row (padding, gaps and all), so a press anywhere on the
+    // row is a press on this link or button. It sits behind the row's text (`zIndex: -1` inside the
+    // wrapper's stacking context) and behind the trailing slot, which is positioned above it. It also
+    // carries the pressed tint and the focus ring, so both outline the whole pill.
+    ...(interactive && {
+      '&::after': {
+        content: '""',
+        position: 'absolute',
+        inset: 0,
+        zIndex: -1,
+        borderRadius: 'inherit',
+      },
+      '&:active::after': { background: pressed(false) },
+      '&[aria-current]:active::after': { background: pressed(true) },
+      '&:focus-visible::after': focusRing(palette, -tokens.border.focus),
+      '&:disabled::after, &[aria-disabled="true"]::after': { display: 'none' },
+    }),
+  } as const;
+};
+
+const Anchor = styled('a')(({ theme }) => mainStyle(theme, true));
+const Button = styled('button')(({ theme }) => mainStyle(theme, true));
+const Plain = styled('div')(({ theme }) => mainStyle(theme, false));
+
+const Leading = styled('span')({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  // Keeps the text column aligned whether the slot holds an icon or an avatar.
+  minWidth: `${tokens.avatar.sm}px`,
+});
+
+const Trailing = styled('span')({
+  // Above the row's stretched layer, so its own controls take their own presses.
+  position: 'relative',
+  display: 'inline-flex',
+  alignItems: 'center',
+  flexShrink: 0,
+  gap: `${tokens.space.xs}px`,
+});
+
+const Column = styled('span')({
+  display: 'flex',
+  flexDirection: 'column',
+  flex: '1 1 auto',
+  minWidth: 0,
+});
+
+interface LineProps {
+  $weight: number;
+  $type: 'body' | 'meta';
+  $tone: 'row' | 'strong' | 'dim';
+}
+
+const Line = styled('span', { shouldForwardProp: transientProps })<LineProps>(
+  ({ theme, $type, $weight, $tone }) => {
+    const { palette } = kitTheme(theme);
+    const style = tokens.text[$type];
+    return {
+      display: 'block',
+      minWidth: 0,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      fontFamily: theme.typography.fontFamily,
+      fontSize: `${style.size}px`,
+      lineHeight: `${style.line}px`,
+      fontWeight: $weight,
+      // `row` takes the row's own colour: secondary text, or the on-accent ink when selected.
+      color: $tone === 'dim' ? palette.textDim : $tone === 'strong' ? palette.text : 'inherit',
+    };
+  },
+);
+
+/**
+ * A row in a list of channels, people or places. A link with `href`, a button
+ * with `onClick`, plain content with neither; the whole row is the hit area.
+ * `trailing` sits beside the link or button, never inside it, so it can hold
+ * its own buttons. `selected` is the solid accent pill.
+ */
+export function ListRow({
+  primary,
+  secondary,
+  leading,
+  trailing,
+  size = 'md',
+  selected = false,
+  unread = false,
+  muted = false,
+  disabled = false,
+  href,
+  onClick,
+  ref,
+  id,
+}: ListRowProps): JSX.Element {
+  const current = selected ? (href !== undefined ? 'page' : 'true') : undefined;
+  // Selected keeps the on-accent ink whatever else is set.
+  const tone = (dim: boolean, strong: boolean): 'row' | 'strong' | 'dim' =>
+    selected ? 'row' : dim ? 'dim' : strong ? 'strong' : 'row';
+  const interactive = href !== undefined || onClick !== undefined;
+
+  const content = (
+    <>
+      {leading !== undefined && <Leading>{leading}</Leading>}
+      <Column>
+        <Line
+          $type="body"
+          $weight={unread ? tokens.text.bodyStrong.weight : tokens.text.body.weight}
+          $tone={tone(muted, unread && !selected)}
+        >
+          {primary}
+        </Line>
+        {secondary !== undefined && (
+          <Line $type="meta" $weight={tokens.text.meta.weight} $tone={tone(muted, false)}>
+            {secondary}
+          </Line>
+        )}
+      </Column>
+    </>
+  );
+
+  let main: JSX.Element;
+  if (href !== undefined && !disabled) {
+    main = (
+      <Anchor ref={ref as Ref<HTMLAnchorElement>} id={id} href={href} aria-current={current}>
+        {content}
+      </Anchor>
+    );
+  } else if (href !== undefined) {
+    // A disabled link has no destination: not focusable, not navigable.
+    main = (
+      <Anchor
+        ref={ref as Ref<HTMLAnchorElement>}
+        id={id}
+        role="link"
+        aria-disabled="true"
+        aria-current={current}
+        onClick={(event: MouseEvent) => event.preventDefault()}
+      >
+        {content}
+      </Anchor>
+    );
+  } else if (onClick !== undefined) {
+    main = (
+      <Button
+        ref={ref as Ref<HTMLButtonElement>}
+        id={id}
+        type="button"
+        disabled={disabled}
+        aria-current={current}
+        onClick={onClick}
+      >
+        {content}
+      </Button>
+    );
+  } else {
+    main = (
+      <Plain ref={ref as Ref<HTMLDivElement>} id={id} aria-current={current}>
+        {content}
+      </Plain>
+    );
+  }
+
+  return (
+    <Wrapper $size={size} $selected={selected} $interactive={interactive} $disabled={disabled}>
+      <SurfaceInkContext value={selected ? 'onAccent' : 'default'}>
+        {main}
+        {trailing !== undefined && (
+          // A Tooltip around the row describes its link or button, not a control in the slot.
+          <TooltipDescriptionContext value={null}>
+            <Trailing>{trailing}</Trailing>
+          </TooltipDescriptionContext>
+        )}
+      </SurfaceInkContext>
+    </Wrapper>
+  );
+}

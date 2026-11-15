@@ -16,9 +16,10 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Twenty-one components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Twenty-seven components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
-AvatarStack, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert and Toast.
+AvatarStack, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, Toast,
+ListRow, Table, Menu, Popover, Tooltip and Dialog.
 
 ## Rules every component follows
 
@@ -604,6 +605,266 @@ on the page at load.
 Stories: `kit-toast--tones`, `kit-toast--tones-light`,
 `kit-toast--tones-tinted`, `kit-toast--long-message`.
 
+## ListRow
+
+One row in a list of channels, people or places. It is the row of every list
+the user can move through or pick from.
+
+**Use it when** you show a list of things the user opens, picks or just reads:
+channels, direct messages, members, settings pages.
+
+**Do not use it when** you compare records by column (use Table), or when the
+row is a free-form card with its own layout.
+
+A row takes one of three forms, set by what you pass it:
+
+- A link, when it goes somewhere. Pass `href`.
+- A button, when it does something. Pass `onClick`.
+- Plain, when it only shows information. Pass neither.
+
+The whole row is the hit area of a link or a button: a press on the padding or
+the gap beside the text counts too, and so does the pointer cursor. `trailing`
+sits beside the link or button, not inside it, so it may hold buttons of its
+own. It sits above the row's hit area, so a press on one of those buttons is
+that button's, and it does not show the row as pressed. The focus ring outlines
+the whole row.
+
+`selected` draws the solid accent pill. It is the system's "selected row": it
+means "this is the current item", such as the channel you are in. Use it on one
+row of a list. It also tells assistive technology which item is current. On a
+selected row the text takes the colour that reads on the accent, so `unread` and
+`muted` do not change how it looks.
+
+Kit components in `leading` and `trailing` know they sit on that accent pill and
+switch to the colours that read on it: an Icon, Text or ghost or soft IconButton
+takes the on-accent ink, and an accent Badge or Pill turns round (an on-accent
+fill with accent text) so it stays visible. A danger Badge and the status Pills
+keep their own colours. Content that is not a kit component does not get this,
+so keep it out of the slots of a selected row, or give it colours that read on
+the accent.
+
+`unread` makes the main line bolder and brings it to the full text colour. `muted`
+dims both lines. Disabled dims the row and a disabled link or button cannot be
+used.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`primary`|text|none (required)|The main line. It is cut to one line with an ellipsis.|
+|`secondary`|text|none|A second, smaller line. It is cut to one line too.|
+|`leading`|an Avatar or an Icon|none|What sits before the text. See below.|
+|`trailing`|a Badge, a Pill or an IconButton|none|What sits at the end of the row. See below.|
+|`size`|`md`, `lg`|`md`|`md` is one line high and fully rounded. `lg` has room for two lines and rounded corners like a card.|
+|`selected`|true, false|false|The current item: the solid accent pill.|
+|`unread`|true, false|false|A bolder main line in the full text colour.|
+|`muted`|true, false|false|Both lines dimmed.|
+|`disabled`|true, false|false|The row is not available.|
+|`href`|an address|none|Makes the row a link.|
+|`onClick`|a function|none|Makes the row a button.|
+
+`leading` holds an Avatar (a person or a community) or an Icon (a channel, a
+setting). The text lines up in the same place whichever you use. `trailing`
+holds a Badge for an unread count, a Pill for a short tag, or an IconButton for
+a row action such as "More". Put one thing there, or a few small ones.
+
+Stories: `kit-list-row--states`, `kit-list-row--channels`,
+`kit-list-row--people`, `kit-list-row--long-names`,
+`kit-list-row--states-light`, `kit-list-row--states-tinted`,
+`kit-list-row--selected-with-trailing`,
+`kit-list-row--selected-with-trailing-light`.
+
+## Table
+
+Records laid out in rows, with one column for each kind of fact.
+
+**Use it when** the user compares records by column: members and their roles,
+invites and their expiry dates.
+
+**Do not use it when** you want to lay out a page. A table is for data only. Do
+not use it for a list of channels or people with an icon and a name each. Use
+ListRow.
+
+The table has real table structure, so screen readers announce the columns. It
+has a thin line between rows, no stripes and no outer border. A cell takes text
+or kit components, such as a Pill or an IconButton. A table that is too wide for
+its space scrolls sideways inside its own box and not the page. The box can take
+keyboard focus, so a keyboard user can scroll it.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|Names the table for screen readers. It is not shown.|
+|`columns`|a list of `id`, `header` and optionally `align`|none (required)|The columns. `align` is `start` or `end`; use `end` for numbers.|
+|`rows`|a list of `id` and `cells`|none (required)|The records. `cells` holds one entry for each column `id`.|
+|`empty`|text|none|Shown across the whole table when there are no rows.|
+
+Stories: `kit-table--basic`, `kit-table--empty`, `kit-table--narrow`,
+`kit-table--basic-light`, `kit-table--basic-tinted`.
+
+## Which overlay
+
+Four components float above the page. Choose by what the thing holds and by
+how much it should stop the user. For a message about something that happened,
+use Toast or Alert instead.
+
+|Overlay|What it holds|Blocks the rest of the page?|How it closes|
+|---|---|---|---|
+|Tooltip|A few words of text|No|It closes on its own when the pointer or focus leaves, or on Escape.|
+|Menu|A list of actions on one thing|Yes, until it closes|Choosing an item, Escape, a press outside, or Tab.|
+|Popover|A small piece of interface: a short form, a picker, a few controls|No|Escape or a press outside.|
+|Dialog|A decision that needs an answer|Yes: it is the only modal|A button in it, Escape, or a press on the dimmed page.|
+
+Overlays stack in the order they were opened, and a tooltip sits above all of
+them. A Menu, a select list or a Popover that opens from inside a Dialog is on
+top of the Dialog, and Escape closes the innermost layer first. Nothing in a
+screen sets a layer number.
+
+Inside a Dialog, a Popover, Tooltip, Menu or select list is drawn within the
+Dialog, so its focus trap lets focus into them. The other way round, a Dialog
+opened from a Popover works too (and the Popover stays open under it).
+## Menu
+
+A short list of actions that opens from a control, such as a "More" button.
+
+**Use it when** the user picks one action to do to a thing: rename, copy a link,
+delete.
+
+**Do not use it when** the user picks a value for a field (use SelectField), or
+when the panel needs controls other than actions (use Popover). A Menu closes
+after one choice.
+
+The menu opens from an `anchor`, which is the element that opened it. Each item
+has a label and does one thing when chosen. An item may have an icon, keyboard
+shortcut keys shown as KeyCaps, a `danger` tone for a destructive action, and a
+disabled state. A divider groups items. Put the destructive item last, apart
+from the rest.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`open`|true, false|none (required)|Whether the menu is showing.|
+|`anchor`|the element it opens from|none (required)|Where the menu sits.|
+|`onClose`|a function|none (required)|Called when the menu should close.|
+|`label`|text|none (required)|Names the menu for screen readers.|
+|`items`|a list of entries|none (required)|Each entry is an item or a divider. See below.|
+|`placement`|`bottom-start`, `bottom-end`, `top-start`, `top-end`|`bottom-start`|Which side of the anchor, and which edge it lines up with.|
+
+An item has an `id`, a `label` and an `onSelect` function, and optionally an
+`icon`, a `shortcut` (a list of keys, one KeyCap each), a `tone` (`default` or
+`danger`) and `disabled`. A divider is an entry with an `id` and `divider` set
+to true.
+
+Stories: `kit-menu--open`, `kit-menu--placements`, `kit-menu--open-light`,
+`kit-menu--open-tinted`.
+
+## Popover
+
+A small floating panel tied to a control. It holds a little interface of its
+own.
+
+**Use it when** the user needs a few controls close to the thing they act on:
+an emoji picker, a short form, a set of filters.
+
+**Do not use it when** the content is a list of actions (use Menu), a few
+words of explanation (use Tooltip), or a decision the user must answer before
+going on (use Dialog). A Popover may open from a control inside a Dialog: it is
+drawn within the Dialog and takes focus there.
+
+A Popover does not block the page. It has no dimmed backdrop, and the page
+behind it can still scroll. It is opened from an `anchor`, the element that
+opened it. It must always have a `label`, which names the panel for screen
+readers. The panel flips to the other side of the anchor when there is no room.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`open`|true, false|none (required)|Whether the popover is showing.|
+|`anchor`|the element it opens from|none (required)|Where the popover sits. Focus returns to it on close.|
+|`onClose`|a function|none (required)|Called on Escape and on a press outside.|
+|`label`|text|none (required)|Names the panel for screen readers.|
+|`placement`|`bottom-start`, `bottom-end`, `top-start`, `top-end`|`bottom-start`|Which side of the anchor, and which edge it lines up with.|
+|`padding`|`none`, `md`, `lg`|`md`|The space inside the panel. Use `none` when the content brings its own, such as a list of rows.|
+
+Other overlays can open from inside a Popover: a select list, a Menu or a
+Dialog. A press or an Escape in them belongs to them. The Popover closes only
+when the press or the key is outside all of them. A tall Popover has no maximum
+height; keep its content short.
+
+Stories: `kit-popover--open`, `kit-popover--open-compact`,
+`kit-popover--open-light`, `kit-popover--inside-dialog`.
+
+## Tooltip
+
+A few words of text that name or explain a control.
+
+**Use it when** a control shows only an icon and a short name helps, or when a
+control needs one line of explanation.
+
+**Do not use it when** the text is long, holds a link or a button, or is the
+only place a piece of information lives. A Tooltip holds text only. Make it a
+few words. People on touch screens never see tooltips. So a tooltip repeats or
+explains what the control is called. It never carries something the user must
+know. Put that on the page, or in a Popover.
+
+A Tooltip wraps one control. The control keeps its own name for screen readers.
+The tooltip adds its text as a description while it is showing. It is added to
+the element that takes focus (the input of a field, the button of a Switch) and
+sits beside any description the control already has, such as helper text.
+
+A tooltip on a disabled control will not show: a disabled control takes no
+focus, and some browsers send it no pointer events. Put that text beside the
+control instead. The panel cannot be hovered, so it closes as soon as the
+pointer leaves the control. That is fine for a few words; it is one more reason
+not to put more in it. A tap on a text field never opens it.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|The text. Never anything clickable.|
+|`placement`|`top`, `bottom`, `left`, `right`|`top`|Which side of the control. It moves to the other side when there is no room.|
+
+Stories: `kit-tooltip--shown`, `kit-tooltip--long-label`,
+`kit-tooltip--shown-light`.
+
+## Dialog
+
+A box that interrupts the screen to ask for a decision.
+
+**Use it when** the user must answer before going on: confirm a deletion, give a
+name, accept a choice. It is the only modal in the system. It dims the page and
+nothing behind it can be used until it closes.
+
+**Do not use it when** the information can sit on the page (use Alert), when it
+is a passing notice (use Toast), or when the user can carry on without
+answering (use Popover).
+
+Rules for the actions:
+
+- Put the safe action first, such as "Cancel". Focus starts on the first action,
+  so a stray Enter does the safe thing. On a phone the buttons stack in the same
+  order, with the safe action on top.
+- A destructive confirmation names what will be lost, in its title or its
+  description: "Delete #general?", "This removes 214 messages for everyone."
+  A bare "Are you sure?" is not enough.
+- Use a Button with the `danger` variant for the destructive action.
+
+The parent decides whether the dialog closes. `onClose` is called on Escape and
+on a press on the dimmed page, and the dialog stays open until `open` is false.
+
+A select list, a Menu, a Popover or a Tooltip may open from inside a Dialog.
+Escape closes that layer first and the Dialog on the next press. The dialog has
+the role `dialog`, not `alertdialog`, so a scrim press closes a destructive
+confirmation too; keep the safe action first.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`open`|true, false|none (required)|Whether the dialog is showing.|
+|`onClose`|a function|none (required)|Called on Escape and on a press on the dimmed page.|
+|`title`|text|none (required)|Names the dialog. It is the heading.|
+|`description`|text|none|A line under the title that says more.|
+|`children`|content|none|The body, such as a field. It sits between the description and the actions.|
+|`actions`|Buttons|none (required)|The buttons, safe action first.|
+|`size`|`sm`, `md`|`sm`|The width. `sm` is 400 pixels and `md` is 560. On a narrow screen the dialog keeps the page gutter on both sides.|
+
+Stories: `kit-dialog--confirm`, `kit-dialog--with-content`,
+`kit-dialog--phone`, `kit-dialog--confirm-light`,
+`kit-dialog--confirm-tinted`, `kit-dialog--with-select`.
+
 ## What the browser does for us
 
 The web kit gets a lot of behaviour for free from the browser and from MUI, and
@@ -729,3 +990,88 @@ then this list is the spec for the native side.
 - Space activates a button when the key is released; Enter activates it when
   the key goes down.
 - A busy button stays focusable and ignores both keys and clicks.
+
+### Menu
+
+- When it opens, focus goes to the first item that is not disabled. Focus stays
+  inside the menu.
+- ArrowDown and ArrowUp move between items and wrap at the ends. Home and End
+  jump to the first and last item. Typing letters jumps to the next item whose
+  text starts with them; the shortcut keys count as part of an item's text.
+  Disabled items and dividers are skipped.
+- Enter and Space on an item choose it. Choosing calls the item's action, then
+  closes the menu. A disabled item does nothing when clicked.
+- Tab closes the menu and focus goes back to the opener, not to the next
+  control. Escape and a press on the page outside it close it too. The press is
+  swallowed by an invisible layer: the control under it is not activated. A
+  right press does the same.
+- Escape is ignored while an input method is composing text, and only the
+  topmost layer handles it.
+- When it closes, focus goes back to whatever had it before the menu opened.
+- Typing letters collects into a prefix for about half a second; the same letter
+  again steps through the matches. Matching is not case sensitive.
+- While the menu is open the page behind it does not scroll, and the page is
+  hidden from assistive technology.
+- The menu sits just below the anchor, or just above it for the `top` placements.
+  When there is no room it is moved to stay one gutter inside the window; it does
+  not flip, so a menu near the bottom moves up and can cover its anchor.
+- The menu is at most the window height less a margin tall and scrolls inside.
+  It follows a window resize.
+- It fades in over the fast timing.
+
+### Popover
+
+- When it opens, focus goes to the first control inside it, or to the panel
+  itself when there is none.
+- Escape closes it. So does a press anywhere outside the panel and its anchor.
+  A press on the anchor is left to the anchor.
+- Nothing traps focus, and the page keeps its scroll. Outside a Dialog the panel
+  is placed at the end of the page, so Tab from its last control carries on
+  after the page. Inside a Dialog it is drawn in the Dialog.
+- A press inside a layer that opened from the Popover (a select list, a Menu, a
+  Dialog) is not a press outside it, and that layer handles its own Escape first.
+  The Escape is ignored while an input method is composing text.
+- When it closes, focus goes back to the anchor.
+- It sits just below or above the anchor. When there is no room it flips to the
+  other side, then shifts along the anchor to stay one gutter inside the window.
+- It follows the anchor when the window or any scrolling box around it scrolls
+  or resizes, but it does not hide when the anchor scrolls out of view. It has
+  no maximum height, so a tall panel can run off the bottom.
+
+### Tooltip
+
+- A mouse or pen pointer opens it after a short delay. Keyboard focus opens it
+  at once, but only when the focus is keyboard focus, not after a mouse press.
+- A touch never opens it.
+- Escape and the control losing focus close it. Moving the pointer away closes
+  it.
+- While it is open, the control is linked to it as a description, merged with any
+  description the control has. The control keeps its own name.
+- A tap on a text field, and a touch press on any control, never open it.
+- The panel cannot be hovered. Escape ignores an input method that is composing
+  text, and a focused control still receives the key before the tooltip closes.
+- It sits on the chosen side of the control. When there is no room it flips to
+  the other side, then shifts to stay one gutter inside the window. It appears
+  with no fade, and it is not in the page while closed.
+
+### Dialog
+
+- When it opens, focus goes to the first control in the actions row.
+- Tab and Shift+Tab wrap inside the dialog. Focus cannot leave it.
+- Escape and a press on the dimmed page call `onClose`. The parent decides
+  whether to close.
+- When it closes, focus goes back to the element that was focused just before.
+- A press on the dimmed page closes it only when the press starts and ends there:
+  a drag that starts in the panel and ends on the dimmed page does not.
+- A layer opened from inside (a select list, a Menu, a Popover, a Tooltip) is
+  drawn within the dialog and takes the key first. The page behind is hidden from
+  assistive technology when the dialog opens, so a layer drawn elsewhere would
+  be hidden too.
+- Long content scrolls inside the panel, which is never taller than the window
+  less the page gutter. Escape is ignored while an input method is composing.
+- While it is open the page behind it does not scroll, and the page is hidden
+  from assistive technology. The dialog is announced as a dialog, named by its
+  title and described by its description.
+- The dimmed page fades in. The dialog is centred, and keeps the page gutter on
+  each side of a narrow screen. On a phone the action buttons stack, one to a
+  row, safe action on top.
