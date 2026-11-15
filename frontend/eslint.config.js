@@ -126,9 +126,10 @@ export default tseslint.config(
     },
   },
   // Node CLI scripts (run in containers by scripts/ui-review/ui-review.sh):
-  // console output is their interface.
+  // console output is their interface. The Playwright kit specs
+  // (browser-tests/) also run in Node, with browser code inside evaluate().
   {
-    files: ['scripts/**/*.ts'],
+    files: ['scripts/**/*.ts', 'browser-tests/**/*.ts', 'playwright.kit.config.ts'],
     languageOptions: { globals: globals.node },
     rules: {
       'no-console': 'off',
