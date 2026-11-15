@@ -63,8 +63,20 @@ export interface ListFocus {
     onBlur: FocusEventHandler<HTMLElement>;
   };
   rowFocus(id: string): RowFocus;
+  /** For a bar of items that is not a list element of its own (the Dock): pass to its `focus` prop instead of spreading `listProps`. Opaque. */
+  bar: BarFocus;
   /** The focused row (the tab stop once the list has been entered). */
   focused: string | null;
+}
+
+/** What a bar (the Dock) needs to be the keyboard list. Opaque: pass `useListFocus(...).bar` to the Dock's `focus`. */
+export interface BarFocus {
+  readonly __brand: 'BarFocus';
+}
+
+/** Kit-internal: the four handlers a `BarFocus` stands for. */
+export function barFocusProps(bar: BarFocus | undefined): ListFocus['listProps'] | undefined {
+  return bar as unknown as ListFocus['listProps'] | undefined;
 }
 
 /** What `RowFocus` holds, for kit components that render a row (ListRow, Tabs). */
@@ -486,13 +498,15 @@ export function useListFocus(options: ListFocusOptions): ListFocus {
 
   const tabStop = host.tabStop(state);
 
+  const listProps = {
+    onKeyDown: host.onKeyDown,
+    onKeyUp: host.onKeyUp,
+    onFocusCapture: host.onFocusCapture,
+    onBlur: host.onListBlur,
+  };
   return {
-    listProps: {
-      onKeyDown: host.onKeyDown,
-      onKeyUp: host.onKeyUp,
-      onFocusCapture: host.onFocusCapture,
-      onBlur: host.onListBlur,
-    },
+    listProps,
+    bar: listProps as unknown as BarFocus,
     rowFocus(id) {
       const props: RowFocusProps = {
         tabIndex: id === tabStop ? 0 : -1,

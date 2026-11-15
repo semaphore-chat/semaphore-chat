@@ -1,4 +1,4 @@
-import type { JSX, ReactElement, ReactNode, Ref } from 'react';
+import { useCallback, type JSX, type MouseEvent, type ReactElement, type ReactNode, type Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Avatar } from '../display/Avatar';
@@ -10,6 +10,8 @@ import { reducedMotion } from '../overlays/surface';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
 import { transientProps } from '../theme/transientProps';
+import { assignRef } from '../behaviour/assignRef';
+import { rowFocusProps, type RowFocus } from '../behaviour/hosts/listFocus';
 
 export interface DockItemProps {
   /** The community's name: the accessible name, the tooltip and where the initials come from. */
@@ -21,6 +23,11 @@ export interface DockItemProps {
   current?: boolean;
   /** A count on the item; nothing is shown for 0. */
   unread?: number;
+  /**
+   * New messages that do not mention you: a small accent dot, and ", new messages" in the name. When `unread` (a
+   * count) is also given, the count badge is shown and the dot is not.
+   */
+  newMessages?: boolean;
   /** `reconnecting`: a warning dot, and the picture dimmed. */
   status?: 'reconnecting';
   /** Renders a button. */
@@ -29,6 +36,8 @@ export interface DockItemProps {
   href?: string;
   ref?: Ref<HTMLElement>;
   id?: string;
+  /** Joins a keyboard list: `useListFocus(...).rowFocus(id)`. The Dock is then one Tab stop. */
+  focus?: RowFocus;
 }
 
 /** The ring and the gap that separates it from the picture. The outer size always includes both. */
@@ -92,6 +101,21 @@ const BadgeSlot = styled('span')(({ theme }) => ({
   boxShadow: `0 0 0 ${RING}px ${kitTheme(theme).palette.surface}`,
 }));
 
+/**
+ * The "new messages" dot: at the corner of the item, in the accent colour, ringed in the surface colour. It is
+ * pushed out by half of `space.xs` so that on the current item, whose ring is the same accent, it clears the ring.
+ */
+const NewDot = styled('span')(({ theme }) => {
+  const { palette } = kitTheme(theme);
+  return {
+    position: 'absolute',
+    top: `${-tokens.space.xs / 2}px`,
+    right: `${-tokens.space.xs / 2}px`,
+    ...dotStyle(palette.accent),
+    boxShadow: `0 0 0 ${RING}px ${palette.surface}`,
+  };
+});
+
 const WarningDot = styled('span')(({ theme }) => {
   const { palette } = kitTheme(theme);
   return {
@@ -111,8 +135,8 @@ function NameOnly({ children }: { children: ReactElement }): ReactElement {
 
 /**
  * A community in the Dock: a round button (or link) holding its picture. Its accessible name
- * says everything the picture shows: the name, then ", current", ", 3 unread" and
- * ", reconnecting" as they apply. The name also shows in a tooltip on hover and focus.
+ * says everything the picture shows: the name, then ", current", ", 3 unread" or
+ * ", new messages", and ", reconnecting" as they apply. The name also shows in a tooltip on hover and focus.
  */
 export function DockItem({
   name,
@@ -120,18 +144,37 @@ export function DockItem({
   colour,
   current = false,
   unread = 0,
+  newMessages = false,
   status,
   onClick,
   href,
   ref,
   id,
+  focus,
 }: DockItemProps): JSX.Element {
   const count = Number.isFinite(unread) ? Math.floor(unread) : 0;
   const reconnecting = status === 'reconnecting';
+  // The count wins: a dot beside a badge would say the same thing twice.
+  const dot = newMessages && count <= 0;
+  const roving = rowFocusProps(focus);
+  const rovingRef = roving?.ref;
+  // Stable, so neither the caller's ref nor the list's is detached and attached again on every render.
+  const mainRef = useCallback(
+    (element: HTMLElement | null) => {
+      assignRef(ref, element);
+      rovingRef?.(element);
+    },
+    [ref, rovingRef],
+  );
+  const handleClick = (event: MouseEvent<HTMLElement>) => {
+    roving?.onClick(event);
+    onClick?.();
+  };
   const label = [
     name,
     current ? 'current' : undefined,
     count > 0 ? `${count} unread` : undefined,
+    dot ? 'new messages' : undefined,
     reconnecting ? 'reconnecting' : undefined,
   ]
     .filter((part) => part !== undefined)
@@ -147,6 +190,7 @@ export function DockItem({
           <Badge count={count} tone="danger" label={`${count} unread`} />
         </BadgeSlot>
       )}
+      {dot && <NewDot aria-hidden="true" data-kit-new-messages="" />}
       {reconnecting && <WarningDot aria-hidden="true" />}
     </>
   );
@@ -155,9 +199,11 @@ export function DockItem({
       <NameOnly>
       {href !== undefined ? (
         <Anchor
-          ref={ref as Ref<HTMLAnchorElement>}
+          ref={mainRef as Ref<HTMLAnchorElement>}
           id={id}
           href={href}
+          tabIndex={roving?.tabIndex}
+          onClick={roving?.onClick}
           aria-label={label}
           aria-current={ariaCurrent}
           $current={current}
@@ -166,10 +212,11 @@ export function DockItem({
         </Anchor>
       ) : (
         <Button
-          ref={ref as Ref<HTMLButtonElement>}
+          ref={mainRef as Ref<HTMLButtonElement>}
           id={id}
           type="button"
-          onClick={onClick}
+          tabIndex={roving?.tabIndex}
+          onClick={roving === undefined ? onClick : handleClick}
           aria-label={label}
           aria-current={ariaCurrent}
           $current={current}

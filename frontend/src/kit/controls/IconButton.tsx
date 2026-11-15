@@ -1,4 +1,4 @@
-import type { AriaAttributes, JSX, MouseEvent, MouseEventHandler, Ref } from 'react';
+import { useCallback, type AriaAttributes, type JSX, type MouseEvent, type MouseEventHandler, type Ref } from 'react';
 import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
@@ -11,6 +11,8 @@ import { standOutFill, useSurface, type Surface } from '../theme/onSurface';
 import { buttonLook, type ButtonVariant } from './buttonLook';
 import { Spinner } from '../display/Spinner';
 import { transientProps } from '../theme/transientProps';
+import { assignRef } from '../behaviour/assignRef';
+import { rowFocusProps, type RowFocus } from '../behaviour/hosts/listFocus';
 
 export type IconButtonSize = 'sm' | 'md' | 'lg';
 export type IconButtonVariant = Extract<ButtonVariant, 'ghost' | 'soft' | 'primary' | 'danger'>;
@@ -28,6 +30,8 @@ export interface IconButtonProps {
   onClick?: MouseEventHandler<HTMLButtonElement>;
   ref?: Ref<HTMLButtonElement>;
   id?: string;
+  /** Joins a keyboard list (a Dock): `useListFocus(...).rowFocus(id)`. The button becomes one stop of the list's single Tab stop. */
+  focus?: RowFocus;
   title?: string;
   'aria-expanded'?: AriaAttributes['aria-expanded'];
   'aria-haspopup'?: 'menu' | 'dialog' | 'listbox' | true;
@@ -127,6 +131,7 @@ export function IconButton({
   onClick,
   ref,
   id,
+  focus,
   title,
   'aria-expanded': ariaExpanded,
   'aria-haspopup': ariaHaspopup,
@@ -135,18 +140,30 @@ export function IconButton({
   const on = useSurface();
   const busy = loading && !disabled;
   const describedBy = useDescribedBy(undefined);
+  // A disabled button is not in the list: no tab stop, no clicks to report.
+  const roving = disabled ? undefined : rowFocusProps(focus);
+  const rovingRef = roving?.ref;
+  // Stable, so neither the caller's ref nor the list's is detached and attached again on every render.
+  const mainRef = useCallback(
+    (element: HTMLButtonElement | null) => {
+      assignRef(ref, element);
+      rovingRef?.(element);
+    },
+    [ref, rovingRef],
+  );
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
       event.preventDefault();
       return;
     }
+    roving?.onClick(event);
     onClick?.(event);
   };
 
   return (
     <Root
-      ref={ref}
+      ref={mainRef}
       type="button"
       disabled={disabled}
       onClick={handleClick}
@@ -159,6 +176,7 @@ export function IconButton({
       aria-controls={ariaControls}
       aria-describedby={describedBy}
       id={id}
+      tabIndex={roving?.tabIndex}
       title={title}
       disableRipple
       $variant={variant}
