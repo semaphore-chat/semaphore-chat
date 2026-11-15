@@ -92,7 +92,7 @@ In milliseconds.
 |fast|120|Small changes, such as a hover or a press|
 |base|200|Most changes|
 |slow|320|Large changes, such as a panel opening|
-|typeahead|500|How long typed letters in a list add up before they start again|
+|typeahead|1000|How long typed letters in a list add up before they start again|
 |toast|4000|How long a toast stays|
 |toastAction|8000|How long a toast with an action, or a danger toast, stays|
 

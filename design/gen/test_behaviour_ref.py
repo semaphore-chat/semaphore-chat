@@ -24,15 +24,17 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 PATTERN_DIR = REPO / "design" / "behaviour"
 
 TOAST = {"durationMs": 4000, "durationWithActionMs": 8000, "maxQueued": 3}
-LIST = {"wrap": False, "selectionFollowsFocus": False, "typeaheadMs": 500}
+LIST = {"wrap": False, "selectionFollowsFocus": False, "typeaheadMs": 1000}
+LOAD = {"notifyId": "load"}
 
 
 def toast(id: str, tone: str = "neutral", message: str | None = None, action: str | None = None) -> dict:
     return {"id": id, "tone": tone, "message": message or f"msg {id}", "action": action}
 
 
-def layer(id: str, kind: str, parent: str | None = None, opener: str | None = None) -> dict:
-    return {"id": id, "kind": kind, "parent": parent, "opener": opener}
+def layer(id: str, kind: str, parent: str | None = None, opener: str | None = None,
+          opener_layer: str | None = None) -> dict:
+    return {"id": id, "kind": kind, "parent": parent, "opener": opener, "openerLayer": opener_layer}
 
 
 def row(id: str, label: str | None = None, disabled: bool = False) -> dict:
@@ -61,12 +63,19 @@ def cancel_timer(token: int) -> dict:
     return {"cancelTimer": {"token": token}}
 
 
-def announce(message: str, politeness: str = "polite") -> dict:
-    return {"announce": {"message": message, "politeness": politeness}}
+def announce(message: str, politeness: str = "polite", action: str | None = None) -> dict:
+    return {"announce": {"message": message, "politeness": politeness, "action": action}}
 
 
 def request_close(id: str, reason: str) -> dict:
     return {"requestClose": {"id": id, "reason": reason}}
+
+
+def restore(to: str | None) -> list:
+    return [{"restoreFocus": {"to": to}}]
+
+
+ESC = {"composing": False, "focusOwnsEscape": False}
 
 
 class ToastQueueTest(unittest.TestCase):
@@ -76,6 +85,9 @@ class ToastQueueTest(unittest.TestCase):
     def ids(self) -> tuple:
         showing = self.m.state["showing"]
         return (showing and showing["id"], [item["id"] for item in self.m.state["queue"]])
+
+    def dismiss(self, id: str, focus_inside: bool = False) -> list:
+        return self.m.send("dismiss", id=id, focusInside=focus_inside)
 
     def test_r01_first_toast_shows_at_once_with_timer_and_announcement(self):
         effects = self.m.send("show", toast=toast("a", message="Saved"))
@@ -94,7 +106,18 @@ class ToastQueueTest(unittest.TestCase):
         effects = self.m.send("show", toast=toast("up", "positive", "Uploaded"))
         self.assertEqual(effects, [cancel_timer(1), start_timer(2, 4000), announce("Uploaded")])
         self.assertEqual(self.m.state["showing"]["message"], "Uploaded")
-        self.assertEqual(self.m.state["queue"], [])
+
+    def test_r03_same_message_is_not_announced_again(self):
+        self.m.send("show", toast=toast("off", message="Offline"))
+        self.assertEqual(self.m.send("show", toast=toast("off", message="Offline")),
+                         [cancel_timer(1), start_timer(2, 4000)])
+        self.assertEqual(self.m.send("show", toast=toast("off", message="Offline", action="Retry")),
+                         [cancel_timer(2), start_timer(3, 8000), announce("Offline", action="Retry")])
+
+    def test_r03_replacing_a_toast_with_no_timer_cancels_nothing(self):
+        self.m.send("show", toast=toast("s", "danger", "Couldn't send", "Retry"))
+        self.assertEqual(self.m.send("show", toast=toast("s", "danger", "Still failing", "Retry")),
+                         [announce("Still failing", "assertive", "Retry")])
 
     def test_r04_same_id_replaces_a_queued_toast_in_place(self):
         for id in ("a", "b", "c"):
@@ -103,32 +126,35 @@ class ToastQueueTest(unittest.TestCase):
         self.assertEqual(self.ids(), ("a", ["b", "c"]))
         self.assertEqual(self.m.state["queue"][0]["message"], "newer")
 
-    def test_r05_full_queue_drops_the_oldest_non_danger(self):
+    def test_r05_a_full_queue_drops_the_oldest_plain_toast(self):
         self.m.send("show", toast=toast("a"))
+        self.m.send("show", toast=toast("u", action="Undo"))
         self.m.send("show", toast=toast("b", "danger"))
         self.m.send("show", toast=toast("c"))
         self.m.send("show", toast=toast("d", "positive"))
-        self.m.send("show", toast=toast("e"))
-        self.assertEqual(self.ids(), ("a", ["b", "d", "e"]))
+        self.assertEqual(self.ids(), ("a", ["u", "b", "d"]))
 
-    def test_r05_all_danger_queue_drops_the_oldest(self):
+    def test_r05_with_no_plain_toast_the_oldest_non_danger_goes(self):
+        self.m.send("show", toast=toast("a"))
+        for id in ("u", "v"):
+            self.m.send("show", toast=toast(id, action="Undo"))
+        self.m.send("show", toast=toast("b", "danger"))
+        self.m.send("show", toast=toast("w"))
+        self.assertEqual(self.ids(), ("a", ["v", "b", "w"]))
+
+    def test_r05_never_the_incoming_or_a_danger_toast(self):
         self.m.send("show", toast=toast("a"))
         for id in ("b", "c", "d"):
             self.m.send("show", toast=toast(id, "danger"))
+        self.assertEqual(self.m.send("show", toast=toast("u", action="Undo")), [])
+        self.assertEqual(self.ids(), ("a", ["b", "c", "d", "u"]))
+        # A danger toast arriving now drops the only waiting non-danger toast.
         self.m.send("show", toast=toast("e", "danger"))
-        self.assertEqual(self.ids(), ("a", ["c", "d", "e"]))
-
-    def test_r05_a_new_neutral_toast_behind_danger_is_the_one_dropped(self):
-        self.m.send("show", toast=toast("a"))
-        for id in ("b", "c", "d"):
-            self.m.send("show", toast=toast(id, "danger"))
-        self.m.send("show", toast=toast("e"))
-        self.assertEqual(self.ids(), ("a", ["b", "c", "d"]))
+        self.assertEqual(self.ids(), ("a", ["b", "c", "d", "e"]))
 
     def test_r06_durations_by_action(self):
         self.assertEqual(self.m.send("show", toast=toast("a", "positive"))[0], start_timer(1, 4000))
-        effects = self.m.send("show", toast=toast("a", action="Undo"))
-        self.assertIn(start_timer(2, 8000), effects)
+        self.assertIn(start_timer(2, 8000), self.m.send("show", toast=toast("a", action="Undo")))
 
     def test_r07_danger_is_assertive_and_uses_the_longer_duration(self):
         effects = self.m.send("show", toast=toast("x", "danger", "Couldn't send"))
@@ -140,22 +166,28 @@ class ToastQueueTest(unittest.TestCase):
         effects = self.m.send("show", toast=toast("p", "positive", "Joined"))
         self.assertEqual(effects[1], announce("Joined", "polite"))
 
+    def test_r07_danger_with_an_action_stays_and_holds_the_queue(self):
+        effects = self.m.send("show", toast=toast("s", "danger", "Couldn't send", "Retry"))
+        self.assertEqual(effects, [announce("Couldn't send", "assertive", "Retry")])
+        self.m.send("show", toast=toast("a"))
+        self.assertEqual(self.m.send("timerFired", token=1), [])
+        self.assertEqual(self.ids(), ("s", ["a"]))
+        self.assertEqual(self.dismiss("s"), [start_timer(2, 4000), announce("msg a")])
+
     def test_r08_dismissing_the_showing_toast_shows_the_next(self):
         self.m.send("show", toast=toast("a"))
         self.m.send("show", toast=toast("b", message="B"))
-        self.assertEqual(
-            self.m.send("dismiss", id="a"), [cancel_timer(1), start_timer(2, 4000), announce("B")]
-        )
-        self.assertEqual(self.m.send("dismiss", id="b"), [cancel_timer(2)])
+        self.assertEqual(self.dismiss("a"), [cancel_timer(1), start_timer(2, 4000), announce("B")])
+        self.assertEqual(self.dismiss("b"), [cancel_timer(2)])
         self.assertEqual(self.ids(), (None, []))
 
     def test_r09_dismissing_a_queued_or_unknown_id(self):
         self.m.send("show", toast=toast("a"))
         self.m.send("show", toast=toast("b"))
-        self.assertEqual(self.m.send("dismiss", id="b"), [])
+        self.assertEqual(self.dismiss("b"), [])
         self.assertEqual(self.ids(), ("a", []))
         before = copy.deepcopy(self.m.state)
-        self.assertEqual(self.m.send("dismiss", id="zzz"), [])
+        self.assertEqual(self.dismiss("zzz", True), [])
         self.assertEqual(self.m.state, before)
 
     def test_r10_current_timer_dismisses_without_cancel(self):
@@ -165,7 +197,7 @@ class ToastQueueTest(unittest.TestCase):
 
     def test_r10_stale_timer_does_nothing(self):
         self.m.send("show", toast=toast("a"))
-        self.m.send("show", toast=toast("a"))  # token 2 now
+        self.m.send("show", toast=toast("a", message="again"))
         before = copy.deepcopy(self.m.state)
         self.assertEqual(self.m.send("timerFired", token=1), [])
         self.assertEqual(self.m.state, before)
@@ -178,9 +210,12 @@ class ToastQueueTest(unittest.TestCase):
         self.assertEqual(self.m.send("timerFired", token=1), [])
         self.assertEqual(self.ids(), ("a", []))
 
-    def test_r11_pause_with_nothing_showing_does_nothing(self):
+    def test_r11_pause_with_nothing_showing_or_no_timer(self):
         self.assertEqual(self.m.send("pause"), [])
         self.assertFalse(self.m.state["paused"])
+        self.m.send("show", toast=toast("s", "danger", action="Retry"))
+        self.assertEqual(self.m.send("pause"), [])
+        self.assertTrue(self.m.state["paused"])
 
     def test_r12_resume_restarts_the_full_duration_with_a_new_token(self):
         self.m.send("show", toast=toast("a", action="Undo"))
@@ -189,25 +224,50 @@ class ToastQueueTest(unittest.TestCase):
         self.assertFalse(self.m.state["paused"])
         self.assertEqual(self.m.send("resume"), [])
 
+    def test_r12_resume_starts_no_timer_for_a_toast_without_one(self):
+        self.m.send("show", toast=toast("s", "danger", action="Retry"))
+        self.m.send("pause")
+        self.assertEqual(self.m.send("resume"), [])
+        self.assertFalse(self.m.state["paused"])
+
     def test_r13_the_pause_carries_to_the_next_toast(self):
         self.m.send("show", toast=toast("a"))
         self.m.send("show", toast=toast("b", message="B"))
         self.m.send("pause")
-        self.assertEqual(self.m.send("dismiss", id="a"), [announce("B")])
+        self.assertEqual(self.dismiss("a"), [announce("B")])
         self.assertTrue(self.m.state["paused"])
         self.assertEqual(self.m.send("resume"), [start_timer(3, 4000)])
 
-    def test_r13_the_pause_ends_with_the_last_toast(self):
+    def test_r13_the_pause_ends_with_the_last_toast_and_the_host_pauses_again(self):
         self.m.send("show", toast=toast("a"))
         self.m.send("pause")
-        self.assertEqual(self.m.send("dismiss", id="a"), [])
+        self.assertEqual(self.dismiss("a"), [])
         self.assertFalse(self.m.state["paused"])
         self.assertEqual(self.m.send("show", toast=toast("b", message="B"))[0], start_timer(2, 4000))
+        self.assertEqual(self.m.send("pause"), [cancel_timer(2)])
 
     def test_r13_replacing_while_paused_starts_no_timer(self):
         self.m.send("show", toast=toast("a"))
         self.m.send("pause")
         self.assertEqual(self.m.send("show", toast=toast("a", message="A2")), [announce("A2")])
+
+    def test_r14_announcements_carry_the_action_label(self):
+        self.assertEqual(self.m.send("show", toast=toast("d", message="Deleted", action="Undo"))[1],
+                         announce("Deleted", action="Undo"))
+
+    def test_r15_one_pause_for_every_reason(self):
+        # Pointer, focus, a hidden window and an open modal are one pause to the reducer.
+        self.m.send("show", toast=toast("a"))
+        self.assertEqual(self.m.send("pause"), [cancel_timer(1)])
+        self.assertEqual(self.m.send("pause"), [])
+        self.assertEqual(self.m.send("resume"), [start_timer(2, 4000)])
+
+    def test_r16_dismissing_with_focus_inside_returns_focus(self):
+        self.m.send("show", toast=toast("d", action="Undo"))
+        self.m.send("show", toast=toast("a", message="A"))
+        self.assertEqual(self.dismiss("d", True), [cancel_timer(1), {"returnFocus": {}},
+                                                  start_timer(2, 4000), announce("A")])
+        self.assertEqual(self.dismiss("a", False), [cancel_timer(2)])
 
 
 class OverlayStackTest(unittest.TestCase):
@@ -217,6 +277,12 @@ class OverlayStackTest(unittest.TestCase):
     def open(self, *layers: dict) -> None:
         for item in layers:
             self.assertEqual(self.m.send("open", layer=item), [])
+
+    def escape(self, **flags: bool) -> list:
+        return self.m.send("escape", **{**ESC, **flags})
+
+    def closed(self, id: str, present: bool = True, focus: str = "inside") -> list:
+        return self.m.send("closed", id=id, openerPresent=present, focus=focus)
 
     def ids(self) -> list:
         return [item["id"] for item in self.m.state["layers"]]
@@ -234,23 +300,18 @@ class OverlayStackTest(unittest.TestCase):
 
     def test_r03_escape_asks_only_the_topmost(self):
         self.open(layer("d", "dialog"), layer("m", "menu", "d"))
-        self.assertEqual(self.m.send("escape"), [request_close("m", "escape")])
+        self.assertEqual(self.escape(), [request_close("m", "escape")])
 
-    def test_r04_tooltips_never_block_escape(self):
+    def test_r04_a_tooltip_takes_the_escape(self):
         self.open(layer("d", "dialog"), layer("t1", "tooltip"), layer("t2", "tooltip"))
-        self.assertEqual(
-            self.m.send("escape"),
-            [request_close("t2", "escape"), request_close("t1", "escape"), request_close("d", "escape")],
-        )
+        self.assertEqual(self.escape(), [request_close("t2", "escape"), request_close("t1", "escape")])
+
+    def test_r04_a_lone_tooltip_keeps_escape_from_the_screen(self):
+        self.open(layer("t", "tooltip"))
+        self.assertEqual(self.escape(), [request_close("t", "escape")])
 
     def test_r05_escape_with_nothing_open_goes_to_the_screen(self):
-        self.assertEqual(self.m.send("escape"), [{"passToScreen": {"key": "Escape"}}])
-
-    def test_r05_escape_with_only_a_tooltip_closes_it_and_goes_to_the_screen(self):
-        self.open(layer("t", "tooltip"))
-        self.assertEqual(
-            self.m.send("escape"), [request_close("t", "escape"), {"passToScreen": {"key": "Escape"}}]
-        )
+        self.assertEqual(self.escape(), [{"passToScreen": {"key": "Escape"}}])
 
     def test_r06_a_press_in_a_grandchild_is_inside_every_ancestor(self):
         self.open(layer("p", "popover"), layer("d", "dialog", "p"), layer("m", "menu", "d"))
@@ -258,10 +319,8 @@ class OverlayStackTest(unittest.TestCase):
 
     def test_r07_a_press_outside_popovers_carries_on(self):
         self.open(layer("a", "popover"), layer("b", "popover"))
-        self.assertEqual(
-            self.m.send("pressOutside", insideId=None),
-            [request_close("b", "pressOutside"), request_close("a", "pressOutside")],
-        )
+        self.assertEqual(self.m.send("pressOutside", insideId=None),
+                         [request_close("b", "pressOutside"), request_close("a", "pressOutside")])
         self.assertEqual(self.m.send("pressOutside", insideId="a"), [request_close("b", "pressOutside")])
 
     def test_r08_a_menu_swallows_the_press(self):
@@ -291,55 +350,80 @@ class OverlayStackTest(unittest.TestCase):
     def test_r12_request_close_changes_nothing_until_closed(self):
         self.open(layer("d", "dialog"))
         before = copy.deepcopy(self.m.state)
-        self.m.send("escape")
+        self.escape()
         self.m.send("pressOutside", insideId=None)
         self.assertEqual(self.m.state, before)
-        self.m.send("closed", id="d", openerPresent=False)
+        self.closed("d", present=False)
         self.assertEqual(self.ids(), [])
 
-    def test_r13_closing_a_parent_closes_children_innermost_first(self):
-        self.open(
-            layer("d", "dialog", opener="b"),
-            layer("p", "popover", "d"),
-            layer("m", "menu", "p"),
-            layer("t", "tooltip", "m"),
-            layer("other", "popover"),
-        )
-        effects = self.m.send("closed", id="d", openerPresent=True)
+    def test_r13_closing_a_parent_commands_children_innermost_first(self):
+        self.open(layer("d", "dialog", opener="b"), layer("p", "popover", "d"),
+                  layer("m", "menu", "p"), layer("t", "tooltip", "m"), layer("other", "popover"))
         self.assertEqual(
-            effects,
-            [
-                request_close("t", "parentClosed"),
-                request_close("m", "parentClosed"),
-                request_close("p", "parentClosed"),
-                {"restoreFocus": {"to": "b"}},
-            ],
+            self.closed("d"),
+            [request_close("t", "parentClosed"), request_close("m", "parentClosed"),
+             request_close("p", "parentClosed"), {"restoreFocus": {"to": "b"}}],
         )
         self.assertEqual(self.ids(), ["other"])
+        self.assertEqual(self.closed("m"), [])  # it already left: a later closed does nothing
 
     def test_r14_focus_goes_to_the_opener(self):
-        self.open(layer("d", "dialog"), layer("m", "menu", "d", opener="more"))
-        self.assertEqual(self.m.send("closed", id="m", openerPresent=True), [{"restoreFocus": {"to": "more"}}])
+        self.open(layer("d", "dialog"), layer("m", "menu", "d", opener="more", opener_layer="d"))
+        self.assertEqual(self.closed("m"), restore("more"))
 
-    def test_r14_focus_falls_back_to_the_parent_then_the_screen(self):
-        self.open(layer("d", "dialog", opener="row"), layer("m", "menu", "d", opener="more"))
-        self.assertEqual(self.m.send("closed", id="m", openerPresent=False), [{"restoreFocus": {"to": "d"}}])
-        self.assertEqual(self.m.send("closed", id="d", openerPresent=False), [{"restoreFocus": {"to": None}}])
+    def test_r14_focus_falls_back_to_the_opener_layer_then_the_screen(self):
+        self.open(layer("d", "dialog", opener="row"), layer("m", "menu", "d", opener="more", opener_layer="d"))
+        self.assertEqual(self.closed("m", present=False), restore("d"))
+        self.assertEqual(self.closed("d", present=False), restore(None))
 
-    def test_r14_no_opener_recorded_falls_back(self):
-        self.open(layer("p", "popover"))
-        self.assertEqual(self.m.send("closed", id="p", openerPresent=True), [{"restoreFocus": {"to": None}}])
+    def test_r14_lost_focus_is_restored_and_moved_focus_is_not(self):
+        self.open(layer("p", "popover", opener="emoji"))
+        self.assertEqual(self.closed("p", focus="lost"), restore("emoji"))
+        self.open(layer("q", "popover", opener="gif"))
+        self.assertEqual(self.closed("q", focus="outside"), [])
 
     def test_r15_closing_a_tooltip_moves_no_focus(self):
         self.open(layer("t", "tooltip", opener="x"))
-        self.assertEqual(self.m.send("closed", id="t", openerPresent=True), [])
+        self.assertEqual(self.closed("t"), [])
         self.assertEqual(self.ids(), [])
 
     def test_r15_closed_for_an_unknown_id_does_nothing(self):
         self.open(layer("d", "dialog"))
         before = copy.deepcopy(self.m.state)
-        self.assertEqual(self.m.send("closed", id="zzz", openerPresent=True), [])
+        self.assertEqual(self.closed("zzz"), [])
         self.assertEqual(self.m.state, before)
+
+    def test_r16_no_focus_restore_beneath_an_open_modal(self):
+        for kind in ("dialog", "sheet"):
+            with self.subTest(kind=kind):
+                m = Machine("overlayStack", {})
+                m.send("open", layer=layer("p", "popover", opener="status"))
+                m.send("open", layer=layer("x", kind, opener="more"))
+                self.assertEqual(m.send("closed", id="p", openerPresent=True, focus="lost"), [])
+
+    def test_r17_a_dialog_from_a_menu_item_returns_to_the_menu_opener(self):
+        self.open(layer("m", "menu", opener="more"), layer("d", "dialog", opener="deleteItem", opener_layer="m"))
+        self.assertEqual(self.closed("m", present=False, focus="outside"), [])
+        self.assertEqual(self.m.state["layers"], [layer("d", "dialog", opener="more")])
+        self.assertEqual(self.closed("d"), restore("more"))
+
+    def test_r17_inheritance_follows_a_chain_of_closed_layers(self):
+        self.open(layer("p", "popover", opener="b", opener_layer=None),
+                  layer("m", "menu", "p", opener="pItem", opener_layer="p"),
+                  layer("d", "dialog", opener="mItem", opener_layer="m"))
+        self.closed("p", focus="outside")  # p and its child m leave together
+        self.assertEqual(self.m.state["layers"], [layer("d", "dialog", opener="b")])
+
+    def test_r18_composition_and_focused_controls_keep_escape(self):
+        self.open(layer("d", "dialog"))
+        self.assertEqual(self.escape(composing=True), [])
+        self.assertEqual(self.escape(focusOwnsEscape=True), [])
+        self.m = Machine("overlayStack", {})
+        self.assertEqual(self.escape(composing=True), [])
+
+    def test_r19_an_unknown_parent_or_opener_layer_becomes_null(self):
+        self.open(layer("p", "popover", "gone", opener="b", opener_layer="gone"))
+        self.assertEqual(self.m.state["layers"], [layer("p", "popover", opener="b")])
 
 
 class ConfirmDestructiveTest(unittest.TestCase):
@@ -493,9 +577,9 @@ class ListFocusTest(unittest.TestCase):
 
     def test_r07_typeahead_matches_a_prefix_ignoring_case(self):
         m = self.machine([row("g", "General"), row("ga", "Games"), row("r", "Random")])
-        self.assertEqual(m.send("type", char="R"), [start_timer(1, 500)])
+        self.assertEqual(m.send("type", char="R"), [start_timer(1, 1000)])
         self.assertEqual((m.state["focused"], m.state["typeahead"]), ("r", "r"))
-        self.assertEqual(m.send("type", char="A"), [cancel_timer(1), start_timer(2, 500)])
+        self.assertEqual(m.send("type", char="A"), [cancel_timer(1), start_timer(2, 1000)])
         self.assertEqual((m.state["focused"], m.state["typeahead"]), ("r", "ra"))
 
     def test_r07_typeahead_searches_from_the_focused_row_and_goes_round(self):
@@ -550,7 +634,7 @@ class ListFocusTest(unittest.TestCase):
         self.assertEqual(m.send("down"), [{"select": {"id": "a"}}])
         self.assertEqual(m.send("end"), [{"select": {"id": "b"}}])
         self.assertEqual(m.send("end"), [])
-        self.assertEqual(m.send("type", char="a"), [start_timer(1, 500), {"select": {"id": "a"}}])
+        self.assertEqual(m.send("type", char="a"), [start_timer(1, 1000), {"select": {"id": "a"}}])
 
     def test_r13_press_focuses_and_selects_enabled_rows_only(self):
         m = self.machine([row("a"), row("b", disabled=True)])
@@ -564,7 +648,8 @@ class ListFocusTest(unittest.TestCase):
     def test_r14_a_removed_row_moves_focus_next_then_previous(self):
         m = self.machine([row("a"), row("b"), row("c", disabled=True), row("d")])
         m.send("press", id="b")
-        self.assertEqual(m.send("setRows", rows=[row("a"), row("c", disabled=True), row("d")]), [])
+        self.assertEqual(m.send("setRows", rows=[row("a"), row("c", disabled=True), row("d")]),
+                         [{"deselect": {}}])
         self.assertEqual(m.state["focused"], "d")
         m.send("setRows", rows=[row("a"), row("c", disabled=True), row("d", disabled=True)])
         self.assertEqual(m.state["focused"], "a")
@@ -577,98 +662,158 @@ class ListFocusTest(unittest.TestCase):
         m.send("setRows", rows=[row("z", disabled=True)])
         self.assertIsNone(m.state["focused"])
 
-    def test_r14_the_selection_does_not_follow_the_move(self):
+    def test_r14_the_selection_follows_the_move_only_when_it_follows_focus(self):
         m = self.machine([row("a"), row("b")], selectionFollowsFocus=True)
         m.send("press", id="a")
-        m.send("setRows", rows=[row("a", disabled=True), row("b")])
+        self.assertEqual(m.send("setRows", rows=[row("a", disabled=True), row("b")]), [{"select": {"id": "b"}}])
+        self.assertEqual((m.state["focused"], m.state["selected"]), ("b", "b"))
+        m = self.machine([row("a"), row("b")])
+        m.send("press", id="a")
+        self.assertEqual(m.send("setRows", rows=[row("a", disabled=True), row("b")]), [])
         self.assertEqual((m.state["focused"], m.state["selected"]), ("b", "a"))
+
+    def test_r14_a_removed_focused_and_selected_row_with_follow_on(self):
+        m = self.machine([row("a"), row("b"), row("c")], selectionFollowsFocus=True)
+        m.send("down")
+        m.send("down")
+        self.assertEqual(m.send("setRows", rows=[row("a"), row("c")]), [{"select": {"id": "c"}}])
 
     def test_r15_a_removed_selected_row_clears_the_selection(self):
         m = self.machine([row("a"), row("b")])
         m.send("press", id="b")
-        self.assertEqual(m.send("setRows", rows=[row("a")]), [])
+        self.assertEqual(m.send("setRows", rows=[row("a")]), [{"deselect": {}}])
         self.assertIsNone(m.state["selected"])
+        self.assertEqual(m.send("setRows", rows=[]), [])
+
+    def test_r15_with_follow_on_and_no_row_left_the_selection_clears(self):
+        m = self.machine([row("a")], selectionFollowsFocus=True)
+        m.send("down")
+        self.assertEqual(m.send("setRows", rows=[]), [{"deselect": {}}])
+        self.assertEqual((m.state["focused"], m.state["selected"]), (None, None))
+
+    def test_r16_folding_is_per_character_lower_case(self):
+        self.assertEqual(ref.fold("ÉLAN Ω İ ΟΔΟΣ"), "élan ω i̇ οδοσ")
+        self.assertEqual(ref.fold("Straße"), "straße")  # lower-casing, not full case folding
+        m = self.machine([row("e", "Élan"), row("u", "über"), row("o", "ΟΔΟΣ")])
+        m.send("type", char="Ü")
+        self.assertEqual((m.state["focused"], m.state["typeahead"]), ("u", "ü"))
+        m.send("timerFired", token=1)
+        for ch in "οδοσ":
+            m.send("type", char=ch)
+        self.assertEqual(m.state["focused"], "o")
+
+    def test_r16_an_emoji_matches_only_itself(self):
+        m = self.machine([row("p", "😀 party"), row("g", "😃 games")])
+        m.send("type", char="😃")
+        self.assertEqual(m.state["focused"], "g")
+        m.send("type", char="😃")
+        self.assertEqual(m.state["focused"], "g")
+        m.send("timerFired", token=2)
+        m.send("type", char="😀")
+        self.assertEqual(m.state["focused"], "p")
+
+    def test_type_char_must_be_one_character(self):
+        m = self.machine([row("a")])
+        for bad in ("", "AB", "😀😀"):
+            with self.assertRaisesRegex(ref.BehaviourError, r"^listFocus: type\.char must be one character"):
+                m.send("type", char=bad)
 
 
 class LoadStateTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.m = Machine("loadState", {})
+        self.m = Machine("loadState", LOAD)
 
     def loaded(self, empty: bool = False) -> None:
         self.m.send("start")
         self.m.send("succeeded", token=1, empty=empty)
 
+    def refresh(self, by_user: bool = False) -> list:
+        return self.m.send("refresh", byUser=by_user)
+
+    def state(self, status: str, token: int, fetching: bool, error=None, by_user: bool = False) -> dict:
+        return {"status": status, "error": error, "token": token, "fetching": fetching, "refreshByUser": by_user}
+
     def test_r01_starts_as_loading_with_no_fetch(self):
-        self.assertEqual(self.m.state, {"status": "loading", "error": None, "token": 0, "fetching": False})
+        self.assertEqual(self.m.state, self.state("loading", 0, False))
 
     def test_r02_start_discards_from_any_state(self):
         self.assertEqual(self.m.send("start"), [{"fetch": {"token": 1}}])
         self.m.send("failed", token=1, message="x")
         self.assertEqual(self.m.send("start"), [{"fetch": {"token": 2}}])
-        self.assertEqual(self.m.state, {"status": "loading", "error": None, "token": 2, "fetching": True})
+        self.assertEqual(self.m.state, self.state("loading", 2, True))
         self.m.send("succeeded", token=2, empty=False)
-        self.m.send("refresh")
+        self.refresh(True)
         self.assertEqual(self.m.send("start"), [{"fetch": {"token": 4}}])
-        self.assertEqual(self.m.state["status"], "loading")
+        self.assertEqual(self.m.state, self.state("loading", 4, True))
 
     def test_r03_refresh_while_ready_keeps_the_content(self):
         self.loaded()
-        self.assertEqual(self.m.send("refresh"), [{"fetch": {"token": 2}}])
-        self.assertEqual(self.m.state["status"], "refreshing")
+        self.assertEqual(self.refresh(), [{"fetch": {"token": 2}}])
+        self.assertEqual(self.m.state, self.state("refreshing", 2, True))
 
     def test_r04_refresh_while_empty_stays_empty(self):
         self.loaded(empty=True)
-        self.assertEqual(self.m.send("refresh"), [{"fetch": {"token": 2}}])
-        self.assertEqual((self.m.state["status"], self.m.state["fetching"]), ("empty", True))
+        self.assertEqual(self.refresh(True), [{"fetch": {"token": 2}}])
+        self.assertEqual(self.m.state, self.state("empty", 2, True, by_user=True))
 
     def test_r05_refresh_while_error_is_a_retry(self):
         self.m.send("start")
         self.m.send("failed", token=1, message="x")
-        self.assertEqual(self.m.send("refresh"), [{"fetch": {"token": 2}}])
-        self.assertEqual(self.m.state, {"status": "loading", "error": None, "token": 2, "fetching": True})
+        self.assertEqual(self.refresh(True), [{"fetch": {"token": 2}}])
+        self.assertEqual(self.m.state, self.state("loading", 2, True))
 
-    def test_r06_refresh_in_flight_does_nothing(self):
+    def test_r06_refresh_in_flight_starts_no_fetch(self):
         self.m.send("start")
-        self.assertEqual(self.m.send("refresh"), [])
+        self.assertEqual(self.refresh(True), [])
+        self.assertEqual(self.m.state, self.state("loading", 1, True))
         self.m.send("succeeded", token=1, empty=False)
-        self.m.send("refresh")
-        before = copy.deepcopy(self.m.state)
-        self.assertEqual(self.m.send("refresh"), [])
-        self.assertEqual(self.m.state, before)
+        self.refresh()
+        self.assertEqual(self.refresh(), [])
+        self.assertEqual(self.refresh(True), [])
+        self.assertEqual(self.m.state, self.state("refreshing", 2, True, by_user=True))
 
     def test_r07_retry_only_from_error(self):
         self.m.send("start")
         self.assertEqual(self.m.send("retry"), [])
         self.m.send("failed", token=1, message="x")
         self.assertEqual(self.m.send("retry"), [{"fetch": {"token": 2}}])
-        self.assertEqual(self.m.state, {"status": "loading", "error": None, "token": 2, "fetching": True})
+        self.assertEqual(self.m.state, self.state("loading", 2, True))
         self.m.send("succeeded", token=2, empty=False)
         self.assertEqual(self.m.send("retry"), [])
 
     def test_r08_success_shows_empty_or_ready(self):
         self.loaded(empty=True)
-        self.assertEqual((self.m.state["status"], self.m.state["fetching"]), ("empty", False))
-        self.m.send("refresh")
+        self.assertEqual(self.m.state, self.state("empty", 1, False))
+        self.refresh()
         self.m.send("succeeded", token=2, empty=False)
         self.assertEqual(self.m.state["status"], "ready")
 
     def test_r09_failure_with_nothing_to_show_is_the_error_screen(self):
         self.m.send("start")
         self.assertEqual(self.m.send("failed", token=1, message="Couldn't load"), [])
-        self.assertEqual(self.m.state, {"status": "error", "error": "Couldn't load", "token": 1, "fetching": False})
+        self.assertEqual(self.m.state, self.state("error", 1, False, "Couldn't load"))
 
     def test_r10_failure_during_a_refresh_notifies_and_keeps_what_is_shown(self):
         for empty, status in ((False, "ready"), (True, "empty")):
             with self.subTest(empty=empty):
-                self.m = Machine("loadState", {})
+                self.m = Machine("loadState", {"notifyId": "members"})
                 self.loaded(empty=empty)
-                self.m.send("refresh")
-                self.assertEqual(self.m.send("failed", token=2, message="Offline"), [{"notify": {"message": "Offline"}}])
-                self.assertEqual(self.m.state, {"status": status, "error": None, "token": 2, "fetching": False})
+                self.refresh(True)
+                self.assertEqual(self.m.send("failed", token=2, message="Offline"),
+                                 [{"notify": {"id": "members", "message": "Offline"}}])
+                self.assertEqual(self.m.state, self.state(status, 2, False))
+
+    def test_r10_repeated_failures_reuse_the_notify_id(self):
+        self.loaded()
+        ids = []
+        for token in (2, 3):
+            self.refresh()
+            ids += [effect["notify"]["id"] for effect in self.m.send("failed", token=token, message="Offline")]
+        self.assertEqual(ids, ["load", "load"])
 
     def test_r11_stale_or_unexpected_results_do_nothing(self):
         self.loaded()
-        self.m.send("refresh")
+        self.refresh()
         self.m.send("start")
         before = copy.deepcopy(self.m.state)
         self.assertEqual(self.m.send("succeeded", token=2, empty=True), [])
@@ -678,6 +823,19 @@ class LoadStateTest(unittest.TestCase):
         before = copy.deepcopy(self.m.state)
         self.assertEqual(self.m.send("failed", token=3, message="late"), [])
         self.assertEqual(self.m.state, before)
+
+    def test_r12_refresh_by_user_lasts_while_its_fetch_is_in_flight(self):
+        self.loaded()
+        self.refresh(True)
+        self.assertTrue(self.m.state["refreshByUser"])
+        self.m.send("succeeded", token=2, empty=False)
+        self.assertFalse(self.m.state["refreshByUser"])
+        self.refresh(False)
+        self.assertFalse(self.m.state["refreshByUser"])
+        self.refresh(True)
+        self.assertTrue(self.m.state["refreshByUser"])
+        self.m.send("failed", token=3, message="x")
+        self.assertFalse(self.m.state["refreshByUser"])
 
 
 def pattern_files() -> dict:
@@ -692,7 +850,8 @@ def walk(pattern: str, data: dict):
     defaults = {key: value for key, value in data["params"].items() if not isinstance(value, str)}
     for key, value in data["params"].items():
         if isinstance(value, str):
-            defaults[key] = 1000  # a duration: the value does not change the shape of the run
+            # A duration does not change the shape of the run; any other string is literal.
+            defaults[key] = 1000 if value.startswith("motion.") else value
     for scenario in data["scenarios"]:
         params = {**defaults, **scenario.get("params", {})}
         state = ref.initial_state(pattern, params, scenario.get("initial"))

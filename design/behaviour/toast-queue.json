@@ -1,6 +1,6 @@
 {
   "pattern": "toastQueue",
-  "doc": "One toast on screen at a time; the rest wait in order. Each toast leaves on its own after its timer, or when the user dismisses it, and the timer stops while the pointer or focus is on it.",
+  "doc": "One toast on screen at a time; the rest wait in order. Each toast leaves on its own after its timer, or when the user dismisses it, and the timer stops while the host has a reason to pause.",
   "params": {
     "durationMs": "motion.toast",
     "durationWithActionMs": "motion.toastAction",
@@ -9,146 +9,746 @@
   "state": {
     "showing": "Toast | null: the toast on screen",
     "queue": "Toast[]: the toasts waiting, oldest first",
-    "paused": "bool: the pointer or focus is on the toast area; false whenever nothing is showing",
+    "paused": "bool: the host has a reason to pause (rule 15); false whenever nothing is showing",
     "token": "int: the token of the latest timer; only that one counts when it fires"
   },
   "events": {
-    "show": { "toast": "Toast: {id: string, tone: neutral | positive | danger, message: string, action: string | null (the action's label)}" },
-    "dismiss": { "id": "string: the toast's Dismiss button or its action was pressed" },
-    "timerFired": { "token": "int" },
+    "show": {
+      "toast": "Toast: {id: string (chosen by the caller, stable per subject, such as 'offline'), tone: neutral | positive | danger, message: string, action: string | null (the action's label)}"
+    },
+    "dismiss": {
+      "id": "string: the toast's Dismiss button or its action was pressed, or the caller withdrew it",
+      "focusInside": "bool: focus is inside the toast area"
+    },
+    "timerFired": {
+      "token": "int"
+    },
     "pause": {},
     "resume": {}
   },
   "effects": {
-    "startTimer": { "token": "int", "ms": "int" },
-    "cancelTimer": { "token": "int" },
-    "announce": { "message": "string", "politeness": "polite | assertive" }
+    "startTimer": {
+      "token": "int",
+      "ms": "int"
+    },
+    "cancelTimer": {
+      "token": "int"
+    },
+    "announce": {
+      "message": "string",
+      "politeness": "polite | assertive",
+      "action": "string | null: the action's label, read after the message"
+    },
+    "returnFocus": {}
   },
   "rules": [
     "One toast shows at a time. A toast shown while nothing is showing appears at once: it takes the next timer token, starts its timer and is announced.",
     "A toast shown while another is showing waits at the end of the queue, in the order it arrived. Nothing is announced until it shows.",
-    "A toast with the same id as the showing toast replaces it in place: the old timer is cancelled, a new one starts with a new token, and the new message is announced.",
+    "A toast with the same id as the showing toast replaces it in place: its old timer, if it has one, is cancelled and a new one starts with a new token. It is announced again only when its message or its action changed.",
     "A toast with the same id as a queued toast replaces that queued toast in its place in the queue, with no effects.",
-    "The queue holds at most maxQueued toasts. When a new toast would make it longer, the oldest queued toast that is not danger is dropped; when every queued toast is danger, the oldest is dropped.",
-    "A neutral or positive toast stays for durationMs. A toast with an action stays for durationWithActionMs.",
-    "A danger toast is announced assertively and every other toast politely. A danger toast still dismisses itself, after durationWithActionMs.",
-    "Dismissing the showing toast cancels its timer and shows the next queued toast, or nothing when the queue is empty.",
+    "At most maxQueued toasts wait. When a new toast arrives at a full queue, the oldest waiting toast that has no action and is not danger is dropped; if there is none, the oldest waiting toast that is not danger. The incoming toast and danger toasts are never dropped, so with only danger toasts waiting the queue grows past maxQueued.",
+    "A neutral or positive toast stays for durationMs. A neutral or positive toast with an action stays for durationWithActionMs.",
+    "A danger toast is announced assertively and every other toast politely. A danger toast without an action dismisses itself after durationWithActionMs. A danger toast with an action has no timer: it stays until dismissed, and the toasts behind it wait.",
+    "Dismissing the showing toast cancels its timer, if it has one, and shows the next queued toast, or nothing when the queue is empty.",
     "Dismissing a queued toast removes it from the queue. Dismissing an id that is neither showing nor queued does nothing.",
     "When the timer fires with the current token, the showing toast leaves as if dismissed, without a cancelTimer. A timer with any other token does nothing.",
-    "pause (the pointer or focus enters the toast) cancels the timer. pause while already paused, or while nothing is showing, does nothing.",
-    "resume (the pointer and focus have both left) starts the timer again with the full duration and a new token, never the time that was left. resume while not paused does nothing.",
-    "The pause belongs to the toast area, not to one toast: a toast that takes the place of a dismissed one while paused shows without a timer until resume. When the last toast leaves, the pause ends."
+    "pause cancels the timer, if there is one. pause while already paused, or while nothing is showing, does nothing.",
+    "resume starts the timer again, if the toast has one, with the full duration and a new token, never the time that was left. resume while not paused does nothing.",
+    "The pause belongs to the toast area, not to one toast: a toast that takes the place of a dismissed one while paused shows without a timer until resume. When the last toast leaves, the pause ends; a host whose reason to pause still holds when the next toast shows sends pause again.",
+    "Every announcement carries the toast's action label, or null, so a screen reader is told that an action exists.",
+    "The host combines every reason to pause into one pause and resume: the pointer on the toast area, focus inside it, the window hidden, and a modal layer open (which makes the toast unreachable). It sends pause when the first reason starts and resume when the last one ends.",
+    "When the showing toast is dismissed while focus is inside the toast area, returnFocus asks the host to put focus back where it was before it entered the area."
   ],
   "scenarios": [
     {
       "name": "second toast waits",
-      "covers": [1, 2, 6, 7, 10],
+      "covers": [
+        1,
+        2,
+        6,
+        7,
+        10,
+        14
+      ],
       "events": [
-        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
-        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
-        { "timerFired": { "token": 1 } },
-        { "timerFired": { "token": 1 } },
-        { "timerFired": { "token": 2 } }
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "danger",
+              "message": "Couldn't send",
+              "action": null
+            }
+          }
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "timerFired": {
+            "token": 2
+          }
+        }
       ]
     },
     {
       "name": "same id replaces the showing toast",
-      "covers": [3],
+      "covers": [
+        3
+      ],
       "events": [
-        { "show": { "toast": { "id": "up", "tone": "neutral", "message": "Uploading 1 file", "action": null } } },
-        { "show": { "toast": { "id": "up", "tone": "positive", "message": "Uploaded 1 file", "action": null } } },
-        { "timerFired": { "token": 1 } }
+        {
+          "show": {
+            "toast": {
+              "id": "up",
+              "tone": "neutral",
+              "message": "Uploading 1 file",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "up",
+              "tone": "positive",
+              "message": "Uploaded 1 file",
+              "action": null
+            }
+          }
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "same id and message is not announced again",
+      "covers": [
+        3
+      ],
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "off",
+              "tone": "neutral",
+              "message": "You are offline",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "off",
+              "tone": "neutral",
+              "message": "You are offline",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "off",
+              "tone": "neutral",
+              "message": "You are offline",
+              "action": "Retry"
+            }
+          }
+        }
       ]
     },
     {
       "name": "same id replaces a queued toast in place",
-      "covers": [4],
+      "covers": [
+        4
+      ],
       "events": [
-        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
-        { "show": { "toast": { "id": "b", "tone": "neutral", "message": "2 new messages", "action": null } } },
-        { "show": { "toast": { "id": "c", "tone": "neutral", "message": "Copied", "action": null } } },
-        { "show": { "toast": { "id": "b", "tone": "neutral", "message": "3 new messages", "action": null } } }
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "neutral",
+              "message": "2 new messages",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "c",
+              "tone": "neutral",
+              "message": "Copied",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "neutral",
+              "message": "3 new messages",
+              "action": null
+            }
+          }
+        }
       ]
     },
     {
-      "name": "a full queue drops the oldest non-danger toast",
-      "covers": [5],
+      "name": "a full queue drops the oldest plain toast and keeps undo",
+      "covers": [
+        5
+      ],
       "events": [
-        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
-        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
-        { "show": { "toast": { "id": "c", "tone": "neutral", "message": "Copied", "action": null } } },
-        { "show": { "toast": { "id": "d", "tone": "positive", "message": "Joined", "action": null } } },
-        { "show": { "toast": { "id": "e", "tone": "neutral", "message": "Pinned", "action": null } } }
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "u",
+              "tone": "neutral",
+              "message": "Message deleted",
+              "action": "Undo"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "danger",
+              "message": "Couldn't send",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "c",
+              "tone": "neutral",
+              "message": "Copied",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "d",
+              "tone": "positive",
+              "message": "Joined",
+              "action": null
+            }
+          }
+        }
       ]
     },
     {
-      "name": "a queue of danger toasts drops the oldest",
-      "covers": [5],
-      "params": { "maxQueued": 2 },
+      "name": "a full queue of actions drops the oldest non-danger",
+      "covers": [
+        5
+      ],
+      "params": {
+        "maxQueued": 2
+      },
       "events": [
-        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
-        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
-        { "show": { "toast": { "id": "c", "tone": "danger", "message": "Couldn't upload", "action": null } } },
-        { "show": { "toast": { "id": "d", "tone": "danger", "message": "Disconnected", "action": null } } }
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "u",
+              "tone": "neutral",
+              "message": "Message deleted",
+              "action": "Undo"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "v",
+              "tone": "neutral",
+              "message": "Channel archived",
+              "action": "Undo"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "w",
+              "tone": "neutral",
+              "message": "Pinned",
+              "action": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a queue of danger toasts grows and keeps the newcomer",
+      "covers": [
+        5
+      ],
+      "params": {
+        "maxQueued": 2
+      },
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "danger",
+              "message": "Couldn't send",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "c",
+              "tone": "danger",
+              "message": "Couldn't upload",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "u",
+              "tone": "neutral",
+              "message": "Message deleted",
+              "action": "Undo"
+            }
+          }
+        }
       ]
     },
     {
       "name": "a toast with an action stays longer",
-      "covers": [6, 8],
+      "covers": [
+        6,
+        8
+      ],
       "events": [
-        { "show": { "toast": { "id": "del", "tone": "neutral", "message": "Message deleted", "action": "Undo" } } },
-        { "show": { "toast": { "id": "a", "tone": "positive", "message": "Saved", "action": null } } },
-        { "dismiss": { "id": "del" } },
-        { "dismiss": { "id": "a" } }
+        {
+          "show": {
+            "toast": {
+              "id": "del",
+              "tone": "neutral",
+              "message": "Message deleted",
+              "action": "Undo"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "positive",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "dismiss": {
+            "id": "del",
+            "focusInside": false
+          }
+        },
+        {
+          "dismiss": {
+            "id": "a",
+            "focusInside": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a danger toast with an action stays until dismissed",
+      "covers": [
+        7,
+        14,
+        11,
+        12
+      ],
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "s",
+              "tone": "danger",
+              "message": "Couldn't send",
+              "action": "Retry"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "pause": {}
+        },
+        {
+          "resume": {}
+        },
+        {
+          "dismiss": {
+            "id": "s",
+            "focusInside": false
+          }
+        }
       ]
     },
     {
       "name": "dismissing a queued or unknown toast",
-      "covers": [9],
+      "covers": [
+        9
+      ],
       "events": [
-        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
-        { "show": { "toast": { "id": "b", "tone": "neutral", "message": "Copied", "action": null } } },
-        { "dismiss": { "id": "b" } },
-        { "dismiss": { "id": "zzz" } },
-        { "timerFired": { "token": 1 } }
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "neutral",
+              "message": "Copied",
+              "action": null
+            }
+          }
+        },
+        {
+          "dismiss": {
+            "id": "b",
+            "focusInside": false
+          }
+        },
+        {
+          "dismiss": {
+            "id": "zzz",
+            "focusInside": false
+          }
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        }
       ]
     },
     {
       "name": "pause and resume restart the full duration",
-      "covers": [11, 12],
+      "covers": [
+        11,
+        12,
+        15
+      ],
       "events": [
-        { "pause": {} },
-        { "resume": {} },
-        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
-        { "pause": {} },
-        { "pause": {} },
-        { "timerFired": { "token": 1 } },
-        { "resume": {} },
-        { "resume": {} },
-        { "timerFired": { "token": 1 } },
-        { "timerFired": { "token": 2 } }
+        {
+          "pause": {}
+        },
+        {
+          "resume": {}
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "pause": {}
+        },
+        {
+          "pause": {}
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "resume": {}
+        },
+        {
+          "resume": {}
+        },
+        {
+          "timerFired": {
+            "token": 1
+          }
+        },
+        {
+          "timerFired": {
+            "token": 2
+          }
+        }
       ]
     },
     {
       "name": "the pause carries to the next toast and ends with the last",
-      "covers": [13, 8],
+      "covers": [
+        13,
+        8
+      ],
       "events": [
-        { "show": { "toast": { "id": "a", "tone": "neutral", "message": "Saved", "action": null } } },
-        { "show": { "toast": { "id": "b", "tone": "danger", "message": "Couldn't send", "action": null } } },
-        { "pause": {} },
-        { "dismiss": { "id": "a" } },
-        { "dismiss": { "id": "b" } },
-        { "show": { "toast": { "id": "c", "tone": "neutral", "message": "Copied", "action": null } } }
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "danger",
+              "message": "Couldn't send",
+              "action": null
+            }
+          }
+        },
+        {
+          "pause": {}
+        },
+        {
+          "dismiss": {
+            "id": "a",
+            "focusInside": false
+          }
+        },
+        {
+          "dismiss": {
+            "id": "b",
+            "focusInside": false
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "c",
+              "tone": "neutral",
+              "message": "Copied",
+              "action": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the host pauses again for a toast under the pointer",
+      "covers": [
+        13,
+        15
+      ],
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "pause": {}
+        },
+        {
+          "dismiss": {
+            "id": "a",
+            "focusInside": false
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "b",
+              "tone": "neutral",
+              "message": "Copied",
+              "action": null
+            }
+          }
+        },
+        {
+          "pause": {}
+        },
+        {
+          "resume": {}
+        }
       ]
     },
     {
       "name": "replacing the showing toast while paused",
-      "covers": [3, 13],
+      "covers": [
+        3,
+        13
+      ],
       "events": [
-        { "show": { "toast": { "id": "up", "tone": "neutral", "message": "Uploading", "action": null } } },
-        { "pause": {} },
-        { "show": { "toast": { "id": "up", "tone": "positive", "message": "Uploaded", "action": null } } },
-        { "resume": {} }
+        {
+          "show": {
+            "toast": {
+              "id": "up",
+              "tone": "neutral",
+              "message": "Uploading",
+              "action": null
+            }
+          }
+        },
+        {
+          "pause": {}
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "up",
+              "tone": "positive",
+              "message": "Uploaded",
+              "action": null
+            }
+          }
+        },
+        {
+          "resume": {}
+        }
+      ]
+    },
+    {
+      "name": "focus goes back when a focused toast is dismissed",
+      "covers": [
+        16,
+        13
+      ],
+      "events": [
+        {
+          "show": {
+            "toast": {
+              "id": "del",
+              "tone": "neutral",
+              "message": "Message deleted",
+              "action": "Undo"
+            }
+          }
+        },
+        {
+          "show": {
+            "toast": {
+              "id": "a",
+              "tone": "neutral",
+              "message": "Saved",
+              "action": null
+            }
+          }
+        },
+        {
+          "pause": {}
+        },
+        {
+          "dismiss": {
+            "id": "del",
+            "focusInside": true
+          }
+        },
+        {
+          "dismiss": {
+            "id": "a",
+            "focusInside": false
+          }
+        }
       ]
     }
   ]

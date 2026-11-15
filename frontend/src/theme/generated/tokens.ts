@@ -64,7 +64,7 @@ export const tokens = {
     fast: 120,
     base: 200,
     slow: 320,
-    typeahead: 500,
+    typeahead: 1000,
     toast: 4000,
     toastAction: 8000,
   },

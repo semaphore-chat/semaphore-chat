@@ -86,11 +86,11 @@ class LoadTest(TempPatterns):
 
     def test_duplicate_scenario_name(self):
         self.edit("load-state", lambda d: d["scenarios"].append(dict(d["scenarios"][0])))
-        self.assert_error("behaviour.loadState.scenarios[8].name: duplicate scenario name")
+        self.assert_error("behaviour.loadState.scenarios[11].name: duplicate scenario name")
 
     def test_every_rule_must_be_covered(self):
         self.edit("load-state", lambda d: d["rules"].append("A new rule nothing covers."))
-        self.assert_error("behaviour.loadState.rules: no scenario covers rule 12")
+        self.assert_error("behaviour.loadState.rules: no scenario covers rule 13")
 
     def test_covers_must_name_real_rules(self):
         self.edit("load-state", lambda d: d["scenarios"][0]["covers"].append(99))
@@ -98,7 +98,7 @@ class LoadTest(TempPatterns):
 
     def test_duplicate_rule(self):
         self.edit("load-state", lambda d: d["rules"].append(d["rules"][0]))
-        self.assert_error("behaviour.loadState.rules[11]: duplicate rule")
+        self.assert_error("behaviour.loadState.rules[12]: duplicate rule")
 
     def test_file_name_must_match_the_pattern(self):
         self.edit("load-state", lambda d: d.__setitem__("pattern", "loadingState"))
@@ -113,6 +113,18 @@ class LoadTest(TempPatterns):
     def test_unknown_motion_token(self):
         self.edit("toast-queue", lambda d: d["params"].__setitem__("durationMs", "motion.nope"))
         self.assert_error("behaviour.toastQueue.params.durationMs: unknown token 'motion.nope'")
+
+    def test_a_string_param_is_literal_unless_it_names_motion(self):
+        load = next(p for p in self.load() if p["pattern"] == "loadState")
+        self.assertEqual(load["resolved"], {"notifyId": "load"})
+        self.edit("load-state", lambda d: d["params"].__setitem__("notifyId", "motion."))
+        self.assert_error("behaviour.loadState.params.notifyId: expected motion.<name>")
+        self.edit("load-state", lambda d: d["params"].__setitem__("notifyId", ""))
+        self.assert_error("behaviour.loadState.params.notifyId: expected a non-empty string")
+
+    def test_lone_surrogates_are_rejected(self):
+        with self.assertRaisesRegex(gen.TokenError, r"^x: expected a string of Unicode scalar values"):
+            gb._value("x", "a\ud83d")
 
     def test_scenario_params_must_be_declared(self):
         self.edit("list-focus", lambda d: d["scenarios"][0].__setitem__("params", {"loop": True}))
@@ -186,7 +198,7 @@ class BuildTest(unittest.TestCase):
 
     def test_scenario_params_override_the_defaults(self):
         wrap = next(v for v in self.built["listFocus"]["vectors"] if v["name"] == "wrap goes round")
-        self.assertEqual(wrap["params"], {"selectionFollowsFocus": False, "typeaheadMs": 500, "wrap": True})
+        self.assertEqual(wrap["params"], {"selectionFollowsFocus": False, "typeaheadMs": 1000, "wrap": True})
         self.assertEqual(self.built["listFocus"]["params"]["wrap"], False)
 
     def test_the_first_toast_vector_matches_the_worked_example(self):
@@ -194,7 +206,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(
             first[0]["effects"],
             [{"startTimer": {"ms": 4000, "token": 1}},
-             {"announce": {"message": "Saved", "politeness": "polite"}}],
+             {"announce": {"action": None, "message": "Saved", "politeness": "polite"}}],
         )
         self.assertEqual(first[3]["effects"], [])
 
@@ -297,7 +309,7 @@ class RunTest(TempPatterns):
 
     def test_a_changed_scenario_makes_the_outputs_stale(self):
         self.assertEqual(gen.run(self.root, check=False), 0)
-        self.edit("load-state", lambda d: d["scenarios"][0]["events"].append({"refresh": {}}))
+        self.edit("load-state", lambda d: d["scenarios"][0]["events"].append({"refresh": {"byUser": True}}))
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
             self.assertEqual(gen.run(self.root, check=True), 1)

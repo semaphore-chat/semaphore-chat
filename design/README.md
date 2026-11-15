@@ -74,8 +74,9 @@ reference and its parameters and regenerate.
 `design/behaviour/<pattern>.json` holds one interaction pattern each (toast
 queue, overlay stack, confirm destructive, list focus, load state), named in
 kebab case after its camelCase `pattern`. A file holds `pattern`, `doc`,
-`params` (a whole number, a boolean, or `motion.<name>`, which resolves to that
-token's milliseconds), `state`, `events` and `effects` (name -> field -> type
+`params` (a whole number, a boolean, `motion.<name>`, which resolves to that
+token's milliseconds, or any other non-empty string, which is a literal such as
+an id), `state`, `events` and `effects` (name -> field -> type
 description), `rules` (numbered sentences, from 1) and `scenarios`. The
 plain-language guide is [`guide/behaviour.md`](guide/behaviour.md).
 
@@ -102,8 +103,9 @@ expectations are never typed by hand. **The vectors are the contract for the
 ports:** a port that disagrees with one is wrong.
 
 **Canonical form.** Behaviour data holds only objects, lists, strings, whole
-numbers, booleans and null; the validator rejects fractions and strings with
-control characters (U+0000 to U+001F). Its canonical JSON form, which the Rust
+numbers (at most 2^53 - 1 either way), booleans and null; the validator rejects
+fractions, strings with control characters (U+0000 to U+001F) and strings with
+lone surrogates (every string is Unicode scalar values). Its canonical JSON form, which the Rust
 output uses and a port's tests produce to compare:
 
 - object keys sorted by code point (all keys are ASCII camelCase names);
@@ -113,6 +115,10 @@ output uses and a port's tests produce to compare:
 - strings in double quotes, with only `"` and `\` escaped (as `\"` and
   `\\`); every other character as itself, in UTF-8;
 - `null`, `true`, `false`; list order kept.
+
+Every value has exactly one canonical text, and a reader of canonical text
+accepts nothing else: it rejects `-0` (zero is `0`), keys out of order or
+repeated, whitespace, other escapes (`\n`, `\u0041`), fractions and exponents.
 
 In Python this is `json.dumps(value, sort_keys=True, separators=(",", ":"),
 ensure_ascii=False)` (`gen_behaviour.canonical`). The JSON and TypeScript

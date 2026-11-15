@@ -71,6 +71,8 @@ def _value(path: str, value: object) -> None:
     if isinstance(value, str):
         if any(ord(ch) < 0x20 for ch in value):
             _fail(path, f"expected a string without control characters, got {value!r}")
+        if any(0xD800 <= ord(ch) <= 0xDFFF for ch in value):
+            _fail(path, f"expected a string of Unicode scalar values, got a lone surrogate in {value!r}")
         return
     if isinstance(value, list):
         for index, item in enumerate(value):
@@ -107,18 +109,25 @@ def _text(path: str, value: object) -> str:
 
 
 def _param(path: str, value: object, motion: dict) -> object:
-    """A parameter value, with a `motion.<name>` reference resolved to its milliseconds."""
+    """A parameter value, with a `motion.<name>` reference resolved to its milliseconds.
+
+    Any other string is a literal (an id, such as `notifyId`)."""
     if isinstance(value, str):
         match = TOKEN_REF.fullmatch(value)
         if not match:
-            _fail(path, f"expected a number, a boolean or motion.<name>, got {value!r}")
+            if value.startswith("motion."):
+                _fail(path, f"expected motion.<name>, got {value!r}")
+            if not value:
+                _fail(path, "expected a non-empty string")
+            _value(path, value)
+            return value
         if match.group(1) not in motion:
             _fail(path, f"unknown token {value!r}")
         return int(motion[match.group(1)])
     if isinstance(value, bool):
         return value
     if isinstance(value, float) or not isinstance(value, int) or value < 0:
-        _fail(path, f"expected a whole number from 0, a boolean or motion.<name>, got {value!r}")
+        _fail(path, f"expected a whole number from 0, a boolean, a string or motion.<name>, got {value!r}")
     _value(path, value)
     return value
 
@@ -407,7 +416,8 @@ RS_PRELUDE = """\
 //! by code point; no whitespace; whole numbers only, in plain decimal (`-` for a negative, no
 //! leading zeros, no exponent); strings in double quotes with only `"` and `\\` escaped, as `\\"`
 //! and `\\\\` (behaviour data has no control characters), other characters as UTF-8; `null`,
-//! `true` and `false`. See `design/README.md`, "Behaviour".
+//! `true` and `false`. A reader of canonical text rejects anything else, such as `-0` or keys
+//! out of order. See `design/README.md`, "Behaviour".
 
 /// One step of a vector: the event, then the full state and the ordered effects after it.
 pub(crate) struct Step {

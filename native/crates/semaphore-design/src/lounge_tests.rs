@@ -12,7 +12,7 @@ fn lounge_shape_and_layout_values() {
     assert_eq!(MOTION_FAST_MS, 120);
     assert_eq!(
         (MOTION_TYPEAHEAD_MS, MOTION_TOAST_MS, MOTION_TOAST_ACTION_MS),
-        (500, 4000, 8000)
+        (1000, 4000, 8000)
     );
 }
 

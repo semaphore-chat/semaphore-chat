@@ -132,7 +132,7 @@ class MotionTokensTest(unittest.TestCase):
         # The toast and typeahead timings the behaviour patterns refer to.
         motion = gen.load(REAL)["motion"]
         self.assertEqual(
-            (motion["typeahead"], motion["toast"], motion["toastAction"]), (500, 4000, 8000)
+            (motion["typeahead"], motion["toast"], motion["toastAction"]), (1000, 4000, 8000)
         )
         self.assertIn("pub const MOTION_TOAST_ACTION_MS: u32 = 8000;", gen.render_rs(gen.load(REAL)))
         self.assertIn("toastAction: 8000,", gen.render_ts(gen.load(REAL)))

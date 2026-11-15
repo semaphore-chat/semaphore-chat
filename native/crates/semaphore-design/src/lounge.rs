@@ -178,7 +178,7 @@ pub const MOTION_BASE_MS: u32 = 200;
 pub const MOTION_SLOW_MS: u32 = 320;
 
 /// `motion.typeahead`, ms.
-pub const MOTION_TYPEAHEAD_MS: u32 = 500;
+pub const MOTION_TYPEAHEAD_MS: u32 = 1000;
 
 /// `motion.toast`, ms.
 pub const MOTION_TOAST_MS: u32 = 4000;

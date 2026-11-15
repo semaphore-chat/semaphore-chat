@@ -1111,9 +1111,10 @@ Stories: `kit-sheet--all-communities`, `kit-sheet--with-actions`,
 
 The web kit gets a lot of behaviour for free from the browser and from MUI, and
 none of it is written down in the components. The native client draws every
-control itself, so it has to implement each behaviour below on its own. They
-will become shared behaviour tables that both clients are tested against; until
-then this list is the spec for the native side.
+control itself, so it has to implement each behaviour below on its own. Some of
+it is now in the shared behaviour tables (see [Behaviour](behaviour.md)), which
+both clients are tested against. For the rest, this list is the spec for the
+native side.
 
 ### Select menu
 
@@ -1250,8 +1251,10 @@ then this list is the spec for the native side.
 - Escape is ignored while an input method is composing text, and only the
   topmost layer handles it.
 - When it closes, focus goes back to whatever had it before the menu opened.
-- Typing letters collects into a prefix for about half a second; the same letter
-  again steps through the matches. Matching is not case sensitive.
+- Typing letters collects into a prefix; the same letter again steps through the
+  matches. Matching is not case sensitive. MUI resets the prefix after about half
+  a second; the shared rule is one second (the typeahead timing, see
+  [List focus](behaviour.md#list-focus)).
 - While the menu is open the page behind it does not scroll, and the page is
   hidden from assistive technology.
 - The menu sits just below the anchor, or just above it for the `top` placements.

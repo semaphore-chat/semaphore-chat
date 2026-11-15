@@ -544,7 +544,7 @@ export const behaviourVectors = {
   listFocus: {
     params: {
       selectionFollowsFocus: false,
-      typeaheadMs: 500,
+      typeaheadMs: 1000,
       wrap: false,
     },
     initial: {
@@ -559,7 +559,7 @@ export const behaviourVectors = {
         name: 'arrows skip disabled rows and stop at the ends',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -838,7 +838,7 @@ export const behaviourVectors = {
         name: 'up with nothing focused takes the last row',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -960,7 +960,7 @@ export const behaviourVectors = {
         name: 'wrap goes round',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: true,
         },
         initial: {
@@ -1111,7 +1111,7 @@ export const behaviourVectors = {
         name: 'empty and all-disabled lists do nothing',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -1317,7 +1317,7 @@ export const behaviourVectors = {
         name: 'home and end',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -1459,7 +1459,7 @@ export const behaviourVectors = {
         name: 'focus entering the list',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -1682,7 +1682,7 @@ export const behaviourVectors = {
         name: 'focus entering goes to the selected row',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -1758,7 +1758,7 @@ export const behaviourVectors = {
         name: 'focus entering skips a disabled selected row',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -1829,7 +1829,11 @@ export const behaviourVectors = {
               token: 0,
               typeahead: '',
             },
-            effects: [],
+            effects: [
+              {
+                deselect: {},
+              },
+            ],
           },
         ],
       },
@@ -1837,7 +1841,7 @@ export const behaviourVectors = {
         name: 'typeahead',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -1942,7 +1946,7 @@ export const behaviourVectors = {
             effects: [
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 1,
                 },
               },
@@ -1990,7 +1994,7 @@ export const behaviourVectors = {
               },
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 2,
                 },
               },
@@ -2038,7 +2042,7 @@ export const behaviourVectors = {
               },
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 3,
                 },
               },
@@ -2153,7 +2157,7 @@ export const behaviourVectors = {
             effects: [
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 4,
                 },
               },
@@ -2201,7 +2205,7 @@ export const behaviourVectors = {
               },
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 5,
                 },
               },
@@ -2213,7 +2217,7 @@ export const behaviourVectors = {
         name: 'a repeated letter steps through the matches',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -2333,7 +2337,7 @@ export const behaviourVectors = {
             effects: [
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 1,
                 },
               },
@@ -2386,7 +2390,7 @@ export const behaviourVectors = {
               },
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 2,
                 },
               },
@@ -2439,7 +2443,7 @@ export const behaviourVectors = {
               },
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 3,
                 },
               },
@@ -2492,7 +2496,7 @@ export const behaviourVectors = {
               },
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 4,
                 },
               },
@@ -2504,7 +2508,7 @@ export const behaviourVectors = {
         name: 'selection follows focus',
         params: {
           selectionFollowsFocus: true,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -2663,7 +2667,7 @@ export const behaviourVectors = {
             effects: [
               {
                 startTimer: {
-                  ms: 500,
+                  ms: 1000,
                   token: 1,
                 },
               },
@@ -2704,7 +2708,7 @@ export const behaviourVectors = {
         name: 'a removed row moves focus to the next row, then the previous',
         params: {
           selectionFollowsFocus: false,
-          typeaheadMs: 500,
+          typeaheadMs: 1000,
           wrap: false,
         },
         initial: {
@@ -2859,7 +2863,11 @@ export const behaviourVectors = {
               token: 0,
               typeahead: '',
             },
-            effects: [],
+            effects: [
+              {
+                deselect: {},
+              },
+            ],
           },
           {
             event: {
@@ -2952,23 +2960,902 @@ export const behaviourVectors = {
           },
         ],
       },
+      {
+        name: 'selection follows a removed row\'s focus when it follows focus',
+        params: {
+          selectionFollowsFocus: true,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'a',
+                    label: 'Alpha',
+                  },
+                  {
+                    disabled: false,
+                    id: 'b',
+                    label: 'Beta',
+                  },
+                  {
+                    disabled: false,
+                    id: 'c',
+                    label: 'Gamma',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'a',
+                  label: 'Alpha',
+                },
+                {
+                  disabled: false,
+                  id: 'b',
+                  label: 'Beta',
+                },
+                {
+                  disabled: false,
+                  id: 'c',
+                  label: 'Gamma',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              down: {},
+            },
+            state: {
+              focused: 'a',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'a',
+                  label: 'Alpha',
+                },
+                {
+                  disabled: false,
+                  id: 'b',
+                  label: 'Beta',
+                },
+                {
+                  disabled: false,
+                  id: 'c',
+                  label: 'Gamma',
+                },
+              ],
+              selected: 'a',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [
+              {
+                select: {
+                  id: 'a',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              down: {},
+            },
+            state: {
+              focused: 'b',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'a',
+                  label: 'Alpha',
+                },
+                {
+                  disabled: false,
+                  id: 'b',
+                  label: 'Beta',
+                },
+                {
+                  disabled: false,
+                  id: 'c',
+                  label: 'Gamma',
+                },
+              ],
+              selected: 'b',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [
+              {
+                select: {
+                  id: 'b',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'a',
+                    label: 'Alpha',
+                  },
+                  {
+                    disabled: false,
+                    id: 'c',
+                    label: 'Gamma',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: 'c',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'a',
+                  label: 'Alpha',
+                },
+                {
+                  disabled: false,
+                  id: 'c',
+                  label: 'Gamma',
+                },
+              ],
+              selected: 'c',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [
+              {
+                select: {
+                  id: 'c',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: true,
+                    id: 'a',
+                    label: 'Alpha',
+                  },
+                  {
+                    disabled: true,
+                    id: 'c',
+                    label: 'Gamma',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: true,
+                  id: 'a',
+                  label: 'Alpha',
+                },
+                {
+                  disabled: true,
+                  id: 'c',
+                  label: 'Gamma',
+                },
+              ],
+              selected: 'c',
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'typeahead with emoji labels',
+        params: {
+          selectionFollowsFocus: false,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'party',
+                    label: '😀 party',
+                  },
+                  {
+                    disabled: false,
+                    id: 'games',
+                    label: '😃 games',
+                  },
+                  {
+                    disabled: false,
+                    id: 'music',
+                    label: '🎵 music',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'party',
+                  label: '😀 party',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: '😃 games',
+                },
+                {
+                  disabled: false,
+                  id: 'music',
+                  label: '🎵 music',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: '😃',
+              },
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'party',
+                  label: '😀 party',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: '😃 games',
+                },
+                {
+                  disabled: false,
+                  id: 'music',
+                  label: '🎵 music',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: '😃',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              type: {
+                char: '😃',
+              },
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'party',
+                  label: '😀 party',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: '😃 games',
+                },
+                {
+                  disabled: false,
+                  id: 'music',
+                  label: '🎵 music',
+                },
+              ],
+              selected: null,
+              token: 2,
+              typeahead: '😃😃',
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              focused: 'games',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'party',
+                  label: '😀 party',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: '😃 games',
+                },
+                {
+                  disabled: false,
+                  id: 'music',
+                  label: '🎵 music',
+                },
+              ],
+              selected: null,
+              token: 2,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: '😀',
+              },
+            },
+            state: {
+              focused: 'party',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'party',
+                  label: '😀 party',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: '😃 games',
+                },
+                {
+                  disabled: false,
+                  id: 'music',
+                  label: '🎵 music',
+                },
+              ],
+              selected: null,
+              token: 3,
+              typeahead: '😀',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 3,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              type: {
+                char: '🎵',
+              },
+            },
+            state: {
+              focused: 'party',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'party',
+                  label: '😀 party',
+                },
+                {
+                  disabled: false,
+                  id: 'games',
+                  label: '😃 games',
+                },
+                {
+                  disabled: false,
+                  id: 'music',
+                  label: '🎵 music',
+                },
+              ],
+              selected: null,
+              token: 4,
+              typeahead: '😀🎵',
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 3,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 4,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'typeahead with non-ASCII letters',
+        params: {
+          selectionFollowsFocus: false,
+          typeaheadMs: 1000,
+          wrap: false,
+        },
+        initial: {
+          focused: null,
+          rows: [],
+          selected: null,
+          token: 0,
+          typeahead: '',
+        },
+        steps: [
+          {
+            event: {
+              setRows: {
+                rows: [
+                  {
+                    disabled: false,
+                    id: 'e',
+                    label: 'Élan',
+                  },
+                  {
+                    disabled: false,
+                    id: 'u',
+                    label: 'über',
+                  },
+                  {
+                    disabled: false,
+                    id: 'o',
+                    label: 'Ωmega',
+                  },
+                  {
+                    disabled: false,
+                    id: 's',
+                    label: 'straße',
+                  },
+                ],
+              },
+            },
+            state: {
+              focused: null,
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 0,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: 'Ü',
+              },
+            },
+            state: {
+              focused: 'u',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: 'ü',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 1,
+              },
+            },
+            state: {
+              focused: 'u',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 1,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: 'é',
+              },
+            },
+            state: {
+              focused: 'e',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 2,
+              typeahead: 'é',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 2,
+              },
+            },
+            state: {
+              focused: 'e',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 2,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: 'ω',
+              },
+            },
+            state: {
+              focused: 'o',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 3,
+              typeahead: 'ω',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 3,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 3,
+              },
+            },
+            state: {
+              focused: 'o',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 3,
+              typeahead: '',
+            },
+            effects: [],
+          },
+          {
+            event: {
+              type: {
+                char: 'S',
+              },
+            },
+            state: {
+              focused: 's',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 4,
+              typeahead: 's',
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 4,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              type: {
+                char: 't',
+              },
+            },
+            state: {
+              focused: 's',
+              rows: [
+                {
+                  disabled: false,
+                  id: 'e',
+                  label: 'Élan',
+                },
+                {
+                  disabled: false,
+                  id: 'u',
+                  label: 'über',
+                },
+                {
+                  disabled: false,
+                  id: 'o',
+                  label: 'Ωmega',
+                },
+                {
+                  disabled: false,
+                  id: 's',
+                  label: 'straße',
+                },
+              ],
+              selected: null,
+              token: 5,
+              typeahead: 'st',
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 4,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 1000,
+                  token: 5,
+                },
+              },
+            ],
+          },
+        ],
+      },
     ],
   },
   loadState: {
-    params: {},
+    params: {
+      notifyId: 'load',
+    },
     initial: {
       error: null,
       fetching: false,
+      refreshByUser: false,
       status: 'loading',
       token: 0,
     },
     vectors: [
       {
         name: 'first load shows the content',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -2980,6 +3867,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3001,6 +3889,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 1,
             },
@@ -3010,10 +3899,13 @@ export const behaviourVectors = {
       },
       {
         name: 'first load is empty',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -3025,6 +3917,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3046,6 +3939,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'empty',
               token: 1,
             },
@@ -3055,10 +3949,13 @@ export const behaviourVectors = {
       },
       {
         name: 'error then retry',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -3070,6 +3967,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3091,6 +3989,7 @@ export const behaviourVectors = {
             state: {
               error: 'Couldn\'t load messages',
               fetching: false,
+              refreshByUser: false,
               status: 'error',
               token: 1,
             },
@@ -3103,6 +4002,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 2,
             },
@@ -3124,6 +4024,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 2,
             },
@@ -3136,6 +4037,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 2,
             },
@@ -3145,10 +4047,13 @@ export const behaviourVectors = {
       },
       {
         name: 'refresh keeps the content',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -3160,6 +4065,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3181,6 +4087,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 1,
             },
@@ -3188,11 +4095,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'refreshing',
               token: 2,
             },
@@ -3206,11 +4116,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'refreshing',
               token: 2,
             },
@@ -3226,6 +4139,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'empty',
               token: 2,
             },
@@ -3235,10 +4149,13 @@ export const behaviourVectors = {
       },
       {
         name: 'an error during a refresh keeps the content',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -3250,6 +4167,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3271,6 +4189,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 1,
             },
@@ -3278,11 +4197,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'refreshing',
               token: 2,
             },
@@ -3304,12 +4226,14 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 2,
             },
             effects: [
               {
                 notify: {
+                  id: 'load',
                   message: 'You are offline',
                 },
               },
@@ -3319,10 +4243,13 @@ export const behaviourVectors = {
       },
       {
         name: 'refreshing an empty screen',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -3334,6 +4261,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3355,6 +4283,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'empty',
               token: 1,
             },
@@ -3362,11 +4291,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'empty',
               token: 2,
             },
@@ -3380,11 +4312,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'empty',
               token: 2,
             },
@@ -3400,12 +4335,14 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'empty',
               token: 2,
             },
             effects: [
               {
                 notify: {
+                  id: 'load',
                   message: 'You are offline',
                 },
               },
@@ -3413,11 +4350,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'empty',
               token: 3,
             },
@@ -3439,6 +4379,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 3,
             },
@@ -3448,10 +4389,13 @@ export const behaviourVectors = {
       },
       {
         name: 'refresh while error is a retry',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -3463,6 +4407,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3476,11 +4421,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3496,6 +4444,7 @@ export const behaviourVectors = {
             state: {
               error: 'Couldn\'t load members',
               fetching: false,
+              refreshByUser: false,
               status: 'error',
               token: 1,
             },
@@ -3503,11 +4452,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 2,
             },
@@ -3523,10 +4475,13 @@ export const behaviourVectors = {
       },
       {
         name: 'start discards a fetch in flight',
-        params: {},
+        params: {
+          notifyId: 'load',
+        },
         initial: {
           error: null,
           fetching: false,
+          refreshByUser: false,
           status: 'loading',
           token: 0,
         },
@@ -3538,6 +4493,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 1,
             },
@@ -3559,6 +4515,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'ready',
               token: 1,
             },
@@ -3566,11 +4523,14 @@ export const behaviourVectors = {
           },
           {
             event: {
-              refresh: {},
+              refresh: {
+                byUser: false,
+              },
             },
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'refreshing',
               token: 2,
             },
@@ -3589,6 +4549,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 3,
             },
@@ -3610,6 +4571,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 3,
             },
@@ -3625,6 +4587,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: true,
+              refreshByUser: false,
               status: 'loading',
               token: 3,
             },
@@ -3640,6 +4603,7 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'empty',
               token: 3,
             },
@@ -3655,10 +4619,398 @@ export const behaviourVectors = {
             state: {
               error: null,
               fetching: false,
+              refreshByUser: false,
               status: 'empty',
               token: 3,
             },
             effects: [],
+          },
+        ],
+      },
+      {
+        name: 'a user refresh shows busy on its control',
+        params: {
+          notifyId: 'load',
+        },
+        initial: {
+          error: null,
+          fetching: false,
+          refreshByUser: false,
+          status: 'loading',
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              start: {},
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'loading',
+              token: 1,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              succeeded: {
+                empty: true,
+                token: 1,
+              },
+            },
+            state: {
+              error: null,
+              fetching: false,
+              refreshByUser: false,
+              status: 'empty',
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              refresh: {
+                byUser: true,
+              },
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: true,
+              status: 'empty',
+              token: 2,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              succeeded: {
+                empty: false,
+                token: 2,
+              },
+            },
+            state: {
+              error: null,
+              fetching: false,
+              refreshByUser: false,
+              status: 'ready',
+              token: 2,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              refresh: {
+                byUser: false,
+              },
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'refreshing',
+              token: 3,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 3,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              refresh: {
+                byUser: true,
+              },
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: true,
+              status: 'refreshing',
+              token: 3,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              failed: {
+                message: 'You are offline',
+                token: 3,
+              },
+            },
+            state: {
+              error: null,
+              fetching: false,
+              refreshByUser: false,
+              status: 'ready',
+              token: 3,
+            },
+            effects: [
+              {
+                notify: {
+                  id: 'load',
+                  message: 'You are offline',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'repeated refresh failures share one toast id',
+        params: {
+          notifyId: 'members-load',
+        },
+        initial: {
+          error: null,
+          fetching: false,
+          refreshByUser: false,
+          status: 'loading',
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              start: {},
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'loading',
+              token: 1,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              succeeded: {
+                empty: false,
+                token: 1,
+              },
+            },
+            state: {
+              error: null,
+              fetching: false,
+              refreshByUser: false,
+              status: 'ready',
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              refresh: {
+                byUser: false,
+              },
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'refreshing',
+              token: 2,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              failed: {
+                message: 'You are offline',
+                token: 2,
+              },
+            },
+            state: {
+              error: null,
+              fetching: false,
+              refreshByUser: false,
+              status: 'ready',
+              token: 2,
+            },
+            effects: [
+              {
+                notify: {
+                  id: 'members-load',
+                  message: 'You are offline',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              refresh: {
+                byUser: false,
+              },
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'refreshing',
+              token: 3,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 3,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              failed: {
+                message: 'You are offline',
+                token: 3,
+              },
+            },
+            state: {
+              error: null,
+              fetching: false,
+              refreshByUser: false,
+              status: 'ready',
+              token: 3,
+            },
+            effects: [
+              {
+                notify: {
+                  id: 'members-load',
+                  message: 'You are offline',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'a user refresh while loading stays a load',
+        params: {
+          notifyId: 'load',
+        },
+        initial: {
+          error: null,
+          fetching: false,
+          refreshByUser: false,
+          status: 'loading',
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              start: {},
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'loading',
+              token: 1,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              refresh: {
+                byUser: true,
+              },
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'loading',
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              start: {},
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'loading',
+              token: 2,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              failed: {
+                message: 'Couldn\'t load',
+                token: 2,
+              },
+            },
+            state: {
+              error: 'Couldn\'t load',
+              fetching: false,
+              refreshByUser: false,
+              status: 'error',
+              token: 2,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              retry: {},
+            },
+            state: {
+              error: null,
+              fetching: true,
+              refreshByUser: false,
+              status: 'loading',
+              token: 3,
+            },
+            effects: [
+              {
+                fetch: {
+                  token: 3,
+                },
+              },
+            ],
           },
         ],
       },
@@ -3684,6 +5036,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'deleteButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -3694,6 +5047,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'deleteButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -3707,6 +5061,7 @@ export const behaviourVectors = {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               },
@@ -3717,12 +5072,14 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'deleteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               ],
@@ -3731,7 +5088,10 @@ export const behaviourVectors = {
           },
           {
             event: {
-              escape: {},
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
             },
             state: {
               layers: [
@@ -3739,12 +5099,14 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'deleteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               ],
@@ -3761,6 +5123,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'm',
                 openerPresent: true,
               },
@@ -3771,6 +5134,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'deleteButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -3785,7 +5149,10 @@ export const behaviourVectors = {
           },
           {
             event: {
-              escape: {},
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
             },
             state: {
               layers: [
@@ -3793,6 +5160,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'deleteButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -3809,6 +5177,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'd',
                 openerPresent: true,
               },
@@ -3835,7 +5204,10 @@ export const behaviourVectors = {
         steps: [
           {
             event: {
-              escape: {},
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
             },
             state: {
               layers: [],
@@ -3864,6 +5236,7 @@ export const behaviourVectors = {
                   id: 'edit',
                   kind: 'dialog',
                   opener: 'editButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -3874,6 +5247,7 @@ export const behaviourVectors = {
                   id: 'edit',
                   kind: 'dialog',
                   opener: 'editButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -3882,7 +5256,10 @@ export const behaviourVectors = {
           },
           {
             event: {
-              escape: {},
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
             },
             state: {
               layers: [
@@ -3890,6 +5267,7 @@ export const behaviourVectors = {
                   id: 'edit',
                   kind: 'dialog',
                   opener: 'editButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -3905,7 +5283,10 @@ export const behaviourVectors = {
           },
           {
             event: {
-              escape: {},
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
             },
             state: {
               layers: [
@@ -3913,6 +5294,7 @@ export const behaviourVectors = {
                   id: 'edit',
                   kind: 'dialog',
                   opener: 'editButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -3929,7 +5311,7 @@ export const behaviourVectors = {
         ],
       },
       {
-        name: 'a tooltip stays on top and does not block Escape',
+        name: 'a tooltip stays on top and takes the Escape',
         params: {},
         initial: {
           layers: [],
@@ -3942,6 +5324,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'settingsButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -3952,6 +5335,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'settingsButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -3965,6 +5349,7 @@ export const behaviourVectors = {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               },
@@ -3975,12 +5360,14 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'settingsButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -3994,6 +5381,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'colourButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               },
@@ -4004,18 +5392,21 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'settingsButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'p',
                   kind: 'popover',
                   opener: 'colourButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -4024,7 +5415,10 @@ export const behaviourVectors = {
           },
           {
             event: {
-              escape: {},
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
             },
             state: {
               layers: [
@@ -4032,18 +5426,21 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'settingsButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'p',
                   kind: 'popover',
                   opener: 'colourButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -4052,12 +5449,6 @@ export const behaviourVectors = {
               {
                 requestClose: {
                   id: 'tip',
-                  reason: 'escape',
-                },
-              },
-              {
-                requestClose: {
-                  id: 'p',
                   reason: 'escape',
                 },
               },
@@ -4066,6 +5457,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'tip',
                 openerPresent: true,
               },
@@ -4076,12 +5468,14 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'settingsButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'p',
                   kind: 'popover',
                   opener: 'colourButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               ],
@@ -4091,6 +5485,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'tip',
                 openerPresent: true,
               },
@@ -4101,22 +5496,58 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'settingsButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'p',
                   kind: 'popover',
                   opener: 'colourButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               ],
             },
             effects: [],
           },
+          {
+            event: {
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'settingsButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'colourButton',
+                  openerLayer: 'd',
+                  parent: 'd',
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 'p',
+                  reason: 'escape',
+                },
+              },
+            ],
+          },
         ],
       },
       {
-        name: 'a lone tooltip passes Escape to the screen',
+        name: 'a lone tooltip takes the Escape from the screen',
         params: {},
         initial: {
           layers: [],
@@ -4129,6 +5560,7 @@ export const behaviourVectors = {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4139,6 +5571,7 @@ export const behaviourVectors = {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4147,7 +5580,10 @@ export const behaviourVectors = {
           },
           {
             event: {
-              escape: {},
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
             },
             state: {
               layers: [
@@ -4155,6 +5591,7 @@ export const behaviourVectors = {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4166,6 +5603,32 @@ export const behaviourVectors = {
                   reason: 'escape',
                 },
               },
+            ],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'outside',
+                id: 'tip',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [
               {
                 passToScreen: {
                   key: 'Escape',
@@ -4189,6 +5652,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'emojiButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4199,6 +5663,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'emojiButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4212,6 +5677,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'otherButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4222,6 +5688,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'emojiButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4244,6 +5711,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'statusButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4254,6 +5722,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'statusButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4267,6 +5736,7 @@ export const behaviourVectors = {
                   id: 's',
                   kind: 'popover',
                   opener: 'statusSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               },
@@ -4277,12 +5747,14 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'statusButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 's',
                   kind: 'popover',
                   opener: 'statusSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               ],
@@ -4296,6 +5768,7 @@ export const behaviourVectors = {
                   id: 'q',
                   kind: 'popover',
                   opener: 'filterButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4306,18 +5779,21 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'statusButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 's',
                   kind: 'popover',
                   opener: 'statusSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'q',
                   kind: 'popover',
                   opener: 'filterButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4336,18 +5812,21 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'statusButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 's',
                   kind: 'popover',
                   opener: 'statusSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'q',
                   kind: 'popover',
                   opener: 'filterButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4373,18 +5852,21 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'statusButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 's',
                   kind: 'popover',
                   opener: 'statusSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'q',
                   kind: 'popover',
                   opener: 'filterButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4416,18 +5898,21 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'statusButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 's',
                   kind: 'popover',
                   opener: 'statusSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'q',
                   kind: 'popover',
                   opener: 'filterButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4469,6 +5954,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'profileButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4479,6 +5965,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'profileButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4492,6 +5979,7 @@ export const behaviourVectors = {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               },
@@ -4502,12 +5990,14 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'profileButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               ],
@@ -4526,12 +6016,14 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'profileButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               ],
@@ -4561,6 +6053,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4571,6 +6064,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4584,6 +6078,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'createButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               },
@@ -4594,12 +6089,14 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'createButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               ],
@@ -4613,6 +6110,7 @@ export const behaviourVectors = {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               },
@@ -4623,18 +6121,21 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'createButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -4653,18 +6154,21 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'createButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -4683,18 +6187,21 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'createButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -4715,6 +6222,7 @@ export const behaviourVectors = {
                   id: 'sh',
                   kind: 'sheet',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4725,24 +6233,28 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'createButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'sh',
                   kind: 'sheet',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -4761,24 +6273,28 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'inviteButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'createButton',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'sh',
                   kind: 'sheet',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'd',
                 },
               ],
@@ -4808,6 +6324,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'renameButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4818,6 +6335,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'renameButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4834,6 +6352,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'renameButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4847,6 +6366,7 @@ export const behaviourVectors = {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               },
@@ -4857,12 +6377,14 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'renameButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               ],
@@ -4876,6 +6398,7 @@ export const behaviourVectors = {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'm',
                 },
               },
@@ -4886,18 +6409,21 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'renameButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'm',
                 },
               ],
@@ -4914,18 +6440,21 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'renameButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
                 {
                   id: 'tip',
                   kind: 'tooltip',
                   opener: null,
+                  openerLayer: null,
                   parent: 'm',
                 },
               ],
@@ -4942,7 +6471,7 @@ export const behaviourVectors = {
         ],
       },
       {
-        name: 'closing a parent closes its children first',
+        name: 'closing a parent commands its children to close',
         params: {},
         initial: {
           layers: [],
@@ -4955,6 +6484,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'callButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -4965,6 +6495,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'callButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -4978,6 +6509,7 @@ export const behaviourVectors = {
                   id: 'p',
                   kind: 'popover',
                   opener: 'deviceButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               },
@@ -4988,12 +6520,14 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'callButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'p',
                   kind: 'popover',
                   opener: 'deviceButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               ],
@@ -5007,6 +6541,7 @@ export const behaviourVectors = {
                   id: 'm',
                   kind: 'menu',
                   opener: 'deviceSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               },
@@ -5017,18 +6552,21 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'callButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'p',
                   kind: 'popover',
                   opener: 'deviceButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'deviceSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
               ],
@@ -5042,6 +6580,7 @@ export const behaviourVectors = {
                   id: 'other',
                   kind: 'popover',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -5052,24 +6591,28 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'callButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'p',
                   kind: 'popover',
                   opener: 'deviceButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'deviceSelect',
+                  openerLayer: 'p',
                   parent: 'p',
                 },
                 {
                   id: 'other',
                   kind: 'popover',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -5079,6 +6622,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'd',
                 openerPresent: false,
               },
@@ -5089,6 +6633,7 @@ export const behaviourVectors = {
                   id: 'other',
                   kind: 'popover',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -5116,6 +6661,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'm',
                 openerPresent: true,
               },
@@ -5126,6 +6672,7 @@ export const behaviourVectors = {
                   id: 'other',
                   kind: 'popover',
                   opener: null,
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -5148,6 +6695,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'rowMenuButton',
+                  openerLayer: null,
                   parent: null,
                 },
               },
@@ -5158,6 +6706,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'rowMenuButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -5171,6 +6720,7 @@ export const behaviourVectors = {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               },
@@ -5181,12 +6731,14 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'rowMenuButton',
+                  openerLayer: null,
                   parent: null,
                 },
                 {
                   id: 'm',
                   kind: 'menu',
                   opener: 'moreButton',
+                  openerLayer: 'd',
                   parent: 'd',
                 },
               ],
@@ -5196,6 +6748,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'm',
                 openerPresent: false,
               },
@@ -5206,6 +6759,7 @@ export const behaviourVectors = {
                   id: 'd',
                   kind: 'dialog',
                   opener: 'rowMenuButton',
+                  openerLayer: null,
                   parent: null,
                 },
               ],
@@ -5221,6 +6775,7 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'd',
                 openerPresent: false,
               },
@@ -5239,12 +6794,569 @@ export const behaviourVectors = {
           {
             event: {
               closed: {
+                focus: 'inside',
                 id: 'nothing',
                 openerPresent: true,
               },
             },
             state: {
               layers: [],
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'a press outside a popover keeps the focus it gave',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'emojiButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'emojiButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              pressOutside: {
+                insideId: null,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'emojiButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 'p',
+                  reason: 'pressOutside',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'outside',
+                id: 'p',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'q',
+                  kind: 'popover',
+                  opener: 'gifButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'q',
+                  kind: 'popover',
+                  opener: 'gifButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'lost',
+                id: 'q',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [
+              {
+                restoreFocus: {
+                  to: 'gifButton',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'a menu item opens a confirm dialog',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'm',
+                  kind: 'menu',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'm',
+                  kind: 'menu',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'deleteItem',
+                  openerLayer: 'm',
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'm',
+                  kind: 'menu',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'deleteItem',
+                  openerLayer: 'm',
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'outside',
+                id: 'm',
+                openerPresent: false,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 'd',
+                  reason: 'escape',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'inside',
+                id: 'd',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [
+              {
+                restoreFocus: {
+                  to: 'moreButton',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'a layer under an open sheet restores no focus',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'statusButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'statusButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'sh',
+                  kind: 'sheet',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'statusButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 'sh',
+                  kind: 'sheet',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'lost',
+                id: 'p',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'sh',
+                  kind: 'sheet',
+                  opener: 'moreButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'inside',
+                id: 'sh',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [
+              {
+                restoreFocus: {
+                  to: 'moreButton',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'escape while composing or owned by the focused control',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              escape: {
+                composing: true,
+                focusOwnsEscape: false,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'editButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'editButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              escape: {
+                composing: false,
+                focusOwnsEscape: true,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'editButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              escape: {
+                composing: true,
+                focusOwnsEscape: true,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'editButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              escape: {
+                composing: false,
+                focusOwnsEscape: false,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'editButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 'd',
+                  reason: 'escape',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'an unknown parent or opener layer is dropped',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'pickerButton',
+                  openerLayer: 'gone',
+                  parent: 'gone',
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'pickerButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: null,
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'pickerButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: null,
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'outside',
+                id: 'd',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'p',
+                  kind: 'popover',
+                  opener: 'pickerButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
             },
             effects: [],
           },
@@ -5310,6 +7422,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -5373,6 +7486,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Couldn\'t send',
                   politeness: 'assertive',
                 },
@@ -5459,6 +7573,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Uploading 1 file',
                   politeness: 'polite',
                 },
@@ -5501,6 +7616,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Uploaded 1 file',
                   politeness: 'polite',
                 },
@@ -5525,6 +7641,139 @@ export const behaviourVectors = {
               token: 2,
             },
             effects: [],
+          },
+        ],
+      },
+      {
+        name: 'same id and message is not announced again',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'off',
+                  message: 'You are offline',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'off',
+                message: 'You are offline',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'You are offline',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'off',
+                  message: 'You are offline',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'off',
+                message: 'You are offline',
+                tone: 'neutral',
+              },
+              token: 2,
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Retry',
+                  id: 'off',
+                  message: 'You are offline',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Retry',
+                id: 'off',
+                message: 'You are offline',
+                tone: 'neutral',
+              },
+              token: 3,
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 3,
+                },
+              },
+              {
+                announce: {
+                  action: 'Retry',
+                  message: 'You are offline',
+                  politeness: 'polite',
+                },
+              },
+            ],
           },
         ],
       },
@@ -5573,6 +7822,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -5687,7 +7937,7 @@ export const behaviourVectors = {
         ],
       },
       {
-        name: 'a full queue drops the oldest non-danger toast',
+        name: 'a full queue drops the oldest plain toast and keeps undo',
         params: {
           durationMs: 4000,
           durationWithActionMs: 8000,
@@ -5731,6 +7981,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -5741,6 +7992,37 @@ export const behaviourVectors = {
             event: {
               show: {
                 toast: {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              show: {
+                toast: {
                   action: null,
                   id: 'b',
                   message: 'Couldn\'t send',
@@ -5751,6 +8033,12 @@ export const behaviourVectors = {
             state: {
               paused: false,
               queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
                 {
                   action: null,
                   id: 'b',
@@ -5782,6 +8070,12 @@ export const behaviourVectors = {
             state: {
               paused: false,
               queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
                 {
                   action: null,
                   id: 'b',
@@ -5820,48 +8114,11 @@ export const behaviourVectors = {
               paused: false,
               queue: [
                 {
-                  action: null,
-                  id: 'b',
-                  message: 'Couldn\'t send',
-                  tone: 'danger',
-                },
-                {
-                  action: null,
-                  id: 'c',
-                  message: 'Copied',
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
                   tone: 'neutral',
                 },
-                {
-                  action: null,
-                  id: 'd',
-                  message: 'Joined',
-                  tone: 'positive',
-                },
-              ],
-              showing: {
-                action: null,
-                id: 'a',
-                message: 'Saved',
-                tone: 'neutral',
-              },
-              token: 1,
-            },
-            effects: [],
-          },
-          {
-            event: {
-              show: {
-                toast: {
-                  action: null,
-                  id: 'e',
-                  message: 'Pinned',
-                  tone: 'neutral',
-                },
-              },
-            },
-            state: {
-              paused: false,
-              queue: [
                 {
                   action: null,
                   id: 'b',
@@ -5873,12 +8130,6 @@ export const behaviourVectors = {
                   id: 'd',
                   message: 'Joined',
                   tone: 'positive',
-                },
-                {
-                  action: null,
-                  id: 'e',
-                  message: 'Pinned',
-                  tone: 'neutral',
                 },
               ],
               showing: {
@@ -5894,7 +8145,7 @@ export const behaviourVectors = {
         ],
       },
       {
-        name: 'a queue of danger toasts drops the oldest',
+        name: 'a full queue of actions drops the oldest non-danger',
         params: {
           durationMs: 4000,
           durationWithActionMs: 8000,
@@ -5938,6 +8189,166 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
+                  message: 'Saved',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Undo',
+                  id: 'v',
+                  message: 'Channel archived',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+                {
+                  action: 'Undo',
+                  id: 'v',
+                  message: 'Channel archived',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'w',
+                  message: 'Pinned',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: 'Undo',
+                  id: 'v',
+                  message: 'Channel archived',
+                  tone: 'neutral',
+                },
+                {
+                  action: null,
+                  id: 'w',
+                  message: 'Pinned',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+        ],
+      },
+      {
+        name: 'a queue of danger toasts grows and keeps the newcomer',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 2,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -6016,10 +8427,10 @@ export const behaviourVectors = {
             event: {
               show: {
                 toast: {
-                  action: null,
-                  id: 'd',
-                  message: 'Disconnected',
-                  tone: 'danger',
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
                 },
               },
             },
@@ -6028,15 +8439,21 @@ export const behaviourVectors = {
               queue: [
                 {
                   action: null,
+                  id: 'b',
+                  message: 'Couldn\'t send',
+                  tone: 'danger',
+                },
+                {
+                  action: null,
                   id: 'c',
                   message: 'Couldn\'t upload',
                   tone: 'danger',
                 },
                 {
-                  action: null,
-                  id: 'd',
-                  message: 'Disconnected',
-                  tone: 'danger',
+                  action: 'Undo',
+                  id: 'u',
+                  message: 'Message deleted',
+                  tone: 'neutral',
                 },
               ],
               showing: {
@@ -6096,6 +8513,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: 'Undo',
                   message: 'Message deleted',
                   politeness: 'polite',
                 },
@@ -6136,6 +8554,7 @@ export const behaviourVectors = {
           {
             event: {
               dismiss: {
+                focusInside: false,
                 id: 'del',
               },
             },
@@ -6164,6 +8583,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -6173,6 +8593,7 @@ export const behaviourVectors = {
           {
             event: {
               dismiss: {
+                focusInside: false,
                 id: 'a',
               },
             },
@@ -6186,6 +8607,193 @@ export const behaviourVectors = {
               {
                 cancelTimer: {
                   token: 2,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'a danger toast with an action stays until dismissed',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Retry',
+                  id: 's',
+                  message: 'Couldn\'t send',
+                  tone: 'danger',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              token: 1,
+            },
+            effects: [
+              {
+                announce: {
+                  action: 'Retry',
+                  message: 'Couldn\'t send',
+                  politeness: 'assertive',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              timerFired: {
+                token: 1,
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              pause: {},
+            },
+            state: {
+              paused: true,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              resume: {},
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Retry',
+                id: 's',
+                message: 'Couldn\'t send',
+                tone: 'danger',
+              },
+              token: 2,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 's',
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 3,
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 3,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Saved',
+                  politeness: 'polite',
                 },
               },
             ],
@@ -6237,6 +8845,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -6277,6 +8886,7 @@ export const behaviourVectors = {
           {
             event: {
               dismiss: {
+                focusInside: false,
                 id: 'b',
               },
             },
@@ -6296,6 +8906,7 @@ export const behaviourVectors = {
           {
             event: {
               dismiss: {
+                focusInside: false,
                 id: 'zzz',
               },
             },
@@ -6397,6 +9008,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -6583,6 +9195,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Saved',
                   politeness: 'polite',
                 },
@@ -6653,6 +9266,7 @@ export const behaviourVectors = {
           {
             event: {
               dismiss: {
+                focusInside: false,
                 id: 'a',
               },
             },
@@ -6670,6 +9284,7 @@ export const behaviourVectors = {
             effects: [
               {
                 announce: {
+                  action: null,
                   message: 'Couldn\'t send',
                   politeness: 'assertive',
                 },
@@ -6679,6 +9294,7 @@ export const behaviourVectors = {
           {
             event: {
               dismiss: {
+                focusInside: false,
                 id: 'b',
               },
             },
@@ -6721,8 +9337,186 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Copied',
                   politeness: 'polite',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'the host pauses again for a toast under the pointer',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Saved',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              pause: {},
+            },
+            state: {
+              paused: true,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 'a',
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: null,
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'b',
+                  message: 'Copied',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Copied',
+                tone: 'neutral',
+              },
+              token: 2,
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 2,
+                },
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Copied',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              pause: {},
+            },
+            state: {
+              paused: true,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Copied',
+                tone: 'neutral',
+              },
+              token: 2,
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 2,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              resume: {},
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'b',
+                message: 'Copied',
+                tone: 'neutral',
+              },
+              token: 3,
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 4000,
+                  token: 3,
                 },
               },
             ],
@@ -6774,6 +9568,7 @@ export const behaviourVectors = {
               },
               {
                 announce: {
+                  action: null,
                   message: 'Uploading',
                   politeness: 'polite',
                 },
@@ -6828,6 +9623,7 @@ export const behaviourVectors = {
             effects: [
               {
                 announce: {
+                  action: null,
                   message: 'Uploaded',
                   politeness: 'polite',
                 },
@@ -6857,6 +9653,167 @@ export const behaviourVectors = {
                 },
               },
             ],
+          },
+        ],
+      },
+      {
+        name: 'focus goes back when a focused toast is dismissed',
+        params: {
+          durationMs: 4000,
+          durationWithActionMs: 8000,
+          maxQueued: 3,
+        },
+        initial: {
+          paused: false,
+          queue: [],
+          showing: null,
+          token: 0,
+        },
+        steps: [
+          {
+            event: {
+              show: {
+                toast: {
+                  action: 'Undo',
+                  id: 'del',
+                  message: 'Message deleted',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: {
+                action: 'Undo',
+                id: 'del',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [
+              {
+                startTimer: {
+                  ms: 8000,
+                  token: 1,
+                },
+              },
+              {
+                announce: {
+                  action: 'Undo',
+                  message: 'Message deleted',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              show: {
+                toast: {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              },
+            },
+            state: {
+              paused: false,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'del',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [],
+          },
+          {
+            event: {
+              pause: {},
+            },
+            state: {
+              paused: true,
+              queue: [
+                {
+                  action: null,
+                  id: 'a',
+                  message: 'Saved',
+                  tone: 'neutral',
+                },
+              ],
+              showing: {
+                action: 'Undo',
+                id: 'del',
+                message: 'Message deleted',
+                tone: 'neutral',
+              },
+              token: 1,
+            },
+            effects: [
+              {
+                cancelTimer: {
+                  token: 1,
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: true,
+                id: 'del',
+              },
+            },
+            state: {
+              paused: true,
+              queue: [],
+              showing: {
+                action: null,
+                id: 'a',
+                message: 'Saved',
+                tone: 'neutral',
+              },
+              token: 2,
+            },
+            effects: [
+              {
+                returnFocus: {},
+              },
+              {
+                announce: {
+                  action: null,
+                  message: 'Saved',
+                  politeness: 'polite',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              dismiss: {
+                focusInside: false,
+                id: 'a',
+              },
+            },
+            state: {
+              paused: false,
+              queue: [],
+              showing: null,
+              token: 2,
+            },
+            effects: [],
           },
         ],
       },

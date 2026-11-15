@@ -9,7 +9,8 @@
 //! by code point; no whitespace; whole numbers only, in plain decimal (`-` for a negative, no
 //! leading zeros, no exponent); strings in double quotes with only `"` and `\` escaped, as `\"`
 //! and `\\` (behaviour data has no control characters), other characters as UTF-8; `null`,
-//! `true` and `false`. See `design/README.md`, "Behaviour".
+//! `true` and `false`. A reader of canonical text rejects anything else, such as `-0` or keys
+//! out of order. See `design/README.md`, "Behaviour".
 
 /// One step of a vector: the event, then the full state and the ordered effects after it.
 pub(crate) struct Step {
@@ -253,12 +254,12 @@ pub(crate) const PATTERNS: &[Pattern] = &[
     },
     Pattern {
         name: "listFocus",
-        params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+        params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
         initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
         vectors: &[
             Vector {
                 name: "arrows skip disabled rows and stop at the ends",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -305,7 +306,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "up with nothing focused takes the last row",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -327,7 +328,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "wrap goes round",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":true}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":true}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -354,7 +355,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "empty and all-disabled lists do nothing",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -406,7 +407,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "home and end",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -428,7 +429,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "focus entering the list",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -470,7 +471,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "focus entering goes to the selected row",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alice\"},{\"disabled\":false,\"id\":\"b\",\"label\":\"Bob\"}],\"selected\":\"b\",\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -487,7 +488,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "focus entering skips a disabled selected row",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alice\"},{\"disabled\":true,\"id\":\"b\",\"label\":\"Bob\"}],\"selected\":\"b\",\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -498,13 +499,13 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alice\"}]}}",
                         state: "{\"focused\":\"a\",\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alice\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
-                        effects: "[]",
+                        effects: "[{\"deselect\":{}}]",
                     },
                 ],
             },
             Vector {
                 name: "typeahead",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -515,17 +516,17 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"type\":{\"char\":\"R\"}}",
                         state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"}],\"selected\":null,\"token\":1,\"typeahead\":\"r\"}",
-                        effects: "[{\"startTimer\":{\"ms\":500,\"token\":1}}]",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":1}}]",
                     },
                     Step {
                         event: "{\"type\":{\"char\":\"a\"}}",
                         state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"}],\"selected\":null,\"token\":2,\"typeahead\":\"ra\"}",
-                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":500,\"token\":2}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":1000,\"token\":2}}]",
                     },
                     Step {
                         event: "{\"type\":{\"char\":\"x\"}}",
                         state: "{\"focused\":\"random\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"}],\"selected\":null,\"token\":3,\"typeahead\":\"rax\"}",
-                        effects: "[{\"cancelTimer\":{\"token\":2}},{\"startTimer\":{\"ms\":500,\"token\":3}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":2}},{\"startTimer\":{\"ms\":1000,\"token\":3}}]",
                     },
                     Step {
                         event: "{\"timerFired\":{\"token\":2}}",
@@ -540,18 +541,18 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"type\":{\"char\":\"g\"}}",
                         state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"}],\"selected\":null,\"token\":4,\"typeahead\":\"g\"}",
-                        effects: "[{\"startTimer\":{\"ms\":500,\"token\":4}}]",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":4}}]",
                     },
                     Step {
                         event: "{\"type\":{\"char\":\"a\"}}",
                         state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"}],\"selected\":null,\"token\":5,\"typeahead\":\"ga\"}",
-                        effects: "[{\"cancelTimer\":{\"token\":4}},{\"startTimer\":{\"ms\":500,\"token\":5}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":4}},{\"startTimer\":{\"ms\":1000,\"token\":5}}]",
                     },
                 ],
             },
             Vector {
                 name: "a repeated letter steps through the matches",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -562,28 +563,28 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"type\":{\"char\":\"g\"}}",
                         state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"},{\"disabled\":false,\"id\":\"gifs\",\"label\":\"gifs\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":1,\"typeahead\":\"g\"}",
-                        effects: "[{\"startTimer\":{\"ms\":500,\"token\":1}}]",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":1}}]",
                     },
                     Step {
                         event: "{\"type\":{\"char\":\"g\"}}",
                         state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"},{\"disabled\":false,\"id\":\"gifs\",\"label\":\"gifs\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":2,\"typeahead\":\"gg\"}",
-                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":500,\"token\":2}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":1000,\"token\":2}}]",
                     },
                     Step {
                         event: "{\"type\":{\"char\":\"g\"}}",
                         state: "{\"focused\":\"gifs\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"},{\"disabled\":false,\"id\":\"gifs\",\"label\":\"gifs\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":3,\"typeahead\":\"ggg\"}",
-                        effects: "[{\"cancelTimer\":{\"token\":2}},{\"startTimer\":{\"ms\":500,\"token\":3}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":2}},{\"startTimer\":{\"ms\":1000,\"token\":3}}]",
                     },
                     Step {
                         event: "{\"type\":{\"char\":\"g\"}}",
                         state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"Games\"},{\"disabled\":true,\"id\":\"garden\",\"label\":\"Garden\"},{\"disabled\":false,\"id\":\"gifs\",\"label\":\"gifs\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":null,\"token\":4,\"typeahead\":\"gggg\"}",
-                        effects: "[{\"cancelTimer\":{\"token\":3}},{\"startTimer\":{\"ms\":500,\"token\":4}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":3}},{\"startTimer\":{\"ms\":1000,\"token\":4}}]",
                     },
                 ],
             },
             Vector {
                 name: "selection follows focus",
-                params: "{\"selectionFollowsFocus\":true,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":true,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -609,7 +610,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"type\":{\"char\":\"g\"}}",
                         state: "{\"focused\":\"general\",\"rows\":[{\"disabled\":false,\"id\":\"general\",\"label\":\"General\"},{\"disabled\":false,\"id\":\"random\",\"label\":\"Random\"}],\"selected\":\"general\",\"token\":1,\"typeahead\":\"g\"}",
-                        effects: "[{\"startTimer\":{\"ms\":500,\"token\":1}},{\"select\":{\"id\":\"general\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":1}},{\"select\":{\"id\":\"general\"}}]",
                     },
                     Step {
                         event: "{\"focusIn\":{}}",
@@ -620,7 +621,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
             },
             Vector {
                 name: "a removed row moves focus to the next row, then the previous",
-                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":500,\"wrap\":false}",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
                 initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
                 steps: &[
                     Step {
@@ -636,7 +637,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alice\"},{\"disabled\":true,\"id\":\"c\",\"label\":\"Carol\"},{\"disabled\":false,\"id\":\"d\",\"label\":\"Dan\"}]}}",
                         state: "{\"focused\":\"d\",\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alice\"},{\"disabled\":true,\"id\":\"c\",\"label\":\"Carol\"},{\"disabled\":false,\"id\":\"d\",\"label\":\"Dan\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
-                        effects: "[]",
+                        effects: "[{\"deselect\":{}}]",
                     },
                     Step {
                         event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alice\"},{\"disabled\":true,\"id\":\"c\",\"label\":\"Carol\"},{\"disabled\":true,\"id\":\"d\",\"label\":\"Dan\"}]}}",
@@ -655,251 +656,483 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     },
                 ],
             },
+            Vector {
+                name: "selection follows a removed row's focus when it follows focus",
+                params: "{\"selectionFollowsFocus\":true,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":false,\"id\":\"b\",\"label\":\"Beta\"},{\"disabled\":false,\"id\":\"c\",\"label\":\"Gamma\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":false,\"id\":\"b\",\"label\":\"Beta\"},{\"disabled\":false,\"id\":\"c\",\"label\":\"Gamma\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"down\":{}}",
+                        state: "{\"focused\":\"a\",\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":false,\"id\":\"b\",\"label\":\"Beta\"},{\"disabled\":false,\"id\":\"c\",\"label\":\"Gamma\"}],\"selected\":\"a\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"select\":{\"id\":\"a\"}}]",
+                    },
+                    Step {
+                        event: "{\"down\":{}}",
+                        state: "{\"focused\":\"b\",\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":false,\"id\":\"b\",\"label\":\"Beta\"},{\"disabled\":false,\"id\":\"c\",\"label\":\"Gamma\"}],\"selected\":\"b\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"select\":{\"id\":\"b\"}}]",
+                    },
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":false,\"id\":\"c\",\"label\":\"Gamma\"}]}}",
+                        state: "{\"focused\":\"c\",\"rows\":[{\"disabled\":false,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":false,\"id\":\"c\",\"label\":\"Gamma\"}],\"selected\":\"c\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[{\"select\":{\"id\":\"c\"}}]",
+                    },
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":true,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":true,\"id\":\"c\",\"label\":\"Gamma\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":true,\"id\":\"a\",\"label\":\"Alpha\"},{\"disabled\":true,\"id\":\"c\",\"label\":\"Gamma\"}],\"selected\":\"c\",\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "typeahead with emoji labels",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"party\",\"label\":\"😀 party\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"😃 games\"},{\"disabled\":false,\"id\":\"music\",\"label\":\"🎵 music\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"party\",\"label\":\"😀 party\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"😃 games\"},{\"disabled\":false,\"id\":\"music\",\"label\":\"🎵 music\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"😃\"}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"party\",\"label\":\"😀 party\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"😃 games\"},{\"disabled\":false,\"id\":\"music\",\"label\":\"🎵 music\"}],\"selected\":null,\"token\":1,\"typeahead\":\"😃\"}",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"😃\"}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"party\",\"label\":\"😀 party\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"😃 games\"},{\"disabled\":false,\"id\":\"music\",\"label\":\"🎵 music\"}],\"selected\":null,\"token\":2,\"typeahead\":\"😃😃\"}",
+                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":1000,\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"timerFired\":{\"token\":2}}",
+                        state: "{\"focused\":\"games\",\"rows\":[{\"disabled\":false,\"id\":\"party\",\"label\":\"😀 party\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"😃 games\"},{\"disabled\":false,\"id\":\"music\",\"label\":\"🎵 music\"}],\"selected\":null,\"token\":2,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"😀\"}}",
+                        state: "{\"focused\":\"party\",\"rows\":[{\"disabled\":false,\"id\":\"party\",\"label\":\"😀 party\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"😃 games\"},{\"disabled\":false,\"id\":\"music\",\"label\":\"🎵 music\"}],\"selected\":null,\"token\":3,\"typeahead\":\"😀\"}",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":3}}]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"🎵\"}}",
+                        state: "{\"focused\":\"party\",\"rows\":[{\"disabled\":false,\"id\":\"party\",\"label\":\"😀 party\"},{\"disabled\":false,\"id\":\"games\",\"label\":\"😃 games\"},{\"disabled\":false,\"id\":\"music\",\"label\":\"🎵 music\"}],\"selected\":null,\"token\":4,\"typeahead\":\"😀🎵\"}",
+                        effects: "[{\"cancelTimer\":{\"token\":3}},{\"startTimer\":{\"ms\":1000,\"token\":4}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "typeahead with non-ASCII letters",
+                params: "{\"selectionFollowsFocus\":false,\"typeaheadMs\":1000,\"wrap\":false}",
+                initial: "{\"focused\":null,\"rows\":[],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                steps: &[
+                    Step {
+                        event: "{\"setRows\":{\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}]}}",
+                        state: "{\"focused\":null,\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":0,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"Ü\"}}",
+                        state: "{\"focused\":\"u\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":1,\"typeahead\":\"ü\"}",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"timerFired\":{\"token\":1}}",
+                        state: "{\"focused\":\"u\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":1,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"é\"}}",
+                        state: "{\"focused\":\"e\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":2,\"typeahead\":\"é\"}",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"timerFired\":{\"token\":2}}",
+                        state: "{\"focused\":\"e\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":2,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"ω\"}}",
+                        state: "{\"focused\":\"o\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":3,\"typeahead\":\"ω\"}",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":3}}]",
+                    },
+                    Step {
+                        event: "{\"timerFired\":{\"token\":3}}",
+                        state: "{\"focused\":\"o\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":3,\"typeahead\":\"\"}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"S\"}}",
+                        state: "{\"focused\":\"s\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":4,\"typeahead\":\"s\"}",
+                        effects: "[{\"startTimer\":{\"ms\":1000,\"token\":4}}]",
+                    },
+                    Step {
+                        event: "{\"type\":{\"char\":\"t\"}}",
+                        state: "{\"focused\":\"s\",\"rows\":[{\"disabled\":false,\"id\":\"e\",\"label\":\"Élan\"},{\"disabled\":false,\"id\":\"u\",\"label\":\"über\"},{\"disabled\":false,\"id\":\"o\",\"label\":\"Ωmega\"},{\"disabled\":false,\"id\":\"s\",\"label\":\"straße\"}],\"selected\":null,\"token\":5,\"typeahead\":\"st\"}",
+                        effects: "[{\"cancelTimer\":{\"token\":4}},{\"startTimer\":{\"ms\":1000,\"token\":5}}]",
+                    },
+                ],
+            },
         ],
     },
     Pattern {
         name: "loadState",
-        params: "{}",
-        initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+        params: "{\"notifyId\":\"load\"}",
+        initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
         vectors: &[
             Vector {
                 name: "first load shows the content",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":1}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":1}",
                         effects: "[]",
                     },
                 ],
             },
             Vector {
                 name: "first load is empty",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":true,\"token\":1}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"empty\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"empty\",\"token\":1}",
                         effects: "[]",
                     },
                 ],
             },
             Vector {
                 name: "error then retry",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
                         event: "{\"failed\":{\"message\":\"Couldn't load messages\",\"token\":1}}",
-                        state: "{\"error\":\"Couldn't load messages\",\"fetching\":false,\"status\":\"error\",\"token\":1}",
+                        state: "{\"error\":\"Couldn't load messages\",\"fetching\":false,\"refreshByUser\":false,\"status\":\"error\",\"token\":1}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"retry\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":2}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":2}",
                         effects: "[{\"fetch\":{\"token\":2}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":2}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":2}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":2}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"retry\":{}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":2}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":2}",
                         effects: "[]",
                     },
                 ],
             },
             Vector {
                 name: "refresh keeps the content",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":1}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":1}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"refreshing\",\"token\":2}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"refreshing\",\"token\":2}",
                         effects: "[{\"fetch\":{\"token\":2}}]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"refreshing\",\"token\":2}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"refreshing\",\"token\":2}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":true,\"token\":2}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"empty\",\"token\":2}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"empty\",\"token\":2}",
                         effects: "[]",
                     },
                 ],
             },
             Vector {
                 name: "an error during a refresh keeps the content",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":1}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":1}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"refreshing\",\"token\":2}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"refreshing\",\"token\":2}",
                         effects: "[{\"fetch\":{\"token\":2}}]",
                     },
                     Step {
                         event: "{\"failed\":{\"message\":\"You are offline\",\"token\":2}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":2}",
-                        effects: "[{\"notify\":{\"message\":\"You are offline\"}}]",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":2}",
+                        effects: "[{\"notify\":{\"id\":\"load\",\"message\":\"You are offline\"}}]",
                     },
                 ],
             },
             Vector {
                 name: "refreshing an empty screen",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":true,\"token\":1}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"empty\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"empty\",\"token\":1}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"empty\",\"token\":2}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"empty\",\"token\":2}",
                         effects: "[{\"fetch\":{\"token\":2}}]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"empty\",\"token\":2}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"empty\",\"token\":2}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"failed\":{\"message\":\"You are offline\",\"token\":2}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"empty\",\"token\":2}",
-                        effects: "[{\"notify\":{\"message\":\"You are offline\"}}]",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"empty\",\"token\":2}",
+                        effects: "[{\"notify\":{\"id\":\"load\",\"message\":\"You are offline\"}}]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"empty\",\"token\":3}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"empty\",\"token\":3}",
                         effects: "[{\"fetch\":{\"token\":3}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":3}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":3}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":3}",
                         effects: "[]",
                     },
                 ],
             },
             Vector {
                 name: "refresh while error is a retry",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"failed\":{\"message\":\"Couldn't load members\",\"token\":1}}",
-                        state: "{\"error\":\"Couldn't load members\",\"fetching\":false,\"status\":\"error\",\"token\":1}",
+                        state: "{\"error\":\"Couldn't load members\",\"fetching\":false,\"refreshByUser\":false,\"status\":\"error\",\"token\":1}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":2}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":2}",
                         effects: "[{\"fetch\":{\"token\":2}}]",
                     },
                 ],
             },
             Vector {
                 name: "start discards a fetch in flight",
-                params: "{}",
-                initial: "{\"error\":null,\"fetching\":false,\"status\":\"loading\",\"token\":0}",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
                         effects: "[{\"fetch\":{\"token\":1}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":1}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"ready\",\"token\":1}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":1}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"refresh\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"refreshing\",\"token\":2}",
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"refreshing\",\"token\":2}",
                         effects: "[{\"fetch\":{\"token\":2}}]",
                     },
                     Step {
                         event: "{\"start\":{}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":3}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":3}",
                         effects: "[{\"fetch\":{\"token\":3}}]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":2}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":3}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":3}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"failed\":{\"message\":\"Late\",\"token\":2}}",
-                        state: "{\"error\":null,\"fetching\":true,\"status\":\"loading\",\"token\":3}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":3}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":true,\"token\":3}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"empty\",\"token\":3}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"empty\",\"token\":3}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"succeeded\":{\"empty\":false,\"token\":3}}",
-                        state: "{\"error\":null,\"fetching\":false,\"status\":\"empty\",\"token\":3}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"empty\",\"token\":3}",
                         effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "a user refresh shows busy on its control",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"start\":{}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
+                        effects: "[{\"fetch\":{\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"succeeded\":{\"empty\":true,\"token\":1}}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"empty\",\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"refresh\":{\"byUser\":true}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":true,\"status\":\"empty\",\"token\":2}",
+                        effects: "[{\"fetch\":{\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"succeeded\":{\"empty\":false,\"token\":2}}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":2}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"refreshing\",\"token\":3}",
+                        effects: "[{\"fetch\":{\"token\":3}}]",
+                    },
+                    Step {
+                        event: "{\"refresh\":{\"byUser\":true}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":true,\"status\":\"refreshing\",\"token\":3}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"failed\":{\"message\":\"You are offline\",\"token\":3}}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":3}",
+                        effects: "[{\"notify\":{\"id\":\"load\",\"message\":\"You are offline\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "repeated refresh failures share one toast id",
+                params: "{\"notifyId\":\"members-load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"start\":{}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
+                        effects: "[{\"fetch\":{\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"succeeded\":{\"empty\":false,\"token\":1}}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"refreshing\",\"token\":2}",
+                        effects: "[{\"fetch\":{\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"failed\":{\"message\":\"You are offline\",\"token\":2}}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":2}",
+                        effects: "[{\"notify\":{\"id\":\"members-load\",\"message\":\"You are offline\"}}]",
+                    },
+                    Step {
+                        event: "{\"refresh\":{\"byUser\":false}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"refreshing\",\"token\":3}",
+                        effects: "[{\"fetch\":{\"token\":3}}]",
+                    },
+                    Step {
+                        event: "{\"failed\":{\"message\":\"You are offline\",\"token\":3}}",
+                        state: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"ready\",\"token\":3}",
+                        effects: "[{\"notify\":{\"id\":\"members-load\",\"message\":\"You are offline\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "a user refresh while loading stays a load",
+                params: "{\"notifyId\":\"load\"}",
+                initial: "{\"error\":null,\"fetching\":false,\"refreshByUser\":false,\"status\":\"loading\",\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"start\":{}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
+                        effects: "[{\"fetch\":{\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"refresh\":{\"byUser\":true}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"start\":{}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":2}",
+                        effects: "[{\"fetch\":{\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"failed\":{\"message\":\"Couldn't load\",\"token\":2}}",
+                        state: "{\"error\":\"Couldn't load\",\"fetching\":false,\"refreshByUser\":false,\"status\":\"error\",\"token\":2}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"retry\":{}}",
+                        state: "{\"error\":null,\"fetching\":true,\"refreshByUser\":false,\"status\":\"loading\",\"token\":3}",
+                        effects: "[{\"fetch\":{\"token\":3}}]",
                     },
                 ],
             },
@@ -916,32 +1149,32 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"escape\":{}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"}]}",
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
                         effects: "[{\"requestClose\":{\"id\":\"m\",\"reason\":\"escape\"}}]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"m\",\"openerPresent\":true}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"parent\":null}]}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"m\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"restoreFocus\":{\"to\":\"moreButton\"}}]",
                     },
                     Step {
-                        event: "{\"escape\":{}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"parent\":null}]}",
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"requestClose\":{\"id\":\"d\",\"reason\":\"escape\"}}]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"d\",\"openerPresent\":true}}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"d\",\"openerPresent\":true}}",
                         state: "{\"layers\":[]}",
                         effects: "[{\"restoreFocus\":{\"to\":\"deleteButton\"}}]",
                     },
@@ -953,7 +1186,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"escape\":{}}",
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
                         state: "{\"layers\":[]}",
                         effects: "[{\"passToScreen\":{\"key\":\"Escape\"}}]",
                     },
@@ -965,73 +1198,88 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"escape\":{}}",
-                        state: "{\"layers\":[{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"parent\":null}]}",
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"requestClose\":{\"id\":\"edit\",\"reason\":\"escape\"}}]",
                     },
                     Step {
-                        event: "{\"escape\":{}}",
-                        state: "{\"layers\":[{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"parent\":null}]}",
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"edit\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"requestClose\":{\"id\":\"edit\",\"reason\":\"escape\"}}]",
                     },
                 ],
             },
             Vector {
-                name: "a tooltip stays on top and does not block Escape",
+                name: "a tooltip stays on top and takes the Escape",
                 params: "{}",
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"parent\":null},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"parent\":\"d\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"openerLayer\":\"d\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"escape\":{}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
-                        effects: "[{\"requestClose\":{\"id\":\"tip\",\"reason\":\"escape\"}},{\"requestClose\":{\"id\":\"p\",\"reason\":\"escape\"}}]",
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"openerLayer\":\"d\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
+                        effects: "[{\"requestClose\":{\"id\":\"tip\",\"reason\":\"escape\"}}]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"tip\",\"openerPresent\":true}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"parent\":\"d\"}]}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"tip\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"tip\",\"openerPresent\":true}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"parent\":\"d\"}]}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"tip\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
                         effects: "[]",
+                    },
+                    Step {
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"settingsButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"colourButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
+                        effects: "[{\"requestClose\":{\"id\":\"p\",\"reason\":\"escape\"}}]",
                     },
                 ],
             },
             Vector {
-                name: "a lone tooltip passes Escape to the screen",
+                name: "a lone tooltip takes the Escape from the screen",
                 params: "{}",
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"escape\":{}}",
-                        state: "{\"layers\":[{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":null}]}",
-                        effects: "[{\"requestClose\":{\"id\":\"tip\",\"reason\":\"escape\"}},{\"passToScreen\":{\"key\":\"Escape\"}}]",
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[{\"requestClose\":{\"id\":\"tip\",\"reason\":\"escape\"}}]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"outside\",\"id\":\"tip\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[]}",
+                        effects: "[{\"passToScreen\":{\"key\":\"Escape\"}}]",
                     },
                 ],
             },
@@ -1041,13 +1289,13 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"otherButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"otherButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                 ],
@@ -1058,33 +1306,33 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"parent\":\"p\"}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"parent\":\"p\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"pressOutside\":{\"insideId\":\"s\"}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"parent\":null}]}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"requestClose\":{\"id\":\"q\",\"reason\":\"pressOutside\"}}]",
                     },
                     Step {
                         event: "{\"pressOutside\":{\"insideId\":\"p\"}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"parent\":null}]}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"requestClose\":{\"id\":\"q\",\"reason\":\"pressOutside\"}},{\"requestClose\":{\"id\":\"s\",\"reason\":\"pressOutside\"}}]",
                     },
                     Step {
                         event: "{\"pressOutside\":{\"insideId\":null}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"parent\":null}]}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"s\",\"kind\":\"popover\",\"opener\":\"statusSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"filterButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"requestClose\":{\"id\":\"q\",\"reason\":\"pressOutside\"}},{\"requestClose\":{\"id\":\"s\",\"reason\":\"pressOutside\"}},{\"requestClose\":{\"id\":\"p\",\"reason\":\"pressOutside\"}}]",
                     },
                 ],
@@ -1095,18 +1343,18 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"p\"}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"p\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"p\",\"parent\":\"p\"}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"p\",\"parent\":\"p\"}]}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"pressOutside\":{\"insideId\":null}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"p\"}]}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"profileButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"p\",\"parent\":\"p\"}]}",
                         effects: "[{\"requestClose\":{\"id\":\"m\",\"reason\":\"pressOutside\"}}]",
                     },
                 ],
@@ -1117,38 +1365,38 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"parent\":\"p\"}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"parent\":\"p\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"openerLayer\":\"p\",\"parent\":\"p\"}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"openerLayer\":\"p\",\"parent\":\"p\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"parent\":\"p\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"pressOutside\":{\"insideId\":\"d\"}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"parent\":\"p\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"pressOutside\":{\"insideId\":\"p\"}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"parent\":\"p\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
                         effects: "[{\"requestClose\":{\"id\":\"d\",\"reason\":\"scrim\"}}]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":null,\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"parent\":\"p\"},{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":null,\"parent\":null},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":null,\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":null,\"openerLayer\":null,\"parent\":null},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"pressOutside\":{\"insideId\":null}}",
-                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"parent\":\"p\"},{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":null,\"parent\":null},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"d\"}]}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"inviteButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"createButton\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":null,\"openerLayer\":null,\"parent\":null},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"d\"}]}",
                         effects: "[{\"requestClose\":{\"id\":\"sh\",\"reason\":\"scrim\"}}]",
                     },
                 ],
@@ -1159,65 +1407,65 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"tab\":{}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"parent\":null}]}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"m\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"m\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"m\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"m\"}]}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"tab\":{}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"parent\":\"m\"}]}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"renameButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"},{\"id\":\"tip\",\"kind\":\"tooltip\",\"opener\":null,\"openerLayer\":null,\"parent\":\"m\"}]}",
                         effects: "[{\"requestClose\":{\"id\":\"m\",\"reason\":\"tab\"}}]",
                     },
                 ],
             },
             Vector {
-                name: "closing a parent closes its children first",
+                name: "closing a parent commands its children to close",
                 params: "{}",
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"parent\":\"d\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"deviceSelect\",\"parent\":\"p\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"parent\":\"d\"},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"deviceSelect\",\"parent\":\"p\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"deviceSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"openerLayer\":\"d\",\"parent\":\"d\"},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"deviceSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"parent\":\"d\"},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"deviceSelect\",\"parent\":\"p\"},{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"callButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"deviceButton\",\"openerLayer\":\"d\",\"parent\":\"d\"},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"deviceSelect\",\"openerLayer\":\"p\",\"parent\":\"p\"},{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"d\",\"openerPresent\":false}}",
-                        state: "{\"layers\":[{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"parent\":null}]}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"d\",\"openerPresent\":false}}",
+                        state: "{\"layers\":[{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"requestClose\":{\"id\":\"m\",\"reason\":\"parentClosed\"}},{\"requestClose\":{\"id\":\"p\",\"reason\":\"parentClosed\"}},{\"restoreFocus\":{\"to\":null}}]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"m\",\"openerPresent\":true}}",
-                        state: "{\"layers\":[{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"parent\":null}]}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"m\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[{\"id\":\"other\",\"kind\":\"popover\",\"opener\":null,\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                 ],
@@ -1228,28 +1476,173 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 initial: "{\"layers\":[]}",
                 steps: &[
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"parent\":null}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"parent\":null}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"}}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"parent\":\"d\"}]}",
+                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":\"d\",\"parent\":\"d\"}]}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"m\",\"openerPresent\":false}}",
-                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"parent\":null}]}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"m\",\"openerPresent\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"rowMenuButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[{\"restoreFocus\":{\"to\":\"d\"}}]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"d\",\"openerPresent\":false}}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"d\",\"openerPresent\":false}}",
                         state: "{\"layers\":[]}",
                         effects: "[{\"restoreFocus\":{\"to\":null}}]",
                     },
                     Step {
-                        event: "{\"closed\":{\"id\":\"nothing\",\"openerPresent\":true}}",
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"nothing\",\"openerPresent\":true}}",
                         state: "{\"layers\":[]}",
+                        effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "a press outside a popover keeps the focus it gave",
+                params: "{}",
+                initial: "{\"layers\":[]}",
+                steps: &[
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"pressOutside\":{\"insideId\":null}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"emojiButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[{\"requestClose\":{\"id\":\"p\",\"reason\":\"pressOutside\"}}]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"outside\",\"id\":\"p\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"gifButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"q\",\"kind\":\"popover\",\"opener\":\"gifButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"lost\",\"id\":\"q\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[]}",
+                        effects: "[{\"restoreFocus\":{\"to\":\"gifButton\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "a menu item opens a confirm dialog",
+                params: "{}",
+                initial: "{\"layers\":[]}",
+                steps: &[
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteItem\",\"openerLayer\":\"m\",\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"m\",\"kind\":\"menu\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"deleteItem\",\"openerLayer\":\"m\",\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"outside\",\"id\":\"m\",\"openerPresent\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[{\"requestClose\":{\"id\":\"d\",\"reason\":\"escape\"}}]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"d\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[]}",
+                        effects: "[{\"restoreFocus\":{\"to\":\"moreButton\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "a layer under an open sheet restores no focus",
+                params: "{}",
+                initial: "{\"layers\":[]}",
+                steps: &[
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"statusButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"lost\",\"id\":\"p\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[{\"id\":\"sh\",\"kind\":\"sheet\",\"opener\":\"moreButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"inside\",\"id\":\"sh\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[]}",
+                        effects: "[{\"restoreFocus\":{\"to\":\"moreButton\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "escape while composing or owned by the focused control",
+                params: "{}",
+                initial: "{\"layers\":[]}",
+                steps: &[
+                    Step {
+                        event: "{\"escape\":{\"composing\":true,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":true}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"escape\":{\"composing\":true,\"focusOwnsEscape\":true}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"escape\":{\"composing\":false,\"focusOwnsEscape\":false}}",
+                        state: "{\"layers\":[{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":\"editButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[{\"requestClose\":{\"id\":\"d\",\"reason\":\"escape\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "an unknown parent or opener layer is dropped",
+                params: "{}",
+                initial: "{\"layers\":[]}",
+                steps: &[
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"pickerButton\",\"openerLayer\":\"gone\",\"parent\":\"gone\"}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"pickerButton\",\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"open\":{\"layer\":{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":null,\"openerLayer\":null,\"parent\":null}}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"pickerButton\",\"openerLayer\":null,\"parent\":null},{\"id\":\"d\",\"kind\":\"dialog\",\"opener\":null,\"openerLayer\":null,\"parent\":null}]}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"closed\":{\"focus\":\"outside\",\"id\":\"d\",\"openerPresent\":true}}",
+                        state: "{\"layers\":[{\"id\":\"p\",\"kind\":\"popover\",\"opener\":\"pickerButton\",\"openerLayer\":null,\"parent\":null}]}",
                         effects: "[]",
                     },
                 ],
@@ -1269,7 +1662,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"}}}",
@@ -1279,7 +1672,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"timerFired\":{\"token\":1}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},\"token\":2}",
-                        effects: "[{\"startTimer\":{\"ms\":8000,\"token\":2}},{\"announce\":{\"message\":\"Couldn't send\",\"politeness\":\"assertive\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":8000,\"token\":2}},{\"announce\":{\"action\":null,\"message\":\"Couldn't send\",\"politeness\":\"assertive\"}}]",
                     },
                     Step {
                         event: "{\"timerFired\":{\"token\":1}}",
@@ -1301,17 +1694,39 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploading 1 file\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploading 1 file\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Uploading 1 file\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Uploading 1 file\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploaded 1 file\",\"tone\":\"positive\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploaded 1 file\",\"tone\":\"positive\"},\"token\":2}",
-                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":4000,\"token\":2}},{\"announce\":{\"message\":\"Uploaded 1 file\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":4000,\"token\":2}},{\"announce\":{\"action\":null,\"message\":\"Uploaded 1 file\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"timerFired\":{\"token\":1}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploaded 1 file\",\"tone\":\"positive\"},\"token\":2}",
                         effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "same id and message is not announced again",
+                params: "{\"durationMs\":4000,\"durationWithActionMs\":8000,\"maxQueued\":3}",
+                initial: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"off\",\"message\":\"You are offline\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"off\",\"message\":\"You are offline\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"You are offline\",\"politeness\":\"polite\"}}]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"off\",\"message\":\"You are offline\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"off\",\"message\":\"You are offline\",\"tone\":\"neutral\"},\"token\":2}",
+                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":4000,\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":\"Retry\",\"id\":\"off\",\"message\":\"You are offline\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":\"Retry\",\"id\":\"off\",\"message\":\"You are offline\",\"tone\":\"neutral\"},\"token\":3}",
+                        effects: "[{\"cancelTimer\":{\"token\":2}},{\"startTimer\":{\"ms\":8000,\"token\":3}},{\"announce\":{\"action\":\"Retry\",\"message\":\"You are offline\",\"politeness\":\"polite\"}}]",
                     },
                 ],
             },
@@ -1323,7 +1738,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"b\",\"message\":\"2 new messages\",\"tone\":\"neutral\"}}}",
@@ -1343,46 +1758,73 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                 ],
             },
             Vector {
-                name: "a full queue drops the oldest non-danger toast",
+                name: "a full queue drops the oldest plain toast and keeps undo",
                 params: "{\"durationMs\":4000,\"durationWithActionMs\":8000,\"maxQueued\":3}",
                 initial: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"}}}",
-                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"c\",\"message\":\"Copied\",\"tone\":\"neutral\"}}}",
-                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},{\"action\":null,\"id\":\"c\",\"message\":\"Copied\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},{\"action\":null,\"id\":\"c\",\"message\":\"Copied\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"d\",\"message\":\"Joined\",\"tone\":\"positive\"}}}",
-                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},{\"action\":null,\"id\":\"c\",\"message\":\"Copied\",\"tone\":\"neutral\"},{\"action\":null,\"id\":\"d\",\"message\":\"Joined\",\"tone\":\"positive\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[]",
-                    },
-                    Step {
-                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"e\",\"message\":\"Pinned\",\"tone\":\"neutral\"}}}",
-                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},{\"action\":null,\"id\":\"d\",\"message\":\"Joined\",\"tone\":\"positive\"},{\"action\":null,\"id\":\"e\",\"message\":\"Pinned\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},{\"action\":null,\"id\":\"d\",\"message\":\"Joined\",\"tone\":\"positive\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
                         effects: "[]",
                     },
                 ],
             },
             Vector {
-                name: "a queue of danger toasts drops the oldest",
+                name: "a full queue of actions drops the oldest non-danger",
                 params: "{\"durationMs\":4000,\"durationWithActionMs\":8000,\"maxQueued\":2}",
                 initial: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":0}",
                 steps: &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":\"Undo\",\"id\":\"v\",\"message\":\"Channel archived\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},{\"action\":\"Undo\",\"id\":\"v\",\"message\":\"Channel archived\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"w\",\"message\":\"Pinned\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":\"Undo\",\"id\":\"v\",\"message\":\"Channel archived\",\"tone\":\"neutral\"},{\"action\":null,\"id\":\"w\",\"message\":\"Pinned\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[]",
+                    },
+                ],
+            },
+            Vector {
+                name: "a queue of danger toasts grows and keeps the newcomer",
+                params: "{\"durationMs\":4000,\"durationWithActionMs\":8000,\"maxQueued\":2}",
+                initial: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"}}}",
@@ -1395,8 +1837,8 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"d\",\"message\":\"Disconnected\",\"tone\":\"danger\"}}}",
-                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"c\",\"message\":\"Couldn't upload\",\"tone\":\"danger\"},{\"action\":null,\"id\":\"d\",\"message\":\"Disconnected\",\"tone\":\"danger\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        event: "{\"show\":{\"toast\":{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},{\"action\":null,\"id\":\"c\",\"message\":\"Couldn't upload\",\"tone\":\"danger\"},{\"action\":\"Undo\",\"id\":\"u\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
                         effects: "[]",
                     },
                 ],
@@ -1409,7 +1851,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":\"Undo\",\"id\":\"del\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":\"Undo\",\"id\":\"del\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":8000,\"token\":1}},{\"announce\":{\"message\":\"Message deleted\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":8000,\"token\":1}},{\"announce\":{\"action\":\"Undo\",\"message\":\"Message deleted\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"positive\"}}}",
@@ -1417,14 +1859,51 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"dismiss\":{\"id\":\"del\"}}",
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"del\"}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"positive\"},\"token\":2}",
-                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":4000,\"token\":2}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"cancelTimer\":{\"token\":1}},{\"startTimer\":{\"ms\":4000,\"token\":2}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
-                        event: "{\"dismiss\":{\"id\":\"a\"}}",
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"a\"}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":2}",
                         effects: "[{\"cancelTimer\":{\"token\":2}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "a danger toast with an action stays until dismissed",
+                params: "{\"durationMs\":4000,\"durationWithActionMs\":8000,\"maxQueued\":3}",
+                initial: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":\"Retry\",\"id\":\"s\",\"message\":\"Couldn't send\",\"tone\":\"danger\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":\"Retry\",\"id\":\"s\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},\"token\":1}",
+                        effects: "[{\"announce\":{\"action\":\"Retry\",\"message\":\"Couldn't send\",\"politeness\":\"assertive\"}}]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}],\"showing\":{\"action\":\"Retry\",\"id\":\"s\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"timerFired\":{\"token\":1}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}],\"showing\":{\"action\":\"Retry\",\"id\":\"s\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"pause\":{}}",
+                        state: "{\"paused\":true,\"queue\":[{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}],\"showing\":{\"action\":\"Retry\",\"id\":\"s\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"resume\":{}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}],\"showing\":{\"action\":\"Retry\",\"id\":\"s\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},\"token\":2}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"s\"}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":3}",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":3}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                 ],
             },
@@ -1436,7 +1915,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"b\",\"message\":\"Copied\",\"tone\":\"neutral\"}}}",
@@ -1444,12 +1923,12 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"dismiss\":{\"id\":\"b\"}}",
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"b\"}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
                         effects: "[]",
                     },
                     Step {
-                        event: "{\"dismiss\":{\"id\":\"zzz\"}}",
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"zzz\"}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
                         effects: "[]",
                     },
@@ -1478,7 +1957,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"pause\":{}}",
@@ -1525,7 +2004,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"}}}",
@@ -1538,19 +2017,56 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                         effects: "[{\"cancelTimer\":{\"token\":1}}]",
                     },
                     Step {
-                        event: "{\"dismiss\":{\"id\":\"a\"}}",
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"a\"}}",
                         state: "{\"paused\":true,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"b\",\"message\":\"Couldn't send\",\"tone\":\"danger\"},\"token\":2}",
-                        effects: "[{\"announce\":{\"message\":\"Couldn't send\",\"politeness\":\"assertive\"}}]",
+                        effects: "[{\"announce\":{\"action\":null,\"message\":\"Couldn't send\",\"politeness\":\"assertive\"}}]",
                     },
                     Step {
-                        event: "{\"dismiss\":{\"id\":\"b\"}}",
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"b\"}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":2}",
                         effects: "[]",
                     },
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"c\",\"message\":\"Copied\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"c\",\"message\":\"Copied\",\"tone\":\"neutral\"},\"token\":3}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":3}},{\"announce\":{\"message\":\"Copied\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":3}},{\"announce\":{\"action\":null,\"message\":\"Copied\",\"politeness\":\"polite\"}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "the host pauses again for a toast under the pointer",
+                params: "{\"durationMs\":4000,\"durationWithActionMs\":8000,\"maxQueued\":3}",
+                initial: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                    },
+                    Step {
+                        event: "{\"pause\":{}}",
+                        state: "{\"paused\":true,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[{\"cancelTimer\":{\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"a\"}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"b\",\"message\":\"Copied\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"b\",\"message\":\"Copied\",\"tone\":\"neutral\"},\"token\":2}",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":2}},{\"announce\":{\"action\":null,\"message\":\"Copied\",\"politeness\":\"polite\"}}]",
+                    },
+                    Step {
+                        event: "{\"pause\":{}}",
+                        state: "{\"paused\":true,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"b\",\"message\":\"Copied\",\"tone\":\"neutral\"},\"token\":2}",
+                        effects: "[{\"cancelTimer\":{\"token\":2}}]",
+                    },
+                    Step {
+                        event: "{\"resume\":{}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"b\",\"message\":\"Copied\",\"tone\":\"neutral\"},\"token\":3}",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":3}}]",
                     },
                 ],
             },
@@ -1562,7 +2078,7 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploading\",\"tone\":\"neutral\"}}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploading\",\"tone\":\"neutral\"},\"token\":1}",
-                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"message\":\"Uploading\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"startTimer\":{\"ms\":4000,\"token\":1}},{\"announce\":{\"action\":null,\"message\":\"Uploading\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"pause\":{}}",
@@ -1572,12 +2088,44 @@ pub(crate) const PATTERNS: &[Pattern] = &[
                     Step {
                         event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploaded\",\"tone\":\"positive\"}}}",
                         state: "{\"paused\":true,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploaded\",\"tone\":\"positive\"},\"token\":2}",
-                        effects: "[{\"announce\":{\"message\":\"Uploaded\",\"politeness\":\"polite\"}}]",
+                        effects: "[{\"announce\":{\"action\":null,\"message\":\"Uploaded\",\"politeness\":\"polite\"}}]",
                     },
                     Step {
                         event: "{\"resume\":{}}",
                         state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"up\",\"message\":\"Uploaded\",\"tone\":\"positive\"},\"token\":3}",
                         effects: "[{\"startTimer\":{\"ms\":4000,\"token\":3}}]",
+                    },
+                ],
+            },
+            Vector {
+                name: "focus goes back when a focused toast is dismissed",
+                params: "{\"durationMs\":4000,\"durationWithActionMs\":8000,\"maxQueued\":3}",
+                initial: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":0}",
+                steps: &[
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":\"Undo\",\"id\":\"del\",\"message\":\"Message deleted\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":{\"action\":\"Undo\",\"id\":\"del\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[{\"startTimer\":{\"ms\":8000,\"token\":1}},{\"announce\":{\"action\":\"Undo\",\"message\":\"Message deleted\",\"politeness\":\"polite\"}}]",
+                    },
+                    Step {
+                        event: "{\"show\":{\"toast\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}}}",
+                        state: "{\"paused\":false,\"queue\":[{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}],\"showing\":{\"action\":\"Undo\",\"id\":\"del\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[]",
+                    },
+                    Step {
+                        event: "{\"pause\":{}}",
+                        state: "{\"paused\":true,\"queue\":[{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"}],\"showing\":{\"action\":\"Undo\",\"id\":\"del\",\"message\":\"Message deleted\",\"tone\":\"neutral\"},\"token\":1}",
+                        effects: "[{\"cancelTimer\":{\"token\":1}}]",
+                    },
+                    Step {
+                        event: "{\"dismiss\":{\"focusInside\":true,\"id\":\"del\"}}",
+                        state: "{\"paused\":true,\"queue\":[],\"showing\":{\"action\":null,\"id\":\"a\",\"message\":\"Saved\",\"tone\":\"neutral\"},\"token\":2}",
+                        effects: "[{\"returnFocus\":{}},{\"announce\":{\"action\":null,\"message\":\"Saved\",\"politeness\":\"polite\"}}]",
+                    },
+                    Step {
+                        event: "{\"dismiss\":{\"focusInside\":false,\"id\":\"a\"}}",
+                        state: "{\"paused\":false,\"queue\":[],\"showing\":null,\"token\":2}",
+                        effects: "[]",
                     },
                 ],
             },
