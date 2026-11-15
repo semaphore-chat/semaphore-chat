@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { act, render } from '@testing-library/react';
 import { useTheme as useMuiTheme, type Theme } from '@mui/material/styles';
 import { ACCENT_PRIMARY, nearestAccent } from '@semaphore-chat/shared';
-import { ThemeProvider, useTheme, type ThemeContextValue } from '../../contexts/ThemeContext';
+import {
+  ThemeProvider,
+  useTheme,
+  type ThemeContextValue,
+  type ThemeSettings,
+} from '../../contexts/ThemeContext';
 import { STORAGE_KEY, accentColors, defaultSettings } from '../../theme/constants';
 import { generateTheme } from '../../theme/themeConfig';
 
@@ -109,6 +115,22 @@ describe('ThemeProvider appearance settings', () => {
     expect(latest.effectiveMode).toBe('light');
   });
 
+  it('writes the migrated settings back to localStorage', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode: 'light', accentColor: 'purple', intensity: 'vibrant' }),
+    );
+    renderTheme();
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
+      mode: 'light',
+      accentColor: 'purple',
+      intensity: 'vibrant',
+      baseColor: ACCENT_PRIMARY.purple,
+      matchSystem: false,
+      newDesign: false,
+    });
+  });
+
   it('falls back field by field for malformed stored values', () => {
     localStorage.setItem(
       STORAGE_KEY,
@@ -161,6 +183,19 @@ describe('ThemeProvider appearance settings', () => {
         view.unmount();
       }
     }
+  });
+
+  it('builds the same MUI theme as before when an accent is picked in the settings', () => {
+    const view = renderTheme();
+    for (const { id } of accentColors) {
+      act(() => latest.setAccentColor(id));
+      const expected = generateTheme('dark', id, 'minimal');
+      expect(latest.settings.accentColor).toBe(id);
+      expect(latest.baseColor).toBe(ACCENT_PRIMARY[id]);
+      expect(view.theme.palette.primary.main).toBe(expected.palette.primary.main);
+      expect(view.theme.palette.background.default).toBe(expected.palette.background.default);
+    }
+    view.unmount();
   });
 
   it('uses the nearest named accent for a custom base colour', () => {
@@ -217,6 +252,64 @@ describe('ThemeProvider appearance settings', () => {
     expect(scheme.listeners.size).toBe(0);
   });
 
+  it('registers exactly one matchMedia listener under strict mode', () => {
+    const scheme = installColorScheme('dark');
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ matchSystem: true }));
+
+    const view = render(
+      <StrictMode>
+        <ThemeProvider>
+          <Probe />
+        </ThemeProvider>
+      </StrictMode>,
+    );
+
+    expect(latest.effectiveMode).toBe('dark');
+    expect(scheme.listeners.size).toBe(1);
+    view.unmount();
+    expect(scheme.listeners.size).toBe(0);
+  });
+
+  it('uses addListener where addEventListener is missing', () => {
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    const query = {
+      get matches() {
+        return true;
+      },
+      media: '(prefers-color-scheme: dark)',
+      onchange: null,
+      addListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => listeners.add(listener)),
+      removeListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener)),
+      dispatchEvent: vi.fn(),
+    };
+    vi.stubGlobal('matchMedia', vi.fn(() => query));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ matchSystem: true }));
+
+    const view = renderTheme();
+    expect(latest.effectiveMode).toBe('dark');
+    expect(listeners.size).toBe(1);
+    view.unmount();
+    expect(listeners.size).toBe(0);
+  });
+
+  it('turns match-system off when a mode is chosen explicitly', () => {
+    const scheme = installColorScheme('dark');
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', matchSystem: true }));
+    renderTheme();
+    expect(latest.effectiveMode).toBe('dark');
+
+    act(() => latest.toggleMode());
+    expect(latest.matchSystem).toBe(false);
+    expect(latest.settings.mode).toBe('dark');
+    expect(latest.effectiveMode).toBe('dark');
+    expect(scheme.listeners.size).toBe(0);
+
+    act(() => latest.setMode('light'));
+    expect(latest.matchSystem).toBe(false);
+    expect(latest.settings.mode).toBe('light');
+    expect(latest.effectiveMode).toBe('light');
+  });
+
   it('does not throw where matchMedia is unavailable', () => {
     vi.stubGlobal('matchMedia', undefined);
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ matchSystem: true }));
@@ -240,6 +333,41 @@ describe('ThemeProvider appearance settings', () => {
     act(() => latest.setAccentColor('rose'));
     expect(latest.settings.accentColor).toBe('rose');
     expect(latest.baseColor).toBe(ACCENT_PRIMARY.rose);
+  });
+
+  it('reports whether setBaseColor accepted its input', () => {
+    renderTheme();
+    let accepted = false;
+
+    act(() => {
+      accepted = latest.setBaseColor('#123456');
+    });
+    expect(accepted).toBe(true);
+    expect(latest.baseColor).toBe('#123456');
+
+    act(() => {
+      accepted = latest.setBaseColor('orange');
+    });
+    expect(accepted).toBe(false);
+    expect(latest.baseColor).toBe('#123456');
+  });
+
+  it('ignores malformed server settings field by field', () => {
+    renderTheme();
+
+    act(() =>
+      latest.applyServerSettings({
+        mode: 'sepia',
+        accentColor: 'chartreuse',
+        intensity: 42,
+        baseColor: 'pink',
+        matchSystem: 'yes',
+        newDesign: 1,
+      } as unknown as ThemeSettings),
+    );
+
+    expect(latest.settings).toEqual(defaultSettings);
+    expect(latest.baseColor).toBe(ACCENT_PRIMARY.teal);
   });
 
   it('toggles the new-design flag independently of the mode', () => {

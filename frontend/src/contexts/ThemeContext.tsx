@@ -44,7 +44,8 @@ export interface ThemeContextValue {
   setMode: (mode: ThemeMode) => void;
   setAccentColor: (color: AccentColor) => void;
   setIntensity: (intensity: ThemeIntensity) => void;
-  setBaseColor: (hex: string) => void;
+  /** Sets the base colour; false (and no change) when `hex` isn't `#rrggbb`. */
+  setBaseColor: (hex: string) => boolean;
   setMatchSystem: (matchSystem: boolean) => void;
   setNewDesign: (newDesign: boolean) => void;
   toggleMode: () => void;
@@ -70,6 +71,22 @@ function migrateSettings(stored: Record<string, unknown>): ThemeSettings {
     baseColor: normalizeBaseColor(stored.baseColor) ?? ACCENT_PRIMARY[accentColor],
     matchSystem: typeof stored.matchSystem === 'boolean' ? stored.matchSystem : defaultSettings.matchSystem,
     newDesign: typeof stored.newDesign === 'boolean' ? stored.newDesign : defaultSettings.newDesign,
+  };
+}
+
+/**
+ * `candidate` with every field it got wrong taken from `fallback`, so a server
+ * reply (or any caller) can never put an invalid colour into the theme.
+ */
+function sanitizeSettings(candidate: ThemeSettings, fallback: ThemeSettings): ThemeSettings {
+  const baseColor = normalizeBaseColor(candidate.baseColor) ?? fallback.baseColor;
+  return {
+    mode: isThemeMode(candidate.mode) ? candidate.mode : fallback.mode,
+    accentColor: isAccentColor(candidate.accentColor) ? candidate.accentColor : nearestAccent(baseColor),
+    intensity: isThemeIntensity(candidate.intensity) ? candidate.intensity : fallback.intensity,
+    baseColor,
+    matchSystem: typeof candidate.matchSystem === 'boolean' ? candidate.matchSystem : fallback.matchSystem,
+    newDesign: typeof candidate.newDesign === 'boolean' ? candidate.newDesign : fallback.newDesign,
   };
 }
 
@@ -107,14 +124,21 @@ function systemPrefersDark(): boolean {
  * exists exactly as long as "match system" is on, and updates live.
  */
 function useSystemPrefersDark(enabled: boolean): boolean {
-  const [prefersDark, setPrefersDark] = useState(systemPrefersDark);
+  // `matchMedia` only runs here when the answer is used; the effect updates it
+  // as soon as "match system" turns on.
+  const [prefersDark, setPrefersDark] = useState(() => enabled && systemPrefersDark());
   useEffect(() => {
     if (!enabled || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const query = window.matchMedia(DARK_SCHEME_QUERY);
     const update = () => setPrefersDark(query.matches);
     update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
+    // Safari before 14 has no `addEventListener` on a MediaQueryList.
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', update);
+      return () => query.removeEventListener('change', update);
+    }
+    query.addListener(update);
+    return () => query.removeListener(update);
   }, [enabled]);
   return prefersDark;
 }
@@ -141,7 +165,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, [settings]);
 
   const setMode = useCallback((mode: ThemeMode) => {
-    setSettings((prev) => ({ ...prev, mode }));
+    // Choosing a mode is explicit: it overrides "follow the system".
+    setSettings((prev) => ({ ...prev, mode, matchSystem: false }));
   }, []);
 
   const setAccentColor = useCallback((accentColor: AccentColor) => {
@@ -153,10 +178,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     setSettings((prev) => ({ ...prev, intensity }));
   }, []);
 
-  const setBaseColor = useCallback((hex: string) => {
+  const setBaseColor = useCallback((hex: string): boolean => {
     const baseColor = normalizeBaseColor(hex);
-    if (!baseColor) return;
+    if (!baseColor) return false;
     setSettings((prev) => ({ ...prev, baseColor, accentColor: nearestAccent(baseColor) }));
+    return true;
   }, []);
 
   const setMatchSystem = useCallback((matchSystem: boolean) => {
@@ -168,16 +194,18 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, []);
 
   const toggleMode = useCallback(() => {
+    // The sun/moon switch picks a mode explicitly too, so it stops following the OS.
     setSettings((prev) => ({
       ...prev,
       mode: prev.mode === 'dark' ? 'light' : 'dark',
+      matchSystem: false,
     }));
   }, []);
 
   // Apply settings from server (doesn't trigger onChange callbacks)
   const applyServerSettings = useCallback((serverSettings: ThemeSettings) => {
     isApplyingServerSettingsRef.current = true;
-    setSettings(serverSettings);
+    setSettings((previous) => sanitizeSettings(serverSettings, previous));
     // Reset flag after state update
     setTimeout(() => {
       isApplyingServerSettingsRef.current = false;

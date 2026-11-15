@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { useTheme as useMuiTheme, type Theme } from '@mui/material/styles';
 import { http, HttpResponse } from 'msw';
-import { ACCENT_PRIMARY } from '@semaphore-chat/shared';
+import { ACCENT_PRIMARY, nearestAccent } from '@semaphore-chat/shared';
 import { server } from '../msw/server';
 import { createTestQueryClient } from '../test-utils';
 import { ThemeProvider, useTheme, type ThemeContextValue } from '../../contexts/ThemeContext';
 import { useThemeSync } from '../../hooks/useThemeSync';
 import { STORAGE_KEY } from '../../theme/constants';
+import { generateTheme } from '../../theme/themeConfig';
 import type {
   AppearanceSettingsResponseDto,
   UpdateAppearanceSettingsDto,
@@ -25,11 +27,13 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 });
 
 let latest: ThemeContextValue;
+let latestMuiTheme: Theme;
 let patches: UpdateAppearanceSettingsDto[];
 
 function Probe() {
   useThemeSync();
   latest = useTheme();
+  latestMuiTheme = useMuiTheme();
   return null;
 }
 
@@ -143,6 +147,57 @@ describe('useThemeSync with the appearance fields', () => {
     expect(latest.newDesign).toBe(false);
   });
 
+  it('adopts the accent an older server holds when it sends no baseColor', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode: 'dark', accentColor: 'rose', intensity: 'minimal', baseColor: ACCENT_PRIMARY.rose }),
+    );
+    serverAppearance({
+      accentColor: 'teal',
+      baseColor: undefined,
+      matchSystem: undefined,
+      newDesign: undefined,
+    });
+
+    renderSync();
+
+    await waitFor(() => expect(latest.settings.accentColor).toBe('teal'));
+    expect(latest.baseColor).toBe(ACCENT_PRIMARY.teal);
+    expect(nearestAccent(latest.baseColor)).toBe('teal');
+    expect(latestMuiTheme.palette.primary.main).toBe(
+      generateTheme('dark', 'teal', 'minimal').palette.primary.main,
+    );
+    expect(patches).toEqual([]);
+  });
+
+  it('keeps a local base colour that already maps to the older server accent', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode: 'dark', accentColor: 'teal', intensity: 'minimal', baseColor: '#0d9489' }),
+    );
+    serverAppearance({ themeMode: 'light', accentColor: 'teal', baseColor: undefined });
+
+    renderSync();
+
+    await waitFor(() => expect(latest.settings.mode).toBe('light'));
+    expect(latest.baseColor).toBe('#0d9489');
+    expect(latest.settings.accentColor).toBe('teal');
+    expect(patches).toEqual([]);
+  });
+
+  it('sends no PATCH on the first load even when local storage was migrated', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode: 'light', accentColor: 'purple', intensity: 'vibrant' }),
+    );
+    serverAppearance();
+
+    renderSync();
+
+    await waitFor(() => expect(latest.settings.accentColor).toBe('teal'));
+    expect(patches).toEqual([]);
+  });
+
   it('PATCHes only the fields that changed', async () => {
     await renderWithServer();
 
@@ -162,17 +217,58 @@ describe('useThemeSync with the appearance fields', () => {
     await waitFor(() => expect(patches).toHaveLength(4));
     expect(patches[3]).toEqual({ newDesign: true });
 
-    // A named accent sends its primary as `baseColor` only; the server derives the accent.
-    act(() => latest.setAccentColor('purple'));
+    // A named accent goes out as the accent alone: the server derives its primary,
+    // and a server without `baseColor` still understands it.
+    act(() => latest.setAccentColor('rose'));
     await waitFor(() => expect(patches).toHaveLength(5));
-    expect(patches[4]).toEqual({ baseColor: ACCENT_PRIMARY.purple });
+    expect(patches[4]).toEqual({ accentColor: 'rose' });
 
-    act(() => latest.setBaseColor('#FF9A6B'));
+    act(() => latest.setBaseColor('#123456'));
     await waitFor(() => expect(patches).toHaveLength(6));
-    expect(patches[5]).toEqual({ baseColor: '#ff9a6b' });
+    expect(patches[5]).toEqual({ baseColor: '#123456' });
 
-    act(() => latest.toggleMode());
+    // Picking a primary as a custom base is a named pick too.
+    act(() => latest.setBaseColor(ACCENT_PRIMARY.lime));
     await waitFor(() => expect(patches).toHaveLength(7));
-    expect(patches[6]).toEqual({ themeMode: 'dark' });
+    expect(patches[6]).toEqual({ accentColor: 'lime' });
+
+    // Choosing a mode explicitly overrides match-system, so both go out together.
+    act(() => latest.toggleMode());
+    await waitFor(() => expect(patches).toHaveLength(8));
+    expect(patches[7]).toEqual({ themeMode: 'dark', matchSystem: false });
+  });
+
+  it('sends a failed change again with the next change', async () => {
+    const attempts: UpdateAppearanceSettingsDto[] = [];
+    const appearance = serverAppearance();
+    server.use(
+      http.patch(`${BASE_URL}/api/appearance-settings`, async ({ request }) => {
+        attempts.push((await request.json()) as UpdateAppearanceSettingsDto);
+        return attempts.length === 1
+          ? new HttpResponse(null, { status: 500 })
+          : HttpResponse.json(appearance);
+      }),
+    );
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mode: 'light', accentColor: 'teal', intensity: 'minimal', baseColor: ACCENT_PRIMARY.teal }),
+    );
+
+    renderSync();
+    await waitFor(() => expect(latest.settings.mode).toBe('dark'));
+
+    act(() => latest.setMode('light'));
+    await waitFor(() => expect(attempts).toHaveLength(1));
+    expect(attempts[0]).toEqual({ themeMode: 'light' });
+
+    // The rejected request must not be counted as synced.
+    act(() => latest.setIntensity('vibrant'));
+    await waitFor(() => expect(attempts).toHaveLength(2));
+    expect(attempts[1]).toEqual({ themeMode: 'light', intensity: 'vibrant' });
+
+    // ...and once acknowledged, only the newest field goes out.
+    act(() => latest.setNewDesign(true));
+    await waitFor(() => expect(attempts).toHaveLength(3));
+    expect(attempts[2]).toEqual({ newDesign: true });
   });
 });
