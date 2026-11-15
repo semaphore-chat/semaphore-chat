@@ -275,6 +275,16 @@ const backgroundHandlers = [
   http.get(`${BASE_URL}/api/presence/users/:userIds`, () => {
     return HttpResponse.json({ presence: {} });
   }),
+
+  // Community presence only exists on newer backends; the 404 is what a
+  // client of an older one sees, so screens that don't test the endpoint keep
+  // the page-based "N around" fallback instead of a made-up count.
+  http.get(`${BASE_URL}/api/presence/community/:communityId`, () => {
+    return HttpResponse.json(
+      { statusCode: 404, message: 'Not Found', error: 'Not Found' },
+      { status: 404 },
+    );
+  }),
 ];
 
 export const handlers = [

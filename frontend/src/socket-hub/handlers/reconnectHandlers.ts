@@ -55,6 +55,12 @@ export function handleReconnect(queryClient: QueryClient): void {
     queryKey: presenceControllerGetBulkPresenceQueryKey(),
   });
 
+  // The per-community online ids and count: the same events feed it, so events
+  // missed during the gap would leave it wrong until its stale time lapses.
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'presenceControllerGetCommunityPresence' }],
+  });
+
   // Voice presence (safety net for missed events during disconnect)
   queryClient.invalidateQueries({
     queryKey: [{ _id: 'voicePresenceControllerGetChannelPresence' }],

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
@@ -16,7 +16,9 @@ const voice = vi.hoisted(() => ({ state: { isConnected: false, currentChannelId:
 vi.mock('../../hooks/useVoiceConnection', () => ({ useVoiceConnection: () => ({ state: voice.state, actions: {} }) }));
 
 import { useCommunityMembers, computeDisplayRole, keepIdentity, groupMembers } from '../../data/members';
-import { handleUserOnline } from '../../socket-hub/handlers/presenceHandlers';
+import { handleUserOnline, resetCommunityPresenceThrottle } from '../../socket-hub/handlers/presenceHandlers';
+import { handleReconnect } from '../../socket-hub/handlers/reconnectHandlers';
+import { presenceControllerGetCommunityPresenceQueryKey } from '../../api-client/@tanstack/react-query.gen';
 
 const BASE = 'http://localhost:3000';
 
@@ -62,6 +64,10 @@ function bulkPresence(online: Record<string, boolean>) {
   return http.get(`${BASE}/api/presence/users/bulk`, () => HttpResponse.json({ presence: online }));
 }
 
+function communityPresence(presence: { onlineUserIds: string[]; onlineCount: number; memberCount: number }) {
+  return http.get(`${BASE}/api/presence/community/c-1`, () => HttpResponse.json(presence));
+}
+
 function noRooms() {
   return http.get(`${BASE}/api/channels/community/c-1`, () => HttpResponse.json([]));
 }
@@ -73,6 +79,10 @@ function renderMembers() {
 }
 
 describe('useCommunityMembers', () => {
+  beforeEach(() => {
+    resetCommunityPresenceThrottle();
+  });
+
   it('groups Hosts (by role priority) / Around / Away from members and bulk presence', async () => {
     server.use(
       memberPages(5, (n) => (n === 2 ? [memberRole, mod] : n === 4 ? [admin] : [memberRole])),
@@ -131,6 +141,127 @@ describe('useCommunityMembers', () => {
     expect(result.current.loadedAroundCount).toBe(1);
     // One bulk request, never a list of ids
     expect(new Set(presenceRequests)).toEqual(new Set(['bulk']));
+  });
+
+  it('takes aroundCount from the community presence endpoint before every page is loaded', async () => {
+    server.use(
+      memberPages(250),
+      bulkPresence({ 'user-1': true }),
+      communityPresence({ onlineUserIds: ['user-1', 'user-250'], onlineCount: 2, memberCount: 250 }),
+      noRooms(),
+    );
+    const { result } = renderMembers();
+
+    await waitFor(() => expect(result.current.aroundCount).toBe(2));
+    // One page of three: the community-wide count is right anyway...
+    expect(result.current.allLoaded).toBe(false);
+    expect(result.current.loadedAroundCount).toBe(1);
+    // ...while the rows still read the bulk presence they always did.
+    expect(result.current.around.map((m) => m.id)).toEqual(['user-1']);
+  });
+
+  it('falls back to the loaded pages when the endpoint is missing (404)', async () => {
+    // The shared handler answers 404: an older backend, no community count.
+    server.use(memberPages(120), bulkPresence({ 'user-1': true }), noRooms());
+    const { result } = renderMembers();
+
+    await waitFor(() => expect(result.current.away.length + result.current.around.length).toBe(100));
+    expect(result.current.aroundCount).toBeNull();
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.allLoaded).toBe(true));
+    expect(result.current.aroundCount).toBe(1);
+    expect(result.current.loadedAroundCount).toBe(1);
+  });
+
+  it('asks the community presence endpoint once when an older backend answers 404', async () => {
+    let requests = 0;
+    server.use(
+      memberPages(3),
+      bulkPresence({}),
+      http.get(`${BASE}/api/presence/community/c-1`, () => {
+        requests += 1;
+        return HttpResponse.json({ statusCode: 404, message: 'Not Found', error: 'Not Found' }, { status: 404 });
+      }),
+      noRooms(),
+    );
+    const queryClient = createTestQueryClient();
+    // Production retries once; no retry delay, so a retry would land at once.
+    queryClient.setDefaultOptions({ queries: { retry: 1, retryDelay: 0 } });
+    renderHook(() => useCommunityMembers('c-1'), { wrapper: createTestWrapper({ queryClient }) });
+
+    const key = presenceControllerGetCommunityPresenceQueryKey({ path: { communityId: 'c-1' } });
+    await waitFor(() => {
+      const state = queryClient.getQueryState(key);
+      expect(state?.status).toBe('error');
+      expect(state?.fetchStatus).toBe('idle');
+    });
+    // A 404 never comes back: retrying only delays the page-based fallback.
+    expect(requests).toBe(1);
+  });
+
+  it('falls back to the loaded pages and keeps the list working when the request fails', async () => {
+    server.use(
+      memberPages(3),
+      bulkPresence({ 'user-1': true }),
+      http.get(`${BASE}/api/presence/community/c-1`, () => HttpResponse.json({ message: 'down' }, { status: 500 })),
+      noRooms(),
+    );
+    const { result } = renderMembers();
+
+    await waitFor(() => expect(result.current.aroundCount).toBe(1));
+    expect(result.current.allLoaded).toBe(true);
+    expect(result.current.status).toBe('success');
+  });
+
+  it('refreshes the community count when a presence socket event arrives', async () => {
+    let onlineCount = 1;
+    server.use(
+      memberPages(250),
+      bulkPresence({ 'user-1': true }),
+      http.get(`${BASE}/api/presence/community/c-1`, () =>
+        HttpResponse.json({
+          onlineUserIds: Array.from({ length: onlineCount }, (_, i) => `user-${i + 1}`),
+          onlineCount,
+          memberCount: 250,
+        }),
+      ),
+      noRooms(),
+    );
+    const { result, queryClient } = renderMembers();
+    await waitFor(() => expect(result.current.aroundCount).toBe(1));
+
+    onlineCount = 2;
+    act(() => {
+      handleUserOnline({ userId: 'user-250' } as never, queryClient);
+    });
+
+    await waitFor(() => expect(result.current.aroundCount).toBe(2));
+  });
+
+  it('refreshes the community count after a socket reconnect', async () => {
+    let onlineCount = 1;
+    server.use(
+      memberPages(250),
+      bulkPresence({ 'user-1': true }),
+      http.get(`${BASE}/api/presence/community/c-1`, () =>
+        HttpResponse.json({
+          onlineUserIds: Array.from({ length: onlineCount }, (_, i) => `user-${i + 1}`),
+          onlineCount,
+          memberCount: 250,
+        }),
+      ),
+      noRooms(),
+    );
+    const { result, queryClient } = renderMembers();
+    await waitFor(() => expect(result.current.aroundCount).toBe(1));
+
+    onlineCount = 3;
+    act(() => {
+      handleReconnect(queryClient);
+    });
+
+    await waitFor(() => expect(result.current.aroundCount).toBe(3));
   });
 
   it('keeps every untouched row object across a presence event (memo’d rows skip it)', async () => {
