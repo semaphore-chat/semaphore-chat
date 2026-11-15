@@ -1,4 +1,4 @@
-import { useEffect, useRef, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { Avatar, Button, ListRow, LoadState, Skeleton, Text, useLoadState, type LoadController } from '../../kit';
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
@@ -17,7 +17,7 @@ const state = (over: Partial<LoadController>): LoadController => ({
   ...over,
 });
 
-const MEMBERS = ['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds', 'Margaret Hamilton'];
+const MEMBERS = ['dropbear', 'pri', 'aiko', 'kwam3', 'alexk'];
 
 function MemberSkeleton(): JSX.Element {
   return (
@@ -101,11 +101,14 @@ export const Empty = () => <Panel mode="dark" controller={state({ status: 'empty
 
 export const EmptyLight = () => <Panel mode="light" controller={state({ status: 'empty' })} />;
 
-/** The first load failed: an alert with Try again replaces the skeleton. The title says what failed; the default body is "Try again." */
-export const ErrorWithRetry = () => <Panel mode="dark" controller={state({ status: 'error', error: 'Try again.' })} />;
+/** The first load failed: an alert with Try again replaces the skeleton. The title says what failed; by default there is no body. */
+export const ErrorWithRetry = () => <Panel mode="dark" controller={state({ status: 'error', error: null })} />;
 
-export const ErrorWithRetryLight = () => (
-  <Panel mode="light" controller={state({ status: 'error', error: 'Try again.' })} />
+export const ErrorWithRetryLight = () => <Panel mode="light" controller={state({ status: 'error', error: null })} />;
+
+/** A screen's own error text shows under the title. */
+export const ErrorWithMessage = () => (
+  <Panel mode="dark" controller={state({ status: 'error', error: "The server didn't answer. Try again in a minute." })} />
 );
 
 /** The first load could not start: the device is offline. It loads by itself when the connection returns, so there is no Try again. */
@@ -129,22 +132,49 @@ export const UserRefreshBusyLight = () => (
 );
 
 function LivePanel(): JSX.Element {
-  // The first load fails; Try again works.
-  const calls = useRef(0);
+  // The real hook. Every load works unless "Fail the next load" is on; "Load again" changes what the
+  // panel shows (resetKey), so it starts from the skeleton. Settled, it shows the list.
+  const failNext = useRef(false);
+  const [failing, setFailing] = useState(false);
+  const [subject, setSubject] = useState(0);
   const { state: controller, data } = useLoadState({
     notifyId: 'members',
-    resetKey: 'couch-co-op',
+    resetKey: subject,
     load: () =>
       new Promise<string[]>((resolve, reject) => {
-        calls.current += 1;
-        setTimeout(() => (calls.current === 1 ? reject(new Error('503')) : resolve(MEMBERS)), 800);
+        const fail = failNext.current;
+        failNext.current = false;
+        setFailing(false);
+        setTimeout(() => (fail ? reject(new Error('503')) : resolve(MEMBERS)), 800);
       }),
     isEmpty: (names) => names.length === 0,
   });
-  return <PanelBody controller={controller} names={data} />;
+  return (
+    <>
+      <PanelBody controller={controller} names={data} toasts />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: tokens.space.sm }}>
+        <Button
+          size="sm"
+          aria-pressed={failing}
+          onClick={() => {
+            failNext.current = !failNext.current;
+            setFailing(failNext.current);
+          }}
+        >
+          Fail the next load
+        </Button>
+        <Button size="sm" onClick={() => setSubject((n) => n + 1)}>
+          Load again
+        </Button>
+      </div>
+    </>
+  );
 }
 
-/** The real hook: loads for a moment, fails, and Try again loads the list. */
+/**
+ * The real hook, with controls: it loads for a moment and shows the list. "Fail the next load", then "Load again"
+ * shows the error with Try again; with Refresh instead, the list stays and a toast says the refresh failed.
+ */
 export const Live = () => (
   <KitStage mode="dark">
     <LivePanel />

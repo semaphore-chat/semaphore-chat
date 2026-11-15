@@ -15,7 +15,11 @@ import type { ToastRequest } from './toasts';
 
 export interface LoadController {
   status: Status;
-  /** The message the error screen shows; null unless `status` is `error`. */
+  /**
+   * The body the error screen shows under its title; null unless `status` is
+   * `error`, and null for the default failure of a retryable load (the title
+   * and Try again say it all).
+   */
   error: string | null;
   /**
    * Whether the error screen offers Try again. False for a first load that
@@ -45,8 +49,12 @@ function checkResetKey(key: ResetKey): void {
   }
 }
 
-/** The default body under the error title ("Couldn't load members"). */
-export const DEFAULT_ERROR_MESSAGE = 'Try again.';
+/**
+ * The default failure text. A refresh failure shows it as the toast; on the
+ * error screen of a retryable load it is left out (the title says what failed,
+ * the button what to do).
+ */
+export const DEFAULT_ERROR_MESSAGE = "Couldn't refresh. Try again.";
 /** A first load that cannot start because the device is offline. */
 export const OFFLINE_LOAD_MESSAGE = "You're offline. It will load when you're back online.";
 /** A refresh that cannot start because the device is offline (a toast). */
@@ -57,7 +65,7 @@ export interface LoadStateOptions {
   notifyId: string;
   /** What the screen shows (see `ResetKey`). A change loads from scratch. */
   resetKey: ResetKey;
-  /** The text for a failure. Default: "Try again." (the title already says what failed). */
+  /** The text for a failure. Default: none on the error screen (its title and Try again say it), "Couldn't refresh. Try again." as a refresh toast. */
   errorMessage?: (error: unknown) => string;
 }
 
@@ -160,7 +168,7 @@ function useController(core: LoadCore, stale: boolean, offline: () => boolean): 
   return useMemo<LoadController>(
     () => ({
       status: stale ? 'loading' : state.status,
-      error: stale ? null : state.error,
+      error: stale || (retryable && state.error === DEFAULT_ERROR_MESSAGE) ? null : state.error,
       retryable: stale || retryable,
       refreshByUser: stale ? false : state.refreshByUser,
       refresh: () => core.act({ refresh: { byUser: true } }),

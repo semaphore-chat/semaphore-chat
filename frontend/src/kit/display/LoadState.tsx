@@ -76,7 +76,7 @@ export function LoadState({ state, label, skeleton, empty, errorTitle, children 
         title={errorTitle}
         action={state.retryable ? { label: 'Try again', onClick: retry } : undefined}
       >
-        {state.error}
+        {state.error ?? undefined}
       </Alert>
     );
   } else if (status === 'loading') face = skeleton;

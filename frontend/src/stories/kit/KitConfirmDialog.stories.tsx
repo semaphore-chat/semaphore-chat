@@ -37,11 +37,11 @@ export const WorkingLight = () => <Phase mode="light" phase="working" />;
 
 /** The action failed: the error shows as an alert in the body, the label stays, Cancel is back. */
 export const Failed = () => (
-  <Phase mode="dark" phase="failed" error="Couldn't delete the channel. Check your connection and try again." />
+  <Phase mode="dark" phase="failed" error="Couldn't delete the channel. Try again." />
 );
 
 export const FailedLight = () => (
-  <Phase mode="light" phase="failed" error="Couldn't delete the channel. Check your connection and try again." />
+  <Phase mode="light" phase="failed" error="Couldn't delete the channel. Try again." />
 );
 
 /** A long error and a long name: the dialog wraps, the alert wraps, nothing is clipped. Judge at 390 px. */
@@ -55,7 +55,7 @@ export const FailedLongText = () => (
     mode="dark"
     phase="failed"
     title="Delete #announcements-and-everything-else-the-moderators-pinned-for-the-whole-community?"
-    error="Couldn't delete the channel. The server answered after a very long wait with a message that does not fit on one line, so it wraps. Check your connection and try again."
+    error="Couldn't delete the channel. The server answered after a very long wait with a message that does not fit on one line, so it wraps. Try again."
   />
 );
 
@@ -80,7 +80,7 @@ function FromMenuScreen({ run }: { run: (attempt: number) => Promise<void> }) {
       setAttempts(attempt);
       return run(attempt);
     },
-    errorMessage: () => "Couldn't delete the channel. Check your connection and try again.",
+    errorMessage: () => "Couldn't delete the channel. Try again.",
     onDone: () => setLines((previous) => [...previous, 'channel deleted']),
   });
   return (

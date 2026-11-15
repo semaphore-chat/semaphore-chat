@@ -542,8 +542,11 @@ when a newer fetch starts or the screen goes away. It returns `{ state, data }`:
 late answer for an earlier `resetKey` never shows, even when `load` ignores the
 signal. `useQueryLoadState(query, { notifyId, resetKey, isEmpty })` takes a
 TanStack Query result instead and returns the controller (draw `query.data`).
-Both accept an optional `errorMessage(error)`; the default is "Try again.",
-under the screen's error title ("Couldn't load members"). The controller
+Both accept an optional `errorMessage(error)`, shown under the screen's error
+title ("Couldn't load members"). Without one, the error screen shows the title
+and the Try again button and no body (the button is the next step; the words
+would only repeat it), and a refresh failure toasts "Couldn't refresh. Try
+again.". The controller
 (`status`, `error`, `retryable`, `refreshByUser`, `refresh()`, `retry()`) is what
 `<LoadState>` draws (see LoadState in [Components](components.md#loadstate)).
 

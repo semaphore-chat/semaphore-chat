@@ -72,7 +72,7 @@ function View({ state, label = 'Members' }: { state: LoadController; label?: str
         errorTitle="Couldn't load members"
       >
         <ul aria-label="Members list">
-          <li>Ada</li>
+          <li>dropbear</li>
         </ul>
       </LoadState>
     </>
@@ -109,9 +109,9 @@ describe('useLoadState', () => {
     expect(status()).toBe('loading');
     expect(data()).toBe('none');
     expect(load).toHaveBeenCalledTimes(1);
-    await act(async () => first.resolve(['Ada']));
+    await act(async () => first.resolve(['dropbear']));
     expect(status()).toBe('ready');
-    expect(data()).toBe('Ada');
+    expect(data()).toBe('dropbear');
     expect(screen.getByRole('list', { name: 'Members list' })).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(1);
   });
@@ -123,7 +123,7 @@ describe('useLoadState', () => {
   });
 
   it('shows the error with Try again when the first load fails, and retry loads again', async () => {
-    const load = vi.fn<Load>().mockRejectedValueOnce(new Error('503')).mockResolvedValueOnce(['Ada']);
+    const load = vi.fn<Load>().mockRejectedValueOnce(new Error('503')).mockResolvedValueOnce(['dropbear']);
     const { user } = renderWithKit(<Screen load={load} errorMessage={() => 'The server is down.'} />);
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("Couldn't load members");
@@ -133,15 +133,26 @@ describe('useLoadState', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it('the default error body is "Try again." under the title', async () => {
+  it('the default failure: the error screen has the title and Try again, and no body', async () => {
     renderWithKit(<Screen load={() => Promise.reject(new Error('500'))} />);
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent("Couldn't load membersTry again.");
+    expect(alert.textContent).toBe("Couldn't load membersTry again");
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+
+  it('the default failure of a refresh is a toast that says what happened', async () => {
+    const sink: ToastRequest[] = [];
+    const load = vi.fn<Load>().mockResolvedValueOnce(['dropbear']).mockRejectedValueOnce(new Error('500'));
+    const { user } = renderWithKit(<Screen load={load} sink={sink} />);
+    await screen.findByRole('list', { name: 'Members list' });
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(sink).toHaveLength(1));
+    expect(sink[0]).toEqual({ id: 'members', tone: 'danger', message: "Couldn't refresh. Try again." });
   });
 
   it('a background refresh keeps the content; a failed refresh notifies with the notify id and keeps the data', async () => {
     const sink: ToastRequest[] = [];
-    const load = vi.fn<Load>().mockResolvedValueOnce(['Ada']);
+    const load = vi.fn<Load>().mockResolvedValueOnce(['dropbear']);
     const { user } = renderWithKit(<Screen load={load} sink={sink} errorMessage={() => 'You are offline.'} />);
     await screen.findByRole('list', { name: 'Members list' });
     const refreshing = deferred<string[]>();
@@ -152,13 +163,13 @@ describe('useLoadState', () => {
     expect(screen.getByTestId('by-user').textContent).toBe('true');
     await act(async () => refreshing.reject(new Error('offline')));
     expect(status()).toBe('ready');
-    expect(data()).toBe('Ada');
+    expect(data()).toBe('dropbear');
     expect(screen.getByTestId('by-user').textContent).toBe('false');
     expect(sink).toEqual([{ id: 'members', tone: 'danger', message: 'You are offline.' }]);
   });
 
   it('a failed refresh with no ToastRegion on the page queues its toast without a fault', async () => {
-    const load = vi.fn<Load>().mockResolvedValueOnce(['Ada']).mockRejectedValueOnce(new Error('x'));
+    const load = vi.fn<Load>().mockResolvedValueOnce(['dropbear']).mockRejectedValueOnce(new Error('x'));
     const { user } = renderWithKit(<Screen load={load} />);
     await screen.findByRole('list', { name: 'Members list' });
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -192,13 +203,13 @@ describe('useLoadState', () => {
     await act(async () => first.resolve(['Old channel']));
     expect(status()).toBe('loading');
     expect(data()).toBe('none');
-    await act(async () => second.resolve(['Grace']));
+    await act(async () => second.resolve(['pri']));
     expect(status()).toBe('ready');
-    expect(data()).toBe('Grace');
+    expect(data()).toBe('pri');
   });
 
   it('a change of resetKey never renders the old data as the new subject', async () => {
-    const load = vi.fn<Load>().mockResolvedValueOnce(['Ada']);
+    const load = vi.fn<Load>().mockResolvedValueOnce(['dropbear']);
     const rendered: string[] = [];
     function Probe({ k }: { k: string }) {
       const { state, data: names } = useLoadState<string[]>({
@@ -211,7 +222,7 @@ describe('useLoadState', () => {
       return null;
     }
     const { rerender } = renderWithKit(<Probe k="a" />);
-    await waitFor(() => expect(rendered[rendered.length - 1]).toBe('a:ready:Ada'));
+    await waitFor(() => expect(rendered[rendered.length - 1]).toBe('a:ready:dropbear'));
     load.mockReturnValueOnce(new Promise(() => {}));
     rendered.length = 0;
     rerender(<Probe k="b" />);
@@ -219,7 +230,7 @@ describe('useLoadState', () => {
   });
 
   it('a resetKey built from ids each render is compared by value: one load', async () => {
-    const load = vi.fn<Load>(() => Promise.resolve(['Ada']));
+    const load = vi.fn<Load>(() => Promise.resolve(['dropbear']));
     function Built({ community, channel }: { community: string; channel: number }) {
       const { state } = useLoadState<string[]>({
         notifyId: 'members',
@@ -253,7 +264,7 @@ describe('useLoadState', () => {
   });
 
   it('a change of resetKey shows the skeleton again and the status "Loading members"', async () => {
-    const load = vi.fn<Load>(() => Promise.resolve(['Ada']));
+    const load = vi.fn<Load>(() => Promise.resolve(['dropbear']));
     const { rerender } = renderWithKit(<Screen load={load} resetKey="a" />);
     await screen.findByRole('list', { name: 'Members list' });
     const next = deferred<string[]>();
@@ -262,7 +273,7 @@ describe('useLoadState', () => {
     expect(status()).toBe('loading');
     expect(screen.getByRole('status', { name: '' })).toHaveTextContent('Loading members');
     expect(screen.queryByRole('list', { name: 'Members list' })).not.toBeInTheDocument();
-    await act(async () => next.resolve(['Ada']));
+    await act(async () => next.resolve(['dropbear']));
   });
 
   it('aborts the fetch and ignores its result when the screen goes away', async () => {
@@ -278,7 +289,7 @@ describe('useLoadState', () => {
     );
     view.unmount();
     expect(signal?.aborted).toBe(true);
-    await act(async () => pending.resolve(['Ada']));
+    await act(async () => pending.resolve(['dropbear']));
   });
 
   it('a load that throws instead of rejecting is a failure', async () => {
@@ -294,14 +305,14 @@ describe('useLoadState', () => {
   });
 
   it('under StrictMode it loads, and shows the answer of the load that counts', async () => {
-    const load = vi.fn<Load>(() => Promise.resolve(['Ada']));
+    const load = vi.fn<Load>(() => Promise.resolve(['dropbear']));
     renderWithKit(
       <StrictMode>
         <Screen load={load} />
       </StrictMode>,
     );
     await screen.findByRole('list', { name: 'Members list' });
-    expect(data()).toBe('Ada');
+    expect(data()).toBe('dropbear');
   });
 });
 
@@ -383,7 +394,7 @@ describe('useQueryLoadState', () => {
   });
 
   it('joins the query on mount: one request, not two', async () => {
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     renderScreen(<Screen />);
     await screen.findByRole('list', { name: 'Members list' });
     await flush();
@@ -400,7 +411,7 @@ describe('useQueryLoadState', () => {
 
   describe('a disabled query (C2)', () => {
     it('a dependent query whose id arrives later: loading, no request, then one request when it arrives', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       const { user, rerender } = renderScreen(<Screen channel={null} />);
       await flush();
       expect(status()).toBe('loading');
@@ -416,7 +427,7 @@ describe('useQueryLoadState', () => {
     });
 
     it('a query enabled later under the same resetKey (a permission) keeps the skeleton, then loads once', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       const { rerender } = renderScreen(<Screen enabled={false} />);
       await flush();
       expect(status()).toBe('loading');
@@ -434,7 +445,7 @@ describe('useQueryLoadState', () => {
       await screen.findByRole('alert');
       expect(hits).toBe(1);
       rerender(<Screen enabled={false} />);
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       await user.click(screen.getByRole('button', { name: 'Try again' }));
       await flush();
       expect(hits).toBe(1);
@@ -445,7 +456,7 @@ describe('useQueryLoadState', () => {
     });
 
     it('a disabled query with cached data shows it at once; Refresh fetches nothing and is not left busy', async () => {
-      queryClient.setQueryData(['members', 'general'], ['Ada']);
+      queryClient.setQueryData(['members', 'general'], ['dropbear']);
       const commits: string[] = [];
       const { user } = renderScreen(<Screen enabled={false} commits={commits} />);
       expect(commits[0]).toBe('ready');
@@ -483,7 +494,7 @@ describe('useQueryLoadState', () => {
   describe('a cached query (I1)', () => {
     it('fresh data: the first committed render is ready, with no request', async () => {
       queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       const first = renderScreen(<Screen />);
       await screen.findByRole('list', { name: 'Members list' });
       expect(hits).toBe(1);
@@ -518,14 +529,14 @@ describe('useQueryLoadState', () => {
     });
 
     it('stale data: the cache shows at once and the refetch on mount is a background refresh', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       const first = renderScreen(<Screen />);
       await screen.findByRole('list', { name: 'Members list' });
       first.unmount();
       const slow = deferred<void>();
       members(async () => {
         await slow.promise;
-        return HttpResponse.json(['Ada', 'Grace']);
+        return HttpResponse.json(['dropbear', 'pri']);
       });
       const commits: string[] = [];
       renderScreen(<Screen commits={commits} />);
@@ -539,13 +550,13 @@ describe('useQueryLoadState', () => {
   });
 
   it('a background refetch keeps the content and shows nothing on the refresh button', async () => {
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     renderScreen(<Screen />);
     await screen.findByRole('list', { name: 'Members list' });
     const second = deferred<void>();
     members(async () => {
       await second.promise;
-      return HttpResponse.json(['Ada', 'Grace']);
+      return HttpResponse.json(['dropbear', 'pri']);
     });
     act(() => {
       void queryClient.invalidateQueries({ queryKey: ['members'] });
@@ -559,13 +570,13 @@ describe('useQueryLoadState', () => {
   });
 
   it('a refresh the user starts refetches once and shows busy on its control', async () => {
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     const { user } = renderScreen(<Screen />);
     await screen.findByRole('list', { name: 'Members list' });
     const second = deferred<void>();
     members(async () => {
       await second.promise;
-      return HttpResponse.json(['Ada']);
+      return HttpResponse.json(['dropbear']);
     });
     await user.click(screen.getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(status()).toBe('refreshing'));
@@ -577,7 +588,7 @@ describe('useQueryLoadState', () => {
   });
 
   it('a failed refetch keeps the content and notifies with the notify id', async () => {
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     const sink: ToastRequest[] = [];
     renderScreen(<Screen sink={sink} />);
     await screen.findByRole('list', { name: 'Members list' });
@@ -592,7 +603,7 @@ describe('useQueryLoadState', () => {
   });
 
   it('through the real toast region: a failed refetch shows a danger toast with the notify id', async () => {
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     const showing = { read: (): unknown => null };
     function Probe(): null {
       const host = useBehaviourHost();
@@ -624,7 +635,7 @@ describe('useQueryLoadState', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("Couldn't load members");
     expect(alert).toHaveTextContent("Couldn't reach the server.");
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByRole('list', { name: 'Members list' });
     expect(hits).toBe(2);
@@ -640,7 +651,7 @@ describe('useQueryLoadState', () => {
           await slow.promise;
           return HttpResponse.json([]);
         }
-        return HttpResponse.json(['Ada']);
+        return HttpResponse.json(['dropbear']);
       }),
     );
     const view = renderScreen(<Screen channel="general" />);
@@ -655,20 +666,20 @@ describe('useQueryLoadState', () => {
   });
 
   describe('a cancelled fetch (I2), as the socket handlers do it: cancelQueries, then setQueryData', () => {
-    const appendGrace = (old: string[] | undefined) => (old ? [...old, 'Grace'] : old);
+    const appendGrace = (old: string[] | undefined) => (old ? [...old, 'pri'] : old);
 
     it('during the first load: not a result, never the empty state; the load is resumed once and shows', async () => {
       const slow = deferred<void>();
       members(async () => {
         await slow.promise;
-        return HttpResponse.json(['Ada']);
+        return HttpResponse.json(['dropbear']);
       });
       renderScreen(<Screen />);
       expect(status()).toBe('loading');
       const resumed = deferred<void>();
       members(async () => {
         await resumed.promise;
-        return HttpResponse.json(['Ada']);
+        return HttpResponse.json(['dropbear']);
       });
       await act(async () => {
         await queryClient.cancelQueries({ queryKey: ['members', 'general'] });
@@ -700,13 +711,13 @@ describe('useQueryLoadState', () => {
     });
 
     it('during a refresh: the content stays and the refresh ends with the data set by hand', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       const { user } = renderScreen(<Screen />);
       await screen.findByRole('list', { name: 'Members list' });
       const slow = deferred<void>();
       members(async () => {
         await slow.promise;
-        return HttpResponse.json(['Ada']);
+        return HttpResponse.json(['dropbear']);
       });
       await user.click(screen.getByRole('button', { name: 'Refresh' }));
       await waitFor(() => expect(status()).toBe('refreshing'));
@@ -716,12 +727,12 @@ describe('useQueryLoadState', () => {
       });
       await waitFor(() => expect(status()).toBe('ready'));
       expect(screen.getByTestId('by-user').textContent).toBe('false');
-      expect(screen.getByTestId('names').textContent).toBe('Ada,Grace');
+      expect(screen.getByTestId('names').textContent).toBe('dropbear,pri');
       await act(async () => slow.resolve());
     });
 
     it('during a refresh, with nothing set after: the refresh ends, the content stays', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       const { user } = renderScreen(<Screen />);
       await screen.findByRole('list', { name: 'Members list' });
       members(() => new Promise(() => {}));
@@ -731,19 +742,19 @@ describe('useQueryLoadState', () => {
         await queryClient.cancelQueries({ queryKey: ['members', 'general'] });
       });
       await waitFor(() => expect(status()).toBe('ready'));
-      expect(screen.getByTestId('names').textContent).toBe('Ada');
+      expect(screen.getByTestId('names').textContent).toBe('dropbear');
     });
   });
 
   describe('setQueryData with no fetch (M10)', () => {
     it('while ready: stays ready with the new data', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       renderScreen(<Screen />);
       await screen.findByRole('list', { name: 'Members list' });
       act(() => {
-        queryClient.setQueryData<string[]>(['members', 'general'], (old) => [...(old ?? []), 'Grace']);
+        queryClient.setQueryData<string[]>(['members', 'general'], (old) => [...(old ?? []), 'pri']);
       });
-      await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('Ada,Grace'));
+      await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('dropbear,pri'));
       await flush();
       expect(status()).toBe('ready');
       expect(hits).toBe(1);
@@ -754,7 +765,7 @@ describe('useQueryLoadState', () => {
       renderScreen(<Screen />);
       await screen.findByText('No members yet');
       act(() => {
-        queryClient.setQueryData<string[]>(['members', 'general'], ['Ada']);
+        queryClient.setQueryData<string[]>(['members', 'general'], ['dropbear']);
       });
       await waitFor(() => expect(status()).toBe('ready'));
       expect(hits).toBe(1);
@@ -763,7 +774,7 @@ describe('useQueryLoadState', () => {
 
   describe('offline (I5): a paused fetch is a failed attempt', () => {
     it('a first load while offline shows the error with the offline wording and no Try again, and loads by itself when the connection returns', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       onlineManager.setOnline(false);
       renderScreen(<Screen />);
       const alert = await screen.findByRole('alert');
@@ -777,7 +788,7 @@ describe('useQueryLoadState', () => {
     });
 
     it('a refresh the user starts while offline stops being busy and notifies with the offline wording', async () => {
-      members(() => HttpResponse.json(['Ada']));
+      members(() => HttpResponse.json(['dropbear']));
       const sink: ToastRequest[] = [];
       const { user } = renderScreen(<Screen sink={sink} />);
       await screen.findByRole('list', { name: 'Members list' });
@@ -789,9 +800,9 @@ describe('useQueryLoadState', () => {
       expect(screen.getByTestId('by-user').textContent).toBe('false');
       expect(hits).toBe(1);
       // Back online, TanStack resumes the paused fetch: a background refresh, applied normally.
-      members(() => HttpResponse.json(['Ada', 'Grace']));
+      members(() => HttpResponse.json(['dropbear', 'pri']));
       act(() => onlineManager.setOnline(true));
-      await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('Ada,Grace'));
+      await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('dropbear,pri'));
       await waitFor(() => expect(status()).toBe('ready'));
       expect(hits).toBe(2);
       expect(sink).toHaveLength(1);
@@ -806,7 +817,7 @@ describe('useQueryLoadState', () => {
     });
 
   it('offline with a stale cache: the cache shows, no error face, the paused refresh notifies once', async () => {
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     const first = renderScreen(<Screen />);
     await screen.findByRole('list', { name: 'Members list' });
     first.unmount();
@@ -824,7 +835,7 @@ describe('useQueryLoadState', () => {
   });
 
   it('a cached answer whose last refetch failed still shows at open', async () => {
-    members(() => HttpResponse.json(['Ada']));
+    members(() => HttpResponse.json(['dropbear']));
     const first = renderScreen(<Screen />);
     await screen.findByRole('list', { name: 'Members list' });
     members(() => new HttpResponse(null, { status: 503 }));
@@ -861,7 +872,7 @@ describe('useQueryLoadState', () => {
     server.use(
       http.get(ENDPOINT, ({ request }) => {
         if (new URL(request.url).searchParams.get('channel') === 'strict') strictHits += 1;
-        return HttpResponse.json(['Ada']);
+        return HttpResponse.json(['dropbear']);
       }),
     );
     renderWithKit(

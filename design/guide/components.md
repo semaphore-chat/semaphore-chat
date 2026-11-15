@@ -637,8 +637,11 @@ or when the content has no empty or error face worth drawing.
   `:focus-visible` (after a keyboard Try again), none after a pointer press.
 - The error face offers Try again only when `state.retryable` (an offline
   first load has none: it loads by itself when the connection returns).
-- Error: a `danger` Alert with `errorTitle`, the controller's message and a Try
-  again button. It only shows when there is nothing else to show.
+- Error: a `danger` Alert with `errorTitle` and a Try again button, and the
+  controller's message as its body when there is one (a screen's
+  `errorMessage`, or the offline text). The default failure has no body: the
+  title says what failed and the button what to do. It only shows when there
+  is nothing else to show.
 - Refreshing: the content stays, with `aria-busy`. The refresh button reads
   `state.refreshByUser` for its own `loading`, so only a refresh the user started
   shows busy.
@@ -647,6 +650,7 @@ or when the content has no empty or error face worth drawing.
 Stories: `kit-load-state--loading`, `kit-load-state--loading-light`,
 `kit-load-state--ready`, `kit-load-state--empty`, `kit-load-state--empty-light`,
 `kit-load-state--error-with-retry`, `kit-load-state--error-with-retry-light`,
+`kit-load-state--error-with-message`,
 `kit-load-state--refreshing`, `kit-load-state--user-refresh-busy`,
 `kit-load-state--user-refresh-busy-light`, `kit-load-state--error-offline`,
 `kit-load-state--live`, `kit-load-state--refresh-fails-toast`.
