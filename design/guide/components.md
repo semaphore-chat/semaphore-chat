@@ -865,6 +865,12 @@ Stories: `kit-dialog--confirm`, `kit-dialog--with-content`,
 `kit-dialog--phone`, `kit-dialog--confirm-light`,
 `kit-dialog--confirm-tinted`, `kit-dialog--with-select`.
 
+## Card
+
+A soft-filled card inside an island: plain, or one button or link that covers the whole card.
+
+Kit pieces adapt automatically when placed on a Card: a soft Button, a neutral Pill and a field draw on the surface colour instead of the fill, so they stay visible.
+
 ## What the browser does for us
 
 The web kit gets a lot of behaviour for free from the browser and from MUI, and

@@ -4,6 +4,7 @@ import { tokens } from '../../theme/generated/tokens';
 import { reducedMotion } from '../overlays/surface';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
+import { SurfaceInkContext } from '../theme/surfaceInk';
 import { transientProps } from '../theme/transientProps';
 
 type CardBase = {
@@ -73,24 +74,26 @@ const Anchor = styled('a', options)<LookProps>(look);
 export function Card(props: CardProps): JSX.Element {
   const { children, selected = false, padding = 'md', id } = props;
   const current = selected ? ('true' as const) : undefined;
+  // A Card is `fill`, so kit pieces inside that are `fill` too draw on `surface` instead.
+  const content = <SurfaceInkContext value="onFill">{children}</SurfaceInkContext>;
   const label = 'label' in props ? props.label : undefined;
   if (props.href !== undefined) {
     return (
       <Anchor id={id} href={props.href} aria-label={label} aria-current={current} $selected={selected} $padding={padding} $interactive>
-        {children}
+        {content}
       </Anchor>
     );
   }
   if (props.onClick !== undefined) {
     return (
       <Button id={id} type="button" onClick={props.onClick} aria-label={label} aria-current={current} $selected={selected} $padding={padding} $interactive>
-        {children}
+        {content}
       </Button>
     );
   }
   return (
     <Plain id={id} aria-current={current} $selected={selected} $padding={padding} $interactive={false}>
-      {children}
+      {content}
     </Plain>
   );
 }

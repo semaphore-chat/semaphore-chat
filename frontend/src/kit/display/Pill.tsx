@@ -32,12 +32,14 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
     const { palette } = kitTheme(theme);
     const type = $size === 'sm' ? tokens.text.tag : { ...tokens.text.small, weight: tokens.text.bodyStrong.weight };
     const height = $size === 'sm' ? tokens.icon.lg : tokens.icon.xl;
+    // On a Card (itself `fill`) the filled tones sit on `surface`, or they would vanish.
+    const fill = $ink === 'onFill' ? palette.surface : palette.fill;
     const looks: Record<PillTone, { background: string; color: string }> = {
-      neutral: { background: palette.fill, color: palette.textSecondary },
+      neutral: { background: fill, color: palette.textSecondary },
       accent: { background: palette.accent, color: palette.onAccent },
-      danger: { background: palette.fill, color: palette.danger },
-      positive: { background: palette.fill, color: palette.positive },
-      warning: { background: palette.fill, color: palette.warning },
+      danger: { background: fill, color: palette.danger },
+      positive: { background: fill, color: palette.positive },
+      warning: { background: fill, color: palette.warning },
     };
     // On the accent pill: an accent pill inverts (on-accent fill, accent text) and a neutral one is a
     // faint on-accent tint with on-accent text. Status tones keep their fill and colour.

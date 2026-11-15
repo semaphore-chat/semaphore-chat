@@ -9,16 +9,18 @@ export interface FieldBoxProps extends InputBaseProps {
   $error: boolean;
   $round: boolean;
   $multiline: boolean;
+  /** The field sits on a Card (itself `fill`): the box is drawn on `surface`. */
+  $onFill?: boolean;
 }
 
 /**
- * The field surface both TextField and SelectField draw: fill background, no
+ * The field surface both TextField and SelectField draw: fill background (surface on a Card), no
  * border at rest (a transparent one holds the room an error border takes),
  * focus ring on `.Mui-focused`. MUI's InputBase supplies only behaviour.
  */
 export const FieldBox = styled(InputBase, {
   shouldForwardProp: transientProps,
-})<FieldBoxProps>(({ theme, $error, $round, $multiline }) => {
+})<FieldBoxProps>(({ theme, $error, $round, $multiline, $onFill }) => {
   const { palette } = kitTheme(theme);
   const text = tokens.text.body;
   const padding = `${tokens.space.lg}px`;
@@ -37,7 +39,7 @@ export const FieldBox = styled(InputBase, {
       : `0 ${padding}`,
     borderRadius: `${$round ? tokens.radius.full : tokens.radius.field}px`,
     border: `${tokens.border.selected}px solid ${$error ? palette.danger : 'transparent'}`,
-    background: palette.fill,
+    background: $onFill ? palette.surface : palette.fill,
     color: palette.text,
     fontFamily: theme.typography.fontFamily,
     fontSize: `${text.size}px`,

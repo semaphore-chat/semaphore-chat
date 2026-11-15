@@ -51,20 +51,22 @@ const Root = styled(ButtonBase, {
   shouldForwardProp: transientProps,
 })<RootProps>(({ theme, $variant, $size, $selected, $ink }) => {
   const { palette } = kitTheme(theme);
-  const look = buttonLook(palette, $variant);
+  const onCard = $ink === 'onFill';
+  const look = buttonLook(palette, $variant, onCard);
   // On the accent pill a ghost or soft button reads as the on-accent ink; a soft one keeps a faint
   // on-accent tint for its fill. States are the on-fill ones, tinted over the accent.
   const onAccent = $ink === 'onAccent' && !$selected && ($variant === 'ghost' || $variant === 'soft');
   const tint = mix(palette.onAccent, palette.accent, tokens.state.pressedOnFill);
+  const selectedFill = onCard ? palette.surface : palette.fill;
   const background = $selected
-    ? palette.fill
+    ? selectedFill
     : onAccent
       ? $variant === 'soft'
         ? tint
         : 'transparent'
       : look.background;
   const color = $selected ? palette.accentText : onAccent ? palette.onAccent : look.label;
-  const under = $selected ? palette.fill : onAccent ? ($variant === 'soft' ? tint : palette.accent) : look.stateBase;
+  const under = $selected ? selectedFill : onAccent ? ($variant === 'soft' ? tint : palette.accent) : look.stateBase;
   const onFill = onAccent || (!$selected && ($variant === 'primary' || $variant === 'danger'));
 
   return {

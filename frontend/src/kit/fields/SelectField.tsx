@@ -8,6 +8,7 @@ import { Icon } from '../display/Icon';
 import { kitTheme } from '../theme/KitProvider';
 import { useOverlayContainer } from '../overlays/overlayContainer';
 import { ANCHOR_GAP, menuItemStyle, overlaySurface } from '../overlays/surface';
+import { useSurfaceInk } from '../theme/surfaceInk';
 import { FieldBox, type FieldBoxProps } from './FieldBox';
 import { FieldShell } from './FieldShell';
 
@@ -39,7 +40,8 @@ export interface SelectFieldProps {
 /** Select hands its input an outlined-variant `notched` flag that InputBase would put on the DOM. */
 function SelectBox({ notched, ...rest }: FieldBoxProps & { notched?: boolean }): JSX.Element {
   void notched;
-  return <FieldBox {...rest} />;
+  const ink = useSurfaceInk();
+  return <FieldBox {...rest} $onFill={ink === 'onFill'} />;
 }
 
 const Placeholder = styled('span')(({ theme }) => ({ color: kitTheme(theme).palette.textDim }));

@@ -14,10 +14,13 @@ export interface ButtonLook {
 
 /**
  * The six variants' colours. `stateBase` is what hover and pressed tint: the
- * resting fill, or for a transparent fill the surface behind it.
+ * resting fill, or for a transparent fill the surface behind it. `onFill`: the
+ * button sits on a Card, so the soft variants are drawn on `surface`.
  */
-export function buttonLook(palette: Palette, variant: ButtonVariant): ButtonLook {
+export function buttonLook(palette: Palette, variant: ButtonVariant, onFill = false): ButtonLook {
   const { state } = tokens;
+  // On a Card (itself `fill`) the soft variants are `surface`, so they stay visible.
+  const soft = onFill ? palette.surface : palette.fill;
   const looks: Record<ButtonVariant, ButtonLook> = {
     primary: {
       background: palette.accent,
@@ -34,16 +37,16 @@ export function buttonLook(palette: Palette, variant: ButtonVariant): ButtonLook
       pressed: state.pressedOnFill,
     },
     soft: {
-      background: palette.fill,
+      background: soft,
       label: palette.text,
-      stateBase: palette.fill,
+      stateBase: soft,
       hover: state.hover,
       pressed: state.pressed,
     },
     quietDanger: {
-      background: palette.fill,
+      background: soft,
       label: palette.danger,
-      stateBase: palette.fill,
+      stateBase: soft,
       hover: state.hover,
       pressed: state.pressed,
     },

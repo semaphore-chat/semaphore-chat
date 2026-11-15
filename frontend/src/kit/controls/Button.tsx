@@ -15,6 +15,7 @@ import { interactiveStates } from '../theme/states';
 import { BUTTON_PADDING } from './buttonPadding';
 import { buttonLook, type ButtonVariant } from './buttonLook';
 import { Spinner } from '../display/Spinner';
+import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
 import { transientProps } from '../theme/transientProps';
 
 export type { ButtonVariant } from './buttonLook';
@@ -46,13 +47,14 @@ interface RootProps {
   $variant: ButtonVariant;
   $size: ButtonSize;
   $fullWidth: boolean;
+  $ink: SurfaceInk;
 }
 
 const Root = styled(ButtonBase, {
   shouldForwardProp: transientProps,
-})<RootProps>(({ theme, $variant, $size, $fullWidth }) => {
+})<RootProps>(({ theme, $variant, $size, $fullWidth, $ink }) => {
   const { palette } = kitTheme(theme);
-  const look = buttonLook(palette, $variant);
+  const look = buttonLook(palette, $variant, $ink === 'onFill');
   const type = $size === 'sm' ? tokens.text.meta : tokens.text.bodyStrong;
 
   return {
@@ -147,6 +149,7 @@ export function Button({
   'aria-pressed': ariaPressed,
   children,
 }: ButtonProps): JSX.Element {
+  const ink = useSurfaceInk();
   const busy = loading && !disabled;
   const describedBy = useDescribedBy(undefined);
   // Disabled wins over loading: a disabled button shows no spinner.
@@ -183,6 +186,7 @@ export function Button({
       $variant={variant}
       $size={size}
       $fullWidth={fullWidth}
+      $ink={ink}
     >
       {startIcon !== undefined && (
         <IconSlot>{spinnerInIconSlot ? <Spinner size="sm" /> : startIcon}</IconSlot>
