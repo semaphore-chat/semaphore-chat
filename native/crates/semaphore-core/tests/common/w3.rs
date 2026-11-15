@@ -122,7 +122,7 @@ impl OnboardingBackend for FakeBackend {
         {
             self.w3.answer(
                 "onboarding_status",
-                json!({ "needsSetup": false, "hasUsers": true }),
+                json!({ "needsSetup": false, "hasUsers": true, "setupTokenRequired": true }),
             );
         }
         self.w3.run("onboarding_status", &[]).await

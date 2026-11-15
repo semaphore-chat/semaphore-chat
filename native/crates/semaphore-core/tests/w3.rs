@@ -11,7 +11,7 @@ use common::*;
 use semaphore_core::backend::BackendError;
 use semaphore_core::model::{
     AccentColor, AppearancePatch, BrowserSignInFailure, BrowserSignInView, DraftFile, ImageChange,
-    LoadState, NewCommunity, ProfileImage, ProfilePatch, RegisterForm, RegistrationMode,
+    LoadState, NewCommunity, ProfileImage, ProfilePatch, RegisterForm, RegistrationMode, Rgb,
     SessionState, ThemeIntensity, ThemeMode, ViewKey,
 };
 use semaphore_core::platform::{CoreError, CoreEvent, LoopbackPage};
@@ -339,7 +339,12 @@ async fn the_probe_learns_an_instance_with_no_users_needs_setup() {
         .answer("public_settings", settings(false, "OPEN"));
     rig.backend.w3.answer(
         "onboarding_status",
-        json!({ "needsSetup": true, "hasUsers": false, "setupToken": "a-setup-token" }),
+        json!({
+            "needsSetup": true,
+            "hasUsers": false,
+            "setupToken": "a-setup-token",
+            "setupTokenRequired": false,
+        }),
     );
     let info = rig.core.probe_server("http://server".into()).await.unwrap();
     assert!(info.needs_setup);
@@ -969,6 +974,98 @@ async fn appearance_is_read_at_sign_in_and_a_refused_change_goes_back_alone() {
         sent.iter()
             .any(|call| call.contains("\"themeMode\":\"light\""))
     );
+}
+
+#[tokio::test]
+async fn the_base_colour_is_parsed_and_falls_back_to_the_accent() {
+    // What the server sends is the base the theme derives from.
+    let rig = Rig::new();
+    let mut served = appearance_json("dark", "rose", "minimal");
+    served["baseColor"] = json!("#123456");
+    rig.backend.w3.answer("appearance", served);
+    let rig = rig.signed_in().await;
+    assert_eq!(
+        rig.core.appearance().appearance.base,
+        Rgb {
+            r: 0x12,
+            g: 0x34,
+            b: 0x56
+        }
+    );
+
+    // A server older than the field sends no base, and an unreadable one is no better: the
+    // accent's own primary (rose) is the base either way.
+    let mut malformed = appearance_json("dark", "rose", "minimal");
+    malformed["baseColor"] = json!("pink");
+    for served in [appearance_json("dark", "rose", "minimal"), malformed] {
+        let rig = Rig::new();
+        rig.backend.w3.answer("appearance", served);
+        let rig = rig.signed_in().await;
+        assert_eq!(
+            rig.core.appearance().appearance.base,
+            Rgb {
+                r: 0xf4,
+                g: 0x3f,
+                b: 0x5e
+            }
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_appearance_patch_sends_one_colour_field() {
+    let rig = Rig::new().signed_in().await;
+    rig.backend.w3.answer(
+        "update_appearance",
+        appearance_json("dark", "rose", "minimal"),
+    );
+    fn sent(rig: &Rig) -> Value {
+        let call = rig
+            .backend
+            .w3
+            .calls()
+            .into_iter()
+            .rev()
+            .find(|call| call.starts_with("update_appearance "))
+            .expect("a PATCH was sent");
+        serde_json::from_str(call.trim_start_matches("update_appearance "))
+            .expect("the body is JSON")
+    }
+
+    // A base goes alone: the server derives the accent, so an accent beside it is dropped.
+    rig.core
+        .update_appearance(AppearancePatch {
+            base: Some(Rgb {
+                r: 0x12,
+                g: 0x34,
+                b: 0x56,
+            }),
+            accent: Some(AccentColor::Rose),
+            ..AppearancePatch::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(sent(&rig), json!({ "baseColor": "#123456" }));
+
+    // A named accent goes alone, as the accent picker sends it.
+    rig.core
+        .update_appearance(AppearancePatch {
+            accent: Some(AccentColor::Rose),
+            ..AppearancePatch::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(sent(&rig), json!({ "accentColor": "rose" }));
+
+    // Neither: no colour field at all.
+    rig.core
+        .update_appearance(AppearancePatch {
+            mode: Some(ThemeMode::Light),
+            ..AppearancePatch::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(sent(&rig), json!({ "themeMode": "light" }));
 }
 
 // --- Creating a community, instance permissions ---

@@ -673,7 +673,7 @@ impl MessagesBackend for FakeBackend {
         self.fake_react(
             "add_reaction",
             body.message_id.to_string(),
-            body.emoji,
+            String::from(body.emoji),
             true,
         )
         .await
@@ -686,7 +686,7 @@ impl MessagesBackend for FakeBackend {
         self.fake_react(
             "remove_reaction",
             body.message_id.to_string(),
-            body.emoji,
+            String::from(body.emoji),
             false,
         )
         .await

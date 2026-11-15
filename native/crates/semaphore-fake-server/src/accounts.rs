@@ -28,6 +28,9 @@ const SESSION_LIFETIME: Duration = Duration::days(30);
 /// The tokens the first sign-in gets: what the fake has always handed out.
 const LEGACY_ACCESS: &str = "fake-access-token";
 const LEGACY_REFRESH: &str = "fake-refresh-token";
+/// The base colour a new appearance row starts from: `DEFAULT_BASE_COLOR` in
+/// `appearance-settings.service.ts` (the Lounge violet).
+const DEFAULT_BASE_COLOR: &str = "#8e75ff";
 
 /// An invite for a test to plant: what `GET /api/invite/public/{code}` shows and registration
 /// checks. Expired, used up and disabled are each a field.
@@ -311,10 +314,17 @@ impl Accounts {
             self.appearance.insert(
                 user_id.to_owned(),
                 AppearanceSettingsResponseDto {
-                    accent_color: "teal".to_owned(),
+                    // `DEFAULT_BASE_COLOR` in `appearance-settings.service.ts`, and the accent its
+                    // nearest primary names (purple).
+                    accent_color: crate::appearance::nearest_accent(DEFAULT_BASE_COLOR)
+                        .expect("the default base colour is #rrggbb")
+                        .to_owned(),
+                    base_color: DEFAULT_BASE_COLOR.to_owned(),
                     created_at: now,
                     id,
                     intensity: "minimal".to_owned(),
+                    match_system: false,
+                    new_design: false,
                     theme_mode: "dark".to_owned(),
                     updated_at: now,
                     user_id: user_id.to_owned(),

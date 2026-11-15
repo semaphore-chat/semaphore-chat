@@ -289,6 +289,18 @@ impl Core {
         let name = name
             .map(|name| name.trim().to_owned())
             .filter(|name| !name.is_empty() && ids.len() > 1);
+        // The contract's name takes at most 100 characters, as the server enforces.
+        let name = match name {
+            Some(name) => match wire::CreateDmGroupDtoName::try_from(name) {
+                Ok(name) => Some(name),
+                Err(_) => {
+                    return Err(CoreError::Failed {
+                        message: "a group name is at most 100 characters".into(),
+                    });
+                }
+            },
+            None => None,
+        };
         let group = services
             .backend
             .direct_messages_controller_create_dm_group(wire::CreateDmGroupDto {

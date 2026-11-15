@@ -1087,8 +1087,12 @@ async fn appearance_settings_are_created_on_first_read_and_updated_partially() {
             &first["accentColor"],
             &first["intensity"]
         ),
-        (&json!("dark"), &json!("teal"), &json!("minimal"))
+        (&json!("dark"), &json!("purple"), &json!("minimal"))
     );
+    // The backend's `DEFAULT_BASE_COLOR`, and the accent its nearest primary names.
+    assert_eq!(first["baseColor"], "#8e75ff");
+    assert_eq!(first["matchSystem"], false);
+    assert_eq!(first["newDesign"], false);
     assert_eq!(first["userId"], entity_uuid("me"));
     assert!(is_uuid(first["id"].as_str().unwrap()));
     let (_, again) = api.get("/api/appearance-settings", &token).await;
@@ -1105,6 +1109,8 @@ async fn appearance_settings_are_created_on_first_read_and_updated_partially() {
         .await;
     assert_eq!(status, 200, "{updated}");
     assert_eq!(updated["accentColor"], "rose");
+    // A changed accent derives its primary as the base colour.
+    assert_eq!(updated["baseColor"], "#f43f5e");
     assert_eq!(updated["themeMode"], "dark");
     assert_eq!(updated["id"], first["id"]);
     assert_eq!(updated["createdAt"], first["createdAt"]);
@@ -1134,7 +1140,7 @@ async fn appearance_settings_are_created_on_first_read_and_updated_partially() {
             &created["accentColor"],
             &created["intensity"]
         ),
-        (&json!("light"), &json!("teal"), &json!("vibrant"))
+        (&json!("light"), &json!("purple"), &json!("vibrant"))
     );
     // And it is the other user's own; mike's did not change.
     assert_eq!(api.get("/api/appearance-settings", &token).await.1, read);
@@ -1156,6 +1162,85 @@ async fn appearance_settings_are_created_on_first_read_and_updated_partially() {
         assert_eq!(status, 400);
     }
     assert_eq!(api.get("/api/appearance-settings", &token).await.1, read);
+}
+
+#[tokio::test]
+async fn the_base_colour_and_match_system_round_trip() {
+    let api = api().await;
+    let (token, _) = api.login("mike", "Password123!", None).await;
+
+    // A base colour wins and derives the accent; either case is stored lowercase.
+    let (status, row) = api
+        .send(
+            reqwest::Method::PATCH,
+            "/api/appearance-settings",
+            &token,
+            json!({ "baseColor": "#FF9A6B", "matchSystem": true }),
+        )
+        .await;
+    assert_eq!(status, 200, "{row}");
+    assert_eq!(
+        (&row["baseColor"], &row["accentColor"], &row["matchSystem"]),
+        (&json!("#ff9a6b"), &json!("amber"), &json!(true))
+    );
+    let (_, read) = api.get("/api/appearance-settings", &token).await;
+    assert_eq!(read, row);
+
+    // An accent equal to the stored one changes nothing, so an older client's echo (all three
+    // fields on every change) does not reset the custom base colour.
+    let (status, echo) = api
+        .send(
+            reqwest::Method::PATCH,
+            "/api/appearance-settings",
+            &token,
+            json!({ "themeMode": "light", "accentColor": "amber", "intensity": "balanced" }),
+        )
+        .await;
+    assert_eq!(status, 200, "{echo}");
+    assert_eq!(echo["baseColor"], "#ff9a6b");
+    assert_eq!(echo["themeMode"], "light");
+
+    // A different accent derives its primary instead, and `newDesign` is kept as sent.
+    let (status, changed) = api
+        .send(
+            reqwest::Method::PATCH,
+            "/api/appearance-settings",
+            &token,
+            json!({ "accentColor": "rose", "matchSystem": false, "newDesign": true }),
+        )
+        .await;
+    assert_eq!(status, 200, "{changed}");
+    assert_eq!(
+        (
+            &changed["baseColor"],
+            &changed["accentColor"],
+            &changed["matchSystem"],
+            &changed["newDesign"]
+        ),
+        (
+            &json!("#f43f5e"),
+            &json!("rose"),
+            &json!(false),
+            &json!(true)
+        )
+    );
+
+    // Not a #rrggbb colour, as the backend's `Matches` refuses it.
+    for bad in [
+        json!({ "baseColor": "pink" }),
+        json!({ "baseColor": "#fff" }),
+    ] {
+        let (status, _) = api
+            .send(
+                reqwest::Method::PATCH,
+                "/api/appearance-settings",
+                &token,
+                bad,
+            )
+            .await;
+        assert_eq!(status, 400);
+    }
+    assert_eq!(api.get("/api/appearance-settings", &token).await.1, changed);
 }
 
 // ----- sign in with browser --------------------------------------------------------------------

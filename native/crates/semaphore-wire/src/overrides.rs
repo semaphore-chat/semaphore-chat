@@ -4,6 +4,34 @@
 
 use crate::types::CreateMessageSpanDto;
 
+/// `AppearanceSettingsResponseDto`, `GET` and `PATCH /api/appearance-settings`.
+///
+/// `baseColor`, `matchSystem` and `newDesign` came with the base-colour settings, and a server
+/// older than them sends none of the three (wire-contract rule 4). The generated shape makes
+/// them required, which would lose the whole read on such a server; defaults here let core fall
+/// back to the accent's primary colour and to "off".
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+pub struct AppearanceSettingsResponseDto {
+    #[serde(rename = "accentColor")]
+    pub accent_color: ::std::string::String,
+    #[serde(rename = "baseColor", default)]
+    pub base_color: ::std::string::String,
+    #[serde(rename = "createdAt")]
+    pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+    pub id: ::std::string::String,
+    pub intensity: ::std::string::String,
+    #[serde(rename = "matchSystem", default)]
+    pub match_system: bool,
+    #[serde(rename = "newDesign", default)]
+    pub new_design: bool,
+    #[serde(rename = "themeMode")]
+    pub theme_mode: ::std::string::String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+    #[serde(rename = "userId")]
+    pub user_id: ::std::string::String,
+}
+
 /// `UpdateMessageDto`, the body of `PATCH /api/messages/{id}`.
 ///
 /// The generated type made `attachments` a plain list skipped when empty, so "leave them alone"

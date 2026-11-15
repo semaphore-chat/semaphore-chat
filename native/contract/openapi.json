@@ -4712,6 +4712,56 @@
         ]
       }
     },
+    "/api/dm-groups/{dmGroupId}/voice-presence/deafen": {
+      "post": {
+        "operationId": "DmVoicePresenceController_updateDmDeafenState",
+        "parameters": [
+          {
+            "name": "dmGroupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeafenStateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshDmPresenceResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "DmVoicePresence"
+        ]
+      }
+    },
     "/api/dm-groups/{dmGroupId}/voice-presence/decline": {
       "post": {
         "operationId": "DmVoicePresenceController_declineDmVoiceCall",
@@ -13026,7 +13076,8 @@
             "format": "uuid"
           },
           "emoji": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 64
           }
         },
         "required": [
@@ -13081,7 +13132,8 @@
             "format": "uuid"
           },
           "emoji": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 64
           }
         },
         "required": [
@@ -16142,13 +16194,19 @@
           "hasUsers": {
             "type": "boolean"
           },
+          "setupTokenRequired": {
+            "type": "boolean",
+            "description": "True (the default, REQUIRE_SETUP_TOKEN) when the operator must enter the\nsetup token printed in the backend logs: `setupToken` is then never sent."
+          },
           "setupToken": {
-            "type": "string"
+            "type": "string",
+            "description": "Only sent when REQUIRE_SETUP_TOKEN=false and setup is needed."
           }
         },
         "required": [
           "needsSetup",
-          "hasUsers"
+          "hasUsers",
+          "setupTokenRequired"
         ]
       },
       "SetupInstanceDto": {
@@ -16343,7 +16401,8 @@
             }
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "isGroup": {
             "type": "boolean"
@@ -16538,6 +16597,15 @@
           "intensity": {
             "type": "string"
           },
+          "baseColor": {
+            "type": "string"
+          },
+          "matchSystem": {
+            "type": "boolean"
+          },
+          "newDesign": {
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -16553,6 +16621,9 @@
           "themeMode",
           "accentColor",
           "intensity",
+          "baseColor",
+          "matchSystem",
+          "newDesign",
           "createdAt",
           "updatedAt"
         ]
@@ -16612,6 +16683,20 @@
                 "$ref": "#/components/schemas/ThemeIntensity"
               }
             ]
+          },
+          "baseColor": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "example": "#8e75ff",
+            "description": "Base colour as six hex digits, either case; stored as lowercase #rrggbb"
+          },
+          "matchSystem": {
+            "type": "boolean",
+            "description": "Follow the operating system light/dark setting"
+          },
+          "newDesign": {
+            "type": "boolean",
+            "description": "Use the new design"
           }
         }
       },
@@ -17175,17 +17260,51 @@
           },
           "url": {
             "type": "string",
-            "description": "Full-size animated GIF URL (Giphy: images.original.url) — sent as message content."
+            "description": "Full-size animated GIF URL (Giphy: images.original.url) — sent as message content when there is no smaller one."
           },
           "previewUrl": {
             "type": "string",
             "description": "Small animated preview used in the picker grid (Giphy: images.fixed_height.url)."
           },
           "width": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Original rendition width in pixels; 0 when the provider doesn't report it."
           },
           "height": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Original rendition height in pixels; 0 when the provider doesn't report it."
+          },
+          "mediumUrl": {
+            "type": "string",
+            "description": "Medium rendition URL, the one clients should send for a message: Giphy's\n`downsized_medium`, else `downsized`, else the original. Absent only if the\nprovider offers no rendition a client may load (see `url`)."
+          },
+          "mediumWidth": {
+            "type": "integer",
+            "description": "Medium rendition width in pixels; absent when unknown."
+          },
+          "mediumHeight": {
+            "type": "integer",
+            "description": "Medium rendition height in pixels; absent when unknown."
+          },
+          "mediumSizeBytes": {
+            "type": "integer",
+            "description": "Medium rendition size in bytes; absent when unknown."
+          },
+          "originalSizeBytes": {
+            "type": "integer",
+            "description": "Original rendition size in bytes; absent when unknown."
+          },
+          "previewWidth": {
+            "type": "integer",
+            "description": "Preview rendition width in pixels; absent when unknown."
+          },
+          "previewHeight": {
+            "type": "integer",
+            "description": "Preview rendition height in pixels; absent when unknown."
+          },
+          "previewSizeBytes": {
+            "type": "integer",
+            "description": "Preview rendition size in bytes; absent when unknown."
           }
         },
         "required": [
@@ -18234,6 +18353,10 @@
       "UserBannedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18246,39 +18369,39 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "UserUnbannedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "communityId": {
             "type": "string"
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "UserKickedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18287,20 +18410,20 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "UserTimedOutPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18316,22 +18439,22 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "durationSeconds",
           "expiresAt",
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "TimeoutRemovedPayloadDto": {
         "type": "object",
         "properties": {
+          "moderatorId": {
+            "type": "string",
+            "description": "Who acted: sent only to the target (the community room gets the event\nwithout it; the moderation log has it for those who may read it)."
+          },
           "reason": {
             "type": "string"
           },
@@ -18344,15 +18467,11 @@
           },
           "userId": {
             "type": "string"
-          },
-          "moderatorId": {
-            "type": "string"
           }
         },
         "required": [
           "communityId",
-          "userId",
-          "moderatorId"
+          "userId"
         ]
       },
       "MemberAddedToCommunityPayloadDto": {

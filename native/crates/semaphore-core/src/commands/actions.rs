@@ -945,6 +945,16 @@ impl Core {
         let parsed = message_id
             .parse()
             .map_err(|error| failed(format!("message id {message_id}: {error}")))?;
+        // The contract's emoji fields take a string of at most 64 characters, the server's limit;
+        // refusing here keeps a refused reaction from showing.
+        let add_emoji = add
+            .then(|| emoji.parse::<wire::AddReactionDtoEmoji>())
+            .transpose()
+            .map_err(|_| failed("an emoji is at most 64 characters"))?;
+        let remove_emoji = (!add)
+            .then(|| emoji.parse::<wire::RemoveReactionDtoEmoji>())
+            .transpose()
+            .map_err(|_| failed("an emoji is at most 64 characters"))?;
         if self.reacted(&message_id, &emoji) == add {
             return Ok(());
         }
@@ -965,7 +975,7 @@ impl Core {
             services
                 .backend
                 .messages_controller_add_reaction(wire::AddReactionDto {
-                    emoji: emoji.clone(),
+                    emoji: add_emoji.expect("parsed for this branch"),
                     message_id: parsed,
                 })
                 .await
@@ -973,7 +983,7 @@ impl Core {
             services
                 .backend
                 .messages_controller_remove_reaction(wire::RemoveReactionDto {
-                    emoji: emoji.clone(),
+                    emoji: remove_emoji.expect("parsed for this branch"),
                     message_id: parsed,
                 })
                 .await

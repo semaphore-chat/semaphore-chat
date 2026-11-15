@@ -269,11 +269,34 @@ async fn update_appearance(
     if let Some(mode) = dto.theme_mode {
         row.theme_mode = mode.as_str().into_owned();
     }
-    if let Some(color) = dto.accent_color {
-        row.accent_color = color.as_str().into_owned();
-    }
     if let Some(intensity) = dto.intensity {
         row.intensity = intensity.as_str().into_owned();
+    }
+    if let Some(match_system) = dto.match_system {
+        row.match_system = match_system;
+    }
+    if let Some(new_design) = dto.new_design {
+        row.new_design = new_design;
+    }
+    // `updateUserSettings` keeps the two colours in step once, here: a `baseColor` wins and
+    // derives `accentColor` (an `accentColor` beside it is ignored), while a *changed*
+    // `accentColor` derives `baseColor` from the accent's primary. An accent equal to the stored
+    // one changes nothing, so an older client's echo does not reset a custom base colour.
+    if let Some(base) = dto.base_color {
+        let base = base.to_lowercase();
+        // The generated newtype only takes the contract's `#rrggbb` pattern, so this holds.
+        let accent = crate::appearance::nearest_accent(&base)
+            .expect("the contract's pattern makes baseColor #rrggbb");
+        row.base_color = base;
+        row.accent_color = accent.to_owned();
+    } else if let Some(accent) = dto.accent_color {
+        let accent = accent.as_str().into_owned();
+        if row.accent_color != accent {
+            row.base_color = crate::appearance::primary(&accent)
+                .expect("a known accent has a primary colour")
+                .to_owned();
+            row.accent_color = accent;
+        }
     }
     row.updated_at = now;
     let row = row.clone();

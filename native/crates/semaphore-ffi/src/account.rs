@@ -4,7 +4,7 @@ use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
     AccentColor, Appearance, AppearancePatch, AppearanceView, InstancePermissionsView, LoadState,
-    SessionRow, SessionsView, ThemeIntensity, ThemeMode,
+    Rgb, SessionRow, SessionsView, ThemeIntensity, ThemeMode,
 };
 
 #[uniffi::remote(Record)]
@@ -65,10 +65,20 @@ pub enum ThemeIntensity {
 }
 
 #[uniffi::remote(Record)]
+pub struct Rgb {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+}
+
+#[uniffi::remote(Record)]
 pub struct Appearance {
     pub mode: ThemeMode,
     pub accent: AccentColor,
     pub intensity: ThemeIntensity,
+    pub base: Rgb,
+    pub match_system: bool,
+    pub new_design: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -76,6 +86,8 @@ pub struct AppearancePatch {
     pub mode: Option<ThemeMode>,
     pub accent: Option<AccentColor>,
     pub intensity: Option<ThemeIntensity>,
+    pub base: Option<Rgb>,
+    pub match_system: Option<bool>,
 }
 
 #[uniffi::remote(Record)]

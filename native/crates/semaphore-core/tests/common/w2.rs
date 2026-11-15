@@ -90,7 +90,7 @@ impl DmsBackend for FakeBackend {
         body: wire::CreateDmGroupDto,
     ) -> BackendResult<wire::DmGroupResponseDto> {
         let ids: Vec<String> = body.user_ids.iter().map(ToString::to_string).collect();
-        let name = body.name.unwrap_or_default();
+        let name = body.name.map(String::from).unwrap_or_default();
         self.w2.run("create_dm", &[&ids.join(","), &name]).await
     }
     async fn direct_messages_controller_add_members(

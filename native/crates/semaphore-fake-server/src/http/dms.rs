@@ -132,7 +132,7 @@ async fn create(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
             .iter()
             .map(|user| new_member(&mut data.social, user, now))
             .collect(),
-        name: dto.name.clone(),
+        name: dto.name.clone().map(String::from),
     };
     data.social.dm_groups.push(group.clone());
     json_response(StatusCode::CREATED, dm_json(&group))

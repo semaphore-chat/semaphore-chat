@@ -646,9 +646,59 @@ pub mod types {
     ///`AddReactionDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct AddReactionDto {
-        pub emoji: ::std::string::String,
+        pub emoji: AddReactionDtoEmoji,
         #[serde(rename = "messageId")]
         pub message_id: ::uuid::Uuid,
+    }
+    ///`AddReactionDtoEmoji`
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AddReactionDtoEmoji(::std::string::String);
+    impl ::std::ops::Deref for AddReactionDtoEmoji {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<AddReactionDtoEmoji> for ::std::string::String {
+        fn from(value: AddReactionDtoEmoji) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for AddReactionDtoEmoji {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AddReactionDtoEmoji {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for AddReactionDtoEmoji {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for AddReactionDtoEmoji {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
     ///`AdminUserEntity`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -781,22 +831,6 @@ pub mod types {
             default
         )]
         pub older_continuation_token: ::std::option::Option<::std::string::String>,
-    }
-    ///`AppearanceSettingsResponseDto`
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-    pub struct AppearanceSettingsResponseDto {
-        #[serde(rename = "accentColor")]
-        pub accent_color: ::std::string::String,
-        #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        pub id: ::std::string::String,
-        pub intensity: ::std::string::String,
-        #[serde(rename = "themeMode")]
-        pub theme_mode: ::std::string::String,
-        #[serde(rename = "updatedAt")]
-        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(rename = "userId")]
-        pub user_id: ::std::string::String,
     }
     ///`AssignInstanceRoleDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2209,9 +2243,59 @@ pub mod types {
         )]
         pub is_group: ::std::option::Option<bool>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
-        pub name: ::std::option::Option<::std::string::String>,
+        pub name: ::std::option::Option<CreateDmGroupDtoName>,
         #[serde(rename = "userIds")]
         pub user_ids: ::std::vec::Vec<::uuid::Uuid>,
+    }
+    ///`CreateDmGroupDtoName`
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CreateDmGroupDtoName(::std::string::String);
+    impl ::std::ops::Deref for CreateDmGroupDtoName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<CreateDmGroupDtoName> for ::std::string::String {
+        fn from(value: CreateDmGroupDtoName) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for CreateDmGroupDtoName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 100usize {
+                return Err("longer than 100 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for CreateDmGroupDtoName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for CreateDmGroupDtoName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for CreateDmGroupDtoName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
     ///`CreateInviteDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3421,14 +3505,74 @@ pub mod types {
     ///`GifResultDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct GifResultDto {
+        ///Original rendition height in pixels; 0 when the provider doesn't report it.
         pub height: i64,
         pub id: ::std::string::String,
+        ///Medium rendition height in pixels; absent when unknown.
+        #[serde(
+            rename = "mediumHeight",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub medium_height: ::std::option::Option<i64>,
+        ///Medium rendition size in bytes; absent when unknown.
+        #[serde(
+            rename = "mediumSizeBytes",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub medium_size_bytes: ::std::option::Option<i64>,
+        /**Medium rendition URL, the one clients should send for a message: Giphy's
+        `downsized_medium`, else `downsized`, else the original. Absent only if the
+        provider offers no rendition a client may load (see `url`).*/
+        #[serde(
+            rename = "mediumUrl",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub medium_url: ::std::option::Option<::std::string::String>,
+        ///Medium rendition width in pixels; absent when unknown.
+        #[serde(
+            rename = "mediumWidth",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub medium_width: ::std::option::Option<i64>,
+        ///Original rendition size in bytes; absent when unknown.
+        #[serde(
+            rename = "originalSizeBytes",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub original_size_bytes: ::std::option::Option<i64>,
+        ///Preview rendition height in pixels; absent when unknown.
+        #[serde(
+            rename = "previewHeight",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub preview_height: ::std::option::Option<i64>,
+        ///Preview rendition size in bytes; absent when unknown.
+        #[serde(
+            rename = "previewSizeBytes",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub preview_size_bytes: ::std::option::Option<i64>,
         ///Small animated preview used in the picker grid (Giphy: images.fixed_height.url).
         #[serde(rename = "previewUrl")]
         pub preview_url: ::std::string::String,
+        ///Preview rendition width in pixels; absent when unknown.
+        #[serde(
+            rename = "previewWidth",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub preview_width: ::std::option::Option<i64>,
         pub title: ::std::string::String,
-        ///Full-size animated GIF URL (Giphy: images.original.url) — sent as message content.
+        ///Full-size animated GIF URL (Giphy: images.original.url) — sent as message content when there is no smaller one.
         pub url: ::std::string::String,
+        ///Original rendition width in pixels; 0 when the provider doesn't report it.
         pub width: i64,
     }
     ///`GifSearchResponseDto`
@@ -4606,12 +4750,17 @@ pub mod types {
         pub has_users: bool,
         #[serde(rename = "needsSetup")]
         pub needs_setup: bool,
+        ///Only sent when REQUIRE_SETUP_TOKEN=false and setup is needed.
         #[serde(
             rename = "setupToken",
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
         pub setup_token: ::std::option::Option<::std::string::String>,
+        /**True (the default, REQUIRE_SETUP_TOKEN) when the operator must enter the
+        setup token printed in the backend logs: `setupToken` is then never sent.*/
+        #[serde(rename = "setupTokenRequired")]
+        pub setup_token_required: bool,
     }
     ///`PaginatedMembershipsResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -5115,9 +5264,59 @@ pub mod types {
     ///`RemoveReactionDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct RemoveReactionDto {
-        pub emoji: ::std::string::String,
+        pub emoji: RemoveReactionDtoEmoji,
         #[serde(rename = "messageId")]
         pub message_id: ::uuid::Uuid,
+    }
+    ///`RemoveReactionDtoEmoji`
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RemoveReactionDtoEmoji(::std::string::String);
+    impl ::std::ops::Deref for RemoveReactionDtoEmoji {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<RemoveReactionDtoEmoji> for ::std::string::String {
+        fn from(value: RemoveReactionDtoEmoji) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for RemoveReactionDtoEmoji {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for RemoveReactionDtoEmoji {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for RemoveReactionDtoEmoji {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for RemoveReactionDtoEmoji {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
     ///`RemoveTimeoutDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -6458,8 +6657,14 @@ pub mod types {
         moderator. Clients refetch the same state either way.*/
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub expired: ::std::option::Option<bool>,
-        #[serde(rename = "moderatorId")]
-        pub moderator_id: ::std::string::String,
+        /**Who acted: sent only to the target (the community room gets the event
+        without it; the moderation log has it for those who may read it).*/
+        #[serde(
+            rename = "moderatorId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub moderator_id: ::std::option::Option<::std::string::String>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub reason: ::std::option::Option<::std::string::String>,
         #[serde(rename = "userId")]
@@ -6650,14 +6855,87 @@ pub mod types {
             default
         )]
         pub accent_color: ::std::option::Option<semaphore_wire::enums::AccentColor>,
+        ///Base colour as six hex digits, either case; stored as lowercase #rrggbb
+        #[serde(
+            rename = "baseColor",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub base_color: ::std::option::Option<UpdateAppearanceSettingsDtoBaseColor>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub intensity: ::std::option::Option<semaphore_wire::enums::ThemeIntensity>,
+        ///Follow the operating system light/dark setting
+        #[serde(
+            rename = "matchSystem",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub match_system: ::std::option::Option<bool>,
+        ///Use the new design
+        #[serde(
+            rename = "newDesign",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub new_design: ::std::option::Option<bool>,
         #[serde(
             rename = "themeMode",
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
         pub theme_mode: ::std::option::Option<semaphore_wire::enums::ThemeMode>,
+    }
+    ///Base colour as six hex digits, either case; stored as lowercase #rrggbb
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct UpdateAppearanceSettingsDtoBaseColor(::std::string::String);
+    impl ::std::ops::Deref for UpdateAppearanceSettingsDtoBaseColor {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<UpdateAppearanceSettingsDtoBaseColor> for ::std::string::String {
+        fn from(value: UpdateAppearanceSettingsDtoBaseColor) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for UpdateAppearanceSettingsDtoBaseColor {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^#[0-9a-fA-F]{6}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^#[0-9a-fA-F]{6}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for UpdateAppearanceSettingsDtoBaseColor {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for UpdateAppearanceSettingsDtoBaseColor {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for UpdateAppearanceSettingsDtoBaseColor {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
     ///`UpdateChannelDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
@@ -7516,8 +7794,14 @@ pub mod types {
             default
         )]
         pub expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(rename = "moderatorId")]
-        pub moderator_id: ::std::string::String,
+        /**Who acted: sent only to the target (the community room gets the event
+        without it; the moderation log has it for those who may read it).*/
+        #[serde(
+            rename = "moderatorId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub moderator_id: ::std::option::Option<::std::string::String>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub reason: ::std::option::Option<::std::string::String>,
         #[serde(rename = "userId")]
@@ -7563,8 +7847,14 @@ pub mod types {
     pub struct UserKickedPayloadDto {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
-        #[serde(rename = "moderatorId")]
-        pub moderator_id: ::std::string::String,
+        /**Who acted: sent only to the target (the community room gets the event
+        without it; the moderation log has it for those who may read it).*/
+        #[serde(
+            rename = "moderatorId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub moderator_id: ::std::option::Option<::std::string::String>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub reason: ::std::option::Option<::std::string::String>,
         #[serde(rename = "userId")]
@@ -7725,8 +8015,14 @@ pub mod types {
         pub duration_seconds: i64,
         #[serde(rename = "expiresAt")]
         pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(rename = "moderatorId")]
-        pub moderator_id: ::std::string::String,
+        /**Who acted: sent only to the target (the community room gets the event
+        without it; the moderation log has it for those who may read it).*/
+        #[serde(
+            rename = "moderatorId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub moderator_id: ::std::option::Option<::std::string::String>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub reason: ::std::option::Option<::std::string::String>,
         #[serde(rename = "userId")]
@@ -7757,8 +8053,14 @@ pub mod types {
     pub struct UserUnbannedPayloadDto {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
-        #[serde(rename = "moderatorId")]
-        pub moderator_id: ::std::string::String,
+        /**Who acted: sent only to the target (the community room gets the event
+        without it; the moderation log has it for those who may read it).*/
+        #[serde(
+            rename = "moderatorId",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub moderator_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
     }
