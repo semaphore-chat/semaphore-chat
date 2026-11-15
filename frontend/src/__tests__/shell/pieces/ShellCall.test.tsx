@@ -61,7 +61,7 @@ vi.mock('../../../contexts/VoiceContext', async (importOriginal) => ({
   useVoiceDispatch: () => ({ dispatch }),
   useVoice: () => m.state,
 }));
-vi.mock('../../../shell/lounge/pieces/call/useTouchFirst', () => ({ useTouchFirst: () => m.touch }));
+vi.mock('../../../data/touchFirst', () => ({ useTouchFirst: () => m.touch }));
 vi.mock('../../../kit', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../kit')>()),
   useWidthRange: () => m.width,
@@ -72,7 +72,7 @@ vi.mock('../../../shell/lounge/call/surface/CallSurface', async (importOriginal)
 });
 
 import { ShellCall } from '../../../shell/lounge/pieces/call/ShellCall';
-import { useShellCallShown } from '../../../shell/lounge/pieces/call/useShellCallShown';
+import { useCallSlotShown } from '../../../data/callSlot';
 import { renderWithKit } from '../../test-utils/renderWithKit';
 
 /** A LiveKit room as far as the call slot reads it, with events to emit. */
@@ -93,15 +93,21 @@ function fakeRoom() {
       act(() => handlers.get(event)?.forEach((fn) => fn()));
     },
     listeners: () => [...handlers.values()].reduce((n, set) => n + set.size, 0),
-    publish(identity: string, name: string, source: 'screen_share' | 'camera', track: unknown = null) {
+    publish(identity: string, name: string, source: 'screen_share' | 'camera', track: unknown = null, isMuted = false) {
       const participant = remoteParticipants.get(identity) ?? { identity, name, trackPublications: new Map() };
       participant.trackPublications.set(`${identity}-${source}`, {
         source,
-        isMuted: false,
+        isMuted,
         isSubscribed: track !== null,
         track,
       });
       remoteParticipants.set(identity, participant);
+    },
+    unpublish(identity: string, source: 'screen_share' | 'camera') {
+      remoteParticipants.get(identity)?.trackPublications.delete(`${identity}-${source}`);
+    },
+    leave(identity: string) {
+      remoteParticipants.delete(identity);
     },
   };
 }
@@ -158,12 +164,54 @@ describe('ShellCall: the controls are the classic bar functions', () => {
     expect(actions.leaveVoiceChannel).toHaveBeenCalledTimes(1);
   });
 
-  it('Mute at compact and wide too (mute never depends on the left island)', () => {
-    m.width = 'wide';
+  it.each(['compact', 'wide'] as const)('Mute, Deafen and Leave at %s too (they never depend on the left island)', (width) => {
+    m.width = width;
     renderWithKit(<ShellCall />);
     click('Mute');
     expect(actions.toggleMute).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: 'Deafen' })).toBeNull();
+    click('Deafen');
+    expect(actions.toggleDeafen).toHaveBeenCalledTimes(1);
+    click('Leave call');
+    expect(actions.leaveVoiceChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it('Mute while deafened is the classic Mute (it does not undeafen), and afterwards both buttons and the line tell the truth', () => {
+    m.width = 'wide';
+    m.state = { ...IN_CHANNEL(), isDeafened: true };
+    m.media = { ...m.media, isMicrophoneEnabled: false };
+    const { rerender } = renderWithKit(<ShellCall />);
+    expect(screen.getByRole('button', { name: 'Mute' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Deafen' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Deafened', { exact: true })).toBeInTheDocument();
+    click('Mute');
+    expect(actions.toggleMute).toHaveBeenCalledTimes(1);
+    expect(actions.toggleDeafen).not.toHaveBeenCalled();
+    // What the classic toggleMicrophone leaves behind: the mic on, still deafened.
+    m.media = { ...m.media, isMicrophoneEnabled: true };
+    rerender(<ShellCall />);
+    expect(screen.getByRole('button', { name: 'Mute' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Deafen' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('lounge-call-line')).toHaveTextContent('Deafened · your mic is on');
+    // Undeafen is on screen; pressing it is the classic toggleDeafen.
+    click('Deafen');
+    expect(actions.toggleDeafen).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed action is logged as a warning, never an unhandled rejection', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    actions.toggleMute.mockRejectedValueOnce(new Error('Room is not connected'));
+    actions.toggleDeafen.mockImplementationOnce(() => {
+      throw new Error('no room');
+    });
+    renderWithKit(<ShellCall />);
+    click('Mute');
+    click('Deafen');
+    await waitFor(() => expect(warn).toHaveBeenCalledTimes(2));
+    expect(warn.mock.calls.map((call) => call[0])).toEqual([
+      '[Voice] Call bar: deafen failed:',
+      '[Voice] Call bar: mute failed:',
+    ]);
+    warn.mockRestore();
   });
 
   it('Cancel while reconnecting calls the classic cancelReconnect', () => {
@@ -176,7 +224,9 @@ describe('ShellCall: the controls are the classic bar functions', () => {
 
   it('Open call view goes to the classic voice room and reveals the tiles', () => {
     renderWithKit(<ShellCall />);
-    click('Open call view');
+    // The room's row is the control, at every width.
+    expect(screen.queryByRole('button', { name: 'Open call view' })).toBeNull();
+    click('Open call view, Squad Up');
     expect(mockNavigate).toHaveBeenCalledWith('/community/c-1/channel/vc-1');
     expect(actions.revealVideoTiles).toHaveBeenCalledTimes(1);
   });
@@ -202,14 +252,15 @@ describe('ShellCall: the controls are the classic bar functions', () => {
     expect(pttRelease).toHaveBeenCalledTimes(1);
   });
 
-  it('server-muted: the hold control is disabled and presses nothing', () => {
+  it('server-muted: the hold control is unavailable (still a Tab stop) and presses nothing', () => {
     m.ptt = { isActive: true, isKeyHeld: false, currentKeyDisplay: 'V' };
     m.touch = true;
     m.media = { ...m.media, isMicrophoneEnabled: false };
     m.state = { ...IN_CHANNEL(), isServerMuted: true };
     renderWithKit(<ShellCall />);
     const hold = screen.getByRole('button', { name: 'Hold to talk' });
-    expect(hold).toBeDisabled();
+    expect(hold).not.toBeDisabled();
+    expect(hold).toHaveAttribute('aria-disabled', 'true');
     fireEvent.pointerDown(hold, { pointerId: 1, button: 0, pointerType: 'touch' });
     expect(pttPress).not.toHaveBeenCalled();
     expect(screen.getByText('Muted by a moderator', { exact: true })).toBeInTheDocument();
@@ -219,8 +270,10 @@ describe('ShellCall: the controls are the classic bar functions', () => {
     m.ptt = { isActive: true, isKeyHeld: false, currentKeyDisplay: 'V' };
     m.media = { ...m.media, isMicrophoneEnabled: false };
     renderWithKit(<ShellCall />);
-    expect(screen.getByRole('button', { name: 'Mute' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Mute' })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Hold V to talk', { exact: true })).toBeInTheDocument();
+    click('Mute');
+    expect(actions.toggleMute).not.toHaveBeenCalled();
   });
 });
 
@@ -300,6 +353,69 @@ describe('ShellCall: the call surface', () => {
     expect(m.state.showVideoTiles).toBeUndefined();
   });
 
+  it('Stop watching also stops a watched camera that is turned off (no tile, still watched)', async () => {
+    const track = { attach: vi.fn((el: HTMLMediaElement) => el), detach: vi.fn((el: HTMLMediaElement) => el) };
+    room.publish('u-drop', 'dropbear', 'screen_share', track);
+    room.publish('u-pri', 'pri', 'camera', null, true);
+    m.state = { ...IN_CHANNEL(), watchingScreenShares: new Set(['u-drop']), watchingCameras: new Set(['u-pri']) };
+    renderWithKit(<ShellCall />);
+    await screen.findByTestId('lounge-call-surface');
+    expect(screen.queryByRole('group', { name: 'pri' })).toBeNull();
+    click('Stop watching');
+    expect(actions.stopWatchingScreenShare).toHaveBeenCalledWith('u-drop');
+    expect(actions.stopWatchingCamera).toHaveBeenCalledWith('u-pri');
+  });
+
+  it.each([
+    ['the share ends (unpublished)', () => room.unpublish('u-drop', 'screen_share'), 'trackUnpublished'],
+    ['the sharer leaves', () => room.leave('u-drop'), 'participantDisconnected'],
+  ])('a watched share: when %s, the tile goes and its track is detached from its element', async (_name, end, event) => {
+    const track = { attach: vi.fn((el: HTMLMediaElement) => el), detach: vi.fn((el: HTMLMediaElement) => el) };
+    room.publish('u-drop', 'dropbear', 'screen_share', track);
+    room.publish('u-pri', 'pri', 'camera');
+    m.state = { ...IN_CHANNEL(), watchingScreenShares: new Set(['u-drop']) };
+    renderWithKit(<ShellCall />);
+    await screen.findByRole('group', { name: "dropbear's screen" });
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    const element = track.attach.mock.calls[0][0];
+    end();
+    room.emit(event);
+    expect(screen.queryByRole('group', { name: "dropbear's screen" })).toBeNull();
+    expect(track.detach).toHaveBeenCalledTimes(1);
+    expect(track.detach).toHaveBeenCalledWith(element);
+    expect(track.attach).toHaveBeenCalledTimes(1);
+  });
+
+  it('a speaking change re-renders the tile without attaching again', async () => {
+    const track = { attach: vi.fn((el: HTMLMediaElement) => el), detach: vi.fn((el: HTMLMediaElement) => el) };
+    room.publish('u-drop', 'dropbear', 'screen_share', track);
+    m.state = { ...IN_CHANNEL(), watchingScreenShares: new Set(['u-drop']) };
+    const { rerender } = renderWithKit(<ShellCall />);
+    await screen.findByRole('group', { name: "dropbear's screen" });
+    m.speaking = new Map([['u-drop', true]]);
+    rerender(<ShellCall />);
+    expect(screen.getByRole('group', { name: "dropbear's screen, speaking" })).toBeInTheDocument();
+    m.speaking = new Map([['u-drop', false]]);
+    rerender(<ShellCall />);
+    expect(track.attach).toHaveBeenCalledTimes(1);
+    expect(track.detach).not.toHaveBeenCalled();
+  });
+
+  it('more than three offered: a summary row counts them all above the first three', async () => {
+    for (const name of ['a1', 'a2', 'a3', 'a4', 'a5']) room.publish(`u-${name}`, name, 'camera');
+    room.publish('u-drop', 'dropbear', 'screen_share');
+    renderWithKit(<ShellCall />);
+    await screen.findByTestId('lounge-call-surface');
+    expect(screen.getAllByRole('button', { name: /^Watch / }).map((b) => b.getAttribute('aria-label'))).toEqual([
+      "Watch dropbear's screen",
+      'Watch a1',
+      'Watch a2',
+    ]);
+    expect(screen.getAllByText('1 screen shared · 5 cameras on').length).toBeGreaterThan(0);
+    click('See all in the call view');
+    expect(mockNavigate).toHaveBeenCalledWith('/community/c-1/channel/vc-1');
+  });
+
   it('shares come first, then cameras', async () => {
     room.publish('u-pri', 'pri', 'camera');
     room.publish('u-drop', 'dropbear', 'screen_share');
@@ -325,7 +441,7 @@ describe('ShellCall: the call surface', () => {
   });
 });
 
-describe('useShellCallShown agrees with what the slot renders', () => {
+describe('useCallSlotShown agrees with what the slot renders', () => {
   const states: [string, () => Record<string, unknown>, boolean][] = [
     ['in a call', IN_CHANNEL, true],
     ['joining', () => ({ ...IN_CHANNEL(), isConnected: false, isConnecting: true }), true],
@@ -350,7 +466,7 @@ describe('useShellCallShown agrees with what the slot renders', () => {
   ];
   it.each(states)('%s', (_name, state, shown) => {
     m.state = state();
-    expect(renderHook(() => useShellCallShown()).result.current).toBe(shown);
+    expect(renderHook(() => useCallSlotShown()).result.current).toBe(shown);
     const { container } = renderWithKit(<ShellCall />);
     expect(container.textContent !== '').toBe(shown);
   });

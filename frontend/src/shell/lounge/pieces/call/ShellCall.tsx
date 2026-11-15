@@ -1,6 +1,8 @@
 /**
  * The call-bar slot of the Lounge frame (design §3.5-3.6, §5): in a call, the call surface (when there is
  * video to offer or your own share) above the call bar; out of a call, the voice notice; otherwise nothing.
+ * The kit's `CallStack` arranges them: the surface is bounded and scrolls, collapses to one line while the
+ * on-screen keyboard is up, and the bar under it always keeps its whole row.
  *
  * Everything comes from the data layer both shells read: `useCallBarModel` (the classic voice bar renders
  * from it too), `useVoiceNotice` (the classic `VoiceNotice`) and `useCallVideo` (the classic watch state and
@@ -8,13 +10,14 @@
  * beyond reading the room's events while mounted.
  */
 import { lazy, Suspense, type JSX } from 'react';
-import { useWidthRange } from '../../../../kit';
+import { CallStack, useWidthRange } from '../../../../kit';
 import { useCallBarModel } from '../../../../data/callBar';
 import { useVoiceNotice } from '../../../../data/voiceNotice';
 import { useCallVideo } from '../../../../data/callVideo';
+import { useTouchFirst } from '../../../../data/touchFirst';
 import { CallBar } from './CallBar';
 import { VoiceNoticeBar } from './VoiceNoticeBar';
-import { useTouchFirst } from './useTouchFirst';
+import { CallSurfaceSummary } from './CallSurfaceSummary';
 
 /** Its own chunk: loaded only while the call has video to offer (or you share). */
 const CallSurface = lazy(() => import('../../call/surface/CallSurface'));
@@ -29,20 +32,28 @@ export function ShellCall(): JSX.Element | null {
   if (model) {
     const showSurface =
       model.phase !== 'connecting' && video !== null && (video.tiles.length > 0 || model.sharingScreen);
-    // The surface sits inside the bar's card (the card stacks them), so the slot needs no layout of its own.
-    const surface = showSurface ? (
-      <Suspense fallback={null}>
-        <CallSurface
-          tiles={video.tiles}
-          sharingScreen={model.sharingScreen}
-          onWatch={video.watch}
-          onStopWatching={video.stopWatching}
-          onStopSharing={model.actions.stopSharing}
-          onOpenCallView={model.actions.openCallView}
-        />
-      </Suspense>
-    ) : undefined;
-    return <CallBar model={model} width={range} above={surface} />;
+    // Always the same tree in a call, so the bar (and a hold running on its mic) is never remounted when the
+    // surface comes or goes.
+    return (
+      <CallStack
+        bar={<CallBar model={model} />}
+        surface={
+          showSurface ? (
+            <Suspense fallback={null}>
+              <CallSurface
+                tiles={video.tiles}
+                sharingScreen={model.sharingScreen}
+                onWatch={video.watch}
+                onStopWatching={video.stopWatching}
+                onStopSharing={model.actions.stopSharing}
+                onOpenCallView={model.actions.openCallView}
+              />
+            </Suspense>
+          ) : undefined
+        }
+        summary={showSurface ? <CallSurfaceSummary tiles={video.tiles} sharingScreen={model.sharingScreen} /> : undefined}
+      />
+    );
   }
   if (notice && !notice.joining) return <VoiceNoticeBar notice={notice} />;
   return null;

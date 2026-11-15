@@ -43,6 +43,11 @@ export interface ListRowProps {
   href?: string;
   /** Renders a button. */
   onClick?: () => void;
+  /**
+   * The accessible name of the link or button, when its visible lines do not say what it does (a call bar's room
+   * row that opens the call view: "Open call view, Squad Up"). Ignored on a plain row.
+   */
+  label?: string;
   ref?: Ref<HTMLElement>;
   id?: string;
   /**
@@ -239,6 +244,7 @@ export function ListRow({
   disabled = false,
   href,
   onClick,
+  label,
   ref,
   id,
   focus,
@@ -315,6 +321,7 @@ export function ListRow({
         ref={mainRef}
         id={id}
         href={href}
+        aria-label={label}
         aria-current={current}
         $on={on}
         {...focusProps}
@@ -331,6 +338,7 @@ export function ListRow({
         id={id}
         role="link"
         aria-disabled="true"
+        aria-label={label}
         aria-current={current}
         $on={on}
         {...focusProps}
@@ -346,6 +354,7 @@ export function ListRow({
         id={id}
         type="button"
         disabled={disabled}
+        aria-label={label}
         aria-current={current}
         $on={on}
         {...focusProps}

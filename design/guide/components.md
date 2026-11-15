@@ -15,11 +15,11 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Thirty-seven components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Thirty-eight components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
 Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
-Card, Sheet, Dock, DockDivider, DockItem and Stack.
+Card, Sheet, Dock, DockDivider, DockItem, Stack and CallStack.
 
 ## Rules every component follows
 
@@ -109,6 +109,10 @@ setting on or off. Use Switch.
 |`aria-disabled`|true, false|false|Not available right now, but still focusable: it reads as unavailable, looks dimmed and ignores clicks. Use it when focus may already sit on the button (Cancel while a ConfirmDialog works).|
 |`type`|`button`, `submit`|`button`|Use `submit` for the button that sends a form.|
 
+A small button (`sm`) keeps its look but, on a touch screen (a coarse
+pointer), its hit area reaches the touch minimum (`control.md`), as a small
+IconButton's does. Web kit only so far.
+
 ### Which variant
 
 - `primary`: the one main action on a surface. Use one per surface.
@@ -164,6 +168,8 @@ screen readers.
 |`loading`|true, false|false|The button is busy. See the rules above.|
 |`disabled`|true, false|false|The action is not available.|
 |`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list: today the Dock's. The button is then one stop of the list's single Tab stop. A disabled button ignores it. See [Dock](#dock).|
+|`aria-disabled`|true, false|false|Not available right now, but still a Tab stop with its name, as Button's: it reads as unavailable, looks dimmed, and a press does not run `onClick` or start a `hold`. Use it when the user must be able to find out why (the call bar's mic while a moderator has muted you), and say why with `onUnavailablePress` and a visible line. `disabled` and `loading` win over it. Web kit only so far.|
+|`onUnavailablePress`|a function|none|Called instead of `onClick` when an `aria-disabled` button is pressed (a click, Enter or Space): say why it cannot act, with `useAnnounce`. Web kit only so far.|
 |`badge`|a number|none|A count over the button's corner, the same danger Badge a DockItem shows (the Dock's Inbox). 0, or a number that is not finite, shows nothing. The count is added to the name: "Inbox, 9 unread".|
 |`badgeMeaning`|`unread`, `mentions`|`unread`|What `badge` counts, in the name: "9 unread", or "1 mention" / "2 mentions".|
 |`current`|true, false|false|The place you are in, for an item on the Dock: the accent ring a current DockItem has (a surface gap, then the accent), ", current" in the name before the count, and `aria-current="page"`. Not a toggle: use `selected` for that. With keyboard focus the focus ring moves outside the current ring (its usual offset, past the ring), so the two never overlap. Web kit only so far.|
@@ -172,7 +178,9 @@ screen readers.
 **Press and hold.** With `hold` the button is held, not clicked: `onStart` runs
 when a finger, pen or the main mouse button goes down on it, and `onEnd` runs
 exactly once when that hold ends. The pointer is captured, so sliding off the
-button keeps the hold, and lifting it anywhere ends it. The hold also ends when
+button keeps the hold, and lifting it anywhere ends it. Only the pointer that
+started the hold ends it: a second finger tapping the button neither starts
+another hold nor ends this one. The hold also ends when
 the pointer is cancelled (a call, the system taking the gesture), when capture
 is lost, when the button becomes disabled or stops being a hold control, and
 when it unmounts, so nothing is left held with no finger on it. The button does
@@ -190,7 +198,8 @@ Stories: `kit-icon-button--variants`, `kit-icon-button--states`,
 `kit-icon-button--badge-and-current-light`, `kit-icon-button--badge-and-current-tinted`,
 `kit-icon-button--current-focused`, `kit-icon-button--current-focused-light`,
 `kit-icon-button--current-focused-tinted`, `kit-icon-button--hold`,
-`kit-icon-button--hold-light`.
+`kit-icon-button--hold-light`, `kit-icon-button--unavailable`,
+`kit-icon-button--unavailable-light`.
 
 ## KeyCap
 
@@ -890,6 +899,7 @@ used.
 |`disabled`|true, false|false|The row is not available.|
 |`href`|an address|none|Makes the row a link.|
 |`onClick`|a function|none|Makes the row a button.|
+|`label`|text|none|The accessible name of the link or button, when its visible lines do not say what it does: the call bar's room row is "Open call view, Squad Up". Ignored on a plain row. Web kit only so far.|
 |`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list. See below.|
 
 `leading` holds an Avatar (a person or a community) or an Icon (a channel, a
@@ -954,7 +964,8 @@ Stories: `kit-list-row--states`, `kit-list-row--channels`,
 `kit-list-row--people`, `kit-list-row--long-names`,
 `kit-list-row--states-light`, `kit-list-row--states-tinted`,
 `kit-list-row--selected-with-trailing`,
-`kit-list-row--selected-with-trailing-light`.
+`kit-list-row--selected-with-trailing-light`, `kit-list-row--labelled`,
+`kit-list-row--labelled-light`.
 
 ## Table
 
@@ -1016,6 +1027,37 @@ Web kit only so far; the native kit has not caught up (see
 
 Stories: `kit-stack--gaps`, `kit-stack--gaps-light`, `kit-stack--gaps-tinted`, `kit-stack--rows`,
 `kit-stack--rows-light`, `kit-stack--rows-tinted`.
+
+## CallStack
+
+What the three-islands call slot holds while a call has video: the call's
+surface above the call bar.
+
+**Use it when** you fill the `callBar` slot of
+[Three islands](layouts.md#three-islands) with a call bar and something above
+it that can grow (the call's video, what it offers).
+
+**Do not use it when** there is only the bar: put the bar in the slot as it
+is. Do not use it anywhere but the call slot.
+
+The bar never gives up height: it is never shrunk, clipped or scrolled. The
+surface takes at most two fifths of the frame's height (the viewport less the
+on-screen keyboard) and scrolls inside itself beyond that, so the bar, its
+Leave and the screen's composer always keep their room. While the on-screen
+keyboard is up the surface is left out and `summary`, one line, stands in for
+it. Layout only: no surface colour, no padding, no landmark.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`bar`|content|none (required)|The call bar.|
+|`surface`|content|none|The call's video and what it offers, above the bar, bounded and scrolling.|
+|`summary`|content|none|One line that stands in for `surface` while the keyboard is up. Without it nothing does.|
+
+Web kit only so far; the native kit has not caught up (see
+[Extending the system](extending.md#the-native-kit-is-catching-up)).
+
+Stories: `kit-call-stack--bounded`, `kit-call-stack--bounded-light`,
+`kit-call-stack--keyboard`, `kit-call-stack--bar-only`.
 
 ## Which overlay
 

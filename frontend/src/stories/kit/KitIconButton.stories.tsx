@@ -132,6 +132,39 @@ export const BadgeAndCurrentTinted = () => (
   </KitStage>
 );
 
+/** `aria-disabled`: still a Tab stop with its name, dimmed, and a press says why instead of acting. */
+function UnavailableDemo() {
+  const [said, setSaid] = useState('Nothing said yet');
+  return (
+    <Row label="aria-disabled (focusable), then disabled">
+      <IconButton
+        icon="MicOff"
+        label="Mute"
+        selected
+        aria-disabled
+        title="Muted by a moderator"
+        onUnavailablePress={() => setSaid('Said: Muted by a moderator')}
+      />
+      <IconButton icon="MicOff" label="Mute" selected disabled />
+      <Text variant="meta" tone="secondary">
+        <span data-testid="unavailable-said">{said}</span>
+      </Text>
+    </Row>
+  );
+}
+
+export const Unavailable = () => (
+  <KitStage mode="dark">
+    <UnavailableDemo />
+  </KitStage>
+);
+
+export const UnavailableLight = () => (
+  <KitStage mode="light">
+    <UnavailableDemo />
+  </KitStage>
+);
+
 /** The live hold: the button fills while held, and the counts show each start and end exactly once. */
 function HoldDemo() {
   const [held, setHeld] = useState(false);

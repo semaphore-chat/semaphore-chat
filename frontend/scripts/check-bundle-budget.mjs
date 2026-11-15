@@ -68,9 +68,11 @@
  *   (e) The new shell's call surface (shell/lounge/call/surface) is its own lazy
  *       chunk: found by the marker "lounge-call-surface", in exactly one asset
  *       that is not eager and is not the LoungeRoot chunk. And the new shell's
- *       chunk does not statically import the livekit-client chunk (entering the
- *       Lounge must not fetch LiveKit; only the call surface or the classic call
- *       code may). Prints the sizes of the lounge chunks it found.
+ *       chunk does not load the livekit-client chunk statically, directly or
+ *       through any chunk it statically imports (the whole static import graph
+ *       from LoungeRoot is walked; dynamic import() is a lazy boundary). Entering
+ *       the Lounge must not fetch LiveKit; only the call surface or the classic
+ *       call code may. Prints the sizes of the lounge chunks it found.
  *
  * Usage: pnpm run check:bundle-budget   (after pnpm run build)
  */
@@ -351,12 +353,29 @@ if (existsSync(ASSETS_DIR)) {
     if (eager.has(surface[0])) report(`The call surface chunk assets/${surface[0]} is loaded on every page.`);
     if (root.includes(surface[0])) report(`The call surface is inside the new shell's chunk (assets/${surface[0]}): it must be its own lazy chunk.`);
   }
+  // Every chunk the new shell's chunk loads with it: its static imports, theirs, and so on (a dynamic
+  // `import("./x.js")` is a lazy boundary and is not followed). LiveKit must not be among them, directly or
+  // through a shared chunk.
+  const STATIC_IMPORT = /(?:\bfrom|\bimport)\s*["']\.\/([^"']+\.js)["']/g;
   for (const f of root) {
-    for (const lk of livekit) {
-      const name = lk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (new RegExp(`(from|import)\\s*["']\\./${name}["']`).test(read(f))) {
-        report(`The new shell's chunk assets/${f} statically imports the livekit-client chunk (assets/${lk}).`);
+    const via = new Map([[f, null]]);
+    const queue = [f];
+    while (queue.length > 0) {
+      const at = queue.shift();
+      for (const [, next] of read(at).matchAll(STATIC_IMPORT)) {
+        if (via.has(next) || !js.includes(next)) continue;
+        via.set(next, at);
+        queue.push(next);
       }
+    }
+    for (const lk of livekit) {
+      if (!via.has(lk)) continue;
+      const path = [];
+      for (let at = lk; at !== null; at = via.get(at)) path.unshift(`assets/${at}`);
+      report(`The new shell's chunk loads the livekit-client chunk statically: ${path.join(" → ")}.`);
+    }
+    if (ok) {
+      console.log(`[check-bundle-budget] assets/${f} loads ${via.size - 1} chunks statically; none is livekit-client.`);
     }
   }
   if (ok) {

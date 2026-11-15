@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
 const platform = vi.hoisted(() => ({ electron: false }));
-vi.mock('../../../utils/platform', () => ({ isElectron: () => platform.electron }));
+vi.mock('../../utils/platform', () => ({ isElectron: () => platform.electron }));
 
-import { useTouchFirst } from '../../../shell/lounge/pieces/call/useTouchFirst';
+import { useTouchFirst } from '../../data/touchFirst';
 
 const original = window.matchMedia;
 function touchDevice(on: boolean) {

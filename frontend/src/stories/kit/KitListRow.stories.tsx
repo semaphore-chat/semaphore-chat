@@ -139,3 +139,33 @@ export const SelectedWithTrailingLight = () => (
     </Island></div>
   </KitStage>
 );
+
+/**
+ * `label`: a pressable row whose visible lines do not say what it does gets its own accessible name. The call
+ * bar's room row is "Open call view, Squad Up"; its trailing controls keep their own names and presses.
+ */
+const LabelledBody = () => (
+  <div style={{ width: 288, maxWidth: '100%' }}><Island padding="md">
+    <ListRow
+      size="lg"
+      unread
+      primary="Squad Up"
+      secondary="Voice connected"
+      label="Open call view, Squad Up"
+      onClick={noop}
+      trailing={<IconButton icon="PhoneOff" label="Leave call" variant="danger" />}
+    />
+  </Island></div>
+);
+
+export const Labelled = () => (
+  <KitStage mode="dark">
+    <LabelledBody />
+  </KitStage>
+);
+
+export const LabelledLight = () => (
+  <KitStage mode="light">
+    <LabelledBody />
+  </KitStage>
+);

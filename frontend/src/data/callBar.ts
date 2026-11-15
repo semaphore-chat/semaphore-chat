@@ -19,6 +19,7 @@ import { usePushToTalkStatus } from '../hooks/usePushToTalk';
 import { useVoicePublishPermissions } from '../hooks/useVoicePublishPermissions';
 import { useSpeaking } from '../hooks/useSpeaking';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import { logger } from '../utils/logger';
 
 export type CallPhase = 'connecting' | 'connected' | 'reconnecting';
 
@@ -51,6 +52,10 @@ export interface CallBarMic {
   speaking: boolean;
 }
 
+/**
+ * The bar's actions. Each is the classic bar's function for the same action; a failure (for example the room
+ * dropped mid-press) is logged as a warning, never left as an unhandled rejection.
+ */
 export interface CallBarActions {
   toggleMute(): void;
   toggleDeafen(): void;
@@ -82,6 +87,18 @@ export interface CallBarModel {
   actions: CallBarActions;
   /** The classic voice room or DM route. */
   callViewPath: string;
+}
+
+/** Runs a call action; a failure (sync or async) is logged as a warning instead of escaping. */
+function settle(what: string, action: () => Promise<unknown> | unknown): void {
+  try {
+    const result = action();
+    if (result instanceof Promise) {
+      result.catch((error: unknown) => logger.warn(`[Voice] Call bar: ${what} failed:`, error));
+    }
+  } catch (error) {
+    logger.warn(`[Voice] Call bar: ${what} failed:`, error);
+  }
 }
 
 /**
@@ -144,17 +161,17 @@ export function useCallBarModel(touch: boolean): CallBarModel | null {
     revealVideoTiles();
   }, [navigate, callViewPath, revealVideoTiles]);
   const stopSharing = useCallback(() => {
-    if (isScreenShareEnabled) void toggleScreenShare();
+    if (isScreenShareEnabled) settle('stop sharing', toggleScreenShare);
   }, [isScreenShareEnabled, toggleScreenShare]);
 
   const { toggleMute, toggleDeafen, leaveVoiceChannel, cancelReconnect } = actions;
   // Stable while the call's actions are, so memo'd children of the bar can skip renders.
   const barActions = useMemo<CallBarActions>(
     () => ({
-      toggleMute,
-      toggleDeafen,
-      leave: leaveVoiceChannel,
-      cancel: cancelReconnect,
+      toggleMute: () => settle('mute', toggleMute),
+      toggleDeafen: () => settle('deafen', toggleDeafen),
+      leave: () => settle('leave', leaveVoiceChannel),
+      cancel: () => settle('cancel reconnect', cancelReconnect),
       stopSharing,
       openCallView,
       holdStart,

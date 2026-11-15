@@ -44,7 +44,10 @@ export interface CallVideo {
   tiles: CallVideoTile[];
   /** Start watching one tile (subscribes it), as the classic "Click to watch" tile does. */
   watch(tile: Pick<CallVideoTile, 'identity' | 'kind'>): void;
-  /** Stop watching each watched tile shown (unsubscribes them), as the classic stage tile's stop button does. */
+  /**
+   * Stop watching everything you watch in the call (unsubscribes it), as the classic stage tile's stop button
+   * does for one: each watched tile, and a watched camera that is turned off (no tile, still watched).
+   */
   stopWatching(): void;
 }
 
@@ -151,13 +154,12 @@ export function useCallVideo(): CallVideo | null {
     },
     [watchScreenShare, watchCamera],
   );
+  // Every share and camera you watch in this call, shown or not: a watched camera that is turned off is not a
+  // tile, but it stays watched, and would come back by itself when it is turned on again.
   const stopWatching = useCallback(() => {
-    for (const tile of tiles) {
-      if (!tile.watched) continue;
-      if (tile.kind === 'screen') stopWatchingScreenShare?.(tile.identity);
-      else stopWatchingCamera?.(tile.identity);
-    }
-  }, [tiles, stopWatchingScreenShare, stopWatchingCamera]);
+    for (const identity of watchingScreenShares) stopWatchingScreenShare?.(identity);
+    for (const identity of watchingCameras) stopWatchingCamera?.(identity);
+  }, [watchingScreenShares, watchingCameras, stopWatchingScreenShare, stopWatchingCamera]);
 
   return useMemo(() => (room ? { tiles, watch, stopWatching } : null), [room, tiles, watch, stopWatching]);
 }

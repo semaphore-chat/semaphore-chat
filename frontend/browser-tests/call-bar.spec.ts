@@ -2,7 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { openStory } from './story.ts';
 
 /**
- * The new shell's call bar at real widths (jsdom does not lay out or capture pointers): its Tab order, the
+ * The new shell's call bar at real widths (jsdom does not lay out or capture pointers): its Tab order (the room,
+ * which opens the call view, then Mute, Deafen, Leave at every width), the room's name whole in the 288 px column
+ * and its target size, the
  * kit hold-to-talk control with pointer capture (sliding off keeps the hold, lifting anywhere ends it), Leave
  * reachable and uncovered at 390 and 320 px with the longest room name, and no overlap with the dock or a
  * toast.
@@ -30,26 +32,38 @@ async function box(page: Page, selector: string): Promise<Box | null> {
   }, selector);
 }
 
-test('Tab order on a phone: the mic, Deafen, Open call view, Leave', async ({ page }) => {
+const ORDER = ['Open call view, Squad Up', 'Mute', 'Deafen', 'Leave call'];
+
+test('Tab order on a phone: the room (Open call view), the mic, Deafen, Leave', async ({ page }) => {
   await openStory(page, 'call-bar--connected', PHONE);
-  await page.getByRole('button', { name: 'Mute' }).focus();
+  await page.getByRole('button', { name: ORDER[0] }).focus();
   const order: string[] = [];
   for (let i = 0; i < 4; i += 1) {
     order.push(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''));
     await page.keyboard.press('Tab');
   }
-  expect(order).toEqual(['Mute', 'Deafen', 'Open call view', 'Leave call']);
+  expect(order).toEqual(ORDER);
 });
 
-test('Tab order at wide: the mic, Open call view, Leave (deafen is on the user card)', async ({ page }) => {
-  await openStory(page, 'call-bar--connected', WIDE);
+for (const view of [COMPACT, WIDE]) {
+  test(`Tab order at ${view.width} px: the room (Open call view), the mic, Deafen, Leave`, async ({ page }) => {
+    await openStory(page, 'call-bar--connected', view);
+    await page.getByRole('button', { name: ORDER[0] }).focus();
+    const order: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      order.push(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''));
+      await page.keyboard.press('Tab');
+    }
+    expect(order).toEqual(ORDER);
+  });
+}
+
+test('a server-muted mic is still a Tab stop, in its place', async ({ page }) => {
+  await openStory(page, 'call-bar--server-muted', PHONE);
   await page.getByRole('button', { name: 'Mute' }).focus();
-  const order: string[] = [];
-  for (let i = 0; i < 3; i += 1) {
-    order.push(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''));
-    await page.keyboard.press('Tab');
-  }
-  expect(order).toEqual(['Mute', 'Open call view', 'Leave call']);
+  await expect(page.getByRole('button', { name: 'Mute' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Deafen');
 });
 
 test('hold to talk: the pointer is captured, sliding off keeps the hold, lifting outside ends it once', async ({ page }) => {
@@ -118,3 +132,48 @@ for (const view of [PHONE, COMPACT, WIDE]) {
     expect(overlaps(bar!, toast!), 'toast over the call bar').toBe(false);
   });
 }
+
+/** A typical room name (the `call-bar--typical-name` story). */
+const TYPICAL = 'Movie night';
+
+/** The visible room name inside the room button: whole (no ellipsis cut) or cut. */
+async function nameFits(page: Page, name: string): Promise<{ fits: boolean; text: string; width?: number }> {
+  return page.evaluate((n) => {
+    const el = Array.from(document.querySelectorAll('[data-testid="lounge-call-bar"] button span')).find(
+      (span) => span.textContent === n && span.children.length === 0,
+    ) as HTMLElement | undefined;
+    if (!el) return { fits: false, text: 'not found' };
+    return { fits: el.scrollWidth <= el.clientWidth, text: el.textContent ?? '', width: el.clientWidth };
+  }, name);
+}
+
+for (const view of [SMALL, PHONE, COMPACT, WIDE]) {
+  test(`the room is the Open call view control at ${view.width} px: named, a full target, typical names whole`, async ({ page }) => {
+    await openStory(page, 'call-bar--connected', view);
+    const room = page.getByRole('button', { name: 'Open call view, Squad Up', exact: true });
+    await expect(room).toBeVisible();
+    // No separate Open control any more.
+    await expect(page.getByRole('button', { name: 'Open call view', exact: true })).toHaveCount(0);
+    const b = (await room.boundingBox())!;
+    expect(b.height, 'room target height').toBeGreaterThanOrEqual(44);
+    expect(b.width, 'room target width').toBeGreaterThanOrEqual(88);
+    // Pressing a spot on the name lands on the room button, not a neighbour.
+    const hit = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('button')?.getAttribute('aria-label') ?? null,
+      [b.x + 12, b.y + b.height / 2],
+    );
+    expect(hit).toBe('Open call view, Squad Up');
+    expect(await nameFits(page, 'Squad Up')).toMatchObject({ fits: true, text: 'Squad Up' });
+
+    await openStory(page, 'call-bar--typical-name', view);
+    const typical = await nameFits(page, TYPICAL);
+    expect(typical).toMatchObject({ fits: true, text: TYPICAL });
+  });
+}
+
+test('only a genuinely long room name is cut, in the 288 px column', async ({ page }) => {
+  await openStory(page, 'call-bar--long-name', WIDE);
+  const long = 'The extremely long voice room name for the Friday night co-op raid and the debrief after it';
+  expect((await nameFits(page, long)).fits).toBe(false);
+  await expect(page.getByRole('button', { name: `Open call view, ${long}` })).toBeVisible();
+});

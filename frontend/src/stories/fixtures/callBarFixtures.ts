@@ -56,6 +56,14 @@ export const MIC = {
     title: "You can't speak in this room",
     description: "You can't speak in this room",
   },
+  /** A community timeout: the longest reason the bar shows (with the end time). */
+  timedOut: {
+    ...MIC_LIVE,
+    on: false,
+    blocked: true,
+    title: 'Timed out — you can listen until 14:05',
+    description: 'Timed out — you can listen until 14:05',
+  },
   pttIdle: {
     ...MIC_LIVE,
     on: false,

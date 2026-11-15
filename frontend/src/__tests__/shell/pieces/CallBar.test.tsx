@@ -8,7 +8,6 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { CallBar } from '../../../shell/lounge/pieces/call/CallBar';
 import { VoiceNoticeBar } from '../../../shell/lounge/pieces/call/VoiceNoticeBar';
 import type { CallBarModel } from '../../../data/callBar';
-import type { WidthRange } from '../../../kit';
 import { renderWithKit } from '../../test-utils/renderWithKit';
 import {
   DM_PLACE,
@@ -19,8 +18,15 @@ import {
   fakeVoiceNotice,
 } from '../../../stories/fixtures/callBarFixtures';
 
+const said = vi.hoisted(() => [] as string[]);
+vi.mock('../../../kit', async (importOriginal) => {
+  const kit = await importOriginal<typeof import('../../../kit')>();
+  return { ...kit, useAnnounce: () => (text: string) => said.push(text) };
+});
+
 let consoleError: MockInstance;
 beforeEach(() => {
+  said.length = 0;
   consoleError = vi.spyOn(console, 'error');
   HTMLElement.prototype.setPointerCapture = vi.fn();
 });
@@ -31,7 +37,7 @@ afterEach(() => {
 
 type Overrides = Partial<Omit<CallBarModel, 'actions'>>;
 
-function bar(overrides: Overrides = {}, width: WidthRange = 'phone') {
+function bar(overrides: Overrides = {}) {
   const actions = {
     toggleMute: vi.fn(),
     toggleDeafen: vi.fn(),
@@ -43,70 +49,162 @@ function bar(overrides: Overrides = {}, width: WidthRange = 'phone') {
     holdEnd: vi.fn(() => true),
   };
   const model = fakeCallBarModel({ ...overrides, actions });
-  const view = renderWithKit(<CallBar model={model} width={width} />);
+  const view = renderWithKit(<CallBar model={model} />);
   return { actions, model, ...view };
 }
 
 interface Control {
   name: string;
   pressed: 'true' | 'false' | null;
-  enabled: boolean;
+  /** Pressing it acts: neither `disabled` nor `aria-disabled`. */
+  available: boolean;
+  /** A Tab stop (an unavailable mic stays one, so its reason can be found). */
+  focusable: boolean;
 }
 
 function control(name: string): Control | null {
   const button = screen.queryByRole('button', { name });
   if (!button) return null;
-  return { name, pressed: button.getAttribute('aria-pressed') as Control['pressed'], enabled: !(button as HTMLButtonElement).disabled };
+  const disabled = (button as HTMLButtonElement).disabled;
+  return {
+    name,
+    pressed: button.getAttribute('aria-pressed') as Control['pressed'],
+    available: !disabled && button.getAttribute('aria-disabled') !== 'true',
+    focusable: !disabled && button.tabIndex >= 0,
+  };
 }
 
-const MUTE_LIVE: Control = { name: 'Mute', pressed: 'false', enabled: true };
-const MUTE_MUTED: Control = { name: 'Mute', pressed: 'true', enabled: true };
-const MUTE_DISABLED: Control = { name: 'Mute', pressed: 'true', enabled: false };
-const HOLD: Control = { name: 'Hold to talk', pressed: null, enabled: true };
-const HOLD_DISABLED: Control = { name: 'Hold to talk', pressed: null, enabled: false };
+const MUTE_LIVE: Control = { name: 'Mute', pressed: 'false', available: true, focusable: true };
+const MUTE_MUTED: Control = { name: 'Mute', pressed: 'true', available: true, focusable: true };
+const MUTE_BLOCKED: Control = { name: 'Mute', pressed: 'true', available: false, focusable: true };
+const MUTE_LIVE_BLOCKED: Control = { name: 'Mute', pressed: 'false', available: false, focusable: true };
+const HOLD: Control = { name: 'Hold to talk', pressed: null, available: true, focusable: true };
+const HOLD_BLOCKED: Control = { name: 'Hold to talk', pressed: null, available: false, focusable: true };
 
-const STATES: [string, Overrides, { mic: Control; micLabel: string; line: string }][] = [
-  ['voice activity, live', {}, { mic: MUTE_LIVE, micLabel: 'Mute', line: 'Voice connected' }],
-  ['voice activity, muted', { mic: MIC.muted }, { mic: MUTE_MUTED, micLabel: 'Mute', line: 'Voice connected' }],
-  ['speaking', { mic: MIC.speaking }, { mic: MUTE_LIVE, micLabel: 'Mute', line: 'Voice connected' }],
-  ['someone talking', { talking: 'dropbear' }, { mic: MUTE_LIVE, micLabel: 'Mute', line: 'dropbear is talking' }],
-  ['server-muted', { mic: MIC.serverMuted }, { mic: MUTE_DISABLED, micLabel: 'Mute', line: 'Muted by a moderator' }],
-  ['blocked (no SPEAK)', { mic: MIC.blocked }, { mic: MUTE_DISABLED, micLabel: 'Mute', line: "You can't speak in this room" }],
-  ['deafened', { mic: MIC.muted, deafened: true }, { mic: MUTE_MUTED, micLabel: 'Mute', line: 'Deafened' }],
-  ['push-to-talk key, idle', { mic: MIC.pttIdle }, { mic: MUTE_DISABLED, micLabel: 'Mute', line: 'Hold V to talk' }],
+/** The state line as drawn: in the room's row (may truncate) or on its own line (in full), or none. */
+interface Line {
+  text: string;
+  full: boolean;
+}
+
+function drawnLine(model: CallBarModel): { row: string | null; full: string | null } {
+  const name = screen.getByText(model.place.name, { exact: true });
+  const row = name.nextElementSibling?.textContent ?? null;
+  const full = screen.queryByTestId('lounge-call-line')?.textContent ?? null;
+  return { row, full };
+}
+
+const line = (text: string, full = false): Line => ({ text, full });
+
+const TIMED_OUT = 'Timed out — you can listen until 14:05';
+
+/**
+ * Every state of the bar: the mic control, Deafen (on the bar at every width), and the state line. Reconnecting
+ * rows also show the status row (asserted below them).
+ */
+const STATES: [string, Overrides, { mic: Control; micLabel: string; deafened: boolean; line: Line | null }][] = [
+  ['voice activity, live', {}, { mic: MUTE_LIVE, micLabel: 'Mute', deafened: false, line: line('Voice connected') }],
+  ['voice activity, muted', { mic: MIC.muted }, { mic: MUTE_MUTED, micLabel: 'Mute', deafened: false, line: line('Muted') }],
+  ['speaking', { mic: MIC.speaking }, { mic: MUTE_LIVE, micLabel: 'Mute', deafened: false, line: line('Voice connected') }],
+  ['someone talking', { talking: 'dropbear' }, { mic: MUTE_LIVE, micLabel: 'Mute', deafened: false, line: line('dropbear is talking') }],
+  ['muted while someone talks', { mic: MIC.muted, talking: 'dropbear' }, { mic: MUTE_MUTED, micLabel: 'Mute', deafened: false, line: line('Muted') }],
+  ['server-muted', { mic: MIC.serverMuted }, { mic: MUTE_BLOCKED, micLabel: 'Mute', deafened: false, line: line('Muted by a moderator', true) }],
+  ['blocked (no SPEAK)', { mic: MIC.blocked }, { mic: MUTE_BLOCKED, micLabel: 'Mute', deafened: false, line: line("You can't speak in this room", true) }],
+  ['timed out', { mic: MIC.timedOut }, { mic: MUTE_BLOCKED, micLabel: 'Mute', deafened: false, line: line(TIMED_OUT, true) }],
+  ['deafened (mic off)', { mic: MIC.muted, deafened: true }, { mic: MUTE_MUTED, micLabel: 'Mute', deafened: true, line: line('Deafened') }],
   [
-    'push-to-talk key, held',
-    { mic: MIC.pttHeld },
-    { mic: { name: 'Mute', pressed: 'false', enabled: false }, micLabel: 'Mute', line: "You're talking" },
+    'deafened, then Mute pressed (mic on, still deafened, as classic)',
+    { mic: MIC.live, deafened: true },
+    { mic: MUTE_LIVE, micLabel: 'Mute', deafened: true, line: line('Deafened · your mic is on', true) },
   ],
-  ['hold-to-talk, idle', { mic: MIC.holdIdle }, { mic: HOLD, micLabel: 'Hold to talk', line: 'Hold the mic to talk' }],
-  ['hold-to-talk, held', { mic: MIC.holdHeld }, { mic: HOLD, micLabel: 'Hold to talk', line: "You're talking" }],
+  [
+    'deafened and server-muted',
+    { mic: MIC.serverMuted, deafened: true },
+    { mic: MUTE_BLOCKED, micLabel: 'Mute', deafened: true, line: line('Muted by a moderator', true) },
+  ],
+  ['push-to-talk key, idle', { mic: MIC.pttIdle }, { mic: MUTE_BLOCKED, micLabel: 'Mute', deafened: false, line: line('Hold V to talk') }],
+  ['push-to-talk key, held', { mic: MIC.pttHeld }, { mic: MUTE_LIVE_BLOCKED, micLabel: 'Mute', deafened: false, line: line("You're talking") }],
+  [
+    'push-to-talk key held while deafened',
+    { mic: MIC.pttHeld, deafened: true },
+    { mic: MUTE_LIVE_BLOCKED, micLabel: 'Mute', deafened: true, line: line('Deafened · your mic is on', true) },
+  ],
+  ['hold-to-talk, idle', { mic: MIC.holdIdle }, { mic: HOLD, micLabel: 'Hold to talk', deafened: false, line: line('Hold the mic to talk') }],
+  ['hold-to-talk, held', { mic: MIC.holdHeld }, { mic: HOLD, micLabel: 'Hold to talk', deafened: false, line: line("You're talking") }],
+  [
+    'hold-to-talk, held while deafened',
+    { mic: MIC.holdHeld, deafened: true },
+    { mic: HOLD, micLabel: 'Hold to talk', deafened: true, line: line('Deafened · your mic is on', true) },
+  ],
   [
     'hold-to-talk, server-muted',
     { mic: MIC.holdServerMuted },
-    { mic: HOLD_DISABLED, micLabel: 'Hold to talk', line: 'Muted by a moderator' },
+    { mic: HOLD_BLOCKED, micLabel: 'Hold to talk', deafened: false, line: line('Muted by a moderator', true) },
   ],
-  ['hold-to-talk, blocked', { mic: MIC.holdBlocked }, { mic: MUTE_DISABLED, micLabel: 'Mute', line: "You can't speak in this room" }],
-  ['DM call', { place: DM_PLACE }, { mic: MUTE_LIVE, micLabel: 'Mute', line: 'Call connected' }],
+  [
+    'hold-to-talk, blocked',
+    { mic: MIC.holdBlocked },
+    { mic: MUTE_BLOCKED, micLabel: 'Mute', deafened: false, line: line("You can't speak in this room", true) },
+  ],
+  ['DM call', { place: DM_PLACE }, { mic: MUTE_LIVE, micLabel: 'Mute', deafened: false, line: line('Call connected') }],
+  // Reconnecting: the status row says so (asserted below); the line never says connected, nor who talks.
+  ['reconnecting, live', { phase: 'reconnecting', reconnectAttempt: 2 }, { mic: MUTE_LIVE, micLabel: 'Mute', deafened: false, line: null }],
+  [
+    'reconnecting while someone talked',
+    { phase: 'reconnecting', reconnectAttempt: 2, talking: 'dropbear' },
+    { mic: MUTE_LIVE, micLabel: 'Mute', deafened: false, line: null },
+  ],
+  [
+    'reconnecting, muted',
+    { phase: 'reconnecting', reconnectAttempt: 2, mic: MIC.muted },
+    { mic: MUTE_MUTED, micLabel: 'Mute', deafened: false, line: line('Muted') },
+  ],
+  [
+    'reconnecting, deafened',
+    { phase: 'reconnecting', reconnectAttempt: 2, mic: MIC.muted, deafened: true },
+    { mic: MUTE_MUTED, micLabel: 'Mute', deafened: true, line: line('Deafened') },
+  ],
+  [
+    'reconnecting, server-muted',
+    { phase: 'reconnecting', reconnectAttempt: 2, mic: MIC.serverMuted },
+    { mic: MUTE_BLOCKED, micLabel: 'Mute', deafened: false, line: line('Muted by a moderator', true) },
+  ],
 ];
 
-describe('CallBar: every state, at every width', () => {
-  describe.each(['phone', 'compact', 'wide'] as const)('%s', (width) => {
-    it.each(STATES)('%s', (_name, overrides, expected) => {
-      bar(overrides, width);
+// The bar renders the same at every width (no width-dependent control is left); the browser spec checks the
+// layout at 320, 390, 820 and 1440 px.
+describe('CallBar: every state', () => {
+  it.each(STATES)('%s', (_name, overrides, expected) => {
+      const { model } = bar(overrides);
       expect(control(expected.micLabel)).toEqual(expected.mic);
-      expect(screen.getByText(expected.line, { exact: true })).toBeInTheDocument();
-      // Leave and Open call view are always there and enabled in a call.
-      expect(control('Leave call')).toEqual({ name: 'Leave call', pressed: null, enabled: true });
-      expect(control('Open call view')).toEqual({ name: 'Open call view', pressed: null, enabled: true });
-      // Deafen on the phone bar only (PA-3); at compact and wide it is on the user card.
-      const deafen = control('Deafen');
-      if (width === 'phone') {
-        expect(deafen).toEqual({ name: 'Deafen', pressed: overrides.deafened ? 'true' : 'false', enabled: true });
+      // The line, exactly where it is drawn: in the row, on its own line, or not at all.
+      expect(drawnLine(model)).toEqual({
+        row: expected.line && !expected.line.full ? expected.line.text : null,
+        full: expected.line?.full ? expected.line.text : null,
+      });
+      // Mute, Deafen and Leave are on the bar at every width (Deafen pressed = deafened).
+      expect(control('Deafen')).toEqual({
+        name: 'Deafen',
+        pressed: expected.deafened ? 'true' : 'false',
+        available: true,
+        focusable: true,
+      });
+      expect(control('Leave call')).toEqual({ name: 'Leave call', pressed: null, available: true, focusable: true });
+      // The room (with its line) is the Open call view control.
+      expect(control(`Open call view, ${model.place.name}`)).toEqual({
+        name: `Open call view, ${model.place.name}`,
+        pressed: null,
+        available: true,
+        focusable: true,
+      });
+      const status = screen.queryByRole('status');
+      if (overrides.phase === 'reconnecting') {
+        expect(status).toHaveTextContent('Reconnecting (2)…');
+        // Two lines that disagree about the connection never show together.
+        expect(screen.queryByText(/connected/i)).toBeNull();
       } else {
-        expect(deafen).toBeNull();
+        expect(status).toBeNull();
       }
-    });
   });
 
   it('names the region after the room', () => {
@@ -114,26 +212,36 @@ describe('CallBar: every state, at every width', () => {
     expect(screen.getByRole('region', { name: 'Call in aiko' })).toBeInTheDocument();
   });
 
-  it.each(['phone', 'wide'] as const)('joining (%s): the room and "Joining…", nothing to press', (width) => {
-    bar({ phase: 'connecting' }, width);
+  it('joining: the room and "Joining…", nothing to press (the room is not a button yet)', () => {
+    bar({ phase: 'connecting' });
     const region = screen.getByRole('region', { name: 'Call in Squad Up' });
     expect(within(region).getByText('Joining…', { exact: true })).toBeInTheDocument();
     expect(within(region).queryAllByRole('button')).toEqual([]);
   });
 
-  it('reconnecting: the attempt and Cancel, which cancels; the controls stay', () => {
+  it('reconnecting: the attempt and Cancel, which cancels; the controls stay; nothing says connected', () => {
     const { actions } = bar({ phase: 'reconnecting', reconnectAttempt: 2 });
     expect(screen.getByRole('status')).toHaveTextContent('Reconnecting (2)…');
+    expect(screen.queryByText(/connected/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(actions.cancel).toHaveBeenCalledTimes(1);
     expect(actions.leave).not.toHaveBeenCalled();
-    expect(control('Leave call')?.enabled).toBe(true);
+    expect(control('Leave call')?.available).toBe(true);
   });
 
-  it('Tab order: mic, deafen, open, leave (phone)', () => {
+  it('Tab order: the room (Open call view), mic, deafen, leave; no separate Open control', () => {
     bar();
     const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
-    expect(names).toEqual(['Mute', 'Deafen', 'Open call view', 'Leave call']);
+    expect(names).toEqual(['Open call view, Squad Up', 'Mute', 'Deafen', 'Leave call']);
+  });
+
+  it('an unavailable mic is still a Tab stop, in the same order', () => {
+    bar({ mic: MIC.serverMuted });
+    const names = screen
+      .getAllByRole('button')
+      .filter((b) => (b as HTMLButtonElement).tabIndex >= 0 && !(b as HTMLButtonElement).disabled)
+      .map((b) => b.getAttribute('aria-label'));
+    expect(names).toEqual(['Open call view, Squad Up', 'Mute', 'Deafen', 'Leave call']);
   });
 });
 
@@ -141,7 +249,7 @@ describe('CallBar: each control calls the model action', () => {
   it.each([
     ['Mute', 'toggleMute'],
     ['Deafen', 'toggleDeafen'],
-    ['Open call view', 'openCallView'],
+    ['Open call view, Squad Up', 'openCallView'],
     ['Leave call', 'leave'],
   ] as const)('%s → actions.%s', (name, action) => {
     const { actions } = bar();
@@ -153,13 +261,47 @@ describe('CallBar: each control calls the model action', () => {
   });
 
   it.each([
-    ['server-muted', MIC.serverMuted],
-    ['blocked', MIC.blocked],
-    ['push-to-talk key', MIC.pttIdle],
-  ])('a %s mic calls nothing when clicked', (_name, mic) => {
+    ['server-muted', MIC.serverMuted, 'Muted by a moderator'],
+    ['blocked', MIC.blocked, "You can't speak in this room"],
+    ['timed out', MIC.timedOut, TIMED_OUT],
+    ['push-to-talk key', MIC.pttIdle, 'Hold V to talk'],
+    ['push-to-talk key, held', MIC.pttHeld, 'Hold V to talk'],
+  ])('a %s mic does not act when pressed: it says why', (_name, mic, reason) => {
     const { actions } = bar({ mic });
     fireEvent.click(screen.getByRole('button', { name: 'Mute' }));
     expect(actions.toggleMute).not.toHaveBeenCalled();
+    expect(said).toEqual([reason]);
+  });
+
+  it('a server-muted hold control does not hold when pressed: it says why', () => {
+    const { actions } = bar({ mic: MIC.holdServerMuted });
+    const hold = screen.getByRole('button', { name: 'Hold to talk' });
+    fireEvent.pointerDown(hold, { pointerId: 1, button: 0, pointerType: 'touch' });
+    fireEvent.pointerUp(hold, { pointerId: 1 });
+    fireEvent.click(hold);
+    expect(actions.holdStart).not.toHaveBeenCalled();
+    expect(actions.holdEnd).not.toHaveBeenCalled();
+    expect(said).toEqual(['Muted by a moderator']);
+  });
+
+  it('an available mic says nothing when pressed (the line and the pressed state tell)', () => {
+    bar({ mic: MIC.muted });
+    fireEvent.click(screen.getByRole('button', { name: 'Mute' }));
+    expect(said).toEqual([]);
+  });
+
+  it('Deafen while deafened calls toggleDeafen: undeafen is always on screen', () => {
+    const { actions } = bar({ mic: MIC.muted, deafened: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Deafen' }));
+    expect(actions.toggleDeafen).toHaveBeenCalledTimes(1);
+    expect(actions.toggleMute).not.toHaveBeenCalled();
+  });
+
+  it('Mute while deafened calls toggleMute only (the classic Mute: it does not undeafen)', () => {
+    const { actions } = bar({ mic: MIC.muted, deafened: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Mute' }));
+    expect(actions.toggleMute).toHaveBeenCalledTimes(1);
+    expect(actions.toggleDeafen).not.toHaveBeenCalled();
   });
 });
 
@@ -205,24 +347,24 @@ describe('CallBar: hold to talk', () => {
     expect(actions.holdEnd).toHaveBeenCalledTimes(1);
   });
 
-  it('ends when a moderator mutes you mid-hold (the control becomes disabled)', () => {
+  it('ends when a moderator mutes you mid-hold (the control becomes unavailable)', () => {
     const { actions, rerender, model } = bar({ mic: MIC.holdHeld });
     press(screen.getByRole('button', { name: 'Hold to talk' }));
-    rerender(<CallBar model={{ ...model, mic: MIC.holdServerMuted }} width="phone" />);
+    rerender(<CallBar model={{ ...model, mic: MIC.holdServerMuted }} />);
     expect(actions.holdEnd).toHaveBeenCalledTimes(1);
   });
 
   it('ends when push-to-talk is turned off mid-hold (the control becomes the mute toggle)', () => {
     const { actions, rerender, model } = bar({ mic: MIC.holdHeld });
     press(screen.getByRole('button', { name: 'Hold to talk' }));
-    rerender(<CallBar model={{ ...model, mic: MIC.live }} width="phone" />);
+    rerender(<CallBar model={{ ...model, mic: MIC.live }} />);
     expect(actions.holdEnd).toHaveBeenCalledTimes(1);
   });
 
   it('ends when the bar goes to the joining state (the controls go)', () => {
     const { actions, rerender, model } = bar({ mic: MIC.holdHeld });
     press(screen.getByRole('button', { name: 'Hold to talk' }));
-    rerender(<CallBar model={{ ...model, phase: 'connecting' }} width="phone" />);
+    rerender(<CallBar model={{ ...model, phase: 'connecting' }} />);
     expect(actions.holdEnd).toHaveBeenCalledTimes(1);
   });
 });

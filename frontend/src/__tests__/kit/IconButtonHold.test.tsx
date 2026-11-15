@@ -88,6 +88,20 @@ describe('IconButton hold', () => {
     expect(hold.onStart).toHaveBeenCalledTimes(1);
   });
 
+  it("only the holding pointer ends the hold: a second finger's tap on the button does not", () => {
+    const { hold, button } = setup();
+    fireEvent.pointerDown(button, { pointerId: 1, button: 0, pointerType: 'touch' });
+    // Finger 2 taps the button: not a new hold, and its lift, cancel or lost capture ends nothing.
+    fireEvent.pointerDown(button, { pointerId: 2, button: 0, pointerType: 'touch' });
+    fireEvent.pointerUp(button, { pointerId: 2 });
+    fireEvent.pointerCancel(button, { pointerId: 2 });
+    fireEvent.lostPointerCapture(button, { pointerId: 2 });
+    expect(hold.onEnd).not.toHaveBeenCalled();
+    fireEvent.pointerUp(button, { pointerId: 1 });
+    expect(hold.onEnd).toHaveBeenCalledTimes(1);
+    expect(hold.onStart).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks the long-press menu and has no pressed state', () => {
     const { button } = setup();
     // fireEvent returns false when a handler prevented the default.

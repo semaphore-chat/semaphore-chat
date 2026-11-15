@@ -16,7 +16,7 @@ import { InboxLeft } from '../pieces/InboxLeft';
 import { MembersIslandConnected } from '../pieces/MembersIsland';
 import { CentreSkeleton } from '../pieces/CentreSkeleton';
 import { ShellCall } from '../pieces/call/ShellCall';
-import { useShellCallShown } from '../pieces/call/useShellCallShown';
+import { useCallSlotShown } from '../../../data/callSlot';
 import { ScreenBoundary } from './ScreenBoundary';
 import { ScreenError } from './ScreenError';
 
@@ -38,7 +38,7 @@ function dockCurrent(screen: ThreeIslandsScreen, params: LoungeParams): DockCurr
  * patch): only this wrapper re-renders for it, and the islands below only when the slot comes or goes.
  */
 export function ThreeIslandsFrame(props: ThreeIslandsFrameProps): JSX.Element {
-  const callShown = useShellCallShown();
+  const callShown = useCallSlotShown();
   return <ThreeIslandsBody {...props} callShown={callShown} />;
 }
 

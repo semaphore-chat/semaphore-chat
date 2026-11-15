@@ -4,13 +4,17 @@
  * community route). A is on a phone (390 px), where the call bar has mute (or hold to talk), deafen, Open and
  * Leave:
  *
- *   1. Mute and Deafen on the Lounge bar: B stops and resumes receiving A; Leave ends the call;
+ *   1. Mute and Deafen on the Lounge bar: B stops and resumes receiving A; Mute while deafened is the
+ *      classic Mute (the mic opens, A stays deafened, and the bar says so); Leave ends the call;
  *   2. push-to-talk: holding the bar's hold-to-talk control transmits, letting go stops;
- *   3. a moderator's mute: the bar shows the mic blocked with the reason, and A stays silent;
+ *   3. a moderator's mute: the bar shows the mic unavailable with the reason (still a Tab stop; pressing it
+ *      changes nothing), and A stays silent;
  *   4. B shares a screen: the call surface offers it (nothing received yet), Watch shows a decoding video,
- *      Stop watching unsubscribes it, Open call view goes to the classic stage;
+ *      Stop watching unsubscribes it; watched again, B stops sharing: the tile goes and nothing of the share
+ *      stays subscribed; Open call view goes to the classic stage;
  *   5. a join that fails shows the voice notice in the call slot with Retry; the room is deleted meanwhile,
- *      so Retry's join is refused: the notice says so, without Retry; Dismiss clears it.
+ *      so Retry's join is refused: the notice says so, without Retry; Dismiss clears it. (Not "the room you
+ *      are in is deleted": deleting a voice channel does not end its LiveKit call, issue #812.)
  *
  * Requires the real-LiveKit stack: scripts/run-voice-e2e.sh lounge-call
  */
@@ -26,6 +30,7 @@ import {
   startScreenShare,
   stopScreenShare,
   getSubscriptionState,
+  countScreenShareAudio,
   ADMIN_USER,
   TEST_USER,
   TEST_USER_2,
@@ -125,6 +130,21 @@ test.describe('The Lounge call bar and call surface', () => {
     await expect.poll(() => micOn(a), { ...POLL, message: 'undeafen restores the mic that was on' }).toBe(true);
     await waitForAudioFlow(b, a);
 
+    // Mute while deafened is the classic Mute: it opens the mic and leaves A deafened. Both buttons and the
+    // line say so, and Deafen is right there to undeafen.
+    await deafen.click();
+    await expect(deafen).toHaveAttribute('aria-pressed', 'true', POLL);
+    await expect.poll(() => micOn(a), POLL).toBe(false);
+    await mute.click();
+    await expect.poll(() => micOn(a), { ...POLL, message: 'Mute while deafened opens the mic' }).toBe(true);
+    await expect(mute).toHaveAttribute('aria-pressed', 'false', POLL);
+    await expect(deafen).toHaveAttribute('aria-pressed', 'true');
+    await expect(callBar(a.page).getByText('Deafened · your mic is on', { exact: true })).toBeVisible();
+    await waitForAudioFlow(b, a);
+    await deafen.click();
+    await expect(deafen).toHaveAttribute('aria-pressed', 'false', POLL);
+    await expect(callBar(a.page).getByText('Deafened · your mic is on', { exact: true })).toHaveCount(0);
+
     await callBar(a.page).getByRole('button', { name: 'Leave call' }).click();
     await expect.poll(() => a.page.evaluate(() => window.__lkRoom?.state ?? 'none'), POLL).not.toBe('connected');
     await expect(callBar(a.page)).toHaveCount(0);
@@ -174,17 +194,24 @@ test.describe('The Lounge call bar and call surface', () => {
 
     await moderatorMute(c, a.identity, true, a.channelId);
     const mute = callBar(a.page).getByRole('button', { name: 'Mute', exact: true });
-    await expect(mute).toBeDisabled(POLL);
+    await expect(mute).toHaveAttribute('aria-disabled', 'true', POLL);
     await expect(callBar(a.page).getByText('Muted by a moderator', { exact: true })).toBeVisible();
     await expect.poll(() => micOn(a), POLL).toBe(false);
+    // Still a Tab stop with its name; pressing it says why and opens nothing.
+    await mute.focus();
+    await expect(mute).toBeFocused();
+    await mute.press('Enter');
+    // Playwright counts aria-disabled as not enabled; the user can still tap it.
+    await mute.click({ force: true });
+    expect(await micOn(a)).toBe(false);
     await setMicEnabled(a, true).catch(() => {});
     await expectNoAudioGrowth(b, a);
 
     await moderatorMute(c, a.identity, false, a.channelId);
-    await expect(mute).toBeEnabled(POLL);
+    await expect(mute).not.toHaveAttribute('aria-disabled', 'true', POLL);
   });
 
-  test('4: a peer shares a screen: offered, Watch decodes it, Stop watching unsubscribes, Open call view goes to the stage', async () => {
+  test('4: a peer shares a screen: offered, Watch decodes it, Stop watching unsubscribes, the share ending takes its tile, Open call view goes to the stage', async () => {
     test.setTimeout(180_000);
     a = await launchA();
     b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
@@ -193,6 +220,8 @@ test.describe('The Lounge call bar and call surface', () => {
     await toLounge(a);
 
     const started = await startScreenShare(b);
+    // Locally a missing headless capture skips; in CI it must not hide the surface's coverage.
+    if (process.env.CI) expect(started, 'headless screen capture in CI').toBe(true);
     test.skip(!started, 'Headless screen capture is unavailable in this env.');
 
     const surface = a.page.getByTestId('lounge-call-surface');
@@ -221,15 +250,34 @@ test.describe('The Lounge call bar and call surface', () => {
     // Still published: offered again.
     await expect(watch).toBeVisible();
 
-    await callBar(a.page).getByRole('button', { name: 'Open call view' }).click();
+    // Watched again, then B stops sharing: the tile and the surface go, and nothing of the share (picture or
+    // its audio) is left subscribed on A.
+    await watch.click();
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.videoWidth).catch(() => 0), { timeout: 25_000 })
+      .toBeGreaterThan(0);
+    await stopScreenShare(b);
+    await expect(video).toHaveCount(0, POLL);
+    await expect(surface).toHaveCount(0, POLL);
+    await expect
+      .poll(async () => (await getSubscriptionState(a, b.identity))?.screenShare.subscribed ?? false, {
+        ...POLL,
+        message: 'nothing of the ended share stays subscribed',
+      })
+      .toBe(false);
+    await expect.poll(async () => (await countScreenShareAudio(a)).subscribed, POLL).toBe(0);
+    await expect(callBar(a.page)).toBeVisible();
+
+    // The room's name on the bar is the Open call view control.
+    await callBar(a.page).getByRole('button', { name: /^Open call view, / }).click();
     await expect(a.page).toHaveURL(new RegExp(`#/community/[^/]+/channel/${a.channelId}`));
     await expect(fixture(a.page)).toHaveCount(0);
     await expect(callBar(a.page)).toHaveCount(0);
     await expect.poll(() => a.page.evaluate(() => window.__lkRoom?.state ?? 'none')).toBe('connected');
-
-    await stopScreenShare(b);
   });
 
+  // Not "the room you are in is deleted": deleting a voice channel leaves its LiveKit call running (the
+  // backend never deletes the room), so there is nothing for the bar to show yet. Issue #812.
   test('5: a failed join shows the notice in the call slot; Retry to a room deleted meanwhile says it is gone', async () => {
     test.setTimeout(180_000);
     a = await launchA();

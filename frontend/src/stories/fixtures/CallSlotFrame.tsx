@@ -7,6 +7,7 @@ import type { JSX, ReactNode } from 'react';
 import { AppFrame, ThreeIslands, useWidthRange, type WidthRange } from '../../kit';
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { KitFrameStage } from './kitStory';
+import { FakeKeyboard } from './fakeKeyboard';
 import { SampleChannels, SampleConversation, SampleDock } from './layoutSamples';
 
 function Slot({ children }: { children: (width: WidthRange) => ReactNode }): JSX.Element {
@@ -15,12 +16,15 @@ function Slot({ children }: { children: (width: WidthRange) => ReactNode }): JSX
 
 export function CallSlotFrame({
   mode = 'dark',
+  keyboard = false,
   children,
 }: {
   mode?: ModeName;
+  /** The on-screen keyboard is up (faked): the frame ends at it and the dock bar goes. */
+  keyboard?: boolean;
   children: (width: WidthRange) => ReactNode;
 }): JSX.Element {
-  return (
+  const frame = (
     <KitFrameStage mode={mode}>
       <AppFrame>
         <ThreeIslands
@@ -34,4 +38,5 @@ export function CallSlotFrame({
       </AppFrame>
     </KitFrameStage>
   );
+  return keyboard ? <FakeKeyboard>{frame}</FakeKeyboard> : frame;
 }
