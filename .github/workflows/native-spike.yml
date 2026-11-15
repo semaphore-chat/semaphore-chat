@@ -28,7 +28,9 @@ jobs:
   checks:
     name: Build, policy and headless render (Linux)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 60 minutes was enough for verify.sh; the native UI review below renders every story three
+    # times (about 80 CPU-minutes, so roughly 20 on the runner's 4 cores) on pull requests.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,7 +42,7 @@ jobs:
       # The release and packaging scripts, which nothing else runs before a native-v* tag goes
       # out: assembly and the manifest checks with a throwaway key, and the installer compiled in
       # the NSIS image (native/docker/Dockerfile.nsis). First, so a break here shows up in
-      # minutes rather than after the hour below.
+      # minutes rather than after the build and render steps below.
       - name: Release assembly, signing and manifests
         run: native/scripts/in-image.sh scripts/test-release-assembly.sh
       - name: Windows installer compiles and unpacks
@@ -50,6 +52,28 @@ jobs:
         run: native/scripts/verify.sh
         env:
           RESULT_SCHEMA_HOST: ${{ github.workspace }}/scripts/native-baseline/result.schema.json
+      # Before/after renders of every story against the pull request's base, the same script and
+      # image as a local run (which the Verify step above has already built rig-shot for). Visual
+      # changes do not fail this: the report is the review. A story that won't render does.
+      # Docs: docs-site/docs/contributing/native-ui-review.md
+      - name: Native UI review (before/after story renders)
+        if: github.event_name == 'pull_request'
+        env:
+          UI_REVIEW_SHARDS: 4
+        run: |
+          set +e
+          native/scripts/ui-review.sh --base "${{ github.event.pull_request.base.sha }}"
+          status=$?
+          if [ -f native/.ui-review/out/pr-block.md ]; then
+            cat native/.ui-review/out/pr-block.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+      - uses: actions/upload-artifact@v7
+        if: always() && github.event_name == 'pull_request'
+        with:
+          name: native-ui-review
+          path: native/.ui-review/out/
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v7
         if: always()
         with:

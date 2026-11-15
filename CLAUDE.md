@@ -514,6 +514,8 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 
 **UI changes**: before opening or updating a PR that changes frontend UI, follow the ui-pr-review skill (`.claude/skills/ui-pr-review`) — render affected stories on base vs head at phone/tablet/desktop, review every screenshot, and include the generated before/after section in the PR description.
 
+**Native UI changes**: a PR that changes what the GPUI client renders runs `native/scripts/ui-review.sh` (every story rendered on the base ref and on the working tree, pixel-diffed) and includes the generated block between `<!-- native-ui-review:start -->` and `<!-- native-ui-review:end -->` in the description, after looking at every changed composite. Unstable stories are reported separately, not as changes. Builds and renders run in `native/scripts/in-image.sh`; never run cargo on the host. How to read the report: `docs-site/docs/contributing/native-ui-review.md`.
+
 ### Patched Dependencies
 
 - We carry one pnpm patch, `livekit-client@2.22.3` (see `patches/README.md`): without it a full voice reconnect loses `TrackSubscribed`, so users stay connected but hear nobody. `frontend/src/__tests__/features/livekitClientPatch.test.ts` fails without it; on a livekit-client bump, port or drop it as the README says. The electron-updater patch added in 0.4.2 misread the .deb `pkexec exited with code 127` error and itself broke .deb/.rpm auto-update in 0.4.2 and 0.4.3, so it was removed. `frontend/src/__tests__/electron/linuxUpdaterInstall.node.test.ts` runs electron-updater's real Linux install path and must keep passing.

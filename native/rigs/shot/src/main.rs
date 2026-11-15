@@ -3,6 +3,7 @@
 //!   rig-shot <story> <width> <height> <out.png> [--theme <mode>-<accent>-<intensity>]
 //!   rig-shot --script <file.steps> --out <dir>
 //!   rig-shot --list
+//!   rig-shot --compare <jobs.tsv> --composites <dir> [--fuzz <percent>]
 //!
 //! Stories come from `semaphore_ui::stories`. Run it from `native/`, where it finds
 //! `fixtures/scenarios`. See [`script`] for the step language.
@@ -13,6 +14,7 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use gpui_kit::component::Root;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
+use rig_shot::compare;
 use rig_shot::driver::Driver;
 use rig_shot::script::{self, Emit, Step};
 use semaphore_core::ConnectionState;
@@ -249,11 +251,20 @@ fn main() -> Result<()> {
         let steps = script::parse(&source).map_err(|error| anyhow!("{path}: {error}"))?;
         return Rig::new().run(&steps, &out_dir);
     }
+    if let Some(jobs) = take_flag(&mut args, "--compare")? {
+        let composites = take_flag(&mut args, "--composites")?;
+        let fuzz: f64 = match take_flag(&mut args, "--fuzz")? {
+            Some(value) => value.parse().context("--fuzz")?,
+            None => 0.0,
+        };
+        let composites = composites.as_deref().map(Path::new);
+        return compare::run(Path::new(&jobs), composites, fuzz);
+    }
 
     let theme = take_flag(&mut args, "--theme")?;
     let [story, width, height, out] = args.as_slice() else {
         bail!(
-            "usage: rig-shot <story> <width> <height> <out.png> [--theme <name>] | rig-shot --script <file> --out <dir> | rig-shot --list"
+            "usage: rig-shot <story> <width> <height> <out.png> [--theme <name>] | rig-shot --script <file> --out <dir> | rig-shot --list | rig-shot --compare <jobs.tsv> --composites <dir> [--fuzz <percent>]"
         );
     };
     let width: f32 = width.parse().context("width")?;
