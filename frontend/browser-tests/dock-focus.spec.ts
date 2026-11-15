@@ -69,5 +69,11 @@ for (const story of ['kit-dock--focus-twelve', 'kit-dock--focus-sixty']) {
 test('60 items: the current item is in view when the bar first shows, and the bar scrolls sideways', async ({ page }) => {
   await openStory(page, 'kit-dock--focus-sixty', VIEW);
   expect(await inView(page, /, current/)).toBe(true);
-  expect(await bar(page).evaluate((nav) => nav.scrollLeft > 0 && nav.scrollWidth > nav.clientWidth)).toBe(true);
+  expect(
+    await bar(page).evaluate((nav) => {
+      // The children scroll in the bar's scrolling region (fixed start and end items stay outside it).
+      const region = nav.querySelector<HTMLElement>('[data-kit-dock-scroll]')!;
+      return region.scrollLeft > 0 && region.scrollWidth > region.clientWidth;
+    }),
+  ).toBe(true);
 });

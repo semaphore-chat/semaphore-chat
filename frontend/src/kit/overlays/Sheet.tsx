@@ -20,6 +20,11 @@ export interface SheetProps {
   /** Names the sheet. */
   title: string;
   children: ReactNode;
+  /**
+   * Content fixed under the title, above the scrolling body: an instance heading, a search field that filters the
+   * body. It does not scroll with the body.
+   */
+  top?: ReactNode;
   /** Kit Buttons in a row pinned to the bottom. */
   actions?: ReactNode;
   size?: 'md' | 'lg';
@@ -47,6 +52,12 @@ const Body = styled('div', { shouldForwardProp: transientProps })<{ $last: boole
   // With no actions row the body is the last row: it clears the home indicator on a phone.
   ...($last && { [PHONE]: { paddingBottom: `calc(${tokens.space.xl}px + ${SAFE_BOTTOM})` } }),
 }));
+
+const Top = styled('div')({
+  flex: '0 0 auto',
+  minWidth: 0,
+  padding: `0 ${tokens.space.xl}px ${tokens.space.md}px`,
+});
 
 const Actions = styled('div')(({ theme }) => ({
   flex: '0 0 auto',
@@ -87,7 +98,7 @@ function Head({ titleId, title, onClose, focusClose }: { titleId: string; title:
  * Above the phone breakpoint it is a centred panel; at or below it, a bottom sheet
  * that is full width, rounded on top, and slides up.
  */
-export function Sheet({ open, onClose, title, children, actions, size = 'md' }: SheetProps): JSX.Element {
+export function Sheet({ open, onClose, title, children, top, actions, size = 'md' }: SheetProps): JSX.Element {
   const titleId = `${useId()}-title`;
   return (
     <Modal
@@ -120,7 +131,10 @@ export function Sheet({ open, onClose, title, children, actions, size = 'md' }: 
       }}
     >
       <Head titleId={titleId} title={title} onClose={onClose} focusClose={actions === undefined} />
-      <Body $last={actions === undefined}>{children}</Body>
+      {top !== undefined && <Top>{top}</Top>}
+      <Body $last={actions === undefined} data-kit-sheet-body="">
+        {children}
+      </Body>
       {actions !== undefined && <Actions>{actions}</Actions>}
     </Modal>
   );

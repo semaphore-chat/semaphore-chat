@@ -135,14 +135,17 @@ describe('DockItem newMessages (K2)', () => {
 });
 
 describe('Dock focus (the bar)', () => {
-  it('the bar itself is not a Tab stop (Firefox makes a scrolling bar one)', () => {
+  it('the scrolling region is not a Tab stop (Firefox makes a scrolling element one), nor is the bar', () => {
     renderWithKit(<FocusDock />);
-    expect(screen.getByRole('navigation', { name: 'Communities' })).toHaveAttribute('tabindex', '-1');
+    const nav = screen.getByRole('navigation', { name: 'Communities' });
+    expect(nav.querySelector('[data-kit-dock-scroll]')).toHaveAttribute('tabindex', '-1');
+    expect(nav).not.toHaveAttribute('tabindex');
   });
 
   it('a Dock without focus has no tabindex of its own', () => {
     renderWithKit(<Dock label="d">{null}</Dock>);
     expect(screen.getByRole('navigation')).not.toHaveAttribute('tabindex');
+    expect(screen.getByRole('navigation').querySelector('[data-kit-dock-scroll]')).not.toHaveAttribute('tabindex');
   });
 });
 
@@ -184,7 +187,7 @@ describe('Dock bar props', () => {
   it('only the four list handlers reach the bar: the key handler works, nothing else is added', async () => {
     const { user } = renderWithKit(<FocusDock />);
     const nav = screen.getByRole('navigation', { name: 'Communities' });
-    expect(nav.getAttributeNames().sort()).toEqual(['aria-label', 'class', 'tabindex']);
+    expect(nav.getAttributeNames().sort()).toEqual(['aria-label', 'class']);
     await user.tab();
     await user.tab();
     await user.keyboard('{End}');

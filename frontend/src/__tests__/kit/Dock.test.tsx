@@ -4,6 +4,9 @@ import { Dock, DockDivider, DockItem, IconButton } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { rawCssFor } from './cssRules';
 
+/** The region that scrolls: the children between the fixed start and end items. */
+const scroller = () => screen.getByRole('navigation').querySelector<HTMLElement>('[data-kit-dock-scroll]')!;
+
 let consoleError: MockInstance;
 beforeEach(() => {
   consoleError = vi.spyOn(console, 'error');
@@ -33,7 +36,7 @@ describe('Dock', () => {
         <DockDivider />
       </Dock>,
     );
-    expect(screen.getByRole('navigation').firstElementChild).toHaveAttribute('aria-hidden', 'true');
+    expect(scroller().firstElementChild).toHaveAttribute('aria-hidden', 'true');
     expect(screen.queryByRole('separator')).toBeNull();
   });
 
@@ -43,7 +46,7 @@ describe('Dock', () => {
         <DockItem name="A" />
       </Dock>,
     );
-    const style = getComputedStyle(screen.getByRole('navigation'));
+    const style = getComputedStyle(scroller());
     expect(style.overflowX).toBe('auto');
   });
 
@@ -64,9 +67,9 @@ describe('Dock', () => {
         </Dock>
       );
       const { rerender } = renderWithKit(tree('c'));
-      const nav = screen.getByRole('navigation');
-      // c sits at 400..444, the view is 100 wide: scrolled so c, plus the bar padding, ends at the view edge.
-      expect(nav.scrollLeft).toBe(352);
+      const nav = scroller();
+      // c sits at 400..444, the view is 100 wide: scrolled so c, plus the fade's width, ends at the view edge.
+      expect(nav.scrollLeft).toBe(368);
       rerender(tree('a'));
       expect(nav.scrollLeft).toBe(0);
     } finally {
@@ -107,7 +110,7 @@ describe('Dock on a phone', () => {
         </Dock>
       );
       const { rerender } = renderWithKit(tree('b'));
-      const nav = screen.getByRole('navigation');
+      const nav = scroller();
       nav.scrollLeft = 300;
       rerender(tree('c'));
       expect(nav.scrollLeft).toBe(300);
@@ -141,12 +144,12 @@ describe('Dock resize', () => {
           <DockItem name="a" current />
         </Dock>,
       );
-      const nav = screen.getByRole('navigation');
+      const nav = scroller();
       // First laid out at zero width: a browser clamps the scroll to 0; the bar becomes 100 wide later.
       nav.scrollLeft = 0;
       width = 100;
       notify();
-      expect(nav.scrollLeft).toBe(352);
+      expect(nav.scrollLeft).toBe(368);
     } finally {
       vi.unstubAllGlobals();
       offsetLeft.mockRestore();
