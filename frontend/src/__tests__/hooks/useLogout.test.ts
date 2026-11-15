@@ -80,6 +80,8 @@ function hangingLogout(opts: { signal?: AbortSignal }) {
 }
 
 import { useLogout } from '../../hooks/useLogout';
+import { STORAGE_KEY } from '../../theme/constants';
+import { showDesktopSignInNotice, useDesktopSignInBanner } from '../../data/signInNotice';
 
 function renderUseLogout(queryClient = createTestQueryClient()) {
   return renderHook(() => useLogout(), {
@@ -344,6 +346,21 @@ describe('useLogout', () => {
       await result.current.handleLogout();
     });
     expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+  });
+
+  it("forgets this browser's copy of the new design setting and a sign-in notice still showing (M4)", async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'dark', newDesign: true }));
+    showDesktopSignInNotice();
+    const notice = renderHook(() => useDesktopSignInBanner());
+    const queryClient = createTestQueryClient();
+    const { result } = renderUseLogout(queryClient);
+    queryClient.setQueryData([{ _id: 'appearanceSettingsControllerGetSettings' }], { newDesign: true });
+    await act(async () => {
+      await result.current.handleLogout();
+    });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toEqual({ mode: 'dark', newDesign: false });
+    expect(queryClient.getQueryData([{ _id: 'appearanceSettingsControllerGetSettings' }])).toBeUndefined();
+    expect(notice.result.current).toBeNull();
   });
 
   it('passes login state on, e.g. the desktop sign-in page to come back to', async () => {

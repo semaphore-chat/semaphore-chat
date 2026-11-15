@@ -31,7 +31,8 @@ function concretePaths(routes: RouteObject[], parent = ''): string[] {
   return [...new Set(out)];
 }
 
-const fakeLoad: LoungeRoute['load'] = () => Promise.resolve({ default: () => null });
+const fakeLoad: LoungeRoute['load'] = () =>
+  Promise.resolve({ default: { template: 'bare', Body: () => null, useTitle: () => null } });
 
 describe('chooseShell', () => {
   const paths = concretePaths(appRoutes());

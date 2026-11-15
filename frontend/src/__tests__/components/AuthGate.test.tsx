@@ -20,6 +20,8 @@ import {
 } from '../../utils/sessionRefreshPolicy';
 import { stashDeepLinkRoute, takeStashedDeepLinkRoute } from '../../utils/deepLinkStash';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { STORAGE_KEY } from '../../theme/constants';
+import { appearanceSettingsControllerGetSettingsQueryKey } from '../../api-client/@tanstack/react-query.gen';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -914,6 +916,27 @@ describe('AuthGate', () => {
         expect(screen.getByTestId('login')).toBeInTheDocument();
       });
       expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+    });
+
+    it("forgets this browser's copy of the new design setting when the server ends the session (M4)", async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', newDesign: true }));
+      const { queryClient } = renderAuthGate();
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      queryClient.setQueryData(appearanceSettingsControllerGetSettingsQueryKey(), { newDesign: true } as never);
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toEqual({ mode: 'light', newDesign: false });
+      expect(queryClient.getQueryData(appearanceSettingsControllerGetSettingsQueryKey())).toBeUndefined();
     });
 
     it('passes the reason the server gave to the login page', async () => {

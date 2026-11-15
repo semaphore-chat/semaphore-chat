@@ -24,11 +24,18 @@ export function useNewDesignEnabled(search: string): boolean {
   return preview === 'lounge';
 }
 
-/** The shell for the current location and width. Preloads the new shell's chunk once the new design is on. */
+/**
+ * The shell for the current location and width. Once the new design is on it preloads the new shell's
+ * chunk, and the screen of the registered route matching the current path (M6), so a first entry
+ * goes from the old screen straight to the new one, without a blank frame between.
+ */
 export function useShellChoice(): ShellChoice {
   const { pathname, search } = useLocation();
   const enabled = useNewDesignEnabled(search);
   const width = useShellWidthRange();
+  // The route the current path would show in the new shell at this width, without the deferral.
+  const upcoming = useMemo(() => chooseShell({ pathname, enabled, width }), [pathname, enabled, width]);
+  const upcomingRoute = upcoming.kind === 'lounge' ? upcoming.route : null;
 
   useEffect(() => {
     if (enabled) {
@@ -36,6 +43,11 @@ export function useShellChoice(): ShellChoice {
       loadLoungeRoot().catch(() => undefined);
     }
   }, [enabled]);
+
+  useEffect(() => {
+    // Likewise: the frame's own load of the screen retries and shows a failure.
+    upcomingRoute?.load().catch(() => undefined);
+  }, [upcomingRoute]);
 
   // Deferred: the setting (a plain setState), the preview and the width (useSyncExternalStore) change
   // in synchronous renders. Switching shells mounts the other one, whose page may still be a lazy

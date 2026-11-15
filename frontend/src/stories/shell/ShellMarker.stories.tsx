@@ -7,7 +7,7 @@
 import { http, HttpResponse } from 'msw';
 import { AppFrame } from '../../kit';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
-import MarkerScreen from '../../shell/lounge/screens/MarkerScreen';
+import markerScreen from '../../shell/lounge/screens/MarkerScreen';
 import { defineComponent } from '../fixtures/componentStory';
 import { KitFrameStage } from '../fixtures/kitStory';
 import { bigCommunityScenario, firstDmGroup, primaryCommunity, primaryVoiceChannel } from '../fixtures/scenarios';
@@ -41,7 +41,7 @@ const marker = (mode: ModeName, voiceState?: Partial<VoiceState>) =>
     () => (
       <KitFrameStage mode={mode}>
         <AppFrame>
-          <MarkerScreen params={{}} />
+          <markerScreen.Body params={{}} />
         </AppFrame>
       </KitFrameStage>
     ),

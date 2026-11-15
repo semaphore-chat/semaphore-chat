@@ -21,8 +21,8 @@ const reducerStepPattern = {
 
 // What src/data and src/shell/lounge may not import (design report §2).
 // `components` is the classic-UI pattern (a regex: a gitignore-style group
-// cannot re-include a file under an excluded directory), passed in because the
-// Lounge chunk carries one listed exception.
+// cannot re-include a file under an excluded directory). There is no exception:
+// the Lounge chunk has its own kit-free boundary (shell/lounge/frame/ScreenBoundary).
 function headlessPatterns(components) {
   return [
     {
@@ -49,7 +49,7 @@ function headlessPatterns(components) {
       message: 'useScreenShare owns the classic source picker; stop a share with the call bar model.',
     },
     {
-      group: ['**/utils/SocketContext'],
+      group: ['**/utils/SocketContext', '**/utils/SocketProvider', '**/utils/socketSingleton'],
       message: 'No raw socket: read the query cache (kept live by socket-hub) or useServerEvent.',
     },
     {
@@ -213,13 +213,12 @@ export default tseslint.config(
       'no-restricted-imports': ['error', { patterns: headlessPatterns('(^|/)components(/|$)') }],
     },
   },
-  // The one exception, in the one file: LoungeRoot's screen error boundary
-  // predates this rule; the shell frame replaces it with a kit one.
+  // A screen module (src/shell/lounge/screens) default-exports its descriptor (shell/lounge/screen.ts),
+  // an object beside the screen's components: Fast Refresh reloads such a module instead of patching it,
+  // which is fine for a screen.
   {
-    files: ['src/shell/lounge/LoungeRoot.tsx'],
-    rules: {
-      'no-restricted-imports': ['error', { patterns: headlessPatterns('(^|/)components(/(?!ErrorBoundary$)|$)') }],
-    },
+    files: ['src/shell/lounge/screens/**/*.{ts,tsx}'],
+    rules: { 'react-refresh/only-export-components': 'off' },
   },
   // livekit-client: types only, except in the lazy call-surface chunk.
   {

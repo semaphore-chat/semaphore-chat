@@ -21,6 +21,7 @@ import { logger } from '../utils/logger';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import { generateTheme } from '../theme/themeConfig';
 import { useThemeColorMeta } from '../hooks/useThemeColorMeta';
+import { onForgetNewDesignSetting } from './newDesignCache';
 import {
   type ThemeMode,
   type AccentColor,
@@ -165,15 +166,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [settings, setSettings] = useState<ThemeSettings>(loadSettings);
   const onChangeCallbacksRef = useRef<Set<OnSettingsChangeCallback>>(new Set());
   const isApplyingServerSettingsRef = useRef(false);
+  const unsyncedSettingsRef = useRef<ThemeSettings | null>(null);
 
   // Save to localStorage whenever settings change
   useEffect(() => {
     saveSettings(settings);
   }, [settings]);
 
-  // Notify callbacks when settings change (but not when applying server settings)
+  // Notify callbacks when settings change (but not when applying server settings,
+  // nor for the settings forgetNewDesignSetting() made: those are local only)
   useEffect(() => {
-    if (!isApplyingServerSettingsRef.current) {
+    if (!isApplyingServerSettingsRef.current && settings !== unsyncedSettingsRef.current) {
       onChangeCallbacksRef.current.forEach((callback) => callback(settings));
     }
   }, [settings]);
@@ -224,6 +227,21 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     setTimeout(() => {
       isApplyingServerSettingsRef.current = false;
     }, 0);
+  }, []);
+
+  // forgetNewDesignSetting(): local only. The settings object it makes is marked, and the
+  // notify effect above skips exactly that object, so nothing reaches the server.
+  const latestSettingsRef = useRef(settings);
+  latestSettingsRef.current = settings;
+  useEffect(() => {
+    const forget = () => {
+      const current = latestSettingsRef.current;
+      if (!current.newDesign) return;
+      const next = { ...current, newDesign: false };
+      unsyncedSettingsRef.current = next;
+      setSettings(next);
+    };
+    return onForgetNewDesignSetting(forget);
   }, []);
 
   // Register a callback to be called when settings change

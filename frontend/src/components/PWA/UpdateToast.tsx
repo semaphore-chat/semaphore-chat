@@ -16,6 +16,7 @@ import {
   useToastPlacement,
   useToastQueue,
 } from '../../contexts/BottomChromeContext';
+import { useShownShellKind } from '../../shell/shownShellKind';
 
 /**
  * "Update available" toast.
@@ -31,9 +32,14 @@ import {
  * It queues with the other snackbars (only one shows at a time; the update
  * goes ahead of the install prompt) and sits above the nav / voice bar /
  * composer via BottomChromeContext.
+ *
+ * Shows nothing (and holds no place in the queue) while the new design's shell is shown: its banner
+ * row offers the update.
  */
 export const UpdateToast: React.FC = () => {
-  const show = useSyncExternalStore(subscribeSwUpdate, shouldShowUpdate);
+  const classic = useShownShellKind() === 'classic';
+  const waiting = useSyncExternalStore(subscribeSwUpdate, shouldShowUpdate);
+  const show = waiting && classic;
   const [isReloading, setIsReloading] = useState(false);
   const isMyTurn = useToastQueue('update', TOAST_PRIORITY.UPDATE, show);
   const open = show && isMyTurn;
