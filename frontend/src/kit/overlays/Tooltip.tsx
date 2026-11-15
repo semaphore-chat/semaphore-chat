@@ -15,6 +15,7 @@ import Popper from '@mui/material/Popper';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { SurfaceContext } from '../theme/onSurface';
 import { useOverlayContainer } from './overlayContainer';
 import { ANCHOR_GAP, layerIndex } from './surface';
 import { TooltipDescriptionContext, type TooltipDescription } from './tooltipDescription';
@@ -213,7 +214,9 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
         // Hover must pass through to what is underneath, and the tooltip never takes focus.
         sx={(theme) => ({ pointerEvents: 'none', zIndex: layerIndex(theme, 'tooltip') })}
       >
-        <Panel>{label}</Panel>
+        <SurfaceContext value="surface">
+          <Panel>{label}</Panel>
+        </SurfaceContext>
       </Popper>
     </Wrapper>
   );

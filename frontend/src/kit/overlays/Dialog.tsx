@@ -4,7 +4,7 @@ import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { shadow } from '../theme/shadow';
 import { Modal } from './modal';
-import { ModalTitle, panelBase } from './modalParts';
+import { ModalTitle, actionsStack, gutterContainer, panelBase } from './modalParts';
 
 export interface DialogProps {
   open: boolean;
@@ -39,11 +39,7 @@ const Actions = styled('div')({
   justifyContent: 'flex-end',
   gap: `${tokens.space.sm}px`,
   marginTop: `${tokens.space.xl}px`,
-  // At phone width the buttons take a full row each, in order: the safe action on top.
-  [`@media (max-width: ${tokens.breakpoint.phone}px)`]: {
-    flexDirection: 'column',
-    '& > *': { width: '100%' },
-  },
+  ...actionsStack,
 });
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])';
@@ -85,14 +81,13 @@ export function Dialog({
       labelledBy={titleId}
       describedBy={descriptionId}
       // The container is the margin: the panel stays a gutter inside the viewport.
-      container={{ padding: `${tokens.layout.gutter}px` }}
+      container={gutterContainer}
       panel={(theme) => {
         const lounge = kitTheme(theme);
         return {
           ...panelBase(lounge, shadow(lounge, 'overlay')),
           maxWidth: `${WIDTH[size]}px`,
           padding: `${tokens.space.xl}px`,
-          borderRadius: `${tokens.radius.island}px`,
         };
       }}
     >

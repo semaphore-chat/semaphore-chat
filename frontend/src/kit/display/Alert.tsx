@@ -6,6 +6,8 @@ import { BUTTON_PADDING } from '../controls/buttonPadding';
 import { IconButton } from '../controls/IconButton';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
+import { standOutFill, useSurface, type Surface } from '../theme/onSurface';
+import { transientProps } from '../theme/transientProps';
 import { Icon, type IconTone } from './Icon';
 import { liveRole } from './live';
 
@@ -32,7 +34,7 @@ const LOOK: Record<AlertSeverity, { icon: IconName; tone: IconTone }> = {
   danger: { icon: 'CircleAlert', tone: 'danger' },
 };
 
-const Root = styled('div')(({ theme }) => {
+const Root = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
   const { palette } = kitTheme(theme);
   return {
     boxSizing: 'border-box',
@@ -42,7 +44,7 @@ const Root = styled('div')(({ theme }) => {
     width: '100%',
     padding: `${tokens.space.lg}px`,
     borderRadius: `${tokens.radius.card}px`,
-    background: palette.fill,
+    background: standOutFill(palette, $on),
     color: palette.text,
     fontFamily: theme.typography.fontFamily,
     fontSize: `${tokens.text.body.size}px`,
@@ -91,8 +93,9 @@ const CloseSlot = styled('span')({
 /** An inline message banner. Warnings and errors interrupt (`alert`); info and success wait (`status`); `announce={false}` makes it a quiet `note`. */
 export function Alert({ severity, title, children, action, onClose, announce = true }: AlertProps): JSX.Element {
   const look = LOOK[severity];
+  const on = useSurface();
   return (
-    <Root role={liveRole(severity === 'warning' || severity === 'danger', announce)}>
+    <Root $on={on} role={liveRole(severity === 'warning' || severity === 'danger', announce)}>
       <IconSlot>
         <Icon name={look.icon} size="lg" tone={look.tone} />
       </IconSlot>

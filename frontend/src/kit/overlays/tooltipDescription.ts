@@ -27,6 +27,16 @@ export function useDescribedBy(own: string | undefined): string | undefined {
   return joinIds(own, tooltip?.id);
 }
 
+/**
+ * For a control that must not be described by the enclosing Tooltip (the tooltip only repeats its
+ * accessible name): claims the description without using it, so the Tooltip does not write its id
+ * into the control's DOM element either.
+ */
+export function useIgnoreTooltipDescription(): void {
+  const claim = useContext(TooltipDescriptionContext)?.claim;
+  useEffect(() => claim?.(), [claim]);
+}
+
 /** Space-joins the ids that are set; undefined when none is. */
 export function joinIds(...ids: (string | undefined)[]): string | undefined {
   const set = ids.filter((id): id is string => id !== undefined && id !== '');

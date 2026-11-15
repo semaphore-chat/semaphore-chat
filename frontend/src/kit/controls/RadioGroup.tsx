@@ -3,6 +3,7 @@ import { joinIds, useDescribedBy } from '../overlays/tooltipDescription';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { FieldLabelText } from '../fields/fieldLabel';
 import { ChoiceText } from './choiceParts';
 import { visuallyHidden } from '../theme/a11y';
@@ -58,7 +59,7 @@ const Group = styled('div', {
 
 const Ring = styled('span', {
   shouldForwardProp: transientProps,
-})<{ $on: boolean }>(({ theme, $on }) => {
+})<{ $on: boolean; $layer: Surface }>(({ theme, $on, $layer }) => {
   const { palette } = kitTheme(theme);
   const hover = tokens.state.hover;
   const pressed = tokens.state.pressed;
@@ -80,7 +81,7 @@ const Ring = styled('span', {
       borderRadius: `${tokens.radius.full}px`,
       background: $on ? palette.accent : 'transparent',
     },
-    ...choiceMarkStates({ palette, under: palette.surface, hover, pressed }),
+    ...choiceMarkStates({ palette, under: tintBase(palette, $layer), hover, pressed }),
   };
 });
 
@@ -99,6 +100,7 @@ export function RadioGroup({
   disabled = false,
   id,
 }: RadioGroupProps): JSX.Element {
+  const layer = useSurface();
   const uid = useId();
   const groupLabelId = `${uid}-group-label`;
   // An enclosing Tooltip's description, on whichever radio takes focus.
@@ -161,7 +163,7 @@ export function RadioGroup({
                   aria-describedby={joinIds(option.description === undefined ? undefined : descriptionId, tooltipId)}
                   onChange={() => onChange(option.value)}
                 />
-                <Ring aria-hidden="true" $on={selected} />
+                <Ring aria-hidden="true" $on={selected} $layer={layer} />
               </ChoiceSlot>
               <ChoiceText
                 label={option.label}

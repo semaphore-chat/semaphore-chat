@@ -1,11 +1,11 @@
-import type { JSX, ReactNode, Ref } from 'react';
+import type { JSX, ReactElement, ReactNode, Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Avatar } from '../display/Avatar';
 import { Badge } from '../display/Badge';
 import { dotStyle } from '../display/dot';
 import { Tooltip } from '../overlays/Tooltip';
-import { useDescribedBy } from '../overlays/tooltipDescription';
+import { useIgnoreTooltipDescription } from '../overlays/tooltipDescription';
 import { reducedMotion } from '../overlays/surface';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
@@ -103,6 +103,12 @@ const WarningDot = styled('span')(({ theme }) => {
   };
 });
 
+/** The tooltip repeats the accessible name, so it must not describe the item with it a second time. */
+function NameOnly({ children }: { children: ReactElement }): ReactElement {
+  useIgnoreTooltipDescription();
+  return children;
+}
+
 /**
  * A community in the Dock: a round button (or link) holding its picture. Its accessible name
  * says everything the picture shows: the name, then ", current", ", 3 unread" and
@@ -120,8 +126,7 @@ export function DockItem({
   ref,
   id,
 }: DockItemProps): JSX.Element {
-  const describedBy = useDescribedBy(undefined);
-  const count = Number.isNaN(unread) ? 0 : Math.floor(unread);
+  const count = Number.isFinite(unread) ? Math.floor(unread) : 0;
   const reconnecting = status === 'reconnecting';
   const label = [
     name,
@@ -134,7 +139,7 @@ export function DockItem({
   const ariaCurrent = current ? ('page' as const) : undefined;
   const content: ReactNode = (
     <>
-      <Picture data-dock-avatar="" $dim={reconnecting}>
+      <Picture $dim={reconnecting}>
         <Avatar name={name} src={src} colour={colour} size="md" shape="circle" decorative />
       </Picture>
       {count > 0 && (
@@ -147,6 +152,7 @@ export function DockItem({
   );
   return (
     <Tooltip label={name}>
+      <NameOnly>
       {href !== undefined ? (
         <Anchor
           ref={ref as Ref<HTMLAnchorElement>}
@@ -154,7 +160,6 @@ export function DockItem({
           href={href}
           aria-label={label}
           aria-current={ariaCurrent}
-          aria-describedby={describedBy}
           $current={current}
         >
           {content}
@@ -167,12 +172,12 @@ export function DockItem({
           onClick={onClick}
           aria-label={label}
           aria-current={ariaCurrent}
-          aria-describedby={describedBy}
           $current={current}
         >
           {content}
         </Button>
       )}
+      </NameOnly>
     </Tooltip>
   );
 }

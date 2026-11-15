@@ -8,7 +8,7 @@ import { Icon } from '../display/Icon';
 import { kitTheme } from '../theme/KitProvider';
 import { useOverlayContainer } from '../overlays/overlayContainer';
 import { ANCHOR_GAP, menuItemStyle, overlaySurface } from '../overlays/surface';
-import { useSurfaceInk } from '../theme/surfaceInk';
+import { SurfaceContext, useSurface } from '../theme/onSurface';
 import { FieldBox, type FieldBoxProps } from './FieldBox';
 import { FieldShell } from './FieldShell';
 
@@ -40,8 +40,8 @@ export interface SelectFieldProps {
 /** Select hands its input an outlined-variant `notched` flag that InputBase would put on the DOM. */
 function SelectBox({ notched, ...rest }: FieldBoxProps & { notched?: boolean }): JSX.Element {
   void notched;
-  const ink = useSurfaceInk();
-  return <FieldBox {...rest} $onFill={ink === 'onFill'} />;
+  const on = useSurface();
+  return <FieldBox {...rest} $on={on} />;
 }
 
 const Placeholder = styled('span')(({ theme }) => ({ color: kitTheme(theme).palette.textDim }));
@@ -179,8 +179,11 @@ export function SelectField({
         >
           {options.map((option) => (
             <Item key={option.value} value={option.value} disabled={option.disabled}>
-              <span className="label">{option.label}</span>
-              {option.value === value && <Icon name="Check" size="sm" tone="accent" />}
+              {/* The list is a portal: it draws on its own surface, not the layer the field sits on. */}
+              <SurfaceContext value="surface">
+                <span className="label">{option.label}</span>
+                {option.value === value && <Icon name="Check" size="sm" tone="accent" />}
+              </SurfaceContext>
             </Item>
           ))}
         </Select>

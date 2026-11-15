@@ -32,3 +32,17 @@ export function rulesFor(element: Element, suffix: string): CSSStyleRule[] {
   }
   return found;
 }
+
+/**
+ * The raw CSS text emotion wrote for `element`'s classes, for a declaration jsdom's CSS parser drops
+ * (`env(...)` as a whole value). It reads the style tags' source, so it pins the mechanism: a guard.
+ */
+export function rawCssFor(element: Element): string {
+  const classes = Array.from(element.classList).filter((name) => name.startsWith('css-'));
+  const text = Array.from(document.querySelectorAll('style'))
+    .map((tag) => tag.textContent ?? '')
+    .join('\n');
+  return classes
+    .flatMap((name) => text.split('}').filter((block) => block.includes(`.${name}`)))
+    .join('}');
+}

@@ -60,6 +60,13 @@ only thing that does.
 The gap between islands belongs to the layout, not to the island. See
 [Tokens and colour](tokens-and-colour.md) for the palette roles.
 
+Kit pieces know which layer they sit on and adjust their own colours, so a
+designer never picks a different colour for a button because it is on a card.
+A soft Button on the ground or an island is `fill`; on a Card (itself `fill`)
+it is `surface`; inside a Dialog opened from that Card it is `fill` again,
+because an overlay panel is its own layer. A selected ListRow is the accent
+layer, and the pieces in it switch to the colours that read on the accent.
+
 ## Text
 
 All words on a screen that are not inside another component. It sets the type
@@ -653,13 +660,18 @@ row of a list. It also tells assistive technology which item is current. On a
 selected row the text takes the colour that reads on the accent, so `unread` and
 `muted` do not change how it looks.
 
-Kit components in `leading` and `trailing` know they sit on that accent pill and
-switch to the colours that read on it: an Icon, Text or ghost or soft IconButton
-takes the on-accent ink, and an accent Badge or Pill turns round (an on-accent
-fill with accent text) so it stays visible. A danger Badge and the status Pills
-keep their own colours. Content that is not a kit component does not get this,
-so keep it out of the slots of a selected row, or give it colours that read on
-the accent.
+Kit components in `leading` and `trailing` know which layer they sit on. On the
+accent pill (a selected row) they switch to the colours that read on it: an
+Icon, Text or ghost or soft IconButton takes the on-accent ink, and an accent
+Badge or Pill turns round (an on-accent fill with accent text) so it stays
+visible. A danger Badge and the status Pills keep their own colours. An
+unselected row does not reset the layer: it keeps what is around it, so a row
+inside a Card is on the Card (its hover and pressed tint are mixed over the
+Card's fill, and a soft IconButton in `trailing` draws on `surface`). A Menu or
+Popover opened from a button in the row is its own layer and draws normally,
+even from a selected row. Content that is not a kit component does not get any
+of this, so keep it out of the slots of a selected row, or give it colours that
+read on the accent.
 
 `unread` makes the main line bolder and brings it to the full text colour. `muted`
 dims both lines. Disabled dims the row and a disabled link or button cannot be
@@ -882,7 +894,8 @@ confirmation too; keep the safe action first.
 
 Stories: `kit-dialog--confirm`, `kit-dialog--with-content`,
 `kit-dialog--phone`, `kit-dialog--confirm-light`,
-`kit-dialog--confirm-tinted`, `kit-dialog--with-select`.
+`kit-dialog--confirm-tinted`, `kit-dialog--with-select`,
+`kit-dialog--from-card`.
 
 ## Island
 
@@ -904,24 +917,28 @@ from the layout, because an island is only as wide as its content.
 An island is a page region only when it has a `label`. Give it one when the
 part is something people jump to, and then pick the element with `as`:
 
-- `nav`: places to go, such as the list of channels.
+- `nav`: places to go, such as the list of channels. It must have a `label`:
+  several unnamed navigation landmarks cannot be told apart.
 - `aside`: supporting content beside the main content, such as a member list.
+  It must have a `label`.
 - `main`: the main content of the page. Use it once per page.
 - `section`: any other named part. This is the default. Without a `label` it is
   only a box, not a region.
-- `div`: a plain box, with no meaning for screen readers.
+- `div`: a plain box, with no meaning for screen readers. It cannot have a
+  `label`, because a name on a box with no role is not allowed.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`children`|content|none (required)|What the island holds.|
 |`as`|`section`, `aside`, `nav`, `main`, `div`|`section`|The page element. See above.|
-|`label`|text|none|Names the region for screen readers.|
+|`label`|text|none|Names the region for screen readers. Required for `nav` and `aside`, not allowed for `div`.|
 |`padding`|`none`, `md`, `lg`|`lg`|The space inside. Use `none` when the content brings its own, such as a list of rows.|
 |`scroll`|true, false|false|The island fills the height its parent gives it, and its content scrolls inside it, never the page.|
 |`id`|text|none|The id of the element.|
 
 Without `scroll`, whatever is wider or taller than the island is cut off. With
-`scroll`, the parent must give the island a height.
+`scroll`, the parent must give the island a height. An island is the `surface`
+layer for everything inside it.
 
 Stories: `kit-island--layout`, `kit-island--scrolling`, `kit-island--paddings`,
 `kit-island--layout-light`, `kit-island--layout-tinted`.
@@ -938,13 +955,23 @@ content: a voice room with the people in it, a block of settings.
 a Card on the ground, or inside another Card.
 
 A card that is a button or a link is one control, named by its text. If the
-text is not enough, give it a `label`. Because the whole card is the control,
-do not put other buttons or links inside it. A plain card may hold any kit
-components.
+text is not enough, give it a `label`. Because the whole card is the control, a
+clickable Card holds no other controls: a button inside a button is invalid and
+its clicks would reach the card. Types cannot see inside `children`, so in
+development the Card logs one error that names it when it finds a button, link,
+input, select, textarea or element with a `tabindex` inside it. Use a plain Card
+with the controls inside, or a ListRow with a trailing control. A plain card may
+hold any kit components.
 
-Kit pieces adapt on their own when they sit on a Card. A soft Button, a neutral
-Pill and a field draw on the surface colour instead of the fill, so they stay
-visible. You do not do anything for this.
+Kit pieces adapt on their own when they sit on a Card, which is the `fill`
+layer. A soft Button, a neutral Pill, a field, a segmented Tabs track, a KeyCap,
+a Skeleton, an Alert, an AvatarStack "+N", the initials of an Avatar and the rail
+of a Slider or LinearProgress draw on the surface colour instead of the fill, so
+they stay visible; hover tints on ghost and text buttons, tabs, checks and rows
+are mixed over the Card's fill. A Card inside a Card is `surface`, not fill on
+fill (but avoid it: see above). A Dialog, Sheet, Menu or Popover opened from
+inside a Card is its own `surface` layer and draws normally. You do not do
+anything for this.
 
 ### Two signs for "this one"
 
@@ -970,7 +997,7 @@ selected card is announced as current.
 |`label`|text|none|The accessible name of a button or link card, when its text is not enough.|
 |`id`|text|none|The id of the element.|
 
-Stories: `kit-card--voice-rooms`, `kit-card--clickable`, `kit-card--paddings`,
+Stories: `kit-card--voice-rooms`, `kit-card--clickable`, `kit-card--paddings`, `kit-card--nested`, `kit-card--nested-light`,
 `kit-card--voice-rooms-light`, `kit-card--voice-rooms-tinted`.
 
 ## Dock
@@ -989,12 +1016,15 @@ A Dock must have a `label`. It names the navigation for screen readers.
 |---|---|---|---|
 |`label`|text|none (required)|Names the navigation.|
 |`children`|DockItems, IconButtons and DockDividers|none (required)|What is on the bar.|
+|`bottomBar`|true, false|false|The bar is the bottom edge of a phone screen. It adds the home-indicator inset (`env(safe-area-inset-bottom)`) as a bottom margin, so it does not sit under the indicator. Leave it off when the bar is mid-layout.|
 
 Put an IconButton on the bar for a thing that is not a community, such as the
 inbox. Use a DockDivider between groups: it is a thin vertical line, and it has
 no options and is hidden from screen readers. A bar that holds more than fits
-scrolls sideways, and keeps the current item in view. See "What the browser
-does for us".
+scrolls sideways, and keeps the current item in view, again when the bar changes
+size (a rotation). See "What the browser does for us". Its items draw on the
+`surface` layer. Where the bar sits on screen, and keeping page content clear of
+it, belong to the app shell.
 
 Stories: `kit-dock--communities`, `kit-dock--overflow`, `kit-dock--phone-bar`,
 `kit-dock--communities-light`, `kit-dock--communities-tinted`.
@@ -1011,7 +1041,9 @@ with an Avatar. Do not use it outside a Dock.
 What the picture shows is also in the name, so a screen reader hears all of it.
 The name is the community's name, then ", current", then ", 3 unread", then
 ", reconnecting", for each that applies. The name also shows in a tooltip on
-hover and on keyboard focus.
+hover and on keyboard focus; the tooltip only repeats the name, so it is not
+added to the item's description. A count that is not a finite number shows
+nothing.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -1049,7 +1081,11 @@ closes. The title and a Close button stay at the top. The `actions`, if any,
 stay in a row at the bottom. Only the body scrolls. Above the phone width the
 Sheet is a panel in the middle of the page. On a phone it rises from the bottom
 as a bottom sheet: full width, rounded at the top, and it leaves room for the
-Dock.
+Dock. The last row of the bottom sheet (the actions, or the body when there are
+none) is padded by the home-indicator inset (`env(safe-area-inset-bottom)`) on
+top of its normal padding. On phones the app shell keeps the sheet above the
+on-screen keyboard (the viewport setting and the keyboard inset are the shell
+plan's job, not the kit's).
 
 The parent decides whether the sheet closes. `onClose` is called on Escape, on a
 press on the dimmed page and on the Close button.
@@ -1063,7 +1099,8 @@ press on the dimmed page and on the Close button.
 |`actions`|Buttons|none|The buttons, in a row pinned to the bottom. On a phone they stack.|
 |`size`|`md`, `lg`|`md`|The width. `md` is 560 pixels and `lg` is 800.|
 
-Focus lands on the sheet itself, not on a first action, so Close is the first
+When there are no `actions`, focus starts on the Close button (the panel is not
+a control). With actions, focus lands on the sheet itself, so Close is the first
 Tab stop. A select list, a Menu, a Popover or a Tooltip may open from inside a
 Sheet, as in a Dialog.
 
@@ -1281,6 +1318,10 @@ then this list is the spec for the native side.
 - The dimmed page fades in. The dialog is centred, and keeps the page gutter on
   each side of a narrow screen. On a phone the action buttons stack, one to a
   row, safe action on top.
+- Every layer opened from inside is stacked in the order it was opened, and
+  Escape closes the innermost one first. The panel is the `surface` layer for
+  what it holds, whatever it was opened from (a Card, a selected row).
+- A fade in and out with a duration; reduced motion turns it off.
 
 ### Dock
 
@@ -1295,6 +1336,12 @@ then this list is the spec for the native side.
 - An item is a button or a link with its own name and a tooltip. The ring of the
   current item is a border that is always there, so nothing moves when it
   changes.
+- Scrolling sideways keeps momentum on touch and takes a trackpad's horizontal
+  scroll. Items are centred while they fit and start at the start edge once they
+  overflow (`safe center`; an old engine that lacks it starts at the start edge,
+  which is acceptable). The bar re-centres the current item when its own size
+  changes.
+- With `bottomBar` the bar keeps `env(safe-area-inset-bottom)` as a bottom margin.
 
 ### Sheet
 
@@ -1308,3 +1355,33 @@ then this list is the spec for the native side.
   and is never taller than the window less the height of the Dock. It slides up
   when it opens, unless the user asks for reduced motion. It fades out when it
   closes. The actions stack, one to a row.
+- The bottom sheet is a flex column: a fixed header, a body that scrolls with its
+  overscroll kept inside, and the optional fixed actions. Its largest height is
+  relative to the window. The last row clears the home indicator through
+  `env(safe-area-inset-bottom)`. The keyboard inset is not handled here: the app
+  shell keeps the sheet above the on-screen keyboard.
+- With no actions, Close takes focus when it opens.
+
+### Island and Card
+
+- An island is a landmark with a role and a name (`nav` and `aside` are always
+  named). It clips its content to its rounded corners and scrolls its own content
+  with the overscroll kept inside, with `min-height: 0` flex semantics so the
+  scroll area can shrink.
+- A card that is a button or a link activates with Enter (both) and Space
+  (buttons), shows hover only on a pointer that hovers, shows the pressed state
+  while pressed, and draws a `:focus-visible` ring (keyboard-only) as an outline
+  outside its shape. A selected card is announced as current. The clickable form
+  holds no other controls.
+- A tooltip on an item has its delay and is tied to the item with
+  `aria-describedby`; an item whose name the tooltip repeats is not tied to it.
+- An Avatar loads its image and shows initials until it has, and a Badge caps its
+  count (`99+`).
+
+### Shared by these pieces
+
+- Outer box shadows (the island and overlay elevations).
+- Borders that do not change a box's size (`box-sizing: border-box`).
+- The surface layer: a kit piece reads the layer it sits on and an overlay panel
+  resets it (context crossing a portal is a web detail; the rule is "an overlay
+  is its own `surface`"). The native client passes the layer down when it draws.

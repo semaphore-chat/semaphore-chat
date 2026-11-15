@@ -2,16 +2,23 @@ import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { SurfaceContext } from '../theme/onSurface';
 import { shadow } from '../theme/shadow';
+import { transientProps } from '../theme/transientProps';
 
 export interface DockProps {
   /** Names the navigation landmark. */
   label: string;
   /** DockItem, IconButton and DockDivider. */
   children: ReactNode;
+  /**
+   * The bar is the bottom edge of a phone screen: it keeps clear of the home indicator
+   * (`env(safe-area-inset-bottom)` as a bottom margin). Leave it off when the bar sits mid-layout.
+   */
+  bottomBar?: boolean;
 }
 
-const Root = styled('nav')(({ theme }) => {
+const Root = styled('nav', { shouldForwardProp: transientProps })<{ $bottomBar: boolean }>(({ theme, $bottomBar }) => {
   const lounge = kitTheme(theme);
   return {
     // Positioned so an item's offsetLeft is measured from the bar.
@@ -23,6 +30,7 @@ const Root = styled('nav')(({ theme }) => {
     justifyContent: 'safe center',
     gap: `${tokens.space.xs}px`,
     maxWidth: '100%',
+    ...($bottomBar && { marginBottom: 'env(safe-area-inset-bottom)' }),
     height: `${tokens.layout.dock}px`,
     padding: `0 ${tokens.space.sm}px`,
     background: lounge.palette.surface,
@@ -55,12 +63,12 @@ export function DockDivider(): JSX.Element {
  * current item (`aria-current="page"`) in view on mount and whenever that
  * changes; a scroll the user made is left alone otherwise.
  */
-export function Dock({ label, children }: DockProps): JSX.Element {
+export function Dock({ label, children, bottomBar = false }: DockProps): JSX.Element {
   const ref = useRef<HTMLElement>(null);
   const shown = useRef<Element | null>(null);
 
   // scrollLeft, not scrollIntoView, which would scroll the page too.
-  useLayoutEffect(() => {
+  const reveal = () => {
     const bar = ref.current;
     const current = bar?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!bar || !current || current === shown.current) {
@@ -74,11 +82,33 @@ export function Dock({ label, children }: DockProps): JSX.Element {
     } else if (right > bar.scrollLeft + bar.clientWidth) {
       bar.scrollLeft = right - bar.clientWidth;
     }
-  });
+  };
+  const latest = useRef(reveal);
+  latest.current = reveal;
+  useLayoutEffect(reveal);
+
+  // A first layout at zero width (a hidden bar) or a rotation changes what is in view: when the
+  // bar's own size changes, centre the current item again. A scroll the user made is otherwise left alone.
+  useLayoutEffect(() => {
+    const bar = ref.current;
+    if (bar === null || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+    let width = bar.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (bar.clientWidth !== width) {
+        width = bar.clientWidth;
+        shown.current = null;
+        latest.current();
+      }
+    });
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <Root ref={ref} aria-label={label}>
-      {children}
+    <Root ref={ref} aria-label={label} $bottomBar={bottomBar}>
+      <SurfaceContext value="surface">{children}</SurfaceContext>
     </Root>
   );
 }

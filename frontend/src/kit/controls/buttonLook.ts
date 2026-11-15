@@ -1,5 +1,6 @@
 import type { Palette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
+import { standOutFill, tintBase, type Surface } from '../theme/onSurface';
 
 export type ButtonVariant = 'primary' | 'soft' | 'ghost' | 'danger' | 'quietDanger' | 'text';
 
@@ -14,13 +15,15 @@ export interface ButtonLook {
 
 /**
  * The six variants' colours. `stateBase` is what hover and pressed tint: the
- * resting fill, or for a transparent fill the surface behind it. `onFill`: the
- * button sits on a Card, so the soft variants are drawn on `surface`.
+ * resting fill, or for a transparent fill what the button sits on (`on`). The soft
+ * variants are drawn so they stand out from `on`: `surface` on a Card, `fill` elsewhere.
+ * On the accent pill a soft button keeps a plain `fill` chip (the faint on-accent tint
+ * cannot carry a text label).
  */
-export function buttonLook(palette: Palette, variant: ButtonVariant, onFill = false): ButtonLook {
+export function buttonLook(palette: Palette, variant: ButtonVariant, on: Surface = 'surface'): ButtonLook {
   const { state } = tokens;
-  // On a Card (itself `fill`) the soft variants are `surface`, so they stay visible.
-  const soft = onFill ? palette.surface : palette.fill;
+  const soft = on === 'accent' ? palette.fill : standOutFill(palette, on);
+  const behind = tintBase(palette, on);
   const looks: Record<ButtonVariant, ButtonLook> = {
     primary: {
       background: palette.accent,
@@ -53,14 +56,14 @@ export function buttonLook(palette: Palette, variant: ButtonVariant, onFill = fa
     ghost: {
       background: 'transparent',
       label: palette.textSecondary,
-      stateBase: palette.surface,
+      stateBase: behind,
       hover: state.hover,
       pressed: state.pressed,
     },
     text: {
       background: 'transparent',
       label: palette.accentText,
-      stateBase: palette.surface,
+      stateBase: behind,
       hover: state.hover,
       pressed: state.pressed,
     },

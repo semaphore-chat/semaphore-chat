@@ -6,7 +6,7 @@ import { TooltipDescriptionContext } from '../overlays/tooltipDescription';
 import { reducedMotion } from '../overlays/surface';
 import { mix } from '../theme/mix';
 import { focusRing } from '../theme/states';
-import { SurfaceInkContext } from '../theme/surfaceInk';
+import { SurfaceContext, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 
 export interface ListRowProps {
@@ -36,6 +36,7 @@ interface LookProps {
   $selected: boolean;
   $interactive: boolean;
   $disabled: boolean;
+  $on: Surface;
 }
 
 /**
@@ -44,9 +45,9 @@ interface LookProps {
  * text yet above this background.
  */
 const Wrapper = styled('div', { shouldForwardProp: transientProps })<LookProps>(
-  ({ theme, $size, $selected, $interactive, $disabled }) => {
+  ({ theme, $size, $selected, $interactive, $disabled, $on }) => {
     const { palette } = kitTheme(theme);
-    const under = $selected ? palette.accent : palette.surface;
+    const under = $selected ? palette.accent : tintBase(palette, $on);
     return {
       ...reducedMotion,
       position: 'relative',
@@ -82,11 +83,11 @@ const Wrapper = styled('div', { shouldForwardProp: transientProps })<LookProps>(
   },
 );
 
-const mainStyle = (theme: Parameters<typeof kitTheme>[0], interactive: boolean) => {
+const mainStyle = (theme: Parameters<typeof kitTheme>[0], interactive: boolean, on: Surface) => {
   const { palette } = kitTheme(theme);
   // Pressed tint over the row's own colour. Selected is on the accent pill: its pressed tint is the on-fill one.
   const pressed = (selected: boolean) =>
-    mix(palette.text, selected ? palette.accent : palette.surface, selected ? tokens.state.pressedOnFill : tokens.state.pressed);
+    mix(palette.text, selected ? palette.accent : tintBase(palette, on), selected ? tokens.state.pressedOnFill : tokens.state.pressed);
   return {
     display: 'flex',
     alignItems: 'center',
@@ -127,9 +128,10 @@ const mainStyle = (theme: Parameters<typeof kitTheme>[0], interactive: boolean) 
   } as const;
 };
 
-const Anchor = styled('a')(({ theme }) => mainStyle(theme, true));
-const Button = styled('button')(({ theme }) => mainStyle(theme, true));
-const Plain = styled('div')(({ theme }) => mainStyle(theme, false));
+const mainOptions = { shouldForwardProp: transientProps };
+const Anchor = styled('a', mainOptions)<{ $on: Surface }>(({ theme, $on }) => mainStyle(theme, true, $on));
+const Button = styled('button', mainOptions)<{ $on: Surface }>(({ theme, $on }) => mainStyle(theme, true, $on));
+const Plain = styled('div', mainOptions)<{ $on: Surface }>(({ theme, $on }) => mainStyle(theme, false, $on));
 
 const Leading = styled('span')({
   display: 'inline-flex',
@@ -203,6 +205,7 @@ export function ListRow({
   ref,
   id,
 }: ListRowProps): JSX.Element {
+  const on = useSurface();
   const current = selected ? (href !== undefined ? 'page' : 'true') : undefined;
   // Selected keeps the on-accent ink whatever else is set.
   const tone = (dim: boolean, strong: boolean): 'row' | 'strong' | 'dim' =>
@@ -232,7 +235,7 @@ export function ListRow({
   let main: JSX.Element;
   if (href !== undefined && !disabled) {
     main = (
-      <Anchor ref={ref as Ref<HTMLAnchorElement>} id={id} href={href} aria-current={current}>
+      <Anchor ref={ref as Ref<HTMLAnchorElement>} id={id} href={href} aria-current={current} $on={on}>
         {content}
       </Anchor>
     );
@@ -245,6 +248,7 @@ export function ListRow({
         role="link"
         aria-disabled="true"
         aria-current={current}
+        $on={on}
         onClick={(event: MouseEvent) => event.preventDefault()}
       >
         {content}
@@ -258,6 +262,7 @@ export function ListRow({
         type="button"
         disabled={disabled}
         aria-current={current}
+        $on={on}
         onClick={onClick}
       >
         {content}
@@ -265,15 +270,16 @@ export function ListRow({
     );
   } else {
     main = (
-      <Plain ref={ref as Ref<HTMLDivElement>} id={id} aria-current={current}>
+      <Plain ref={ref as Ref<HTMLDivElement>} id={id} aria-current={current} $on={on}>
         {content}
       </Plain>
     );
   }
 
   return (
-    <Wrapper $size={size} $selected={selected} $interactive={interactive} $disabled={disabled}>
-      <SurfaceInkContext value={selected ? 'onAccent' : 'default'}>
+    <Wrapper $size={size} $selected={selected} $interactive={interactive} $disabled={disabled} $on={on}>
+      {/* A selected row is the accent pill; an unselected one keeps the layer around it. */}
+      <SurfaceContext value={selected ? 'accent' : on}>
         {main}
         {trailing !== undefined && (
           // A Tooltip around the row describes its link or button, not a control in the slot.
@@ -281,7 +287,7 @@ export function ListRow({
             <Trailing>{trailing}</Trailing>
           </TooltipDescriptionContext>
         )}
-      </SurfaceInkContext>
+      </SurfaceContext>
     </Wrapper>
   );
 }

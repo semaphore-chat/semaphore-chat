@@ -41,6 +41,18 @@ describe('Island landmarks', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
   });
 
+  it('types require a name for a nav or aside and refuse one on a div', () => {
+    renderWithKit(
+      <>
+        {/* @ts-expect-error a nav landmark must be named */}
+        <Island as="nav">unnamed nav</Island>
+        {/* @ts-expect-error a div has no landmark role to name */}
+        <Island as="div" label="Nope">div</Island>
+      </>,
+    );
+    expect(screen.getByText('div').tagName).toBe('DIV');
+  });
+
   it('forwards id', () => {
     renderWithKit(<Island id="left">content</Island>);
     expect(screen.getByText('content')).toHaveAttribute('id', 'left');

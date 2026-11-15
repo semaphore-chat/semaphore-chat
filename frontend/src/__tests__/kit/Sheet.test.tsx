@@ -135,22 +135,62 @@ describe('Sheet', () => {
     expect(lg).toBe(`${2 * tokens.layout.dialogSm}px`);
   });
 
-  // Guard (jsdom cannot evaluate media queries): the bottom-sheet rule exists at the phone breakpoint,
-  // full width, rounded on the top corners only, sliding up with a transform.
-  it('has a bottom-sheet form at the phone breakpoint (rule guard)', () => {
+  // jsdom does not evaluate media queries, so the phone form cannot be rendered here; the real
+  // proof is the 390 px screenshot of the kit-sheet--phone story. This reads the declarations of
+  // the rule at the phone breakpoint by property name (not serialised text) and checks the
+  // breakpoint is the token's.
+  it('declares the bottom-sheet form in a rule at the phone breakpoint (declarations only)', () => {
     renderWithKit(<Sheet open onClose={() => undefined} title="x">y</Sheet>);
     const dialog = screen.getByRole('dialog');
-    const rules = rulesFor(dialog, '').filter(
-      (rule) => (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(`max-width: ${tokens.breakpoint.phone}px`),
+    const phone = rulesFor(dialog, '').filter((rule) =>
+      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(`max-width: ${tokens.breakpoint.phone}px`),
     );
-    const css = rules.map((rule) => rule.cssText).join(' ');
-    expect(css).toContain('max-width: 100%');
-    expect(css).toContain(`border-radius: ${tokens.radius.island}px ${tokens.radius.island}px 0 0`);
-    expect(css).toContain('animation:');
-    const keyframes = Array.from(document.styleSheets).flatMap((sheet) =>
-      Array.from(sheet.cssRules).filter((rule) => rule.cssText.includes('translateY(100%)')),
+    const declared = (property: string) => phone.map((rule) => rule.style.getPropertyValue(property)).find(Boolean);
+    expect(declared('max-width')).toBe('100%');
+    expect(declared('border-radius')).toBe(`${tokens.radius.island}px ${tokens.radius.island}px 0 0`);
+    expect(declared('animation')).toMatch(/ease-out/);
+  });
+
+  it('pads the bottom of the actions row by the safe-area inset on a phone', () => {
+    renderWithKit(<Sheet open onClose={() => undefined} title="x" actions={<Button>Done</Button>}>y</Sheet>);
+    const actions = screen.getByRole('button', { name: 'Done' }).parentElement as HTMLElement;
+    const phone = rulesFor(actions, '').filter((rule) =>
+      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(`max-width: ${tokens.breakpoint.phone}px`),
     );
-    expect(keyframes.length).toBeGreaterThan(0);
+    const padding = phone.map((rule) => rule.style.getPropertyValue('padding-bottom')).find(Boolean);
+    expect(padding).toContain('env(safe-area-inset-bottom)');
+    expect(padding).toContain(`${tokens.space.md}px`);
+  });
+
+  it('pads the bottom of the body by the safe-area inset when there are no actions', () => {
+    renderWithKit(<Sheet open onClose={() => undefined} title="x">body text</Sheet>);
+    const body = screen.getByText('body text');
+    const phone = rulesFor(body, '').filter((rule) =>
+      (rule.parentRule as CSSMediaRule | null)?.conditionText?.includes(`max-width: ${tokens.breakpoint.phone}px`),
+    );
+    expect(phone.map((rule) => rule.style.getPropertyValue('padding-bottom')).find(Boolean)).toContain('env(safe-area-inset-bottom)');
+  });
+
+  it('initial focus is the Close button when there are no actions', async () => {
+    const { user } = renderWithKit(<Harness />);
+    await user.click(opener());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus());
+  });
+
+  it('focus returns to the opener after the Close button', async () => {
+    const { user } = renderWithKit(<Harness />);
+    await user.click(opener());
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(opener());
+  });
+
+  it('focus returns to the opener after a scrim press', async () => {
+    const { user } = renderWithKit(<Harness />);
+    await user.click(opener());
+    await user.click(screen.getByRole('dialog').parentElement as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(opener());
   });
 
   it('does not accept className', () => {

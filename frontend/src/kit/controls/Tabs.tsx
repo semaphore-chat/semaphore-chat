@@ -4,6 +4,7 @@ import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { focusRing, interactiveStates } from '../theme/states';
 import { transientProps } from '../theme/transientProps';
 
@@ -39,13 +40,14 @@ export function tabElementId(listId: string, tabId: string): string {
 type Variant = NonNullable<TabsProps['variant']>;
 
 interface ListProps {
+  $on: Surface;
   $variant: Variant;
   $fullWidth: boolean;
 }
 
 const List = styled('div', {
   shouldForwardProp: transientProps,
-})<ListProps>(({ theme, $variant, $fullWidth }) => {
+})<ListProps>(({ theme, $variant, $fullWidth, $on }) => {
   const { palette } = kitTheme(theme);
   const segmented = $variant === 'segmented';
   return {
@@ -64,7 +66,7 @@ const List = styled('div', {
           gap: `${tokens.space['2xs']}px`,
           padding: `${tokens.space.xs}px`,
           borderRadius: `${tokens.radius.full}px`,
-          background: palette.fill,
+          background: standOutFill(palette, $on),
         }
       : {
           gap: `${tokens.space.lg}px`,
@@ -74,6 +76,7 @@ const List = styled('div', {
 });
 
 interface TabProps {
+  $on: Surface;
   $variant: Variant;
   $selected: boolean;
   $fullWidth: boolean;
@@ -81,7 +84,7 @@ interface TabProps {
 
 const Tab = styled(ButtonBase, {
   shouldForwardProp: transientProps,
-})<TabProps>(({ theme, $variant, $selected, $fullWidth }) => {
+})<TabProps>(({ theme, $variant, $selected, $fullWidth, $on }) => {
   const { palette } = kitTheme(theme);
   const segmented = $variant === 'segmented';
   const type = segmented ? tokens.text.meta : tokens.text.bodyStrong;
@@ -107,7 +110,7 @@ const Tab = styled(ButtonBase, {
   if (segmented) {
     const onFill = $selected;
     const background = $selected ? palette.accent : 'transparent';
-    const under = $selected ? palette.accent : palette.fill;
+    const under = $selected ? palette.accent : standOutFill(palette, $on);
     return {
       ...base,
       height: `${tokens.control.sm}px`,
@@ -142,7 +145,7 @@ const Tab = styled(ButtonBase, {
     color: $selected ? palette.text : palette.textSecondary,
     ...interactiveStates({
       palette,
-      under: palette.surface,
+      under: tintBase(palette, $on),
       hover: tokens.state.hover,
       pressed: tokens.state.pressed,
     }),
@@ -170,6 +173,7 @@ export function Tabs({
   fullWidth = false,
   id,
 }: TabsProps): JSX.Element {
+  const on = useSurface();
   const listRef = useRef<HTMLDivElement>(null);
   const generatedId = useId();
   const baseId = id ?? generatedId;
@@ -244,6 +248,7 @@ export function Tabs({
       role="tablist"
       aria-label={label}
       onKeyDown={handleKeyDown}
+      $on={on}
       $variant={variant}
       $fullWidth={fullWidth}
     >
@@ -269,6 +274,7 @@ export function Tabs({
               }
             }}
             disableRipple
+            $on={on}
             $variant={variant}
             $selected={isSelected}
             $fullWidth={fullWidth}

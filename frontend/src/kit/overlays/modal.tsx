@@ -3,6 +3,7 @@ import MuiDialog from '@mui/material/Dialog';
 import type { CSSObject, Theme } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { SurfaceContext } from '../theme/onSurface';
 import { OverlayContainerContext } from './overlayContainer';
 import { fadeTransition, reducedMotion } from './surface';
 
@@ -57,7 +58,10 @@ export function Modal({
         paper: { sx: panel },
       }}
     >
-      <OverlayContainerContext value={layer}>{children}</OverlayContainerContext>
+      {/* The panel is a portal: context from where it was opened crosses it, so reset to the panel's own layer. */}
+      <SurfaceContext value="surface">
+        <OverlayContainerContext value={layer}>{children}</OverlayContainerContext>
+      </SurfaceContext>
     </MuiDialog>
   );
 }

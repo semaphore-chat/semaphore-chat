@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Dialog, SelectField, Text, TextField } from '../../kit';
+import { Button, Card, Dialog, Island, SelectField, Text, TextField } from '../../kit';
 import type { IntensityName, ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { KitStage } from '../fixtures/kitStory';
@@ -112,5 +112,45 @@ export const WithSelect = () => (
   <KitStage mode="dark">
     <PageBehind />
     <SelectDialog />
+  </KitStage>
+);
+
+function FromCardBody() {
+  const [open, setOpen] = useState(true);
+  const [name, setName] = useState('');
+  const close = () => setOpen(false);
+  return (
+    <div style={{ width: 320, maxWidth: '100%' }}>
+      <Island padding="md">
+        <Card>
+          <Text variant="bodyStrong">Squad Up</Text>
+          <div><Button variant="soft" onClick={() => setOpen(true)}>Leave room</Button></div>
+          <Dialog
+            open={open}
+            onClose={close}
+            title="Leave Squad Up?"
+            description="You can rejoin any time while it is open."
+            actions={
+              <>
+                <Button variant="soft" onClick={close}>Stay</Button>
+                <Button variant="danger" onClick={close}>Leave</Button>
+              </>
+            }
+          >
+            <TextField label="Tell them why" placeholder="Optional" value={name} onChange={setName} />
+          </Dialog>
+        </Card>
+      </Island>
+    </div>
+  );
+}
+
+/**
+ * A Dialog opened from a button on a Card. The panel is its own surface: its soft Button and field
+ * are fill again, not drawn for the Card they were opened from.
+ */
+export const FromCard = () => (
+  <KitStage mode="dark">
+    <FromCardBody />
   </KitStage>
 );

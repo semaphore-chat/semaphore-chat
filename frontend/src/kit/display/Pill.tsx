@@ -2,8 +2,7 @@ import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
-import { mix } from '../theme/mix';
-import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
+import { standOutFill, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import type { IconName } from '../icons/generated';
 import { dotStyle } from './dot';
@@ -24,30 +23,32 @@ export interface PillProps {
 interface RootProps {
   $tone: PillTone;
   $size: PillSize;
-  $ink: SurfaceInk;
+  $on: Surface;
 }
 
 const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
-  ({ theme, $tone, $size, $ink }) => {
+  ({ theme, $tone, $size, $on }) => {
     const { palette } = kitTheme(theme);
     const type = $size === 'sm' ? tokens.text.tag : { ...tokens.text.small, weight: tokens.text.bodyStrong.weight };
     const height = $size === 'sm' ? tokens.icon.lg : tokens.icon.xl;
-    // On a Card (itself `fill`) the filled tones sit on `surface`, or they would vanish.
-    const fill = $ink === 'onFill' ? palette.surface : palette.fill;
+    // The neutral fill stands out from whatever the pill sits on. The status tones keep a plain
+    // chip on the accent pill, where the faint tint would not carry their colour.
+    const fill = standOutFill(palette, $on);
+    const chip = $on === 'accent' ? palette.fill : fill;
     const looks: Record<PillTone, { background: string; color: string }> = {
       neutral: { background: fill, color: palette.textSecondary },
       accent: { background: palette.accent, color: palette.onAccent },
-      danger: { background: fill, color: palette.danger },
-      positive: { background: fill, color: palette.positive },
-      warning: { background: fill, color: palette.warning },
+      danger: { background: chip, color: palette.danger },
+      positive: { background: chip, color: palette.positive },
+      warning: { background: chip, color: palette.warning },
     };
     // On the accent pill: an accent pill inverts (on-accent fill, accent text) and a neutral one is a
-    // faint on-accent tint with on-accent text. Status tones keep their fill and colour.
+    // faint on-accent tint with on-accent text. Status tones keep their colour.
     const onAccent: Partial<Record<PillTone, { background: string; color: string }>> = {
       accent: { background: palette.onAccent, color: palette.accent },
-      neutral: { background: mix(palette.onAccent, palette.accent, tokens.state.pressedOnFill), color: palette.onAccent },
+      neutral: { background: fill, color: palette.onAccent },
     };
-    const look = ($ink === 'onAccent' ? onAccent[$tone] : undefined) ?? looks[$tone];
+    const look = ($on === 'accent' ? onAccent[$tone] : undefined) ?? looks[$tone];
     return {
       display: 'inline-flex',
       alignItems: 'center',
@@ -84,9 +85,9 @@ const Label = styled('span')({
  * the text carries the meaning).
  */
 export function Pill({ children, tone = 'neutral', dot = false, icon, size = 'md' }: PillProps): JSX.Element {
-  const ink = useSurfaceInk();
+  const on = useSurface();
   return (
-    <Root $tone={tone} $size={size} $ink={ink}>
+    <Root $tone={tone} $size={size} $on={on}>
       {dot && <Dot aria-hidden="true" />}
       {icon !== undefined && <Icon name={icon} size={size === 'sm' ? 'xs' : 'sm'} />}
       <Label>{children}</Label>

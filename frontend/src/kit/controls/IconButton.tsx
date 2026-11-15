@@ -6,9 +6,8 @@ import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
-import { mix } from '../theme/mix';
 import { interactiveStates } from '../theme/states';
-import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
+import { standOutFill, useSurface, type Surface } from '../theme/onSurface';
 import { buttonLook, type ButtonVariant } from './buttonLook';
 import { Spinner } from '../display/Spinner';
 import { transientProps } from '../theme/transientProps';
@@ -44,20 +43,20 @@ interface RootProps {
   $variant: IconButtonVariant;
   $size: IconButtonSize;
   $selected: boolean;
-  $ink: SurfaceInk;
+  $on: Surface;
 }
 
 const Root = styled(ButtonBase, {
   shouldForwardProp: transientProps,
-})<RootProps>(({ theme, $variant, $size, $selected, $ink }) => {
+})<RootProps>(({ theme, $variant, $size, $selected, $on }) => {
   const { palette } = kitTheme(theme);
-  const onCard = $ink === 'onFill';
-  const look = buttonLook(palette, $variant, onCard);
+  const look = buttonLook(palette, $variant, $on);
   // On the accent pill a ghost or soft button reads as the on-accent ink; a soft one keeps a faint
   // on-accent tint for its fill. States are the on-fill ones, tinted over the accent.
-  const onAccent = $ink === 'onAccent' && !$selected && ($variant === 'ghost' || $variant === 'soft');
-  const tint = mix(palette.onAccent, palette.accent, tokens.state.pressedOnFill);
-  const selectedFill = onCard ? palette.surface : palette.fill;
+  const onAccent = $on === 'accent' && !$selected && ($variant === 'ghost' || $variant === 'soft');
+  const tint = standOutFill(palette, 'accent');
+  // The selected fill stands out from what it sits on; on the accent pill it is a plain `fill` chip.
+  const selectedFill = $on === 'accent' ? palette.fill : standOutFill(palette, $on);
   const background = $selected
     ? selectedFill
     : onAccent
@@ -133,7 +132,7 @@ export function IconButton({
   'aria-haspopup': ariaHaspopup,
   'aria-controls': ariaControls,
 }: IconButtonProps): JSX.Element {
-  const ink = useSurfaceInk();
+  const on = useSurface();
   const busy = loading && !disabled;
   const describedBy = useDescribedBy(undefined);
 
@@ -165,7 +164,7 @@ export function IconButton({
       $variant={variant}
       $size={size}
       $selected={selected === true}
-      $ink={ink}
+      $on={on}
     >
       {busy ? (
         <Spinner size={ICON_SIZE[size]} />

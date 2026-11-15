@@ -7,6 +7,7 @@ import { Icon } from '../display/Icon';
 import { KeyCap } from '../display/KeyCap';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
+import { SurfaceContext } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { useOverlayContainer } from './overlayContainer';
 import {
@@ -97,6 +98,8 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
   // Inside a Dialog the menu renders in the Dialog, where its focus trap lets focus in.
   const container = useOverlayContainer();
   return (
+    // A portal: reset to the menu's own layer, whatever it was opened from.
+    <SurfaceContext value="surface">
     <MuiMenu
       open={open}
       anchorEl={anchor}
@@ -149,5 +152,6 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
         );
       })}
     </MuiMenu>
+    </SurfaceContext>
   );
 }

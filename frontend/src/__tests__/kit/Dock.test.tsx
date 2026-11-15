@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { screen } from '@testing-library/react';
 import { Dock, DockDivider, DockItem, IconButton } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
+import { rawCssFor } from './cssRules';
 
 let consoleError: MockInstance;
 beforeEach(() => {
@@ -76,6 +77,85 @@ describe('Dock', () => {
   });
 });
 
+describe('Dock on a phone', () => {
+  it('bottomBar keeps the bar above the home indicator with a safe-area margin; without it there is none', () => {
+    renderWithKit(
+      <>
+        <Dock label="bar" bottomBar>
+          <DockItem name="A" />
+        </Dock>
+        <Dock label="plain">
+          <DockItem name="B" />
+        </Dock>
+      </>,
+    );
+    // jsdom's parser drops a bare env() as a margin, so this reads the CSS source emotion wrote.
+    const css = (name: string) => rawCssFor(screen.getByRole('navigation', { name }));
+    expect(css('bar')).toMatch(/margin-bottom:\s*env\(safe-area-inset-bottom\)/);
+    expect(css('plain')).not.toMatch(/safe-area-inset-bottom/);
+  });
+
+  it('leaves a scroll the user made alone when it re-renders with the same current item', () => {
+    const offsetLeft = vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockReturnValue(0);
+    const offsetWidth = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(44);
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100);
+    try {
+      const tree = (extra: string) => (
+        <Dock label="d">
+          <DockItem name="a" current />
+          <DockItem name={extra} />
+        </Dock>
+      );
+      const { rerender } = renderWithKit(tree('b'));
+      const nav = screen.getByRole('navigation');
+      nav.scrollLeft = 300;
+      rerender(tree('c'));
+      expect(nav.scrollLeft).toBe(300);
+    } finally {
+      offsetLeft.mockRestore();
+      offsetWidth.mockRestore();
+      clientWidth.mockRestore();
+    }
+  });
+});
+
+describe('Dock resize', () => {
+  it('centres the current item again when the bar changes size (a hidden bar, a rotation)', () => {
+    let notify: () => void = () => undefined;
+    class FakeResizeObserver {
+      constructor(callback: () => void) {
+        notify = callback;
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    let width = 0;
+    const offsetLeft = vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockReturnValue(400);
+    const offsetWidth = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(44);
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => width);
+    try {
+      renderWithKit(
+        <Dock label="d">
+          <DockItem name="a" current />
+        </Dock>,
+      );
+      const nav = screen.getByRole('navigation');
+      // First laid out at zero width: a browser clamps the scroll to 0; the bar becomes 100 wide later.
+      nav.scrollLeft = 0;
+      width = 100;
+      notify();
+      expect(nav.scrollLeft).toBe(352);
+    } finally {
+      vi.unstubAllGlobals();
+      offsetLeft.mockRestore();
+      offsetWidth.mockRestore();
+      clientWidth.mockRestore();
+    }
+  });
+});
+
 describe('DockItem', () => {
   it('is a button named by the community', () => {
     renderWithKit(<DockItem name="Couch Co-op" onClick={() => undefined} />);
@@ -117,7 +197,7 @@ describe('DockItem', () => {
 
   it('a reconnecting avatar is dimmed to the disabled opacity', () => {
     renderWithKit(<DockItem name="Friday LAN" status="reconnecting" />);
-    const avatar = screen.getByRole('button').querySelector('[data-dock-avatar]') as HTMLElement;
+    const avatar = screen.getByRole('button').firstElementChild as HTMLElement;
     expect(getComputedStyle(avatar).opacity).toBe('0.5');
   });
 
@@ -155,6 +235,35 @@ describe('DockItem', () => {
     const ref = { current: null as HTMLElement | null };
     renderWithKit(<DockItem name="Couch Co-op" ref={ref} />);
     expect(ref.current).toBe(screen.getByRole('button'));
+  });
+
+  it('a link item that is current has aria-current="page" and the composed name', () => {
+    renderWithKit(<DockItem name="Couch Co-op" href="/c/couch" current unread={2} />);
+    const link = screen.getByRole('link', { name: 'Couch Co-op, current, 2 unread' });
+    expect(link).toHaveAttribute('aria-current', 'page');
+    expect(link).toHaveAttribute('href', '/c/couch');
+  });
+
+  it('an infinite unread count adds nothing to the name', () => {
+    renderWithKit(<DockItem name="Couch Co-op" unread={Infinity} />);
+    expect(screen.getByRole('button', { name: 'Couch Co-op' })).toBeInTheDocument();
+  });
+
+  it('the tooltip showing the name does not describe the item with its own name again', async () => {
+    const matches = Element.prototype.matches;
+    const spy = vi
+      .spyOn(Element.prototype, 'matches')
+      .mockImplementation(function (this: Element, selector: string) {
+        return selector === ':focus-visible' ? this === document.activeElement : matches.call(this, selector);
+      });
+    try {
+      const { user } = renderWithKit(<DockItem name="Couch Co-op" />);
+      await user.tab();
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Couch Co-op');
+      expect(screen.getByRole('button')).not.toHaveAttribute('aria-describedby');
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('shows the name in a tooltip on keyboard focus', async () => {
