@@ -141,7 +141,7 @@ vi.mock('../../contexts/ReplayBufferContext', () => ({
 }));
 
 vi.mock('../../hooks/usePushToTalk', () => ({
-  usePushToTalk: vi.fn(() => ({
+  usePushToTalkStatus: vi.fn(() => ({
     isActive: false,
     isKeyHeld: false,
     currentKeyDisplay: 'Space',

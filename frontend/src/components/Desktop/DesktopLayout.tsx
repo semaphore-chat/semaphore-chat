@@ -1,9 +1,6 @@
 import React from "react";
 import CommunityToggle from "../CommunityList/CommunityToggle";
 import NotificationCenter from "../Notifications/NotificationCenter";
-import { TrackSubscriptionProvider } from "../Voice/TrackSubscriptionProvider";
-import { VoiceEventLogProvider } from "../../hooks/useVoiceEventLog";
-import { VoiceTestHooks } from "../../features/voice/VoiceTestHooks";
 // Import directly from source files, NOT the `../Voice` barrel
 // (components/Voice/index.ts) — that barrel also re-exports VideoTiles,
 // VoiceChannelUserList, DeviceSettingsDialog, ScreenSourcePicker, some of
@@ -11,7 +8,6 @@ import { VoiceTestHooks } from "../../features/voice/VoiceTestHooks";
 // React.lazy'd elsewhere. A direct import from this always-mounted module
 // avoids relying on Rollup tree-shaking the unused re-exports. See PR-11.
 import { VoiceBottomBar } from "../Voice/VoiceBottomBar";
-import { AudioRenderer } from "../Voice/AudioRenderer";
 import { PersistentVideoOverlay } from "../Voice/PersistentVideoOverlay";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import type { User } from "../../types/auth.type";
@@ -27,6 +23,8 @@ interface DesktopLayoutProps {
  * menu) + the routed page + the voice bottom bar. No top app bar; Electron
  * keeps its native window frame, so the window still drags by its title bar.
  * The global keyboard shortcuts (Alt+↑/↓, Esc, Ctrl+/) live here too.
+ * The call's audio and behaviour are not here: they sit above every layout
+ * (VoiceSessionLayer in Layout.tsx); this layout only shows the voice UI.
  */
 export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ userData }) => {
   const { state: voiceState } = useVoiceConnection();
@@ -46,17 +44,11 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ userData }) => {
         voiceConnected={voiceState.isConnected}
         user={userData}
       />
-      <TrackSubscriptionProvider>
-        <VoiceEventLogProvider>
-          <VoiceTestHooks />
-          <DesktopContentArea voiceConnected={voiceState.isConnected} isMenuExpanded={isMenuExpanded} />
+      <DesktopContentArea voiceConnected={voiceState.isConnected} isMenuExpanded={isMenuExpanded} />
 
-          {/* Voice Components */}
-          <VoiceBottomBar />
-          <AudioRenderer />
-          <PersistentVideoOverlay />
-        </VoiceEventLogProvider>
-      </TrackSubscriptionProvider>
+      {/* Voice UI */}
+      <VoiceBottomBar />
+      <PersistentVideoOverlay />
     </ShortcutsProvider>
   );
 };

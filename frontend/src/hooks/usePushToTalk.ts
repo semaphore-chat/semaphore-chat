@@ -1,15 +1,21 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from 'react';
 import { useVoice, useVoiceDispatch } from '../contexts/VoiceContext';
 import { useRoom } from './useRoom';
 import { useVoiceSettings } from './useVoiceSettings';
+import { pushToTalkStore } from '../features/voice/pushToTalkStore';
 import { logger } from '../utils/logger';
 
 /**
- * Hook to handle Push to Talk functionality.
+ * The Push to Talk engine.
  *
  * When PTT mode is active and user is connected to voice,
  * this hook listens for the configured PTT key and controls
  * the microphone accordingly.
+ *
+ * Mount it exactly once per call: `VoiceSessionEffects` does, above every
+ * shell, so the key keeps working on any screen. It publishes the held state
+ * and its press/release to `pushToTalkStore`; UI reads them through
+ * `usePushToTalkStatus()` instead of mounting a second engine.
  *
  * @param options.canSpeak - false (no SPEAK in this channel, or timed out)
  *   ignores presses: the server would refuse the microphone anyway.
@@ -38,25 +44,27 @@ export function usePushToTalk(options: { canSpeak?: boolean } = {}) {
   // means both routes honor the same guards — notably the server-mute check
   // read via stateRef (#380) so we always see the CURRENT value, never a
   // stale closure.
-  const pttPress = useCallback(async () => {
+  // Resolves true when this press started a hold (the caller then owns its
+  // release), false when it was ignored.
+  const pttPress = useCallback(async (): Promise<boolean> => {
     // Only meaningful while connected and in PTT mode, and ignore re-entrant
     // presses while already held (the keyboard path filters these via
     // event.repeat; programmatic callers get the same protection here).
-    if (!isActive) return;
-    if (isKeyHeldRef.current) return;
+    if (!isActive) return false;
+    if (isKeyHeldRef.current) return false;
 
     if (!canSpeakRef.current) {
       logger.dev('[PTT] Press without SPEAK permission, ignoring');
-      return;
+      return false;
     }
 
     const room = getRoom();
-    if (!room) return;
+    if (!room) return false;
 
     // Block transmit when server-muted — mirrors the guard in toggleMicrophone.
     if (stateRef.current.isServerMuted) {
       logger.dev('[PTT] Press while server muted, ignoring');
-      return;
+      return false;
     }
 
     try {
@@ -67,6 +75,7 @@ export function usePushToTalk(options: { canSpeak?: boolean } = {}) {
     } catch (error) {
       logger.error('[PTT] Failed to enable microphone:', error);
     }
+    return true;
   }, [isActive, getRoom, stateRef]);
 
   // Core "stop transmitting" logic, shared by keyboard keyup, window blur, and
@@ -185,6 +194,16 @@ export function usePushToTalk(options: { canSpeak?: boolean } = {}) {
     }
   }, [isPushToTalk, voiceState.isConnected, voiceState.isServerMuted, voiceState.isDeafened, getRoom]);
 
+  // Share the held state and the transmit controls with the UI.
+  useEffect(() => {
+    pushToTalkStore.setKeyHeld(isKeyHeld);
+  }, [isKeyHeld]);
+  useEffect(() => () => pushToTalkStore.setKeyHeld(false), []);
+  useEffect(
+    () => pushToTalkStore.setControls({ press: pttPress, release: pttRelease }),
+    [pttPress, pttRelease],
+  );
+
   return {
     // Whether PTT mode is currently active (connected + PTT mode enabled)
     isActive,
@@ -200,6 +219,51 @@ export function usePushToTalk(options: { canSpeak?: boolean } = {}) {
 
     // Programmatic transmit controls, sharing the exact guards/state the
     // keyboard path uses. Used by touch "hold-to-talk" UI.
+    pttPress,
+    pttRelease,
+  };
+}
+
+/**
+ * Push to Talk as the UI shows it: whether PTT is on for this call, whether
+ * the key is held, the key's name, and press/release for touch hold-to-talk.
+ * Reads the engine's state (see `usePushToTalk`); mounts no key listener.
+ */
+export function usePushToTalkStatus() {
+  const voiceState = useVoice();
+  const { inputMode, pushToTalkKeyDisplay, isPushToTalk } = useVoiceSettings();
+  const { isKeyHeld } = useSyncExternalStore(pushToTalkStore.subscribe, pushToTalkStore.getSnapshot);
+
+  // A hold this reader started and has not released. The engine outlives the
+  // UI, so if this reader unmounts mid-hold (a touch hold-to-talk while the
+  // layout changes: the pointer-captured button leaves the DOM and its
+  // pointerup never arrives) it must end the hold itself, or the mic stays
+  // live with no finger on the button.
+  const holdingRef = useRef(false);
+  const pttPress = useCallback(async () => {
+    holdingRef.current = true;
+    const started = await pushToTalkStore.press();
+    // Released (or unmounted) meanwhile: nothing left to own.
+    if (!started) holdingRef.current = false;
+  }, []);
+  const pttRelease = useCallback(async () => {
+    holdingRef.current = false;
+    await pushToTalkStore.release();
+  }, []);
+  useEffect(
+    () => () => {
+      if (!holdingRef.current) return;
+      holdingRef.current = false;
+      void pushToTalkStore.release();
+    },
+    [],
+  );
+
+  return {
+    isActive: voiceState.isConnected && isPushToTalk,
+    isKeyHeld,
+    currentKeyDisplay: pushToTalkKeyDisplay,
+    inputMode,
     pttPress,
     pttRelease,
   };

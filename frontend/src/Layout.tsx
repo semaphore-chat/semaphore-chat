@@ -15,6 +15,7 @@ import { useAppBadge } from "./hooks/useAppBadge";
 import { usePushResync } from "./hooks/usePushResync";
 import { useDesktopSignInNotice } from "./hooks/useDesktopSignInNotice";
 import { LayoutProviders } from "./components/LayoutProviders";
+import { VoiceSessionLayer } from "./components/Voice/VoiceSessionLayer";
 
 /** Has to sit inside LayoutProviders: it needs their socket. */
 const DesktopSignInNotice: React.FC = () => {
@@ -32,8 +33,9 @@ const Layout: React.FC = () => {
   // Sync theme settings with server (server wins on initial load)
   useThemeSync();
 
-  // Attempt to recover voice connection after page refresh
-  // TODO: known double-call on mobile (also invoked in MobileLayout)
+  // Attempt to recover voice connection after page refresh. Called here only:
+  // each call holds its own "attempted" flag, so a call inside a layout would
+  // try again every time that layout mounted (a breakpoint change).
   useVoiceRecovery();
 
   // Recover calls that silently died while backgrounded/locked (#350).
@@ -69,13 +71,17 @@ const Layout: React.FC = () => {
   return (
     <LayoutProviders>
       <DesktopSignInNotice />
-      {isMobile ? (
-        <MobileLayout />
-      ) : isTablet ? (
-        <TabletLayout />
-      ) : (
-        <DesktopLayout userData={userData as User | undefined} />
-      )}
+      {/* The call's audio, subscriptions and behaviour, above the layout
+          choice: a breakpoint change swaps the layout, never these. */}
+      <VoiceSessionLayer>
+        {isMobile ? (
+          <MobileLayout />
+        ) : isTablet ? (
+          <TabletLayout />
+        ) : (
+          <DesktopLayout userData={userData as User | undefined} />
+        )}
+      </VoiceSessionLayer>
     </LayoutProviders>
   );
 };
