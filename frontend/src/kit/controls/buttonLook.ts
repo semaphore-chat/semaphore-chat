@@ -1,5 +1,6 @@
 import type { Palette } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
+import { standOutFill, tintBase, type Surface } from '../theme/onSurface';
 
 export type ButtonVariant = 'primary' | 'soft' | 'ghost' | 'danger' | 'quietDanger' | 'text';
 
@@ -14,10 +15,15 @@ export interface ButtonLook {
 
 /**
  * The six variants' colours. `stateBase` is what hover and pressed tint: the
- * resting fill, or for a transparent fill the surface behind it.
+ * resting fill, or for a transparent fill what the button sits on (`on`). The soft
+ * variants are drawn so they stand out from `on`: `surface` on a Card, `fill` elsewhere.
+ * On the accent pill a soft button keeps a plain `fill` chip (the faint on-accent tint
+ * cannot carry a text label).
  */
-export function buttonLook(palette: Palette, variant: ButtonVariant): ButtonLook {
+export function buttonLook(palette: Palette, variant: ButtonVariant, on: Surface = 'surface'): ButtonLook {
   const { state } = tokens;
+  const soft = on === 'accent' ? palette.fill : standOutFill(palette, on);
+  const behind = tintBase(palette, on);
   const looks: Record<ButtonVariant, ButtonLook> = {
     primary: {
       background: palette.accent,
@@ -34,30 +40,30 @@ export function buttonLook(palette: Palette, variant: ButtonVariant): ButtonLook
       pressed: state.pressedOnFill,
     },
     soft: {
-      background: palette.fill,
+      background: soft,
       label: palette.text,
-      stateBase: palette.fill,
+      stateBase: soft,
       hover: state.hover,
       pressed: state.pressed,
     },
     quietDanger: {
-      background: palette.fill,
+      background: soft,
       label: palette.danger,
-      stateBase: palette.fill,
+      stateBase: soft,
       hover: state.hover,
       pressed: state.pressed,
     },
     ghost: {
       background: 'transparent',
       label: palette.textSecondary,
-      stateBase: palette.surface,
+      stateBase: behind,
       hover: state.hover,
       pressed: state.pressed,
     },
     text: {
       background: 'transparent',
       label: palette.accentText,
-      stateBase: palette.surface,
+      stateBase: behind,
       hover: state.hover,
       pressed: state.pressed,
     },

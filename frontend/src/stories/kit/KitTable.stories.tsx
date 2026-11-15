@@ -1,7 +1,6 @@
-import { Avatar, IconButton, Pill, Table, Text, type TableColumn, type TableRow } from '../../kit';
+import { Avatar, IconButton, Island, Pill, Table, Text, type TableColumn, type TableRow } from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 import { KitStage, Row } from '../fixtures/kitStory';
-import { KitSurface } from '../fixtures/kitSurface';
 
 const columns: TableColumn[] = [
   { id: 'member', header: 'Member' },
@@ -33,33 +32,33 @@ const rows: TableRow[] = [
 
 export const Basic = () => (
   <KitStage mode="dark">
-    <KitSurface>
+    <Island padding="md">
       <Table label="Members" columns={columns} rows={rows} />
-    </KitSurface>
+    </Island>
   </KitStage>
 );
 
 export const BasicLight = () => (
   <KitStage mode="light">
-    <KitSurface mode="light">
+    <Island padding="md">
       <Table label="Members" columns={columns} rows={rows} />
-    </KitSurface>
+    </Island>
   </KitStage>
 );
 
 export const BasicTinted = () => (
   <KitStage mode="dark" base="#0d9488" intensity="vibrant">
-    <KitSurface base="#0d9488" intensity="vibrant">
+    <Island padding="md">
       <Table label="Members" columns={columns} rows={rows} />
-    </KitSurface>
+    </Island>
   </KitStage>
 );
 
 export const Empty = () => (
   <KitStage mode="dark">
-    <KitSurface>
+    <Island padding="md">
       <Table label="Members" columns={columns} rows={[]} empty="No members match that search" />
-    </KitSurface>
+    </Island>
   </KitStage>
 );
 
@@ -67,9 +66,9 @@ export const Empty = () => (
 export const Narrow = () => (
   <KitStage mode="dark">
     <Row label="320 px box">
-      <KitSurface width={320}>
+      <div style={{ width: 320, maxWidth: '100%' }}><Island padding="md">
         <Table label="Members" columns={columns} rows={rows} />
-      </KitSurface>
+      </Island></div>
     </Row>
   </KitStage>
 );

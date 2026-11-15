@@ -1,6 +1,7 @@
 import { useId, type ChangeEvent, type JSX, type KeyboardEventHandler, type Ref } from 'react';
 import { Icon } from '../display/Icon';
 import type { IconName } from '../icons/generated';
+import { useSurface } from '../theme/onSurface';
 import { FieldBox } from './FieldBox';
 import { FieldShell } from './FieldShell';
 
@@ -61,6 +62,7 @@ export function TextField({
   id,
 }: TextFieldProps): JSX.Element {
   const uid = useId();
+  const on = useSurface();
   const controlId = id ?? `${uid}-input`;
   const messageId = `${uid}-message`;
 
@@ -105,6 +107,7 @@ export function TextField({
           $error={invalid}
           $round={shape === 'round'}
           $multiline={multiline}
+          $on={on}
         />
       )}
     </FieldShell>

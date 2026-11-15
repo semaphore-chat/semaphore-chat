@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
-import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
+import { useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { dotStyle } from './dot';
 
@@ -22,14 +22,14 @@ const DEFAULT_MAX = 99;
 interface RootProps {
   $tone: 'accent' | 'danger';
   $dot: boolean;
-  $ink: SurfaceInk;
+  $on: Surface;
 }
 
 const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
-  ({ theme, $tone, $dot, $ink }) => {
+  ({ theme, $tone, $dot, $on }) => {
     const { palette } = kitTheme(theme);
     // An accent badge on the accent pill would vanish: it inverts to on-accent with accent text.
-    const inverted = $ink === 'onAccent' && $tone === 'accent';
+    const inverted = $on === 'accent' && $tone === 'accent';
     const background = inverted ? palette.onAccent : $tone === 'accent' ? palette.accent : palette.danger;
     const ink = inverted ? palette.accent : $tone === 'accent' ? palette.onAccent : palette.onDanger;
     if ($dot) {
@@ -63,14 +63,14 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
  * alone ("3") does not say what it counts.
  */
 export function Badge({ count, max, dot = false, tone = 'danger', label }: BadgeProps): JSX.Element | null {
-  const surface = useSurfaceInk();
+  const on = useSurface();
   const cap = max === undefined || Number.isNaN(max) || max < 1 ? DEFAULT_MAX : Math.floor(max);
   const whole = count === undefined || Number.isNaN(count) ? 0 : Math.floor(count);
   if (!dot && whole < 1) {
     return null;
   }
   return (
-    <Root role="img" aria-label={label} $tone={tone} $dot={dot} $ink={surface}>
+    <Root role="img" aria-label={label} $tone={tone} $dot={dot} $on={on}>
       {dot ? null : whole > cap ? `${cap}+` : whole}
     </Root>
   );

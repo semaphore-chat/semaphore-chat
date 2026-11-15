@@ -2,12 +2,14 @@ import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { standOutFill, useSurface, type Surface } from '../theme/onSurface';
+import { transientProps } from '../theme/transientProps';
 
 export interface KeyCapProps {
   children: string;
 }
 
-const Root = styled('kbd')(({ theme }) => {
+const Root = styled('kbd', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
   const { palette } = kitTheme(theme);
   const type = tokens.text.tag;
   return {
@@ -16,7 +18,7 @@ const Root = styled('kbd')(({ theme }) => {
     padding: `${tokens.space['2xs']}px ${tokens.space.sm}px`,
     border: `${tokens.border.hairline}px solid ${palette.hairline}`,
     borderRadius: `${tokens.radius.sm}px`,
-    background: palette.fill,
+    background: standOutFill(palette, $on),
     color: palette.textSecondary,
     fontFamily: theme.typography.fontFamily,
     fontSize: `${type.size}px`,
@@ -28,5 +30,5 @@ const Root = styled('kbd')(({ theme }) => {
 
 /** A keyboard key as a small outlined tag: "Ctrl", "K", "Esc". */
 export function KeyCap({ children }: KeyCapProps): JSX.Element {
-  return <Root>{children}</Root>;
+  return <Root $on={useSurface()}>{children}</Root>;
 }

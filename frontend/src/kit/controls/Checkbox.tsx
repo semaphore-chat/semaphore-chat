@@ -4,6 +4,7 @@ import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { Icon } from '../display/Icon';
 import { kitTheme } from '../theme/KitProvider';
+import { tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { ChoiceText } from './choiceParts';
 import { ChoiceInput, ChoiceRow, ChoiceSlot, choiceMarkStates } from './choiceStyle';
 import { transientProps } from '../theme/transientProps';
@@ -23,9 +24,9 @@ export interface CheckboxProps {
 
 const Mark = styled('span', {
   shouldForwardProp: transientProps,
-})<{ $on: boolean }>(({ theme, $on }) => {
+})<{ $on: boolean; $layer: Surface }>(({ theme, $on, $layer }) => {
   const { palette } = kitTheme(theme);
-  const under = $on ? palette.accent : palette.surface;
+  const under = $on ? palette.accent : tintBase(palette, $layer);
   const hover = $on ? tokens.state.hoverOnFill : tokens.state.hover;
   const pressed = $on ? tokens.state.pressedOnFill : tokens.state.pressed;
   return {
@@ -61,6 +62,7 @@ export function Checkbox({
   ref,
   id,
 }: CheckboxProps): JSX.Element {
+  const layer = useSurface();
   const uid = useId();
   const labelId = `${uid}-label`;
   const descriptionId = `${uid}-description`;
@@ -97,7 +99,7 @@ export function Checkbox({
             onChange(!checked);
           }}
         />
-        <Mark aria-hidden="true" $on={on}>
+        <Mark aria-hidden="true" $on={on} $layer={layer}>
           {indeterminate ? <Icon name="Minus" size="xs" /> : checked ? <Icon name="Check" size="xs" /> : null}
         </Mark>
       </ChoiceSlot>

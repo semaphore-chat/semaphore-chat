@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { Avatar, type AvatarSize } from './Avatar';
 import { UNNAMED } from './unnamed';
@@ -19,6 +20,7 @@ const DEFAULT_MAX = 3;
 
 interface SizeProps {
   $size: AvatarSize;
+  $on: Surface;
 }
 
 const Group = styled('span')({
@@ -27,18 +29,18 @@ const Group = styled('span')({
 });
 
 /** One avatar's slot: a ground ring around it, and the overlap onto the one before. */
-const Slot = styled('span')(({ theme }) => {
+const Slot = styled('span', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
   const { palette } = kitTheme(theme);
   return {
     display: 'inline-flex',
     flexShrink: 0,
     borderRadius: `${tokens.radius.full}px`,
-    boxShadow: `0 0 0 ${tokens.border.selected}px ${palette.ground}`,
+    boxShadow: `0 0 0 ${tokens.border.selected}px ${tintBase(palette, $on)}`,
     '&:not(:first-of-type)': { marginLeft: `-${tokens.space.sm}px` },
   };
 });
 
-const More = styled('span', { shouldForwardProp: transientProps })<SizeProps>(({ theme, $size }) => {
+const More = styled('span', { shouldForwardProp: transientProps })<SizeProps>(({ theme, $size, $on }) => {
   const { palette } = kitTheme(theme);
   const type = $size === 'xs' || $size === 'sm' ? tokens.text.tag : tokens.text.meta;
   return {
@@ -49,7 +51,7 @@ const More = styled('span', { shouldForwardProp: transientProps })<SizeProps>(({
     width: `${tokens.avatar[$size]}px`,
     height: `${tokens.avatar[$size]}px`,
     borderRadius: `${tokens.radius.full}px`,
-    background: palette.fill,
+    background: standOutFill(palette, $on),
     color: palette.textSecondary,
     fontFamily: theme.typography.fontFamily,
     fontSize: `${type.size}px`,
@@ -60,12 +62,13 @@ const More = styled('span', { shouldForwardProp: transientProps })<SizeProps>(({
 });
 
 /**
- * Overlapping avatars, each ringed in the page colour, with the rest as a
+ * Overlapping avatars, each ringed in the colour of the layer it sits on, with the rest as a
  * "+N" circle. One accessible name for the whole group, as an `img` (a
  * `group` whose children are all hidden is skipped by some screen readers);
  * the avatars inside are decorative.
  */
 export function AvatarStack({ people, max = DEFAULT_MAX, size = 'sm', label }: AvatarStackProps): JSX.Element | null {
+  const on = useSurface();
   if (people.length === 0) {
     return null;
   }
@@ -81,13 +84,13 @@ export function AvatarStack({ people, max = DEFAULT_MAX, size = 'sm', label }: A
   return (
     <Group role="img" aria-label={label ?? summary}>
       {shown.map((person, index) => (
-        <Slot key={index}>
+        <Slot key={index} $on={on}>
           <Avatar {...person} size={size} decorative />
         </Slot>
       ))}
       {extra > 0 && (
-        <Slot>
-          <More aria-hidden="true" $size={size}>
+        <Slot $on={on}>
+          <More aria-hidden="true" $size={size} $on={on}>
             +{extra}
           </More>
         </Slot>

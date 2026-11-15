@@ -3,6 +3,7 @@ import { useDescribedBy } from '../overlays/tooltipDescription';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { railFill, useSurface, type Surface } from '../theme/onSurface';
 import { Text } from '../typography/Text';
 import { FieldLabelText } from '../fields/fieldLabel';
 import { focusRing } from '../theme/states';
@@ -59,7 +60,7 @@ const THUMB = tokens.icon.md;
 /** Set on the input from the component: how far along the rail the value is, 0 to 1. */
 const FILL = '--fill';
 
-const Input = styled('input')(({ theme }) => {
+const Input = styled('input', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
   const { palette } = kitTheme(theme);
   // The thumb travels the rail minus its own width, so the fill stops at the
   // thumb's centre: the share of the rail, plus half a thumb at 0 and minus half at 1.
@@ -68,7 +69,7 @@ const Input = styled('input')(({ theme }) => {
     boxSizing: 'border-box',
     height: `${RAIL}px`,
     borderRadius: `${tokens.radius.full}px`,
-    background: `linear-gradient(to right, ${palette.accent} ${fillEnd}, ${palette.hairline} ${fillEnd})`,
+    background: `linear-gradient(to right, ${palette.accent} ${fillEnd}, ${railFill(palette, $on)} ${fillEnd})`,
     border: 'none',
   } as const;
   const thumb = {
@@ -132,6 +133,7 @@ export function Slider({
   ref,
   id,
 }: SliderProps): JSX.Element {
+  const on = useSurface();
   const uid = useId();
   const inputId = id ?? `${uid}-input`;
   const describedBy = useDescribedBy(undefined);
@@ -184,6 +186,7 @@ export function Slider({
         </Value>
       </LabelRow>
       <Input
+        $on={on}
         ref={ref}
         id={inputId}
         type="range"

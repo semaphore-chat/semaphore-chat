@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { keyframes, styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { railFill, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 
 export type LinearProgressTone = 'accent' | 'positive' | 'danger';
@@ -25,7 +26,7 @@ const slide = keyframes({
   to: { transform: `translateX(${TRAVEL_TO}%)` },
 });
 
-const Track = styled('div')(({ theme }) => {
+const Track = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
   const { palette } = kitTheme(theme);
   return {
     boxSizing: 'border-box',
@@ -33,7 +34,7 @@ const Track = styled('div')(({ theme }) => {
     height: `${tokens.space.xs}px`,
     overflow: 'hidden',
     borderRadius: `${tokens.radius.full}px`,
-    background: palette.hairline,
+    background: railFill(palette, $on),
   };
 });
 
@@ -83,9 +84,11 @@ const Bar = styled('div', { shouldForwardProp: transientProps })<BarProps>(
 
 /** A thin progress bar. Determinate with `value`, indeterminate without. */
 export function LinearProgress({ label, value, tone = 'accent' }: LinearProgressProps): JSX.Element {
+  const on = useSurface();
   const percent = value === undefined ? undefined : Number.isNaN(value) ? 0 : Math.min(100, Math.max(0, value));
   return (
     <Track
+      $on={on}
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}

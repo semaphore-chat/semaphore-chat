@@ -3,7 +3,7 @@ import { styled } from '@mui/material/styles';
 import { iconNodes, type IconName } from '../icons/generated';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
-import { useSurfaceInk, type SurfaceInk } from '../theme/surfaceInk';
+import { useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 
 export type IconSize = keyof typeof tokens.icon;
@@ -27,14 +27,14 @@ export interface IconProps {
 
 interface RootProps {
   $tone: IconTone;
-  $ink: SurfaceInk;
+  $on: Surface;
 }
 
 const NEUTRAL: ReadonlySet<IconTone> = new Set(['default', 'secondary', 'dim', 'accent']);
 
 const Root = styled('svg', {
   shouldForwardProp: transientProps,
-})<RootProps>(({ theme, $tone, $ink }) => {
+})<RootProps>(({ theme, $tone, $on }) => {
   const { palette } = kitTheme(theme);
   const tones: Record<Exclude<IconTone, 'inherit'>, string> = {
     default: palette.text,
@@ -51,7 +51,7 @@ const Root = styled('svg', {
     // neutral and accent tones read as the on-accent ink; status tones keep their meaning.
     ...($tone === 'inherit'
       ? {}
-      : { color: $ink === 'onAccent' && NEUTRAL.has($tone) ? palette.onAccent : tones[$tone] }),
+      : { color: $on === 'accent' && NEUTRAL.has($tone) ? palette.onAccent : tones[$tone] }),
   };
 });
 
@@ -61,7 +61,7 @@ const Root = styled('svg', {
  * `label` only when nothing around it names it.
  */
 export function Icon({ name, size = 'md', tone = 'inherit', label }: IconProps): JSX.Element {
-  const ink = useSurfaceInk();
+  const on = useSurface();
   const nodes = iconNodes[name];
   const dimension = tokens.icon[size];
   // An empty or whitespace-only label names nothing; the icon stays decorative.
@@ -80,7 +80,7 @@ export function Icon({ name, size = 'md', tone = 'inherit', label }: IconProps):
       width={dimension}
       height={dimension}
       $tone={tone}
-      $ink={ink}
+      $on={on}
       {...accessibility}
     >
       {nodes.map(([tag, attrs], index) =>

@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { readableBackground } from '../theme/readable';
 import { transientProps } from '../theme/transientProps';
 import { Icon, type IconSize } from './Icon';
@@ -88,12 +89,14 @@ interface RootProps {
   $size: AvatarSize;
   $radius: number;
   $speaking: boolean;
+  $on: Surface;
 }
 
 const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
-  ({ theme, $size, $radius, $speaking }) => {
+  ({ theme, $size, $radius, $speaking, $on }) => {
     const { palette } = kitTheme(theme);
     const gap = tokens.border.selected;
+    const behind = tintBase(palette, $on);
     return {
       position: 'relative',
       display: 'inline-flex',
@@ -102,9 +105,9 @@ const Root = styled('span', { shouldForwardProp: transientProps })<RootProps>(
       width: `${tokens.avatar[$size]}px`,
       height: `${tokens.avatar[$size]}px`,
       borderRadius: `${$radius}px`,
-      // A ground-coloured gap, then the ring: a shadow, so the box never grows.
+      // A gap in the colour of the layer it sits on, then the ring: a shadow, so the box never grows.
       ...($speaking && {
-        boxShadow: `0 0 0 ${gap}px ${palette.ground}, 0 0 0 ${gap * 2}px ${palette.positive}`,
+        boxShadow: `0 0 0 ${gap}px ${behind}, 0 0 0 ${gap * 2}px ${palette.positive}`,
       }),
     };
   },
@@ -116,10 +119,11 @@ interface FaceProps {
   $covered: boolean;
   /** The person's own colour, when they have one. */
   $colour: string | undefined;
+  $on: Surface;
 }
 
 const Face = styled('span', { shouldForwardProp: transientProps })<FaceProps>(
-  ({ theme, $size, $colour, $covered }) => {
+  ({ theme, $size, $colour, $covered, $on }) => {
     const { palette } = kitTheme(theme);
     const type = typeFor($size);
     // The person's colour, nudged in lightness only as far as the initials need.
@@ -134,7 +138,7 @@ const Face = styled('span', { shouldForwardProp: transientProps })<FaceProps>(
       height: '100%',
       overflow: 'hidden',
       borderRadius: 'inherit',
-      background: own?.background ?? palette.fill,
+      background: own?.background ?? standOutFill(palette, $on),
       color: $covered ? 'transparent' : (own?.ink ?? palette.textSecondary),
       fontFamily: `'${type.family}', ${theme.typography.fontFamily}`,
       fontSize: `${type.size}px`,
@@ -157,6 +161,7 @@ const Photo = styled('img')({
 interface DotProps {
   $size: AvatarSize;
   $presence: Exclude<Presence, 'speaking'>;
+  $on: Surface;
 }
 
 /**
@@ -165,11 +170,12 @@ interface DotProps {
  * (outside the dot, a shadow) separates it from the avatar.
  */
 const Dot = styled('span', { shouldForwardProp: transientProps })<DotProps>(
-  ({ theme, $size, $presence }) => {
+  ({ theme, $size, $presence, $on }) => {
     const { palette } = kitTheme(theme);
     const diameter = $size === 'xs' ? tokens.space.sm : tokens.space.md;
     const outset = `-${tokens.border.hairline}px`;
     const offline = $presence === 'offline';
+    const behind = tintBase(palette, $on);
     return {
       position: 'absolute',
       right: outset,
@@ -181,22 +187,22 @@ const Dot = styled('span', { shouldForwardProp: transientProps })<DotProps>(
       width: `${diameter}px`,
       height: `${diameter}px`,
       borderRadius: `${tokens.radius.full}px`,
-      background: offline ? palette.ground : $presence === 'online' ? palette.positive : palette.warning,
+      background: offline ? behind : $presence === 'online' ? palette.positive : palette.warning,
       border: offline ? `${tokens.border.selected}px solid ${palette.textDim}` : 'none',
-      boxShadow: `0 0 0 ${tokens.border.selected}px ${palette.ground}`,
+      boxShadow: `0 0 0 ${tokens.border.selected}px ${behind}`,
     };
   },
 );
 
 /** Away's bar: the dot's width less a ring on each side, as high as a ring is thick, in the ground colour. */
-const AwayBar = styled('span', { shouldForwardProp: transientProps })<{ $size: AvatarSize }>(
-  ({ theme, $size }) => {
+const AwayBar = styled('span', { shouldForwardProp: transientProps })<{ $size: AvatarSize; $on: Surface }>(
+  ({ theme, $size, $on }) => {
     const { palette } = kitTheme(theme);
     const diameter = $size === 'xs' ? tokens.space.sm : tokens.space.md;
     return {
       width: `${diameter - 2 * tokens.border.selected}px`,
       height: `${tokens.border.selected}px`,
-      background: palette.ground,
+      background: tintBase(palette, $on),
     };
   },
 );
@@ -218,6 +224,7 @@ export function Avatar({
   presence,
   decorative = false,
 }: AvatarProps): JSX.Element {
+  const on = useSurface();
   const [failedSrc, setFailedSrc] = useState<string | undefined>(undefined);
   const [loadedSrc, setLoadedSrc] = useState<string | undefined>(undefined);
   const showPhoto = src !== undefined && src !== '' && failedSrc !== src;
@@ -234,8 +241,9 @@ export function Avatar({
       $size={size}
       $radius={radiusFor(shape, size)}
       $speaking={presence === 'speaking'}
+      $on={on}
     >
-      <Face $size={size} $colour={colour} $covered={showPhoto && loadedSrc === src}>
+      <Face $size={size} $colour={colour} $covered={showPhoto && loadedSrc === src} $on={on}>
         {initials === '' ? <Icon name="User" size={ICON_FOR_SIZE[size]} /> : initials}
         {showPhoto && (
           <Photo
@@ -248,8 +256,8 @@ export function Avatar({
         )}
       </Face>
       {presence !== undefined && presence !== 'speaking' && (
-        <Dot aria-hidden="true" data-presence={presence} $size={size} $presence={presence}>
-          {presence === 'away' && <AwayBar data-presence-bar="" $size={size} />}
+        <Dot aria-hidden="true" data-presence={presence} $size={size} $presence={presence} $on={on}>
+          {presence === 'away' && <AwayBar data-presence-bar="" $size={size} $on={on} />}
         </Dot>
       )}
     </Root>

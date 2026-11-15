@@ -5,6 +5,7 @@ import Popper from '@mui/material/Popper';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { SurfaceContext } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { useOverlayContainer } from './overlayContainer';
 import { ANCHOR_GAP, layerIndex, overlaySurface, reducedMotion, type Placement } from './surface';
@@ -157,7 +158,8 @@ export function Popover({
               $padding={padding}
             >
               <FocusIn panel={panel} />
-              {children}
+              {/* A portal: reset to the panel's own layer, whatever it was opened from. */}
+              <SurfaceContext value="surface">{children}</SurfaceContext>
             </Panel>
           </Fade>
         </ClickAwayListener>

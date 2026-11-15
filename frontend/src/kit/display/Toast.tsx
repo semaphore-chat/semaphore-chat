@@ -5,6 +5,7 @@ import { Button } from '../controls/Button';
 import { IconButton } from '../controls/IconButton';
 import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
+import { SurfaceContext } from '../theme/onSurface';
 import { shadow } from '../theme/shadow';
 import { Icon, type IconTone } from './Icon';
 import { liveRole } from './live';
@@ -65,6 +66,7 @@ export function Toast({ message, tone = 'neutral', action, onClose, announce = t
   const mark = MARK[tone];
   return (
     <Root role={liveRole(tone === 'danger', announce)}>
+      <SurfaceContext value="surface">
       {mark && (
         <Fixed>
           <Icon name={mark.icon} size="lg" tone={mark.tone} />
@@ -83,6 +85,7 @@ export function Toast({ message, tone = 'neutral', action, onClose, announce = t
           <IconButton icon="X" label="Dismiss" size="sm" onClick={onClose} />
         </Fixed>
       )}
+      </SurfaceContext>
     </Root>
   );
 }
