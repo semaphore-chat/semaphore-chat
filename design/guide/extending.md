@@ -46,7 +46,10 @@ An addition is finished when all of these are true:
   They cover the states the addition introduces: loading, empty, error, long
   content, narrow width, and the light, dark and tinted palettes.
 - **Tests.** Unit or component tests cover what it does. Token changes are
-  covered by the generator's check.
+  covered by the generator's check. What only a browser can show (layout at a
+  width, media queries, `inert`, focus traps, computed styles) gets a
+  real-browser spec in `frontend/browser-tests/`, run with
+  `scripts/test-stack.sh <ticket> browser`.
 - **Guide entry.** The guide says what it is, with one line "Use it when" and
   one line "Do not use it when", the table of its options, and the ids of its
   stories.

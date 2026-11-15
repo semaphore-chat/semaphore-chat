@@ -292,6 +292,7 @@ scripts/test-stack.sh ls                                           # every ticke
 | Prisma client | `docker compose run --rm backend pnpm run prisma:generate` | automatic: `run`/`run-backend` regenerate it when the schema differs from the image |
 | OpenAPI spec + client | see OpenAPI SDK Client Regeneration | `run-backend pnpm run generate:openapi`, then `run-frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'` |
 | README/docs media | `docker compose --profile tools run --rm media` | `scripts/test-stack.sh <ticket> media` |
+| Kit real-browser tests (Playwright on Ladle stories) | `scripts/test-stack.sh <ticket> browser [playwright args]` | the same |
 | Playwright / voice E2E, UI review | `scripts/run-e2e.sh`, `scripts/run-voice-e2e.sh`, `frontend/scripts/ui-review/ui-review.sh` | the same scripts: they already use `semaphore-test` |
 
 - Services address each other by the ticket-prefixed container name (`<ticket>-pg`), never by generic names like `postgres`/`redis`: several tickets share the network.

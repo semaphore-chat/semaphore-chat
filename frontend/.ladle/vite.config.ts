@@ -19,5 +19,10 @@ export default defineConfig({
     // (the docker-compose service name) — Vite 6's default host allowlist
     // would otherwise reject that Host header.
     allowedHosts: ['ladle', 'localhost'],
+    // scripts/test-stack.sh sets LADLE_WATCH_POLL=1 for its <ticket>-ladle container: there the file
+    // watcher (inotify through the bind mount) can lose a file after it is replaced by a rename (`sed -i`,
+    // editors' atomic saves), and the browser tests would then run against stale code. Polling sees every
+    // change; it stats the tree about once a second.
+    ...(process.env.LADLE_WATCH_POLL === '1' && { watch: { usePolling: true, interval: 1000, binaryInterval: 3000 } }),
   },
 });
