@@ -11,8 +11,9 @@ import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
+import { BUTTON_PADDING } from './buttonPadding';
 import { buttonLook, type ButtonVariant } from './buttonLook';
-import { Spinner } from './Spinner';
+import { Spinner } from '../display/Spinner';
 import { transientProps } from '../theme/transientProps';
 
 export type { ButtonVariant } from './buttonLook';
@@ -40,12 +41,6 @@ export interface ButtonProps {
   children: ReactNode;
 }
 
-const PADDING: Record<ButtonSize, number> = {
-  sm: tokens.space.md,
-  md: tokens.space.lg,
-  lg: tokens.space.xl,
-};
-
 interface RootProps {
   $variant: ButtonVariant;
   $size: ButtonSize;
@@ -69,7 +64,7 @@ const Root = styled(ButtonBase, {
     height: `${tokens.control[$size]}px`,
     width: $fullWidth ? '100%' : undefined,
     maxWidth: '100%',
-    padding: `0 ${PADDING[$size]}px`,
+    padding: `0 ${BUTTON_PADDING[$size]}px`,
     border: 'none',
     borderRadius: `${tokens.radius.full}px`,
     background: look.background,
@@ -187,12 +182,12 @@ export function Button({
       $fullWidth={fullWidth}
     >
       {startIcon !== undefined && (
-        <IconSlot>{spinnerInIconSlot ? <Spinner size={tokens.icon.sm} /> : startIcon}</IconSlot>
+        <IconSlot>{spinnerInIconSlot ? <Spinner size="sm" /> : startIcon}</IconSlot>
       )}
       <Label $hidden={spinnerOverLabel}>{children}</Label>
       {spinnerOverLabel && (
         <SpinnerOverlay>
-          <Spinner size={tokens.icon.sm} />
+          <Spinner size="sm" />
         </SpinnerOverlay>
       )}
     </Root>

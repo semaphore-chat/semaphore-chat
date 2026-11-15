@@ -7,7 +7,7 @@ import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
 import { interactiveStates } from '../theme/states';
 import { buttonLook, type ButtonVariant } from './buttonLook';
-import { Spinner } from './Spinner';
+import { Spinner } from '../display/Spinner';
 import { transientProps } from '../theme/transientProps';
 
 export type IconButtonSize = 'sm' | 'md' | 'lg';
@@ -148,7 +148,7 @@ export function IconButton({
       $selected={selected === true}
     >
       {busy ? (
-        <Spinner size={tokens.icon[ICON_SIZE[size]]} />
+        <Spinner size={ICON_SIZE[size]} />
       ) : (
         <Icon name={icon} size={ICON_SIZE[size]} />
       )}

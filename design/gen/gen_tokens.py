@@ -2,7 +2,7 @@
 """Generate the design token outputs from `design/tokens.json` and `design/colour.json`.
 
 `design/tokens.json` is the single source of truth for spacing, radii,
-control sizes, fonts, text styles, shadows, motion, breakpoints, layout, icon
+control sizes, fonts, text styles, shadows, motion, breakpoints, layout, icon, avatar
 sizes, border widths and state alphas; `design/colour.json` holds the
 parameters of the palette derivation. This program validates both and renders
 every registered output. Generated files are never edited by hand: fix the
@@ -71,6 +71,7 @@ GROUPS = (
     "breakpoint",
     "layout",
     "icon",
+    "avatar",
     "border",
     "state",
 )
@@ -82,6 +83,7 @@ SCALAR_GROUPS = (
     "breakpoint",
     "layout",
     "icon",
+    "avatar",
     "border",
     "state",
 )
@@ -483,6 +485,7 @@ RS_UNITS = {
     "breakpoint": "px",
     "layout": "px",
     "icon": "px",
+    "avatar": "px",
     "border": "px",
     "state": "alpha, 0 to 1",
 }

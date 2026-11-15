@@ -213,6 +213,21 @@ pub const ICON_LG: f32 = 20.0;
 /// `icon.xl`, px.
 pub const ICON_XL: f32 = 24.0;
 
+/// `avatar.xs`, px.
+pub const AVATAR_XS: f32 = 20.0;
+
+/// `avatar.sm`, px.
+pub const AVATAR_SM: f32 = 28.0;
+
+/// `avatar.md`, px.
+pub const AVATAR_MD: f32 = 36.0;
+
+/// `avatar.lg`, px.
+pub const AVATAR_LG: f32 = 44.0;
+
+/// `avatar.xl`, px.
+pub const AVATAR_XL: f32 = 64.0;
+
 /// `border.hairline`, px.
 pub const BORDER_HAIRLINE: f32 = 1.0;
 

@@ -83,6 +83,13 @@ export const tokens = {
     lg: 20,
     xl: 24,
   },
+  avatar: {
+    xs: 20,
+    sm: 28,
+    md: 36,
+    lg: 44,
+    xl: 64,
+  },
   border: {
     hairline: 1,
     selected: 2,
