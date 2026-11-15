@@ -242,6 +242,42 @@ describe('Button', () => {
   });
 });
 
+describe('Button aria-disabled', () => {
+  it('ignores a click and Enter, stays focusable, and reads unavailable', async () => {
+    const onClick = vi.fn();
+    const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
+    const user = userEvent.setup();
+    renderWithKit(
+      <form onSubmit={onSubmit}>
+        <Button type="submit" aria-disabled onClick={onClick}>
+          Cancel
+        </Button>
+      </form>,
+    );
+    const button = screen.getByRole('button', { name: 'Cancel' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toBeDisabled();
+    expect(button).not.toHaveAttribute('aria-busy');
+    await user.click(button);
+    expect(button).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+    expect(onClick).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('disabled wins: the button is disabled and carries no aria-disabled', () => {
+    renderWithKit(
+      <Button aria-disabled disabled>
+        Cancel
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Cancel' });
+    expect(button).toBeDisabled();
+    expect(button).not.toHaveAttribute('aria-disabled');
+  });
+});
+
 describe('buttonLook', () => {
   const palette = derivePalette('#8E75FF', 'dark', 'minimal');
 

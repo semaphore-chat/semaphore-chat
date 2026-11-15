@@ -15,11 +15,11 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Thirty-three components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Thirty-five components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
-AvatarStack, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, Toast,
-ListRow, Table, Menu, Popover, Tooltip, Dialog, Island, Card, Sheet, Dock,
-DockDivider and DockItem.
+AvatarStack, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
+Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
+Card, Sheet, Dock, DockDivider and DockItem.
 
 ## Rules every component follows
 
@@ -106,6 +106,7 @@ setting on or off. Use Switch.
 |`fullWidth`|true, false|false|Stretches the button to the width of its space.|
 |`loading`|true, false|false|The button is busy. See the rules above.|
 |`disabled`|true, false|false|The action is not available.|
+|`aria-disabled`|true, false|false|Not available right now, but still focusable: it reads as unavailable, looks dimmed and ignores clicks. Use it when focus may already sit on the button (Cancel while a ConfirmDialog works).|
 |`type`|`button`, `submit`|`button`|Use `submit` for the button that sends a form.|
 
 ### Which variant
@@ -603,6 +604,57 @@ Stories: `kit-alert--severities`, `kit-alert--severities-light`,
 `kit-alert--severities-tinted`, `kit-alert--with-actions`,
 `kit-alert--long-text`.
 
+## LoadState
+
+What a screen shows while it loads from the server: a skeleton, the content, an
+empty state, an error, or the content while it refreshes.
+
+**Use it when** a region of a screen fetches its data and has to show all of
+those faces. Pass it the controller from `useLoadState` or `useQueryLoadState`
+(see [Behaviour](behaviour.md#load-state)).
+
+**Do not use it when** the wait is inside a control (a button's own `loading`),
+or when the content has no empty or error face worth drawing.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`state`|the controller from `useLoadState` or `useQueryLoadState`|none (required)|Which face to show, and what Try again calls.|
+|`label`|text|none (required)|Names the region: "Members" reads "Loading members".|
+|`skeleton`|content|none (required)|Skeletons in the shape of the content.|
+|`empty`|content|none (required)|What shows when there is nothing to show.|
+|`errorTitle`|text|none (required)|The first line of the error: "Couldn't load members".|
+|`children`|content|none (required)|The content, shown when ready and while refreshing.|
+
+- Loading: the skeleton and `aria-busy` on the region. A visually hidden `status`
+  reads "Loading members". It sits outside the busy region (a screen reader may
+  hold back changes inside one), is on the page on every face, and gets its text
+  one commit after it mounts, so it is announced. The Skeleton itself is hidden
+  from screen readers.
+- The region is a `group` named by `label`, focusable by script only
+  (`tabIndex={-1}`). Try again moves focus to it as the button goes, so focus
+  does not fall to the page, but only if focus is still on the page body then:
+  focus the user moved elsewhere stays. It shows the kit focus ring on
+  `:focus-visible` (after a keyboard Try again), none after a pointer press.
+- The error face offers Try again only when `state.retryable` (an offline
+  first load has none: it loads by itself when the connection returns).
+- Error: a `danger` Alert with `errorTitle` and a Try again button, and the
+  controller's message as its body when there is one (a screen's
+  `errorMessage`, or the offline text). The default failure has no body: the
+  title says what failed and the button what to do. It only shows when there
+  is nothing else to show.
+- Refreshing: the content stays, with `aria-busy`. The refresh button reads
+  `state.refreshByUser` for its own `loading`, so only a refresh the user started
+  shows busy.
+- A failed refresh does not replace the content. The toast host shows it.
+
+Stories: `kit-load-state--loading`, `kit-load-state--loading-light`,
+`kit-load-state--ready`, `kit-load-state--empty`, `kit-load-state--empty-light`,
+`kit-load-state--error-with-retry`, `kit-load-state--error-with-retry-light`,
+`kit-load-state--error-with-message`,
+`kit-load-state--refreshing`, `kit-load-state--user-refresh-busy`,
+`kit-load-state--user-refresh-busy-light`, `kit-load-state--error-offline`,
+`kit-load-state--live`, `kit-load-state--refresh-fails-toast`.
+
 ## Toast
 
 A passing notice about something that just happened.
@@ -920,6 +972,50 @@ Stories: `kit-dialog--confirm`, `kit-dialog--with-content`,
 `kit-dialog--phone`, `kit-dialog--confirm-light`,
 `kit-dialog--confirm-tinted`, `kit-dialog--with-select`,
 `kit-dialog--from-card`.
+
+## ConfirmDialog
+
+The dialog that asks before something cannot be undone, runs the action, and
+stays open with the error if it fails.
+
+**Use it when** the user asks for an irreversible action (delete a channel, leave
+a community). Get it from `useConfirmDestructive`, which owns the phases (see
+[Behaviour](behaviour.md#confirm-destructive)); the hook's `dialog` is this
+component.
+
+**Do not use it when** the action can be undone (offer Undo in a Toast), or when
+the dialog asks for more than a yes (use Dialog).
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`phase`|`idle`, `confirming`, `working`, `failed`|none (required)|`idle` is closed.|
+|`error`|text or null|none (required)|The failure shown while `phase` is `failed`.|
+|`title`|text|none (required)|Names what is lost: "Delete #general?".|
+|`description`|text|none (required)|What goes with it: "This removes 214 messages for everyone."|
+|`confirmLabel`|text|none (required)|The danger button, and the retry button after a failure: "Delete channel".|
+|`onConfirm`|a function|none (required)|The confirm button.|
+|`onCancel`|a function, given `'button'`, `'escape'` or `'scrim'`|none (required)|Cancel, Escape or a press on the dimmed page.|
+|`onPresence`|a function, given `true` or `false`|none (required)|`false`: the dialog went away without an answer (the layer it was opened from closed, or it left the page). `true`: it is on the page again.|
+
+- Cancel comes first and takes focus; the danger button is second.
+- While working, the danger button is busy (it keeps focus and its name) and
+  Cancel is `aria-disabled`: unavailable, but still focusable, so focus that
+  sits on it does not fall to the page. Escape and a press on the dimmed page
+  do nothing.
+- After a failure the error shows as a `danger` Alert in the body, Cancel works
+  again, and the same button retries.
+- Rendered inside a Popover, Sheet or other layer that can close while the
+  action works, a failure after that close shows only as a danger toast: the
+  screen must render the toast region (`AppFrame` always does; a story or test
+  outside it renders `<ToastRegion />`).
+- Words: [Writing](writing.md#confirm-a-destructive-action-by-naming-what-is-lost).
+
+Stories: `kit-confirm-dialog--confirming`, `kit-confirm-dialog--confirming-light`,
+`kit-confirm-dialog--working`, `kit-confirm-dialog--working-light`,
+`kit-confirm-dialog--failed`, `kit-confirm-dialog--failed-light`,
+`kit-confirm-dialog--timed-out`, `kit-confirm-dialog--failed-long-text`,
+`kit-confirm-dialog--from-menu`,
+`kit-confirm-dialog--from-menu-never-ends`, `kit-confirm-dialog--parent-closes-then-fails`.
 
 ## Island
 

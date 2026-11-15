@@ -60,6 +60,9 @@ Use the same shape every time: "Couldn't load channels. Try again."
 
 - Start with the fact. "Couldn't upload photo.", "That invite has expired."
 - End with a next step, when there is one. "Try again.", "Ask for a new one."
+  When a button already offers the step, the words leave it out: an error
+  with a Try again button reads "Couldn't load members", not "Couldn't load
+  members. Try again." above "Try again".
 - Do not show codes, stack traces or the word "error" on its own. Do not say
   "Something went wrong" when you know what did.
 - Do not blame: "That file is too big. The limit is 25 MB.", not "You chose a
@@ -115,6 +118,7 @@ not repeat the role in the name: the page already says it is a button, so write
 |Confirm a deletion|"Are you sure?" with OK and Cancel|"Delete #general?" with "Cancel" and "Delete channel"|Names what is lost and what the button does|
 |Leaving a voice room|"Disconnect"|"Leave room"|Plain verb, the word people use|
 |Loading channels failed|"Error 500"|"Couldn't load channels. Try again."|What happened, then what to do|
+|A load error with a Try again button|"Couldn't load members", "Try again.", then the button "Try again"|"Couldn't load members", then the button "Try again"|The button is the next step; do not say it twice|
 |Empty voice rooms list|"Nothing here"|"No voice rooms yet. Create one to talk with your community."|Says what will appear and how to start|
 |Invite expired|"Invalid invite code"|"That invite has expired. Ask for a new one."|Says what happened, with a next step, no blame|
 |Upload too large|"You selected a file that is too large"|"That file is too big. The limit is 25 MB."|No blame, gives the limit|

@@ -89,7 +89,8 @@ export function Modal({
       {...fadeTransition}
       sx={{ '& .MuiDialog-container': { boxSizing: 'border-box', ...container, ...reducedMotion } }}
       slotProps={{
-        container: { ref: containerRef },
+        // A stable hook for tests that ask whether focus is inside a kit modal (not MUI's class name).
+        container: { ref: containerRef, 'data-kit-modal': kind } as { ref: typeof containerRef },
         backdrop: {
           sx: (theme) => ({ background: kitTheme(theme).palette.scrim, ...reducedMotion }),
         },

@@ -29,6 +29,12 @@ export interface ButtonProps {
   fullWidth?: boolean;
   loading?: boolean;
   disabled?: boolean;
+  /**
+   * Not available right now, but still focusable (unlike `disabled`): it reads
+   * as unavailable, looks dimmed and ignores clicks. For a control that must not
+   * lose focus while something else works (Cancel in a working ConfirmDialog).
+   */
+  'aria-disabled'?: boolean;
   type?: 'button' | 'submit';
   onClick?: MouseEventHandler<HTMLButtonElement>;
   /** React 19 plain prop, so a component can anchor a menu or tooltip to the button. */
@@ -89,6 +95,12 @@ const Root = styled(ButtonBase, {
       opacity: tokens.state.disabled,
       pointerEvents: 'none',
     },
+    // Unavailable but focusable: dimmed like disabled, with no hover or pressed layer.
+    '&[aria-disabled="true"]:not([aria-busy="true"])': {
+      opacity: tokens.state.disabled,
+      cursor: 'default',
+      '&:hover, &:active': { background: look.background },
+    },
     // Busy is an ARIA state, not `disabled`: the button keeps focus and its
     // name, so it must not paint a hover or pressed layer while it works.
     '&[aria-busy="true"]': {
@@ -137,6 +149,7 @@ export function Button({
   fullWidth = false,
   loading = false,
   disabled = false,
+  'aria-disabled': unavailable = false,
   type = 'button',
   onClick,
   ref,
@@ -157,7 +170,7 @@ export function Button({
   const spinnerOverLabel = busy && startIcon === undefined;
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    if (busy) {
+    if (busy || unavailable) {
       // Cancelling the click also cancels the submit a type="submit" button
       // would trigger, by mouse or by Enter in a field of the same form.
       event.preventDefault();
@@ -172,7 +185,7 @@ export function Button({
       type={type}
       disabled={disabled}
       onClick={handleClick}
-      aria-disabled={busy || undefined}
+      aria-disabled={busy || (unavailable && !disabled) || undefined}
       aria-busy={busy || undefined}
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
