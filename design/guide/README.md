@@ -12,7 +12,7 @@ The guide is written in chapters. Only one chapter exists so far.
 |Principles|The ideas behind the look of the app|not written yet|
 |Layouts|The page layouts a screen can use|not written yet|
 |Behaviour|How things move, respond and change state|not written yet|
-|[Components](components.md)|The building blocks: buttons, fields, cards and so on|in progress (12 components)|
+|[Components](components.md)|The building blocks: buttons, fields, cards and so on|in progress (21 components)|
 |[Tokens and colour](tokens-and-colour.md)|Every size, shape, type style, timing and colour role, and when to use each|written|
 |Writing|How the words on a screen should read|not written yet|
 |Extending the system|How to add something the guide does not cover|not written yet|

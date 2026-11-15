@@ -16,8 +16,9 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Twelve components exist so far: Text, Button, Icon, IconButton, KeyCap, Tabs,
-Switch, Checkbox, RadioGroup, Slider, TextField and SelectField.
+Twenty-one components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
+AvatarStack, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert and Toast.
 
 ## Rules every component follows
 
@@ -35,6 +36,8 @@ Switch, Checkbox, RadioGroup, Slider, TextField and SelectField.
   clicks and Enter. Use `loading` for work in progress. Use `disabled` only
   when the action is not available. If both are set, `disabled` wins: the
   control is disabled and shows no spinner.
+- **Motion is small and optional.** Animations only fade or move, use the
+  timing tokens, and stop for people who ask their system for reduced motion.
 - **Colours and sizes come only from the tokens and palette roles** described
   in [Tokens and colour](tokens-and-colour.md).
 
@@ -354,6 +357,235 @@ Stories: `kit-select-field--states`, `kit-select-field--open`,
 `kit-select-field--open-light`, `kit-select-field--long-options`,
 `kit-select-field--select-field-light`,
 `kit-select-field--select-field-tinted`.
+
+## Avatar
+
+A person's or community's picture. When there is no picture, it shows their
+initials.
+
+**Use it when** you show who someone is, or which community something belongs
+to, beside a name, a message or a row.
+
+**Do not use it when** the picture is a plain symbol. Use Icon. Do not use it
+for a group of people. Use AvatarStack.
+
+A person's or community's own colour is the one colour in the system that
+comes from data, not from the palette. The app may show it a little lighter or
+darker than they chose, so that the initials stay readable. People are
+circles. Communities are rounded squares. If the picture is missing or fails
+to load, the initials stay in its place and the layout does not move. A blank
+name gives a person icon.
+
+Presence is shown by a small dot (`online`, `away`, `offline`) or, for
+`speaking`, by a ring around the avatar. The state is always also in the
+accessible name, for example "Ana Ruiz, away". It is never carried by colour
+alone.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`name`|text|none (required)|Who it is. It is the accessible name and the source of the initials.|
+|`src`|an image address|none|The picture, shown over the initials.|
+|`colour`|a colour as `#rrggbb`|none|The person's or community's own colour. Without it the avatar uses the neutral fill.|
+|`size`|`xs`, `sm`, `md`, `lg`, `xl`|`md`|20, 28, 36, 44 or 64 pixels. See Avatar sizes in the Tokens and colour chapter.|
+|`shape`|`circle`, `rounded`|`circle`|`circle` for people, `rounded` for communities.|
+|`presence`|`online`, `away`, `offline`, `speaking`|none|The dot or ring, and the state in the accessible name.|
+|`decorative`|true, false|false|Hides the avatar from screen readers. Use it only when the person's name is written right beside it.|
+
+Stories: `kit-avatar--sizes`, `kit-avatar--presence`,
+`kit-avatar--communities`, `kit-avatar--fallbacks`, `kit-avatar--sizes-light`,
+`kit-avatar--presence-tinted`.
+
+## AvatarStack
+
+A few avatars overlapping in a row, with the rest counted as "+N".
+
+**Use it when** you show who is in a group, such as the people in a voice
+channel or the members of a conversation, in a small space.
+
+**Do not use it when** each person needs to be read or pressed on their own.
+Use a list of rows with an Avatar each.
+
+The stack is named as a whole, for example "Ana, Ben and 2 more". The avatars
+inside it are decorative. A stack with no people shows nothing.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`people`|a list of `name`, and optionally `src` and `colour`|none (required)|Who is in the group.|
+|`max`|a number|3|How many avatars to show before the "+N".|
+|`size`|`xs`, `sm`, `md`, `lg`, `xl`|`sm`|The size of each avatar.|
+|`label`|text|the shown names and "and N more"|The accessible name of the group.|
+
+Stories: `kit-avatar--stack`.
+
+## Badge
+
+A count, or a dot, attached to something else.
+
+**Use it when** you show how many unread messages, mentions or requests an item
+has, or that something needs attention.
+
+**Do not use it when** you name a state or a category in words. Use Pill. A
+Badge is not clickable. Put it on an item that is.
+
+A count of 0 shows nothing. A count above `max` reads "99+". The number alone
+does not say what it counts, so a Badge always has a `label`, such as
+"3 unread".
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|What it means. It is the accessible name.|
+|`count`|a number|none|The number to show.|
+|`max`|a number|99|The largest number shown. Above it the badge reads, for example, "99+".|
+|`dot`|true, false|false|A small dot with no number. It shows even when there is no count.|
+|`tone`|`accent`, `danger`|`danger`|The colour role.|
+
+Stories: `kit-badge--counts`, `kit-badge--counts-light`,
+`kit-badge--counts-tinted`.
+
+## Pill
+
+A short word that names a state or a category.
+
+**Use it when** you label a role, a status or the selected item: "Admin",
+"Live", "Muted".
+
+**Do not use it when** you show a count. Use Badge. Do not use it as a button
+or a filter. A Pill is not clickable. Use Button, or Tabs for filters. Keep the
+text to a word or two.
+
+The text always carries the meaning. The dot or icon is decoration. A tone
+other than `accent` colours the text on the neutral fill, so the word stays
+readable.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`children`|text|none (required)|The word.|
+|`tone`|`neutral`, `accent`, `danger`, `positive`, `warning`|`neutral`|The colour role.|
+|`dot`|true, false|false|A dot before the text, in the colour of the tone.|
+|`icon`|a name from the icon set|none|An icon before the text.|
+|`size`|`sm`, `md`|`md`|The size of the pill.|
+
+Stories: `kit-pill--tones`, `kit-pill--tones-light`, `kit-pill--tones-tinted`.
+
+## Spinner
+
+A small turning ring that shows something is working.
+
+**Use it when** a short wait happens inside a control or a small panel, such as
+a button that is busy. For a button, use its `loading` option, which uses a
+Spinner for you.
+
+**Do not use it when** content is loading in place and you know its shape. Use
+Skeleton. Do not use it when the wait spans a region or has a known length. Use
+LinearProgress.
+
+It takes the colour of the text around it. Without a `label` it is decoration
+and is hidden from screen readers. Give a `label` when the spinner is the only
+sign that something is busy.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`size`|`xs`, `sm`, `md`, `lg`, `xl`|`sm`|The same sizes as Icon.|
+|`label`|text|none|Names the busy state for screen readers.|
+
+Stories: `kit-spinner--sizes`.
+
+## LinearProgress
+
+A thin bar that shows a wait across a region, such as an upload or a page.
+
+**Use it when** the wait spans a region. Give it a `value` when you know how far
+along it is. Leave the value out when you do not, and the bar slides.
+
+**Do not use it when** the wait is short and sits inside a control. Use
+Spinner. Do not use it when content is loading in place. Use Skeleton.
+
+It always has a `label` that says what is in progress. A value outside 0 to 100
+is held to that range.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|What is in progress. It is the accessible name.|
+|`value`|0 to 100|none|How far along it is. Without it the bar has no known length.|
+|`tone`|`accent`, `positive`, `danger`|`accent`|The colour role of the bar.|
+
+Stories: `kit-linear-progress--values`, `kit-linear-progress--values-light`,
+`kit-linear-progress--values-tinted`.
+
+## Skeleton
+
+A grey placeholder in the shape of content that is still loading.
+
+**Use it when** content is loading in place and you know its shape: lines of
+text, a round picture, a block.
+
+**Do not use it when** the shape is not known, or the wait is inside a control.
+Use Spinner. Do not use it for a wait that spans a region. Use LinearProgress.
+
+A Skeleton is hidden from screen readers. Name the loading state somewhere else
+on the screen, for example with a Spinner that has a `label`. The `shape`
+decides which other option applies.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`shape`|`text`, `circle`, `rect`|none (required)|The shape of the placeholder.|
+|`lines`|a number|1|For `text`: how many lines.|
+|`size`|`xs`, `sm`, `md`, `lg`, `xl`|`md`|For `circle`: the same sizes as Avatar.|
+|`height`|`sm`, `md`, `lg`|`lg`|For `rect`: the same heights as a control, 32, 40 or 48 pixels.|
+
+Stories: `kit-skeleton--shapes`, `kit-skeleton--shapes-light`.
+
+## Alert
+
+A message that belongs to a place on the page.
+
+**Use it when** you tell the user something about the screen they are on, and it
+should stay until the situation changes or they dismiss it: a connection
+problem, a warning above a form, a note about a setting.
+
+**Do not use it when** the message is about something that just happened and
+can pass. Use Toast. Do not use it for an error on one field. Use the `error` of
+that field.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`severity`|`info`, `success`, `warning`, `danger`|none (required)|What kind of message. It sets the icon and its colour.|
+|`title`|text|none|A bold first line.|
+|`children`|text or content|none (required)|The message.|
+|`action`|a `label` and an `onClick`|none|One action, shown as a text button under the message.|
+|`onClose`|a function|none|Adds a Dismiss button. Without it the alert cannot be dismissed.|
+
+`warning` and `danger` interrupt screen readers when they appear. `info` and
+`success` wait for a pause.
+
+Stories: `kit-alert--severities`, `kit-alert--severities-light`,
+`kit-alert--severities-tinted`, `kit-alert--with-actions`,
+`kit-alert--long-text`.
+
+## Toast
+
+A passing notice about something that just happened.
+
+**Use it when** you confirm or report the result of an action: "Message sent",
+"Could not save".
+
+**Do not use it when** the message belongs to a place on the page or must stay
+until the user acts. Use Alert.
+
+A Toast is only the look of one notice. Where toasts appear, how long they stay
+and how they stack belong to the Behaviour chapter, which is not written yet.
+A `danger` toast interrupts screen readers when it appears. The others wait for
+a pause.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`message`|text|none (required)|What happened.|
+|`tone`|`neutral`, `positive`, `danger`|`neutral`|The colour role. `positive` and `danger` add an icon.|
+|`action`|a `label` and an `onClick`|none|One action, shown as a text button, such as "Undo".|
+|`onClose`|a function|none|Adds a Dismiss button.|
+
+Stories: `kit-toast--tones`, `kit-toast--tones-light`,
+`kit-toast--tones-tinted`, `kit-toast--long-message`.
 
 ## What the browser does for us
 
