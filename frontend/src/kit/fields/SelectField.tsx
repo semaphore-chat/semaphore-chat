@@ -75,6 +75,8 @@ const Item = styled(MenuItem)(({ theme }) => {
     gap: `${tokens.space.sm}px`,
     minHeight: `${tokens.control.md}px`,
     padding: `0 ${tokens.space.md}px`,
+    // MUI's MenuItem resets min-height at its `sm` breakpoint; hold the row height there too.
+    [theme.breakpoints.up('sm')]: { minHeight: `${tokens.control.md}px` },
     borderRadius: `${tokens.radius.md}px`,
     background: 'transparent',
     fontFamily: theme.typography.fontFamily,
