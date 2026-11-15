@@ -105,11 +105,11 @@ The screen width, in px, at which the layout changes.
 
 |Token|px|Meaning|
 |---|---|---|
-|phone|600|Phone width and narrower|
+|phone|600|Below this width a screen uses its phone layout|
 |narrow|1024|Narrow width|
 |docked|1200|Wide enough for a side panel to stay open beside the content|
 
-The Layouts chapter, which says what changes at each width, is not written yet.
+The [Layouts](layouts.md) chapter says what changes at each width.
 
 ### Layout widths
 

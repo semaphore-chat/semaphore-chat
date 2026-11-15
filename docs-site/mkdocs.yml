@@ -73,6 +73,7 @@ nav:
   - Design guide:
       - Overview: design-guide/README.md
       - Principles: design-guide/principles.md
+      - Layouts: design-guide/layouts.md
       - Components: design-guide/components.md
       - Behaviour: design-guide/behaviour.md
       - Tokens and colour: design-guide/tokens-and-colour.md

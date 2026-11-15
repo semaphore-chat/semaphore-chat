@@ -3,6 +3,8 @@ import { KitProvider, KitRoot, Text } from '../../kit';
 import type { IntensityName, ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 
+const DEFAULT_BASE = '#8E75FF';
+
 export interface KitStageProps {
   mode?: ModeName;
   base?: string;
@@ -17,7 +19,7 @@ export interface KitStageProps {
  */
 export function KitStage({
   mode = 'dark',
-  base = '#8E75FF',
+  base = DEFAULT_BASE,
   intensity = 'minimal',
   children,
 }: KitStageProps): JSX.Element {
@@ -35,6 +37,23 @@ export function KitStage({
       >
         {children}
       </KitRoot>
+    </KitProvider>
+  );
+}
+
+/**
+ * The page a layout story renders on: only the KitProvider. The layout's AppFrame paints the ground and
+ * pads and fills the viewport itself, so a KitStage (which does both) would double them.
+ */
+export function KitFrameStage({
+  mode = 'dark',
+  base = DEFAULT_BASE,
+  intensity = 'minimal',
+  children,
+}: KitStageProps): JSX.Element {
+  return (
+    <KitProvider base={base} mode={mode} intensity={intensity}>
+      {children}
     </KitProvider>
   );
 }

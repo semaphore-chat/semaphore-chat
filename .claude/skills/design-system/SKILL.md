@@ -16,8 +16,9 @@ Semaphore Chat has one design system for the web client and the native client: t
 
 1. `design/guide/README.md`: the chapters and the three rules.
 2. `design/guide/principles.md`: what makes a screen Semaphore, and what we never do.
-3. "How a screen is built" in `design/guide/components.md`: ground, islands, cards, overlays.
-4. The chapter for the task: `components.md` (what each piece is for and its options), `tokens-and-colour.md` (sizes, palette roles), `writing.md` (words on screen), `extending.md` (something is missing).
+3. `design/guide/layouts.md`: the templates and which to pick.
+4. "How a screen is built" in `design/guide/components.md`: ground, islands, cards, overlays.
+5. The chapter for the task: `components.md` (what each piece is for and its options), `tokens-and-colour.md` (sizes, palette roles), `writing.md` (words on screen), `extending.md` (something is missing).
 
 The guide's examples are the live stories in `frontend/src/stories/kit/`. Open the story of every component you use.
 
@@ -33,7 +34,7 @@ The guide's examples are the live stories in `frontend/src/stories/kit/`. Open t
 
 ## Building a screen
 
-1. Name the layout template. The Layouts chapter does not exist yet, so follow "How a screen is built" (islands on a ground) and say in the PR which arrangement you used. Once `design/guide/layouts.md` exists, pick a template from it. Do not invent one.
+1. Pick a layout template from `design/guide/layouts.md` and name it in the PR. Do not invent one or arrange islands by hand.
 2. Compose the screen from kit components. Read each one's "Use it when / Do not use it when" lines.
 3. Cover the states: loading, empty, error, long content and narrow width. Use the Skeleton, the empty-state wording and the error wording from the guide.
 4. Add or update Ladle stories for the states (`docs-site/docs/contributing/stories.md`).
