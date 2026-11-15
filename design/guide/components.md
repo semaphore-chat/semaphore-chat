@@ -214,6 +214,14 @@ A row that is wider than its space scrolls inside it, with a thin scrollbar,
 and starts scrolled so the selected tab is visible, also when `value` changes
 from outside. Tabs takes no `ref`.
 
+Keys come from the list focus pattern ([Behaviour](behaviour.md#list-focus)):
+the row is one Tab stop (the selected tab), Left and Right and also Up and Down
+move to the next or previous tab and select it, wrapping round, Home and End go
+to the ends, and disabled tabs are skipped. There is no typeahead. When focus
+comes back to the row, it lands on the selected tab, also if `value` changed
+while focus was elsewhere. Tabbing in never changes the tab, and a tab is
+chosen on click, not when the pointer goes down.
+
 ### Underline or segmented
 
 - `underline`: switch between views of a page, such as the sections of a
@@ -720,7 +728,9 @@ the gap beside the text counts too, and so does the pointer cursor. `trailing`
 sits beside the link or button, not inside it, so it may hold buttons of its
 own. It sits above the row's hit area, so a press on one of those buttons is
 that button's, and it does not show the row as pressed. The focus ring outlines
-the whole row.
+the whole row. On a selected row it is drawn in the ink that reads on the
+accent, just inside the pill, because a ring in the focus colour would vanish
+into the accent (and the selected row is a keyboard list's Tab stop).
 
 `selected` draws the solid accent pill. It is the system's "selected row": it
 means "this is the current item", such as the channel you are in. Use it on one
@@ -758,11 +768,55 @@ used.
 |`disabled`|true, false|false|The row is not available.|
 |`href`|an address|none|Makes the row a link.|
 |`onClick`|a function|none|Makes the row a button.|
+|`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list. See below.|
 
 `leading` holds an Avatar (a person or a community) or an Icon (a channel, a
 setting). The text lines up in the same place whichever you use. `trailing`
 holds a Badge for an unread count, a Pill for a short tag, or an IconButton for
 a row action such as "More". Put one thing there, or a few small ones.
+
+### A keyboard list
+
+A list the user moves through with the keyboard (a channel list, a member
+list, a picker) is built with `useListFocus` and the `focus` prop. The list is
+then one Tab stop: Up and Down move between rows, Home and End jump to the
+ends, typing a name jumps to it, and Enter or Space (or a click) chooses the
+row. Disabled rows are skipped.
+
+```tsx
+const list = useListFocus({
+  rows: channels.map((c) => ({ id: c.id, label: c.name, disabled: c.locked })), // every row, also unrendered ones
+  selected: currentChannelId,           // the route: the pattern follows it, it never moves focus
+  onSelect: (id) => markOpened(id),     // optional for links: the link has already navigated
+});
+<nav aria-label="Channels">
+  <div {...list.listProps}>
+    {channels.map((c) => (
+      <ListRow key={c.id} primary={c.name} href={`/c/${c.id}`} selected={c.id === currentChannelId}
+        disabled={c.locked} focus={list.rowFocus(c.id)} />
+    ))}
+  </div>
+</nav>
+```
+
+- Rows in a keyboard list are links or buttons; a plain row ignores `focus`.
+  Keep `disabled` on the row and in `rows` the same.
+- `focus` is opaque: pass what `rowFocus(id)` returns, nothing else. The row's
+  own `onClick` still runs; put an action in `onClick` or in `onSelect`, not in
+  both.
+- Controls in `trailing` leave the Tab order while the row is in a keyboard
+  list: Right moves from the row into them and Left back, and Up or Down go on
+  to the next row. A row action that matters must also be reachable some other
+  way (the row's menu, the opened page).
+- `orientation: 'horizontal'` adds Left and Right as movement (as Tabs does);
+  `wrap`, `selectionFollowsFocus` and `typeahead` are the pattern's parameters.
+- A virtualised list passes the whole list as `rows` and a `reveal(id)` that
+  scrolls the row into the rendered window; the host focuses it once it is there.
+
+Stories: `kit-list-focus--channel-list`, `kit-list-focus--channel-list-light`,
+`kit-list-focus--channel-list-focused`, `kit-list-focus--channel-list-focused-light`,
+`kit-list-focus--button-rows`, `kit-list-focus--selection-from-outside`,
+`kit-list-focus--selection-from-outside-light`.
 
 Stories: `kit-list-row--states`, `kit-list-row--channels`,
 `kit-list-row--people`, `kit-list-row--long-names`,

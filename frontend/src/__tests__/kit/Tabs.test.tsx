@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Tabs, tabElementId, type TabItem } from '../../kit';
 import { renderWithKit } from '../test-utils/renderWithKit';
@@ -64,7 +64,8 @@ describe('Tabs', () => {
   it('arrows, Home and End move focus and selection, skipping disabled tabs and wrapping', async () => {
     const onChange = vi.fn();
     const { user } = renderWithKit(<Controlled onChange={onChange} />);
-    screen.getByRole('tab', { name: 'All' }).focus();
+    // Focusing a tab is a step of the list host (focusIn), so it updates state: inside act.
+    act(() => screen.getByRole('tab', { name: 'All' }).focus());
 
     await user.keyboard('{ArrowRight}');
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Mentions/ }));
@@ -87,6 +88,59 @@ describe('Tabs', () => {
     await user.keyboard('{End}');
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Nothing' }));
     expect(onChange).toHaveBeenLastCalledWith('none');
+  });
+
+  it('after the user left the tabs, a value changed from outside is where Tab comes back', async () => {
+    const ui = (value: string) => (
+      <>
+        <Tabs label="Notify" tabs={TABS} value={value} onChange={() => {}} />
+        <button type="button">After</button>
+      </>
+    );
+    const { user, rerender } = renderWithKit(ui('all'));
+    act(() => screen.getByRole('tab', { name: 'All' }).focus());
+    await user.keyboard('{ArrowRight}');
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'After' }));
+    rerender(ui('none'));
+    expect(screen.getByRole('tab', { name: 'Nothing' })).toHaveAttribute('tabindex', '0');
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Nothing' }));
+  });
+
+  it.each(['missing', 'off'])('Tab into tabs whose value is %s calls nothing', async (value) => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(
+      <>
+        <button type="button">Before</button>
+        <Tabs label="Notify" tabs={TABS} value={value} onChange={onChange} />
+      </>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Before' }));
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'All' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('a tab is chosen on click, not when the pointer goes down', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(<Controlled onChange={onChange} />);
+    const mentions = screen.getByRole('tab', { name: /Mentions/ });
+    await user.pointer({ keys: '[MouseLeft>]', target: mentions });
+    expect(document.activeElement).toBe(mentions);
+    expect(onChange).not.toHaveBeenCalled();
+    await user.pointer({ keys: '[/MouseLeft]', target: mentions });
+    expect(onChange.mock.calls).toEqual([['mentions']]);
+  });
+
+  it('Up and Down move between tabs too', async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithKit(<Controlled onChange={onChange} />);
+    act(() => screen.getByRole('tab', { name: 'All' }).focus());
+    await user.keyboard('{ArrowDown}');
+    expect(onChange).toHaveBeenLastCalledWith('mentions');
+    await user.keyboard('{ArrowUp}');
+    expect(onChange).toHaveBeenLastCalledWith('all');
   });
 
   it('a disabled tab is disabled and ignores clicks', async () => {

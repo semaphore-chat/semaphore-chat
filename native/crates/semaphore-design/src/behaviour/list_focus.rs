@@ -53,6 +53,16 @@ pub enum Event {
     Press {
         id: String,
     },
+    /// The selection set from outside the list (a route, a value prop); `None` clears it.
+    SetSelected {
+        id: Option<String>,
+    },
+    /// Focus left the list.
+    FocusOut,
+    /// A row received focus by other means than the list's keys.
+    FocusRow {
+        id: String,
+    },
 }
 
 /// What the list asks of its surroundings.
@@ -201,6 +211,26 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
         return (next, effects);
     }
 
+    if let Event::SetSelected { id } = event {
+        // Rule 17: the selection set from outside: a row's id (enabled or not), else none.
+        // Nothing is emitted; focus and typeahead stay. Not a key, so rule 2 does not stop it.
+        next.selected = id
+            .as_ref()
+            .filter(|id| next.rows.iter().any(|row| row.id == **id))
+            .cloned();
+        return (next, effects);
+    }
+
+    if let Event::FocusOut = event {
+        // Rule 18: focus left the list. The typed letters go (their timer too); nothing else:
+        // rule 6 decides where focus comes back, on entry.
+        if !next.typeahead.is_empty() {
+            effects.push(Effect::CancelTimer { token: next.token });
+            next.typeahead.clear();
+        }
+        return (next, effects);
+    }
+
     let enabled = enabled_ids(&next.rows);
     // Rule 2: with no enabled rows, every key does nothing.
     if enabled.is_empty() && !matches!(event, Event::TimerFired { .. }) {
@@ -209,8 +239,15 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
     let focused = next.focused.clone();
 
     match event {
-        // Handled above: every setRows event returns before this match.
-        Event::SetRows { .. } => {}
+        // Handled above: every setRows, setSelected and focusOut event returns before this match.
+        Event::SetRows { .. } | Event::SetSelected { .. } | Event::FocusOut => {}
+        Event::FocusRow { id } => {
+            // Rule 19: a row focused by other means than the keys is the focused row. It never
+            // selects (rule 12 is for keys and typeahead); a disabled or unknown row does nothing.
+            if enabled.contains(id) {
+                next.focused = Some(id.clone());
+            }
+        }
         Event::Down | Event::Up => {
             // Rule 3: Down moves to the next enabled row, Up to the previous one; with nothing
             // focused, Down takes the first and Up the last.
@@ -258,15 +295,13 @@ pub fn step(state: &State, event: &Event, params: &Params) -> (State, Vec<Effect
             }
         }
         Event::FocusIn => {
-            // Rule 6: focus entering the list goes to the selected row if enabled, else the
-            // first enabled row, and never changes the selection.
-            if focused.is_none() {
-                let selected = next.selected.clone();
-                let target = selected
-                    .filter(|selected| enabled.contains(selected))
-                    .or_else(|| enabled.first().cloned());
-                next.focused = target;
-            }
+            // Rule 6: focus entering the list, every time, goes to the selected row if enabled,
+            // else the focused row, else the first enabled row; it never changes the selection.
+            let selected = next.selected.clone();
+            next.focused = selected
+                .filter(|selected| enabled.contains(selected))
+                .or_else(|| focused.filter(|focused| enabled.contains(focused)))
+                .or_else(|| enabled.first().cloned());
         }
         Event::Type { char } => {
             // Rule 7: the character joins the buffer, folded (rule 16), and the timer restarts

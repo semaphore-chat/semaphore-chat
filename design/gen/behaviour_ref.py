@@ -469,6 +469,9 @@ LIST_EVENTS = (
     "timerFired",
     "activate",
     "press",
+    "setSelected",
+    "focusOut",
+    "focusRow",
 )
 
 
@@ -553,6 +556,22 @@ def step_list_focus(state: dict, event: dict, params: dict) -> tuple[dict, Effec
             effects.append(_effect("deselect"))
         return state, effects
 
+    if name == "setSelected":
+        # Rule 17: the selection set from outside: a row's id (enabled or not),
+        # else null. Nothing is emitted; focus and typeahead stay. Not a key, so
+        # rule 2 does not stop it.
+        row_id = fields["id"]
+        state["selected"] = row_id if row_id in {row["id"] for row in state["rows"]} else None
+        return state, effects
+
+    if name == "focusOut":
+        # Rule 18: focus left the list. The typed letters go (their timer too);
+        # nothing else: rule 6 decides where focus comes back, on entry.
+        if state["typeahead"]:
+            effects.append(_effect("cancelTimer", token=state["token"]))
+            state["typeahead"] = ""
+        return state, effects
+
     enabled = _enabled(state["rows"])
     # Rule 2: with no enabled rows, every key does nothing.
     if not enabled and name != "timerFired":
@@ -582,11 +601,13 @@ def step_list_focus(state: dict, event: dict, params: dict) -> tuple[dict, Effec
         _focus(state, enabled[-1], params, effects)
 
     elif name == "focusIn":
-        # Rule 6: focus entering the list goes to the selected row if enabled,
-        # else the first enabled row, and never changes the selection.
-        if focused is None:
-            selected = state["selected"]
-            state["focused"] = selected if selected in enabled else enabled[0]
+        # Rule 6: focus entering the list, every time, goes to the selected row if
+        # enabled, else the focused row, else the first enabled row; never selects.
+        selected = state["selected"]
+        if selected in enabled:
+            state["focused"] = selected
+        elif focused not in enabled:
+            state["focused"] = enabled[0]
 
     elif name == "type":
         # Rule 7: the character joins the buffer, folded (rule 16), and the timer
@@ -612,6 +633,13 @@ def step_list_focus(state: dict, event: dict, params: dict) -> tuple[dict, Effec
         if focused is not None:
             state["selected"] = focused
             effects.append(_effect("select", id=focused))
+
+    elif name == "focusRow":
+        # Rule 19: a row focused by other means than the keys is the focused row.
+        # It never selects (rule 12 is for keys and typeahead); a disabled or
+        # unknown row does nothing.
+        if fields["id"] in enabled:
+            state["focused"] = fields["id"]
 
     elif name == "press":
         # Rule 13: a press on an enabled row focuses and selects it; on a disabled

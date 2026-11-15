@@ -41,7 +41,10 @@ export type Event =
   | { type: { char: string } }
   | { timerFired: { token: number } }
   | { activate: Record<string, never> }
-  | { press: { id: string } };
+  | { press: { id: string } }
+  | { setSelected: { id: string | null } }
+  | { focusOut: Record<string, never> }
+  | { focusRow: { id: string } };
 
 export type Effect =
   | { select: { id: string } }
@@ -66,6 +69,9 @@ const EVENT_NAMES = [
   'timerFired',
   'activate',
   'press',
+  'setSelected',
+  'focusOut',
+  'focusRow',
 ] as const;
 
 export const DEFAULT_PARAMS: Params = {
@@ -177,6 +183,25 @@ export function stepListFocus(
     return { state: next, effects };
   }
 
+  if ('setSelected' in event) {
+    // Rule 17: the selection set from outside: a row's id (enabled or not),
+    // else null. Nothing is emitted; focus and typeahead stay. Not a key, so
+    // rule 2 does not stop it.
+    const { id } = event.setSelected;
+    next.selected = id !== null && next.rows.some((row) => row.id === id) ? id : null;
+    return { state: next, effects };
+  }
+
+  if ('focusOut' in event) {
+    // Rule 18: focus left the list. The typed letters go (their timer too);
+    // nothing else: rule 6 decides where focus comes back, on entry.
+    if (next.typeahead) {
+      effects.push({ cancelTimer: { token: next.token } });
+      next.typeahead = '';
+    }
+    return { state: next, effects };
+  }
+
   const enabled = enabledIds(next.rows);
   // Rule 2: with no enabled rows, every key does nothing.
   if (enabled.length === 0 && !('timerFired' in event)) return { state: next, effects };
@@ -204,12 +229,11 @@ export function stepListFocus(
     // Rule 5: End focuses the last enabled row.
     focus(next, enabled[enabled.length - 1], params, effects);
   } else if ('focusIn' in event) {
-    // Rule 6: focus entering the list goes to the selected row if enabled,
-    // else the first enabled row, and never changes the selection.
-    if (focused === null) {
-      const { selected } = next;
-      next.focused = selected !== null && enabled.includes(selected) ? selected : enabled[0];
-    }
+    // Rule 6: focus entering the list, every time, goes to the selected row if
+    // enabled, else the focused row, else the first enabled row; never selects.
+    const { selected } = next;
+    if (selected !== null && enabled.includes(selected)) next.focused = selected;
+    else if (focused === null || !enabled.includes(focused)) next.focused = enabled[0];
   } else if ('type' in event) {
     // Rule 7: the character joins the buffer, folded (rule 16), and the timer
     // restarts with a new token.
@@ -230,6 +254,11 @@ export function stepListFocus(
       next.selected = focused;
       effects.push({ select: { id: focused } });
     }
+  } else if ('focusRow' in event) {
+    // Rule 19: a row focused by other means than the keys is the focused row. It
+    // never selects (rule 12 is for keys and typeahead); a disabled or unknown row
+    // does nothing.
+    if (enabled.includes(event.focusRow.id)) next.focused = event.focusRow.id;
   } else if ('press' in event) {
     // Rule 13: a press on an enabled row focuses and selects it; on a disabled
     // or unknown row it does nothing.

@@ -1,4 +1,4 @@
-import type { JSX, MouseEvent, ReactNode, Ref } from 'react';
+import { useCallback, useLayoutEffect, useRef, type JSX, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -8,6 +8,14 @@ import { mix } from '../theme/mix';
 import { focusRing } from '../theme/states';
 import { SurfaceContext, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
+import {
+  ROW_ATTRIBUTE,
+  restoreTrailingTabOrder,
+  rowFocusProps,
+  takeTrailingOutOfTabOrder,
+  TRAILING_ATTRIBUTE,
+  type RowFocus,
+} from '../behaviour/hosts/listFocus';
 
 export interface ListRowProps {
   primary: string;
@@ -29,6 +37,16 @@ export interface ListRowProps {
   onClick?: () => void;
   ref?: Ref<HTMLElement>;
   id?: string;
+  /**
+   * Joins a keyboard list: `useListFocus(...).rowFocus(id)`. The row becomes one stop of the list's
+   * roving Tab stop, and the controls in `trailing` leave the Tab order (Right and Left reach them).
+   */
+  focus?: RowFocus;
+}
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
+  if (typeof ref === 'function') ref(value);
+  else if (ref) (ref as { current: T | null }).current = value;
 }
 
 interface LookProps {
@@ -123,6 +141,12 @@ const mainStyle = (theme: Parameters<typeof kitTheme>[0], interactive: boolean, 
       '&:active::after': { background: pressed(false) },
       '&[aria-current]:active::after': { background: pressed(true) },
       '&:focus-visible::after': focusRing(palette, -tokens.border.focus),
+      // On the accent pill a ring in the focus colour does not show (they are the same hue), and an outer ring
+      // is clipped by a scrolling list. So a selected row's ring is the on-accent ink, a ring's width further in.
+      '&[aria-current]:focus-visible::after': {
+        ...focusRing(palette, -2 * tokens.border.focus),
+        outlineColor: palette.onAccent,
+      },
       '&:disabled::after, &[aria-disabled="true"]::after': { display: 'none' },
     }),
   } as const;
@@ -204,8 +228,42 @@ export function ListRow({
   onClick,
   ref,
   id,
+  focus,
 }: ListRowProps): JSX.Element {
   const on = useSurface();
+  // Only a link or a button joins a keyboard list: a plain row is not interactive, so `focus` is ignored there.
+  const roving = href !== undefined || onClick !== undefined ? rowFocusProps(focus) : undefined;
+  const rovingOn = roving !== undefined;
+  const hasTrailing = trailing !== undefined;
+  const trailingRef = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const slot = trailingRef.current;
+    if (!rovingOn || slot === null) return undefined;
+    takeTrailingOutOfTabOrder(slot);
+    // A control can mount in the slot, or remount through its own state, without this row rendering again.
+    if (typeof MutationObserver === 'undefined') return () => restoreTrailingTabOrder(slot);
+    const observer = new MutationObserver(() => takeTrailingOutOfTabOrder(slot));
+    observer.observe(slot, { childList: true, subtree: true, attributes: true, attributeFilter: ['tabindex'] });
+    return () => {
+      observer.disconnect();
+      restoreTrailingTabOrder(slot);
+    };
+  }, [rovingOn, hasTrailing]);
+  const rovingRef = roving?.ref;
+  // Stable, so neither the caller's ref nor the list's is detached and attached again on every render.
+  const mainRef = useCallback(
+    (element: HTMLElement | null) => {
+      assignRef(ref, element);
+      rovingRef?.(element);
+    },
+    [ref, rovingRef],
+  );
+  const handleClick = (event: MouseEvent<HTMLElement>) => {
+    roving?.onClick(event);
+    onClick?.();
+  };
+  // A disabled row gets no tabindex: it stays out of reach of the mouse and the keyboard, as before.
+  const focusProps = roving === undefined || disabled ? {} : { tabIndex: roving.tabIndex };
   const current = selected ? (href !== undefined ? 'page' : 'true') : undefined;
   // Selected keeps the on-accent ink whatever else is set.
   const tone = (dim: boolean, strong: boolean): 'row' | 'strong' | 'dim' =>
@@ -235,7 +293,15 @@ export function ListRow({
   let main: JSX.Element;
   if (href !== undefined && !disabled) {
     main = (
-      <Anchor ref={ref as Ref<HTMLAnchorElement>} id={id} href={href} aria-current={current} $on={on}>
+      <Anchor
+        ref={mainRef}
+        id={id}
+        href={href}
+        aria-current={current}
+        $on={on}
+        {...focusProps}
+        onClick={roving === undefined ? undefined : roving.onClick}
+      >
         {content}
       </Anchor>
     );
@@ -243,12 +309,13 @@ export function ListRow({
     // A disabled link has no destination: not focusable, not navigable.
     main = (
       <Anchor
-        ref={ref as Ref<HTMLAnchorElement>}
+        ref={mainRef}
         id={id}
         role="link"
         aria-disabled="true"
         aria-current={current}
         $on={on}
+        {...focusProps}
         onClick={(event: MouseEvent) => event.preventDefault()}
       >
         {content}
@@ -257,34 +324,51 @@ export function ListRow({
   } else if (onClick !== undefined) {
     main = (
       <Button
-        ref={ref as Ref<HTMLButtonElement>}
+        ref={mainRef}
         id={id}
         type="button"
         disabled={disabled}
         aria-current={current}
         $on={on}
-        onClick={onClick}
+        {...focusProps}
+        onClick={roving === undefined ? onClick : handleClick}
       >
         {content}
       </Button>
     );
   } else {
     main = (
-      <Plain ref={ref as Ref<HTMLDivElement>} id={id} aria-current={current} $on={on}>
+      <Plain
+        ref={mainRef}
+        id={id}
+        aria-current={current}
+        $on={on}
+        {...focusProps}
+        onClick={roving === undefined ? undefined : roving.onClick}
+      >
         {content}
       </Plain>
     );
   }
 
   return (
-    <Wrapper $size={size} $selected={selected} $interactive={interactive} $disabled={disabled} $on={on}>
+    <Wrapper
+      $size={size}
+      $selected={selected}
+      $interactive={interactive}
+      $disabled={disabled}
+      $on={on}
+      {...(roving !== undefined && { [ROW_ATTRIBUTE]: '' })}
+    >
       {/* A selected row is the accent pill; an unselected one keeps the layer around it. */}
       <SurfaceContext value={selected ? 'accent' : on}>
         {main}
         {trailing !== undefined && (
           // A Tooltip around the row describes its link or button, not a control in the slot.
           <TooltipDescriptionContext value={null}>
-            <Trailing>{trailing}</Trailing>
+            <Trailing ref={trailingRef} {...(roving !== undefined && { [TRAILING_ATTRIBUTE]: '' })}>
+              {trailing}
+            </Trailing>
           </TooltipDescriptionContext>
         )}
       </SurfaceContext>

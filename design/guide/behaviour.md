@@ -50,8 +50,11 @@ called a host.
   destructive confirmation on a kit Dialog. `useLoadState` and
   `useQueryLoadState` run the load state, and `LoadState` draws its five faces.
   Screens use these, not the reducers.
-- The list focus host does not exist yet, and the native client has no hosts.
-  They arrive with the new shell.
+- The web kit has the list focus host as well: `useListFocus` gives a list one
+  Tab stop, the arrows, Home and End, typeahead and Enter or Space (see
+  [List focus](#list-focus)). Tabs runs on it, and a screen builds a keyboard
+  list of `ListRow`s with it ([Components](components.md#a-keyboard-list)).
+- The native client has no hosts yet. They arrive with its new shell.
 - Until then, today's screens still handle these things by hand, and they use
   MUI overlays, not the kit's. They behave as MUI does, which differs from these
   rules in places. For example, MUI lets an Escape pressed over a tooltip also
@@ -462,8 +465,9 @@ Rules:
   Down goes to the first row and Up to the last.
 - At the ends, Down and Up stop. A list can choose to wrap round instead.
 - Home goes to the first row and End to the last.
-- When focus enters the list, it goes to the selected row, or to the first row
-  if nothing usable is selected. This does not change the selection.
+- Every time focus enters the list, it goes to the selected row; if nothing
+  usable is selected, to the row focus last left; if there is none, to the
+  first row. This never changes the selection.
 - Typing letters jumps to the first row whose label starts with them, from the
   focused row onwards and round. Case does not matter. The letters add up for
   one second (the typeahead timing), then start again.
@@ -477,6 +481,20 @@ Rules:
   moves to the next row, or the previous one if there is none. The selection
   moves with it only in a list that selects as focus moves.
 - When the selected row goes away, nothing is selected.
+- The screen can set the selection from outside the list, as a route or a value
+  changes it (`setSelected`). That only moves the selection: nothing is chosen,
+  no `select` is emitted, and focus and the typed letters stay where they are.
+  An id that names no row means nothing is selected; once the row arrives, the
+  host sets it again.
+- When focus leaves the list (`focusOut`), the typed letters are dropped and
+  nothing else changes. Where focus comes back is decided when it enters, so a
+  selection changed while the user was away is where they come back, whether it
+  was set, cleared, removed or disabled meanwhile.
+- When a row gets focus some other way than the list's keys (a click, a screen
+  reader, code, or focus landing on one of the row's own controls; `focusRow`),
+  that row becomes the focused row, so the arrows go on from there. It never
+  selects, also in a list that selects as focus moves: a tab is chosen by its
+  click, Enter or Space, or an arrow key.
 - "Case does not matter" means each character is put in lower case on its own,
   the same way in every language (Python's `str.lower()` on one character at a
   time). Characters are then compared exactly, so an emoji only matches itself.
@@ -497,6 +515,48 @@ Random.
 |Keys|Arrows, Home, End, Enter; Space is `type` while the buffer is not empty|
 |Typeahead|One character per `type`; the timer runs as the effects say|
 |Selection|`select` and `deselect` acted on; the host reads `focused` to move real focus|
+|Selection from outside|`setSelected` whenever the screen's selection differs from the pattern's, also after `setRows`|
+|Focus in and out|`focusOut` when focus moves outside the list (not between its rows or to a row's controls); `focusRow` when a row gets focus that the host did not move there|
+
+**The web host** (`useListFocus` in `frontend/src/kit/behaviour/hosts/listFocus.ts`):
+
+- Roving tabindex: the list has one Tab stop, the focused row, or before the
+  list is entered (and whenever focus is outside it) the row focus will enter on
+  by the rule above, kept up to date as the selection and rows change. Real focus
+  moves with `focused`, so screen readers and the focus ring follow it.
+- Keys: Up and Down in a vertical list; in a horizontal one (Tabs) Left and
+  Right too. Home and End. Keys with Ctrl, Alt or Meta (AltGr letters still
+  type), keys an IME is composing, keys a control already handled
+  (`defaultPrevented`) and keys from anything that is not a row or a row's
+  trailing control pass by. A letter is `type` when typeahead is on. A held
+  Enter or Space chooses once.
+- Activation follows the browser's own click: Enter on a link or button, and
+  Space on a button, click the row natively, and that click (`detail` 0) is
+  `activate`. Space on a link would scroll the page, so the host presses the
+  link itself. A pointer click is `press`. A modified click on a link (a new
+  tab) is left to the browser; on a button row it still chooses the row. So a
+  link navigates once and nothing is chosen twice.
+- Space on a row while letters are pending is `type`, and its keydown and keyup
+  are both taken so the row is not pressed. On a trailing control, Space is that
+  control's.
+- Focus never falls to the page: when the focused element in the list goes away
+  (a row removed, a row's element replaced, a trailing control that unmounts),
+  the host focuses its row, else the pattern's row. It checks after every
+  render and on every change under the list. When focus is elsewhere, nothing
+  in the list takes it.
+- `reveal(id)` runs before a row is focused, so a virtualised list can render
+  it; the host focuses the row once it is rendered, however many frames that
+  takes. A virtualised list keeps its Tab stop row (the focused or selected
+  row) rendered, or Tab skips the list.
+- In a vertical list, a row's trailing controls are not Tab stops: Right goes
+  from the row into them and Left back.
+- Focus leaving the list container (`focusout` to anything outside it, or to
+  nothing) is `focusOut`. One capture-phase focus handler on the list sends,
+  in order, `focusIn` when focus arrives from outside, then `focusRow` when the
+  focus is on a row (or a row's trailing control) other than the pattern's
+  focused row. Tab arrives on the Tab stop, which is rule 6's row, so it sends
+  only `focusIn`; a click or a screen reader arriving on another row sends both.
+  Neither moves or reveals anything: real focus is already where it is.
 
 ## Load state
 
