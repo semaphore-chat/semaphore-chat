@@ -19,6 +19,7 @@
 //! No dependencies, and no GPUI: this is the data, not the mapping onto a renderer (see unit U8).
 //! See `native/docs/slice-units/U2-design.md`.
 
+pub mod behaviour;
 #[cfg(test)]
 mod behaviour_vectors;
 pub mod colour_params;
