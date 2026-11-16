@@ -1,8 +1,8 @@
 /**
  * The hidden chat fixture at `/__lounge/community/:communityId/channel/:channelId` (PR 10c-1): the new shell's
- * text channel chat, read side, inside the community's frame. Reached from the community fixture's channel rows
- * (its `links`), never from the app: no real channel route is the new shell's yet. With the design off it is the
- * old shell's not-found page.
+ * text channel chat inside the community's frame, at every width. Reached from the community fixture's channel rows
+ * (its `links`), never from the app; the real route at phone width is `ChannelChatScreen`, the same descriptor
+ * without `links`. With the design off it is the old shell's not-found page.
  *
  * A phone shows the centre (the chat) with Back to the community fixture; the right content is the channel's
  * members (a private channel's own members), a Sheet below wide.

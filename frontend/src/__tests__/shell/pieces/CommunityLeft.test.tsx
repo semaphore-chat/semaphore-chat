@@ -73,6 +73,7 @@ import { handleVoiceUserJoined } from '../../../socket-hub/handlers/voiceHandler
 import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityLeft';
 import { ScreenChromeContext, type ScreenChrome } from '../../../shell/lounge/screen';
 import { LAST_COMMUNITY_KEY } from '../../../utils/lastCommunity';
+import { forgetVoiceChannels, knownVoiceChannels } from '../../../shell/voiceChannelMemory';
 import { CommunityHeader } from '../../../shell/lounge/pieces/community/CommunityHeader';
 import { VoiceRoomCard } from '../../../shell/lounge/pieces/community/VoiceRoomCard';
 import { UserCard, UserCardConnected } from '../../../shell/lounge/pieces/community/UserCard';
@@ -196,6 +197,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Module state: a failed test must not leak noted voice ids into the next one.
+  forgetVoiceChannels();
   expect(consoleError).not.toHaveBeenCalled();
 });
 
@@ -407,6 +410,15 @@ describe('CommunityLeft (the phone community home, PR 9b)', () => {
     renderLeft();
     await screen.findByRole('heading', { name: 'Couch Co-op', level: 2 });
     expect(localStorage.getItem(LAST_COMMUNITY_KEY)).toBe('c-1');
+  });
+
+  it("notes the voice rooms' channel ids for the shell (their route is the old shell's call view), not the text channels", async () => {
+    forgetVoiceChannels();
+    serve();
+    renderLeft();
+    await screen.findByRole('heading', { name: 'Couch Co-op', level: 2 });
+    await waitFor(() => expect(knownVoiceChannels().has('vc-squad')).toBe(true));
+    expect(knownVoiceChannels().has('ch-general')).toBe(false);
   });
 
   it('does not record a community the user cannot open', async () => {

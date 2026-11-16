@@ -10,7 +10,7 @@ import { useLocation } from 'react-router-dom';
 import { KitProvider } from '../../../kit';
 import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
-import { LoungeLinksContext } from '../../../shell/lounge/links';
+import { APP_LINKS, LoungeLinksContext, type LoungeLinks } from '../../../shell/lounge/links';
 import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
 import { ScreenChromeContext } from '../../../shell/lounge/screen';
 import { forgetRouteMemory, notePathname } from '../../../shell/routeMemory';
@@ -80,7 +80,13 @@ vi.mock('../../../data/chat/toSegments', async (importOriginal) => {
     },
   };
 });
-vi.mock('../../../data/chat/useConversation', () => ({ useConversation: () => conversation.current }));
+const conversationCalls: Array<{ chatPath?: string }> = [];
+vi.mock('../../../data/chat/useConversation', () => ({
+  useConversation: (options: { chatPath?: string }) => {
+    conversationCalls.push(options);
+    return conversation.current;
+  },
+}));
 
 const FIXTURE_CHAT = '/__lounge/community/c-1/channel/ch-1';
 const FIXTURE_HOME = '/__lounge/community/c-1';
@@ -113,10 +119,16 @@ function Where() {
   return <output data-testid="where">{location.pathname + location.search}</output>;
 }
 
-function setup({ isPrivate = false, entries = [FIXTURE_CHAT], rightOpen = false } = {}) {
+function setup({
+  isPrivate = false,
+  entries = [FIXTURE_CHAT],
+  rightOpen = false,
+  links = FIXTURE_LINKS as LoungeLinks,
+  type = 'TEXT' as 'TEXT' | 'VOICE',
+} = {}) {
   const queryClient = createTestQueryClient();
   queryClient.setQueryData(channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }), [
-    createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1', isPrivate }),
+    createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1', isPrivate, type }),
   ]);
   queryClient.setQueryData(userControllerGetUserByIdQueryKey({ path: { id: 'u-aiko' } }), {
     id: 'u-aiko',
@@ -130,7 +142,7 @@ function setup({ isPrivate = false, entries = [FIXTURE_CHAT], rightOpen = false 
   const ui = () => (
     <FileCacheProvider>
     <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
-      <LoungeLinksContext value={FIXTURE_LINKS}>
+      <LoungeLinksContext value={links}>
         <ScreenChromeContext value={{ rightOpen, setRightOpen }}>
           <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
           <Where />
@@ -157,6 +169,50 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     counts.rows.clear();
     counts.segments = 0;
     conversation.current = makeConversation();
+    conversationCalls.length = 0;
+  });
+
+  describe('on the real route (the app’s links)', () => {
+    const REAL_CHAT = '/community/c-1/channel/ch-1';
+    const REAL_HOME = '/community/c-1';
+
+    it('clears ?highlight= to the real path, and Back steps back to the community home it came from', () => {
+      notePathname(REAL_HOME);
+      notePathname(REAL_CHAT);
+      setup({ entries: [REAL_HOME, REAL_CHAT], links: APP_LINKS });
+      expect(conversationCalls[conversationCalls.length - 1]?.chatPath).toBe(REAL_CHAT);
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the community' }));
+      expect(navCalls).toEqual([[-1]]);
+      expect(where()).toBe(REAL_HOME);
+    });
+
+    it('a cold deep link: Back replaces the entry with the real community home', () => {
+      setup({ entries: [`${REAL_CHAT}?highlight=m-1`], links: APP_LINKS });
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the community' }));
+      expect(navCalls).toEqual([[REAL_HOME, { replace: true }]]);
+    });
+
+    it('a quote opens its original on the real path', () => {
+      conversation.current = makeConversation({
+        orderedMessages: [
+          createMessage({
+            id: 'm-2',
+            replyTo: { id: 'm-1', authorId: 'u-aiko', sentAt: '2026-11-16T10:00:00Z', deletedAt: null, spans: [{ type: SpanType.PLAINTEXT, text: 'hi' }] },
+          }),
+        ],
+      });
+      setup({ entries: [REAL_CHAT], links: APP_LINKS });
+      fireEvent.click(screen.getByRole('button', { name: 'Reply to Aiko: hi' }));
+      expect(navCalls).toEqual([[`${REAL_CHAT}?highlight=m-1`, { replace: true }]]);
+    });
+
+    it('a voice channel gets no chat (its route is the old shell’s call view): a "Voice channel" state with Back, no composer, no conversation', () => {
+      setup({ entries: [REAL_CHAT], links: APP_LINKS, type: 'VOICE' });
+      expect(screen.getByRole('heading', { name: 'Voice channel' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Back to the community' })).toBeInTheDocument();
+      expect(screen.queryByRole('textbox')).toBeNull();
+      expect(conversationCalls).toEqual([]);
+    });
   });
 
   it('the header is the channel’s heading, with a lock for a private channel', () => {

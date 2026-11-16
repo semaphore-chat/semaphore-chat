@@ -13,7 +13,8 @@ export interface ChatHeaderProps {
   onBack: () => void;
   /** Opens the members; undefined while they are shown beside the list (wide). */
   onShowMembers?: () => void;
-  onSearch: () => void;
+  /** The More menu's Search; undefined: no More menu (a voice channel has nothing to search). */
+  onSearch?: () => void;
 }
 
 export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch }: ChatHeaderProps): JSX.Element {
@@ -26,7 +27,7 @@ export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch }
       icon: 'Search',
       onSelect: () => {
         setOpen(false);
-        onSearch();
+        onSearch?.();
       },
     },
   ];
@@ -44,16 +45,20 @@ export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch }
         {isPrivate && <Icon name="Lock" size="sm" tone="secondary" label="Private channel" />}
       </Stack>
       {onShowMembers !== undefined && <IconButton icon="Users" label="Members" variant="ghost" onClick={onShowMembers} />}
-      <IconButton
-        ref={more}
-        icon="Ellipsis"
-        label="More"
-        variant="ghost"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((was) => !was)}
-      />
-      <Menu open={open} anchor={more.current} onClose={() => setOpen(false)} label="Channel menu" items={items} placement="bottom-end" />
+      {onSearch !== undefined && (
+        <>
+          <IconButton
+            ref={more}
+            icon="Ellipsis"
+            label="More"
+            variant="ghost"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={() => setOpen((was) => !was)}
+          />
+          <Menu open={open} anchor={more.current} onClose={() => setOpen(false)} label="Channel menu" items={items} placement="bottom-end" />
+        </>
+      )}
     </Stack>
   );
 }

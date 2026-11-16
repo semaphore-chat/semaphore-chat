@@ -20,6 +20,11 @@ export interface ChooseShellInput {
    * new shell there. The real screens are web-only for now, at every width and zoom.
    */
   electron?: boolean;
+  /**
+   * Voice channels the new shell has seen (`voiceChannelMemory`): a real route whose `:channelId` is one of them is
+   * the old shell's (its call view). The path alone cannot tell a voice channel from a text one.
+   */
+  voiceChannels?: ReadonlySet<string>;
   routes?: readonly LoungeRoute[];
 }
 
@@ -44,9 +49,17 @@ function rankedTable(routes: readonly LoungeRoute[]): RankedRoute[] {
  * best whole-path match decides: the old shell for a static sibling, the new
  * shell for a registered route converted at this width, the old shell if not.
  * A path nothing matches is the old shell's. In the desktop app only a fixture
- * can be the new shell.
+ * can be the new shell. A real channel route of a known voice channel is the
+ * old shell's (`voiceChannels`).
  */
-export function chooseShell({ pathname, enabled, width, electron = false, routes = LOUNGE_ROUTES }: ChooseShellInput): ShellChoice {
+export function chooseShell({
+  pathname,
+  enabled,
+  width,
+  electron = false,
+  voiceChannels,
+  routes = LOUNGE_ROUTES,
+}: ChooseShellInput): ShellChoice {
   if (!enabled) {
     return CLASSIC;
   }
@@ -59,7 +72,12 @@ export function chooseShell({ pathname, enabled, width, electron = false, routes
   if (!route.widths.includes(width)) {
     return CLASSIC;
   }
-  if (electron && !route.path.startsWith(LOUNGE_FIXTURE_PREFIX)) {
+  const fixture = route.path.startsWith(LOUNGE_FIXTURE_PREFIX);
+  if (electron && !fixture) {
+    return CLASSIC;
+  }
+  const channelId = match.params.channelId;
+  if (!fixture && channelId !== undefined && voiceChannels?.has(channelId)) {
     return CLASSIC;
   }
   return { kind: 'lounge', route, params: match.params };

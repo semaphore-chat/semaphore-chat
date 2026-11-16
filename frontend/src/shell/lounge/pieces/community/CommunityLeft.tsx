@@ -22,6 +22,7 @@ import { useUnreadSummary } from '../../../../data/unread';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
 import { isPermanentAccessError } from '../../../../utils/httpError';
 import { rememberLastCommunity } from '../../../../utils/lastCommunity';
+import { noteVoiceChannels } from '../../../voiceChannelMemory';
 import { rememberActivatedRow } from '../../../routeMemory';
 import { useScreenChrome } from '../../screen';
 import { useLoungeLinks } from '../../links';
@@ -153,6 +154,11 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
   useEffect(() => {
     if (communityLoaded) rememberLastCommunity(communityId);
   }, [communityId, communityLoaded]);
+
+  // A voice room's channel route is the old shell's call view (`chooseShell`): tell the shell which ids they are.
+  useEffect(() => {
+    if (voice.length > 0) noteVoiceChannels(voice.map((room) => room.id));
+  }, [voice]);
 
   const notMember =
     (communityStatus === 'error' && isPermanentAccessError(communityError)) ||

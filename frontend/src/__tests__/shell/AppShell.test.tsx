@@ -136,7 +136,8 @@ import { AppRoutes } from '../../routes';
 import { DesignPreviewPage } from '../../pages/debug/PWADebugPage';
 import { clearDesignPreview, setDesignPreview } from '../../shell/designPreview';
 import { renewLoungeRoot } from '../../shell/loungeRootLazy';
-import { COMMUNITY_HOME_PATH, LOUNGE_ROUTES, loungeCommunityFixturePath } from '../../shell/loungeRoutes';
+import { CHANNEL_CHAT_PATH, COMMUNITY_HOME_PATH, LOUNGE_ROUTES, loungeCommunityFixturePath } from '../../shell/loungeRoutes';
+import { forgetVoiceChannels, noteVoiceChannels } from '../../shell/voiceChannelMemory';
 import { readShownShellKind } from '../../shell/shownShellKind';
 
 // --- A viewport whose width can change, with real media-query listeners ------
@@ -249,7 +250,7 @@ function createRoom() {
 const IN_A_CALL = {
   isConnected: true,
   contextType: VoiceSessionType.Channel,
-  currentChannelId: 'ch-1',
+  currentChannelId: 'vc-call',
   channelName: 'general',
   communityId: 'c-1',
   isPrivate: false,
@@ -462,8 +463,15 @@ describe('with the new design on', () => {
 });
 
 describe('the phone community home (/community/:communityId)', () => {
+  afterEach(() => forgetVoiceChannels());
+
   /** A stub for the real screen module: it would pull the kit in after the test environment is gone (D8). */
   function stubHomeLoad() {
+    // The channel chat too: a channel tap from the home opens it at phone width.
+    const chat = LOUNGE_ROUTES.find((route) => route.path === CHANNEL_CHAT_PATH)!;
+    vi.spyOn(chat, 'load').mockResolvedValue({
+      default: { template: 'bare', Body: () => null, useTitle: () => null },
+    });
     const home = LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)!;
     return vi.spyOn(home, 'load').mockResolvedValue({
       default: { template: 'bare', Body: () => null, useTitle: () => null },
@@ -524,7 +532,7 @@ describe('the phone community home (/community/:communityId)', () => {
     expect(loungeShell(fixture.container)).not.toBeNull();
   });
 
-  it('a channel tap shows the classic chat, and phone → compact → phone mid-call swaps shells as deferred renders; the call stays', async () => {
+  it('a text channel tap shows the Lounge chat, a voice channel the classic call view; phone → compact → phone mid-call swaps shells as deferred renders; the call stays', async () => {
     stubHomeLoad();
     const viewport = createViewport(390);
     setNewDesignStored(true);
@@ -543,14 +551,43 @@ describe('the phone community home (/community/:communityId)', () => {
 
     act(() => handles.navigate!('/community/c-1/channel/ch-1'));
     await flush();
-    expect(loungeShell(container)).toBeNull();
-    expect(screen.getByTestId('mobile-screen')).toBeInTheDocument();
-    expectCallUp('the classic chat');
+    expect(loungeShell(container)).toHaveAttribute('data-route', CHANNEL_CHAT_PATH);
+    expectCallUp('the Lounge chat');
 
     act(() => handles.navigate!(-1));
     await flush();
-    expect(loungeShell(container)).not.toBeNull();
+    expect(loungeShell(container)).toHaveAttribute('data-route', COMMUNITY_HOME_PATH);
     expectCallUp('Back to the Lounge home');
+
+    // A voice channel the shell has not seen yet opens in the new shell; once its community's list notes it (a
+    // store update, a synchronous render), the old shell's call view takes over as a deferred render.
+    act(() => handles.navigate!('/community/c-1/channel/vc-1'));
+    await flush();
+    expect(loungeShell(container)).not.toBeNull();
+    act(() => noteVoiceChannels(['vc-1']));
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+    expect(screen.getByTestId('mobile-screen')).toBeInTheDocument();
+    expectCallUp('the classic call view');
+    act(() => handles.navigate!(-1));
+    await flush();
+    expect(loungeShell(container)).toHaveAttribute('data-route', COMMUNITY_HOME_PATH);
+    // Known now: straight to the old shell.
+    act(() => handles.navigate!('/community/c-1/channel/vc-1'));
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+    expectCallUp('the classic call view, known');
+    act(() => handles.navigate!(-1));
+    await flush();
+
+    // The connected call's channel is noted by the app shell (M2): its route is the classic call view at once, with
+    // no community list involved.
+    act(() => handles.navigate!('/community/c-9/channel/vc-call'));
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+    expectCallUp('the call view of the connected call');
+    act(() => handles.navigate!(-1));
+    await flush();
 
     act(() => viewport.setWidth(820));
     await flush();

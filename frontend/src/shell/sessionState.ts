@@ -15,6 +15,7 @@ import { clearDesignPreview } from './designPreview';
 import { forgetAllAnnouncements } from './bannerMemory';
 import { forgetRouteMemory } from './routeMemory';
 import { forgetLastCommunity } from '../utils/lastCommunity';
+import { forgetVoiceChannels } from './voiceChannelMemory';
 
 export interface ClearShellSessionStateOptions {
   /**
@@ -28,7 +29,7 @@ export interface ClearShellSessionStateOptions {
  * Forgets the cached "new design" setting (storage, the appearance query, the ThemeProvider's value,
  * without telling the server), this tab's design preview, the desktop sign-in notice, the connection
  * history, which banners were read out, and the new shell's route memory (the rows the user last
- * activated: their community and channel ids) and the community last opened.
+ * activated: their community and channel ids), the community last opened and the voice channels it has seen.
  */
 export function clearShellSessionState(queryClient: QueryClient, options: ClearShellSessionStateOptions = {}): void {
   forgetNewDesignSetting(queryClient);
@@ -38,4 +39,5 @@ export function clearShellSessionState(queryClient: QueryClient, options: ClearS
   forgetAllAnnouncements();
   forgetRouteMemory();
   forgetLastCommunity();
+  forgetVoiceChannels();
 }

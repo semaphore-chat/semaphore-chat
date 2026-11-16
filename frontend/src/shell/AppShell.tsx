@@ -1,4 +1,4 @@
-import React, { startTransition, Suspense, useState } from 'react';
+import React, { startTransition, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { instanceControllerGetPublicSettingsOptions } from '../api-client/@tanstack/react-query.gen';
@@ -21,6 +21,8 @@ import { ShellKindContext } from './shellKind';
 import { setDesignPreview } from './designPreview';
 import type { LoungeChoice } from './chooseShell';
 import { useShellChoice } from './useShellChoice';
+import { noteVoiceChannels } from './voiceChannelMemory';
+import { VoiceSessionType } from '../contexts/VoiceContext';
 import { currentLoungeRoot, renewLoungeRoot } from './loungeRootLazy';
 
 /**
@@ -127,6 +129,14 @@ const AppShell: React.FC = () => {
   // Re-sync a rotated push subscription to the backend on startup (the SW
   // can't authenticate; this is the reliable path).
   usePushResync();
+
+  // The connected channel call's route is the old shell's call view (`chooseShell`'s voice rule), whatever shell
+  // or width the call was joined in: "Open call view" never lands on the new shell's chat first.
+  const callChannelId =
+    voiceState.contextType === VoiceSessionType.Channel ? (voiceState.currentChannelId ?? null) : null;
+  useEffect(() => {
+    if (callChannelId) noteVoiceChannels([callChannelId]);
+  }, [callChannelId]);
 
   // Old shell or new: the route, the width and the "new design" setting (or this tab's preview).
   const choice = useShellChoice();

@@ -3,12 +3,12 @@
  * separators, read marking, Jump to latest with "N new", the typing line and `?highlight=` deep links, all on the
  * shared chat layer (`data/chat/useConversation`) (PR 10c-1); and the write side (PR 10c-2a): the composer
  * (`ChatComposer`), a message's actions (`MessageActionsSheet`), editing in place, and Retry or Delete on a failed
- * send. Reached only on the hidden chat fixture until the real route is registered.
+ * send. The real channel route's at phone width (PR 10c-2b, `ChannelChatScreen`), and the hidden chat fixture's.
  *
  * Typing in the composer and opening a message's actions re-render no row: the composer keeps its own state, and
  * what rows share (`ChatRowContext`) holds only stable values.
  */
-import { useCallback, useContext, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,6 +30,7 @@ import { useHapticFeedback } from '../../../../hooks/useHapticFeedback';
 import { removeOptimisticRow, retryOptimisticMessage } from '../../../../hooks/useOptimisticSendMessage';
 import { useSendMessage } from '../../../../hooks/useSendMessage';
 import type { Message } from '../../../../types/message.type';
+import { ChannelType } from '../../../../types/channel.type';
 import { useAttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import type { MentionChannel } from '../../../../data/chat/toSegments';
 import { findCachedChannel } from '../../../../hooks/useChannelMentionTarget';
@@ -39,6 +40,7 @@ import { UserProfileContext } from '../../../../contexts/UserProfileContext';
 import { getFileUrl } from '../../../../utils/fileHelpers';
 import { getHttpStatus } from '../../../../utils/httpError';
 import { previousPathname } from '../../../routeMemory';
+import { noteVoiceChannels } from '../../../voiceChannelMemory';
 import { useLoungeLinks } from '../../links';
 import { useScreenChrome, type LoungeScreenProps } from '../../screen';
 import { ChatHeader } from './ChatHeader';
@@ -99,13 +101,32 @@ function StateMessage({ title, line, action }: { title: string; line?: string; a
   );
 }
 
+/**
+ * Back (B6): to the community's home. When the screen before this one was that home, it is a step back in the
+ * history (its scroll and the channel row's focus come back); a cold deep link replaces this entry instead.
+ * (The app's hash history keeps no index in history.state, so the frame's own record of the Lounge path shown
+ * before this one decides; it is cleared whenever the old shell shows in between.) `goHome` always replaces.
+ */
+function useChatBack(communityId: string): { onBack: () => void; goHome: () => void } {
+  const navigate = useNavigate();
+  const homePath = pathOf(useLoungeLinks().community(communityId));
+  const onBack = useCallback(() => {
+    if (previousPathname() === homePath) navigate(-1);
+    else navigate(homePath, { replace: true });
+  }, [homePath, navigate]);
+  const goHome = useCallback(() => navigate(homePath, { replace: true }), [homePath, navigate]);
+  return { onBack, goHome };
+}
+
 function ChannelChatBody({ communityId, channelId }: { communityId: string; channelId: string }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const links = useLoungeLinks();
   const chatPath = pathOf(links.channel(communityId, channelId));
-  const homePath = pathOf(links.community(communityId));
   const { channel, loaded } = useRouteChannel({ communityId, channelId });
+  // Only a channel the list confirms is a text channel may be written to (I1): a channel missing from the list
+  // (no access, deleted) reads without a composer, reactions or actions.
+  const writable = channel?.type === ChannelType.TEXT;
   const conversation = useConversation({ communityId, channelId, chatPath });
   const range = useWidthRange();
   const { rightOpen, setRightOpen } = useScreenChrome();
@@ -121,7 +142,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   hapticsRef.current = haptics;
   // The message whose actions are open (one host for the whole list).
   const [actionsFor, setActionsFor] = useState<Message | null>(null);
+  const writableRef = useRef(writable);
+  writableRef.current = writable;
   const openActions = useCallback((message: Message, via: OpenActionsVia) => {
+    if (!writableRef.current) return;
     if (via === 'touch') hapticsRef.current.longPress();
     setActionsFor(message);
   }, []);
@@ -193,6 +217,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     () => ({
       me: conversation.me,
       communityId,
+      writable,
       segments,
       showMessage,
       openPath,
@@ -203,17 +228,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       retrySend,
       removeFailed,
     }),
-    [conversation.me, communityId, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing, retrySend, removeFailed],
+    [conversation.me, communityId, writable, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing, retrySend, removeFailed],
   );
 
-  // Back (B6): to the community's home. When the screen before this one was that home, it is a step back in the
-  // history (its scroll and the channel row's focus come back); a cold deep link replaces this entry instead.
-  // (The app's hash history keeps no index in history.state, so the frame's own record of the Lounge path shown
-  // before this one decides; it is cleared whenever the old shell shows in between.)
-  const onBack = useCallback(() => {
-    if (previousPathname() === homePath) navigate(-1);
-    else navigate(homePath, { replace: true });
-  }, [homePath, navigate]);
+  const { onBack } = useChatBack(communityId);
 
   const typingUsers = useUsers(conversation.typingUserIds);
   const typingNames = conversation.typingUserIds.map((_, i) => {
@@ -226,7 +244,6 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     // As the old chat: refetch whatever active query failed (the messages query lives in the shared hook).
     void queryClient.refetchQueries({ type: 'active', predicate: (query) => query.state.status === 'error' });
   }, [queryClient]);
-  const goHome = useCallback(() => navigate(homePath, { replace: true }), [homePath, navigate]);
 
   const state =
     face === 'loading' ? (
@@ -234,17 +251,9 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     ) : face === 'empty' ? (
       <StateMessage title="No messages yet." line="Start the conversation!" />
     ) : face === 'gone' ? (
-      <StateMessage
-        title="Channel not found"
-        line="It may have been deleted, or the link is wrong."
-        action={<Button onClick={goHome}>Go to the community</Button>}
-      />
+      <GoneState communityId={communityId} />
     ) : face === 'noAccess' ? (
-      <StateMessage
-        title="You don't have access to this channel"
-        line="It may be private, or you may have been removed from this community."
-        action={<Button onClick={goHome}>Go to the community</Button>}
-      />
+      <NoAccessState communityId={communityId} />
     ) : face === 'error' ? (
       <StateMessage title="Couldn't load messages" action={<Button onClick={retry}>Try again</Button>} />
     ) : undefined;
@@ -276,7 +285,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         }
         announcement={conversation.announcement}
         composer={
-          face === 'list' || face === 'empty' ? (
+          writable && (face === 'list' || face === 'empty') ? (
             <ChatComposer
               communityId={communityId}
               channelId={channelId}
@@ -300,9 +309,102 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   );
 }
 
-/** The centre of the chat screen: one conversation per channel (a switch starts the next one fresh). */
+/** The chat's frame before (or instead of) a conversation: the header with Back, and one state. */
+function ChannelChatState({
+  communityId,
+  title,
+  isPrivate,
+  state,
+}: {
+  communityId: string;
+  title: string | null;
+  /** The known channel's privacy (the lock); false while the channel is unknown. */
+  isPrivate: boolean;
+  state: JSX.Element;
+}): JSX.Element {
+  const { onBack } = useChatBack(communityId);
+  return (
+    <ChatPane
+      header={<ChatHeader title={title} isPrivate={isPrivate} onBack={onBack} />}
+      state={state}
+    />
+  );
+}
+
+function GoneState({ communityId }: { communityId: string }): JSX.Element {
+  const { goHome } = useChatBack(communityId);
+  return (
+    <StateMessage
+      title="Channel not found"
+      line="It may have been deleted, or the link is wrong."
+      action={<Button onClick={goHome}>Go to the community</Button>}
+    />
+  );
+}
+
+function NoAccessState({ communityId }: { communityId: string }): JSX.Element {
+  const { goHome } = useChatBack(communityId);
+  return (
+    <StateMessage
+      title="You don't have access to this channel"
+      line="It may be private, or you may have been removed from this community."
+      action={<Button onClick={goHome}>Go to the community</Button>}
+    />
+  );
+}
+
+/** A voice channel has no chat: its route is the old shell's call view (I1, M1). */
+function VoiceChannelState({ communityId }: { communityId: string }): JSX.Element {
+  const { goHome } = useChatBack(communityId);
+  return (
+    <StateMessage
+      title="Voice channel"
+      line="Join it from the community's voice rooms."
+      action={<Button onClick={goHome}>Go to the community</Button>}
+    />
+  );
+}
+
+/**
+ * The centre of the chat screen: one conversation per channel (a switch starts the next one fresh), once the
+ * community's channel list says the channel is not a voice one. Until then skeleton rows; a list that fails says so
+ * with Try again (at phone width the left island's own Retry is hidden). A voice channel gets no chat: the chat notes
+ * it (`voiceChannelMemory`), so the shell shows the old shell's call view, and until then (or on the hidden fixture)
+ * a plain "Voice channel" state with Back.
+ */
 export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
   const communityId = params.communityId ?? '';
   const channelId = params.channelId ?? '';
+  const { channel, status, error, refetch } = useRouteChannel({ communityId, channelId });
+  const isVoice = channel?.type === ChannelType.VOICE;
+  useEffect(() => {
+    if (isVoice) noteVoiceChannels([channelId]);
+  }, [isVoice, channelId]);
+  if (isVoice) {
+    return (
+      <ChannelChatState
+        communityId={communityId}
+        title={channel.name}
+        isPrivate={channel.isPrivate === true}
+        state={<VoiceChannelState communityId={communityId} />}
+      />
+    );
+  }
+  if (status === 'pending') {
+    return <ChannelChatState communityId={communityId} title={null} isPrivate={false} state={<LoadingRows />} />;
+  }
+  if (status === 'error') {
+    // The list's 403 or 404 reads like the messages' own (a removed member's or a stale link): Try again could never work.
+    const code = getHttpStatus(error);
+    const state =
+      code === 404 ? (
+        <GoneState communityId={communityId} />
+      ) : code === 403 ? (
+        <NoAccessState communityId={communityId} />
+      ) : (
+        <StateMessage title="Couldn't load the channel" action={<Button onClick={refetch}>Try again</Button>} />
+      );
+    return <ChannelChatState communityId={communityId} title="Channel" isPrivate={false} state={state} />;
+  }
   return <ChannelChatBody key={`${communityId}/${channelId}`} communityId={communityId} channelId={channelId} />;
 }

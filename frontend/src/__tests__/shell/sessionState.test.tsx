@@ -12,6 +12,7 @@ import { takeFirstAnnouncement } from '../../shell/bannerMemory';
 import { rememberActivatedRow, rememberedRow, rowMarker } from '../../shell/routeMemory';
 import { LAST_COMMUNITY_KEY, rememberLastCommunity, readLastCommunity } from '../../utils/lastCommunity';
 import { STORAGE_KEY } from '../../theme/constants';
+import { knownVoiceChannels, noteVoiceChannels } from '../../shell/voiceChannelMemory';
 import { createTestQueryClient } from '../test-utils';
 
 beforeEach(() => {
@@ -53,6 +54,13 @@ describe('clearShellSessionState', () => {
     expect(readLastCommunity()).toBe('c-1');
     clearShellSessionState(createTestQueryClient());
     expect(localStorage.getItem(LAST_COMMUNITY_KEY)).toBeNull();
+  });
+
+  it('forgets the voice channels the new shell has seen', () => {
+    noteVoiceChannels(['v-1']);
+    expect(knownVoiceChannels().has('v-1')).toBe(true);
+    clearShellSessionState(createTestQueryClient());
+    expect(knownVoiceChannels().size).toBe(0);
   });
 
   it('keeps the preview on a page load that finds no session (a link opened before signing in)', () => {

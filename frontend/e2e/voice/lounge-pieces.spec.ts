@@ -25,7 +25,7 @@
  *       real community home;
  *   V7. signing out mid-call from the account menu leaves the call;
  *   V8. a card joiner publishes the soundboard track like a classic one: B renders A's mic and soundboard, and
- *       opening the classic shell afterwards (a channel tap, and Back) adds no <audio> element on B.
+ *       opening the classic shell afterwards (its Messages screen, and Back) adds no <audio> element on B.
  *
  * The soundboard warm-up runs above both shells (VoiceSessionEffects → useSoundboardWarmup), so a card joiner and a
  * classic joiner (`joinVoiceChannel`) publish the same tracks, and a shell change publishes nothing late.
@@ -551,7 +551,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
         ).toBe(true);
       }
 
-      // One channel tap into the classic chat and Back: the classic bar publishes nothing late, so B keeps its elements.
+      // One channel tap into the Lounge chat and Back: the screen change publishes nothing late, so B keeps its elements.
       const firstChannel = shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first();
       await firstChannel.click();
       await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
@@ -583,10 +583,11 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
       });
     expect(await soundboardTracks(a), "A's soundboard publications").toBe(1);
 
-    // A opens the classic shell (a channel's chat, with the classic voice bar) and stays there while audio flows.
-    const firstChannel = shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first();
-    await firstChannel.click();
-    await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
+    // A opens the classic shell (its Messages screen, with the classic voice bar) and stays there while audio flows.
+    // Not a channel tap: on the fixture (since 10c-1) and on the real route at phone width (since 10c-2b) a text
+    // channel opens the Lounge chat, which keeps the Lounge call bar.
+    await goTo(a.page, '/direct-messages');
+    await expect(fixture(a.page)).toHaveCount(0, { timeout: 20_000 });
     await expect(classicBar(a.page)).toBeVisible({ timeout: 20_000 });
     await waitForAudioFlow(b, a);
     await waitForAudioFlow(a, b);
