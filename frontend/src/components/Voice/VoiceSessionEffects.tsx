@@ -11,6 +11,7 @@ import { useVoiceMediaSession } from "../../hooks/useVoiceMediaSession";
 import { useServerMuteEffect } from "../../hooks/useServerMuteEffect";
 import { useRemoteVolumeEffect } from "../../hooks/useRemoteVolumeEffect";
 import { useScreenShareSession } from "../../hooks/useScreenShareSession";
+import { useSoundboardWarmup } from "../../hooks/useSoundboardWarmup";
 
 /**
  * What a call does while it is active (connected, in a channel or DM),
@@ -56,6 +57,10 @@ const ActiveCallEffects: React.FC = () => {
   // A screen share's audio-failed notice, own-share reveal and Electron
   // selection clean-up (the picker stays with the share button)
   useScreenShareSession();
+
+  // Publish the silent soundboard track once per community call, whichever
+  // shell or layout is showing, and only while the server's grant allows it
+  useSoundboardWarmup({ canSpeak: publish.canSpeak });
 
   return null;
 };

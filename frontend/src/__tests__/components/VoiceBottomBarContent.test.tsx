@@ -199,6 +199,13 @@ vi.mock('../../components/Voice/CaptureReplayModal', () => ({
   CaptureReplayModal: () => null,
 }));
 
+// The bar must not warm the soundboard up itself (useSoundboardWarmup owns it).
+const soundboard = vi.hoisted(() => ({ warmup: vi.fn(() => Promise.resolve()) }));
+vi.mock('../../features/voice/soundboardPlayer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/voice/soundboardPlayer')>();
+  return { ...actual, soundboardPlayer: { ...actual.soundboardPlayer, warmup: soundboard.warmup } };
+});
+
 vi.mock('../../components/Voice/SoundboardButton', () => ({
   SoundboardButton: () => <button aria-label="Open soundboard">sb</button>,
 }));
@@ -1050,6 +1057,18 @@ describe('VoiceBottomBarContent', () => {
         state: voiceState,
         actions: { ...mockActions, playSoundboard: vi.fn() },
       } as never);
+    });
+
+    it('publishes no soundboard track on mount, in a community call with a Room (the effects layer does)', () => {
+      phone();
+      vi.mocked(useVoiceConnection).mockReturnValue({
+        state: { ...voiceState, room: { localParticipant: {} } },
+        actions: { ...mockActions, playSoundboard: vi.fn() },
+      } as never);
+      renderWithProviders(<VoiceBottomBar />);
+
+      expect(screen.getByRole('button', { name: /more voice options/i })).toBeInTheDocument();
+      expect(soundboard.warmup).not.toHaveBeenCalled();
     });
 
     it('renders exactly mic, deafen, camera, hang-up and "more" in the bar', () => {
