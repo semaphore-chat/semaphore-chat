@@ -1,6 +1,8 @@
 /**
  * The Lounge's pieces (dock, "All communities" sheet, community left island, members island, user card,
- * banners) on real data, through the hidden community fixture `/__lounge/community/:communityId`.
+ * banners) on real data, through the hidden community fixture `/__lounge/community/:communityId`. The
+ * phone-width tests also run on the real community home `/community/:communityId` (the new shell's at 390 px
+ * only, PR 9b); at 820 px and wider the real path is the old shell.
  *
  * Each test builds its own world (`loungeWorld`): two communities C1 and C2 owned by the seeded `testuser`,
  * and a fresh plain member N who has never been online (so presence is deterministic and N is in no private
@@ -12,12 +14,16 @@ import type { APIRequestContext, BrowserContext, Locator, Page, Request, Respons
 import { test, expect, TEST_USER, API_BASE, openSession, shot, sendSpans, sendTestMessage, createTestCommunity, generateTestName } from './fixtures';
 import { loginViaApi } from './fixtures/auth.fixture';
 import {
+  LOUNGE_WHERES,
   NEW_SHELL_REQUEST,
   fixturePath,
   goTo,
+  loungePath,
+  loungeUrl,
   loungeWorld,
   openFixture,
   type FreshUser,
+  type LoungeWhere,
   type LoungeWorld,
 } from './fixtures/lounge';
 
@@ -55,11 +61,11 @@ async function sessionOnFixture(
   viewport: { width: number; height: number },
   communityId: string,
   communityName?: string,
-  opts: { onPage?: (page: Page) => void } = {},
+  opts: { onPage?: (page: Page) => void; where?: LoungeWhere } = {},
 ): Promise<Opened> {
   const { context, page, token } = await openSession(browser, user, viewport);
   opts.onPage?.(page);
-  await openFixture(page, communityId, { communityName });
+  await openFixture(page, communityId, { communityName, where: opts.where });
   return { context, page, token };
 }
 
@@ -129,26 +135,37 @@ test.describe('The Lounge pieces on the community fixture', () => {
     } finally {
       await wide.context.close();
     }
-
-    const phone = await sessionOnFixture(browser, world.member, PHONE, world.c1.id, world.c1.name);
-    try {
-      const { page } = phone;
-      const bar = dock(page);
-      await expect(communityLink(bar, world.c1.name)).toHaveAttribute('aria-current', 'page', EVENTUAL);
-      await expect(communityLink(bar, world.c2.name)).toBeVisible();
-      await bar.getByRole('button', { name: 'All communities', exact: true }).click();
-      const sheet = allSheet(page);
-      await expect(sheet).toBeVisible();
-      await expect(communityLink(sheet, world.c1.name)).toHaveAttribute('aria-current', 'page');
-      await expect(communityLink(sheet, world.c2.name)).toBeVisible();
-      await expect(sheet.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
-      await expect(sheet.getByRole('link', { name: 'Your profile', exact: true })).toBeVisible();
-      await expect(sheet.getByRole('button', { name: 'Sign out…', exact: true })).toBeVisible();
-      await shot(page, testInfo, 'p2-all-sheet-phone');
-    } finally {
-      await phone.context.close();
-    }
   });
+
+  for (const where of LOUNGE_WHERES) {
+    test(`at 390 px the dock and the All sheet list your communities, the current one marked, with the phone's foot (${where})`, async ({
+      browser,
+      request,
+    }, testInfo) => {
+      const world = await loungeWorld(request);
+      const phone = await sessionOnFixture(browser, world.member, PHONE, world.c1.id, world.c1.name, { where });
+      try {
+        const { page } = phone;
+        const bar = dock(page);
+        await expect(communityLink(bar, world.c1.name)).toHaveAttribute('aria-current', 'page', EVENTUAL);
+        await expect(communityLink(bar, world.c2.name)).toBeVisible();
+        await expect(communityLink(bar, world.c2.name)).toHaveAttribute('href', `#${loungePath(where, world.c2.id)}`);
+        await bar.getByRole('button', { name: 'All communities', exact: true }).click();
+        const sheet = allSheet(page);
+        await expect(sheet).toBeVisible();
+        await expect(communityLink(sheet, world.c1.name)).toHaveAttribute('aria-current', 'page');
+        await expect(communityLink(sheet, world.c2.name)).toBeVisible();
+        await expect(communityLink(sheet, world.c2.name)).toHaveAttribute('href', `#${loungePath(where, world.c2.id)}`);
+        await expect(sheet.getByRole('link', { name: /^Notifications/ })).toHaveAttribute('href', '#/notifications');
+        await expect(sheet.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+        await expect(sheet.getByRole('link', { name: 'Your profile', exact: true })).toBeVisible();
+        await expect(sheet.getByRole('button', { name: 'Sign out…', exact: true })).toBeVisible();
+        await shot(page, testInfo, `p2-all-sheet-phone-${where}`);
+      } finally {
+        await phone.context.close();
+      }
+    });
+  }
 
   test("the left island shows the server's channels and rooms; a private channel stays hidden from a member; the community menu is the owner's only", async ({
     browser,
@@ -244,37 +261,40 @@ test.describe('The Lounge pieces on the community fixture', () => {
     await mentionScenario({ browser, request }, testInfo, false);
   });
 
-  test('new messages bold a channel row; reading it in the old shell clears it, and Back returns to that row', async ({
-    browser,
-    request,
-  }, testInfo) => {
-    const world = await loungeWorld(request);
-    const owner = await sessionOnFixture(browser, TEST_USER, PHONE, world.c1.id, world.c1.name);
-    try {
-      const { page } = owner;
-      const lobby = () => leftIsland(page).getByRole('link', { name: startsWith('lobby') });
-      await expect(lobby()).toBeVisible(EVENTUAL);
-      await expect(lobby()).not.toHaveAccessibleName(/unread/);
+  for (const where of LOUNGE_WHERES) {
+    test(`new messages bold a channel row; reading it in the old shell clears it, and Back returns to that row (390 px, ${where})`, async ({
+      browser,
+      request,
+    }, testInfo) => {
+      const world = await loungeWorld(request);
+      const owner = await sessionOnFixture(browser, TEST_USER, PHONE, world.c1.id, world.c1.name, { where });
+      try {
+        const { page } = owner;
+        const lobby = () => leftIsland(page).getByRole('link', { name: startsWith('lobby') });
+        await expect(lobby()).toBeVisible(EVENTUAL);
+        await expect(lobby()).not.toHaveAccessibleName(/unread/);
 
-      await sendTestMessage(request, world.c1.lobbyId, 'anyone around?', world.member.token);
-      await expect(lobby()).toHaveAccessibleName(/unread/, EVENTUAL);
-      await shot(page, testInfo, 'p5-unread-row');
+        await sendTestMessage(request, world.c1.lobbyId, 'anyone around?', world.member.token);
+        await expect(lobby()).toHaveAccessibleName(/unread/, EVENTUAL);
+        await shot(page, testInfo, `p5-unread-row-${where}`);
 
-      // A channel is a classic chat today: tapping it leaves the Lounge.
-      await lobby().click();
-      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
-      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+        // A channel is a classic chat today: tapping it leaves the Lounge.
+        await lobby().click();
+        await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
+        await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
 
-      await page.goBack();
-      await expect(page.locator('[data-shell="lounge"]')).toBeAttached(EVENTUAL);
-      await expect(header(page, world.c1.name)).toBeVisible(EVENTUAL);
-      await expect(lobby()).toBeFocused(EVENTUAL);
-      await expect(lobby()).not.toHaveAccessibleName(/unread/, EVENTUAL);
-      await shot(page, testInfo, 'p5-back-on-the-row');
-    } finally {
-      await owner.context.close();
-    }
-  });
+        await page.goBack();
+        await expect(page.locator('[data-shell="lounge"]')).toBeAttached(EVENTUAL);
+        await expect(header(page, world.c1.name)).toBeVisible(EVENTUAL);
+        await expect(lobby()).toBeFocused(EVENTUAL);
+        await expect(lobby()).not.toHaveAccessibleName(/unread/, EVENTUAL);
+        await expect(page).toHaveURL(loungeUrl(where, world.c1.id));
+        await shot(page, testInfo, `p5-back-on-the-row-${where}`);
+      } finally {
+        await owner.context.close();
+      }
+    });
+  }
 
   test('members and presence: a newcomer moves from Away to Around when they sign in, and "N around" follows', async ({
     browser,
@@ -316,16 +336,17 @@ test.describe('The Lounge pieces on the community fixture', () => {
     }
   });
 
-  for (const [label, viewport] of [
-    ['390', PHONE],
-    ['1440', WIDE],
+  for (const [label, viewport, where] of [
+    ['390', PHONE, 'fixture'],
+    ['1440', WIDE, 'fixture'],
+    ['390', PHONE, 'real'],
   ] as const) {
-    test(`the dock and the All sheet move between communities inside the Lounge, and the frame stays mounted (${label} px)`, async ({
+    test(`the dock and the All sheet move between communities inside the Lounge, and the frame stays mounted (${label} px, ${where})`, async ({
       browser,
       request,
     }, testInfo) => {
       const world = await loungeWorld(request);
-      const { context, page } = await sessionOnFixture(browser, world.member, viewport, world.c1.id, world.c1.name);
+      const { context, page } = await sessionOnFixture(browser, world.member, viewport, world.c1.id, world.c1.name, { where });
       try {
         await expect(communityLink(dock(page), world.c2.name)).toBeVisible(EVENTUAL);
         // The frame's pieces carry an expando: a remount would lose it.
@@ -347,7 +368,7 @@ test.describe('The Lounge pieces on the community fixture', () => {
         // The dock to C2, from the keyboard (a click would focus the link anyway): focus must survive the move.
         await communityLink(dock(page), world.c2.name).focus();
         await page.keyboard.press('Enter');
-        await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c2.id))}$`), EVENTUAL);
+        await expect(page).toHaveURL(loungeUrl(where, world.c2.id), EVENTUAL);
         await expect(header(page, world.c2.name)).toBeVisible(EVENTUAL);
         await expect(communityLink(dock(page), world.c2.name)).toHaveAttribute('aria-current', 'page');
         await expect(communityLink(dock(page), world.c2.name)).toBeFocused();
@@ -355,12 +376,12 @@ test.describe('The Lounge pieces on the community fixture', () => {
           page.locator('[data-kit-live-slot] [aria-live="polite"]', { hasText: world.c2.name }).first(),
         ).toBeAttached(EVENTUAL);
         expect(await kept(), 'the dock and the left island were not remounted').toEqual({ dock: true, left: true });
-        await shot(page, testInfo, `p7-dock-to-c2-${label}`);
+        await shot(page, testInfo, `p7-dock-to-c2-${label}-${where}`);
 
         // The All sheet back to C1.
         await dock(page).getByRole('button', { name: 'All communities', exact: true }).click();
         await communityLink(allSheet(page), world.c1.name).click();
-        await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c1.id))}$`), EVENTUAL);
+        await expect(page).toHaveURL(loungeUrl(where, world.c1.id), EVENTUAL);
         await expect(allSheet(page)).toHaveCount(0);
         await expect(header(page, world.c1.name)).toBeVisible(EVENTUAL);
         await expect(communityLink(dock(page), world.c1.name)).toHaveAttribute('aria-current', 'page');
@@ -522,6 +543,85 @@ test.describe('The Lounge pieces on the community fixture', () => {
       await expect(banner).toHaveCount(0, EVENTUAL);
     } finally {
       await context.setOffline(false).catch(() => {});
+      await context.close();
+    }
+  });
+
+  // ---- The real community home (PR 9b) -----------------------------------------------------------------------
+
+  test('at 820 px the real path is the old shell, even with the new design on', async ({ browser, request }, testInfo) => {
+    const world = await loungeWorld(request);
+    const { context, page } = await openSession(browser, world.member, COMPACT);
+    try {
+      await page.goto(`/#/community/${world.c1.id}?design=lounge`);
+      // The old shell's touch layout: its community header and categorised channel list.
+      await expect(page.getByRole('button', { name: 'Switch community' })).toBeVisible(EVENTUAL);
+      await expect(page.getByRole('button', { name: 'lobby', exact: true })).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+      await shot(page, testInfo, 'r1-real-path-820-classic');
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('/community/create at 390 px with the new design on is the old create page', async ({ browser, request }, testInfo) => {
+    const world = await loungeWorld(request);
+    const { context, page } = await sessionOnFixture(browser, TEST_USER, PHONE, world.c1.id, world.c1.name, { where: 'real' });
+    try {
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
+      await dock(page).getByRole('button', { name: 'All communities', exact: true }).click();
+      await allSheet(page).getByRole('link', { name: 'Create a community', exact: true }).click();
+      await expect(page).toHaveURL(/#\/community\/create$/, EVENTUAL);
+      await expect(page.getByText('Create Community').first()).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+      await expect(page.getByText("You're not a member of this community")).toHaveCount(0);
+      await shot(page, testInfo, 'r2-create-is-classic');
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('at 390 px the header\'s "N around" opens the members Sheet, and Escape returns focus to it (real path)', async ({
+    browser,
+    request,
+  }, testInfo) => {
+    const world = await loungeWorld(request);
+    const { context, page } = await sessionOnFixture(browser, TEST_USER, PHONE, world.c1.id, world.c1.name, { where: 'real' });
+    try {
+      const button = leftIsland(page).getByRole('button', { name: /^\d+ around, show members$/ });
+      await expect(button).toBeVisible(EVENTUAL);
+      await button.click();
+      const sheet = page.getByRole('dialog', { name: 'Members', exact: true });
+      await expect(sheet).toBeVisible();
+      // The owner is the community's host.
+      await expect(sheet.getByRole('heading', { name: 'Hosts', level: 3, exact: true })).toBeVisible(EVENTUAL);
+      await shot(page, testInfo, 'r3-members-sheet');
+      await page.keyboard.press('Escape');
+      await expect(sheet).toHaveCount(0);
+      await expect(button).toBeFocused();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('the classic Home tab returns to the community last opened in the Lounge (390 px)', async ({ browser, request }, testInfo) => {
+    const world = await loungeWorld(request);
+    const { context, page } = await sessionOnFixture(browser, world.member, PHONE, world.c1.id, world.c1.name, { where: 'real' });
+    try {
+      // A cold deep link landed on the Lounge home; the dock moves to C2 inside it.
+      await communityLink(dock(page), world.c2.name).click();
+      await expect(page).toHaveURL(loungeUrl('real', world.c2.id), EVENTUAL);
+      await expect(header(page, world.c2.name)).toBeVisible(EVENTUAL);
+
+      // The inbox is the old shell's Messages screen, with its bottom nav.
+      await goTo(page, '/direct-messages');
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0, EVENTUAL);
+      await page.getByRole('button', { name: 'Home', exact: true }).click();
+      await expect(page).toHaveURL(loungeUrl('real', world.c2.id), EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached(EVENTUAL);
+      await expect(header(page, world.c2.name)).toBeVisible(EVENTUAL);
+      await shot(page, testInfo, 'r4-home-tab-back-to-c2');
+    } finally {
       await context.close();
     }
   });

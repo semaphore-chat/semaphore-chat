@@ -10,6 +10,7 @@ import { setDesignPreview, readDesignPreview, clearDesignPreview } from '../../s
 import { showDesktopSignInNotice, useDesktopSignInBanner } from '../../data/signInNotice';
 import { takeFirstAnnouncement } from '../../shell/bannerMemory';
 import { rememberActivatedRow, rememberedRow, rowMarker } from '../../shell/routeMemory';
+import { LAST_COMMUNITY_KEY, rememberLastCommunity, readLastCommunity } from '../../utils/lastCommunity';
 import { STORAGE_KEY } from '../../theme/constants';
 import { createTestQueryClient } from '../test-utils';
 
@@ -45,6 +46,13 @@ describe('clearShellSessionState', () => {
     expect(rememberedRow('/__lounge/community/c-1')).toBeNull();
     // A new marker: nothing keyed by the previous user's ids is kept.
     expect(rowMarker('dock:c-2')).not.toBe(marker);
+  });
+
+  it("forgets the previous user's last-opened community", () => {
+    rememberLastCommunity('c-1');
+    expect(readLastCommunity()).toBe('c-1');
+    clearShellSessionState(createTestQueryClient());
+    expect(localStorage.getItem(LAST_COMMUNITY_KEY)).toBeNull();
   });
 
   it('keeps the preview on a page load that finds no session (a link opened before signing in)', () => {

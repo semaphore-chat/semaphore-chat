@@ -4,11 +4,13 @@
  * shell everywhere" is checked over every route the app has.
  */
 import { describe, it, expect } from 'vitest';
-import { createRoutesFromChildren, matchRoutes, type RouteObject } from 'react-router-dom';
+import { createRoutesFromChildren, matchPath, matchRoutes, type RouteObject } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { AppRoutes } from '../../routes';
 import { chooseShell } from '../../shell/chooseShell';
 import {
+  CLASSIC_STATIC_PATHS,
+  COMMUNITY_HOME_PATH,
   LOUNGE_COMMUNITY_FIXTURE_PATH,
   LOUNGE_FIXTURE_PREFIX,
   LOUNGE_MARKER_PATH,
@@ -58,9 +60,69 @@ describe('chooseShell', () => {
   it('with the new design on, a route that is not registered is the old shell', () => {
     for (const width of WIDTHS) {
       for (const pathname of paths) {
+        if (pathname === '/community/x-communityId' && width === 'phone') continue;
         expect(chooseShell({ pathname, enabled: true, width }), `${pathname} at ${width}`).toEqual({ kind: 'classic' });
       }
     }
+  });
+
+  it('with the new design on, /community/:id is the new shell at phone only, with its community', () => {
+    const choice = chooseShell({ pathname: '/community/c-1', enabled: true, width: 'phone' });
+    expect(choice.kind === 'lounge' && choice.route.path).toBe(COMMUNITY_HOME_PATH);
+    expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1' });
+    expect(chooseShell({ pathname: '/community/c-1', enabled: true, width: 'compact' })).toEqual({ kind: 'classic' });
+    expect(chooseShell({ pathname: '/community/c-1', enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
+    // Its channels, its search and its settings stay the old shell's.
+    for (const pathname of ['/community/c-1/channel/ch-2', '/community/c-1/channel/ch-2/search', '/community/c-1/edit']) {
+      expect(chooseShell({ pathname, enabled: true, width: 'phone' }), pathname).toEqual({ kind: 'classic' });
+    }
+  });
+
+  it('/community/create and /community/:id/edit stay classic at every width', () => {
+    for (const width of WIDTHS) {
+      for (const pathname of ['/community/create', '/community/create/', '/community/CREATE', '/community/x/edit']) {
+        expect(chooseShell({ pathname, enabled: true, width }), `${pathname} at ${width}`).toEqual({ kind: 'classic' });
+      }
+    }
+  });
+
+  it("no Lounge route claims a path the old router gives to another route (every route of routes.tsx, and samples)", () => {
+    const table = appRoutes();
+    const fullPattern = (pathname: string) =>
+      (matchRoutes(table, pathname) ?? [])
+        .map((match) => match.route.path)
+        .filter((path): path is string => path !== undefined)
+        .reduce((joined, path) => (path.startsWith('/') ? path : `${joined.replace(/\/$/, '')}/${path}`), '');
+    const samples = [...paths, '/community/create', '/community/x/edit', '/community/x/channel/y', '/community/x'];
+    let claimed = 0;
+    for (const pathname of samples) {
+      for (const width of WIDTHS) {
+        const choice = chooseShell({ pathname, enabled: true, width });
+        if (choice.kind !== 'lounge' || choice.route.path.startsWith(LOUNGE_FIXTURE_PREFIX)) continue;
+        claimed += 1;
+        expect(fullPattern(pathname), `${pathname} at ${width}: the old router's leaf is the Lounge route's pattern`).toBe(choice.route.path);
+      }
+    }
+    // The walk saw the real community home (so it bites), and the guard is what keeps create away.
+    expect(claimed).toBeGreaterThan(0);
+    expect(CLASSIC_STATIC_PATHS).toContain('/community/create');
+  });
+
+  it('the guard bites: without the static siblings ranked in, /community/create would be the community home', () => {
+    // The same match a plain matchPath makes; the ranking against CLASSIC_STATIC_PATHS is what stops it.
+    expect(matchPath({ path: COMMUNITY_HOME_PATH, end: true }, '/community/create')?.params).toEqual({ communityId: 'create' });
+  });
+
+  it('in Electron a real route is classic at every width; fixtures are unchanged', () => {
+    for (const width of WIDTHS) {
+      expect(chooseShell({ pathname: '/community/c-1', enabled: true, width, electron: true }), width).toEqual({ kind: 'classic' });
+      expect(chooseShell({ pathname: LOUNGE_MARKER_PATH, enabled: true, width, electron: true }).kind, width).toBe('lounge');
+      expect(chooseShell({ pathname: loungeCommunityFixturePath('c-1'), enabled: true, width, electron: true }).kind, width).toBe('lounge');
+    }
+    // Any real route a later PR registers is gated too.
+    const routes: LoungeRoute[] = [{ path: '/settings', widths: ['phone', 'compact', 'wide'], load: fakeLoad }];
+    expect(chooseShell({ pathname: '/settings', enabled: true, width: 'wide', electron: true, routes })).toEqual({ kind: 'classic' });
+    expect(chooseShell({ pathname: '/settings', enabled: true, width: 'wide', electron: false, routes }).kind).toBe('lounge');
   });
 
   it('with the new design on, the marker is the new shell at every width', () => {
@@ -127,8 +189,16 @@ describe('the registry (LOUNGE_ROUTES)', () => {
     for (const route of LOUNGE_ROUTES) expect(route.widths.length).toBeGreaterThan(0);
   });
 
-  it('registers only the test fixtures for now: the marker and the community fixture', () => {
-    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([LOUNGE_MARKER_PATH, LOUNGE_COMMUNITY_FIXTURE_PATH]);
+  it('registers the fixtures and the phone community home', () => {
+    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([LOUNGE_MARKER_PATH, LOUNGE_COMMUNITY_FIXTURE_PATH, COMMUNITY_HOME_PATH]);
+    expect(LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)?.widths).toEqual(['phone']);
+  });
+
+  it('the community home: threeIslands, community, left pane on a phone, no centre, the members island, no links', async () => {
+    const route = LOUNGE_ROUTES.find((candidate) => candidate.path === COMMUNITY_HOME_PATH)!;
+    const { default: screen } = await route.load();
+    expect(screen).toMatchObject({ template: 'threeIslands', place: 'community', phonePane: 'left', Centre: null, right: 'members' });
+    expect(screen.template === 'threeIslands' && screen.links).toBeUndefined();
   });
 
   it("every registered real path is an old screen in routes.tsx, and the fixtures are the old shell's not-found page", () => {

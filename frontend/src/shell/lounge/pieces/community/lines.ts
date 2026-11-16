@@ -16,6 +16,15 @@ export function aroundLine(aroundCount: number | null): string | null {
   return aroundCount === null ? null : `${aroundCount.toLocaleString()} around`;
 }
 
+/**
+ * The header's members button (shown while the members are not beside the list): its visible words and its name.
+ * "12 around" / "12 around, show members"; with no count, "Members" for both.
+ */
+export function membersButtonText(aroundCount: number | null): { text: string; label: string } {
+  const line = aroundLine(aroundCount);
+  return line === null ? { text: 'Members', label: 'Members' } : { text: line, label: `${line}, show members` };
+}
+
 const SHOWN_NAMES = 3;
 
 /**

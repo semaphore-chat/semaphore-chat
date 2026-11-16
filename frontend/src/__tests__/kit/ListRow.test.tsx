@@ -267,4 +267,36 @@ describe('ListRow in a keyboard list (focus)', () => {
     rerender(<InList onRef={onRef} />);
     expect(onRef.mock.calls.filter(([element]) => element === null)).toHaveLength(0);
   });
+
+  describe('busy', () => {
+    it('a busy link says so and shows a spinner, and stays focusable', () => {
+      renderWithKit(<ListRow primary="general" href="#/c/general" busy />);
+      const link = screen.getByRole('link', { name: 'general' });
+      expect(link).toHaveAttribute('aria-busy', 'true');
+      expect(link.querySelector('.MuiCircularProgress-root')).not.toBeNull();
+      link.focus();
+      expect(link).toHaveFocus();
+    });
+
+    it('a busy button ignores presses; not busy, it takes them', async () => {
+      const onClick = vi.fn();
+      const { user, rerender } = renderWithKit(<ListRow primary="general" onClick={onClick} busy />);
+      await user.click(screen.getByRole('button', { name: 'general' }));
+      expect(onClick).not.toHaveBeenCalled();
+      rerender(<ListRow primary="general" onClick={onClick} />);
+      expect(screen.getByRole('button', { name: 'general' })).not.toHaveAttribute('aria-busy');
+      await user.click(screen.getByRole('button', { name: 'general' }));
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('is ignored on a plain or a disabled row', () => {
+      const { container } = renderWithKit(
+        <>
+          <ListRow primary="plain" busy />
+          <ListRow primary="off" href="#/off" disabled busy />
+        </>,
+      );
+      expect(container.querySelector('[aria-busy]')).toBeNull();
+    });
+  });
 });

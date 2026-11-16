@@ -11,10 +11,14 @@
  * shows the call bar (shell/lounge/pieces/call), the call's video with Watch /
  * Stop watching (shell/lounge/call/surface, its own lazy chunk), and the voice
  * notice. So a converted three-islands screen no longer strands a call's video.
- * Only test fixtures are registered so far: the marker and the community
- * fixture, which assembles every piece of the shell on real data. Every
+ *
+ * Registered: the test fixtures (the marker and the community fixture, which
+ * assembles every piece of the shell on real data) and the first real screen,
+ * the community home at phone width (`COMMUNITY_HOME_PATH`). Every
  * `/__lounge...` path is a fixture: with the new design off it is the old
  * shell's not-found page, and only a fixture's descriptor may set `links`.
+ * A real (non-fixture) route is never the new shell in the desktop app
+ * (`chooseShell`'s `electron` input).
  */
 import type { WidthRange } from '../kit/layout/breakpoints';
 import type { LoungeScreen } from './lounge/screen';
@@ -24,8 +28,8 @@ export type { LoungeParams, LoungeScreen, LoungeScreenProps } from './lounge/scr
 export interface LoungeRoute {
   /**
    * Absolute pattern, also present in routes.tsx (the old screen for other widths and for the
-   * setting off). Matched with matchPath({ path, end: true }), so "/community/:id" never matches
-   * ".../channel/:cid".
+   * setting off). Matched as a whole path and ranked as the old router ranks (`chooseShell`), so
+   * "/community/:id" never matches ".../channel/:cid" and never takes "/community/create".
    */
   readonly path: string;
   /** Kit width ranges where this route is converted. Elsewhere the old shell shows it. Non-empty. */
@@ -54,6 +58,17 @@ export function loungeCommunityFixturePath(communityId: string): string {
   return `/__lounge/community/${communityId}`;
 }
 
+/** The community home: the community's channels and rooms. The new shell's at phone width only. */
+export const COMMUNITY_HOME_PATH = '/community/:communityId';
+
+/**
+ * The old shell's static routes that a registered pattern would also match (`/community/create` is
+ * `/community/:communityId` with `communityId = 'create'`). `chooseShell` ranks them with the registered
+ * routes the way the old router does (a static segment outranks a param), so the old shell keeps them.
+ * The registry test walks every route of routes.tsx and fails when one is missing here.
+ */
+export const CLASSIC_STATIC_PATHS: readonly string[] = ['/community/create'];
+
 export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
   {
     path: LOUNGE_MARKER_PATH,
@@ -64,5 +79,11 @@ export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
     path: LOUNGE_COMMUNITY_FIXTURE_PATH,
     widths: ['phone', 'compact', 'wide'],
     load: () => import('./lounge/screens/CommunityFixtureScreen'),
+  },
+  {
+    path: COMMUNITY_HOME_PATH,
+    // Compact would be an empty centre island (no converted chat yet); 820 px and wider stay classic.
+    widths: ['phone'],
+    load: () => import('./lounge/screens/CommunityHomeScreen'),
   },
 ];

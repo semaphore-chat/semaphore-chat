@@ -99,12 +99,31 @@ export async function expectCallUntouched(
 export const fixturePath = (communityId: string) => `/__lounge/community/${communityId}`;
 
 /**
+ * Where a phone-width spec opens a community: the hidden fixture, or the real community home `/community/:id`
+ * (the new shell's at phone width only, PR 9b).
+ */
+export type LoungeWhere = 'fixture' | 'real';
+export const LOUNGE_WHERES: readonly LoungeWhere[] = ['fixture', 'real'];
+
+/** The community's path on `where` (the hash route). The real path's dock and sheet links are `#/community/<id>`. */
+export const loungePath = (where: LoungeWhere, communityId: string) =>
+  where === 'fixture' ? fixturePath(communityId) : `/community/${communityId}`;
+
+/** The URL of a community on `where`, as a whole-hash match. */
+export const loungeUrl = (where: LoungeWhere, communityId: string) =>
+  new RegExp(`#${loungePath(where, communityId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+
+/**
  * Opens the community fixture with the new design on for this tab (the `?design=lounge` preview) and waits for
  * the shell and the community's header. The `?design=` parameter is removed by a `replace` navigation, so the URL
  * is not asserted here. `page.goto`: a page load (use `goTo` to keep a running call).
  */
-export async function openFixture(page: Page, communityId: string, opts: { communityName?: string } = {}): Promise<void> {
-  await page.goto(`/#${fixturePath(communityId)}?design=lounge`);
+export async function openFixture(
+  page: Page,
+  communityId: string,
+  opts: { communityName?: string; where?: LoungeWhere } = {},
+): Promise<void> {
+  await page.goto(`/#${loungePath(opts.where ?? 'fixture', communityId)}?design=lounge`);
   await expect(page.locator('[data-shell="lounge"]')).toBeAttached({ timeout: 20_000 });
   if (opts.communityName) {
     await expect(

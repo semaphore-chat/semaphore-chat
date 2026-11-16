@@ -171,3 +171,36 @@ export const LabelledLight = () => (
     <LabelledBody />
   </KitStage>
 );
+
+const BusyBody = () => (
+  <Row label="Busy: a tapped channel whose screen is loading (aria-busy, a spinner at the end), selected, unread, and a busy button row">
+    <div style={{ width: 288, maxWidth: '100%' }}><Island padding="md">
+      <ListRow primary="general" leading={hash} href="#general" busy />
+      <ListRow primary="lfg" leading={hash} selected href="#lfg" busy />
+      <ListRow primary="clips" leading={hash} unread href="#clips" busy trailing={<Badge count={2} tone="accent" label="2 mentions" />} />
+      <ListRow primary="the-extremely-long-channel-name-that-somebody-thought-was-a-good-idea" leading={hash} href="#long" busy />
+      <ListRow primary="Settings" leading={<Icon name="Settings" />} onClick={noop} chevron busy />
+    </Island></div>
+  </Row>
+);
+
+/** `busy` rows: what a phone shows while a tapped row's screen is still a chunk on its way. */
+export const Busy = () => (
+  <KitStage mode="dark">
+    <BusyBody />
+  </KitStage>
+);
+
+/** Busy, light. */
+export const BusyLight = () => (
+  <KitStage mode="light">
+    <BusyBody />
+  </KitStage>
+);
+
+/** Busy, tinted. */
+export const BusyTinted = () => (
+  <KitStage mode="dark" base="#0d9488" intensity="vibrant">
+    <BusyBody />
+  </KitStage>
+);

@@ -19,8 +19,7 @@ import React, {
 } from 'react';
 import { useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
-
-const LAST_COMMUNITY_KEY = 'semaphore:lastCommunityId';
+import { readLastCommunity, rememberLastCommunity } from '../../../utils/lastCommunity';
 
 // Bottom tab options
 export type MobileTab = 'home' | 'messages' | 'notifications' | 'profile';
@@ -231,21 +230,12 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Last community selected — persisted so the Home tab restores after reload.
-  const [lastCommunityId, setLastCommunityId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(LAST_COMMUNITY_KEY);
-    } catch {
-      return null;
-    }
-  });
+  // The new shell's community home writes it too (utils/lastCommunity), read when this layout mounts.
+  const [lastCommunityId, setLastCommunityId] = useState<string | null>(readLastCommunity);
 
   const persistLastCommunity = useCallback((id: string) => {
     setLastCommunityId(id);
-    try {
-      localStorage.setItem(LAST_COMMUNITY_KEY, id);
-    } catch {
-      // ignore storage failures (private mode, etc.)
-    }
+    rememberLastCommunity(id);
   }, []);
 
   const { user: currentUser } = useCurrentUser();

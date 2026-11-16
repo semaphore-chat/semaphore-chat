@@ -468,7 +468,7 @@ things and nothing else:
    {
      path: '/community/:communityId',
      widths: ['phone'],
-     load: () => import('./lounge/screens/CommunityHome'),
+     load: () => import('./lounge/screens/CommunityHomeScreen'),
    },
    ```
 
@@ -496,6 +496,25 @@ things and nothing else:
 
    Do not set `links` on a real screen. It is only for test fixtures (see
    below), and the registry test checks that.
+
+The community home above is the first real entry (`COMMUNITY_HOME_PATH`, phone
+only). Three rules came with it:
+
+- **Never claim a static sibling.** A pattern such as `/community/:communityId`
+  also matches `/community/create`. `chooseShell` ranks the registered routes
+  together with the old shell's static siblings (`CLASSIC_STATIC_PATHS` in
+  `loungeRoutes.ts`) the way React Router ranks `routes.tsx`, so a static
+  segment wins and the old shell keeps it. The registry test walks every route
+  of `routes.tsx` and fails when the new shell would take a path the old router
+  gives to another route: add the sibling to `CLASSIC_STATIC_PATHS`.
+- **Real screens are web-only for now.** In the desktop app (`isElectron()`)
+  only the `/__lounge` fixtures can be the new shell; every real route stays on
+  the old shell at every width and zoom.
+- **Right content needs a way in on a phone.** A phone screen whose descriptor
+  has right content (the members) gives a control that opens it: the community
+  header's "N around" (`useScreenChrome().setRightOpen(true)`), plain text only
+  while the members island is beside the list at wide. The kit Sheet returns
+  focus to that control when it closes.
 
 Moving between two screens of the same template keeps the dock, the left island
 (its scroll and focus), the members and the call bar mounted. Only the centre

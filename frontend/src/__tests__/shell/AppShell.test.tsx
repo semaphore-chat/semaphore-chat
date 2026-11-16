@@ -33,10 +33,11 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
   };
 });
 
+const platform = vi.hoisted(() => ({ electron: false }));
 vi.mock('../../utils/platform', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  isElectron: () => false,
-  isWeb: () => true,
+  isElectron: () => platform.electron,
+  isWeb: () => !platform.electron,
 }));
 
 vi.mock('../../hooks/useSocket', () => ({
@@ -135,7 +136,7 @@ import { AppRoutes } from '../../routes';
 import { DesignPreviewPage } from '../../pages/debug/PWADebugPage';
 import { clearDesignPreview, setDesignPreview } from '../../shell/designPreview';
 import { renewLoungeRoot } from '../../shell/loungeRootLazy';
-import { LOUNGE_ROUTES, loungeCommunityFixturePath } from '../../shell/loungeRoutes';
+import { COMMUNITY_HOME_PATH, LOUNGE_ROUTES, loungeCommunityFixturePath } from '../../shell/loungeRoutes';
 import { readShownShellKind } from '../../shell/shownShellKind';
 
 // --- A viewport whose width can change, with real media-query listeners ------
@@ -355,6 +356,7 @@ beforeEach(() => {
   counts.effectsUnmounts = 0;
   lounge.mode = 'ok';
   lounge.failLoads = 0;
+  platform.electron = false;
   appSuspended.shown = 0;
   localStorage.clear();
   clearDesignPreview();
@@ -456,6 +458,110 @@ describe('with the new design on', () => {
     renderShell({ route: '/settings', inCall: false });
     await flush();
     expect(lounge.loaded).toBeGreaterThan(0);
+  });
+});
+
+describe('the phone community home (/community/:communityId)', () => {
+  /** A stub for the real screen module: it would pull the kit in after the test environment is gone (D8). */
+  function stubHomeLoad() {
+    const home = LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)!;
+    return vi.spyOn(home, 'load').mockResolvedValue({
+      default: { template: 'bare', Body: () => null, useTitle: () => null },
+    });
+  }
+
+  it('a phone at /community/:id with the setting on shows the Lounge home; the setting off shows classic', async () => {
+    stubHomeLoad();
+    createViewport(390);
+    const off = renderShell({ route: '/community/c-1', inCall: false });
+    await flush();
+    expect(loungeShell(off.container)).toBeNull();
+    expect(screen.getByTestId('mobile-screen')).toBeInTheDocument();
+    off.unmount();
+
+    setNewDesignStored(true);
+    const on = renderShell({ route: '/community/c-1', inCall: false });
+    await flush();
+    expect(loungeShell(on.container)).toHaveAttribute('data-route', COMMUNITY_HOME_PATH);
+    expect(screen.queryByTestId('mobile-screen')).toBeNull();
+  });
+
+  it.each([820, 1440])('at %d px the real path stays classic with the setting on', async (width) => {
+    stubHomeLoad();
+    createViewport(width);
+    setNewDesignStored(true);
+    const { container } = renderShell({ route: '/community/c-1', inCall: false });
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+  });
+
+  it('/community/create at phone with the setting on is the old shell', async () => {
+    const load = stubHomeLoad();
+    createViewport(390);
+    setNewDesignStored(true);
+    const { container } = renderShell({ route: '/community/create', inCall: false });
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+    expect(screen.getByTestId('mobile-screen')).toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('Electron at phone width is classic, and loads no screen ahead of time; the fixtures still show', async () => {
+    const load = stubHomeLoad();
+    platform.electron = true;
+    createViewport(390);
+    setNewDesignStored(true);
+    const real = renderShell({ route: '/community/c-1', inCall: false });
+    await flush();
+    expect(loungeShell(real.container)).toBeNull();
+    // The old shell in the desktop app is its desktop layout at every width.
+    expect(screen.getByTestId('rail')).toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+    real.unmount();
+
+    const fixture = renderShell({ route: '/__lounge', inCall: false });
+    await flush();
+    expect(loungeShell(fixture.container)).not.toBeNull();
+  });
+
+  it('a channel tap shows the classic chat, and phone → compact → phone mid-call swaps shells as deferred renders; the call stays', async () => {
+    stubHomeLoad();
+    const viewport = createViewport(390);
+    setNewDesignStored(true);
+    const { container } = renderShell({ route: '/community/c-1' });
+    await flush();
+    expect(loungeShell(container)).not.toBeNull();
+    const audio = container.querySelector('audio');
+    expect(audio).not.toBeNull();
+    const expectCallUp = (step: string) => {
+      expect(container.querySelector('audio'), step).toBe(audio);
+      expect(counts.effectsMounts, step).toBe(1);
+      expect(counts.effectsUnmounts, step).toBe(0);
+      expect(screen.queryByTestId('app-suspended'), step).toBeNull();
+      expect(screen.queryByTestId('app-crashed'), step).toBeNull();
+    };
+
+    act(() => handles.navigate!('/community/c-1/channel/ch-1'));
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+    expect(screen.getByTestId('mobile-screen')).toBeInTheDocument();
+    expectCallUp('the classic chat');
+
+    act(() => handles.navigate!(-1));
+    await flush();
+    expect(loungeShell(container)).not.toBeNull();
+    expectCallUp('Back to the Lounge home');
+
+    act(() => viewport.setWidth(820));
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+    expect(screen.getByTestId('tablet-content')).toBeInTheDocument();
+    expectCallUp('compact');
+
+    act(() => viewport.setWidth(390));
+    await flush();
+    expectCallUp('back to phone');
+    expect(appSuspended.shown).toBe(0);
   });
 });
 

@@ -1,8 +1,9 @@
 /**
  * The "All communities" sheet the dock's All button opens (design §3.2): the instance heading, every
  * community the server lists for this user as a row with its state line, a filter field above 8
- * communities, "Create a community" when the user may, and on a phone Settings, Your profile and Sign out
- * at the foot (PA-10: a phone Lounge screen has no user card and no navigation). Sign out… is asked first
+ * communities, "Create a community" when the user may, and on a phone Notifications (with its unread count:
+ * the classic phone's bottom-nav tab), Settings, Your profile and Sign out at the foot (PA-10: a phone Lounge
+ * screen has no user card and no navigation). Sign out… is asked first
  * (the frame's question); the sheet stays open under it, so Cancel returns to the row. One keyboard list over the rows
  * (`useListFocus`, vertical, typeahead). Loading, empty and error through `LoadState`.
  *
@@ -36,7 +37,7 @@ import {
   useInstanceIdentity,
   useMyCommunities,
 } from '../../../data/myCommunities';
-import { useUnreadSummary } from '../../../data/unread';
+import { useNotificationCount, useUnreadSummary } from '../../../data/unread';
 import { rememberActivatedRow } from '../../routeMemory';
 import { useLoungeLinks } from '../links';
 import { useSignOutRequest } from './signOutRequest';
@@ -52,10 +53,12 @@ import {
   isFootRow,
   matchesFilter,
   mentionText,
+  notificationCountText,
   stateLine,
 } from './communitiesModel';
 
 const CREATE_PATH = '#/community/create';
+const NOTIFICATIONS_PATH = '#/notifications';
 const SETTINGS_PATH = '#/settings';
 const PROFILE_PATH = '#/profile';
 
@@ -85,8 +88,10 @@ export interface AllCommunitiesSheetProps {
   /** The filter field's text (the field shows above `FILTER_THRESHOLD` communities). */
   filter: string;
   onFilterChange(value: string): void;
-  /** A phone: Settings, Your profile and Sign out at the foot. */
+  /** A phone: Notifications, Settings, Your profile and Sign out at the foot. */
   showSettings: boolean;
+  /** Unread notifications (the bell's count), on the foot's Notifications row. */
+  notificationCount?: number;
   /** The foot's Sign out row: the connected sheet opens the confirmation. */
   onSignOut(): void;
   /** A row was chosen (its link has already navigated), with its row id: a community id or a `FOOT_ROWS` id. */
@@ -104,6 +109,7 @@ function Body({
   useLoad,
   filter,
   showSettings,
+  notificationCount = 0,
   onSignOut,
   onActivate,
 }: BodyProps): JSX.Element {
@@ -119,6 +125,7 @@ function Body({
       ...(canCreate ? [{ id: FOOT_ROWS.create, label: 'Create a community', disabled: false }] : []),
       ...(showSettings
         ? [
+            { id: FOOT_ROWS.notifications, label: 'Notifications', disabled: false },
             { id: FOOT_ROWS.settings, label: 'Settings', disabled: false },
             { id: FOOT_ROWS.profile, label: 'Your profile', disabled: false },
             { id: FOOT_ROWS.signOut, label: 'Sign out…', disabled: false },
@@ -161,6 +168,7 @@ function Body({
     return () => clearTimeout(timer);
   }, [announce, filtering, query, shown.length, ready]);
 
+  const notificationWords = notificationCountText(notificationCount);
   const footRows = (
     <>
       {canCreate && (
@@ -173,6 +181,18 @@ function Body({
       )}
       {showSettings && (
         <>
+          <ListRow
+            primary="Notifications"
+            leading={<Icon name="Bell" />}
+            href={NOTIFICATIONS_PATH}
+            trailing={
+              notificationWords === undefined ? undefined : (
+                <Badge count={notificationCount} tone="danger" label={notificationWords} />
+              )
+            }
+            trailingLabel={notificationWords}
+            focus={list.rowFocus(FOOT_ROWS.notifications)}
+          />
           <ListRow
             primary="Settings"
             leading={<Icon name="Settings" />}
@@ -298,6 +318,7 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
   const mine = useMyCommunities();
   const { communities, query } = mine;
   const unread = useUnreadSummary();
+  const notificationCount = useNotificationCount();
   const canCreate = useCanCreateCommunity();
   const { instanceName, username } = useInstanceIdentity();
   const callCommunityId = useCallCommunityId();
@@ -369,6 +390,7 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
         filter={filter}
         onFilterChange={setFilter}
         showSettings={range === 'phone'}
+        notificationCount={notificationCount}
         onSignOut={requestSignOut}
         onActivate={onActivate}
       />

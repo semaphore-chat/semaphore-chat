@@ -33,6 +33,8 @@ interface SheetStoryProps {
   startClosed?: boolean;
   /** On a phone, press the foot's Sign out: the question over the sheet. */
   askSignOut?: boolean;
+  /** Unread notifications on the phone foot's Notifications row. */
+  notificationCount?: number;
 }
 
 type SheetProps = Required<Omit<SheetStoryProps, 'mode' | 'startClosed'>> & { open: boolean; onClose(): void };
@@ -56,7 +58,17 @@ function Sheet(props: SheetProps): JSX.Element {
   );
 }
 
-function SheetBody({ communities, currentId, canCreate, load, filter: initial, open, onClose, askSignOut }: SheetProps): JSX.Element {
+function SheetBody({
+  communities,
+  currentId,
+  canCreate,
+  load,
+  filter: initial,
+  open,
+  onClose,
+  askSignOut,
+  notificationCount,
+}: SheetProps): JSX.Element {
   const [filter, setFilter] = useState(initial);
   const [useLoad] = useState(() => fixedLoad(load));
   const range = useWidthRange();
@@ -79,6 +91,7 @@ function SheetBody({ communities, currentId, canCreate, load, filter: initial, o
         filter={filter}
         onFilterChange={setFilter}
         showSettings={range === 'phone'}
+        notificationCount={notificationCount}
         onSignOut={requestSignOut}
       />
     </>
@@ -94,6 +107,7 @@ function SheetStory({
   filter = '',
   startClosed = false,
   askSignOut = false,
+  notificationCount = 0,
 }: SheetStoryProps): JSX.Element {
   const [open, setOpen] = useState(!startClosed);
   const dockCommunities = load === 'ready' ? communities : [];
@@ -123,6 +137,7 @@ function SheetStory({
         open={open}
         onClose={() => setOpen(false)}
         askSignOut={askSignOut}
+        notificationCount={notificationCount}
       />
     </LoungePiecesFrame>
   );
@@ -184,3 +199,14 @@ export const FromDock = () => <SheetStory startClosed />;
  * desktop the sheet has no Sign out (the user card's account menu has it), so those widths show the sheet only.
  */
 export const SignOutQuestion = () => <SheetStory communities={sampleCommunities(3, MOCKUP_STATES)} askSignOut />;
+
+/**
+ * On a phone, the foot's Notifications row with its unread count (the classic phone's Notifications tab, which a
+ * Lounge home has no bottom nav for). Tablet and desktop show no foot rows.
+ */
+export const PhoneFootNotifications = () => <SheetStory communities={sampleCommunities(3, MOCKUP_STATES)} notificationCount={7} />;
+
+/** The same with a large count (the badge caps it) and no Create row. */
+export const PhoneFootNotificationsMany = () => (
+  <SheetStory communities={sampleCommunities(3, MOCKUP_STATES)} notificationCount={1234} canCreate={false} />
+);

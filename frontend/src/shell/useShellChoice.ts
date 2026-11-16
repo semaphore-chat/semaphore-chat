@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useNewDesignSetting } from '../contexts/ThemeContext';
+import { isElectron } from '../utils/platform';
 import { chooseShell, type ShellChoice } from './chooseShell';
 import { parseDesignParam, useDesignPreview } from './designPreview';
 import { loadLoungeRoot } from './loungeRootChunk';
@@ -33,8 +34,10 @@ export function useShellChoice(): ShellChoice {
   const { pathname, search } = useLocation();
   const enabled = useNewDesignEnabled(search);
   const width = useShellWidthRange();
+  // The desktop app shows only the fixtures in the new shell (real screens are web-only for now).
+  const electron = isElectron();
   // The route the current path would show in the new shell at this width, without the deferral.
-  const upcoming = useMemo(() => chooseShell({ pathname, enabled, width }), [pathname, enabled, width]);
+  const upcoming = useMemo(() => chooseShell({ pathname, enabled, width, electron }), [pathname, enabled, width, electron]);
   const upcomingRoute = upcoming.kind === 'lounge' ? upcoming.route : null;
 
   useEffect(() => {
@@ -58,7 +61,7 @@ export function useShellChoice(): ShellChoice {
   const shellEnabled = useDeferredValue(enabled);
   const shellWidth = useDeferredValue(width);
   return useMemo(
-    () => chooseShell({ pathname, enabled: shellEnabled, width: shellWidth }),
-    [pathname, shellEnabled, shellWidth],
+    () => chooseShell({ pathname, enabled: shellEnabled, width: shellWidth, electron }),
+    [pathname, shellEnabled, shellWidth, electron],
   );
 }

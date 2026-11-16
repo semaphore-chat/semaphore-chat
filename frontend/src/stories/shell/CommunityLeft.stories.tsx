@@ -5,6 +5,7 @@
  * A phone shows the left pane (a community home) and no user card.
  */
 import type { JSX } from 'react';
+import { useWidthRange } from '../../kit';
 import { SignOutQuestionHost } from '../../shell/lounge/pieces/signOutConfirm';
 import { useSignOutRequest } from '../../shell/lounge/pieces/signOutRequest';
 import { ClickOnMount } from '../fixtures/interactions';
@@ -50,6 +51,8 @@ interface LeftOptions {
   members?: boolean;
   /** Open the user card's account menu; `signOut` goes on to its Sign out… (the question). */
   account?: 'menu' | 'signOut';
+  /** The members: left out, the template's default (shown at wide, closed below). */
+  rightOpen?: boolean;
 }
 
 /** The sign-out question as the connected card asks it; nothing is signed out in a story. */
@@ -88,11 +91,12 @@ function StoryUserCardBody({ user, account }: StoryUserCardProps): JSX.Element {
   );
 }
 
-function Left({ mode, view, channels, rooms = [SQUAD_HERE, AFK], user = USER_IN_CALL, members = false, account }: LeftOptions): JSX.Element {
+function Left({ mode, view, channels, rooms = [SQUAD_HERE, AFK], user = USER_IN_CALL, members = false, account, rightOpen }: LeftOptions): JSX.Element {
   const userShown = useUserCardShown();
   return (
     <CommunityPage
       mode={mode}
+      rightOpen={rightOpen}
       left={
         <CommunityLeftView
           access="ok"
@@ -235,3 +239,48 @@ export const AccountMenu = () => <Left user={USER_IDLE} account="menu" />;
 
 /** Sign out… asks first: the question over the screen. Cancel returns to the account menu's button. */
 export const SignOutQuestion = () => <Left user={USER_IDLE} account="signOut" />;
+
+/**
+ * The header as the community home gives it: "N around" opens the members where they are not beside the list
+ * (a Sheet on a phone and at compact), and at wide, with the members island shown, it is plain text again.
+ */
+function MembersHeader({
+  name = 'Couch Co-op',
+  aroundCount = 9,
+  membersOpen,
+  channels,
+}: {
+  name?: string;
+  aroundCount?: number | null;
+  /** The members island at wide: left out, shown. */
+  membersOpen?: boolean;
+  channels?: LeftOptions['channels'];
+}): JSX.Element {
+  const range = useWidthRange();
+  const shown = range === 'wide' && membersOpen !== false;
+  return (
+    <Left
+      members
+      rightOpen={range === 'wide' ? membersOpen : undefined}
+      view={{ header: { ...HEADER, name, aroundCount, onShowMembers: noop, membersShown: shown } }}
+      channels={channels}
+    />
+  );
+}
+
+/** "9 around" is a button on a phone and at compact ("9 around, show members"); plain text beside the island at wide. */
+export const MembersButton = () => <MembersHeader />;
+
+/** No count known: the button says "Members". */
+export const MembersButtonNoCount = () => <MembersHeader aroundCount={null} />;
+
+/** A long community name and a large count: the name cuts, the button keeps its words. */
+export const MembersButtonLongName = () => (
+  <MembersHeader name="The Couch Co-op and Friends of the Couch International Society" aroundCount={12345} />
+);
+
+/** At wide with the members island closed: the button is back, to open it again. */
+export const MembersButtonIslandClosed = () => <MembersHeader membersOpen={false} />;
+
+/** A tapped channel row while the old shell's chat loads: lfg is busy (a spinner at its end, `aria-busy`). */
+export const BusyChannelRow = () => <MembersHeader channels={{ busyId: 'ch-lfg' }} />;
