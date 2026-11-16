@@ -173,5 +173,42 @@ describe('useFileAttachments', () => {
 
       expect(result.current.selectedFiles).toHaveLength(0);
     });
-  });
+      // #827: previews were keyed by index, so removing a middle file left the next file showing no preview (or
+    // the removed one's), and a file added afterwards could take a stale slot.
+    it('removing a middle file keeps each remaining file with its own preview', async () => {
+      const { result } = renderFileAttachments();
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+      const files = ['a.png', 'b.png', 'c.png'].map((name) => new File([name], name, { type: 'image/png' }));
+      act(() => {
+        result.current.handleFileDrop(files);
+      });
+      // FileReader is real in jsdom: wait for the three data URLs.
+      await vi.waitFor(() => expect(result.current.filePreviews.size).toBe(3));
+      const previewOf = (name: string) => {
+        const i = result.current.selectedFiles.findIndex((f) => f.name === name);
+        return result.current.filePreviews.get(i);
+      };
+      const cBefore = previewOf('c.png');
+      const aBefore = previewOf('a.png');
+      expect(cBefore).toBeDefined();
+
+      act(() => {
+        result.current.handleRemoveFile(1);
+      });
+      expect(result.current.selectedFiles.map((f) => f.name)).toEqual(['a.png', 'c.png']);
+      expect(previewOf('a.png')).toBe(aBefore);
+      expect(previewOf('c.png')).toBe(cBefore);
+
+      // A file added after the removal gets its own preview, and the others keep theirs.
+      act(() => {
+        result.current.handleFileDrop([new File(['d.png'], 'd.png', { type: 'image/png' })]);
+      });
+      await vi.waitFor(() => expect(previewOf('d.png')).toBeDefined());
+      expect(previewOf('c.png')).toBe(cBefore);
+      expect(previewOf('d.png')).not.toBe(cBefore);
+      expect(result.current.filePreviews.size).toBe(3);
+    });
+});
 });

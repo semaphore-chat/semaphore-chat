@@ -5,7 +5,7 @@
  * Handles file selection, image previews, file removal, and validation.
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { instanceControllerGetPublicSettingsOptions } from "../../api-client/@tanstack/react-query.gen";
 import { MAX_FILE_SIZE, MAX_FILES_PER_MESSAGE } from "../../constants/messages";
@@ -32,7 +32,9 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
   const maxFileSize = publicSettings?.maxFileSizeBytes ?? MAX_FILE_SIZE;
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [filePreviews, setFilePreviews] = useState<Map<number, string>>(new Map());
+  // Each preview belongs to its file, not to a position: removing a middle file (or adding one later) must not
+  // hand a remaining file another file's preview, or none (#827). `filePreviews` is derived by position.
+  const [previewByFile, setPreviewByFile] = useState<Map<File, string>>(new Map());
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileCountRef = useRef(0);
@@ -40,7 +42,7 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
   // Cleanup file previews on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
-      setFilePreviews(new Map());
+      setPreviewByFile(new Map());
       setSelectedFiles([]);
     };
   }, []);
@@ -66,15 +68,13 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
       return false;
     }
 
-    const startIndex = fileCountRef.current;
-
     // Generate previews for image files
-    files.forEach((file, idx) => {
+    files.forEach((file) => {
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (e) => {
           if (e.target?.result) {
-            setFilePreviews(prev => new Map(prev).set(startIndex + idx, e.target!.result as string));
+            setPreviewByFile(prev => new Map(prev).set(file, e.target!.result as string));
           }
         };
         reader.readAsDataURL(file);
@@ -103,12 +103,9 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
 
   const handleRemoveFile = useCallback((index: number) => {
     fileCountRef.current = Math.max(0, fileCountRef.current - 1);
+    // The removed file's preview stays in the map until the files are cleared: it is no longer listed (the
+    // previews are read by position from the files left), and a file read late cannot land on another's slot.
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    setFilePreviews(prev => {
-      const newPreviews = new Map(prev);
-      newPreviews.delete(index);
-      return newPreviews;
-    });
   }, []);
 
   const handleFileButtonClick = useCallback(() => {
@@ -118,8 +115,17 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
   const clearFiles = useCallback(() => {
     fileCountRef.current = 0;
     setSelectedFiles([]);
-    setFilePreviews(new Map());
+    setPreviewByFile(new Map());
   }, []);
+
+  const filePreviews = useMemo(() => {
+    const byIndex = new Map<number, string>();
+    selectedFiles.forEach((file, i) => {
+      const preview = previewByFile.get(file);
+      if (preview !== undefined) byIndex.set(i, preview);
+    });
+    return byIndex;
+  }, [selectedFiles, previewByFile]);
 
   return {
     selectedFiles,
