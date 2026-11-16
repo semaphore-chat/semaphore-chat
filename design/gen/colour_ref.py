@@ -97,3 +97,26 @@ def derive(base, mode, intensity):
     L, C, a = p['scrim']
     res['scrim'] = hexs(to_rgb(L, C * scale, h), a)
     return res
+
+
+# A person's avatar colour. The definition both clients port; design/vectors/person-colour.json is
+# generated from it. `people.colours` is frozen (see design/colour.json).
+FNV_OFFSET = 0x811C9DC5
+FNV_PRIME = 0x01000193
+
+
+def fnv1a32(data: bytes) -> int:
+    """32-bit FNV-1a: XOR each byte in, then multiply by the prime, modulo 2**32."""
+    h = FNV_OFFSET
+    for b in data:
+        h = ((h ^ b) * FNV_PRIME) & 0xFFFFFFFF
+    return h
+
+
+def person_colour(user_id):
+    """`people.colours[fnv1a32(utf8(id)) mod len]`, the id used exactly as given; None for a missing
+    or empty id (the avatar keeps the neutral fill)."""
+    if not user_id:
+        return None
+    colours = PARAMS['people']['colours']
+    return colours[fnv1a32(user_id.encode('utf-8')) % len(colours)]

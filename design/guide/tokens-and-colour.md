@@ -253,6 +253,33 @@ their own lightness, nudged only as far as needed to keep their contrast on the
 tinted backgrounds. (A very dull base colour gives less tint at every
 intensity.)
 
+### People colours
+
+Each person's avatar has a colour of its own, picked from their user id. It is
+the same on every screen, in both modes, for every base colour and intensity,
+and in both clients. The nine colours are in `design/colour.json` under
+`people.colours`:
+
+|#|Colour|#|Colour|#|Colour|
+|---|---|---|---|---|---|
+|0|`#FF8FB8` pink|3|`#A6D36A` lime|6|`#6FB1F5` blue|
+|1|`#FFA366` orange|4|`#5FD49A` green|7|`#9AA0FF` indigo|
+|2|`#E0C060` yellow|5|`#5ED1D1` teal|8|`#C792F0` purple|
+
+A person's colour is entry `fnv1a32(id) mod 9`. `fnv1a32` is 32-bit FNV-1a
+over the id's UTF-8 bytes: start at `0x811C9DC5`, and for each byte XOR it in
+and multiply by `0x01000193`, modulo 2^32. The id is used exactly as the API
+sends it. A missing or empty id gives no colour (the neutral fill). The web
+kit's `personColour(id)` does this, `design/gen/colour_ref.py` is the
+reference, and `design/vectors/person-colour.json` holds the test vectors
+every client must match.
+
+**The list is frozen.** Never change, add, remove or reorder a colour: every
+person would change colour. The generator refuses any other list.
+
+All nine take the dark initials at 4.5:1 or more in both modes, so the Avatar
+shows them exactly as listed.
+
 ## Rules
 
 1. **Never write a hex colour or a pixel number on a screen.** Pick the role

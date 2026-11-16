@@ -328,6 +328,28 @@ class ColourLoadTest(TempSource):
         with self.assertRaisesRegex(gen.TokenError, r"^colour\.intensity\.balanced"):
             self.load_colour()
 
+    def test_people_colours_must_be_hex(self):
+        self.edit_colour(set_value("people.colours", ["pink"]))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.people\.colours\[0\]"):
+            self.load_colour()
+
+    def test_people_colours_are_frozen(self):
+        for changed in (
+            list(gen.FROZEN_PEOPLE[1:]),  # one removed
+            list(gen.FROZEN_PEOPLE) + ["#123456"],  # one added
+            list(reversed(gen.FROZEN_PEOPLE)),  # reordered
+            ["#FF8FB9"] + list(gen.FROZEN_PEOPLE[1:]),  # one changed
+        ):
+            with self.subTest(changed=changed):
+                self.edit_colour(set_value("people.colours", changed))
+                with self.assertRaisesRegex(gen.TokenError, r"^colour\.people\.colours: the list is frozen"):
+                    self.load_colour()
+
+    def test_people_needs_the_frozen_note(self):
+        self.edit_colour(delete("people.frozen"))
+        with self.assertRaisesRegex(gen.TokenError, r"^colour\.people\.frozen"):
+            self.load_colour()
+
     def test_accent_lightness_range_must_be_ordered(self):
         self.edit_colour(set_value("modes.dark.accentL", [0.8, 0.6]))
         with self.assertRaisesRegex(gen.TokenError, r"^colour\.modes\.dark\.accentL"):
@@ -541,6 +563,9 @@ class RenderColourParamsTsTest(unittest.TestCase):
         self.assertIn("ground: [0.183, 0.004],", self.rendered)
         self.assertIn("scrim: [0.142, 0.0178, 0.6],", self.rendered)
         self.assertTrue(self.rendered.endswith("} as const;\n"))
+
+    def test_ts_params_carry_the_people_colours(self):
+        self.assertIn("  people: ['#FF8FB8', '#FFA366',", self.rendered)
 
     def test_ts_params_export_the_valid_mode_and_intensity_names(self):
         self.assertIn("export const colourModes = ['dark', 'light'] as const;", self.rendered)
@@ -798,6 +823,32 @@ class MainTest(TempSource):
                 self.assertTrue(err.startswith("error: "), err)
                 self.assertNotIn("Traceback", err)
                 self.assertEqual(len(err.strip().splitlines()), 1)
+
+
+class PersonVectorsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.vectors = gen.person_vectors()
+
+    def test_known_fnv1a_values(self):
+        by_id = {v["id"]: v for v in self.vectors}
+        # The published FNV-1a 32-bit test values.
+        self.assertEqual(by_id[""]["fnv1a32"], "0x811c9dc5")
+        self.assertEqual(by_id["a"]["fnv1a32"], "0xe40c292c")
+        self.assertEqual(by_id["foobar"]["fnv1a32"], "0xbf9cf968")
+
+    def test_empty_id_has_no_colour(self):
+        self.assertEqual(self.vectors[0], {"id": "", "fnv1a32": "0x811c9dc5", "index": None, "colour": None})
+
+    def test_colour_is_the_indexed_frozen_entry(self):
+        for v in self.vectors[1:]:
+            with self.subTest(id=v["id"]):
+                self.assertEqual(v["colour"], gen.FROZEN_PEOPLE[v["index"]])
+                self.assertEqual(v["index"], int(v["fnv1a32"], 16) % 9)
+
+    def test_ts_copy_carries_the_same_vectors(self):
+        rendered = gen.render_person_vectors_ts({})
+        self.assertIn(json.dumps(self.vectors, indent=2, ensure_ascii=False), rendered)
+        self.assertIn('"id": "名前"', rendered)
 
 
 class BrokenColourSourceTest(unittest.TestCase):

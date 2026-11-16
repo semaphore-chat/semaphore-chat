@@ -22,6 +22,12 @@ pub const PAPER: [f64; 2] = [0.985, 0.003];
 /// `colour.status`: positive, warning and danger as `0xRRGGBB`.
 pub const STATUS: [u32; 3] = [0x3ddc84, 0xffb84d, 0xff6b7d];
 
+/// `colour.people.colours`: people's avatar colours as `0xRRGGBB`, frozen. A person's
+/// colour is `PEOPLE[fnv1a32(utf8(id)) % 9]` (see `design/vectors/person-colour.json`).
+pub const PEOPLE: [u32; 9] = [
+    0xff8fb8, 0xffa366, 0xe0c060, 0xa6d36a, 0x5fd49a, 0x5ed1d1, 0x6fb1f5, 0x9aa0ff, 0xc792f0,
+];
+
 /// One mode's derivation parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ModeParams {
