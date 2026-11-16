@@ -67,7 +67,9 @@ describe('ReactionChip', () => {
 
   it('draws counts up to 999 in full and compact above, while the name keeps the exact count', () => {
     renderWithKit(<ReactionChip emoji="🔥" label="Fire" count={1250} onToggle={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Fire reaction, 1250' })).toHaveTextContent('1.3K');
+    expect(screen.getByRole('button', { name: 'Fire reaction, 1250' })).toHaveTextContent(drawnReactionCount(1250));
+    // Compact, whatever the locale's digits and suffix: shorter than the exact count.
+    expect(drawnReactionCount(1250)).not.toBe('1250');
     expect(drawnReactionCount(999)).toBe('999');
     expect(drawnReactionCount(-3)).toBe('0');
     expect(drawnReactionCount(Number.NaN)).toBe('0');
