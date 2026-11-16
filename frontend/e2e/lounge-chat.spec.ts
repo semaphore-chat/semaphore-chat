@@ -388,7 +388,8 @@ test.describe('The Lounge chat (390 px)', () => {
       await expect(page).toHaveURL(hashUrl(real));
       await expect(row(page, 'numbered message 40')).toBeInViewport(EVENTUAL);
       // The older message the user had scrolled to is not where they were: the place is not kept.
-      expect(await row(page, 'numbered message 12').evaluate(inView).catch(() => false)).toBe(false);
+      // Bounded and auto-retrying: a row virtua dropped from the DOM counts as out of view and does not hang.
+      await expect(row(page, 'numbered message 12')).not.toBeInViewport(EVENTUAL);
       await expect(page.getByRole('textbox', { name: 'Message #lobby' })).toHaveValue('half a thought', EVENTUAL);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
     } finally {

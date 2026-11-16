@@ -12,13 +12,15 @@ export function useRouteChannel(params: LoungeParams): {
   loaded: boolean;
   /** pending (first load), error (failed with nothing to show), success (a list is in). */
   status: 'pending' | 'error' | 'success';
+  /** The list query's error (set while status is error, and on a failed refetch too). */
+  error: unknown;
   refetch: () => void;
 } {
   const channels = useCommunityChannels(params.communityId ?? '');
   const channel = channels.all?.find((c) => c.id === params.channelId) ?? null;
   // A list that is in stays shown through a failed refetch (the query then reports an error with its data).
   const status = channels.all !== undefined ? 'success' : channels.status;
-  return { channel, loaded: status === 'success', status, refetch: channels.refetch };
+  return { channel, loaded: status === 'success', status, error: channels.error, refetch: channels.refetch };
 }
 
 export function channelTitle(channel: Pick<Channel, 'name'>): string {

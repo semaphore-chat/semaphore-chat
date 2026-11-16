@@ -152,7 +152,7 @@ const mine = () => createMessage({ id: 'm-mine', authorId: 'me', spans: [{ type:
 const theirs = () => createMessage({ id: 'm-theirs', authorId: 'u-aiko', spans: [{ type: SpanType.PLAINTEXT, text: 'their words' }] });
 
 /** The community's channel list as the screen finds it: the channel's type, missing from it, loading, or failed. */
-type ListState = 'TEXT' | 'VOICE' | 'missing' | 'pending' | 'error';
+type ListState = 'TEXT' | 'VOICE' | 'missing' | 'pending' | 'error' | 'forbidden' | 'notFound';
 
 function setup(messages: Message[], list: ListState = 'TEXT') {
   conversation.current = makeConversation(messages);
@@ -165,7 +165,9 @@ function setup(messages: Message[], list: ListState = 'TEXT') {
   } else {
     server.use(
       http.get('*/api/channels/community/c-1', () =>
-        list === 'pending' ? new Promise<never>(() => undefined) : HttpResponse.json({ statusCode: 500 }, { status: 500 }),
+        list === 'pending'
+          ? new Promise<never>(() => undefined)
+          : HttpResponse.json({ statusCode: list === 'forbidden' ? 403 : list === 'notFound' ? 404 : 500 }, { status: list === 'forbidden' ? 403 : list === 'notFound' ? 404 : 500 }),
       ),
     );
   }
@@ -248,6 +250,18 @@ describe('ChannelChat writes only to a channel known to be a text channel (I1)',
     expect(await screen.findByRole('textbox', { name: 'Message #lobby' })).toBeInTheDocument();
   });
 
+  it.each([
+    ['forbidden', "You don't have access to this channel"],
+    ['notFound', 'Channel not found'],
+  ] as const)('the list answering %s: the messages error face with Go to the community, no Try again', async (list, title) => {
+    setup([theirs()], list);
+    expect(await screen.findByRole('heading', { name: title }, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Go to the community' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: "Couldn't load the channel" })).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
   it('VOICE: a plain "Voice channel" state with Back, no chat; the chat notes the id for the shell', () => {
     setup([theirs()], 'VOICE');
     expect(screen.getByRole('heading', { level: 1, name: 'lobby' })).toBeInTheDocument();
@@ -268,6 +282,20 @@ describe('ChannelChat writes only to a channel known to be a text channel (I1)',
     act(() => row.focus());
     fireEvent.keyDown(row, { key: 'Enter' });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('a channel missing from the list: reaction chips are read-only, a press sends nothing', () => {
+    const withReaction = createMessage({
+      id: 'm-r',
+      authorId: 'u-aiko',
+      spans: [{ type: SpanType.PLAINTEXT, text: 'their words' }],
+      reactions: [{ emoji: '👍', userIds: ['u-aiko'] }],
+    });
+    setup([withReaction], 'missing');
+    const chip = within(rowOf('their words')).getByRole('button', { name: /reaction, 1/ });
+    expect(chip).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(chip);
+    expect(actions.react).not.toHaveBeenCalled();
   });
 });
 

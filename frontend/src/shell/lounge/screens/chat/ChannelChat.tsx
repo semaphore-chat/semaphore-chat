@@ -231,7 +231,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     [conversation.me, communityId, writable, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing, retrySend, removeFailed],
   );
 
-  const { onBack, goHome } = useChatBack(communityId);
+  const { onBack } = useChatBack(communityId);
 
   const typingUsers = useUsers(conversation.typingUserIds);
   const typingNames = conversation.typingUserIds.map((_, i) => {
@@ -251,17 +251,9 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     ) : face === 'empty' ? (
       <StateMessage title="No messages yet." line="Start the conversation!" />
     ) : face === 'gone' ? (
-      <StateMessage
-        title="Channel not found"
-        line="It may have been deleted, or the link is wrong."
-        action={<Button onClick={goHome}>Go to the community</Button>}
-      />
+      <GoneState communityId={communityId} />
     ) : face === 'noAccess' ? (
-      <StateMessage
-        title="You don't have access to this channel"
-        line="It may be private, or you may have been removed from this community."
-        action={<Button onClick={goHome}>Go to the community</Button>}
-      />
+      <NoAccessState communityId={communityId} />
     ) : face === 'error' ? (
       <StateMessage title="Couldn't load messages" action={<Button onClick={retry}>Try again</Button>} />
     ) : undefined;
@@ -328,6 +320,28 @@ function ChannelChatState({ communityId, title, state }: { communityId: string; 
   );
 }
 
+function GoneState({ communityId }: { communityId: string }): JSX.Element {
+  const { goHome } = useChatBack(communityId);
+  return (
+    <StateMessage
+      title="Channel not found"
+      line="It may have been deleted, or the link is wrong."
+      action={<Button onClick={goHome}>Go to the community</Button>}
+    />
+  );
+}
+
+function NoAccessState({ communityId }: { communityId: string }): JSX.Element {
+  const { goHome } = useChatBack(communityId);
+  return (
+    <StateMessage
+      title="You don't have access to this channel"
+      line="It may be private, or you may have been removed from this community."
+      action={<Button onClick={goHome}>Go to the community</Button>}
+    />
+  );
+}
+
 /** A voice channel has no chat: its route is the old shell's call view (I1, M1). */
 function VoiceChannelState({ communityId }: { communityId: string }): JSX.Element {
   const { goHome } = useChatBack(communityId);
@@ -350,7 +364,7 @@ function VoiceChannelState({ communityId }: { communityId: string }): JSX.Elemen
 export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
   const communityId = params.communityId ?? '';
   const channelId = params.channelId ?? '';
-  const { channel, status, refetch } = useRouteChannel({ communityId, channelId });
+  const { channel, status, error, refetch } = useRouteChannel({ communityId, channelId });
   const isVoice = channel?.type === ChannelType.VOICE;
   useEffect(() => {
     if (isVoice) noteVoiceChannels([channelId]);
@@ -362,13 +376,17 @@ export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
     return <ChannelChatState communityId={communityId} title={null} state={<LoadingRows />} />;
   }
   if (status === 'error') {
-    return (
-      <ChannelChatState
-        communityId={communityId}
-        title="Channel"
-        state={<StateMessage title="Couldn't load the channel" action={<Button onClick={refetch}>Try again</Button>} />}
-      />
-    );
+    // The list's 403 or 404 reads like the messages' own (a removed member's or a stale link): Try again could never work.
+    const code = getHttpStatus(error);
+    const state =
+      code === 404 ? (
+        <GoneState communityId={communityId} />
+      ) : code === 403 ? (
+        <NoAccessState communityId={communityId} />
+      ) : (
+        <StateMessage title="Couldn't load the channel" action={<Button onClick={refetch}>Try again</Button>} />
+      );
+    return <ChannelChatState communityId={communityId} title="Channel" state={state} />;
   }
   return <ChannelChatBody key={`${communityId}/${channelId}`} communityId={communityId} channelId={channelId} />;
 }
