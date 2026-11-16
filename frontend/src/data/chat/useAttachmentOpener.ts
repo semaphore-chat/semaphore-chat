@@ -7,7 +7,7 @@
  * The opener is one stable object for the whole list (it goes into the rows' shared context): which files are on
  * their way is read per file through `useAttachmentBusy`, so one download re-renders only its own tile.
  */
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useFileCache } from '../../contexts/AvatarCacheContext';
 import { downloadBlob } from '../../utils/format';
 import { logger } from '../../utils/logger';
@@ -27,6 +27,9 @@ export interface AttachmentFile {
   /** The type the server reported for the file. */
   mimeType: string;
 }
+
+/** How long a typed copy shown in a tab is kept at most before its address is revoked (the tab keeps its page). */
+export const TYPED_URL_LIFETIME_MS = 60_000;
 
 export interface AttachmentOpener {
   open(file: AttachmentFile): void;
@@ -51,8 +54,19 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
-  const [opener] = useState<AttachmentOpener>(() => {
+  const [{ opener, dispose }] = useState(() => {
     const busy = new Set<string>();
+    // The typed copies shown in tabs, each revoked after a bounded delay (the tab has long loaded it by then; a load
+    // event cannot be watched, the navigation replaces the tab's window) or when the screen goes away, so opening
+    // many pictures does not keep their bytes alive.
+    const typedUrls = new Map<string, ReturnType<typeof setTimeout>>();
+    const revoke = (url: string) => {
+      const timer = typedUrls.get(url);
+      if (timer === undefined) return;
+      clearTimeout(timer);
+      typedUrls.delete(url);
+      URL.revokeObjectURL(url);
+    };
     const listeners = new Set<() => void>();
     const notify = () => listeners.forEach((listener) => listener());
     const setBusy = (id: string, on: boolean) => {
@@ -60,7 +74,7 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
       else busy.delete(id);
       notify();
     };
-    return {
+    const opener: AttachmentOpener = {
       isBusy: (id) => busy.has(id),
       subscribe: (listener) => {
         listeners.add(listener);
@@ -70,6 +84,8 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
         const action = attachmentAction(mimeType);
         // A tab opened after an await is a blocked pop-up: open it inside the press, point it at the file later.
         const tab = action === 'open' ? window.open('', '_blank') : null;
+        // Cut the tab's way back to the app at once, before any wait: whatever the tab shows never gets an opener.
+        if (tab !== null) tab.opener = null;
         const fileCache = cacheRef.current;
         setBusy(id, true);
         void (async () => {
@@ -82,8 +98,11 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
             // A copy labelled with exactly the reported (allow-listed) type, whatever the response said.
             const bytes = await (await fetch(url)).blob();
             const typed = URL.createObjectURL(new Blob([bytes], { type: mimeType.split(';')[0].trim().toLowerCase() }));
+            typedUrls.set(
+              typed,
+              setTimeout(() => revoke(typed), TYPED_URL_LIFETIME_MS),
+            );
             if (tab !== null) {
-              tab.opener = null;
               tab.location.href = typed;
             } else {
               downloadBlob(typed, name);
@@ -98,7 +117,10 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
         })();
       },
     };
+    const dispose = () => [...typedUrls.keys()].forEach(revoke);
+    return { opener, dispose };
   });
+  useEffect(() => dispose, [dispose]);
 
   // The same object on every render.
   return opener;

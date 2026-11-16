@@ -9,7 +9,7 @@ vi.mock('../../../utils/format', async (importOriginal) => ({
   downloadBlob: download,
 }));
 
-import { attachmentAction, useAttachmentBusy, useAttachmentOpener } from '../../../data/chat/useAttachmentOpener';
+import { TYPED_URL_LIFETIME_MS, attachmentAction, useAttachmentBusy, useAttachmentOpener } from '../../../data/chat/useAttachmentOpener';
 
 describe('attachmentAction (from the server-reported type)', () => {
   it.each([
@@ -73,6 +73,43 @@ describe('useAttachmentOpener', () => {
     await waitFor(() => expect(download).toHaveBeenCalledWith('blob:cached', name));
     expect(open).not.toHaveBeenCalled();
     expect(tab.location.href).toBe('');
+  });
+
+  it('cuts the tab’s opener before any wait, and nothing later depends on it', async () => {
+    let resolve: (url: string) => void = () => undefined;
+    cache.getBlob.mockReturnValueOnce(null as never);
+    cache.fetchBlob.mockReturnValueOnce(new Promise<string>((r) => (resolve = r)));
+    const { result } = renderHook(() => useAttachmentOpener());
+    act(() => result.current.open({ id: 'f-1', name: 'shot.png', mimeType: 'image/png' }));
+    // Still fetching: the tab already has no opener.
+    expect(tab.opener).toBeNull();
+    // A page in the tab that set an opener again is not touched by the rest of the open.
+    tab.opener = 'not ours';
+    await act(async () => resolve('blob:late'));
+    await waitFor(() => expect(tab.location.href).toBe('blob:typed'));
+    expect(tab.opener).toBe('not ours');
+  });
+
+  it('revokes the typed copy after a bounded delay, and on unmount', async () => {
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { result, unmount } = renderHook(() => useAttachmentOpener());
+      act(() => result.current.open({ id: 'f-1', name: 'a.png', mimeType: 'image/png' }));
+      await vi.waitFor(() => expect(tab.location.href).toBe('blob:typed'));
+      expect(revoke).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(TYPED_URL_LIFETIME_MS);
+      expect(revoke).toHaveBeenCalledWith('blob:typed');
+
+      revoke.mockClear();
+      tab.location.href = '';
+      act(() => result.current.open({ id: 'f-2', name: 'b.png', mimeType: 'image/png' }));
+      await vi.waitFor(() => expect(tab.location.href).toBe('blob:typed'));
+      unmount();
+      expect(revoke).toHaveBeenCalledWith('blob:typed');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('fetches a file not in the cache, says when it fails, and closes the opened tab', async () => {
