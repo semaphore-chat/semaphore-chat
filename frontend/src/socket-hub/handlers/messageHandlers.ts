@@ -36,6 +36,7 @@ import {
   isDetachedFromLiveEdge,
 } from '../../utils/messageCacheUpdaters';
 import type { SocketEventHandler } from './types';
+import { cancelBeforeWrite } from './cancelBeforeWrite';
 import type { ServerEvents } from '@semaphore-chat/shared';
 
 // TODO: WS handlers only update the normal message query cache. Anchored mode
@@ -61,7 +62,7 @@ export const handleNewMessage: SocketEventHandler<
   const detached = isDetachedFromLiveEdge(existing);
 
   if (!detached) {
-    await queryClient.cancelQueries({ queryKey });
+    await cancelBeforeWrite(queryClient, queryKey);
     // Reconciles in place with a matching optimistic (pending/failed) row
     // from the same author if the echo beats the sender's own ack — see
     // prependOrReconcileOptimistic (PR-13).
@@ -139,7 +140,7 @@ export const handleUpdateMessage: SocketEventHandler<typeof ServerEvents.UPDATE_
 ) => {
   const queryKey = messageQueryKeyForContext(message);
   if (!queryKey) return;
-  await queryClient.cancelQueries({ queryKey });
+  await cancelBeforeWrite(queryClient, queryKey);
   queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
     updateMessageInInfinite(old, message),
   );
@@ -151,7 +152,7 @@ export const handleDeleteMessage: SocketEventHandler<typeof ServerEvents.DELETE_
 ) => {
   const queryKey = messageQueryKeyForContext({ channelId, directMessageGroupId });
   if (!queryKey) return;
-  await queryClient.cancelQueries({ queryKey });
+  await cancelBeforeWrite(queryClient, queryKey);
   queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
     deleteMessageFromInfinite(old, messageId),
   );
@@ -170,7 +171,7 @@ export const handleReactionAdded: SocketEventHandler<typeof ServerEvents.REACTIO
   // Update channel/DM message cache
   const queryKey = messageQueryKeyForContext({ channelId, directMessageGroupId });
   if (queryKey) {
-    await queryClient.cancelQueries({ queryKey });
+    await cancelBeforeWrite(queryClient, queryKey);
     queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
       const msg = findMessageInInfinite(old, messageId);
       if (!msg) return old;
@@ -196,7 +197,7 @@ export const handleReactionAdded: SocketEventHandler<typeof ServerEvents.REACTIO
       path: { parentMessageId },
       query: { limit: 50, continuationToken: '' },
     });
-    await queryClient.cancelQueries({ queryKey: threadQueryKey });
+    await cancelBeforeWrite(queryClient, threadQueryKey);
     queryClient.setQueryData(threadQueryKey, (old: ThreadRepliesResponseDto | undefined) => {
       if (!old) return old;
       return {
@@ -224,7 +225,7 @@ export const handleReactionRemoved: SocketEventHandler<typeof ServerEvents.REACT
   // Update channel/DM message cache
   const queryKey = messageQueryKeyForContext({ channelId, directMessageGroupId });
   if (queryKey) {
-    await queryClient.cancelQueries({ queryKey });
+    await cancelBeforeWrite(queryClient, queryKey);
     queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
       const msg = findMessageInInfinite(old, messageId);
       if (!msg) return old;
@@ -241,7 +242,7 @@ export const handleReactionRemoved: SocketEventHandler<typeof ServerEvents.REACT
       path: { parentMessageId },
       query: { limit: 50, continuationToken: '' },
     });
-    await queryClient.cancelQueries({ queryKey: threadQueryKey });
+    await cancelBeforeWrite(queryClient, threadQueryKey);
     queryClient.setQueryData(threadQueryKey, (old: ThreadRepliesResponseDto | undefined) => {
       if (!old) return old;
       return {
@@ -260,7 +261,7 @@ export const handleMessagePinned: SocketEventHandler<typeof ServerEvents.MESSAGE
   queryClient: QueryClient,
 ) => {
   const queryKey = channelMessagesQueryKey(channelId);
-  await queryClient.cancelQueries({ queryKey });
+  await cancelBeforeWrite(queryClient, queryKey);
   queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
     const msg = findMessageInInfinite(old, messageId);
     if (!msg) return old;
@@ -281,7 +282,7 @@ export const handleMessageUnpinned: SocketEventHandler<typeof ServerEvents.MESSA
   queryClient: QueryClient,
 ) => {
   const queryKey = channelMessagesQueryKey(channelId);
-  await queryClient.cancelQueries({ queryKey });
+  await cancelBeforeWrite(queryClient, queryKey);
   queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
     const msg = findMessageInInfinite(old, messageId);
     if (!msg) return old;
@@ -304,7 +305,7 @@ export const handleThreadReplyCountUpdated: SocketEventHandler<typeof ServerEven
   const queryKey = messageQueryKeyForContext({ channelId, directMessageGroupId });
   if (!queryKey) return;
 
-  await queryClient.cancelQueries({ queryKey });
+  await cancelBeforeWrite(queryClient, queryKey);
   queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
     const msg = findMessageInInfinite(old, parentMessageId);
     if (!msg) return old;

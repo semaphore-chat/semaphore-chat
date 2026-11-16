@@ -6,6 +6,7 @@ import type {
 import { threadsControllerGetRepliesQueryKey } from '../../api-client/@tanstack/react-query.gen';
 import type { ThreadRepliesResponseDto } from '../../api-client';
 import type { SocketEventHandler } from './types';
+import { cancelBeforeWrite } from './cancelBeforeWrite';
 
 function getRepliesQueryKey(parentMessageId: string) {
   return threadsControllerGetRepliesQueryKey({
@@ -19,7 +20,7 @@ export const handleNewThreadReply: SocketEventHandler<typeof ServerEvents.NEW_TH
   queryClient: QueryClient,
 ) => {
   const queryKey = getRepliesQueryKey(payload.parentMessageId);
-  await queryClient.cancelQueries({ queryKey });
+  await cancelBeforeWrite(queryClient, queryKey);
   queryClient.setQueryData(queryKey, (old: ThreadRepliesResponseDto | undefined) => {
     if (!old) return old;
     if (old.replies.some((r) => r.id === payload.reply.id)) return old;
