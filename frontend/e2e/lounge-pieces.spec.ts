@@ -269,7 +269,7 @@ test.describe('The Lounge pieces on the community fixture', () => {
   });
 
   for (const where of LOUNGE_WHERES) {
-    test(`new messages bold a channel row; reading it in the old shell clears it, and Back returns to that row (390 px, ${where})`, async ({
+    test(`new messages bold a channel row; reading it (the old shell's chat, or the fixture's Lounge chat) clears it, and Back returns to that row (390 px, ${where})`, async ({
       browser,
       request,
     }, testInfo) => {
@@ -285,12 +285,19 @@ test.describe('The Lounge pieces on the community fixture', () => {
         await expect(lobby()).toHaveAccessibleName(/unread/, EVENTUAL);
         await shot(page, testInfo, `p5-unread-row-${where}`);
 
-        // A channel is a classic chat today: tapping it leaves the Lounge.
         await lobby().click();
-        await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
-        await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
-
-        await page.goBack();
+        if (where === 'real') {
+          // The real channel route is a classic chat until 10c-2: tapping it leaves the Lounge.
+          await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
+          await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+          await page.goBack();
+        } else {
+          // On the fixture a channel opens the Lounge chat fixture; its header's Back returns.
+          await expect(page.getByRole('heading', { name: '# lobby', level: 1 })).toBeVisible(EVENTUAL);
+          await expect(page.getByRole('article').filter({ hasText: 'anyone around?' })).toBeVisible(EVENTUAL);
+          await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
+          await page.getByRole('button', { name: 'Back to the community' }).click();
+        }
         await expect(page.locator('[data-shell="lounge"]')).toBeAttached(EVENTUAL);
         await expect(header(page, world.c1.name)).toBeVisible(EVENTUAL);
         await expect(lobby()).toBeFocused(EVENTUAL);

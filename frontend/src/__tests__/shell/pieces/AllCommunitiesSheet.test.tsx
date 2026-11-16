@@ -150,7 +150,7 @@ describe('AllCommunitiesSheet (the view)', () => {
       onSignOut: () => undefined,
     };
     renderWithKit(
-      <LoungeLinksContext value={{ community: (id) => `#/__lounge/community/${id}` }}>
+      <LoungeLinksContext value={{ community: (id) => `#/__lounge/community/${id}`, channel: (c, ch) => `#/__lounge/community/${c}/channel/${ch}` }}>
         <Harness {...all} />
       </LoungeLinksContext>,
     );

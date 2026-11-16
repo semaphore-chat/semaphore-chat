@@ -7,19 +7,14 @@
  * shell's not-found page.
  *
  * It is the community home's descriptor (`communityHomeParts`) with two differences: a placeholder centre,
- * and `links`, so the dock and the "All communities" sheet move between communities on the fixture and
- * the frame stays mounted.
+ * and `links`, so the dock and the "All communities" sheet move between communities on the fixture, a channel
+ * row opens the chat fixture, and the frame stays mounted.
  */
 import type { JSX } from 'react';
 import { Button, Stack, Text } from '../../../kit';
-import type { LoungeLinks } from '../links';
 import { useScreenChrome, type LoungeScreenProps, type ThreeIslandsScreen } from '../screen';
 import { useCommunityTitle } from './communityHomeParts';
-import { loungeCommunityFixturePath } from '../../loungeRoutes';
-
-const FIXTURE_LINKS: LoungeLinks = Object.freeze({
-  community: (id: string) => `#${loungeCommunityFixturePath(id)}`,
-});
+import { FIXTURE_LINKS } from './fixtureLinks';
 
 /**
  * The placeholder centre: the community's name as the screen's heading, one line, and a way to open the

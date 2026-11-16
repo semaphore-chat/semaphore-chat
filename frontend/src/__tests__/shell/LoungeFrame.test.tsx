@@ -291,7 +291,7 @@ describe('descriptors', () => {
     const fixtureLike: LoungeRoute = {
       path: '/fx/fixture/:communityId',
       widths: ALL,
-      load: async () => ({ default: { ...homeScreen, links: { community: (id: string) => `#/fx/fixture/${id}` } } }),
+      load: async () => ({ default: { ...homeScreen, links: { community: (id: string) => `#/fx/fixture/${id}`, channel: (c: string, ch: string) => `#/fx/fixture/${c}/${ch}` } } }),
     };
     ROUTES.unshift(fixtureLike);
     try {

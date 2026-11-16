@@ -24,6 +24,7 @@ import { isPermanentAccessError } from '../../../../utils/httpError';
 import { rememberLastCommunity } from '../../../../utils/lastCommunity';
 import { rememberActivatedRow } from '../../../routeMemory';
 import { useScreenChrome } from '../../screen';
+import { useLoungeLinks } from '../../links';
 import { CommunityHeader, type CommunityAction, type CommunityHeaderProps } from './CommunityHeader';
 import { ChannelSection, type ChannelItem, type ChannelSectionProps } from './ChannelSection';
 import { VoiceRoomCardConnected } from './VoiceRoomCard';
@@ -123,7 +124,8 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
     },
     [navigate, communityId],
   );
-  const hrefFor = useCallback((id: string) => `#/community/${communityId}/channel/${id}`, [communityId]);
+  const links = useLoungeLinks();
+  const hrefFor = useCallback((id: string) => links.channel(communityId, id), [links, communityId]);
   // The row whose screen is loading: only on the path it was tapped from. A later hash change that is not
   // that row's (Back before the chat showed, another link) clears it.
   const [pending, setPending] = useState<{ path: string; id: string } | null>(null);

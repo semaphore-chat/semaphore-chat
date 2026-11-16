@@ -11,10 +11,12 @@ import { chooseShell } from '../../shell/chooseShell';
 import {
   CLASSIC_STATIC_PATHS,
   COMMUNITY_HOME_PATH,
+  LOUNGE_CHAT_FIXTURE_PATH,
   LOUNGE_COMMUNITY_FIXTURE_PATH,
   LOUNGE_FIXTURE_PREFIX,
   LOUNGE_MARKER_PATH,
   LOUNGE_ROUTES,
+  loungeChatFixturePath,
   loungeCommunityFixturePath,
   type LoungeRoute,
 } from '../../shell/loungeRoutes';
@@ -139,8 +141,20 @@ describe('chooseShell', () => {
       expect(choice.kind === 'lounge' && choice.route.path).toBe(LOUNGE_COMMUNITY_FIXTURE_PATH);
       expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1' });
     }
-    // Only the community itself: its channels are the old shell's (an unknown page).
-    expect(chooseShell({ pathname: '/__lounge/community/c-1/channel/ch-2', enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
+    // Deeper paths under a channel are nobody's fixture: the old shell's (an unknown page).
+    expect(chooseShell({ pathname: '/__lounge/community/c-1/channel/ch-2/search', enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
+  });
+
+  it('with the new design on, the chat fixture is the new shell at every width, with its community and channel', () => {
+    for (const width of WIDTHS) {
+      const choice = chooseShell({ pathname: loungeChatFixturePath('c-1', 'ch-2'), enabled: true, width });
+      expect(choice.kind === 'lounge' && choice.route.path).toBe(LOUNGE_CHAT_FIXTURE_PATH);
+      expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1', channelId: 'ch-2' });
+    }
+    // The real channel route is not registered (10c-1): the old shell at every width, design on or off.
+    for (const width of WIDTHS) {
+      expect(chooseShell({ pathname: '/community/c-1/channel/ch-2', enabled: true, width })).toEqual({ kind: 'classic' });
+    }
   });
 
   it('a registered route outside its widths is the old shell', () => {
@@ -190,7 +204,12 @@ describe('the registry (LOUNGE_ROUTES)', () => {
   });
 
   it('registers the fixtures and the phone community home', () => {
-    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([LOUNGE_MARKER_PATH, LOUNGE_COMMUNITY_FIXTURE_PATH, COMMUNITY_HOME_PATH]);
+    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([
+      LOUNGE_MARKER_PATH,
+      LOUNGE_COMMUNITY_FIXTURE_PATH,
+      LOUNGE_CHAT_FIXTURE_PATH,
+      COMMUNITY_HOME_PATH,
+    ]);
     expect(LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)?.widths).toEqual(['phone']);
   });
 
@@ -229,7 +248,7 @@ describe('the registry (LOUNGE_ROUTES)', () => {
           Centre: null,
           right: 'members',
           useTitle: () => null,
-          links: { community: (id: string) => `#/x/${id}` },
+          links: { community: (id: string) => `#/x/${id}`, channel: (c: string, ch: string) => `#/x/${c}/${ch}` },
         },
       }),
     };
@@ -242,7 +261,18 @@ describe('the registry (LOUNGE_ROUTES)', () => {
     expect(screen.template).toBe('threeIslands');
     if (screen.template !== 'threeIslands') return;
     expect(screen.links?.community('c-2')).toBe(`#${loungeCommunityFixturePath('c-2')}`);
+    expect(screen.links?.channel('c-2', 'ch-3')).toBe(`#${loungeChatFixturePath('c-2', 'ch-3')}`);
     expect(screen).toMatchObject({ place: 'community', phonePane: 'left', right: 'members' });
+  });
+
+  it('the chat fixture: threeIslands, community, the centre on a phone, its own members, fixture links', async () => {
+    const route = LOUNGE_ROUTES.find((candidate) => candidate.path === LOUNGE_CHAT_FIXTURE_PATH)!;
+    expect(route.widths).toEqual(['phone', 'compact', 'wide']);
+    const { default: screen } = await route.load();
+    expect(screen).toMatchObject({ template: 'threeIslands', place: 'community', phonePane: 'centre', rightLabel: 'Members' });
+    if (screen.template !== 'threeIslands') return;
+    expect(typeof screen.right).toBe('function');
+    expect(screen.links?.channel('c-1', 'ch-2')).toBe(`#${loungeChatFixturePath('c-1', 'ch-2')}`);
   });
 
   it('every screen loads from shell/lounge/screens/', () => {

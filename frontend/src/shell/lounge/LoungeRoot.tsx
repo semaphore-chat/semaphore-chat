@@ -10,11 +10,12 @@
  * hooks, the api client, shared and the router; never components/, pages/ or MUI. Enforced by the
  * headless block in eslint.config.js and __tests__/shell/loungeImportBoundary.test.ts.
  */
-import { useRef, type JSX } from 'react';
+import { useEffect, useRef, type JSX } from 'react';
 import { KitProvider } from '../../kit';
 import { useAppearance } from '../../hooks/useAppearance';
 import type { LoungeChoice } from '../chooseShell';
 import { LoungeFrame } from './frame/LoungeFrame';
+import { leftLounge } from '../routeMemory';
 
 export const LOUNGE_ROOT_MARKER = 'semaphore-lounge-root';
 
@@ -25,6 +26,9 @@ export interface LoungeRootProps {
 export default function LoungeRoot({ choice }: LoungeRootProps): JSX.Element {
   const { baseColor, mode, intensity } = useAppearance();
   const root = useRef<HTMLDivElement>(null);
+  // The old shell shows next: the Lounge paths shown before are no longer what Back returns to. Here and not in
+  // the frame, whose screens suspend (and clean their effects up) while a screen's module loads.
+  useEffect(() => leftLounge, []);
   return (
     <KitProvider base={baseColor} mode={mode} intensity={intensity}>
       {/* `display: contents`: a marker for tests and the bundle check, with no box of its own. */}

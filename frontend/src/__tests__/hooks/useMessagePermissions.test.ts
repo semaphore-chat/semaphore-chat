@@ -42,6 +42,12 @@ describe('useMessagePermissions', () => {
       expect(mockCan).toHaveBeenCalledWith('react');
     });
 
+    it('a given communityId wins over the route param (the new shell has no route params)', () => {
+      const message = createMessage({ authorId: 'other-user', channelId: 'channel-1' });
+      renderHook(() => useMessagePermissions({ message, currentUserId: 'user-1', communityId: 'community-9' }));
+      expect(mockUseChannelPermissions).toHaveBeenCalledWith('community-9', 'channel-1');
+    });
+
     it('is false in a read-only channel or while timed out (react capability off)', () => {
       mockCan.mockImplementation((cap: string) => cap !== 'react');
       const message = createMessage({ authorId: 'other-user', channelId: 'channel-1' });

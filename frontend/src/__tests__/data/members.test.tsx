@@ -15,7 +15,7 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 const voice = vi.hoisted(() => ({ state: { isConnected: false, currentChannelId: null as string | null } }));
 vi.mock('../../hooks/useVoiceConnection', () => ({ useVoiceConnection: () => ({ state: voice.state, actions: {} }) }));
 
-import { useCommunityMembers, computeDisplayRole, keepIdentity, groupMembers } from '../../data/members';
+import { useCommunityMembers, useChannelMembers, computeDisplayRole, keepIdentity, groupMembers } from '../../data/members';
 import { handleUserOnline, resetCommunityPresenceThrottle } from '../../socket-hub/handlers/presenceHandlers';
 import { handleReconnect } from '../../socket-hub/handlers/reconnectHandlers';
 import { presenceControllerGetCommunityPresenceQueryKey } from '../../api-client/@tanstack/react-query.gen';
@@ -314,6 +314,93 @@ describe('useCommunityMembers', () => {
     act(() => result.current.refetch());
     await waitFor(() => expect(result.current.away).toHaveLength(1));
     expect(result.current.status).toBe('success');
+  });
+});
+
+describe('useChannelMembers (the chat screen’s members)', () => {
+  beforeEach(() => {
+    resetCommunityPresenceThrottle();
+  });
+
+  function renderChannelMembers(channel: { id: string; isPrivate: boolean } | null) {
+    const queryClient = createTestQueryClient();
+    return renderHook(() => useChannelMembers('c-1', channel), { wrapper: createTestWrapper({ queryClient }) });
+  }
+
+  it('a public channel lists the community’s members', async () => {
+    server.use(memberPages(3), bulkPresence({ 'user-1': true }), noRooms());
+    const { result } = renderChannelMembers({ id: 'ch-1', isPrivate: false });
+    await waitFor(() => expect(result.current.status).toBe('success'));
+    await waitFor(() => expect(result.current.around).toHaveLength(1));
+    expect([...result.current.around, ...result.current.away].map((m) => m.id).sort()).toEqual(['user-1', 'user-2', 'user-3']);
+  });
+
+  it('a private channel lists only the people in it, never the rest of the community', async () => {
+    const channelMembers = vi.fn();
+    const communityMembers = vi.fn();
+    server.use(
+      http.get(`${BASE}/api/membership/community/c-1`, () => {
+        communityMembers();
+        return HttpResponse.json({ members: [] });
+      }),
+      bulkPresence({ 'user-2': true }),
+      noRooms(),
+      http.get(`${BASE}/api/channel-membership/channel/ch-staff`, () => {
+        channelMembers();
+        return HttpResponse.json([
+          { id: 'cm-1', userId: 'user-2', channelId: 'ch-staff', joinedAt: '2026-01-01T00:00:00Z', user: membership(2).user },
+          { id: 'cm-2', userId: 'user-4', channelId: 'ch-staff', joinedAt: '2026-01-01T00:00:00Z', user: membership(4).user },
+        ]);
+      }),
+    );
+    const { result } = renderChannelMembers({ id: 'ch-staff', isPrivate: true });
+    await waitFor(() => expect(result.current.status).toBe('success'));
+    await waitFor(() => expect(result.current.around).toHaveLength(1));
+    expect(channelMembers).toHaveBeenCalled();
+    expect(result.current.around.map((m) => m.id)).toEqual(['user-2']);
+    expect(result.current.away.map((m) => m.id)).toEqual(['user-4']);
+    // No display roles in a private channel's list (as the old member list): nobody is a host.
+    expect(result.current.hosts).toEqual([]);
+    expect(result.current.allLoaded).toBe(true);
+    expect(result.current.aroundCount).toBe(1);
+    // A cold link to a private channel never asks for the community's roster.
+    expect(communityMembers).not.toHaveBeenCalled();
+  });
+
+  it('a private channel whose list fails reports an error', async () => {
+    server.use(
+      memberPages(2),
+      bulkPresence({}),
+      noRooms(),
+      http.get(`${BASE}/api/channel-membership/channel/ch-staff`, () => HttpResponse.json({ message: 'no' }, { status: 500 })),
+    );
+    const { result } = renderChannelMembers({ id: 'ch-staff', isPrivate: true });
+    await waitFor(() => expect(result.current.status).toBe('error'));
+  });
+
+  it('while the channel is not known (loading, or not in the reader’s list) it fetches and lists nobody', async () => {
+    const communityMembers = vi.fn();
+    const channelMembers = vi.fn();
+    server.use(
+      http.get(`${BASE}/api/membership/community/c-1`, () => {
+        communityMembers();
+        return HttpResponse.json({ members: [membership(1)] });
+      }),
+      http.get(`${BASE}/api/channel-membership/channel/:id`, () => {
+        channelMembers();
+        return HttpResponse.json([]);
+      }),
+      bulkPresence({}),
+      noRooms(),
+    );
+    const { result } = renderChannelMembers(null);
+    // Give any request the chance to go out.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.status).toBe('pending');
+    expect([...result.current.hosts, ...result.current.around, ...result.current.away]).toEqual([]);
+    expect(result.current.aroundCount).toBeNull();
+    expect(communityMembers).not.toHaveBeenCalled();
+    expect(channelMembers).not.toHaveBeenCalled();
   });
 });
 

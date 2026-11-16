@@ -3,7 +3,8 @@
  * old shell (design §4, M9).
  *
  * On a new path:
- * 1. On entry (this frame just mounted), the row remembered for the path (routeMemory) takes focus.
+ * 1. On entry (this frame just mounted), or on Back (a history pop) inside the frame, the row remembered for the
+ *    path (routeMemory) takes focus.
  * 2. Otherwise, if focus is in an open dialog or sheet, or still on an element inside a shown `nav` of
  *    the frame (the dock or the left island: the user is moving through a list), it stays; over a dialog
  *    nothing is announced either.
@@ -15,6 +16,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { useAnnounce, useScreenFocusTarget } from '../../../kit';
 import { LOUNGE_ROW_ATTRIBUTE, rememberedRow } from '../../routeMemory';
+import { NavigationType, useNavigationType } from 'react-router-dom';
 
 function shown(element: Element): boolean {
   return element.closest('[hidden], [inert]') === null;
@@ -52,6 +54,9 @@ export interface RouteFocusProps {
 
 export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null {
   const announce = useAnnounce();
+  // Back (a history pop) to a route inside the new shell is "coming back" too: its remembered row takes focus,
+  // as on entry from the old shell (the chat's Back to the community home, design B6).
+  const navigation = useNavigationType();
   const entered = useRef(false);
   const announcePending = useRef(false);
   const target = useRef<HTMLElement | null>(null);
@@ -64,8 +69,14 @@ export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null 
     const root = rootRef.current;
     if (root === null) return;
     target.current = screenTarget(root);
+    const active = document.activeElement;
+    // A dialog or sheet is open (MUI marks the page behind it aria-hidden): never pull focus out of it, not even
+    // to a remembered row.
+    if (active !== null && active.closest('[role="dialog"], [aria-modal="true"]') !== null) {
+      return;
+    }
 
-    if (entry) {
+    if (entry || navigation === NavigationType.Pop) {
       const id = rememberedRow(pathname);
       const row =
         id === null
@@ -77,16 +88,30 @@ export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null 
         row.focus();
         return;
       }
-    }
-    const active = document.activeElement;
-    // A dialog or sheet is open (MUI marks the page behind it aria-hidden): never pull focus out of it.
-    if (active !== null && active.closest('[role="dialog"], [aria-modal="true"]') !== null) {
-      return;
+      if (row !== null && !entry) {
+        // Back to a screen of the same template: its pane can still be the hidden one for a frame or two (the
+        // screen's module loads, the phone pane switches). Focus the row once it is shown, for a few frames.
+        let frames = 0;
+        let handle = 0;
+        const retry = () => {
+          if (document.activeElement?.closest('[role="dialog"], [aria-modal="true"]')) return;
+          if (focusable(row)) {
+            row.focus();
+            return;
+          }
+          frames += 1;
+          if (frames < 30) handle = requestAnimationFrame(retry);
+        };
+        handle = requestAnimationFrame(retry);
+        return () => cancelAnimationFrame(handle);
+      }
     }
     if (active !== null && root.contains(active) && active.closest('nav') !== null && shown(active)) {
       return;
     }
     target.current?.focus({ preventScroll: true });
+    // `navigation` is read for the pathname it came with, not a reason to run again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootRef, pathname]);
 
   useEffect(() => {
