@@ -46,10 +46,12 @@ const EVERY: MessageSegment[][] = [
   [
     { type: 'text', text: 'a lookalike host shows as punycode: ' },
     { type: 'link', href: 'https://\u0430pple.com/login' },
-    { type: 'text', text: '; a right-to-left override is dropped: ' },
+    { type: 'text', text: '; a right-to-left override stays encoded: ' },
     { type: 'link', href: 'https://example.com/\u202Egnp.exe' },
-    { type: 'text', text: '; a non-Latin path reads decoded: ' },
-    { type: 'link', href: 'https://ja.wikipedia.org/wiki/\u65E5\u672C' },
+    { type: 'text', text: '; so do spaces: ' },
+    { type: 'link', href: 'https://evil.example/%20%20%20https://bank.example/login' },
+    { type: 'text', text: '; a user name in the address is not a link: ' },
+    { type: 'link', href: 'https://aaaaaaaaaaaa.bank.example@evil.example/login' },
   ],
   [
     { type: 'text', text: 'a mention whose address leaves the app is not a link: ' },
@@ -107,8 +109,9 @@ const Body = () => (
 );
 
 /**
- * Every segment type, formatted links, a lookalike host (punycode), a bidi override (dropped), a mention with an
- * outside address (not a link), a long link, right-to-left text and emoji-only messages (text size, as classic).
+ * Every segment type, formatted links, a lookalike host (punycode), a bidi override and spaces (kept encoded), an
+ * address with a user name (text, not a link), a mention with an outside address (not a link), a long link,
+ * right-to-left text and emoji-only messages (text size, as classic).
  */
 export const Segments = () => (
   <OnPalette palette={PALETTES[0]}>

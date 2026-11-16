@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Button, Card, Composer, Icon, IconButton, MessageRow, MessageText, ReactionChip, Stack, Text } from '../../kit';
+import { Button, Card, Composer, Icon, IconButton, Menu, MessageRow, MessageText, ReactionChip, Stack, Text } from '../../kit';
+import { useAnchor } from './useAnchor';
 import { tokens } from '../../theme/generated/tokens';
 import { ChatColumn, OnPalette } from './kitChatFixtures';
 import { PALETTES, noop, text } from './kitChatData';
@@ -227,17 +228,41 @@ export const EditingLight = () => (
   </OnPalette>
 );
 
-const TOOLBAR = (
-  <>
-    <IconButton icon="Smile" size="sm" label="Add reaction" onClick={noop} />
-    <IconButton icon="Reply" size="sm" label="Reply" onClick={noop} />
-    <IconButton icon="Ellipsis" size="sm" label="More actions" onClick={noop} />
-  </>
-);
+/** A row toolbar whose "More actions" opens a Menu (in a portal, outside the row). */
+const Toolbar = () => {
+  const [anchor, ref] = useAnchor();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <IconButton icon="Smile" size="sm" label="Add reaction" onClick={noop} />
+      <IconButton icon="Reply" size="sm" label="Reply" onClick={noop} />
+      <IconButton
+        ref={ref}
+        icon="Ellipsis"
+        size="sm"
+        label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      />
+      <Menu
+        open={open}
+        anchor={anchor}
+        onClose={() => setOpen(false)}
+        label="Message actions"
+        items={[
+          { id: 'pin', label: 'Pin message', icon: 'Pin', onSelect: noop },
+          { id: 'copy', label: 'Copy link', icon: 'Link', onSelect: noop },
+        ]}
+      />
+    </>
+  );
+};
 
 /**
  * Three rows with toolbars, the first the list's Tab stop, then a button after the list: Tab from the row walks
- * that row's toolbar and then leaves, never the hidden toolbars of the other rows (the real-browser test).
+ * that row's toolbar and then leaves, never the hidden toolbars of the other rows (the real-browser test). "More
+ * actions" opens a Menu: the toolbar stays while it is open, so Escape returns focus to the button.
  */
 export const ToolbarTabOrder = () => (
   <OnPalette palette={PALETTES[0]}>
@@ -252,7 +277,7 @@ export const ToolbarTabOrder = () => (
           continued={index > 0}
           onOpenActions={noop}
           focus={{ tabStop: index === 0 }}
-          actions={TOOLBAR}
+          actions={<Toolbar />}
           body={<MessageText segments={text(`the ${which} row`)} />}
         />
       ))}

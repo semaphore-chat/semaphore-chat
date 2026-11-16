@@ -1111,8 +1111,12 @@ field inside the row (an inline editor) keeps its own context menu.
 `actions` is a toolbar at the row's top end that shows on hover and while focus
 is in the row; Tab from the row reaches its buttons. Hidden, it is not there at
 all (`visibility: hidden`): Tab does not walk the hidden toolbars of other rows
-and a tap cannot hit one. On a device that cannot hover it is never shown; the
-actions come from the long press.
+and a tap cannot hit one. While a Menu or Popover opened from it is open (its
+button is `aria-expanded`), the toolbar stays, so closing it returns focus to
+that button. On a device that cannot hover a tap never shows it (the actions
+come from the long press), but a keyboard still does (an iPad with a keyboard).
+Events from a Menu or picker opened from a slot are not the row's: they reach
+the row through React's tree, from outside its DOM, and are ignored.
 
 A `failed` row says why with `failedReason` ("Timed out until 8:40 PM"), or
 "Not sent". While `retrying`, Retry is busy (it keeps focus and ignores
@@ -1136,7 +1140,7 @@ To edit a message in place, the `body` is a Composer with `inline` and
 |`retrying`|true, false|false|A retry is on its way: Retry is busy and ignores presses.|
 |`edited`, `pinned`|true, false|false|"(edited)" and the pin mark after the time.|
 |`quote`, `body`, `attachments`, `reactions`, `footer`|kit pieces|none|The slots, in that order. Reactions wrap. `body` is a MessageText, or an inline Composer to edit.|
-|`actions`|IconButtons|none|The hover and focus toolbar (compact and wide; never on a device that cannot hover).|
+|`actions`|IconButtons|none|The hover and focus toolbar (compact and wide; on a device that cannot hover, for the keyboard only).|
 |`onOpenActions`|function of `{ via, x, y }` (`touch`, `pointer`) or `{ via }` (`keyboard`)|none|Long press, right-click or the context-menu key, and where.|
 |`onOpenAuthor`|function|none|The name and avatar open the profile.|
 |`onRetry`, `onDelete`|function|none|Retry and Delete on a failed row.|
@@ -1166,16 +1170,18 @@ overflowing. Italic is Figtree's own italic face.
 
 Only `http` and `https` links are links; any other address is drawn as text.
 A link always shows its own address: there are no masked links, so a label
-cannot point somewhere else. What is shown is the parsed address, so a
-lookalike host reads as punycode (`xn--pple-43d.com`, not `аpple.com`), and
-bidi control characters (a right-to-left override) are dropped. A path in
-another script reads decoded.
+cannot point somewhere else. What is shown is the parsed address as the parser
+writes it, never decoded: a lookalike host reads as punycode
+(`xn--pple-43d.com`, not `аpple.com`), and a space, an invisible character or a
+bidi control in the path stays `%xx`. An address with a user name or password
+(`https://bank.example@evil.example/`) is drawn as text, not a link.
 
 A user mention is a button when `onMention` is given; a channel mention with an
 `href` is a link whose plain click calls `onMention`. Only an app-internal
 `href` is followed: a hash route (`#/c/clips`) or a path with one leading slash
-(`/c/clips`). Anything else (`//host`, `data:`, `https:`) draws the mention as
-text that is not a link. A mention of the reader adds ", mentions you" to its
+(`/c/clips`), with no `//` and no `.` or `..` segment in the path. Anything else
+(`//host`, `/.//host`, `data:`, `https:`) draws the mention as text that is not
+a link. A mention of the reader adds ", mentions you" to its
 name. Code uses the platform's monospace font. Emoji-only
 messages are drawn at text size, as in the classic chat.
 
@@ -2155,7 +2161,9 @@ lists below say what each overlay still gets from MUI and the browser.
 - MessageRow: hover only on a pointer that hovers; the toolbar and a continued
   row's time show with `:focus-within`, and at rest are `visibility: hidden`,
   which takes them out of the Tab order and the accessibility tree; a
-  `(hover: none)` media query hides the toolbar on touch devices. The native
+  `(hover: none)` media query keeps the toolbar from a tap (a finger's focus
+  marks the row) but not from a keyboard; `:has([aria-expanded="true"])` keeps
+  it while its popup is open. The native
   context menu is suppressed when the row has actions (not on a field, and not
   for a long press on a link). `-webkit-touch-callout` and `user-select` are
   turned off only while a finger is down. Whether a context menu came from a

@@ -58,7 +58,7 @@ describe('MessageText', () => {
     expect(link).toHaveAttribute('href', 'https://xn--pple-43d.com/login');
   });
 
-  it('drops bidi controls from what a link shows, so a right-to-left override cannot reorder it', () => {
+  it('never decodes what a link shows: a bidi override, a space or a zero-width space stays %xx', () => {
     renderWithKit(
       <MessageText
         segments={[
@@ -68,19 +68,38 @@ describe('MessageText', () => {
       />,
     );
     const link = screen.getByRole('link');
-    expect(link.textContent).toBe('https://example.com/gnp.exe');
-    expect(link.textContent).not.toMatch(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/);
-    // The address followed keeps the character, encoded.
+    expect(link.textContent).toBe('https://example.com/%E2%80%AEgnp.exe');
     expect(link).toHaveAttribute('href', 'https://example.com/%E2%80%AEgnp.exe');
-    // An unsafe address drawn as text drops it too.
+    // An unsafe address drawn as text drops the control.
     expect(screen.getByText('javascript:alert(1)')).toBeInTheDocument();
+
+    const spaced = 'https://evil.example/%20%20%20%20https://bank.example/login';
+    expect(checkLink(spaced)?.label).toBe(spaced);
+    expect(checkLink('https://example.com/a%E2%80%8Bb')?.label).toBe('https://example.com/a%E2%80%8Bb');
+    expect(checkLink('https://example.com/%E2%80%AE?q=%E2%80%AE#%E2%80%AE')?.label).toBe(
+      'https://example.com/%E2%80%AE?q=%E2%80%AE#%E2%80%AE',
+    );
+    expect(checkLink('https://example.com/\u65E5')?.label).toBe('https://example.com/%E6%97%A5');
+    expect(checkLink('https://example.com:8443')).toEqual({ href: 'https://example.com:8443/', label: 'https://example.com:8443/' });
   });
 
-  it('reads a non-Latin path decoded, but never a line break', () => {
-    expect(checkLink('https://ja.wikipedia.org/wiki/\u65E5\u672C')?.label).toBe('https://ja.wikipedia.org/wiki/\u65E5\u672C');
-    expect(checkLink('https://example.com/a%0Ab')?.label).toBe('https://example.com/a%0Ab');
-    expect(checkLink('https://example.com/%E0%A4%A')?.label).toBe('https://example.com/%E0%A4%A');
-    expect(checkLink('https://example.com')).toEqual({ href: 'https://example.com/', label: 'https://example.com' });
+  it('draws an address with a user name or password as text, never as a link (it fakes the host)', () => {
+    const faked = 'https://aaaaaaaaaaaa.bank.example@evil.example/login';
+    renderWithKit(
+      <MessageText
+        segments={[
+          { type: 'link', href: faked },
+          { type: 'text', text: ' ' },
+          { type: 'link', href: 'https://user:pass@evil.example/' },
+          { type: 'text', text: ' ' },
+          { type: 'link', href: 'https://user@evil.example/' },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText(faked)).toBeInTheDocument();
+    expect(checkLink('https://user:pass@evil.example/')).toBeNull();
+    expect(checkLink('https://:pass@evil.example/')).toBeNull();
   });
 
   it('keeps a formatted span on a link inside it (bold, italic, struck)', () => {
@@ -102,10 +121,29 @@ describe('MessageText', () => {
   });
 
   it('follows a mention only to an app-internal address: a hash route or a single-slash path', () => {
-    const outside = ['data:text/html,x', '//evil.example/c', '/\\evil.example', '/\t/evil.example', 'javascript:alert(1)', 'https://evil.example/c', 'c/clips', ' /c'];
+    const outside = [
+      'data:text/html,x',
+      '//evil.example/c',
+      '/\\evil.example',
+      '/\t/evil.example',
+      'javascript:alert(1)',
+      'https://evil.example/c',
+      'c/clips',
+      ' /c',
+      // A path that resolves to `//evil.example` (a `.` or `..` segment, or `//` anywhere in the path).
+      '/.//evil.example',
+      '/..//evil.example',
+      '/a/../b',
+      '/a/./b',
+      '/%2e%2E/b',
+      '/c//clips',
+      '#/c/../x',
+      '#//evil.example',
+    ];
     for (const href of outside) expect(internalHref(href)).toBeNull();
     expect(internalHref('/c/clips')).toBe('/c/clips');
     expect(internalHref('#/c/clips')).toBe('#/c/clips');
+    expect(internalHref('/c/clips?from=a//b')).toBe('/c/clips?from=a//b');
 
     renderWithKit(
       <MessageText

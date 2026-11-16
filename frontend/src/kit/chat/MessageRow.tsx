@@ -2,6 +2,7 @@ import {
   useEffect,
   useId,
   useRef,
+  type FocusEvent,
   type FocusEventHandler,
   type JSX,
   type KeyboardEvent,
@@ -111,6 +112,11 @@ export const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP = tokens.space.sm;
 /** A context menu this soon after the keyboard asked for the actions is the browser's echo of the same request. */
 const KEY_ECHO_MS = 1000;
+/**
+ * After a fired long press is released, a click this soon is its ghost (iOS) and is swallowed. Later, a press is a
+ * press again: Android raises no ghost click, and a keyboard press or a screen reader's menu must not be eaten.
+ */
+export const GHOST_CLICK_MS = 400;
 
 /** A control inside the row that keeps its own press: a long press there is not the row's (as classic). */
 const NESTED_CONTROL = 'a, button, input, textarea, select, [role="button"], [contenteditable]:not([contenteditable="false"])';
@@ -134,13 +140,17 @@ interface RootProps {
 /** A revealed quiet part: visible at once (so Tab can reach it), then fading in. */
 const shown = { opacity: 1, visibility: 'visible', transitionDelay: '0s' } as const;
 
-/** A quiet part at rest: faded out and then not there at all (no Tab stop, no tap target). */
+/**
+ * A quiet part at rest: faded out and then not there at all (no Tab stop, no tap target). Visibility flips at the
+ * end of the fade, also with reduced motion (which drops only the fade): when a Menu opened from the toolbar
+ * closes, the overlay returns focus to its trigger after the trigger stops being `aria-expanded`, and the toolbar
+ * must still be there to take it.
+ */
 const hidden = {
-  ...reducedMotion,
   opacity: 0,
   visibility: 'hidden',
-  // Fade out first, then go: visibility flips at the end of the fade.
   transition: `opacity ${tokens.motion.fast}ms, visibility 0s linear ${tokens.motion.fast}ms`,
+  '@media (prefers-reduced-motion: reduce)': { transition: `visibility 0s linear ${tokens.motion.fast}ms` },
 } as const;
 
 const Root = styled('div', { shouldForwardProp: transientProps })<RootProps>(
@@ -175,6 +185,14 @@ const Root = styled('div', { shouldForwardProp: transientProps })<RootProps>(
       // The quiet parts (a continued row's time, the actions) show on hover and while focus is in the row.
       '&:focus-within [data-reveal]': shown,
       '@media (hover: hover) and (pointer: fine)': { '&:hover [data-reveal]': shown },
+      // A Menu or Popover opened from the toolbar is in a portal, outside the row: while it is open (its trigger is
+      // aria-expanded) the toolbar stays, so closing it can return focus to the trigger.
+      '&:has([data-toolbar] [aria-expanded="true"]) [data-reveal]': shown,
+      // A device that cannot hover keeps the toolbar from touch: while the focus in the row came from a finger
+      // (`data-touch-focus`), focus does not reveal it, so a tap cannot hit it. A keyboard (an iPad with a keyboard
+      // and no trackpad) still reaches it: any key in the row clears the mark, and keyboard focus shows it as on a
+      // desktop.
+      '@media (hover: none)': { '&[data-touch-focus] [data-toolbar]': { opacity: 0, visibility: 'hidden' } },
     };
   },
 );
@@ -327,8 +345,6 @@ const Actions = styled('div')(({ theme }) => {
     borderRadius: `${tokens.radius.full}px`,
     background: palette.surface,
     border: `${tokens.border.hairline}px solid ${palette.hairline}`,
-    // A device that cannot hover never shows the toolbar: its actions come from a long press or the menu key.
-    '@media (hover: none)': { display: 'none' },
   };
 });
 
@@ -382,6 +398,12 @@ export function MessageRow({
   const pointerRef = useRef<{ touch: boolean; nested: boolean } | null>(null);
   // When the keyboard last asked (the context-menu key, Shift+F10), to drop the context menu the browser may add.
   const keyAskedAt = useRef<number | null>(null);
+  // Ends the ghost-click window after a fired long press is released.
+  const ghostTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endGhostWindow = () => {
+    if (ghostTimer.current !== null) clearTimeout(ghostTimer.current);
+    ghostTimer.current = null;
+  };
 
   const endPressing = (row: HTMLElement | null) => {
     if (row !== null) delete row.dataset.pressing;
@@ -390,13 +412,27 @@ export function MessageRow({
     if (press.current !== null) clearTimeout(press.current.timer);
     press.current = null;
   };
-  useEffect(() => cancelPress, []);
+  useEffect(
+    () => () => {
+      cancelPress();
+      endGhostWindow();
+    },
+    [],
+  );
+  // Events from a Menu, Popover or picker opened from a slot bubble here through React's tree, from outside the
+  // row's DOM: they are not the row's (as listFocus).
+  const fromRow = (event: { currentTarget: HTMLElement; target: EventTarget }) =>
+    event.currentTarget.contains(event.target as Node);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!fromRow(event)) return;
+    endGhostWindow();
     firedRef.current = false;
     keyAskedAt.current = null;
     const row = event.currentTarget;
     const touch = event.pointerType === 'touch';
+    if (touch) row.dataset.touchFocus = '';
+    else delete row.dataset.touchFocus;
     const nested = within(event.target, row, NESTED_CONTROL);
     pointerRef.current = { touch, nested };
     if (onOpenActions === undefined || !touch || nested) return;
@@ -412,6 +448,7 @@ export function MessageRow({
     row.dataset.pressing = '';
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!fromRow(event)) return;
     const start = press.current;
     if (start === null) return;
     if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > LONG_PRESS_SLOP) {
@@ -420,20 +457,29 @@ export function MessageRow({
     }
   };
   const onPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+    if (!fromRow(event)) return;
     cancelPress();
     endPressing(event.currentTarget);
+    if (firedRef.current) {
+      endGhostWindow();
+      ghostTimer.current = setTimeout(() => {
+        ghostTimer.current = null;
+        firedRef.current = false;
+      }, GHOST_CLICK_MS);
+    }
     // Windows raises a right-click's context menu after the button comes up: keep that pointer for it.
     if (event.type === 'pointerup' && !(event.pointerType === 'mouse' && event.button === 2)) pointerRef.current = null;
   };
   const onClickCapture = (event: MouseEvent<HTMLDivElement>) => {
     // The click a fired long press leaves behind (iOS): it must not also press the reaction or link under the finger.
-    if (!firedRef.current) return;
+    if (!firedRef.current || !fromRow(event)) return;
     firedRef.current = false;
+    endGhostWindow();
     event.preventDefault();
     event.stopPropagation();
   };
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
-    if (onOpenActions === undefined) return;
+    if (onOpenActions === undefined || !fromRow(event)) return;
     const row = event.currentTarget;
     const pointer = pointerRef.current;
     pointerRef.current = null;
@@ -469,7 +515,13 @@ export function MessageRow({
     event.preventDefault();
     onOpenActions({ via: pointer.touch ? 'touch' : 'pointer', x: event.clientX, y: event.clientY });
   };
+  const onBlur = (event: FocusEvent<HTMLDivElement>) => {
+    // Focus left the row: the next focus in it is not a finger's until a finger says so.
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) delete event.currentTarget.dataset.touchFocus;
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // A key in the row: the keyboard is in use, so the toolbar may show (devices without hover).
+    delete event.currentTarget.dataset.touchFocus;
     pointerRef.current = null;
     const asked = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
     // Only the row itself: a key on a control inside it (a reaction, a link) is that control's.
@@ -512,6 +564,7 @@ export function MessageRow({
       aria-busy={pending || undefined}
       tabIndex={focus === undefined ? undefined : focus.tabStop ? 0 : -1}
       onFocus={focus?.onFocus}
+      onBlur={onBlur}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -584,7 +637,7 @@ export function MessageRow({
         {footer !== undefined && <Slot>{footer}</Slot>}
       </Column>
       {actions !== undefined && (
-        <Actions data-reveal="" role="toolbar" aria-label={`Actions for ${author}'s message`}>
+        <Actions data-reveal="" data-toolbar="" role="toolbar" aria-label={`Actions for ${author}'s message`}>
           <SurfaceContext value="surface">{actions}</SurfaceContext>
         </Actions>
       )}

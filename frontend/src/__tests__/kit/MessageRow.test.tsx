@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, createEvent, fireEvent, screen } from '@testing-library/react';
 import { MessageRow, type MessageRowProps } from '../../kit';
-import { LONG_PRESS_MS } from '../../kit/chat/MessageRow';
+import { createPortal } from 'react-dom';
+import { GHOST_CLICK_MS, LONG_PRESS_MS } from '../../kit/chat/MessageRow';
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { expectNoAxeViolations, runAxe } from '../test-utils/a11y';
 import { rawCssFor } from './cssRules';
@@ -247,6 +248,69 @@ describe('MessageRow', () => {
     fireEvent.pointerUp(chip, touch);
     fireEvent.click(chip);
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('a press is a press again once the ghost-click window after a long press ends (keyboard, screen reader)', () => {
+    vi.useFakeTimers();
+    const onOpenActions = vi.fn();
+    const onToggle = vi.fn();
+    renderWithKit(row({ onOpenActions, body: <span>hold here</span>, reactions: <button type="button" onClick={onToggle}>Laugh</button> }));
+    const article = screen.getByRole('article');
+    const touch = { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 10 };
+    fireEvent.pointerDown(screen.getByText('hold here'), touch);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    fireEvent.pointerUp(article, touch);
+    // No ghost click came (Android). Later, Enter on the reaction (a click with no pointer) toggles it.
+    act(() => vi.advanceTimersByTime(GHOST_CLICK_MS));
+    fireEvent.click(screen.getByRole('button', { name: 'Laugh' }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    // And a screen reader's "show menu" on the row opens the actions.
+    expect(fireEvent.contextMenu(article)).toBe(false);
+    expect(onOpenActions).toHaveBeenCalledTimes(2);
+    expect(onOpenActions).toHaveBeenLastCalledWith({ via: 'keyboard' });
+  });
+
+  it('ignores pointer, context-menu and click events from a portalled menu or picker opened from a slot', () => {
+    vi.useFakeTimers();
+    const onOpenActions = vi.fn();
+    const onPick = vi.fn();
+    const Picker = () =>
+      createPortal(
+        <div>
+          <textarea aria-label="Search emoji" />
+          <button type="button" onClick={onPick}>
+            Skin tone
+          </button>
+        </div>,
+        document.body,
+      );
+    renderWithKit(row({ onOpenActions, body: <span>hold here</span>, reactions: <Picker /> }));
+    const article = screen.getByRole('article');
+    const search = screen.getByRole('textbox', { name: 'Search emoji' });
+    const item = screen.getByRole('button', { name: 'Skin tone' });
+    expect(article.contains(item)).toBe(false);
+
+    // Right-click in the picker's field: the paste menu stays, the row's actions do not open.
+    fireEvent.pointerDown(search, { pointerId: 1, pointerType: 'mouse', button: 2 });
+    expect(fireEvent.contextMenu(search)).toBe(true);
+    // Right-click on a menu item.
+    fireEvent.pointerDown(item, { pointerId: 1, pointerType: 'mouse', button: 2 });
+    expect(fireEvent.contextMenu(item)).toBe(true);
+    // Holding an emoji (a skin-tone hold) is not a long press on the row.
+    const touch = { pointerId: 2, pointerType: 'touch', clientX: 5, clientY: 5 };
+    fireEvent.pointerDown(item, touch);
+    expect(article).not.toHaveAttribute('data-pressing');
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    fireEvent.pointerUp(item, touch);
+    expect(onOpenActions).not.toHaveBeenCalled();
+
+    // After a long press on the row, a click in the picker is the picker's, not swallowed.
+    fireEvent.pointerDown(screen.getByText('hold here'), touch);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    fireEvent.pointerUp(article, touch);
+    fireEvent.click(item);
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(onOpenActions).toHaveBeenCalledTimes(1);
   });
 
   it('does not start a long press on a link, button or field inside the row, and leaves their touch menu native', () => {

@@ -32,9 +32,10 @@ export interface CodeBlockSegment {
 
 /**
  * A web link, shown as its own address (there are no masked links: what you see is where it goes). It opens in a
- * new tab. Only `http:` and `https:` links are links: anything else (`javascript:`, `data:`) is drawn as its
- * text, never as a link. The address shown is the parsed one: a non-ASCII host reads as punycode
- * (`xn--pple-43d.com`, not a lookalike `аpple.com`), and bidi control characters are dropped.
+ * new tab. Only `http:` and `https:` links without a user name or password are links: anything else
+ * (`javascript:`, `data:`, `https://bank.example@evil.example/`) is drawn as its text, never as a link. The
+ * address shown is the parsed one, never decoded: a non-ASCII host reads as punycode (`xn--pple-43d.com`, not a
+ * lookalike `аpple.com`), and a space, an invisible character or a bidi control in the path stays `%xx`.
  */
 export interface LinkSegment extends SegmentStyle {
   type: 'link';
@@ -104,11 +105,18 @@ function hasControl(text: string): boolean {
 export interface CheckedLink {
   /** The parsed address (`URL.href`): punycode host, percent-encoded path. */
   href: string;
-  /** What is shown: the parsed address with its path decoded for reading, without bidi controls. */
+  /**
+   * What is shown: the parsed address as the parser serialises it (protocol, punycode host, percent-encoded path,
+   * query and fragment), never decoded, so a space, an invisible character or a bidi control stays `%xx`.
+   */
   label: string;
 }
 
-/** A link segment's address checked (http or https only) and the label drawn for it; null for any other address. */
+/**
+ * A link segment's address checked and the label drawn for it; null for an address that is not drawn as a link:
+ * anything but http or https, and any address with a user name or password (`https://bank.example@evil.example/`
+ * reads as one host and goes to another).
+ */
 export function checkLink(href: string): CheckedLink | null {
   let url: URL;
   try {
@@ -117,17 +125,9 @@ export function checkLink(href: string): CheckedLink | null {
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-  // The parsed address is ASCII (the host in punycode); decode its path, query and fragment for reading, unless
-  // that would draw a control character (a line break in a link) or the escapes are malformed.
-  const rest = url.href.slice(url.origin.length);
-  let readable = rest === '/' ? '' : rest;
-  try {
-    const decoded = decodeURI(readable);
-    if (!hasControl(decoded)) readable = decoded;
-  } catch {
-    // A malformed escape: show it encoded.
-  }
-  return { href: url.href, label: stripBidi(url.origin + readable) };
+  if (url.username !== '' || url.password !== '') return null;
+  const label = `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`;
+  return { href: url.href, label: stripBidi(label) };
 }
 
 /** A link segment's address, if it is one the kit will open (http or https), as parsed; otherwise null. */
@@ -140,14 +140,22 @@ const INTERNAL_BASE = 'https://kit.invalid';
 /**
  * A mention's address, if it stays inside the app: a hash route (`#/…`) or a path with a single leading slash
  * (`/…`) that resolves to the app's own origin. `//host`, `/\host`, a tab or newline that the URL parser would
- * drop to make `//`, and any scheme are refused (null).
+ * drop to make `//`, a `//` or a `.`/`..` segment anywhere in the path, and any scheme are refused (null).
  */
 export function internalHref(href: string): string | null {
   if (!href.startsWith('#/') && !(href.startsWith('/') && !href.startsWith('//'))) return null;
   // Characters the URL parser strips or treats as a slash, which could turn `/` into `//`.
   if (hasControl(href) || href.includes('\\')) return null;
+  // The path (of the page, or of the hash route): no empty segment and no `.` or `..` segment, which could leave a
+  // path that starts with `//` (`/.//evil.example`) for code that later reuses it as an address.
+  const route = href.startsWith('#') ? href.slice(1) : href;
+  const path = route.split(/[?#]/, 1)[0];
+  if (path.includes('//')) return null;
+  const dotSegment = (segment: string) => /^(?:\.|%2e){1,2}$/i.test(segment);
+  if (path.split('/').some(dotSegment)) return null;
   try {
-    return new URL(href, `${INTERNAL_BASE}/`).origin === INTERNAL_BASE ? href : null;
+    const url = new URL(href, `${INTERNAL_BASE}/`);
+    return url.origin === INTERNAL_BASE && !url.pathname.startsWith('//') ? href : null;
   } catch {
     return null;
   }
