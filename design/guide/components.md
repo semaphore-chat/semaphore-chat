@@ -15,11 +15,12 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Thirty-eight components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Forty-four components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
 Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
-Card, Sheet, Dock, DockDivider, DockItem, Stack and CallStack.
+Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, and the chat pieces
+MessageRow, MessageText, ListSeparator, ReactionChip, Composer and JumpToLatest.
 
 ## Rules every component follows
 
@@ -1066,6 +1067,199 @@ Web kit only so far; the native kit has not caught up (see
 Stories: `kit-call-stack--bounded`, `kit-call-stack--bounded-light`,
 `kit-call-stack--keyboard`, `kit-call-stack--bar-only`.
 
+## Chat pieces
+
+The pieces a conversation is built from: MessageRow, MessageText,
+ListSeparator, ReactionChip, Composer and JumpToLatest. They are web only so
+far; the native kit follows (issue #805). They hold no chat logic: the screen
+brings the data, the message list's scrolling and roving focus, drafts,
+mentions and sending.
+
+### MessageRow
+
+One message in a compact list (see [Principles](principles.md) §4): the
+author's avatar, name and time on one line, the words under it, no bubble.
+
+**Use it when** you show a message in a channel, a thread or a direct
+conversation.
+
+**Do not use it when** you list people, channels or search results. Use
+ListRow. Do not wrap a message in a Card or a bubble.
+
+A `continued` row is a follow-on from the same author: no avatar or name line,
+and the short time shows in the avatar's gutter on hover and while focus is in
+the row. Every row is still an `article` named by its author and time, so a
+screen reader hears who wrote a continued row. The name is a button when
+`onOpenAuthor` is given; the avatar is a pointer shortcut to the same place and
+is not a Tab stop. The row joins the list's roving focus through `focus` (the
+list owns which row is the one Tab stop). The actions open on a touch long press
+(500 ms, cancelled if the finger moves), a right-click and the context-menu key
+or Shift+F10 on the row, through `onOpenActions`, which says how it was asked
+so the screen can pick a Sheet or a Menu. `actions` is a toolbar at the row's
+top end that shows on hover and while focus is in the row; Tab from the row
+reaches its buttons.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`author`|text|none (required)|Who wrote it.|
+|`avatarSrc`, `avatarColour`|image, `#rrggbb`|none|The author's picture and colour.|
+|`time`|text|none (required)|The short time shown.|
+|`dateTime`|ISO 8601|none|The machine time of `<time>`.|
+|`timeLabel`|text|none|The full date and time: read, and shown as the time's tooltip.|
+|`continued`|true, false|false|A follow-on from the same author.|
+|`mentioned`|true, false|false|It mentions the reader: an accent rail and tint.|
+|`highlighted`|true, false|false|The jump target: a stronger accent tint while set.|
+|`state`|`sent`, `pending`, `failed`|`sent`|Pending is dimmed and busy, "Sending…". Failed says "Not sent".|
+|`edited`, `pinned`|true, false|false|"(edited)" and the pin mark after the time.|
+|`quote`, `body`, `attachments`, `reactions`, `footer`|kit pieces|none|The slots, in that order. Reactions wrap.|
+|`actions`|IconButtons|none|The hover and focus toolbar (compact and wide).|
+|`onOpenActions`|function of `touch`, `pointer`, `keyboard`|none|Long press, right-click or the context-menu key.|
+|`onOpenAuthor`|function|none|The name and avatar open the profile.|
+|`onRetry`, `onDelete`|function|none|Retry and Delete on a failed row.|
+|`focus`|`tabStop`, `onKeyDown`, `onFocus`|none|The list's roving focus.|
+
+Stories: `kit-message-row--states`, `kit-message-row--states-light`,
+`kit-message-row--states-tinted`, `kit-message-row--long-content`,
+`kit-message-row--long-content-light`, `kit-message-row--actions`,
+`kit-message-row--actions-light`.
+
+### MessageText
+
+A message's words, drawn from segments the chat data layer has already parsed.
+
+**Use it when** you show the body of a message, a quote or a search result.
+
+**Do not use it when** you show text you wrote for the interface. Use Text.
+
+The segment kinds are `text` (with `bold`, `italic`, `strike`), `code`,
+`codeBlock`, `link`, `mention` (`user`, `role`, `channel`, `everyone`; `me` when
+it is of the reader, `unavailable` when the reader cannot open it) and `emoji`
+(a community's custom emoji, `:name:` when it has no image). It is `dir="auto"`,
+keeps line breaks, and wraps an unbroken run instead of overflowing. Only
+`http` and `https` links are links; any other address is drawn as text. A user
+mention is a button when `onMention` is given; a channel mention with `href` is
+a link whose plain click calls `onMention`. A mention of the reader adds
+", mentions you" to its name. Code uses the platform's monospace font. Emoji-only
+messages are drawn at text size, as in the classic chat.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`segments`|a list of segments|none (required)|The words.|
+|`onMention`|function of the mention|none|A mention was pressed.|
+
+Stories: `kit-message-text--segments`, `kit-message-text--segments-light`,
+`kit-message-text--segments-tinted`.
+
+### ListSeparator
+
+A break in a list of messages.
+
+**Use it when** a new day starts (`day`: "Today") or the unread messages start
+(`unread`: "New").
+
+**Do not use it when** you head a group in a list of channels or people. Use a
+section heading.
+
+It is a `separator` named by its label. A long label is cut with an ellipsis.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`variant`|`day`, `unread`|none (required)|A centred day tag, or an accent line with its tag at the end.|
+|`label`|text|none (required)|The tag, and the separator's name.|
+
+Stories: `kit-list-separator--variants`, `kit-list-separator--variants-light`,
+`kit-list-separator--variants-tinted`.
+
+### ReactionChip
+
+One reaction under a message: the emoji and how many reacted with it.
+
+**Use it when** you show a reaction the reader can add or take back.
+
+**Do not use it when** you show a status or a role. Use Pill. The quick
+reactions and the picker are the screen's.
+
+A toggle button, pressed when it is the reader's (an accent ring and tint, so
+not by colour alone). Its name is "Laugh reaction, 4". Counts up to 999 are
+drawn in full, above that in a compact form ("1.3K"); the name keeps the exact
+count. Pill was not made a toggle: it is a static tag and has no pressed state.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`emoji`|text|none (required)|The emoji, or a custom emoji's `:name:` as its fallback.|
+|`src`|image|none|A custom emoji's image.|
+|`label`|text|none (required)|What it is, in words, for its name.|
+|`count`|number|none (required)|How many reacted.|
+|`mine`|true, false|false|The reader reacted with it.|
+|`onToggle`|function|none (required)|Adds or removes the reader's reaction.|
+|`aria-disabled`|true, false|false|The reader may not react: focusable, named, presses do nothing.|
+|`busy`|true, false|false|The toggle is on its way: busy, presses ignored.|
+
+Stories: `kit-reaction-chip--states`, `kit-reaction-chip--states-light`,
+`kit-reaction-chip--states-tinted`.
+
+### Composer
+
+The chrome of a message composer.
+
+**Use it when** the reader writes a message, a reply or an edit.
+
+**Do not use it when** you need a form field. Use TextField.
+
+A field that grows to a cap and then scrolls (`keyboard` 2 lines, `phone` 4,
+`desktop` 10), a leading attach button, a trailing `emoji` slot and Send. Enter
+sends and Shift+Enter starts a line (off on touch with `submitOnEnter`); text
+being composed with an input method never sends. The screen's `onKeyDown` runs
+first and can take a key with `preventDefault`. Send is never disabled: with
+nothing to send it reads as unavailable, and while `sending` it is busy, while
+the field stays editable. A `banner` strip says it is a reply or an edit and has
+a cancel button. A `notice` takes the place of the field when the reader cannot
+write. It keeps toasts clear of itself.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|The field's name and placeholder: "Message #general".|
+|`placeholder`|text|`label`|A different placeholder.|
+|`value`, `onChange`|text, function|none (required)|The draft.|
+|`onSubmit`|function|none (required)|Send.|
+|`canSend`|true, false|text not blank|Whether there is something to send.|
+|`sending`|true, false|false|Send is busy.|
+|`submitOnEnter`|true, false|true|Enter sends.|
+|`onKeyDown`|function|none|The screen's keys, first.|
+|`cap`|`keyboard`, `phone`, `desktop`|`desktop`|How far the field grows.|
+|`onAttach`|function|none|Shows the attach button.|
+|`attachUnavailable`|true, false|false|The attach button does nothing.|
+|`emoji`|an IconButton|none|The emoji button.|
+|`banner`|`kind` (`reply`, `editing`), `title`, `detail`, `cancelLabel`, `onCancel`|none|The reply or editing strip.|
+|`notice`|`text`, `icon`|none|Replaces the field.|
+|`attachments`|kit pieces|none|The tray of queued files.|
+|`popup`|`listId`, `activeId`|none|A suggestion list is open: the field is its combobox input.|
+
+Stories: `kit-composer--states`, `kit-composer--states-light`,
+`kit-composer--states-tinted`, `kit-composer--at-cap`.
+
+### JumpToLatest
+
+The floating control that takes the reader back to the newest message.
+
+**Use it when** the reader has scrolled away from the bottom of a message list.
+
+**Do not use it when** you need a button in the page. Use Button.
+
+It places itself centred, `lg` above the bottom edge of its positioned
+container (the list region), over the rows. With `newCount` it reads "3 new"
+in the accent (above 99, "99+ new"); its name is "Jump to latest, 3 new
+messages".
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`onJump`|function|none (required)|Go to the newest message.|
+|`newCount`|number|none|Messages that arrived while away.|
+|`busy`|true, false|false|Loading the latest: busy, presses ignored.|
+
+Stories: `kit-jump-to-latest--states`, `kit-jump-to-latest--states-light`,
+`kit-jump-to-latest--states-tinted`.
+
 ## Which overlay
 
 Five components float above the page. Choose by what the thing holds and by
@@ -1898,6 +2092,20 @@ lists below say what each overlay still gets from MUI and the browser.
   `aria-describedby`; an item whose name the tooltip repeats is not tied to it.
 - An Avatar loads its image and shows initials until it has, and a Badge caps its
   count (`99+`).
+
+### Chat pieces
+
+- MessageText: the browser wraps mixed inline runs (formatting, mentions, links,
+  inline images) across lines, breaks an unbroken run anywhere when it must
+  (`overflow-wrap: anywhere`), keeps line breaks (`pre-wrap`) and picks the
+  direction from the first strong letter (`dir="auto"`). Links open in a new
+  tab; a modified click on an in-app link is left to the browser.
+- MessageRow: hover only on a pointer that hovers; the toolbar and a continued
+  row's time show with `:focus-within`; the native context menu is suppressed
+  when the row has actions.
+- Composer: MUI's autosizing textarea measures a hidden twin to grow line by
+  line up to the cap, then scrolls; input-method composition (`isComposing`)
+  holds Enter back.
 
 ### Shared by these pieces
 
