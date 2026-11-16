@@ -1,5 +1,5 @@
 /**
- * The new shell's call slot against real LiveKit, on the hidden community fixture
+ * The Lounge's call slot against real LiveKit, on the hidden community fixture
  * `/__lounge/community/:communityId` (every piece of the shell on real data; here the seeded Test Community).
  * A is on a phone (390 px), where the call bar has mute (or hold to talk), deafen, Open and Leave:
  *
@@ -15,7 +15,20 @@
  *      so Retry's join is refused: the notice says so, without Retry; Dismiss clears it. (Not "the room you
  *      are in is deleted": deleting a voice channel does not end its LiveKit call, issue #812.)
  *
- * Requires the real-LiveKit stack: scripts/run-voice-e2e.sh lounge-call
+ * Then, on the room cards of the left island (A joins from a card, B classic):
+ *
+ *   V1. joining from a card stays on the screen and outlines the card; B lists A; audio both ways;
+ *   V3. Leave from the card and from the bar both end the call;
+ *   V4. a failed join shows once, in the voice notice; Retry joins;
+ *   V6. the call survives moving between communities in the Lounge (dock and sheet);
+ *   V7. signing out mid-call from the account menu leaves the call.
+ *
+ * A participant who joins from a Lounge card never publishes the soundboard track (a known gap: the warm-up is
+ * only mounted by the classic bar), so a listener of such a remote waits for its mic element only
+ * (`waitForRemoteAudioElements(..., { soundboard: false })`). Every B below joins with the classic
+ * `joinVoiceChannel`, which does publish one.
+ *
+ * Requires the real-LiveKit stack: scripts/run-voice-e2e.sh lounge-pieces
  */
 import { test, expect, type Page } from '@playwright/test';
 import {
@@ -35,21 +48,16 @@ import {
   TEST_USER_2,
   type Participant,
 } from '../fixtures/voice.fixture';
-import { API_BASE } from '../fixtures/auth.fixture';
+import { API_BASE, loginViaApi } from '../fixtures/auth.fixture';
 import { createTestChannel } from '../fixtures/test-data';
+import { expectCallUntouched, goTo, joinFromRoomCard, openFixture, tagCall, countGetUserMedia } from '../fixtures/lounge';
 
 // Each test launches its own participants: independent, so one failing never skips the others.
 
-const CH = 'voice-chat';
+const CH = 'voice-lounge';
+const ROOM2 = 'voice-lounge-2';
 const PHONE = { width: 390, height: 844 };
 const POLL = { timeout: 15_000 };
-
-/** An in-app navigation (the hash router): never a page load. */
-async function goTo(page: Page, hashPath: string): Promise<void> {
-  await page.evaluate((hash) => {
-    window.location.hash = hash;
-  }, `#${hashPath}`);
-}
 
 /**
  * The community fixture is on screen and loaded: the new shell with the community's header (its name as the left
@@ -87,7 +95,7 @@ async function toLounge(p: Participant): Promise<void> {
   await expect(classicBar(p.page)).toHaveCount(0);
 }
 
-test.describe('The Lounge call bar and call surface', () => {
+test.describe('The Lounge call bar, call surface and room cards', () => {
   let a: Participant;
   let b: Participant;
   let c: Participant;
@@ -351,5 +359,210 @@ test.describe('The Lounge call bar and call surface', () => {
     } finally {
       await deleteChannel().catch(() => {});
     }
+  });
+  // ---- The room cards of the left island ------------------------------------------------------------------
+
+  const shell = (page: Page) => page.locator('[data-shell="lounge"]');
+  /** The room's card: the one Card that says "You're here" (`aria-current="true"`) holds its heading. */
+  const youAreHereCard = (page: Page, room: string) =>
+    shell(page).locator('[aria-current="true"]', { has: page.getByRole('heading', { name: room, level: 3, exact: true }) });
+  const joinButton = (page: Page, room: string) => shell(page).getByRole('button', { name: `Join ${room}`, exact: true });
+  const leaveButton = (page: Page, room: string) => shell(page).getByRole('button', { name: `Leave ${room}`, exact: true });
+  const state = (p: Participant) => p.page.evaluate(() => window.__lkRoom?.state ?? 'none');
+  const fixtureUrl = (communityId: string) => new RegExp(`#/__lounge/community/${communityId}$`);
+
+  /** Whether `viewer` (a classic participant) is told that `who` is in the room: the server's voice presence. */
+  const roomLists = async (viewer: Participant, who: Participant): Promise<boolean> => {
+    const res = await viewer.context.request.get(`${API_BASE}/channels/${who.channelId}/voice-presence`, {
+      headers: { Authorization: `Bearer ${viewer.accessToken}` },
+    });
+    if (!res.ok()) throw new Error(`voice-presence: ${res.status()} ${await res.text()}`);
+    const body = (await res.json()) as { users: Array<{ id: string }> };
+    return body.users.some((user) => user.id === who.identity);
+  };
+
+  async function communityIdByName(p: Participant, name: string): Promise<string> {
+    const mine = await p.context.request.get(`${API_BASE}/community/mine`, { headers: { Authorization: `Bearer ${p.accessToken}` } });
+    expect(mine.ok(), `GET /community/mine: ${mine.status()}`).toBe(true);
+    const found = ((await mine.json()) as Array<{ id: string; name: string } | null>).find((x) => x?.name === name);
+    expect(found, `the seeded ${name}`).toBeDefined();
+    return found!.id;
+  }
+
+  /** A on the fixture of Test Community at `viewport`, in no call; B (classic) is in `room` already. */
+  async function aOnFixtureWithBInRoom(room: string, viewport = PHONE): Promise<string> {
+    a = await launchA();
+    b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
+    await joinVoiceChannel(b, room);
+    await a.page.setViewportSize(viewport);
+    const id = await testCommunityId(a);
+    await openFixture(a.page, id, { communityName: 'Test Community' });
+    await expect(a.page).toHaveURL(fixtureUrl(id), { timeout: 20_000 });
+    return id;
+  }
+
+  test('V1: joining from a room card stays on the screen, outlines the card "You\'re here", and B lists A', async () => {
+    test.setTimeout(180_000);
+    const id = await aOnFixtureWithBInRoom(CH);
+    await expect(youAreHereCard(a.page, CH)).toHaveCount(0);
+
+    await joinFromRoomCard(a, CH);
+    await expect(a.page).toHaveURL(fixtureUrl(id));
+    expect(await state(a)).toBe('connected');
+    const card = youAreHereCard(a.page, CH);
+    await expect(card).toHaveCount(1);
+    await expect(card.getByText("You're here", { exact: true })).toBeVisible();
+    expect(await card.evaluate((el) => getComputedStyle(el).borderTopColor)).not.toBe('rgba(0, 0, 0, 0)');
+    await expect(leaveButton(a.page, CH)).toBeVisible();
+    await expect(callBar(a.page)).toBeVisible();
+    await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: "B's voice list shows A" }).toBe(true);
+    await waitForAudioFlow(b, a);
+    await waitForAudioFlow(a, b);
+  });
+
+  test('V3: Leave from the card and from the bar both end the call', async () => {
+    test.setTimeout(180_000);
+    await aOnFixtureWithBInRoom(CH);
+
+    await joinFromRoomCard(a, CH);
+    await expect(callBar(a.page)).toBeVisible();
+    await leaveButton(a.page, CH).click();
+    await expect.poll(() => state(a), POLL).not.toBe('connected');
+    await expect(youAreHereCard(a.page, CH)).toHaveCount(0, POLL);
+    await expect(joinButton(a.page, CH)).toBeVisible(POLL);
+    await expect(callBar(a.page)).toHaveCount(0, POLL);
+
+    await joinFromRoomCard(a, CH);
+    await expect(callBar(a.page)).toBeVisible();
+    await callBar(a.page).getByRole('button', { name: 'Leave call' }).click();
+    await expect.poll(() => state(a), POLL).not.toBe('connected');
+    await expect(youAreHereCard(a.page, CH)).toHaveCount(0, POLL);
+    await expect(joinButton(a.page, CH)).toBeVisible(POLL);
+    await expect(callBar(a.page)).toHaveCount(0, POLL);
+  });
+
+  test('V4: a failed join from a card shows once, in the voice notice, and Retry joins', async () => {
+    test.setTimeout(180_000);
+    await aOnFixtureWithBInRoom(CH);
+    // The app logs each failed join (voiceActions): the one this step causes is expected.
+    expectedErrors = /Failed to join voice channel: \{statusCode: 503, message: Unavailable/;
+
+    const token = '**/api/livekit/token';
+    await a.page.route(token, (route) =>
+      route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ statusCode: 503, message: 'Unavailable' }) }),
+    );
+    await joinButton(a.page, CH).click();
+
+    const notice = a.page.getByTestId('lounge-voice-notice');
+    await expect(notice).toHaveCount(1, { timeout: 20_000 });
+    await expect(notice).toContainText('Voice server error');
+    // Said once, in the call slot: no toast, no classic notice.
+    await expect(a.page.getByTestId('voice-notice')).toHaveCount(0);
+    await expect(a.page.locator('[data-kit-toast-region]').getByText(/voice|join/i)).toHaveCount(0);
+    await expect(youAreHereCard(a.page, CH)).toHaveCount(0);
+    await expect(joinButton(a.page, CH)).not.toHaveAttribute('aria-busy', 'true', POLL);
+    await expect(joinButton(a.page, CH)).toBeEnabled();
+    expect(await state(a)).not.toBe('connected');
+
+    await a.page.unroute(token);
+    await notice.getByRole('button', { name: 'Retry' }).click();
+    await expect.poll(() => state(a), { timeout: 30_000, message: 'Retry joins' }).toBe('connected');
+    await expect(youAreHereCard(a.page, CH)).toHaveCount(1, POLL);
+    await expect(a.page.getByTestId('lounge-voice-notice')).toHaveCount(0, POLL);
+    await expect(callBar(a.page)).toBeVisible();
+  });
+
+  test('V6: the call survives moving between communities in the Lounge', async () => {
+    test.setTimeout(240_000);
+    a = await launchA();
+    b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
+    await joinVoiceChannel(b, ROOM2);
+    await a.page.setViewportSize(PHONE);
+    // A probe on this page only: counts getUserMedia from here on (the page is not reloaded below).
+    await a.page.evaluate(countGetUserMedia);
+    const testId = await testCommunityId(a);
+    const secondId = await communityIdByName(a, 'Second Community');
+    await openFixture(a.page, testId, { communityName: 'Test Community' });
+    await joinFromRoomCard(a, ROOM2);
+    await waitForAudioFlow(a, b);
+    await waitForAudioFlow(b, a);
+
+    // B is classic, so it published a soundboard track; A (a card join) has none to wait for on B's side.
+    const before = await tagCall(a, b);
+    expect(before.gum).toBeGreaterThan(0);
+    await a.page.evaluate(() => {
+      (document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>).__keptDock = true;
+    });
+
+    const dock = a.page.getByRole('navigation', { name: 'Communities', exact: true });
+    const dockLink = (name: string) => dock.getByRole('link', { name: new RegExp(`^${name}`) });
+    const moves: Array<{ via: 'dock' | 'sheet'; name: string; id: string }> = [
+      { via: 'dock', name: 'Second Community', id: secondId },
+      { via: 'sheet', name: 'Test Community', id: testId },
+      { via: 'dock', name: 'Second Community', id: secondId },
+      { via: 'sheet', name: 'Test Community', id: testId },
+      { via: 'dock', name: 'Second Community', id: secondId },
+    ];
+    for (const [i, move] of moves.entries()) {
+      const step = `move ${i + 1}: ${move.via} to ${move.name}`;
+      if (move.via === 'dock') {
+        await dockLink(move.name).click();
+      } else {
+        await dock.getByRole('button', { name: 'All communities', exact: true }).click();
+        await a.page
+          .getByRole('dialog', { name: 'All communities', exact: true })
+          .getByRole('link', { name: new RegExp(`^${move.name}`) })
+          .click();
+      }
+      await expect(a.page, step).toHaveURL(fixtureUrl(move.id), { timeout: 20_000 });
+      await expect(
+        shell(a.page).getByRole('heading', { name: move.name, level: 2, exact: true }),
+        step,
+      ).toBeVisible({ timeout: 20_000 });
+      await expect(callBar(a.page), step).toBeVisible();
+      await expectCallUntouched(a, before, step);
+      await waitForAudioFlow(b, a);
+      expect(
+        await a.page.evaluate(() => !!(document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>)?.__keptDock),
+        `${step}: the dock was not remounted`,
+      ).toBe(true);
+    }
+
+    // One channel tap into the classic chat and Back. From here on only A is asserted: A's classic bar now
+    // publishes A's soundboard track, so B gets a new <audio> element.
+    const firstChannel = shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first();
+    await firstChannel.click();
+    await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
+    await a.page.goBack();
+    await expect(shell(a.page).getByRole('heading', { name: 'Second Community', level: 2, exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(callBar(a.page)).toBeVisible();
+    await expectCallUntouched(a, before, 'after a channel tap and Back');
+  });
+
+  test('V7: signing out mid-call from the account menu leaves the call', async () => {
+    test.setTimeout(180_000);
+    await aOnFixtureWithBInRoom(CH, { width: 820, height: 900 });
+    await joinFromRoomCard(a, CH);
+    await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: 'B lists A before the sign-out' }).toBe(true);
+    await waitForAudioFlow(b, a);
+
+    await a.page.getByRole('button', { name: 'Account menu', exact: true }).click();
+    await a.page.getByRole('menuitem', { name: 'Sign out…' }).click();
+    const question = a.page.getByRole('dialog', { name: 'Sign out?' });
+    await expect(question).toBeVisible();
+    await question.getByRole('button', { name: 'Sign out', exact: true }).click();
+
+    await expect(a.page).toHaveURL(/#\/login/, { timeout: 20_000 });
+    await expect.poll(() => state(a), { timeout: 20_000, message: 'A left the call' }).not.toBe('connected');
+    await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: "B's list drops A" }).toBe(false);
+
+    // Signing back in does not rejoin: nothing of the call was saved.
+    await loginViaApi(a.context.request, TEST_USER);
+    await a.page.goto('/');
+    // Signed in again, on the old shell's home (820 px is its mobile layout): nothing of the call came back.
+    await expect(a.page.getByRole('button', { name: /^choose a community$/i })).toBeVisible({ timeout: 20_000 });
+    await expect(a.page).not.toHaveURL(/#\/login/);
+    expect(await state(a)).not.toBe('connected');
+    expect(await roomLists(b, a)).toBe(false);
   });
 });
