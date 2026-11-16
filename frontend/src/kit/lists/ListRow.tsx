@@ -32,6 +32,11 @@ export interface ListRowProps {
   /** Bolder primary line, in the full text colour; the row's name says ", unread". */
   unread?: boolean;
   /**
+   * The same bold, full-colour primary line as `unread`, as a title (the call bar's room), with nothing added to
+   * the name.
+   */
+  strong?: boolean;
+  /**
    * What the trailing slot says, as words for the row's accessible name ("2 mentions", "admin"). `trailing` sits
    * beside the link or button, outside its name, so a Badge's or Pill's meaning would be lost to a keyboard list;
    * this puts it in: "clips, unread, 2 mentions", "Samira, admin, keeping the server warm".
@@ -253,6 +258,7 @@ export function ListRow({
   size = 'md',
   selected = false,
   unread = false,
+  strong = false,
   trailingLabel,
   muted = false,
   disabled = false,
@@ -321,8 +327,8 @@ export function ListRow({
       <Column>
         <Line
           $type="body"
-          $weight={unread ? tokens.text.bodyStrong.weight : tokens.text.body.weight}
-          $tone={tone(muted, unread && !selected)}
+          $weight={unread || strong ? tokens.text.bodyStrong.weight : tokens.text.body.weight}
+          $tone={tone(muted, (unread || strong) && !selected)}
         >
           {primary}
           {spokenState !== '' && <Hidden>{spokenState}</Hidden>}

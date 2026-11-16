@@ -4,7 +4,9 @@
  * sits at each width (phone: between the pane and the dock; compact and wide: the foot of the left column).
  */
 import type { JSX, ReactNode } from 'react';
-import { Alert, AppFrame, ThreeIslands, useWidthRange, type WidthRange } from '../../kit';
+import { AppFrame, ThreeIslands, useWidthRange, type WidthRange } from '../../kit';
+import { ShellBanners } from '../../shell/lounge/pieces/ShellBanners';
+import { NO_BANNERS } from '../../shell/lounge/pieces/shellBannersModel';
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { KitFrameStage } from './kitStory';
 import { FakeKeyboard } from './fakeKeyboard';
@@ -23,7 +25,10 @@ export function CallSlotFrame({
   mode?: ModeName;
   /** The on-screen keyboard is up (faked): the frame ends at it and the dock bar goes. */
   keyboard?: boolean;
-  /** App banners above the layout (the shell shows up to two on a phone): they take height first. */
+  /**
+   * App banners pending above the layout, through the shell's own banner row (its cap applies: two on a phone,
+   * one on one line while the keyboard is up): the connection problem, then a web update.
+   */
   banners?: 0 | 1 | 2;
   children: (width: WidthRange) => ReactNode;
 }): JSX.Element {
@@ -32,16 +37,11 @@ export function CallSlotFrame({
       <AppFrame
         banner={
           banners > 0 ? (
-            <>
-              <Alert severity="warning" title="Reconnecting">
-                You are offline. Messages you send will wait until the connection is back.
-              </Alert>
-              {banners > 1 && (
-                <Alert severity="info" title="Update ready">
-                  Restart to get the new version.
-                </Alert>
-              )}
-            </>
+            <ShellBanners
+              {...NO_BANNERS}
+              connection="unreachable"
+              webUpdate={banners > 1 ? { onReload: () => undefined } : null}
+            />
           ) : undefined
         }
       >

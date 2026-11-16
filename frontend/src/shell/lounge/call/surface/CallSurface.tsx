@@ -7,7 +7,8 @@
  * - A tile you do not watch is a row with its label and Watch (the classic "Click to watch"): nothing is
  *   received until you choose it, as in the classic app. Beyond `OFFERED_ROWS` of them a summary row counts
  *   them all and offers the call view, which lists every one.
- * - A watched tile is a kit MediaTile with the video; shares come first, then cameras.
+ * - A watched tile is a kit MediaTile with the video; shares come first, then cameras. On a phone (the slot spans
+ *   the screen) they sit two to a row; in the 288 px left column at compact and wide, one under the other.
  * - "Stop watching" stops watching everything you watch in the call (the classic stage tile's stop-watching
  *   function), so no stream stays subscribed with nothing on screen. This differs from the classic overlay's
  *   close button, which only hides the tiles.
@@ -17,7 +18,7 @@
  * call view); "See all" here opens it too, for the shares and cameras past the first rows.
  */
 import { useCallback, useRef, type JSX } from 'react';
-import { Button, Card, Icon, ListRow, MediaTile, Stack } from '../../../../kit';
+import { Button, Card, Icon, ListRow, MediaTile, Stack, useWidthRange } from '../../../../kit';
 import type { CallVideoTile, CallVideoTrack } from '../../../../data/callVideo';
 import { OFFERED_ROWS, offeredSummary, tileLabel } from '../../pieces/call/callSurfaceText';
 
@@ -88,6 +89,11 @@ export function CallSurface({
   const watched = tiles.filter((tile) => tile.watched);
   const offered = tiles.filter((tile) => !tile.watched);
   const many = offered.length > OFFERED_ROWS;
+  // Side by side, two to a row, where the slot is wide enough: on a phone it spans the screen; at compact and wide
+  // it is the 288 px left column, where two tiles would be too small to read, so they stack.
+  const pairs = useWidthRange() === 'phone';
+  const rows: CallVideoTile[][] = [];
+  for (let i = 0; i < watched.length; i += pairs ? 2 : 1) rows.push(watched.slice(i, i + (pairs ? 2 : 1)));
 
   // The arrangement is the kit's: the Card stacks its parts, the watched tiles sit in a Stack, each row is a
   // ListRow.
@@ -96,9 +102,19 @@ export function CallSurface({
       <Card padding="md">
         {watched.length > 0 && (
           <Stack gap="sm">
-            {watched.map((tile) => (
-              <VideoTile key={tile.id} tile={tile} />
-            ))}
+            {rows.map((row) =>
+              row.length === 1 ? (
+                <VideoTile key={row[0].id} tile={row[0]} />
+              ) : (
+                <Stack key={row.map((tile) => tile.id).join('+')} gap="sm" direction="row">
+                  {row.map((tile) => (
+                    <Stack key={tile.id} gap="sm" fill>
+                      <VideoTile tile={tile} />
+                    </Stack>
+                  ))}
+                </Stack>
+              ),
+            )}
           </Stack>
         )}
         {watched.length > 0 && (

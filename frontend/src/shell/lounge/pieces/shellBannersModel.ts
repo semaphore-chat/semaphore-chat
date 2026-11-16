@@ -55,8 +55,12 @@ export type BannerKind =
 /** Quiet notes: shown only when nothing else is. */
 const QUIET: ReadonlySet<BannerKind> = new Set(['install', 'downloading']);
 
-/** Most banners at once: two below wide (a phone, a tablet), three at wide. */
-export function bannerCap(range: WidthRange): number {
+/**
+ * Most banners at once: two below wide (a phone, a tablet), three at wide; one on a phone while the on-screen
+ * keyboard is up (the frame is short then: the call bar and the composer need the room).
+ */
+export function bannerCap(range: WidthRange, keyboard = false): number {
+  if (keyboard && range === 'phone') return 1;
   return range === 'wide' ? 3 : 2;
 }
 
@@ -66,10 +70,10 @@ export function bannerCap(range: WidthRange): number {
  * shows; the web update's Reload waits while offline (it would fail). What does not fit stays pending
  * and shows when a higher one goes.
  */
-export function visibleBanners(model: ShellBannersModel, range: WidthRange): BannerKind[] {
+export function visibleBanners(model: ShellBannersModel, range: WidthRange, keyboard = false): BannerKind[] {
   const present = presentBanners(model);
   const loud = present.filter((kind) => !QUIET.has(kind));
-  return (loud.length > 0 ? loud : present).slice(0, bannerCap(range));
+  return (loud.length > 0 ? loud : present).slice(0, bannerCap(range, keyboard));
 }
 
 /** Every banner the model holds, by priority, before the cap. */

@@ -30,7 +30,7 @@ const bar = (
   <Card padding="md">
     <ListRow
       size="lg"
-      unread
+      strong
       primary="The bar"
       secondary="Never shrunk or clipped"
       trailing={<IconButton icon="PhoneOff" label="Leave call" variant="danger" />}

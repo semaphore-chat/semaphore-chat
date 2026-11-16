@@ -110,15 +110,41 @@ for (const { story, view, keyboard } of CASES) {
 }
 
 test('the surface scrolls inside itself: its last row can be scrolled to, the page stays put', async ({ page }) => {
-  await openStory(page, 'call-surface--four-tiles', PHONE);
+  // Fourteen rows: far taller than two fifths of the layout.
+  await openStory(page, 'kit-call-stack--bounded', PHONE);
   const surface = page.locator('[data-kit-call-surface]');
   const overflow = await surface.evaluate((el) => ({ scrolls: el.scrollHeight > el.clientHeight, style: getComputedStyle(el).overflowY }));
   expect(overflow).toEqual({ scrolls: true, style: 'auto' });
-  const stop = page.getByRole('button', { name: 'Stop watching' });
-  await stop.scrollIntoViewIfNeeded();
-  await expect(stop).toBeInViewport();
+  const last = page.getByText('Surface row 14', { exact: true });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
   await expectNoPageScroll(page);
-  await expectWholeAndOnTop(page, 'Leave call', PHONE);
+  const leave = page.getByRole('button', { name: 'Leave call' });
+  const box = (await leave.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(PHONE.height);
+});
+
+test('two watched tiles sit side by side on a phone, one under the other in the 288 px column', async ({ page }) => {
+  for (const [view, sideBySide] of [
+    [PHONE, true],
+    [{ width: 1440, height: 900 }, false],
+  ] as const) {
+    await openStory(page, 'call-surface--two-tiles', view);
+    const tiles = await page.locator('[data-testid="lounge-call-surface"] [role="group"]').evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width) };
+      }),
+    );
+    expect(tiles).toHaveLength(2);
+    if (sideBySide) {
+      expect(tiles[0].top).toBe(tiles[1].top);
+      expect(tiles[1].left).toBeGreaterThan(tiles[0].left + tiles[0].width - 1);
+    } else {
+      expect(tiles[1].top).toBeGreaterThan(tiles[0].top);
+      expect(tiles[1].left).toBe(tiles[0].left);
+    }
+  }
 });
 
 test('ten cameras, none watched: a summary row and three rows, not ten', async ({ page }) => {
@@ -200,7 +226,8 @@ test.describe('on a touch screen', () => {
 const WORST: { story: string; keyboard: boolean; banners: number }[] = [
   { story: 'call-surface--everything-one-banner', keyboard: false, banners: 1 },
   { story: 'call-surface--everything-two-banners', keyboard: false, banners: 2 },
-  { story: 'call-surface--everything-two-banners-keyboard', keyboard: true, banners: 2 },
+  // The keyboard leaves one banner (on one line) of the two pending.
+  { story: 'call-surface--everything-two-banners-keyboard', keyboard: true, banners: 1 },
 ];
 
 for (const { story, keyboard, banners } of WORST) {
@@ -226,6 +253,24 @@ for (const { story, keyboard, banners } of WORST) {
     }
   });
 }
+
+test('390×500, keyboard up, two banners pending, reconnecting and a reason line: one banner on one line; Leave and Mute whole and on top', async ({ page }) => {
+  const view = { width: 390, height: 500 };
+  await openStory(page, 'call-surface--everything-two-banners-keyboard', view);
+  // One banner (the highest priority), on one line; the second waits for the keyboard to go.
+  await expect(page.locator('[data-slot="banner"] > *')).toHaveCount(1);
+  const banner = page.locator('[data-slot="banner"] [data-kit-alert-one-line]');
+  await expect(banner).toHaveCount(1);
+  await expect(banner).toContainText("Can't reach the server");
+  const lineHeight = tokens.text.body.line;
+  const b = (await banner.boundingBox())!;
+  expect(b.height, 'one line of text plus the slim padding').toBeLessThanOrEqual(tokens.control.sm + 2 * tokens.space.sm);
+  expect(lineHeight).toBeGreaterThan(0);
+  await expect(page.getByText('A new version of Semaphore Chat is ready.')).toHaveCount(0);
+  await expectWholeAndOnTop(page, 'Leave call', view);
+  await expectWholeAndOnTop(page, 'Mute', view);
+  await expectNoPageScroll(page);
+});
 
 test('keyboard up while you share: Stop sharing is in the one-line summary, whole and on top', async ({ page }) => {
   await openStory(page, 'call-surface--own-share-keyboard', PHONE);

@@ -134,7 +134,10 @@ const everything = {
 export const EverythingOneBanner = () => <Surface {...everything} banners={1} />;
 /** Everything, under two app banners: the video gives way further; the dock and the bar stay whole. */
 export const EverythingTwoBanners = () => <Surface {...everything} banners={2} />;
-/** Two banners with the keyboard up, reconnecting and a reason line: Leave and Mute stay whole (the bar wins). */
+/**
+ * Two banners pending with the keyboard up, reconnecting and a reason line: the banner row shows only the first, on
+ * one line (the rest return when the keyboard goes), and Leave and Mute stay whole (the bar wins over the pane).
+ */
 export const EverythingTwoBannersKeyboard = () => <Surface {...everything} banners={2} keyboard />;
 /** Your own share with the keyboard up: the one-line summary keeps Stop sharing. */
 export const OwnShareKeyboard = () => <Surface tiles={[screen]} sharingScreen keyboard />;

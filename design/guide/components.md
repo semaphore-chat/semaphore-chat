@@ -726,6 +726,7 @@ that field.
 |`secondaryAction`|a `label` and an `onClick`|none|A second text button beside `action` (Join and Decline on an incoming call). It is a choice, not a dismiss: dismissing is `onClose`. The buttons wrap onto a second line when they do not fit.|
 |`onClose`|a function|none|Adds a Dismiss button. Without it the alert cannot be dismissed.|
 |`announce`|true, false|true|Whether screen readers speak it when it appears.|
+|`oneLine`|true, false|false|One line, for the banner row while a phone's on-screen keyboard is up: the title and the text run together and are cut with an ellipsis; the actions and Dismiss stay beside them. The whole text stays in the alert for screen readers. Web kit only so far.|
 
 `warning` and `danger` interrupt screen readers when they appear. `info` and
 `success` wait for a pause. Screen readers speak a live message when it shows
@@ -737,7 +738,7 @@ Stories: `kit-alert--severities`, `kit-alert--severities-light`,
 `kit-alert--severities-tinted`, `kit-alert--with-actions`,
 `kit-alert--long-text`, `kit-alert--secondary-action`,
 `kit-alert--secondary-action-light`, `kit-alert--secondary-action-long`,
-`kit-alert--secondary-action-one-long`.
+`kit-alert--secondary-action-one-long`, `kit-alert--one-line`, `kit-alert--one-line-light`.
 
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
@@ -899,7 +900,8 @@ used.
 |`disabled`|true, false|false|The row is not available.|
 |`href`|an address|none|Makes the row a link.|
 |`onClick`|a function|none|Makes the row a button.|
-|`label`|text|none|The accessible name of the link or button, when its visible lines do not say what it does: the call bar's room row is "Open call view, Squad Up". The `secondary` line is then no longer in the name, so it becomes the description (`aria-describedby`): a screen reader hears "Open call view, Squad Up, Muted". Ignored on a plain row. Web kit only so far.|
+|`strong`|true, false|false|The same bold, full-colour primary line as `unread`, for a title row (the call bar's room), with nothing added to the name. Web kit only so far.|
+|`label`|text|none|The accessible name of the link or button, when its visible lines do not say what it does: the call bar's room row is "Open call view, Squad Up". The naming rule: `label` replaces the visible lines in the name, then ", unread" and `trailingLabel` are appended, and the `secondary` line becomes the description (`aria-describedby`): a screen reader hears "Open call view, Squad Up, Muted". Without `label` the name is the visible lines with ", unread" and `trailingLabel` after the primary. Ignored on a plain row. Web kit only so far.|
 |`chevron`|true, false|false|A chevron (`ChevronRight`, `icon.sm`) at the end of the link or button, before `trailing`: a visible sign, on touch too, that the row goes somewhere. It takes `icon.sm` + `space.sm` from the text. Hidden from screen readers. Ignored on a plain row. Web kit only so far.|
 |`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list. See below.|
 

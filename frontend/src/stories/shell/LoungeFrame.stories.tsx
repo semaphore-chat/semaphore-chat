@@ -18,6 +18,9 @@ import { defineComponent } from '../fixtures/componentStory';
 import { KitFrameStage } from '../fixtures/kitStory';
 import { bigCommunityScenario } from '../fixtures/scenarios';
 import { LOUNGE_COMMUNITY_ID, loungeCommunityHandlers } from '../fixtures/loungeCommunityHandlers';
+import { RoomContext } from '../../contexts/RoomContextDef';
+import { SpeakingProvider } from '../../contexts/SpeakingContext';
+import { channelVoiceState, createMediaRoom } from '../fixtures/edge/voice';
 
 const placeholderScreen = (phonePane: 'left' | 'centre'): ThreeIslandsScreen => ({
   template: 'threeIslands',
@@ -85,3 +88,41 @@ export const ThreeIslandsPlaceholdersLight = threeIslands('light', centreRoute);
 
 /** A screen whose phone pane is the left one (a community home): the left island is the phone's main. */
 export const ThreeIslandsPhoneLeft = threeIslands('dark', leftRoute);
+
+/** In Squad Up (the island's first voice room) with a peer's share watched and another's camera offered. */
+const me = bigCommunityScenario.me;
+const [sharer, cameraOn] = bigCommunityScenario.users.filter((u) => u.id !== me.id);
+const inCallRoom = createMediaRoom({ user: me }, [{ user: sharer, screen: true, speaking: true }, { user: cameraOn, camera: true }], {
+  screens: [sharer.id],
+});
+const inCallState = channelVoiceState(
+  { id: 'vc-squad', name: 'Squad Up', communityId: LOUNGE_COMMUNITY_ID },
+  { watchingScreenShares: new Set([sharer.id]), watchingCameras: new Set() },
+);
+
+const threeIslandsInCall = (mode: ModeName, route: LoungeRoute) =>
+  defineComponent(
+    bigCommunityScenario,
+    () => (
+      <RoomContext.Provider value={{ room: inCallRoom, setRoom: () => {}, getRoom: () => inCallRoom }}>
+        <SpeakingProvider>
+          <Frame mode={mode} placeholders choice={{ kind: 'lounge', route, params: { communityId: LOUNGE_COMMUNITY_ID } }} />
+        </SpeakingProvider>
+      </RoomContext.Provider>
+    ),
+    { maxWidth: false, extraHandlers: loungeCommunityHandlers, voiceState: inCallState },
+  );
+
+/**
+ * Everything real at once, in a call: the dock, the community left island (Squad Up outlined "You're here", the
+ * user card in its footer), the members, and the call slot (the surface with a watched share and an offered
+ * camera, above the call bar). Compact and wide: the slot under the left island's footer; phone: between the pane
+ * and the dock.
+ */
+export const ThreeIslandsInCall = threeIslandsInCall('dark', centreRoute);
+
+/** The same, light. */
+export const ThreeIslandsInCallLight = threeIslandsInCall('light', centreRoute);
+
+/** In a call, the phone showing the left pane (the community): the slot under it, above the dock. */
+export const ThreeIslandsInCallPhoneLeft = threeIslandsInCall('dark', leftRoute);

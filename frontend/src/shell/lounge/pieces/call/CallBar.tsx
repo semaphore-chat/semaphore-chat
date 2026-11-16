@@ -74,8 +74,9 @@ export function CallBar({ model }: CallBarProps): JSX.Element {
   const row = (
     <ListRow
       size="lg"
-      // The kit's strong primary line (bold, full text colour): the room is the bar's title.
-      unread
+      // The kit's strong primary line (bold, full text colour): the room is the bar's title. Not `unread`, which
+      // says ", unread" in the name.
+      strong
       primary={place.name}
       secondary={line !== null && !line.full ? line.text : undefined}
       // The room (with its line) is the Open call view control at every width: the kit's pressable row (hover,

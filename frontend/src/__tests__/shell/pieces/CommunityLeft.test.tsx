@@ -67,7 +67,7 @@ vi.mock('../../../utils/logger', () => ({
 
 import { AppFrame, KitProvider } from '../../../kit';
 import { SpeakingContext } from '../../../contexts/SpeakingContextDef';
-import { userControllerGetProfileQueryKey, voicePresenceControllerGetChannelPresenceQueryKey } from '../../../api-client/@tanstack/react-query.gen';
+import { userControllerGetProfileQueryKey } from '../../../api-client/@tanstack/react-query.gen';
 import { handleNewMessage } from '../../../socket-hub/handlers/messageHandlers';
 import { handleVoiceUserJoined } from '../../../socket-hub/handlers/voiceHandlers';
 import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityLeft';
@@ -305,16 +305,16 @@ describe('CommunityLeft (connected)', () => {
     expect(location).toBe('/community/c-1');
   });
 
-  it('a failed join says so in a toast with Try again (until PR 7 shows the voice notice)', async () => {
+  it("a failed join raises no toast here: the call slot's voice notice is the one place it shows", async () => {
     mocks.joinVoiceChannel.mockRejectedValue(new Error('nope'));
     serve();
     const { user } = renderLeft();
     await user.click(await screen.findByRole('button', { name: 'Join Squad Up' }));
-    expect(await screen.findByText("Couldn't join Squad Up")).toBeInTheDocument();
-    expect(mockPlaySound).toHaveBeenCalledWith('error');
-    mocks.joinVoiceChannel.mockResolvedValue(undefined);
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(mocks.joinVoiceChannel).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockPlaySound).toHaveBeenCalledWith('error'));
+    expect(screen.queryByText(/Couldn't join/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    // The card is usable again (no spinner left behind).
+    expect(screen.getByRole('button', { name: 'Join Squad Up' })).not.toHaveAttribute('aria-busy');
   });
 
   it('no Join where the classic pre-join screen would refuse (no connect permission)', async () => {
@@ -407,27 +407,6 @@ describe('CommunityLeft (review fixes)', () => {
     expect(await screen.findByText('You on another device and dropbear')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Join Squad Up' })).toBeInTheDocument();
     expect(screen.queryByText("You're here")).toBeNull();
-  });
-
-  it('a failed join says why; Try again never moves a user who has since joined another call', async () => {
-    mocks.joinVoiceChannel.mockRejectedValue(new Error('nope'));
-    mocks.notice = { id: 'join-failure:full', severity: 'error', title: "Couldn't join", message: 'The room is full.', retryTarget: null };
-    serve();
-    const { user, queryClient } = renderLeft();
-    await user.click(await screen.findByRole('button', { name: 'Join Squad Up' }));
-    expect(await screen.findByText("Couldn't join Squad Up. The room is full.")).toBeInTheDocument();
-    // Meanwhile the user joined another room (a presence update renders the card with the new call state)
-    mocks.voiceState = { isConnected: true, isConnecting: false, currentChannelId: 'vc-other', room: null };
-    act(() => {
-      queryClient.setQueryData(voicePresenceControllerGetChannelPresenceQueryKey({ path: { channelId: 'vc-squad' } }), {
-        channelId: 'vc-squad',
-        users: [presenceUser('u-dropbear', 'dropbear'), presenceUser('u-pri', 'pri')],
-        count: 2,
-      } as never);
-    });
-    await screen.findByText('dropbear and pri');
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(mocks.joinVoiceChannel).toHaveBeenCalledTimes(1);
   });
 });
 

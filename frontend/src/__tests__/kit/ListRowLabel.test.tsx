@@ -45,6 +45,19 @@ describe('ListRow label', () => {
     expect(container.querySelectorAll('svg')).toHaveLength(0);
   });
 
+  it('one naming rule: label replaces the visible lines, unread and trailingLabel are appended, secondary describes', () => {
+    renderWithKit(
+      <ListRow primary="clips" secondary="Muted" unread trailingLabel="2 mentions" label="Open clips" onClick={() => {}} />,
+    );
+    const button = screen.getByRole('button', { name: 'Open clips, unread, 2 mentions' });
+    expect(button).toHaveAccessibleDescription('Muted');
+  });
+
+  it('strong: bold like unread, nothing added to the name', () => {
+    renderWithKit(<ListRow primary="Squad Up" strong label="Open call view, Squad Up" onClick={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Open call view, Squad Up' })).toBeInTheDocument();
+  });
+
   it('names a link', () => {
     renderWithKit(<ListRow primary="general" label="Go to general" href="#general" />);
     expect(screen.getByRole('link', { name: 'Go to general' })).toHaveAttribute('href', '#general');

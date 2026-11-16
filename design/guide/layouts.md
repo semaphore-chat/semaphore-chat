@@ -30,7 +30,11 @@ island scrolls inside itself. The frame adds no landmark of its own.
 notice about the whole app such as "reconnecting" or "update available". Put a
 kit Alert in it. Several alerts stack, the most urgent first, a small gap
 apart, and only a few at once: at most two below the wide range (a phone, a
-tablet) and three at wide. The order, most urgent first, is a ringing call, a
+tablet) and three at wide. While a phone's on-screen keyboard is up, only one
+shows, the most urgent, on a single line (the Alert's `oneLine`: its text is cut
+with an ellipsis, its actions and Dismiss stay beside it); the rest, and the
+full banner, return when the keyboard goes down, so the call bar's Leave and the
+composer keep their room. The order, most urgent first, is a ringing call, a
 connection problem, a security notice, a failed update, an update ready, the
 offer to install, and download progress. The quiet ones (the install offer and
 download progress) show only when nothing else does. When more are pending than

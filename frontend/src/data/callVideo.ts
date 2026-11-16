@@ -66,6 +66,12 @@ const ROOM_EVENTS = [
 ] as const;
 
 function publication(participant: Participant, source: string): TrackPublication | undefined {
+  // LiveKit's own lookup by source when the participant has it; the publications map otherwise.
+  const bySource = (participant as { getTrackPublication?: (source: string) => TrackPublication | undefined }).getTrackPublication;
+  if (typeof bySource === 'function') {
+    const found = bySource.call(participant, source);
+    if (found) return found;
+  }
   for (const [, pub] of participant.trackPublications) {
     if (pub.source === source) return pub;
   }

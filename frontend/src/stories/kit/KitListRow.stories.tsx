@@ -149,7 +149,7 @@ const LabelledBody = () => (
   <div style={{ width: 288, maxWidth: '100%' }}><Island padding="md">
     <ListRow
       size="lg"
-      unread
+      strong
       primary="Squad Up"
       secondary="Voice connected"
       label="Open call view, Squad Up"

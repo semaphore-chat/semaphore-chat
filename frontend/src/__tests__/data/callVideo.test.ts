@@ -15,6 +15,18 @@ function participant(identity: string, name: string, pubs: { source: string; isM
 const none = { cameras: new Set<string>(), screens: new Set<string>() };
 
 describe('callVideoTiles', () => {
+  it("finds a publication by LiveKit's getTrackPublication(source) when the participant has it", () => {
+    const share = { source: 'screen_share', isMuted: false, isSubscribed: true, track };
+    const p = {
+      identity: 'd',
+      name: 'dropbear',
+      trackPublications: new Map(),
+      getTrackPublication: (source: string) => (source === 'screen_share' ? share : undefined),
+    } as unknown as RemoteParticipant;
+    const tiles = callVideoTiles([p], { cameras: new Set(), screens: new Set(['d']) }, () => false);
+    expect(tiles).toEqual([expect.objectContaining({ id: 'd:screen', watched: true, track })]);
+  });
+
   it('shares first, then cameras; mic-only participants give no tile', () => {
     const tiles = callVideoTiles(
       [

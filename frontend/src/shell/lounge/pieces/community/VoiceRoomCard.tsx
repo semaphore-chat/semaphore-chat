@@ -8,14 +8,13 @@
  * are its buttons. Join is offered only when the classic pre-join screen would offer it
  * (`useChannelPermissions(...).can('connect')`).
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { AvatarStack, Button, Card, Icon, Pill, Stack, Text, useToasts, useWidthRange } from '../../../../kit';
+import { memo, useCallback, useMemo, useState, type JSX } from 'react';
+import { AvatarStack, Button, Card, Icon, Pill, Stack, Text, useWidthRange } from '../../../../kit';
 import type { Channel } from '../../../../types/channel.type';
 import { useVoiceRoomPeople, useJoinVoiceRoom } from '../../../../data/voiceRoom';
 import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
 import { useVoiceConnection } from '../../../../hooks/useVoiceConnection';
 import { useCurrentUser } from '../../../../hooks/useCurrentUser';
-import { useVoiceNotice } from '../../../../data/voiceNotice';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
 import { peopleLine, talkingLine } from './lines';
 
@@ -145,50 +144,23 @@ export function VoiceRoomCardConnected({ room, communityId }: VoiceRoomCardConne
   const { can } = useChannelPermissions(communityId, room.id);
   const join = useJoinVoiceRoom();
   const { state, actions } = useVoiceConnection();
-  const notice = useVoiceNotice();
   const { user } = useCurrentUser();
-  const toasts = useToasts();
-  // How many joins from this card are running (a Try again while one runs must not clear the first's spinner).
+  // How many joins from this card are running.
   const [pending, setPending] = useState(0);
-  const [failed, setFailed] = useState(false);
   const [a, b, c] = useStackSources(people);
-
-  // The latest call state, read when Try again is pressed (never the state of the render that failed).
-  const stateRef = useRef(state);
-  stateRef.current = state;
 
   const joining = pending > 0 || (state.isConnecting && state.currentChannelId === room.id);
 
+  // A failed join says nothing here: the join records it in the voice state, and the call slot's voice notice (the
+  // one place a failed join shows in the Lounge) says why, with Retry.
   const startJoin = useCallback(async (): Promise<void> => {
     setPending((n) => n + 1);
     try {
-      const outcome = await join(room, communityId);
-      if (outcome === 'failed') setFailed(true);
+      await join(room, communityId);
     } finally {
       setPending((n) => n - 1);
     }
   }, [join, room, communityId]);
-
-  // PR 7 shows the voice notice in the call slot; until then a failed join from this card is a toast that says why
-  // (the notice's words) and offers Try again for this room, unless the user has since gone into another call.
-  useEffect(() => {
-    if (!failed) return;
-    setFailed(false);
-    const reason = notice && notice.retryTarget?.type !== 'dm' ? notice.message : null;
-    toasts.show({
-      id: 'voice-join-failed',
-      tone: 'danger',
-      message: reason ? `Couldn't join ${room.name}. ${reason}` : `Couldn't join ${room.name}`,
-      action: {
-        label: 'Try again',
-        onAction: () => {
-          const now = stateRef.current;
-          const elsewhere = (now.isConnected || now.isConnecting) && now.currentChannelId !== room.id;
-          if (!elsewhere) void startJoin();
-        },
-      },
-    });
-  }, [failed, notice, toasts, room.name, room.id, startJoin]);
 
   const shown = useMemo(
     () => people.map((p, i) => ({ id: p.id, name: p.name, src: [a, b, c][i] })),

@@ -145,3 +145,36 @@ export const SecondaryActionOneLong = () => (
   </KitStage>
 );
 
+
+/** `oneLine` (the banner row while a phone's keyboard is up): text cut with an ellipsis, actions and Dismiss kept. */
+const OneLineBody = () => (
+  <div style={{ ...stack, width: 358, maxWidth: '100%' }}>
+    <Alert severity="warning" oneLine announce={false}>
+      Can't reach the server. Reconnecting…
+    </Alert>
+    <Alert
+      severity="info"
+      oneLine
+      title="Priya Diallo is calling"
+      action={{ label: 'Join', onClick: () => undefined }}
+      secondaryAction={{ label: 'Decline', onClick: () => undefined }}
+    >
+      Voice call in Friday raid night
+    </Alert>
+    <Alert severity="info" oneLine title="Update available" action={{ label: 'Reload', onClick: () => undefined }} onClose={() => undefined}>
+      A new version of Semaphore Chat is ready.
+    </Alert>
+  </div>
+);
+
+export const OneLine = () => (
+  <KitStage mode="dark">
+    <OneLineBody />
+  </KitStage>
+);
+
+export const OneLineLight = () => (
+  <KitStage mode="light">
+    <OneLineBody />
+  </KitStage>
+);
