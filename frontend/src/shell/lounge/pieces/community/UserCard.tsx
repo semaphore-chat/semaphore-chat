@@ -9,7 +9,7 @@
  */
 import { startTransition, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar, Card, Icon, IconButton, Menu, Skeleton, Stack, Text, type MenuEntry } from '../../../../kit';
+import { Avatar, Card, Icon, IconButton, Menu, Skeleton, Stack, Text, personColour, type MenuEntry } from '../../../../kit';
 import { useSignOutRequest } from '../signOutRequest';
 import { useCallBarModel } from '../../../../data/callBar';
 import { callFromModel, callState } from './lines';
@@ -31,6 +31,8 @@ export interface UserCardProps {
   /** Null while your profile loads. */
   name: string | null;
   src?: string;
+  /** Your avatar colour (`personColour(your id)`); none gives the neutral fill. */
+  colour?: string;
   online: boolean;
   /** "In Squad Up", or your status text; null for none. */
   line: string | null;
@@ -82,7 +84,7 @@ function AccountMenu({ onSettings, onProfile, onSignOut }: AccountMenuProps): JS
   );
 }
 
-export function UserCard({ name, src, online, line, call, onSettings, onProfile, onSignOut }: UserCardProps): JSX.Element {
+export function UserCard({ name, src, colour, online, line, call, onSettings, onProfile, onSignOut }: UserCardProps): JSX.Element {
   const state = call ? callState(call) : null;
   const menu = <AccountMenu onSettings={onSettings} onProfile={onProfile} onSignOut={onSignOut} />;
   if (name === null) {
@@ -102,7 +104,7 @@ export function UserCard({ name, src, online, line, call, onSettings, onProfile,
   return (
     <Card padding="md">
       <Stack direction="row" gap="sm">
-        <Avatar name={shownName} src={src} presence={online ? 'online' : 'offline'} />
+        <Avatar name={shownName} src={src} colour={colour} presence={online ? 'online' : 'offline'} />
         <Stack gap="xs" fill>
           <Text variant="name" truncate>
             {shownName}
@@ -142,6 +144,7 @@ export function UserCardConnected(): JSX.Element {
     <UserCard
       name={user ? user.displayName || user.username : null}
       src={blobUrl ?? undefined}
+      colour={personColour(user?.id)}
       online={connection === 'connected'}
       line={line || null}
       call={model ? callFromModel(model) : null}

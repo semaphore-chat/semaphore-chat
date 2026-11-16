@@ -65,7 +65,7 @@ vi.mock('../../../utils/logger', () => ({
   logger: { dev: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { AppFrame, KitProvider } from '../../../kit';
+import { AppFrame, KitProvider, personColour } from '../../../kit';
 import { SpeakingContext } from '../../../contexts/SpeakingContextDef';
 import { userControllerGetProfileQueryKey } from '../../../api-client/@tanstack/react-query.gen';
 import { handleNewMessage } from '../../../socket-hub/handlers/messageHandlers';
@@ -517,6 +517,23 @@ describe('the pieces (views)', () => {
     );
     expect(screen.getByText('Nobody here')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Join AFK' })).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it("voice card and user card: each person's avatar takes personColour(their id)", () => {
+    const noop = () => undefined;
+    const people = [
+      { id: 'u-dropbear', name: 'dropbear' },
+      { id: 'u-pri', name: 'pri' },
+    ];
+    render(
+      <Kit>
+        <VoiceRoomCard name="Squad Up" people={people} youId="me" speaking={new Set()} youAreHere={false} canJoin joining={false} onJoin={noop} onLeave={noop} />
+        <UserCard name="alexk" colour={personColour('me')} online line={null} call={null} onSettings={noop} onProfile={noop} onSignOut={noop} />
+      </Kit>,
+    );
+    expect(screen.getByText('DR')).toHaveStyle({ backgroundColor: personColour('u-dropbear') });
+    expect(screen.getByText('PR')).toHaveStyle({ backgroundColor: personColour('u-pri') });
+    expect(screen.getByText('AL')).toHaveStyle({ backgroundColor: personColour('me') });
   });
 
   it('people and talking lines', () => {

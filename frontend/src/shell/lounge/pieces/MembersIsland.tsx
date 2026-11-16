@@ -12,7 +12,7 @@
  * re-renders only the rows it touched (Profiler test, `__tests__/shell/pieces/MembersIsland.test.tsx`).
  */
 import { memo, useCallback, useContext, useMemo, type JSX } from 'react';
-import { Avatar, Button, ListRow, LoadState, Pill, Skeleton, Stack, Text, useQueryLoadState, useListFocus, type LoadController, type RowFocus } from '../../../kit';
+import { Avatar, Button, ListRow, LoadState, Pill, Skeleton, Stack, Text, personColour, useQueryLoadState, useListFocus, type LoadController, type RowFocus } from '../../../kit';
 import { useCommunityMembers, type MemberSummary } from '../../../data/members';
 import { useAuthenticatedImage } from '../../../hooks/useAuthenticatedImage';
 import { UserProfileContext } from '../../../contexts/UserProfileContext';
@@ -52,7 +52,9 @@ function MemberRowView({ member, now, focus, onOpen }: MemberRowProps): JSX.Elem
       primary={member.name}
       secondary={memberLine(member, now)}
       muted={away}
-      leading={<Avatar decorative name={member.name} src={blobUrl ?? undefined} presence={away ? 'offline' : 'online'} />}
+      leading={
+        <Avatar decorative name={member.name} src={blobUrl ?? undefined} colour={personColour(member.id)} presence={away ? 'offline' : 'online'} />
+      }
       trailing={member.role ? <Pill size="sm">{member.role}</Pill> : undefined}
       trailingLabel={[member.role, away ? 'away' : 'online'].filter(Boolean).join(', ')}
       onClick={onOpen ? () => onOpen(member.id) : undefined}

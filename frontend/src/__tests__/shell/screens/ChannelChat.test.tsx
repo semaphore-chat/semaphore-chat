@@ -7,7 +7,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 import { useLocation } from 'react-router-dom';
-import { KitProvider } from '../../../kit';
+import { KitProvider, personColour } from '../../../kit';
 import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
 import { LoungeLinksContext } from '../../../shell/lounge/links';
@@ -21,7 +21,7 @@ import {
   userControllerGetUserByIdQueryKey,
 } from '../../../api-client/@tanstack/react-query.gen';
 import { createChannel, createMessage, createTestQueryClient, renderWithProviders, resetFactoryCounter } from '../../test-utils';
-import { SpanType } from '../../../types/message.type';
+import { SpanType, type Message } from '../../../types/message.type';
 
 vi.mock('virtua', async () => {
   const ReactMod = await import('react');
@@ -61,11 +61,12 @@ vi.mock('react-router-dom', async (importOriginal) => {
 });
 
 // Renders of kit rows (by author) and runs of toSegments: the row memo must hold.
-const counts = vi.hoisted(() => ({ rows: new Map<string, number>(), segments: 0 }));
+const counts = vi.hoisted(() => ({ rows: new Map<string, number>(), colours: new Map<string, string | undefined>(), segments: 0 }));
 vi.mock('../../../kit', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../kit')>();
   const MessageRow = (props: Parameters<typeof actual.MessageRow>[0]) => {
     counts.rows.set(props.author, (counts.rows.get(props.author) ?? 0) + 1);
+    counts.colours.set(props.author, props.avatarColour);
     return actual.MessageRow(props);
   };
   return { ...actual, MessageRow };
@@ -212,6 +213,29 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     // The list's one Tab stop is a row, and it is the roving focus target.
     expect(screen.getAllByRole('article').filter((row) => row.getAttribute('tabindex') === '0')).toHaveLength(1);
     expect(screen.getAllByRole('article')[0]).toHaveAttribute('data-row-focus-target', 'true');
+  });
+
+  it("an author's avatar takes personColour(their id); a webhook and a deleted user keep the neutral fill", () => {
+    conversation.current = makeConversation({
+      orderedMessages: [
+        createMessage({ id: 'm-1', authorId: 'u-aiko', spans: [{ type: SpanType.PLAINTEXT, text: 'first' }] }),
+        createMessage({
+          id: 'm-2',
+          authorId: 'u-aiko',
+          webhook: { id: 'w-ci', name: 'CI bot', avatarUrl: null },
+          spans: [{ type: SpanType.PLAINTEXT, text: 'build green' }],
+        } as Partial<Message>),
+        createMessage({ id: 'm-3', authorId: null as unknown as string, spans: [{ type: SpanType.PLAINTEXT, text: 'gone' }] }),
+      ],
+    });
+    counts.colours.clear();
+    setup();
+    const aiko = [...counts.colours].find(([author]) => author !== 'CI bot' && author !== 'Deleted user');
+    expect(aiko?.[1]).toBe(personColour('u-aiko'));
+    expect(aiko?.[1]).toMatch(/^#[0-9A-F]{6}$/);
+    expect(counts.colours.has('CI bot')).toBe(true);
+    expect(counts.colours.get('CI bot')).toBeUndefined();
+    expect(counts.colours.get('Deleted user')).toBeUndefined();
   });
 
   it('a replies count is plain text, not a control (threads are not built yet)', () => {

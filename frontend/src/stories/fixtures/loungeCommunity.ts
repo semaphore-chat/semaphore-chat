@@ -3,7 +3,7 @@
  * the community left island and members stories (their page is LoungeCommunityPage.tsx). No colours from data: people and the
  * community wear the kit's default (design §6).
  */
-import { useWidthRange } from '../../kit';
+import { personColour, useWidthRange } from '../../kit';
 import type { MemberSummary } from '../../data/members';
 import type { ChannelItem } from '../../shell/lounge/pieces/community/ChannelSection';
 import type { VoiceRoomCardProps } from '../../shell/lounge/pieces/community/VoiceRoomCard';
@@ -92,6 +92,7 @@ export const AFK = room({ name: 'AFK', people: [person('u-kwam3', 'kwam3')] });
 
 export const USER_IN_CALL: UserCardProps = {
   name: 'alexk',
+  colour: personColour(YOU),
   online: true,
   line: 'In Squad Up',
   call: { mic: 'on', deafened: false },

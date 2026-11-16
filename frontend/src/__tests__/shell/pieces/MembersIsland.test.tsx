@@ -31,7 +31,7 @@ vi.mock('../../../hooks/useVoiceConnection', () => ({
   useVoiceConnection: () => ({ state: { isConnected: false, currentChannelId: null }, actions: {} }),
 }));
 
-import { KitProvider } from '../../../kit';
+import { KitProvider, personColour } from '../../../kit';
 import { UserProfileContext } from '../../../contexts/UserProfileContext';
 import { handleUserOnline, resetCommunityPresenceThrottle } from '../../../socket-hub/handlers/presenceHandlers';
 import type { MemberSummary } from '../../../data/members';
@@ -139,6 +139,13 @@ describe('MembersIsland (view)', () => {
     expect(screen.queryByText(/^\d+ around$/)).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Show more' }));
     expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  it("each member's avatar takes personColour(their id)", () => {
+    renderView();
+    for (const [name, id] of [['SA', 'u-samira'], ['AL', 'u-alexk'], ['AI', 'u-aiko'], ['DI', 'u-diego']]) {
+      expect(screen.getByText(name)).toHaveStyle({ backgroundColor: personColour(id) });
+    }
   });
 
   it('Show more busy', () => {
