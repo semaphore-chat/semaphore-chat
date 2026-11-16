@@ -27,6 +27,12 @@ export interface AlertProps {
    * visit; it is then a quiet `note`.
    */
   announce?: boolean;
+  /**
+   * One line (the banner row while a phone's on-screen keyboard is up): the title and the text run on one line and
+   * are cut with an ellipsis; the actions and Dismiss stay beside them. The whole text stays in the alert for screen
+   * readers.
+   */
+  oneLine?: boolean;
 }
 
 const LOOK: Record<AlertSeverity, { icon: IconName; tone: IconTone }> = {
@@ -36,15 +42,15 @@ const LOOK: Record<AlertSeverity, { icon: IconName; tone: IconTone }> = {
   danger: { icon: 'CircleAlert', tone: 'danger' },
 };
 
-const Root = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
+const Root = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface; $oneLine: boolean }>(({ theme, $on, $oneLine }) => {
   const { palette } = kitTheme(theme);
   return {
     boxSizing: 'border-box',
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: $oneLine ? 'center' : 'flex-start',
     gap: `${tokens.space.md}px`,
     width: '100%',
-    padding: `${tokens.space.lg}px`,
+    padding: $oneLine ? `${tokens.space.sm}px ${tokens.space.md}px` : `${tokens.space.lg}px`,
     borderRadius: `${tokens.radius.card}px`,
     background: standOutFill(palette, $on),
     color: palette.text,
@@ -72,6 +78,33 @@ const Title = styled('div')({
   fontWeight: tokens.text.bodyStrong.weight,
 });
 
+/** One line: the title and the text side by side, cut with an ellipsis; the actions after them, never wrapped. */
+const OneLineBody = styled('div')({
+  flex: '1 1 0',
+  minWidth: 0,
+  display: 'flex',
+  alignItems: 'center',
+  gap: `${tokens.space.sm}px`,
+});
+
+const OneLineText = styled('span')({
+  flex: '1 1 0',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+});
+
+const OneLineTitle = styled('span')({
+  fontWeight: tokens.text.bodyStrong.weight,
+});
+
+const OneLineActions = styled('span')({
+  display: 'inline-flex',
+  flexShrink: 0,
+  gap: `${tokens.space.xs}px`,
+});
+
 const ActionRow = styled('div')({
   display: 'flex',
   // Wraps at a narrow width instead of overflowing; the rows of buttons stay close.
@@ -96,11 +129,37 @@ const CloseSlot = styled('span')({
 });
 
 /** An inline message banner. Warnings and errors interrupt (`alert`); info and success wait (`status`); `announce={false}` makes it a quiet `note`. */
-export function Alert({ severity, title, children, action, secondaryAction, onClose, announce = true }: AlertProps): JSX.Element {
+export function Alert({ severity, title, children, action, secondaryAction, onClose, announce = true, oneLine = false }: AlertProps): JSX.Element {
   const look = LOOK[severity];
   const on = useSurface();
+  const actions = [action, secondaryAction].filter((a): a is { label: string; onClick: () => void } => a !== undefined);
+  if (oneLine) {
+    return (
+      <Root $on={on} $oneLine role={liveRole(severity === 'warning' || severity === 'danger', announce)} data-kit-alert-one-line="">
+        <IconSlot>
+          <Icon name={look.icon} size="lg" tone={look.tone} />
+        </IconSlot>
+        <OneLineBody>
+          <OneLineText>
+            {title !== undefined && <OneLineTitle>{`${title} `}</OneLineTitle>}
+            {children}
+          </OneLineText>
+          {actions.length > 0 && (
+            <OneLineActions>
+              {actions.map((a) => (
+                <Button key={a.label} variant="text" size="sm" onClick={a.onClick}>
+                  {a.label}
+                </Button>
+              ))}
+            </OneLineActions>
+          )}
+        </OneLineBody>
+        {onClose && <IconButton icon="X" label="Dismiss" size="sm" onClick={onClose} />}
+      </Root>
+    );
+  }
   return (
-    <Root $on={on} role={liveRole(severity === 'warning' || severity === 'danger', announce)}>
+    <Root $on={on} $oneLine={false} role={liveRole(severity === 'warning' || severity === 'danger', announce)}>
       <IconSlot>
         <Icon name={look.icon} size="lg" tone={look.tone} />
       </IconSlot>

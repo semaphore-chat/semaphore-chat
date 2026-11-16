@@ -58,6 +58,25 @@ describe('useVoiceNotice', () => {
     expect(mockJoinVoiceChannel).toHaveBeenCalledWith('vc-1', 'Squad Up', 'c-1', false, channel.createdAt);
   });
 
+  it('Retry never moves someone who has since gone into another call (the state when pressed counts)', async () => {
+    voiceState = { ...base, joinFailure: { kind: VoiceFailureKind.ServerUnreachable, at: 5, target: channel } };
+    const { result, rerender } = renderHook(() => useVoiceNotice());
+    const notice = result.current!;
+    // Meanwhile the user joined another room (a join elsewhere started, then connected).
+    voiceState = { ...voiceState, isConnecting: true, currentChannelId: 'vc-other' };
+    rerender();
+    await notice.retry();
+    voiceState = { ...voiceState, isConnecting: false, isConnected: true };
+    rerender();
+    await notice.retry();
+    expect(mockJoinVoiceChannel).not.toHaveBeenCalled();
+    // A join to the same room that is still running is not "elsewhere": Retry is allowed (the join path dedupes).
+    voiceState = { ...base, isConnecting: true, currentChannelId: 'vc-1', joinFailure: voiceState.joinFailure };
+    rerender();
+    await notice.retry();
+    expect(mockJoinVoiceChannel).toHaveBeenCalledTimes(1);
+  });
+
   it('Retry of a DM call joins the DM', async () => {
     voiceState = { ...base, lastEnded: { reason: VoiceEndReason.ReconnectFailed, at: 9, target: dm } };
     const { result } = renderHook(() => useVoiceNotice());

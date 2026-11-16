@@ -7,10 +7,12 @@
  * lazy chunk under shell/lounge/screens/, loaded through `load`, so nothing of
  * the kit (or its fonts) reaches the first page load.
  *
- * Rule: no real screen may be registered until the new shell has its own call
- * surface (the kit call bar and a video surface). Until then a converted screen
- * would leave a call's video tiles with nowhere to show. Only the marker, a
- * test fixture, is registered.
+ * The new shell has its own call surface (R8 closed): the frame's call slot
+ * shows the call bar (shell/lounge/pieces/call), the call's video with Watch /
+ * Stop watching (shell/lounge/call/surface, its own lazy chunk), and the voice
+ * notice. So a converted three-islands screen no longer strands a call's video.
+ * Only test fixtures are registered so far: the marker and the call-slot
+ * fixture (PR 8 replaces the latter with the fixture community route).
  */
 import type { WidthRange } from '../kit/layout/breakpoints';
 import type { LoungeScreen } from './lounge/screen';
@@ -36,10 +38,18 @@ export interface LoungeRoute {
 /** The path of the marker screen: a test fixture kept until the new design becomes the default. */
 export const LOUNGE_MARKER_PATH = '/__lounge';
 
+/** A hidden three-islands fixture that mounts the frame's call slot (call bar, call surface, voice notice). */
+export const LOUNGE_CALL_FIXTURE_PATH = '/__lounge/call';
+
 export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
   {
     path: LOUNGE_MARKER_PATH,
     widths: ['phone', 'compact', 'wide'],
     load: () => import('./lounge/screens/MarkerScreen'),
+  },
+  {
+    path: LOUNGE_CALL_FIXTURE_PATH,
+    widths: ['phone', 'compact', 'wide'],
+    load: () => import('./lounge/screens/CallFixtureScreen'),
   },
 ];

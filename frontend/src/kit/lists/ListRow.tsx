@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, type JSX, type MouseEvent, type ReactNode, type Ref } from 'react';
+import { useCallback, useId, useLayoutEffect, useRef, type JSX, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -6,6 +6,7 @@ import { TooltipDescriptionContext } from '../overlays/tooltipDescription';
 import { reducedMotion } from '../overlays/surface';
 import { mix } from '../theme/mix';
 import { focusRing } from '../theme/states';
+import { Icon } from '../display/Icon';
 import { SurfaceContext, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { visuallyHidden } from '../theme/a11y';
@@ -31,6 +32,11 @@ export interface ListRowProps {
   /** Bolder primary line, in the full text colour; the row's name says ", unread". */
   unread?: boolean;
   /**
+   * The same bold, full-colour primary line as `unread`, as a title (the call bar's room), with nothing added to
+   * the name.
+   */
+  strong?: boolean;
+  /**
    * What the trailing slot says, as words for the row's accessible name ("2 mentions", "admin"). `trailing` sits
    * beside the link or button, outside its name, so a Badge's or Pill's meaning would be lost to a keyboard list;
    * this puts it in: "clips, unread, 2 mentions", "Samira, admin, keeping the server warm".
@@ -43,6 +49,17 @@ export interface ListRowProps {
   href?: string;
   /** Renders a button. */
   onClick?: () => void;
+  /**
+   * The accessible name of the link or button, when its visible lines do not say what it does (a call bar's room
+   * row that opens the call view: "Open call view, Squad Up"). The `secondary` line, no longer in the name, becomes
+   * the description (`aria-describedby`), so it is still read. Ignored on a plain row.
+   */
+  label?: string;
+  /**
+   * A chevron at the end of the link or button (before `trailing`): a visible sign, on touch too, that the row
+   * goes somewhere. Ignored on a plain row.
+   */
+  chevron?: boolean;
   ref?: Ref<HTMLElement>;
   id?: string;
   /**
@@ -187,6 +204,13 @@ const Trailing = styled('span')({
 /** Words for the accessible name only (the row's state, the trailing slot's meaning). */
 const Hidden = styled('span')({ ...visuallyHidden });
 
+/** The chevron's slot: at the end of the link or button, never shrunk. */
+const Chevron = styled('span')({
+  display: 'inline-flex',
+  alignItems: 'center',
+  flexShrink: 0,
+});
+
 const Column = styled('span')({
   display: 'flex',
   flexDirection: 'column',
@@ -234,11 +258,14 @@ export function ListRow({
   size = 'md',
   selected = false,
   unread = false,
+  strong = false,
   trailingLabel,
   muted = false,
   disabled = false,
   href,
   onClick,
+  label,
+  chevron = false,
   ref,
   id,
   focus,
@@ -286,6 +313,13 @@ export function ListRow({
   const spokenParts = [unread && !selected ? 'unread' : '', trailingLabel ?? ''].filter((part) => part !== '');
   const spokenState =
     spokenParts.length === 0 ? '' : `, ${spokenParts.join(', ')}${secondary !== undefined ? ',' : ''}`;
+  // The one naming rule: without a label the name is the visible lines plus the spoken state. With one, `label`
+  // replaces the visible lines in the name, the spoken state (", unread", the trailing meaning) is appended, and the
+  // secondary line describes the link or button instead.
+  const labelName = label === undefined ? undefined : [label, ...spokenParts].join(', ');
+  const secondaryId = useId();
+  const describes = interactive && label !== undefined && secondary !== undefined;
+  const describedBy = describes ? secondaryId : undefined;
 
   const content = (
     <>
@@ -293,18 +327,23 @@ export function ListRow({
       <Column>
         <Line
           $type="body"
-          $weight={unread ? tokens.text.bodyStrong.weight : tokens.text.body.weight}
-          $tone={tone(muted, unread && !selected)}
+          $weight={unread || strong ? tokens.text.bodyStrong.weight : tokens.text.body.weight}
+          $tone={tone(muted, (unread || strong) && !selected)}
         >
           {primary}
           {spokenState !== '' && <Hidden>{spokenState}</Hidden>}
         </Line>
         {secondary !== undefined && (
-          <Line $type="meta" $weight={tokens.text.meta.weight} $tone={tone(muted, false)}>
+          <Line id={describes ? secondaryId : undefined} $type="meta" $weight={tokens.text.meta.weight} $tone={tone(muted, false)}>
             {secondary}
           </Line>
         )}
       </Column>
+      {chevron && interactive && (
+        <Chevron>
+          <Icon name="ChevronRight" size="sm" tone="secondary" />
+        </Chevron>
+      )}
     </>
   );
 
@@ -315,6 +354,8 @@ export function ListRow({
         ref={mainRef}
         id={id}
         href={href}
+        aria-label={labelName}
+        aria-describedby={describedBy}
         aria-current={current}
         $on={on}
         {...focusProps}
@@ -331,6 +372,8 @@ export function ListRow({
         id={id}
         role="link"
         aria-disabled="true"
+        aria-label={labelName}
+        aria-describedby={describedBy}
         aria-current={current}
         $on={on}
         {...focusProps}
@@ -346,6 +389,8 @@ export function ListRow({
         id={id}
         type="button"
         disabled={disabled}
+        aria-label={labelName}
+        aria-describedby={describedBy}
         aria-current={current}
         $on={on}
         {...focusProps}

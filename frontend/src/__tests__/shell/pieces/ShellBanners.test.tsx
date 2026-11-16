@@ -169,6 +169,49 @@ describe('visibleBanners (the cap rule)', () => {
     expect(visibleBanners(SIX, 'wide')).toEqual(['incomingCall', 'connection', 'signIn']);
   });
 
+  it('one on a phone while the on-screen keyboard is up (the highest priority); the cap is back when it goes', () => {
+    expect(visibleBanners(SIX, 'phone', true)).toEqual(['incomingCall']);
+    expect(visibleBanners({ ...SIX, incomingCall: null }, 'phone', true)).toEqual(['connection']);
+    expect(visibleBanners(SIX, 'phone', false)).toEqual(['incomingCall', 'connection']);
+    // Only a phone: a tablet's keyboard leaves the cap as it is.
+    expect(visibleBanners(SIX, 'compact', true)).toEqual(['incomingCall', 'connection']);
+  });
+
+  it('the view, keyboard up on a phone: one banner on one line, its actions still there', () => {
+    const real = Object.getOwnPropertyDescriptor(window, 'visualViewport');
+    const listeners = new Set<() => void>();
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      get: () => ({
+        height: window.innerHeight - 300,
+        offsetTop: 0,
+        scale: 1,
+        addEventListener: (_: string, l: () => void) => listeners.add(l),
+        removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+      }),
+    });
+    // A phone width: neither the wide nor the above-phone query matches.
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: noop,
+      removeEventListener: noop,
+    }));
+    try {
+      renderBanners(SIX);
+      const alerts = document.querySelectorAll('[data-kit-alert-one-line]');
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toHaveTextContent('Priya Diallo is calling');
+      expect(within(alerts[0] as HTMLElement).getByRole('button', { name: 'Join' })).toBeInTheDocument();
+      expect(within(alerts[0] as HTMLElement).getByRole('button', { name: 'Decline' })).toBeInTheDocument();
+      expect(screen.queryByText("Can't reach the server. Reconnecting…")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      if (real) Object.defineProperty(window, 'visualViewport', real);
+      else delete (window as { visualViewport?: unknown }).visualViewport;
+    }
+  });
+
   it('the quiet ones (install, download progress) only when nothing else shows', () => {
     const quiet = { ...NO_BANNERS, install: SIX.install, update: { state: 'downloading' as const, progress: 5 } };
     expect(visibleBanners(quiet, 'wide')).toEqual(['install', 'downloading']);

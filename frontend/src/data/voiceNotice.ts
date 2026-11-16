@@ -6,7 +6,7 @@
  *
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useVoiceDispatch, VoiceActionType } from '../contexts/VoiceContext';
 import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import { describeVoiceNotice, type VoiceNoticeModel } from '../features/voice/voiceNoticeModel';
@@ -33,8 +33,16 @@ export function useVoiceNotice(): VoiceNotice | null {
   }, [dispatch]);
 
   const retryTarget = notice?.retryTarget ?? null;
+  // The call state when Retry is pressed (never the render's): Retry never moves someone who has since gone into
+  // another call.
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const retry = useCallback(async () => {
     if (!retryTarget) return;
+    const now = stateRef.current;
+    const target = retryTarget.type === 'dm' ? retryTarget.dmGroupId : retryTarget.channelId;
+    const current = retryTarget.type === 'dm' ? now.currentDmGroupId : now.currentChannelId;
+    if ((now.isConnected || now.isConnecting) && current !== target) return;
     try {
       if (retryTarget.type === 'dm') {
         await actions.joinDmVoice(retryTarget.dmGroupId, retryTarget.dmGroupName);

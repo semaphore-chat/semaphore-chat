@@ -1,4 +1,15 @@
-import { useCallback, type AriaAttributes, type JSX, type MouseEvent, type MouseEventHandler, type Ref } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type AriaAttributes,
+  type JSX,
+  type KeyboardEvent,
+  type MouseEvent,
+  type MouseEventHandler,
+  type PointerEvent,
+  type Ref,
+} from 'react';
 import { useDescribedBy } from '../overlays/tooltipDescription';
 import ButtonBase from '@mui/material/ButtonBase';
 import { styled } from '@mui/material/styles';
@@ -19,6 +30,15 @@ import { rowFocusProps, type RowFocus } from '../behaviour/hosts/listFocus';
 export type IconButtonSize = 'sm' | 'md' | 'lg';
 export type IconButtonVariant = Extract<ButtonVariant, 'ghost' | 'soft' | 'primary' | 'danger'>;
 
+/**
+ * Press and hold (hold to talk): `onStart` when a pointer goes down on the button, `onEnd` exactly once when
+ * that hold ends, wherever the pointer is by then.
+ */
+export interface IconButtonHold {
+  onStart: () => void;
+  onEnd: () => void;
+}
+
 export interface IconButtonProps {
   icon: IconName;
   /** The accessible name: an icon alone names nothing. */
@@ -28,6 +48,14 @@ export interface IconButtonProps {
   /** Sets `aria-pressed` and paints the fill with an accent icon. */
   selected?: boolean;
   disabled?: boolean;
+  /**
+   * Not available right now, but still focusable and named (unlike `disabled`): it reads as unavailable, looks
+   * dimmed and a press does not run `onClick` (or start a `hold`). As Button's `aria-disabled`. Say why with
+   * `onUnavailablePress`.
+   */
+  'aria-disabled'?: boolean;
+  /** Called instead of `onClick` when an `aria-disabled` button is pressed: say why it cannot act (`useAnnounce`). */
+  onUnavailablePress?: () => void;
   loading?: boolean;
   onClick?: MouseEventHandler<HTMLButtonElement>;
   ref?: Ref<HTMLButtonElement>;
@@ -35,6 +63,12 @@ export interface IconButtonProps {
   /** Joins a keyboard list (a Dock): `useListFocus(...).rowFocus(id)`. The button becomes one stop of the list's single Tab stop. */
   focus?: RowFocus;
   title?: string;
+  /**
+   * Makes it a press-and-hold control (hold to talk). The pointer is captured on press, so sliding off the button
+   * keeps the hold; it ends when the pointer is lifted or cancelled, when capture is lost, when the button becomes
+   * disabled or when it unmounts. No long-press menu, no text selection, no scrolling from the button.
+   */
+  hold?: IconButtonHold;
   'aria-expanded'?: AriaAttributes['aria-expanded'];
   'aria-haspopup'?: 'menu' | 'dialog' | 'listbox' | true;
   'aria-controls'?: AriaAttributes['aria-controls'];
@@ -77,11 +111,12 @@ interface RootProps {
   $size: IconButtonSize;
   $selected: boolean;
   $on: Surface;
+  $hold: boolean;
 }
 
 const Root = styled(ButtonBase, {
   shouldForwardProp: transientProps,
-})<RootProps>(({ theme, $variant, $size, $selected, $on, $current }) => {
+})<RootProps>(({ theme, $variant, $size, $selected, $on, $current, $hold }) => {
   const { palette } = kitTheme(theme);
   const look = buttonLook(palette, $variant, $on);
   // On the accent pill a ghost or soft button reads as the on-accent ink; a soft one keeps a faint
@@ -138,9 +173,22 @@ const Root = styled(ButtonBase, {
       // focus offset as its own gap, so keyboard focus on the current item always shows.
       '&:focus-visible': focusRing(palette, CURRENT_FOCUS_OFFSET),
     }),
+    // A hold control: the finger on it must not scroll, select text or open the long-press menu.
+    ...($hold && {
+      touchAction: 'none',
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
+      WebkitTouchCallout: 'none',
+    }),
     '&:disabled': {
       opacity: tokens.state.disabled,
       pointerEvents: 'none',
+    },
+    // Unavailable but focusable: dimmed like disabled, with no hover or pressed layer (as Button).
+    '&[aria-disabled="true"]:not([aria-busy="true"])': {
+      opacity: tokens.state.disabled,
+      cursor: 'default',
+      '&:hover, &:active': { background },
     },
     '&[aria-busy="true"]': {
       cursor: 'progress',
@@ -162,12 +210,15 @@ export function IconButton({
   variant = 'ghost',
   selected,
   disabled = false,
+  'aria-disabled': unavailableProp = false,
+  onUnavailablePress,
   loading = false,
   onClick,
   ref,
   id,
   focus,
   title,
+  hold,
   'aria-expanded': ariaExpanded,
   'aria-haspopup': ariaHaspopup,
   'aria-controls': ariaControls,
@@ -181,6 +232,8 @@ export function IconButton({
     .join(', ');
   const on = useSurface();
   const busy = loading && !disabled;
+  // Disabled wins over unavailable; busy wins over unavailable (it is already announced as unavailable).
+  const unavailable = unavailableProp && !disabled && !busy;
   const describedBy = useDescribedBy(undefined);
   // A disabled button is not in the list: no tab stop, no clicks to report.
   const roving = disabled ? undefined : rowFocusProps(focus);
@@ -194,12 +247,58 @@ export function IconButton({
     [ref, rovingRef],
   );
 
+  // Hold: the latest callbacks given (a re-render mid-hold, even one that drops `hold`, must end the hold it
+  // started) and whether one is running.
+  const holdRef = useRef(hold);
+  if (hold) holdRef.current = hold;
+  // The pointer holding it: only that pointer's lift, cancel or lost capture ends the hold (a second finger's
+  // tap on the button does not). Null while no hold runs.
+  const holdingRef = useRef<number | null>(null);
+  const endHold = useCallback(() => {
+    if (holdingRef.current === null) return;
+    holdingRef.current = null;
+    holdRef.current?.onEnd();
+  }, []);
+  const endHoldFor = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerId === holdingRef.current) endHold();
+  };
+  const startHold = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!hold || disabled || busy || unavailable || holdingRef.current !== null) return;
+    // The main button of a mouse or pen; any touch.
+    if (event.pointerType !== 'touch' && event.button !== 0) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    holdingRef.current = event.pointerId;
+    hold.onStart();
+  };
+  // Ends a running hold when the button becomes disabled, unavailable or busy, stops being a hold control, or
+  // unmounts.
+  const holdAllowed = hold !== undefined && !disabled && !busy && !unavailable;
+  useEffect(() => {
+    if (!holdAllowed) endHold();
+  }, [holdAllowed, endHold]);
+  useEffect(() => endHold, [endHold]);
+
+  // A held key repeats its keydown, and a button clicks on each repeated Enter: an unavailable button says why
+  // once per press, not once per repeat.
+  const repeatingRef = useRef(false);
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    repeatingRef.current = event.repeat;
+  };
+  const handleKeyUp = () => {
+    repeatingRef.current = false;
+  };
+
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
       event.preventDefault();
       return;
     }
     roving?.onClick(event);
+    if (unavailable) {
+      event.preventDefault();
+      if (!repeatingRef.current) onUnavailablePress?.();
+      return;
+    }
     onClick?.(event);
   };
 
@@ -209,10 +308,12 @@ export function IconButton({
       type="button"
       disabled={disabled}
       onClick={handleClick}
+      onKeyDown={unavailable ? handleKeyDown : undefined}
+      onKeyUp={unavailable ? handleKeyUp : undefined}
       aria-label={name}
       aria-current={current ? 'page' : undefined}
       aria-pressed={selected}
-      aria-disabled={busy || undefined}
+      aria-disabled={busy || unavailable || undefined}
       aria-busy={busy || undefined}
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHaspopup}
@@ -221,12 +322,18 @@ export function IconButton({
       id={id}
       tabIndex={roving?.tabIndex}
       title={title}
+      onPointerDown={hold ? startHold : undefined}
+      onPointerUp={hold ? endHoldFor : undefined}
+      onPointerCancel={hold ? endHoldFor : undefined}
+      onLostPointerCapture={hold ? endHoldFor : undefined}
+      onContextMenu={hold ? (event: MouseEvent<HTMLButtonElement>) => event.preventDefault() : undefined}
       disableRipple
       $variant={variant}
       $size={size}
       $selected={selected === true}
       $on={on}
       $current={current}
+      $hold={hold !== undefined}
     >
       {busy ? (
         <Spinner size={ICON_SIZE[size]} />

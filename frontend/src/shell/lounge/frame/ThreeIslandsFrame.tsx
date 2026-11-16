@@ -4,7 +4,7 @@
  * the user moves between two screens of this template, so every piece keeps its state, scroll and focus;
  * only the centre changes.
  */
-import { Suspense, useMemo, useState, type JSX } from 'react';
+import { memo, Suspense, useMemo, useState, type JSX } from 'react';
 import { ESCAPE_PRIORITY, ThreeIslands, useScreenEscape, useWidthRange } from '../../../kit';
 import type { LoungeParams, ScreenChrome, ThreeIslandsScreen } from '../screen';
 import { ScreenChromeContext } from '../screen';
@@ -16,7 +16,7 @@ import { InboxLeft } from '../pieces/InboxLeft';
 import { MembersIslandConnected } from '../pieces/MembersIsland';
 import { CentreSkeleton } from '../pieces/CentreSkeleton';
 import { ShellCall } from '../pieces/call/ShellCall';
-import { useShellCallShown } from '../pieces/call/useShellCallShown';
+import { useCallSlotShown } from '../../../data/callSlot';
 import { ScreenBoundary } from './ScreenBoundary';
 import { ScreenError } from './ScreenError';
 
@@ -33,12 +33,26 @@ function dockCurrent(screen: ThreeIslandsScreen, params: LoungeParams): DockCurr
   return params.communityId ? { kind: 'community', id: params.communityId } : null;
 }
 
-export function ThreeIslandsFrame({ screen, params, resetKey, title }: ThreeIslandsFrameProps): JSX.Element {
+/**
+ * Whether the call slot is shown reads the voice state, which changes often (every mute, every presence
+ * patch): only this wrapper re-renders for it, and the islands below only when the slot comes or goes.
+ */
+export function ThreeIslandsFrame(props: ThreeIslandsFrameProps): JSX.Element {
+  const callShown = useCallSlotShown();
+  return <ThreeIslandsBody {...props} callShown={callShown} />;
+}
+
+const ThreeIslandsBody = memo(function ThreeIslandsBody({
+  screen,
+  params,
+  resetKey,
+  title,
+  callShown,
+}: ThreeIslandsFrameProps & { callShown: boolean }): JSX.Element {
   const range = useWidthRange();
   // Null until the user (or the screen) chooses: the template's default (shown at wide, closed below).
   const [rightChoice, setRightChoice] = useState<boolean | null>(null);
   const [allOpen, setAllOpen] = useState(false);
-  const callShown = useShellCallShown();
 
   // The Escape chain's panel step: closes the right island the user opened. Below wide the right
   // content is a Sheet, a layer that takes Escape itself before the screen sees it.
@@ -99,4 +113,4 @@ export function ThreeIslandsFrame({ screen, params, resetKey, title }: ThreeIsla
       <AllCommunitiesSheetConnected open={allOpen} onClose={() => setAllOpen(false)} currentId={communityId} />
     </ScreenChromeContext>
   );
-}
+});

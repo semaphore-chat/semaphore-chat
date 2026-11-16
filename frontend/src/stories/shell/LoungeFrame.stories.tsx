@@ -1,11 +1,10 @@
 /**
  * The Lounge frame (shell/lounge/frame/LoungeFrame.tsx): a route's screen descriptor rendered into
  * its template. `bare` is the marker filling the frame; `threeIslands` is the chat template with the
- * shell's pieces in their slots. The pieces are placeholders until PRs 5-7: here each slot shows its
- * name, so the screenshots show where the dock, the community, the members and the call bar sit at
- * phone, tablet and desktop width. In the app the placeholders render nothing. The community left island
- * and the members (PR 6) are the real, connected pieces, on the mock-ups' people and places
- * (`fixtures/loungeCommunityHandlers.ts`).
+ * shell's pieces in their slots: the dock, the community left island and the members (PR 6) are the real,
+ * connected pieces, on the mock-ups' people and places (`fixtures/loungeCommunityHandlers.ts`). The call slot is
+ * real (PR 7) and empty out of a call, so it has no row here; its own stories (call-bar--*, call-surface--*,
+ * voice-notice-bar--*) show it.
  */
 import { useRef, type JSX } from 'react';
 import { IncomingCallProvider } from '../../contexts/IncomingCallContext';
@@ -19,6 +18,9 @@ import { defineComponent } from '../fixtures/componentStory';
 import { KitFrameStage } from '../fixtures/kitStory';
 import { bigCommunityScenario } from '../fixtures/scenarios';
 import { LOUNGE_COMMUNITY_ID, loungeCommunityHandlers } from '../fixtures/loungeCommunityHandlers';
+import { RoomContext } from '../../contexts/RoomContextDef';
+import { SpeakingProvider } from '../../contexts/SpeakingContext';
+import { channelVoiceState, createMediaRoom } from '../fixtures/edge/voice';
 
 const placeholderScreen = (phonePane: 'left' | 'centre'): ThreeIslandsScreen => ({
   template: 'threeIslands',
@@ -86,3 +88,41 @@ export const ThreeIslandsPlaceholdersLight = threeIslands('light', centreRoute);
 
 /** A screen whose phone pane is the left one (a community home): the left island is the phone's main. */
 export const ThreeIslandsPhoneLeft = threeIslands('dark', leftRoute);
+
+/** In Squad Up (the island's first voice room) with a peer's share watched and another's camera offered. */
+const me = bigCommunityScenario.me;
+const [sharer, cameraOn] = bigCommunityScenario.users.filter((u) => u.id !== me.id);
+const inCallRoom = createMediaRoom({ user: me }, [{ user: sharer, screen: true, speaking: true }, { user: cameraOn, camera: true }], {
+  screens: [sharer.id],
+});
+const inCallState = channelVoiceState(
+  { id: 'vc-squad', name: 'Squad Up', communityId: LOUNGE_COMMUNITY_ID },
+  { watchingScreenShares: new Set([sharer.id]), watchingCameras: new Set() },
+);
+
+const threeIslandsInCall = (mode: ModeName, route: LoungeRoute) =>
+  defineComponent(
+    bigCommunityScenario,
+    () => (
+      <RoomContext.Provider value={{ room: inCallRoom, setRoom: () => {}, getRoom: () => inCallRoom }}>
+        <SpeakingProvider>
+          <Frame mode={mode} placeholders choice={{ kind: 'lounge', route, params: { communityId: LOUNGE_COMMUNITY_ID } }} />
+        </SpeakingProvider>
+      </RoomContext.Provider>
+    ),
+    { maxWidth: false, extraHandlers: loungeCommunityHandlers, voiceState: inCallState },
+  );
+
+/**
+ * Everything real at once, in a call: the dock, the community left island (Squad Up outlined "You're here", the
+ * user card in its footer), the members, and the call slot (the surface with a watched share and an offered
+ * camera, above the call bar). Compact and wide: the slot under the left island's footer; phone: between the pane
+ * and the dock.
+ */
+export const ThreeIslandsInCall = threeIslandsInCall('dark', centreRoute);
+
+/** The same, light. */
+export const ThreeIslandsInCallLight = threeIslandsInCall('light', centreRoute);
+
+/** In a call, the phone showing the left pane (the community): the slot under it, above the dock. */
+export const ThreeIslandsInCallPhoneLeft = threeIslandsInCall('dark', leftRoute);

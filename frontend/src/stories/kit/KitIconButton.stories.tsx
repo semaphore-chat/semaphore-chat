@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { IconButton, type IconButtonSize, type IconButtonVariant } from '../../kit';
+import { useEffect, useRef, useState } from 'react';
+import { IconButton, Text, type IconButtonSize, type IconButtonVariant } from '../../kit';
 import { KitStage, Row } from '../fixtures/kitStory';
 
 const VARIANTS: IconButtonVariant[] = ['ghost', 'soft', 'primary', 'danger'];
@@ -129,5 +129,87 @@ export const BadgeAndCurrentTinted = () => (
       <IconButton icon="Inbox" label="Inbox" variant="primary" current badge={3} />
       <IconButton icon="LayoutGrid" label="All communities" variant="soft" current />
     </Row>
+  </KitStage>
+);
+
+/** `aria-disabled`: still a Tab stop with its name, dimmed, and a press says why instead of acting. */
+function UnavailableDemo() {
+  const [said, setSaid] = useState(0);
+  return (
+    <Row label="aria-disabled (focusable), then disabled">
+      <IconButton
+        icon="MicOff"
+        label="Mute"
+        selected
+        aria-disabled
+        title="Muted by a moderator"
+        onUnavailablePress={() => setSaid((n) => n + 1)}
+      />
+      <IconButton icon="MicOff" label="Mute" selected disabled />
+      <Text variant="meta" tone="secondary">
+        <span data-testid="unavailable-said">{said === 0 ? 'Nothing said yet' : `Said "Muted by a moderator" ${said}×`}</span>
+      </Text>
+    </Row>
+  );
+}
+
+export const Unavailable = () => (
+  <KitStage mode="dark">
+    <UnavailableDemo />
+  </KitStage>
+);
+
+export const UnavailableLight = () => (
+  <KitStage mode="light">
+    <UnavailableDemo />
+  </KitStage>
+);
+
+/** The live hold: the button fills while held, and the counts show each start and end exactly once. */
+function HoldDemo() {
+  const [held, setHeld] = useState(false);
+  const [counts, setCounts] = useState({ starts: 0, ends: 0 });
+  return (
+    <>
+      <Row label="hold to talk">
+        <IconButton
+          icon="Mic"
+          label="Hold to talk"
+          size="lg"
+          variant={held ? 'primary' : 'soft'}
+          hold={{
+            onStart: () => {
+              setHeld(true);
+              setCounts((c) => ({ ...c, starts: c.starts + 1 }));
+            },
+            onEnd: () => {
+              setHeld(false);
+              setCounts((c) => ({ ...c, ends: c.ends + 1 }));
+            },
+          }}
+        />
+        <Text variant="meta" tone="secondary">
+          <span data-testid="hold-state">{held ? 'Holding' : 'Not holding'}</span>
+          {` · starts ${counts.starts} · ends ${counts.ends}`}
+        </Text>
+      </Row>
+      <Row label="disabled">
+        <IconButton icon="MicOff" label="Hold to talk" size="lg" variant="soft" disabled hold={{ onStart: () => {}, onEnd: () => {} }} />
+      </Row>
+    </>
+  );
+}
+
+/** `hold`: a press-and-hold control (hold to talk). Sliding off keeps the hold; lifting ends it. */
+export const Hold = () => (
+  <KitStage mode="dark">
+    <HoldDemo />
+  </KitStage>
+);
+
+/** `hold` in light mode. */
+export const HoldLight = () => (
+  <KitStage mode="light">
+    <HoldDemo />
   </KitStage>
 );

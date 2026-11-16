@@ -8,8 +8,8 @@
  * The connection banners are always quiet notes, said politely once when they appear: only a danger state
  * interrupts.
  */
-import { useEffect, useState, type JSX } from 'react';
-import { Alert, useAnnounce, useWidthRange } from '../../../kit';
+import { createContext, useContext, useEffect, useState, type JSX } from 'react';
+import { Alert, useAnnounce, useKeyboardInset, useWidthRange } from '../../../kit';
 import { forgetAnnouncementsExcept, takeFirstAnnouncement } from '../../bannerMemory';
 import { presentBanners, visibleBanners, type BannerKind, type ConnectionProblem, type ShellBannersModel } from './shellBannersModel';
 
@@ -32,7 +32,11 @@ function useFirstShowing(key: string): boolean {
   return first;
 }
 
+/** A phone with the on-screen keyboard up: one banner, on one line (the rest wait for the keyboard to go). */
+const OneLineContext = createContext(false);
+
 function ConnectionBanner({ problem }: { problem: ConnectionProblem }): JSX.Element {
+  const oneLine = useContext(OneLineContext);
   const first = useFirstShowing(`connection:${problem}`);
   const announce = useAnnounce();
   const { severity, text } = CONNECTION_TEXT[problem];
@@ -40,7 +44,7 @@ function ConnectionBanner({ problem }: { problem: ConnectionProblem }): JSX.Elem
     if (first) announce(text, 'polite');
   }, [first, announce, text]);
   return (
-    <Alert severity={severity} announce={false}>
+    <Alert severity={severity} announce={false} oneLine={oneLine}>
       {text}
     </Alert>
   );
@@ -48,8 +52,10 @@ function ConnectionBanner({ problem }: { problem: ConnectionProblem }): JSX.Elem
 
 function CallBanner({ call }: { call: NonNullable<ShellBannersModel['incomingCall']> }): JSX.Element {
   const first = useFirstShowing(`call:${call.callerName}:${call.groupName}`);
+  const oneLine = useContext(OneLineContext);
   return (
     <Alert
+      oneLine={oneLine}
       severity="info"
       title={`${call.callerName} is calling`}
       action={{ label: 'Join', onClick: call.onJoin }}
@@ -65,12 +71,15 @@ function CallBanner({ call }: { call: NonNullable<ShellBannersModel['incomingCal
 function OnceAlert(props: Parameters<typeof Alert>[0] & { memory: string }): JSX.Element {
   const { memory, ...alert } = props;
   const first = useFirstShowing(memory);
-  return <Alert {...alert} announce={alert.announce === false ? false : first} />;
+  const oneLine = useContext(OneLineContext);
+  return <Alert {...alert} oneLine={oneLine} announce={alert.announce === false ? false : first} />;
 }
 
 export function ShellBanners(model: ShellBannersModel): JSX.Element {
   const range = useWidthRange();
-  const visible = visibleBanners(model, range);
+  const keyboard = useKeyboardInset() > 0;
+  const oneLine = keyboard && range === 'phone';
+  const visible = visibleBanners(model, range, keyboard);
   const { incomingCall, connection, signIn, update, webUpdate, install } = model;
 
   // A notice that went is new again when it comes back.
@@ -83,7 +92,7 @@ export function ShellBanners(model: ShellBannersModel): JSX.Element {
   }, [presentSignature]);
 
   return (
-    <>
+    <OneLineContext value={oneLine}>
       {visible.map((kind) => {
         switch (kind) {
           case 'incomingCall':
@@ -147,6 +156,7 @@ export function ShellBanners(model: ShellBannersModel): JSX.Element {
               install && (
                 <Alert
                   key={kind}
+                  oneLine={oneLine}
                   severity="info"
                   title="Install Semaphore Chat"
                   action={install.ios ? undefined : { label: 'Install', onClick: install.onInstall }}
@@ -163,13 +173,13 @@ export function ShellBanners(model: ShellBannersModel): JSX.Element {
           case 'downloading':
             return (
               update?.state === 'downloading' && (
-                <Alert key={kind} severity="info" announce={false}>
+                <Alert key={kind} severity="info" announce={false} oneLine={oneLine}>
                   {`Downloading an update (${Math.round(update.progress)}%)`}
                 </Alert>
               )
             );
         }
       })}
-    </>
+    </OneLineContext>
   );
 }

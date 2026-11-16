@@ -30,7 +30,11 @@ island scrolls inside itself. The frame adds no landmark of its own.
 notice about the whole app such as "reconnecting" or "update available". Put a
 kit Alert in it. Several alerts stack, the most urgent first, a small gap
 apart, and only a few at once: at most two below the wide range (a phone, a
-tablet) and three at wide. The order, most urgent first, is a ringing call, a
+tablet) and three at wide. While a phone's on-screen keyboard is up, only one
+shows, the most urgent, on a single line (the Alert's `oneLine`: its text is cut
+with an ellipsis, its actions and Dismiss stay beside it); the rest, and the
+full banner, return when the keyboard goes down, so the call bar's Leave and the
+composer keep their room. The order, most urgent first, is a ringing call, a
 connection problem, a security notice, a failed update, an update ready, the
 offer to install, and download progress. The quiet ones (the install offer and
 download progress) show only when nothing else does. When more are pending than
@@ -202,11 +206,60 @@ island keeps its structure there (the footer is empty, not removed), so the
 channels and their scroll and focus survive a resize. Web kit only so far; the
 native kit has not caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).
 
-**The call bar** is the strip that shows you are in a voice room, with a mute
-control and Leave. It is optional. At compact and wide it sits at the bottom of
+**The call bar** is the strip that shows you are in a voice room, with Mute,
+Deafen and Leave. It is optional. At compact and wide it sits at the bottom of
 the left column, under the left island. On a phone it sits between the pane on
 show and the dock bar, and it stays on screen whichever pane is shown, so the
 user can always reach Leave. With no call bar there is no row and no gap.
+
+In the app the call bar shows the room and what is happening (joining, muted,
+who is talking, reconnecting with Cancel, "Hold V to talk", or why the mic is
+blocked), and **Mute, Deafen and Leave at every width** (Mute is a hold-to-talk
+control on a touch layout under push-to-talk). The room's name with its line is
+itself the Open call view control at every width (a pressable row named "Open
+call view, <room>", described by its line, with a chevron); there is no
+separate Open button, on the bar or on the video above it, so the name has the
+room it needs (a typical name shows whole in the 288 px column). The
+call's controls never depend on which left island is shown and nobody is ever
+deafened without a control on screen to undeafen. The user's own card in the
+left island shows their status only; it has no call controls. Mute while
+deafened opens the mic and leaves you deafened (as the old app's Mute does),
+and the line then says "Deafened · your mic is on". While reconnecting, a row
+above says so with Cancel, and nothing in the bar says "connected". A reason
+the mic cannot open (muted by a moderator, timed out, no permission to speak)
+is the bar's line, on a line of its own under the room so it is read in full
+(two lines at most; the room's name may be cut short instead), and the mic
+stays a Tab stop that reads as unavailable and says the reason when pressed.
+Under push-to-talk with a key, pressing the mic says "Hold V to talk". While a
+join is still connecting the bar shows only the room and "Joining…", and
+nothing in it can be pressed. The camera, starting a screen share, the
+soundboard, replay capture, device settings and the debug panel are not in the
+bar: the room's name opens the full call screen, which has them, and device
+settings are also in Settings.
+
+Above the bar, in the same slot, the call's video appears while someone in the
+call shares a screen or has a camera on, or you share your screen. A share or
+camera you do not watch is offered with Watch, and nothing is received until
+the user chooses it; past three of them, a summary row ("2 screens shared · 8
+cameras on", with See all for the call view) comes above the first three. A
+watched one shows its picture, with Stop watching, which stops receiving every
+picture you watch (unlike the old app's close button on the video overlay,
+which only hid it). Your own share has Stop sharing.
+
+**The video never pushes the bar or the composer off the screen.** It takes at
+most two fifths of the layout's height (what the three islands have after the
+app banners, the keyboard and the safe areas) and scrolls inside itself beyond
+that; the bar under it keeps its whole row at every width. On a phone the shown
+pane keeps at least a composer's height (`control.md` + `space.sm` +
+`space.lg`, 64 px) while a call bar is there, and the video gives way first, so
+banners never push the composer, the bar or the dock off the screen. With the
+keyboard up on a very short frame the bar (Leave) wins over the pane's minimum. While the on-screen
+keyboard is up the video is one summary line ("Watching dropbear's screen · 1
+camera on") so the composer keeps its room; while you share it keeps Stop
+sharing. The kit's CallStack does this; see
+[Components](components.md#callstack). Out of a
+call, the slot shows the voice notice instead: a join that failed or why the
+call ended, with Retry when trying again can help, and Dismiss.
 
 **What goes where**
 
@@ -215,7 +268,7 @@ user can always reach Leave. With no call bar there is no row and no gap.
 |Dock (optional)|The community switcher: a Dock of DockItems|Anything else. See [Components](components.md)|
 |Left|The place: community header, channels, voice rooms, the user's own card|The conversation itself, or actions the screen cannot do without|
 |Centre|The conversation or task, with its own header, list and composer|Context that the conversation merely refers to|
-|Call bar (optional)|The persistent in-call strip: the room, mute, Leave|Anything that is not about the call you are in|
+|Call bar (optional)|The persistent in-call strip: the room (it opens the call view), Mute, Deafen, Leave, and the call's video above them|Anything that is not about the call you are in|
 |Right (optional)|Members, a thread, pins|Primary actions, or anything the user must reach on a tablet or phone without opening a Sheet|
 
 The centre island has no padding of its own, because the conversation brings

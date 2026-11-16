@@ -17,6 +17,7 @@ import {
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { tokens } from '../../theme/generated/tokens';
 import { KitFrameStage } from '../fixtures/kitStory';
+import { FakeKeyboard } from '../fixtures/fakeKeyboard';
 import {
   SampleCallBar,
   SampleChannels,
@@ -285,9 +286,6 @@ export const OnStage = () => (
   </KitFrameStage>
 );
 
-/** How much of the window the faked keyboard covers (browser-tests/toast-region.spec.ts uses the same share). */
-const KEYBOARD_SHARE = 0.36;
-
 /**
  * A menu opened upwards from beside the composer while a toast shows: every overlay is drawn over the toast, so
  * its bottom rows stay readable and pressable.
@@ -367,30 +365,3 @@ export const SettingsWithUnsavedFooter = () => (
   </KitFrameStage>
 );
 
-/**
- * Fakes the on-screen keyboard for a story: the visual viewport reports `KEYBOARD_SHARE` of the window less, as a
- * phone browser does while the keyboard is up. Put back on unmount.
- */
-function FakeKeyboard({ children }: { children: ReactNode }): JSX.Element {
-  useState(() => {
-    const real = Object.getOwnPropertyDescriptor(window, 'visualViewport');
-    const listeners = new Set<EventListenerOrEventListenerObject>();
-    const fake = {
-      get height() {
-        return window.innerHeight - Math.round(window.innerHeight * KEYBOARD_SHARE);
-      },
-      offsetTop: 0,
-      scale: 1,
-      addEventListener: (_: string, listener: EventListenerOrEventListenerObject) => listeners.add(listener),
-      removeEventListener: (_: string, listener: EventListenerOrEventListenerObject) => listeners.delete(listener),
-    };
-    Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => fake });
-    restore = () => {
-      if (real) Object.defineProperty(window, 'visualViewport', real);
-    };
-    return null;
-  });
-  useEffect(() => () => restore?.(), []);
-  return <>{children}</>;
-}
-let restore: (() => void) | undefined;

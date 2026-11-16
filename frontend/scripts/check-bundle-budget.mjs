@@ -65,6 +65,15 @@
  *       too: the marker must be found in some lazy chunk and the font names in
  *       some lazy stylesheet, or the check proves nothing.
  *
+ *   (e) The new shell's call surface (shell/lounge/call/surface) is its own lazy
+ *       chunk: found by the marker "lounge-call-surface", in exactly one asset
+ *       that is not eager and is not the LoungeRoot chunk. And the new shell's
+ *       chunk does not load the livekit-client chunk statically, directly or
+ *       through any chunk it statically imports (the whole static import graph
+ *       from LoungeRoot is walked; dynamic import() is a lazy boundary). Entering
+ *       the Lounge must not fetch LiveKit; only the call surface or the classic
+ *       call code may. Prints the sizes of the lounge chunks it found.
+ *
  * Usage: pnpm run check:bundle-budget   (after pnpm run build)
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -313,6 +322,66 @@ if (existsSync(ASSETS_DIR)) {
     console.log(
       `[check-bundle-budget] New design shell (assets/${loungeChunks.join(", ")}) and kit fonts ` +
         `(assets/${fontStyles.join(", ")}) are lazy: not in the entry, a preloaded chunk or an index.html stylesheet — good.`
+    );
+  }
+}
+
+// --- (e) the call surface is its own lazy chunk; the new shell does not pull LiveKit in statically ---
+{
+  const LOUNGE_MARKER = "semaphore-lounge-root";
+  const SURFACE_MARKER = "lounge-call-surface";
+  const strip = (ref) => ref.replace(/^\.?\//, "");
+  const eager = new Set([
+    ...scriptSrcs,
+    ...[...indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]),
+  ].map((ref) => strip(ref).replace(/^assets\//, "")));
+  const js = (existsSync(ASSETS_DIR) ? readdirSync(ASSETS_DIR) : []).filter((f) => f.endsWith(".js"));
+  const read = (f) => readFileSync(join(ASSETS_DIR, f), "utf-8");
+  const surface = js.filter((f) => read(f).includes(SURFACE_MARKER));
+  const root = js.filter((f) => read(f).includes(LOUNGE_MARKER));
+  const livekit = js.filter((f) => read(f).includes(LIVEKIT_CHUNK_MARKER));
+  const kb = (f) => `${(read(f).length / 1024).toFixed(1)} KB`;
+  let ok = true;
+  const report = (message) => {
+    console.error(`[check-bundle-budget] ${message}`);
+    ok = false;
+    hadFailure = true;
+  };
+  if (surface.length !== 1) {
+    report(`Expected the call surface ("${SURFACE_MARKER}") in exactly one chunk, found ${surface.length}: ${surface.join(", ")}.`);
+  } else {
+    if (eager.has(surface[0])) report(`The call surface chunk assets/${surface[0]} is loaded on every page.`);
+    if (root.includes(surface[0])) report(`The call surface is inside the new shell's chunk (assets/${surface[0]}): it must be its own lazy chunk.`);
+  }
+  // Every chunk the new shell's chunk loads with it: its static imports, theirs, and so on (a dynamic
+  // `import("./x.js")` is a lazy boundary and is not followed). LiveKit must not be among them, directly or
+  // through a shared chunk.
+  const STATIC_IMPORT = /(?:\bfrom|\bimport)\s*["']\.\/([^"']+\.js)["']/g;
+  for (const f of root) {
+    const via = new Map([[f, null]]);
+    const queue = [f];
+    while (queue.length > 0) {
+      const at = queue.shift();
+      for (const [, next] of read(at).matchAll(STATIC_IMPORT)) {
+        if (via.has(next) || !js.includes(next)) continue;
+        via.set(next, at);
+        queue.push(next);
+      }
+    }
+    for (const lk of livekit) {
+      if (!via.has(lk)) continue;
+      const path = [];
+      for (let at = lk; at !== null; at = via.get(at)) path.unshift(`assets/${at}`);
+      report(`The new shell's chunk loads the livekit-client chunk statically: ${path.join(" → ")}.`);
+    }
+    if (ok) {
+      console.log(`[check-bundle-budget] assets/${f} loads ${via.size - 1} chunks statically; none is livekit-client.`);
+    }
+  }
+  if (ok) {
+    console.log(
+      `[check-bundle-budget] Call surface is its own lazy chunk (assets/${surface[0]}, ${kb(surface[0])}); ` +
+        `new shell ${root.map((f) => `assets/${f} (${kb(f)})`).join(", ")} does not import LiveKit statically — good.`
     );
   }
 }

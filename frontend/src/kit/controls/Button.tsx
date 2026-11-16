@@ -49,6 +49,9 @@ export interface ButtonProps {
   children: ReactNode;
 }
 
+/** Half of what a small button lacks to reach the touch minimum, on each side (as IconButton's). */
+const TOUCH_OUTSET = (tokens.control.md - tokens.control.sm) / 2;
+
 interface RootProps {
   $variant: ButtonVariant;
   $size: ButtonSize;
@@ -90,6 +93,16 @@ const Root = styled(ButtonBase, {
       under: look.stateBase,
       hover: look.hover,
       pressed: look.pressed,
+    }),
+    // A small button keeps its look but gets a touch-sized hit area (as a small IconButton).
+    ...($size === 'sm' && {
+      '@media (pointer: coarse)': {
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          inset: `${-TOUCH_OUTSET}px`,
+        },
+      },
     }),
     '&:disabled': {
       opacity: tokens.state.disabled,
