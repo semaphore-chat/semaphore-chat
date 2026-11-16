@@ -1,7 +1,7 @@
 /**
  * Sample data of the Lounge mock-ups (lounge-canvas STYLE.md: Couch Co-op, alexk, Squad Up, AFK) for
- * the community left island and members stories (their page is LoungeCommunityPage.tsx). No colours from data: people and the
- * community wear the kit's default (design §6).
+ * the community left island and members stories (their page is LoungeCommunityPage.tsx). The API carries no colours: a
+ * person's avatar colour comes from their id (`personColour`), and the community wears the kit's default (design §6).
  */
 import { personColour, useWidthRange } from '../../kit';
 import type { MemberSummary } from '../../data/members';
