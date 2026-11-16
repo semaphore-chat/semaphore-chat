@@ -126,7 +126,13 @@ export function useConversation({ communityId, channelId, chatPath }: UseConvers
     atBottomRef,
   });
 
-  const newCount = useNewWhileAway({ orderedMessages, atBottom, authorId: me, contextKey: channelId });
+  const newCount = useNewWhileAway({
+    orderedMessages,
+    atBottom,
+    authorId: me,
+    contextKey: channelId,
+    live: mode === 'normal' && !isDetachedFromPresent,
+  });
   const typingUserIds = useTypingUsers({ channelId, currentUserId: me });
 
   // The old chat's three buttons, in its order: back to the present from a jump, back to the live edge from a
