@@ -3,7 +3,7 @@
  * island on MSW with the real `useCommunityMembers` and the real presence handler, and how many rows
  * one presence event re-renders out of 300 (each row render reads its avatar once: the counter).
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { Profiler, type ReactNode } from 'react';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -323,6 +323,11 @@ describe('MembersIslandConnected', () => {
   });
 
   it('300 members: one presence event re-renders at most 2 rows; the full render time is reported', async () => {
+    // The island rounds Date.now() to the minute for "Seen 2h ago", so a wall clock passing a minute boundary between
+    // the last render and the event re-renders every row once (by design). Pin the clock: only Date is faked.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    onTestFinished(() => void vi.useRealTimers());
     const online: Record<string, boolean> = {};
     serveMembers(300, online);
     const durations: { phase: string; duration: number }[] = [];
