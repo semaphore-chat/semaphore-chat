@@ -45,6 +45,12 @@ export interface UseMessageActionsReturn {
   handleRemoveAttachment: (attachmentId: string) => void;
   handleDeleteClick: () => void;
   handleConfirmDelete: () => Promise<void>;
+  /**
+   * Deletes the message now, with no staging or animation delay, and rejects when the server refuses: for a
+   * confirmation dialog that shows the failure (the new shell's `useConfirmDestructive`). The cache is updated as
+   * `handleConfirmDelete` does.
+   */
+  deleteMessage: () => Promise<void>;
   handleCancelDelete: () => void;
   handleConfirmThreadDelete: () => Promise<void>;
   handleCancelThreadDelete: () => void;
@@ -289,6 +295,11 @@ export function useMessageActions(
     }, 300); // Match the animation duration
   }, [message.id, message.channelId, message.directMessageGroupId, deleteMessageApi]);
 
+  const deleteMessage = useCallback(async () => {
+    if (!message.channelId && !message.directMessageGroupId) return;
+    await deleteMessageApi({ path: { id: message.id } });
+  }, [message.id, message.channelId, message.directMessageGroupId, deleteMessageApi]);
+
   const handleCancelDelete = useCallback(() => {
     setStagedForDelete(false);
   }, []);
@@ -357,6 +368,7 @@ export function useMessageActions(
     handleRemoveAttachment,
     handleDeleteClick,
     handleConfirmDelete,
+    deleteMessage,
     handleCancelDelete,
     handleConfirmThreadDelete,
     handleCancelThreadDelete,

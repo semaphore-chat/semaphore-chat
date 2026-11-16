@@ -66,8 +66,16 @@ const SOCKET_EMITTERS: Record<string, { targets: readonly string[]; why: string 
     targets: ['src/utils/SocketContext.ts'],
     why: 'MARK_AS_READ: the debounced read mark of a conversation (useReadMarks, both shells)',
   },
-  // useSendMessage (SEND_MESSAGE) and useTypingEmitter (typing) join this list, with their reasons, in the PR whose
-  // Lounge code first imports them (the composer, 10c-2), so that step gets its own review.
+  'src/hooks/useSendMessage.ts': {
+    targets: ['src/utils/SocketContext.ts'],
+    why:
+      'SEND_MESSAGE: sending a message and retrying a failed one (the composer through useMessageFileUpload and ' +
+      'useOptimisticSendMessage, a failed row through useOptimisticMessageRetry; both shells)',
+  },
+  'src/hooks/useTypingEmitter.ts': {
+    targets: ['src/hooks/useSocket.ts'],
+    why: 'TYPING_START / TYPING_STOP: the composer saying the reader is typing (both shells)',
+  },
   'src/data/connection.ts': {
     targets: ['src/hooks/useSocket.ts'],
     why: 'useSocketConnected only: whether the socket is connected (the offline banner), no traffic',

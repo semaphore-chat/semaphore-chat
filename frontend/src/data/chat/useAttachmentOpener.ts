@@ -4,11 +4,15 @@
  * other file, whatever its name says, is downloaded and never shown as a page. The decision is made from the type
  * the server reported for the file, and the tab gets a copy of the bytes labelled with exactly that type.
  *
+ * In the desktop app every file downloads, pictures too: its window-open handler refuses a blank tab and `blob:`
+ * pages, so the download path (the one Electron handles) is the only one that works; a failure says so.
+ *
  * The opener is one stable object for the whole list (it goes into the rows' shared context): which files are on
  * their way is read per file through `useAttachmentBusy`, so one download re-renders only its own tile.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useFileCache } from '../../contexts/AvatarCacheContext';
+import { useElectronAPI } from '../../contexts/ElectronContext';
 import { downloadBlob } from '../../utils/format';
 import { logger } from '../../utils/logger';
 
@@ -53,6 +57,8 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
   cacheRef.current = cache;
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  const electronRef = useRef(false);
+  electronRef.current = useElectronAPI() !== null;
 
   const [{ opener, dispose }] = useState(() => {
     const busy = new Set<string>();
@@ -81,7 +87,7 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
         return () => listeners.delete(listener);
       },
       open: ({ id, name, mimeType }) => {
-        const action = attachmentAction(mimeType);
+        const action = electronRef.current ? 'download' : attachmentAction(mimeType);
         // A tab opened after an await is a blocked pop-up: open it inside the press, point it at the file later.
         const tab = action === 'open' ? window.open('', '_blank') : null;
         // Cut the tab's way back to the app at once, before any wait: whatever the tab shows never gets an opener.
@@ -110,7 +116,7 @@ export function useAttachmentOpener(onError?: (message: string) => void): Attach
           } catch (error: unknown) {
             tab?.close();
             logger.warn('[chat] could not open a file', error);
-            onErrorRef.current?.(`Couldn't open ${name}`);
+            onErrorRef.current?.(action === 'download' ? `Couldn't download ${name}` : `Couldn't open ${name}`);
           } finally {
             setBusy(id, false);
           }
