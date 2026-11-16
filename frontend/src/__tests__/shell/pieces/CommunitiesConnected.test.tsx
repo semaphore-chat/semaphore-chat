@@ -173,6 +173,10 @@ describe('ShellDockConnected', () => {
     });
     expect(await screen.findByRole('link', { name: 'Couch Co-op, current, new messages' })).toBeInTheDocument();
 
+    // The mention handler refetches the counts (#817): the server has both the message and the mention by now.
+    serve({
+      counts: COUNTS.map((c) => (c.channelId === 'ch-general' ? { ...c, unreadCount: 1, mentionCount: 1 } : c)),
+    });
     act(() => {
       handleNewNotification(
         {
@@ -194,6 +198,8 @@ describe('ShellDockConnected', () => {
     });
     expect(await screen.findByRole('link', { name: 'Couch Co-op, current, 1 mention' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Inbox, 8 unread' })).toBeInTheDocument();
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(screen.getByRole('link', { name: 'Couch Co-op, current, 1 mention' })).toBeInTheDocument();
 
     act(() => {
       handleReadReceiptUpdated({ channelId: 'ch-studio', directMessageGroupId: null, lastReadMessageId: 'm-9' } as never, queryClient);
