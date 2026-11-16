@@ -329,10 +329,12 @@ export async function waitForAudioFlow(
  * `remote`, the only other participant in the call: one element for the mic
  * and one for the soundboard track.
  *
- * In a community voice channel every participant with the soundboard button
- * publishes a silent `soundboard` track about a second after joining
- * (SoundboardButton / VoiceBottomBarContent → soundboardPlayer.warmup), and
- * AudioRenderer gives it its own `<audio>` element. That track can land after
+ * In a community voice channel every participant who may speak publishes a
+ * silent `soundboard` track about a second after joining, whichever shell or
+ * layout shows the call (VoiceSessionEffects → useSoundboardWarmup →
+ * soundboardPlayer.warmup; a classic bar and a Lounge room card join alike),
+ * and AudioRenderer gives it its own `<audio>` element. A server-muted
+ * participant publishes it only once the mute is lifted. That track can land after
  * audio already flows both ways (it did on CI), so a spec that tags the
  * `<audio>` elements to prove they are never re-created must tag them after
  * this: otherwise the late, correct second element looks like a re-created one.

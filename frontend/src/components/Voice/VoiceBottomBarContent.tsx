@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useId, Suspense, lazy } from "react";
+import React, { useState, useCallback, useId, Suspense, lazy } from "react";
 import { visuallyHidden } from "@mui/utils";
 import {
   Box,
@@ -58,7 +58,6 @@ import { logger } from "../../utils/logger";
 import { LAYOUT_CONSTANTS, TOUCH_TARGETS } from "../../utils/breakpoints";
 import { useCallBarModel } from "../../data/callBar";
 import { MobileSheet } from "../Mobile/common/MobileSheet";
-import { soundboardPlayer } from "../../features/voice/soundboardPlayer";
 import { ConnectionQualityIndicator } from "./ConnectionQualityIndicator";
 
 // Debug panel is opt-in (Ctrl+Shift+D) and rarely used — keep it out of this
@@ -133,14 +132,9 @@ const VoiceBottomBarContent: React.FC = () => {
   // it runs in VoiceSessionEffects, above every layout, so it keeps going
   // whether or not this bar is on screen. This component only shows the call.
 
-  // On phone the soundboard button lives in the (unmounted-when-closed) "more"
-  // sheet, so warm its track up here instead — SoundboardButton does this on
-  // mount on desktop, so remote clients have subscribed before the first clip.
+  // The soundboard's silent track is published by useSoundboardWarmup
+  // (VoiceSessionEffects), not by this bar: see that hook.
   const hasSoundboard = Boolean(state.isConnected && state.communityId && actions.playSoundboard);
-  useEffect(() => {
-    if (!isMobile || !hasSoundboard || !state.room) return;
-    void soundboardPlayer.warmup(state.room);
-  }, [isMobile, hasSoundboard, state.room]);
 
   // Automatically manage replay buffer when screen sharing
   const { isReplayBufferActive } = useReplayBufferState();

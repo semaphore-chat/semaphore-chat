@@ -32,6 +32,7 @@ vi.mock('../../hooks/useVoicePresenceHeartbeat', () => ({ useVoicePresenceHeartb
 vi.mock('../../hooks/useDeafenEffect', () => ({ useDeafenEffect: vi.fn() }));
 vi.mock('../../hooks/useServerMuteEffect', () => ({ useServerMuteEffect: vi.fn() }));
 vi.mock('../../hooks/useRemoteVolumeEffect', () => ({ useRemoteVolumeEffect: vi.fn() }));
+vi.mock('../../hooks/useSoundboardWarmup', () => ({ useSoundboardWarmup: vi.fn() }));
 
 // The layer's other pieces are covered elsewhere (VoiceSessionLayer.test.tsx).
 vi.mock('../../components/Voice/TrackSubscriptionProvider', () => ({
@@ -57,6 +58,7 @@ import { useVoicePresenceHeartbeat } from '../../hooks/useVoicePresenceHeartbeat
 import { useDeafenEffect } from '../../hooks/useDeafenEffect';
 import { useServerMuteEffect } from '../../hooks/useServerMuteEffect';
 import { useRemoteVolumeEffect } from '../../hooks/useRemoteVolumeEffect';
+import { useSoundboardWarmup } from '../../hooks/useSoundboardWarmup';
 
 const room = { name: 'fake-room' };
 
@@ -80,6 +82,7 @@ const SESSION_HOOKS = [
   useDeafenEffect,
   useServerMuteEffect,
   useRemoteVolumeEffect,
+  useSoundboardWarmup,
 ];
 
 /** The layer with no bar, no layout: nothing on screen but the call. */
@@ -127,6 +130,8 @@ describe('VoiceSessionEffects (mounted by VoiceSessionLayer)', () => {
       onToggleMic: voice.actions.toggleMute,
     });
     expect(usePushToTalk).toHaveBeenLastCalledWith({ canSpeak: true });
+    // The soundboard warm-up's one owner, with the channel's speak permission.
+    expect(useSoundboardWarmup).toHaveBeenLastCalledWith({ canSpeak: true });
   });
 
   it('runs during a DM call too, named after the DM', async () => {

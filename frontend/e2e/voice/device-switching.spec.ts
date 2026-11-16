@@ -43,6 +43,14 @@ test.describe('PR #351 — live mic device switching', () => {
   test.beforeAll(async () => {
     p = await launchParticipant(TEST_USER, 'sample-a.wav');
     await joinVoiceChannel(p, 'voice-chat');
+    // joinVoiceChannel returns once the Room is `connected`; the app's join then enables the mic and applies the
+    // saved device preferences (switchActiveDevice('audioinput', 'default')). A switch made before that is undone by
+    // it (seen 2026-11-16: the test switched at +40 ms, the join re-applied 'default' at +80 ms). Wait for the join
+    // to finish: the bar says "Voice Connected" only then, and the mic is published.
+    await expect(p.page.getByText('Voice Connected', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(() => getLocalMicDeviceId(p), { timeout: 15_000, message: 'the mic was never published' })
+      .not.toBeNull();
   });
 
   test.afterAll(async () => {

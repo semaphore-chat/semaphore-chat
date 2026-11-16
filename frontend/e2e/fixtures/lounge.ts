@@ -55,8 +55,8 @@ export async function setAccountNewDesign(p: Participant, on: boolean): Promise<
 
 /**
  * Tags what must survive every step: the Room object and the remote <audio> elements, once `remote`'s mic and
- * soundboard tracks both have theirs (the soundboard one can land after audio flows). `remote` must have joined
- * through the classic bar: a Lounge-card joiner publishes no soundboard track yet (G3).
+ * soundboard tracks both have theirs (the soundboard one can land after audio flows). `remote` may have joined from
+ * a classic bar or a Lounge room card: both publish the soundboard track (useSoundboardWarmup).
  */
 export async function tagCall(p: Participant, remote: Participant): Promise<{ gum: number; audioCount: number }> {
   await waitForRemoteAudioElements(p, remote);
