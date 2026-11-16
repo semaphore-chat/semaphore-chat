@@ -11,22 +11,21 @@
  *   4. B shares a screen: the call surface offers it (nothing received yet), Watch shows a decoding video,
  *      Stop watching unsubscribes it; watched again, B stops sharing: the tile goes and nothing of the share
  *      stays subscribed; Open call view goes to the classic stage;
- *   5. a join that fails shows the voice notice in the call slot with Retry; the room is deleted meanwhile,
- *      so Retry's join is refused: the notice says so, without Retry; Dismiss clears it. (Not "the room you
- *      are in is deleted": deleting a voice channel does not end its LiveKit call, issue #812.)
+ *   5. a join from a room card that fails shows the voice notice in the call slot with Retry; the room is
+ *      deleted meanwhile, so Retry's join is refused: the notice says so, without Retry; Dismiss clears it.
+ *      (Not "the room you are in is deleted": deleting a voice channel does not end its LiveKit call, #812.)
  *
  * Then, on the room cards of the left island (A joins from a card, B classic):
  *
- *   V1. joining from a card stays on the screen and outlines the card; B lists A; audio both ways;
+ *   V1. joining from a card stays on the screen and outlines the card; the server lists A; audio both ways;
  *   V3. Leave from the card and from the bar both end the call;
  *   V4. a failed join shows once, in the voice notice; Retry joins;
  *   V6. the call survives moving between communities in the Lounge (dock and sheet);
  *   V7. signing out mid-call from the account menu leaves the call.
  *
- * A participant who joins from a Lounge card never publishes the soundboard track (a known gap: the warm-up is
- * only mounted by the classic bar), so a listener of such a remote waits for its mic element only
- * (`waitForRemoteAudioElements(..., { soundboard: false })`). Every B below joins with the classic
- * `joinVoiceChannel`, which does publish one.
+ * A participant who joins from a Lounge card never publishes the soundboard track (a known gap, G3: the warm-up is
+ * only mounted by the classic bar), so no test here waits for a card joiner's <audio> elements on a peer. Every B
+ * below joins with the classic `joinVoiceChannel`, which does publish one.
  *
  * Requires the real-LiveKit stack: scripts/run-voice-e2e.sh lounge-pieces
  */
@@ -58,6 +57,9 @@ const CH = 'voice-lounge';
 const ROOM2 = 'voice-lounge-2';
 const PHONE = { width: 390, height: 844 };
 const POLL = { timeout: 15_000 };
+/** The browser's own console line for a request that failed with one of these statuses. */
+const failedRequest = (...statuses: number[]) =>
+  `^Failed to load resource: the server responded with a status of (${statuses.join('|')})`;
 
 /**
  * The community fixture is on screen and loaded: the new shell with the community's header (its name as the left
@@ -100,7 +102,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
   let b: Participant;
   let c: Participant;
   const consoleErrors: string[] = [];
-  /** Errors a step causes on purpose and the app logs (the classic join path's own logging). */
+  /** Errors a step causes on purpose: the app's own logging of a failed join, and the browser's failed-request line. */
   let expectedErrors: RegExp | null = null;
 
   test.afterEach(async () => {
@@ -115,10 +117,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
   async function launchA(): Promise<Participant> {
     const p = await launchParticipant(TEST_USER, 'sample-a.wav');
     p.page.on('console', (message) => {
-      // The browser's own line for a failed request (step 5 makes one fail on purpose) is not the app's.
-      if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) {
-        consoleErrors.push(message.text());
-      }
+      if (message.type() === 'error') consoleErrors.push(message.text());
     });
     return p;
   }
@@ -306,42 +305,38 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
 
   // Not "the room you are in is deleted": deleting a voice channel leaves its LiveKit call running (the
   // backend never deletes the room), so there is nothing for the bar to show yet. Issue #812.
-  test('5: a failed join shows the notice in the call slot; Retry to a room deleted meanwhile says it is gone', async () => {
+  test('5: a failed join from a room card shows the notice in the call slot; Retry to a room deleted meanwhile says it is gone', async () => {
     test.setTimeout(180_000);
     a = await launchA();
     c = await launchParticipant(ADMIN_USER, 'sample-c.wav');
-    const mine = await c.context.request.get(`${API_BASE}/community/mine`, {
-      headers: { Authorization: `Bearer ${c.accessToken}` },
-    });
-    expect(mine.ok(), `GET /community/mine: ${mine.status()}`).toBe(true);
-    const communities = (await mine.json()) as Array<{ id: string; name: string } | null>;
-    const community = communities.find((x) => x?.name === 'Test Community');
-    expect(community, 'the seeded Test Community').toBeDefined();
+    const communityId = await testCommunityId(c);
     const name = `lounge-temp-${Date.now()}`;
-    const channel = await createTestChannel(c.context.request, community!.id, { name, type: 'VOICE' }, c.accessToken);
+    const channel = await createTestChannel(c.context.request, communityId, { name, type: 'VOICE' }, c.accessToken);
     const deleteChannel = () =>
       c.context.request.delete(`${API_BASE}/channels/${channel.id}`, { headers: { Authorization: `Bearer ${c.accessToken}` } });
 
-    // The join path logs each failed join (voiceActions): the two this step causes are expected.
-    expectedErrors = /Failed to join voice channel: \{(statusCode: 503, message: Unavailable|message: Channel not found)/;
+    // The join path logs each failed join (voiceActions), and the browser each failed request: the two failures
+    // this step causes (the 503, then the server refusing a room that is gone) are expected.
+    expectedErrors = new RegExp(
+      `Failed to join voice channel: \\{(statusCode: 503, message: Unavailable|message: Channel not found)|${failedRequest(503, 403, 404)}`,
+    );
     try {
+      // The temporary room's card: the fixture is opened after the room exists.
+      await a.page.setViewportSize(PHONE);
+      await openFixture(a.page, communityId, { communityName: 'Test Community' });
+      const join = a.page.locator('[data-shell="lounge"]').getByRole('button', { name: `Join ${name}`, exact: true });
+      await expect(join).toBeVisible({ timeout: 20_000 });
+
       // The first join fails on the server (a 503 from the token endpoint): a failure Retry can help.
       const token = '**/api/livekit/token';
       await a.page.route(token, (route) =>
         route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ statusCode: 503, message: 'Unavailable' }) }),
       );
-      await a.page.goto('/');
-      await a.page.getByRole('button', { name: 'Test Community' }).first().click();
-      await a.page.getByRole('button', { name }).first().click();
-      await expect(a.page.getByTestId('voice-notice')).toBeVisible(POLL);
-
-      // In the Lounge, the same notice is in the call slot, with Retry.
-      await a.page.setViewportSize(PHONE);
-      await goTo(a.page, `/__lounge/community/${community!.id}?design=lounge`);
-      await expect(fixture(a.page)).toBeVisible();
+      await join.click();
       const notice = a.page.getByTestId('lounge-voice-notice');
-      await expect(notice).toBeVisible();
+      await expect(notice).toBeVisible(POLL);
       await expect(notice).toContainText('Voice server error');
+      await expect(a.page.getByTestId('voice-notice')).toHaveCount(0);
       await expect(callBar(a.page)).toHaveCount(0);
 
       // The room is deleted meanwhile; Retry joins it for real and the server says it is gone.
@@ -354,6 +349,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
       expect(await a.page.evaluate(() => window.__lkRoom?.state ?? 'none')).not.toBe('connected');
       // Nothing to retry for a room that is gone (as the classic notice).
       await expect(notice.getByRole('button', { name: 'Retry' })).toHaveCount(0);
+      await expect(callBar(a.page)).toHaveCount(0);
       await notice.getByRole('button', { name: 'Dismiss' }).click();
       await expect(notice).toHaveCount(0);
     } finally {
@@ -401,7 +397,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     return id;
   }
 
-  test('V1: joining from a room card stays on the screen, outlines the card "You\'re here", and B lists A', async () => {
+  test('V1: joining from a room card stays on the screen, outlines the card "You\'re here", and the server lists A', async () => {
     test.setTimeout(180_000);
     const id = await aOnFixtureWithBInRoom(CH);
     await expect(youAreHereCard(a.page, CH)).toHaveCount(0);
@@ -415,7 +411,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     expect(await card.evaluate((el) => getComputedStyle(el).borderTopColor)).not.toBe('rgba(0, 0, 0, 0)');
     await expect(leaveButton(a.page, CH)).toBeVisible();
     await expect(callBar(a.page)).toBeVisible();
-    await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: "B's voice list shows A" }).toBe(true);
+    await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: "the server's voice presence lists A" }).toBe(true);
     await waitForAudioFlow(b, a);
     await waitForAudioFlow(a, b);
   });
@@ -445,7 +441,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     test.setTimeout(180_000);
     await aOnFixtureWithBInRoom(CH);
     // The app logs each failed join (voiceActions): the one this step causes is expected.
-    expectedErrors = /Failed to join voice channel: \{statusCode: 503, message: Unavailable/;
+    expectedErrors = new RegExp(`Failed to join voice channel: \\{statusCode: 503, message: Unavailable|${failedRequest(503)}`);
 
     const token = '**/api/livekit/token';
     await a.page.route(token, (route) =>
@@ -463,6 +459,13 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     await expect(joinButton(a.page, CH)).not.toHaveAttribute('aria-busy', 'true', POLL);
     await expect(joinButton(a.page, CH)).toBeEnabled();
     expect(await state(a)).not.toBe('connected');
+    // Still said once, after the card settled: no second notice or toast came in late.
+    const saidOnce = async (step: string) => {
+      await expect(a.page.getByTestId('lounge-voice-notice'), step).toHaveCount(1);
+      await expect(a.page.getByTestId('voice-notice'), step).toHaveCount(0);
+      await expect(a.page.locator('[data-kit-toast-region]').getByText(/voice|join/i), step).toHaveCount(0);
+    };
+    await saidOnce('after the card settled');
 
     await a.page.unroute(token);
     await notice.getByRole('button', { name: 'Retry' }).click();
@@ -470,6 +473,9 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     await expect(youAreHereCard(a.page, CH)).toHaveCount(1, POLL);
     await expect(a.page.getByTestId('lounge-voice-notice')).toHaveCount(0, POLL);
     await expect(callBar(a.page)).toBeVisible();
+    // Nothing of the failure surfaced elsewhere meanwhile.
+    await expect(a.page.getByTestId('voice-notice')).toHaveCount(0);
+    await expect(a.page.locator('[data-kit-toast-region]').getByText(/voice|join/i)).toHaveCount(0);
   });
 
   test('V6: the call survives moving between communities in the Lounge', async () => {
@@ -542,6 +548,9 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
   test('V7: signing out mid-call from the account menu leaves the call', async () => {
     test.setTimeout(180_000);
     await aOnFixtureWithBInRoom(CH, { width: 820, height: 900 });
+    // Signing out ends the session on purpose: requests still in flight or made on the login page get the server's
+    // 401, which the browser logs (the browser's line only; the app logs nothing).
+    expectedErrors = new RegExp(failedRequest(401));
     await joinFromRoomCard(a, CH);
     await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: 'B lists A before the sign-out' }).toBe(true);
     await waitForAudioFlow(b, a);
@@ -553,15 +562,32 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     await question.getByRole('button', { name: 'Sign out', exact: true }).click();
 
     await expect(a.page).toHaveURL(/#\/login/, { timeout: 20_000 });
+    // Deterministic: the saved connection a page load would rejoin from is gone at once.
+    expect(await a.page.evaluate(() => localStorage.getItem('semaphore_voice_connection')), 'no saved voice connection').toBeNull();
     await expect.poll(() => state(a), { timeout: 20_000, message: 'A left the call' }).not.toBe('connected');
     await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: "B's list drops A" }).toBe(false);
 
-    // Signing back in does not rejoin: nothing of the call was saved.
+    // Signing back in does not rejoin: nothing of the call was saved. A rejoin would start once the profile and
+    // the LiveKit connection info are loaded (useVoiceRecovery), and would ask for a token: wait for those, then
+    // for the page to settle, and check no token was asked for.
+    const tokenRequests: string[] = [];
+    a.page.on('request', (req) => {
+      if (/\/api\/livekit\/(token|dm-token)$/.test(new URL(req.url()).pathname)) tokenRequests.push(req.url());
+    });
     await loginViaApi(a.context.request, TEST_USER);
+    const connectionInfo = a.page.waitForResponse((res) => new URL(res.url()).pathname === '/api/livekit/connection-info', {
+      timeout: 20_000,
+    });
+    const profile = a.page.waitForResponse((res) => new URL(res.url()).pathname === '/api/users/profile', { timeout: 20_000 });
     await a.page.goto('/');
-    // Signed in again, on the old shell's home (820 px is its mobile layout): nothing of the call came back.
+    await Promise.all([connectionInfo, profile]);
+    // Signed in again, on the old shell's home (820 px is its mobile layout).
     await expect(a.page.getByRole('button', { name: /^choose a community$/i })).toBeVisible({ timeout: 20_000 });
+    // Settled: the network goes idle within seconds when no call starts. A started call keeps it busy, so the wait
+    // is bounded and the token check below names the failure.
+    await a.page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
     await expect(a.page).not.toHaveURL(/#\/login/);
+    expect(tokenRequests, 'no join was started after signing back in').toEqual([]);
     expect(await state(a)).not.toBe('connected');
     expect(await roomLists(b, a)).toBe(false);
   });

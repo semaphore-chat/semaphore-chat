@@ -54,15 +54,12 @@ export async function setAccountNewDesign(p: Participant, on: boolean): Promise<
 }
 
 /**
- * Tags what must survive every step: the Room object and the remote <audio> elements, once `remote`'s mic (and,
- * unless `soundboard: false`, soundboard) track both have theirs (the soundboard one can land after audio flows).
+ * Tags what must survive every step: the Room object and the remote <audio> elements, once `remote`'s mic and
+ * soundboard tracks both have theirs (the soundboard one can land after audio flows). `remote` must have joined
+ * through the classic bar: a Lounge-card joiner publishes no soundboard track yet (G3).
  */
-export async function tagCall(
-  p: Participant,
-  remote: Participant,
-  opts: { soundboard?: boolean } = {},
-): Promise<{ gum: number; audioCount: number }> {
-  await waitForRemoteAudioElements(p, remote, opts);
+export async function tagCall(p: Participant, remote: Participant): Promise<{ gum: number; audioCount: number }> {
+  await waitForRemoteAudioElements(p, remote);
   return p.page.evaluate(() => {
     (window.__lkRoom as unknown as Record<string, unknown>).__probe = 'shell-switch';
     window.__probeAudios = Array.from(document.querySelectorAll('audio'));

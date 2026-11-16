@@ -8,7 +8,7 @@
  *
  * Run: scripts/run-e2e.sh lounge-pieces
  */
-import type { APIRequestContext, BrowserContext, Locator, Page, Request, TestInfo } from '@playwright/test';
+import type { APIRequestContext, BrowserContext, Locator, Page, Request, Response, TestInfo } from '@playwright/test';
 import { test, expect, TEST_USER, API_BASE, openSession, shot, sendSpans, sendTestMessage, createTestCommunity, generateTestName } from './fixtures';
 import { loginViaApi } from './fixtures/auth.fixture';
 import {
@@ -21,7 +21,8 @@ import {
   type LoungeWorld,
 } from './fixtures/lounge';
 
-test.describe.configure({ mode: 'serial', timeout: 120_000 });
+// Not serial: each test builds its own world, so one failure never skips the others.
+test.describe.configure({ timeout: 120_000 });
 
 /** Presence and list updates are socket-driven and eventual; CI is slower than a laptop. */
 const EVENTUAL = { timeout: 20_000 };
@@ -43,6 +44,8 @@ const header = (page: Page, name: string) => page.getByRole('heading', { name, l
 interface Opened {
   context: BrowserContext;
   page: Page;
+  /** The access token of this session's login (the session the app's sign-out revokes). */
+  token: string;
 }
 
 /** N (or anyone) signed in a fresh context, on the fixture of `communityId`. */
@@ -52,10 +55,12 @@ async function sessionOnFixture(
   viewport: { width: number; height: number },
   communityId: string,
   communityName?: string,
+  opts: { onPage?: (page: Page) => void } = {},
 ): Promise<Opened> {
-  const { context, page } = await openSession(browser, user, viewport);
+  const { context, page, token } = await openSession(browser, user, viewport);
+  opts.onPage?.(page);
   await openFixture(page, communityId, { communityName });
-  return { context, page };
+  return { context, page, token };
 }
 
 /** The "N around" count of the left island's header. */
@@ -93,9 +98,15 @@ test.describe('The Lounge pieces on the community fixture', () => {
 
   test('the dock and the All sheet list your real communities, the current one marked', async ({ browser, request }, testInfo) => {
     const world = await loungeWorld(request);
-    const wide = await sessionOnFixture(browser, world.member, WIDE, world.c1.id, world.c1.name);
+    // The positive control of P1: opening the fixture with the design on does load what NEW_SHELL_REQUEST matches
+    // (a renamed chunk or module path would otherwise let P1 pass without testing anything).
+    const urls: string[] = [];
+    const wide = await sessionOnFixture(browser, world.member, WIDE, world.c1.id, world.c1.name, {
+      onPage: (page) => page.on('request', (req: Request) => urls.push(req.url())),
+    });
     try {
       const { page } = wide;
+      expect(urls.filter((url) => NEW_SHELL_REQUEST.test(url)).length, 'the fixture loads the new shell').toBeGreaterThan(0);
       const bar = dock(page);
       await expect(communityLink(bar, world.c1.name)).toBeVisible(EVENTUAL);
       await expect(communityLink(bar, world.c2.name)).toBeVisible();
@@ -211,7 +222,7 @@ test.describe('The Lounge pieces on the community fixture', () => {
       await dock(page).getByRole('button', { name: 'All communities', exact: true }).click();
       const row = communityLink(allSheet(page), world.c2.name);
       await expect(row).toHaveAccessibleName(/1 mention/, EVENTUAL);
-      await expect(allSheet(page).getByText('1 mention', { exact: true }).first()).toBeVisible();
+      await expect(row.getByText('1 mention', { exact: true })).toBeVisible();
       await shot(page, testInfo, 'p4-mention-badges');
       expect(loads, 'no page load happened').toBe(0);
     } finally {
@@ -219,13 +230,13 @@ test.describe('The Lounge pieces on the community fixture', () => {
     }
   }
 
-  test('a mention in another community badges the dock and the sheet without a reload', async ({ browser, request }, testInfo) => {
+  test('a mention in another community badges the dock and the sheet without a reload (the channel already has an unread entry)', async ({ browser, request }, testInfo) => {
     await mentionScenario({ browser, request }, testInfo, true);
   });
 
-  // Product race, seen in 1 of 6 runs: when the mention is the FIRST message of a channel the owner has no unread
-  // entry for, the dock shows "new messages" and never the mention until a reload (the entry the message handler
-  // inserts is refetched, and the refetch can overwrite the notification handler's mentionCount increment).
+  // Product race, issue #817 (seen in 1 of 6 runs): when the mention is the FIRST message of a channel the owner has
+  // no unread entry for, the dock shows "new messages" and never the mention until a reload (the entry the message
+  // handler inserts is refetched, and the refetch can overwrite the notification handler's mentionCount increment).
   test.fixme('a first message that mentions you badges the dock as a mention, not as "new messages" (1 in 6 runs it never does)', async ({
     browser,
     request,
@@ -275,20 +286,20 @@ test.describe('The Lounge pieces on the community fixture', () => {
     try {
       const { page } = owner;
       const members = membersIsland(page);
-      const row = (state: 'away' | 'online') =>
-        members.getByRole('button', { name: new RegExp(`^${escapeRe(world.member.username)}\\s*, ${state}`) });
-      await expect(members.getByRole('heading', { name: 'Away', level: 3 })).toBeVisible(EVENTUAL);
-      await expect(row('away')).toBeVisible(EVENTUAL);
-      await expect(row('online')).toHaveCount(0);
-      await expect(leftIsland(page).getByText(/^\d+ around$/)).toBeVisible(EVENTUAL);
-      const before = await aroundCount(page);
+      const row = (scope: Locator, state: 'away' | 'online') =>
+        scope.getByRole('button', { name: new RegExp(`^${escapeRe(world.member.username)}\\s*, ${state}`) });
+      /** A group of the members island: its h3 and the rows under it (the heading's parent holds both). */
+      const group = (title: 'Around' | 'Away') => members.getByRole('heading', { name: title, level: 3, exact: true }).locator('xpath=..');
+      await expect(row(group('Away'), 'away')).toBeVisible(EVENTUAL);
+      await expect(row(members, 'online')).toHaveCount(0);
+      // C1 has exactly two members, the owner (online, this page) and N (never online).
+      await expect.poll(() => aroundCount(page).catch(() => -1), { ...EVENTUAL, message: '"1 around": only the owner' }).toBe(1);
       await shot(page, testInfo, 'p6-newcomer-away');
 
       newcomer = await sessionOnFixture(browser, world.member, WIDE, world.c1.id, world.c1.name);
-      await expect(row('online')).toBeVisible(EVENTUAL);
-      await expect(row('away')).toHaveCount(0);
-      await expect(members.getByRole('heading', { name: 'Around', level: 3 })).toBeVisible();
-      await expect.poll(() => aroundCount(page), { ...EVENTUAL, message: '"N around" goes up by one' }).toBe(before + 1);
+      await expect(row(group('Around'), 'online')).toBeVisible(EVENTUAL);
+      await expect(row(members, 'away')).toHaveCount(0);
+      await expect.poll(() => aroundCount(page), { ...EVENTUAL, message: '"2 around": the owner and N' }).toBe(2);
       await shot(page, testInfo, 'p6-newcomer-around');
 
       // Below wide the members are a Sheet, opened from the centre's Members button.
@@ -297,10 +308,7 @@ test.describe('The Lounge pieces on the community fixture', () => {
       await page.getByRole('button', { name: 'Members', exact: true }).click();
       const sheet = page.getByRole('dialog', { name: 'Members', exact: true });
       await expect(sheet).toBeVisible();
-      await expect(sheet.getByRole('heading', { name: 'Around', level: 3 })).toBeVisible();
-      await expect(
-        sheet.getByRole('button', { name: new RegExp(`^${escapeRe(world.member.username)}\\s*, online`) }),
-      ).toBeVisible();
+      await expect(row(sheet.getByRole('heading', { name: 'Around', level: 3, exact: true }).locator('xpath=..'), 'online')).toBeVisible();
       await shot(page, testInfo, 'p6-members-sheet-compact');
     } finally {
       await newcomer?.context.close();
@@ -336,8 +344,9 @@ test.describe('The Lounge pieces on the community fixture', () => {
           }));
         expect(await kept()).toEqual({ dock: true, left: true });
 
-        // The dock to C2.
-        await communityLink(dock(page), world.c2.name).click();
+        // The dock to C2, from the keyboard (a click would focus the link anyway): focus must survive the move.
+        await communityLink(dock(page), world.c2.name).focus();
+        await page.keyboard.press('Enter');
         await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c2.id))}$`), EVENTUAL);
         await expect(header(page, world.c2.name)).toBeVisible(EVENTUAL);
         await expect(communityLink(dock(page), world.c2.name)).toHaveAttribute('aria-current', 'page');
@@ -362,16 +371,54 @@ test.describe('The Lounge pieces on the community fixture', () => {
     });
   }
 
-  /** What a signed-out session looks like, and that nothing of the preview outlives it. */
-  async function expectSignedOut(session: Opened, user: FreshUser, world: LoungeWorld): Promise<void> {
-    const { context, page } = session;
+  /**
+   * Confirms the sign-out question and checks what a signed-out session looks like: the server ended it (the session's
+   * access token and refresh cookie, captured before, are refused when replayed from a fresh request context), the
+   * browser is on the login page and stays there across a reload, and nothing of the preview outlives it.
+   */
+  async function confirmSignOutAndExpectEnded(
+    session: Opened,
+    question: Locator,
+    user: FreshUser,
+    world: LoungeWorld,
+    fresh: () => Promise<APIRequestContext>,
+  ): Promise<void> {
+    const { context, page, token } = session;
+    const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === 'refresh_token')?.value;
+    expect(refreshCookie, 'the session has a refresh cookie before signing out').toBeTruthy();
+
+    // The server's answer, not a timeout: on a slow logout the app navigates anyway and owes the server call.
+    const logout = page.waitForResponse((res: Response) => res.url().endsWith('/api/auth/logout') && res.request().method() === 'POST');
+    await question.getByRole('button', { name: 'Sign out', exact: true }).click();
+    expect((await logout).ok(), 'the server confirmed the logout').toBe(true);
+
     await expect(page).toHaveURL(/#\/login/, EVENTUAL);
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('accessToken')), EVENTUAL).toBeNull();
     await expect.poll(() => page.evaluate(() => sessionStorage.getItem('semaphore-design-preview')), EVENTUAL).toBeNull();
-    const refresh = await context.request.post(`${API_BASE}/auth/refresh`);
-    expect(refresh.status(), 'the refresh token is gone').toBe(401);
+
+    // Replayed from a context that never saw the logout's Set-Cookie: only the server can refuse them.
+    const replay = await fresh();
+    try {
+      const refresh = await replay.post(`${API_BASE}/auth/refresh`, { headers: { cookie: `refresh_token=${refreshCookie}` } });
+      expect(refresh.status(), 'the old refresh token is refused after sign-out').toBe(401);
+      const profile = await replay.get(`${API_BASE}/users/profile`, { headers: { Authorization: `Bearer ${token}` } });
+      expect(profile.status(), 'the old access token is refused after sign-out').toBe(401);
+    } finally {
+      await replay.dispose();
+    }
+
+    // A reload stays on the login page: let the page settle (any silent refresh it makes has answered), then look.
+    const refreshes: number[] = [];
+    const onResponse = (res: Response) => {
+      if (res.url().endsWith('/api/auth/refresh')) refreshes.push(res.status());
+    };
+    page.on('response', onResponse);
     await page.reload();
+    await expect(page.getByLabel(/^Username/)).toBeVisible(EVENTUAL);
+    await page.waitForLoadState('networkidle');
+    page.off('response', onResponse);
+    expect(refreshes.filter((status) => status < 400), 'no silent refresh succeeded after the reload').toEqual([]);
     await expect(page).toHaveURL(/#\/login/);
+    await expect(page.getByLabel(/^Username/)).toBeVisible();
 
     // Signing in again (same context) and opening the fixture path: the preview was forgotten.
     await loginViaApi(context.request, user);
@@ -381,8 +428,9 @@ test.describe('The Lounge pieces on the community fixture', () => {
     await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
   }
 
-  test('signing out from the user card ends the session', async ({ browser, request }, testInfo) => {
+  test('signing out from the user card ends the session', async ({ browser, request, playwright }, testInfo) => {
     const world = await loungeWorld(request);
+    const fresh = () => playwright.request.newContext();
     const compact = await sessionOnFixture(browser, world.member, COMPACT, world.c1.id, world.c1.name);
     try {
       const { page } = compact;
@@ -391,8 +439,7 @@ test.describe('The Lounge pieces on the community fixture', () => {
       const question = page.getByRole('dialog', { name: 'Sign out?' });
       await expect(question).toBeVisible();
       await shot(page, testInfo, 'p8-sign-out-question');
-      await question.getByRole('button', { name: 'Sign out', exact: true }).click();
-      await expectSignedOut(compact, world.member, world);
+      await confirmSignOutAndExpectEnded(compact, question, world.member, world, fresh);
     } finally {
       await compact.context.close();
     }
@@ -405,8 +452,7 @@ test.describe('The Lounge pieces on the community fixture', () => {
       await allSheet(page).getByRole('button', { name: 'Sign out…', exact: true }).click();
       const question = page.getByRole('dialog', { name: 'Sign out?' });
       await expect(question).toBeVisible();
-      await question.getByRole('button', { name: 'Sign out', exact: true }).click();
-      await expectSignedOut(phone, world.member, world);
+      await confirmSignOutAndExpectEnded(phone, question, world.member, world, fresh);
     } finally {
       await phone.context.close();
     }

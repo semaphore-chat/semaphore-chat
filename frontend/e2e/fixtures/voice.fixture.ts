@@ -337,30 +337,19 @@ export async function waitForAudioFlow(
  * `<audio>` elements to prove they are never re-created must tag them after
  * this: otherwise the late, correct second element looks like a re-created one.
  */
-export async function waitForRemoteAudioElements(
-  listener: Participant,
-  remote: Participant,
-  /**
-   * `soundboard: false`: `remote` joined from a Lounge room card and never mounted the classic bar, which is
-   * where the soundboard track is warmed up (a known gap), so only the mic element is expected.
-   */
-  opts: { soundboard?: boolean } = {},
-): Promise<void> {
-  const soundboard = opts.soundboard ?? true;
-  if (soundboard) {
-    await expect
-      .poll(
-        () =>
-          remote.page.evaluate(() => {
-            const lp = (window.__lkRoom as unknown as {
-              localParticipant: { trackPublications: Map<string, { trackName?: string }> };
-            } | null)?.localParticipant;
-            return !!lp && [...lp.trackPublications.values()].some((pub) => pub.trackName === 'soundboard');
-          }),
-        { timeout: 15_000, message: `${remote.name} never published its soundboard track` },
-      )
-      .toBe(true);
-  }
+export async function waitForRemoteAudioElements(listener: Participant, remote: Participant): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        remote.page.evaluate(() => {
+          const lp = (window.__lkRoom as unknown as {
+            localParticipant: { trackPublications: Map<string, { trackName?: string }> };
+          } | null)?.localParticipant;
+          return !!lp && [...lp.trackPublications.values()].some((pub) => pub.trackName === 'soundboard');
+        }),
+      { timeout: 15_000, message: `${remote.name} never published its soundboard track` },
+    )
+    .toBe(true);
   await expect
     .poll(
       () =>
@@ -380,14 +369,9 @@ export async function waitForRemoteAudioElements(
           });
           return out;
         }, remote.identity),
-      {
-        timeout: 15_000,
-        message: soundboard
-          ? `${listener.name} never rendered one <audio> each for ${remote.name}'s mic and soundboard`
-          : `${listener.name} never rendered one <audio> for ${remote.name}'s mic`,
-      },
+      { timeout: 15_000, message: `${listener.name} never rendered one <audio> each for ${remote.name}'s mic and soundboard` },
     )
-    .toEqual(soundboard ? { mic: 1, soundboard: 1, audioElements: 2 } : { mic: 1, soundboard: -1, audioElements: 1 });
+    .toEqual({ mic: 1, soundboard: 1, audioElements: 2 });
 }
 
 /**
