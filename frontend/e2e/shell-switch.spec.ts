@@ -10,15 +10,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Page, Request } from '@playwright/test';
 import { test, expect, TEST_USER, API_BASE, MEMBER_USER, createWorld, openSession, shot } from './fixtures';
+import { NEW_SHELL_REQUEST } from './fixtures/lounge';
 
 test.describe.configure({ mode: 'serial' });
-
-/**
- * Requests that would mean the new shell or the kit fonts loaded: its modules (dev server) or chunks
- * (build), the kit, or the kit's font families. Not shell/loungeRootChunk.ts: that two-line loader is
- * eager by design (in a build it is part of the entry chunk).
- */
-const NEW_SHELL_REQUEST = /\/src\/shell\/lounge\/|\/assets\/(LoungeRoot|MarkerScreen|kit)-|\/src\/kit\/|bricolage|figtree/i;
 
 /** The viewport meta tag as index.html ships it: this change must not touch it. */
 const VIEWPORT_META = /<meta name="viewport" content="([^"]+)"/.exec(

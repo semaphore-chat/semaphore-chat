@@ -26,7 +26,6 @@ import {
   joinVoiceChannel,
   closeParticipant,
   waitForAudioFlow,
-  waitForRemoteAudioElements,
   expectNoAudioGrowth,
   moderatorMute,
   setMicEnabled,
@@ -36,6 +35,7 @@ import {
   type Participant,
 } from '../fixtures/voice.fixture';
 import { API_BASE } from '../fixtures/auth.fixture';
+import { goTo, countGetUserMedia, tagCall, expectCallUntouched, setAccountNewDesign } from '../fixtures/lounge';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -43,83 +43,12 @@ const CH = 'voice-chat';
 const HEIGHT = 900;
 const POLL = { timeout: 15_000 };
 
-declare global {
-  interface Window {
-    __gumCount?: number;
-    __probeAudios?: HTMLAudioElement[];
-  }
-}
-
-/** Counts getUserMedia calls on this page (a probe for the test only). */
-function countGetUserMedia() {
-  const md = navigator.mediaDevices;
-  if (!md?.getUserMedia) return;
-  const original = md.getUserMedia.bind(md);
-  window.__gumCount = 0;
-  md.getUserMedia = (constraints?: MediaStreamConstraints) => {
-    window.__gumCount = (window.__gumCount ?? 0) + 1;
-    return original(constraints);
-  };
-}
-
-/** An in-app navigation (the hash router): never a page load. */
-async function goTo(page: Page, hashPath: string): Promise<void> {
-  await page.evaluate((hash) => {
-    window.location.hash = hash;
-  }, `#${hashPath}`);
-}
-
 const marker = (page: Page) => page.getByRole('heading', { name: 'New design preview' });
 const voiceBar = (page: Page) => page.getByTestId('voice-bar-controls');
 const micOn = (p: Participant) =>
   p.page.evaluate(
     () => (window.__lkRoom?.localParticipant as unknown as { isMicrophoneEnabled?: boolean } | undefined)?.isMicrophoneEnabled ?? null,
   );
-
-async function setAccountNewDesign(p: Participant, on: boolean): Promise<void> {
-  const res = await p.context.request.patch(`${API_BASE}/appearance-settings`, {
-    headers: { Authorization: `Bearer ${p.accessToken}` },
-    data: { newDesign: on },
-  });
-  if (!res.ok()) throw new Error(`PATCH appearance-settings: ${res.status()} ${await res.text()}`);
-}
-
-/**
- * Tags what must survive every step: the Room object and the remote <audio> elements, once
- * `remote`'s mic and soundboard track both have theirs (the soundboard one can land after audio flows).
- */
-async function tagCall(p: Participant, remote: Participant): Promise<{ gum: number; audioCount: number }> {
-  await waitForRemoteAudioElements(p, remote);
-  return p.page.evaluate(() => {
-    (window.__lkRoom as unknown as Record<string, unknown>).__probe = 'shell-switch';
-    window.__probeAudios = Array.from(document.querySelectorAll('audio'));
-    return { gum: window.__gumCount ?? -1, audioCount: window.__probeAudios.length };
-  });
-}
-
-/** The call is the one tagged: same Room, connected, no new getUserMedia, the same <audio> elements, none paused. */
-async function expectCallUntouched(p: Participant, before: { gum: number; audioCount: number }, step: string) {
-  const now = await p.page.evaluate(() => ({
-    probe: (window.__lkRoom as unknown as Record<string, unknown> | null)?.__probe ?? null,
-    state: window.__lkRoom?.state ?? 'none',
-    gum: window.__gumCount ?? -1,
-    audioCount: document.querySelectorAll('audio').length,
-    sameAudio: (() => {
-      const current = Array.from(document.querySelectorAll('audio'));
-      const tagged = window.__probeAudios ?? [];
-      return tagged.length > 0 && current.length === tagged.length && current.every((el, i) => el === tagged[i] && el.isConnected);
-    })(),
-    anyPaused: Array.from(document.querySelectorAll('audio')).some((el) => el.paused),
-  }));
-  expect(now, step).toEqual({
-    probe: 'shell-switch',
-    state: 'connected',
-    gum: before.gum,
-    audioCount: before.audioCount,
-    sameAudio: true,
-    anyPaused: false,
-  });
-}
 
 test.describe('The call across the shell switch', () => {
   let a: Participant;
