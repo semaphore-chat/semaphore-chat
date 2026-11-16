@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Page, Request } from '@playwright/test';
-import { test, expect, TEST_USER, API_BASE, MEMBER_USER, createWorld, openSession, shot } from './fixtures';
+import { test, expect, TEST_USER, API_BASE, MEMBER_USER, createWorld, openSession, shot, deleteWorlds } from './fixtures';
 import { NEW_SHELL_REQUEST } from './fixtures/lounge';
 
 test.describe.configure({ mode: 'serial' });
@@ -35,6 +35,9 @@ async function setAccountNewDesign(page: Page, token: string, on: boolean): Prom
   });
   expect(res.ok(), `PATCH appearance-settings: ${res.status()}`).toBe(true);
 }
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('Shell switch', () => {
   test('with the new design off, nothing changes and nothing of the new shell is fetched', async ({

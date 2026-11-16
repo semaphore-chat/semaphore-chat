@@ -11,7 +11,7 @@
  * Run: scripts/run-e2e.sh lounge-pieces
  */
 import type { APIRequestContext, BrowserContext, Locator, Page, Request, Response, TestInfo } from '@playwright/test';
-import { test, expect, TEST_USER, API_BASE, openSession, shot, sendSpans, sendTestMessage, createTestCommunity, generateTestName } from './fixtures';
+import { test, expect, TEST_USER, API_BASE, openSession, shot, sendSpans, sendTestMessage, createTestCommunity, generateTestName, deleteWorlds } from './fixtures';
 import { loginViaApi } from './fixtures/auth.fixture';
 import {
   LOUNGE_WHERES,
@@ -82,6 +82,9 @@ async function aroundCount(page: Page): Promise<number> {
   const text = await leftIsland(page).getByText(/^\d+ around$/).textContent();
   return Number.parseInt(text ?? '', 10);
 }
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('The Lounge pieces on the community fixture', () => {
   test("with the new design off the fixture is the old shell's Page not found, and nothing of the new shell loads", async ({

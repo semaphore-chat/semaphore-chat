@@ -3,7 +3,7 @@
  * wide desktop windows, and the drawer fallback on narrower ones.
  */
 
-import { test, expect, TEST_USER } from './fixtures';
+import { test, expect, TEST_USER, deleteWorlds } from './fixtures';
 import {
   createWorld,
   createTestChannel,
@@ -13,6 +13,9 @@ import {
   shot,
   channelUrl,
 } from './fixtures';
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('Release smoke: docked side panel', () => {
   test('thread and pins dock beside the chat, Esc closes, narrow windows use a drawer @smoke', async ({

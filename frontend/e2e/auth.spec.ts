@@ -15,7 +15,11 @@ import {
   createTestCommunity,
   createWorld,
   generateTestName,
+  deleteWorlds,
 } from './fixtures';
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('Authentication', () => {
   test.describe('Login Page', () => {
