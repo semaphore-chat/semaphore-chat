@@ -59,7 +59,7 @@ describe('useChannelChat', () => {
     queryClient.setQueryData(['mentionable', 'c-1'], mentionable);
   });
 
-  function setup(url: string, onPinnedThreadReply?: (id: string) => void) {
+  function setup(url: string, onPinnedThreadReply?: (id: string) => void, chatPath?: string) {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[url]}>{children}</MemoryRouter>
@@ -68,7 +68,7 @@ describe('useChannelChat', () => {
     return renderHook(
       () => {
         const location = useLocation();
-        return { chat: useChannelChat('ch-1', 'c-1', { onPinnedThreadReply }), url: location.pathname + location.search };
+        return { chat: useChannelChat('ch-1', 'c-1', chatPath === undefined ? { onPinnedThreadReply } : { onPinnedThreadReply, chatPath }), url: location.pathname + location.search };
       },
       { wrapper },
     );
@@ -131,5 +131,33 @@ describe('useChannelChat', () => {
     act(() => result.current.chat.jumpToPinnedMessage('pin-reply', { replace: true }));
     expect(onPinnedThreadReply).toHaveBeenCalledWith('parent-1');
     expect(result.current.url).toBe('/community/c-1/channel/ch-1?highlight=parent-1');
+  });
+
+  describe('chatPath (the new shell’s hidden fixture)', () => {
+    const FIXTURE = '/__lounge/community/c-1/channel/ch-1';
+
+    it('clears ?highlight= to the given path, so a fixture stays on the fixture', () => {
+      vi.mocked(useJumpToMessage).mockReturnValue(jumpResult(true) as never);
+      const { result, rerender } = setup(`${FIXTURE}?highlight=m-7`, undefined, FIXTURE);
+      vi.mocked(useJumpToMessage).mockReturnValue(jumpResult(false) as never);
+      rerender();
+      expect(result.current.url).toBe(FIXTURE);
+    });
+
+    it('jumps to a pinned message on the given path', () => {
+      vi.mocked(useJumpToMessage).mockImplementation(((_type: string, _id: string, highlight?: string) => jumpResult(!!highlight)) as never);
+      const { result } = setup(FIXTURE, undefined, FIXTURE);
+      act(() => result.current.chat.jumpToPinnedMessage('pin-1', { replace: false }));
+      expect(result.current.url).toBe(`${FIXTURE}?highlight=pin-1`);
+    });
+
+    it('without it, the old shell’s channel route (as before the option existed)', () => {
+      vi.mocked(useJumpToMessage).mockReturnValue(jumpResult(true) as never);
+      // Even when the page is elsewhere, the default is the channel route, built from the ids.
+      const { result, rerender } = setup('/somewhere?highlight=m-7');
+      vi.mocked(useJumpToMessage).mockReturnValue(jumpResult(false) as never);
+      rerender();
+      expect(result.current.url).toBe('/community/c-1/channel/ch-1');
+    });
   });
 });

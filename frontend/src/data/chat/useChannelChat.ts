@@ -12,6 +12,11 @@ import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 export interface UseChannelChatOptions {
   /** A pinned thread reply was chosen: its parent is being jumped to, then its thread should open. */
   onPinnedThreadReply?: (parentMessageId: string) => void;
+  /**
+   * The chat's own path, where clearing `?highlight=` and a pinned jump lead. Default: the app's channel route,
+   * `/community/:communityId/channel/:channelId` (the old shell). The new shell's hidden fixture passes its own.
+   */
+  chatPath?: string;
 }
 
 /**
@@ -23,8 +28,9 @@ export interface UseChannelChatOptions {
 export function useChannelChat(
   channelId: string,
   communityId: string | undefined,
-  { onPinnedThreadReply }: UseChannelChatOptions = {},
+  { onPinnedThreadReply, chatPath: chatPathOption }: UseChannelChatOptions = {},
 ) {
+  const chatPath = chatPathOption ?? `/community/${communityId}/channel/${channelId}`;
   // Get highlight message ID from URL params
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -65,11 +71,11 @@ export function useChannelChat(
   // re-clicked. Clearing earlier would drop a cold deep link on the floor.
   useEffect(() => {
     if (highlightMessageId && !isJumpPending) {
-      navigate(`/community/${communityId}/channel/${channelId}`, {
+      navigate(chatPath, {
         replace: true,
       });
     }
-  }, [highlightMessageId, isJumpPending, communityId, channelId, navigate]);
+  }, [highlightMessageId, isJumpPending, chatPath, navigate]);
 
   /**
    * Jump to a pinned message (`?highlight=`). A pinned thread reply jumps to
@@ -81,9 +87,9 @@ export function useChannelChat(
     if (pinnedMsg?.parentMessageId) {
       // Thread reply: jump to parent message and open the thread panel
       onPinnedThreadReply?.(pinnedMsg.parentMessageId);
-      navigate(`/community/${communityId}/channel/${channelId}?highlight=${pinnedMsg.parentMessageId}`, navOptions);
+      navigate(`${chatPath}?highlight=${pinnedMsg.parentMessageId}`, navOptions);
     } else {
-      navigate(`/community/${communityId}/channel/${channelId}?highlight=${messageId}`, navOptions);
+      navigate(`${chatPath}?highlight=${messageId}`, navOptions);
     }
   };
 
