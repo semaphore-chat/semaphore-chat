@@ -68,6 +68,29 @@ describe('Composer suggestions', () => {
   });
 });
 
+describe('Composer while an input method composes', () => {
+  it.each([
+    ['isComposing', { isComposing: true }],
+    ['keyCode 229', { keyCode: 229 }],
+  ])('no key reaches the screen or the composer’s own rules (%s)', (_, composing) => {
+    const onKeyDown = vi.fn();
+    const onSubmit = vi.fn();
+    renderWithKit(<Composer label="Message #lobby" value="nihao" onChange={vi.fn()} onSubmit={onSubmit} onKeyDown={onKeyDown} />);
+    const field = screen.getByRole('textbox', { name: 'Message #lobby' });
+    for (const key of ['Escape', 'Enter', 'ArrowUp', 'ArrowDown', 'Tab']) {
+      // Not taken: the input method keeps the key.
+      expect(fireEvent.keyDown(field, { key, ...composing })).toBe(true);
+    }
+    expect(onKeyDown).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    // Composition over: the same keys reach the screen again, and Enter sends.
+    fireEvent.keyDown(field, { key: 'Escape' });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onKeyDown).toHaveBeenCalledTimes(2);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('AttachmentTile on its way', () => {
   it('a queued file is not pressable and has a Remove button', () => {
     const onRemove = vi.fn();

@@ -25,10 +25,11 @@ const SUBMIT: Record<ComposerMode, { label: string; icon: IconName }> = {
 };
 
 /**
- * The keydown of an Enter that only commits an input method's candidate (Japanese, Chinese, Korean). Safari sends
- * it after `compositionend`, with `isComposing` false and the IME's `keyCode` 229, so both are checked.
+ * A keydown that belongs to an input method (Japanese, Chinese, Korean): while it composes, and the Enter that
+ * commits its candidate, which Safari sends after `compositionend` with `isComposing` false and the IME's `keyCode`
+ * 229, so both are checked.
  */
-function committingComposition(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
+function inputMethodKey(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
   return event.nativeEvent.isComposing || event.keyCode === 229;
 }
 
@@ -87,7 +88,7 @@ export interface ComposerProps {
   submitOnEnter?: boolean;
   /**
    * The screen's own keys (mentions list, Escape, ↑ to edit), called first. If it calls `preventDefault`, the
-   * composer does nothing more with that key.
+   * composer does nothing more with that key. Never called while an input method is composing.
    */
   onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
   /** The caret or the selection in the field moved (typing, keys, a tap): a suggestion list follows the caret. */
@@ -291,9 +292,12 @@ export function Composer({
     if (sendable && !sending) onSubmit();
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // While an input method composes, every key is its own (Enter picks a candidate, Escape closes its list, the
+    // arrows move in it): neither the screen's keys nor the composer's run.
+    if (inputMethodKey(event)) return;
     onKeyDown?.(event);
     if (event.defaultPrevented) return;
-    if (submitOnEnter && event.key === 'Enter' && !event.shiftKey && !committingComposition(event)) {
+    if (submitOnEnter && event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       submit();
     }

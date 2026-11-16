@@ -1269,8 +1269,10 @@ A field that grows to a cap and then scrolls (`keyboard` 2 lines, `phone` 4,
 `desktop` 10), a leading attach button, a trailing `emoji` slot and Send. Enter
 sends and Shift+Enter starts a line (off on touch with `submitOnEnter`); text
 being composed with an input method never sends, including the Enter that
-picks a candidate in Safari (`isComposing` or `keyCode` 229). The screen's
-`onKeyDown` runs first and can take a key with `preventDefault`. Send is never
+picks a candidate in Safari (`isComposing` or `keyCode` 229). While an input
+method composes no key reaches the screen's `onKeyDown` either (Escape closes
+the candidate list, it never cancels a reply or an edit). Otherwise the
+screen's `onKeyDown` runs first and can take a key with `preventDefault`. Send is never
 disabled: with nothing to send it reads as unavailable (`onSendUnavailablePress`
 can say why), and while `sending` it is busy, while the field stays editable.
 An unavailable attach button is focusable and `aria-disabled`, and
