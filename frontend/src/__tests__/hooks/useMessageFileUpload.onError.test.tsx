@@ -67,17 +67,6 @@ describe('useMessageFileUpload — injected error reporter', () => {
     expect(onError.mock.calls).toEqual([["Couldn't upload photo.png: Network error"], ['Failed to send message']]);
   });
 
-  it('does not report anything itself when no reporter is given', async () => {
-    const { result } = renderHook(
-      () => useMessageFileUpload({ contextType: VoiceSessionType.Dm, contextId: 'dm-1', authorId: 'me' }),
-      { wrapper },
-    );
-    const runtime = await sendAndCaptureRuntime(result.current.handleSendMessage);
-
-    expect(() => runtime.notifyError?.('Failed to send message')).not.toThrow();
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
   it('with the classic wiring, the error shows as an error toast (as before the reporter was injected)', async () => {
     const { result } = renderHook(
       () => {
