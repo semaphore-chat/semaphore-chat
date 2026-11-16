@@ -396,6 +396,27 @@ describe('MessageInput', () => {
       expect(document.activeElement).toBe(input);
     });
 
+    // #827: the mention goes where the caret is, also after the caret was moved without typing.
+    it('picking a mention after moving the caret with the keyboard inserts it at the caret', async () => {
+      const { user, input } = setup(vi.fn(), MENTION_MEMBERS);
+      await user.type(input, 'hi there');
+      await user.keyboard('{ArrowLeft>5/}');
+      await user.keyboard('@a');
+      await screen.findAllByRole('option');
+      await user.keyboard('{ArrowDown}{Enter}');
+      expect(input.value).toBe('hi @Alan there');
+    });
+
+    it('picking a mention after moving the caret with a tap inserts it at the caret', async () => {
+      const { user, input } = setup(vi.fn(), MENTION_MEMBERS);
+      await user.type(input, 'hi there');
+      await user.pointer({ target: input, offset: 3, keys: '[MouseLeft]' });
+      await user.keyboard('@a');
+      const options = await screen.findAllByRole('option');
+      await user.click(options[1]);
+      expect(input.value).toBe('hi @Alan there');
+    });
+
     it('has no axe violations while the mention dropdown is open', async () => {
       const { user, input, container } = setup(vi.fn(), MENTION_MEMBERS);
 
