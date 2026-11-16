@@ -69,6 +69,12 @@ export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null 
     const root = rootRef.current;
     if (root === null) return;
     target.current = screenTarget(root);
+    const active = document.activeElement;
+    // A dialog or sheet is open (MUI marks the page behind it aria-hidden): never pull focus out of it, not even
+    // to a remembered row.
+    if (active !== null && active.closest('[role="dialog"], [aria-modal="true"]') !== null) {
+      return;
+    }
 
     if (entry || navigation === NavigationType.Pop) {
       const id = rememberedRow(pathname);
@@ -88,6 +94,7 @@ export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null 
         let frames = 0;
         let handle = 0;
         const retry = () => {
+          if (document.activeElement?.closest('[role="dialog"], [aria-modal="true"]')) return;
           if (focusable(row)) {
             row.focus();
             return;
@@ -98,11 +105,6 @@ export function RouteFocus({ rootRef, pathname, title }: RouteFocusProps): null 
         handle = requestAnimationFrame(retry);
         return () => cancelAnimationFrame(handle);
       }
-    }
-    const active = document.activeElement;
-    // A dialog or sheet is open (MUI marks the page behind it aria-hidden): never pull focus out of it.
-    if (active !== null && active.closest('[role="dialog"], [aria-modal="true"]') !== null) {
-      return;
     }
     if (active !== null && root.contains(active) && active.closest('nav') !== null && shown(active)) {
       return;

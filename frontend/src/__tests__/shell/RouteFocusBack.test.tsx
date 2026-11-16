@@ -27,6 +27,9 @@ function Frame(): JSX.Element {
         <h1>{pathname}</h1>
         <button type="button">Back</button>
       </main>
+      <div role="dialog" aria-label="Members">
+        <button type="button">Close</button>
+      </div>
       <RouteFocus rootRef={root} pathname={pathname} title={pathname} />
     </div>
   );
@@ -61,5 +64,14 @@ describe('RouteFocus: Back to a remembered row', () => {
     screen.getByRole('button', { name: 'Back' }).focus();
     act(() => go('/home'));
     expect(screen.getByRole('heading', { name: '/home' })).toHaveFocus();
+  });
+
+  it('never focuses a remembered row behind an open dialog', () => {
+    setup();
+    rememberActivatedRow('/home', 'lobby');
+    act(() => go('/home/lobby'));
+    screen.getByRole('button', { name: 'Close' }).focus();
+    act(() => go(-1));
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
   });
 });
