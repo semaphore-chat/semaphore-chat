@@ -20,7 +20,7 @@ import { ScreenError } from './ScreenError';
 import { ShellEffects } from './ShellEffects';
 import { RouteFocus } from './RouteFocus';
 import { ThreeIslandsFrame } from './ThreeIslandsFrame';
-import { leftLounge, notePathname } from '../../routeMemory';
+import { notePathname } from '../../routeMemory';
 
 type ScreenLoad =
   | { status: 'pending'; promise: Promise<unknown> }
@@ -89,7 +89,6 @@ function ScreenFrame({ choice, rootRef }: { choice: LoungeChoice; rootRef: RefOb
   const onTitle = useCallback((next: string | null) => setTitled({ choice, title: next }), [choice]);
   const routeKey = choice.route.path;
   useLayoutEffect(() => notePathname(pathname), [pathname]);
-  useLayoutEffect(() => leftLounge, []);
 
   return (
     <>

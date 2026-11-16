@@ -208,14 +208,12 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
   it('Back after coming from the community’s home steps back in the history', () => {
     notePathname(FIXTURE_HOME);
     notePathname(FIXTURE_CHAT);
-    window.history.replaceState({ idx: 1 }, '');
     setup({ entries: [FIXTURE_HOME, FIXTURE_CHAT] });
     fireEvent.click(screen.getByRole('button', { name: 'Back to the community' }));
     expect(where()).toBe(FIXTURE_HOME);
   });
 
   it('Back from a cold deep link replaces the entry with the community’s home', () => {
-    window.history.replaceState({ idx: 0 }, '');
     setup({ entries: [`${FIXTURE_CHAT}`] });
     fireEvent.click(screen.getByRole('button', { name: 'Back to the community' }));
     expect(where()).toBe(FIXTURE_HOME);

@@ -129,9 +129,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
 
   // Back (B6): to the community's home. When the screen before this one was that home, it is a step back in the
   // history (its scroll and the channel row's focus come back); a cold deep link replaces this entry instead.
+  // (The app's hash history keeps no index in history.state, so the frame's own record of the Lounge path shown
+  // before this one decides; it is cleared whenever the old shell shows in between.)
   const onBack = useCallback(() => {
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (previousPathname() === homePath && idx > 0) navigate(-1);
+    if (previousPathname() === homePath) navigate(-1);
     else navigate(homePath, { replace: true });
   }, [homePath, navigate]);
 
