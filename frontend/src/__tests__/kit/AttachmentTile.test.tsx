@@ -15,6 +15,13 @@ describe('imageBox', () => {
     expect(width).toBeLessThanOrEqual(IMAGE_MAX.width);
     expect(height).toBeLessThanOrEqual(IMAGE_MAX.height);
   });
+  it('never draws a side under 48 px or over the maximum: extreme shapes get a usable box', () => {
+    expect(imageBox(4000, 10)).toEqual({ width: 320, height: 48 });
+    expect(imageBox(10, 4000)).toEqual({ width: 48, height: 240 });
+    expect(imageBox(10000, 1)).toEqual({ width: 320, height: 48 });
+    expect(imageBox(20, 20)).toEqual({ width: 48, height: 48 });
+  });
+
   it('uses the fallback box when the size is unknown or nonsense', () => {
     expect(imageBox(null, null)).toEqual(IMAGE_FALLBACK);
     expect(imageBox(0, 100)).toEqual(IMAGE_FALLBACK);

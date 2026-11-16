@@ -61,6 +61,22 @@ test('attachment tiles: an image box has its final size before the picture loads
   expect(boxes[1].slice(1)).toEqual(boxes[0].slice(1));
 });
 
+test('attachment tiles: an extreme shape gets a box no side under 48 px, the picture letterboxed inside', async ({ page }) => {
+  await openStory(page, 'kit-attachment-tile--states', PHONE);
+  const drawn = await page.evaluate(() =>
+    ['strip.png', 'pole.png'].map((name) => {
+      const button = document.querySelector(`button[aria-label="Open image ${name}"]`) as HTMLElement;
+      const box = button.getBoundingClientRect();
+      const img = button.querySelector('img') as HTMLImageElement;
+      return [name, Math.round(box.width) >= 48 && Math.round(box.height) >= 48, getComputedStyle(img).objectFit];
+    }),
+  );
+  expect(drawn).toEqual([
+    ['strip.png', true, 'contain'],
+    ['pole.png', true, 'contain'],
+  ]);
+});
+
 test.describe('2,000 kit rows on the shared list core', () => {
   test('open pinned to the bottom, and scroll ten screens without a long task', async ({ page }) => {
     await openStory(page, 'kit-chat-pane--long-history', PHONE);
@@ -87,32 +103,14 @@ test.describe('2,000 kit rows on the shared list core', () => {
 
   test('Tab from the focused row walks its own controls, then leaves the list @keyboard', async ({ page }) => {
     await openStory(page, 'kit-chat-pane--long-history', PHONE);
-    // A row with an image (every tenth row has one), in view: scroll up until one is, let the list settle, then
-    // focus it (in the page, so a re-render between steps cannot detach it first).
+    // The newest row has an image (every tenth row has one, the last included) and the list opens at the bottom, so
+    // no scroll is needed: focus that row as a click would.
     await expect(page.getByRole('list', { name: 'Messages' })).toBeVisible();
     const target = await page.evaluate(async () => {
-      const settle = async (list: HTMLElement) => {
-        let last = -1;
-        for (let i = 0; i < 30 && list.scrollTop !== last; i += 1) {
-          last = list.scrollTop;
-          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        }
-      };
-      const list = document.querySelector('[role="list"][aria-label="Messages"]') as HTMLElement;
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        await settle(list);
-        const view = list.getBoundingClientRect();
-        const row = [...list.querySelectorAll<HTMLElement>('[role="article"]')].find((article) => {
-          const box = article.getBoundingClientRect();
-          return article.querySelector('button[aria-label^="Open image"]') !== null && box.top >= view.top && box.bottom <= view.bottom;
-        });
-        if (row) {
-          row.focus();
-          return row.closest('[data-message-id]')?.getAttribute('data-message-id') ?? null;
-        }
-        list.scrollTop -= list.clientHeight / 3;
-      }
-      return null;
+      for (let f = 0; f < 10; f += 1) await new Promise((r) => requestAnimationFrame(r));
+      const row = document.querySelector<HTMLElement>('[data-message-id="m-1999"] [role="article"]');
+      row?.focus();
+      return row ? 'm-1999' : null;
     });
     expect(target).not.toBeNull();
     const active = () =>
@@ -127,7 +125,12 @@ test.describe('2,000 kit rows on the shared list core', () => {
     await page.keyboard.press('Tab');
     expect(await active()).toEqual({ message: target, what: 'Open' });
     await page.keyboard.press('Tab');
-    const inList = await page.evaluate(() => document.activeElement?.closest('[role="list"]') !== null);
-    expect(inList).toBe(false);
+    const after = await page.evaluate(() => ({
+      inList: document.activeElement?.closest('[role="list"]') !== null,
+      what: document.activeElement?.outerHTML.slice(0, 160),
+    }));
+    // Out of the list: the next Tab stop after it, the composer's field.
+    expect(after.inList, after.what).toBe(false);
+    await expect(page.getByRole('textbox', { name: 'Message #lobby' })).toBeFocused();
   });
 });

@@ -45,6 +45,18 @@ const Body = () => (
       }
     />
     <MessageRow
+      author="kwam3"
+      avatarColour="#6FB1F5"
+      time="8:21 PM"
+      body={<MessageText segments={text('extreme shapes: a 4000×10 strip and a 10×4000 pole, letterboxed in boxes no side under 48 px')} />}
+      attachments={
+        <Stack gap="sm" align="start">
+          <AttachmentTile kind="image" name="strip.png" src={picture(4000, 10, '#FFA366')} width={4000} height={10} onOpen={noop} />
+          <AttachmentTile kind="image" name="pole.png" src={picture(10, 4000, '#5FD49A')} width={10} height={4000} onOpen={noop} />
+        </Stack>
+      }
+    />
+    <MessageRow
       author="gracie"
       avatarColour="#FFA366"
       time="8:22 PM"
@@ -60,7 +72,7 @@ const Body = () => (
   </ChatColumn>
 );
 
-/** Images in boxes sized before they load, unknown size, broken, busy; files with long names. */
+/** Images in boxes sized before they load, unknown size, broken, busy, extreme shapes; files with long names. */
 export const States = () => (
   <OnPalette palette={PALETTES[0]}>
     <Body />

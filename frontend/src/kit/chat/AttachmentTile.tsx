@@ -9,7 +9,7 @@ import { transientProps } from '../theme/transientProps';
 import { Icon } from '../display/Icon';
 import { Spinner } from '../display/Spinner';
 import { useRowTabIndex } from './rowTabScope';
-import { IMAGE_MAX, imageBox } from './attachmentBox';
+import { IMAGE_MAX, IMAGE_MIN_SIDE, imageBox } from './attachmentBox';
 
 export interface AttachmentTileProps {
   /** `image`: a picture, drawn in a box of its known size. `file`: a row with the file's name and size. */
@@ -50,6 +50,8 @@ const ImageButton = styled('button', { shouldForwardProp: transientProps })<{ $o
       width: `${$w}px`,
       maxWidth: '100%',
       aspectRatio: `${$w} / ${$h}`,
+      // A narrow column shrinks the box with its shape, but never under the smallest side (the picture letterboxes).
+      minHeight: `${IMAGE_MIN_SIDE}px`,
       overflow: 'hidden',
       borderRadius: `${tokens.radius.md}px`,
       background: standOutFill(palette, $on),
@@ -61,7 +63,8 @@ const Picture = styled('img')({
   display: 'block',
   width: '100%',
   height: '100%',
-  objectFit: 'cover',
+  // Contain: an extreme shape is letterboxed in its (clamped) box, never cropped to a sliver.
+  objectFit: 'contain',
 });
 
 const Centred = styled('span')(({ theme }) => {
