@@ -114,6 +114,7 @@ export { StageLayout } from './layout/StageLayout';
 export type { StageLayoutProps } from './layout/StageLayout';
 export { MessageRow } from './chat/MessageRow';
 export type { MessageRowFocus, MessageRowProps, MessageState, OpenActionsRequest, OpenActionsVia } from './chat/MessageRow';
+export { useRowTabIndex } from './chat/rowTabScope';
 export { MessageText } from './chat/MessageText';
 export type { MessageTextProps } from './chat/MessageText';
 export type {

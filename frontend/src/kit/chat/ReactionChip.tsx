@@ -8,6 +8,7 @@ import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSur
 import { transientProps } from '../theme/transientProps';
 import { reducedMotion } from '../overlays/surface';
 import { drawnReactionCount } from './reactionCount';
+import { useRowTabIndex } from './rowTabScope';
 
 export interface ReactionChipProps {
   /** The emoji as text (`😂`). For a custom emoji, give `src` and its `:name:` here as the fallback. */
@@ -106,6 +107,7 @@ export function ReactionChip({
   busy = false,
 }: ReactionChipProps): JSX.Element {
   const on = useSurface();
+  const tabIndex = useRowTabIndex();
   const [failed, setFailed] = useState(false);
   const whole = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
   const inactive = unavailable || busy;
@@ -122,6 +124,7 @@ export function ReactionChip({
   return (
     <Root
       type="button"
+      tabIndex={tabIndex}
       aria-label={`${label} reaction, ${whole}`}
       aria-pressed={mine}
       aria-disabled={inactive || undefined}

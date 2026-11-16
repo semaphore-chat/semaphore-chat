@@ -17,6 +17,7 @@ import { buttonLook, type ButtonVariant } from './buttonLook';
 import { Spinner } from '../display/Spinner';
 import { useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
+import { useRowTabIndex } from '../chat/rowTabScope';
 
 export type { ButtonVariant } from './buttonLook';
 
@@ -176,6 +177,8 @@ export function Button({
   children,
 }: ButtonProps): JSX.Element {
   const on = useSurface();
+  // Inside a message row Tab skips (chat/rowTabScope): not a Tab stop. Elsewhere its natural one.
+  const tabIndex = useRowTabIndex();
   const busy = loading && !disabled;
   const describedBy = useDescribedBy(undefined);
   // Disabled wins over loading: a disabled button shows no spinner.
@@ -197,6 +200,7 @@ export function Button({
       ref={ref}
       type={type}
       disabled={disabled}
+      tabIndex={tabIndex}
       onClick={handleClick}
       aria-disabled={busy || (unavailable && !disabled) || undefined}
       aria-busy={busy || undefined}

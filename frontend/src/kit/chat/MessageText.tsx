@@ -8,6 +8,7 @@ import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSur
 import { transientProps } from '../theme/transientProps';
 import { visuallyHidden } from '../theme/a11y';
 import { checkLink, internalHref, stripBidi, type MentionSegment, type MessageSegment, type SegmentStyle } from './messageSegments';
+import { useRowTabIndex } from './rowTabScope';
 
 export interface MessageTextProps {
   segments: readonly MessageSegment[];
@@ -141,10 +142,12 @@ function Mention({
   segment,
   onMention,
   on,
+  tabIndex,
 }: {
   segment: MentionSegment;
   onMention: MessageTextProps['onMention'];
   on: Surface;
+  tabIndex: -1 | undefined;
 }): JSX.Element {
   const look = { $me: segment.me === true, $unavailable: segment.unavailable === true, $on: on };
   if (segment.unavailable === true) {
@@ -166,7 +169,7 @@ function Mention({
       onMention(segment);
     };
     return (
-      <MentionLink {...look} href={href} onClick={follow}>
+      <MentionLink {...look} href={href} onClick={follow} tabIndex={tabIndex}>
         {segment.text}
         {spokenMe}
       </MentionLink>
@@ -174,7 +177,7 @@ function Mention({
   }
   if (onMention !== undefined && segment.kind === 'user') {
     return (
-      <MentionButton {...look} type="button" onClick={() => onMention(segment)}>
+      <MentionButton {...look} type="button" onClick={() => onMention(segment)} tabIndex={tabIndex}>
         {segment.text}
         {spokenMe}
       </MentionButton>
@@ -202,6 +205,7 @@ function renderSegment(
   key: number,
   onMention: MessageTextProps['onMention'],
   on: Surface,
+  tabIndex: -1 | undefined,
 ): ReactNode {
   switch (segment.type) {
     case 'text':
@@ -223,13 +227,13 @@ function renderSegment(
       const link = checkLink(segment.href);
       if (link === null) return <span key={key}>{withStyle(stripBidi(segment.href), segment)}</span>;
       return (
-        <Link key={key} href={link.href} target="_blank" rel="noopener noreferrer">
+        <Link key={key} href={link.href} target="_blank" rel="noopener noreferrer" tabIndex={tabIndex}>
           {withStyle(link.label, segment)}
         </Link>
       );
     }
     case 'mention':
-      return <Mention key={key} segment={segment} onMention={onMention} on={on} />;
+      return <Mention key={key} segment={segment} onMention={onMention} on={on} tabIndex={tabIndex} />;
     case 'emoji':
       return <CustomEmoji key={key} name={segment.name} src={segment.src} />;
   }
@@ -242,5 +246,7 @@ function renderSegment(
  */
 export function MessageText({ segments, onMention }: MessageTextProps): JSX.Element {
   const on = useSurface();
-  return <Root dir="auto">{segments.map((segment, index) => renderSegment(segment, index, onMention, on))}</Root>;
+  // In a message row Tab skips (not the list's focused row), the links and mentions are not Tab stops.
+  const tabIndex = useRowTabIndex();
+  return <Root dir="auto">{segments.map((segment, index) => renderSegment(segment, index, onMention, on, tabIndex))}</Root>;
 }

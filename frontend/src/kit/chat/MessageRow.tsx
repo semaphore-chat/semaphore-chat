@@ -2,6 +2,8 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
+  type FocusEvent,
   type FocusEventHandler,
   type JSX,
   type KeyboardEvent,
@@ -23,6 +25,7 @@ import { reducedMotion } from '../overlays/surface';
 import { Avatar } from '../display/Avatar';
 import { Icon } from '../display/Icon';
 import { Button } from '../controls/Button';
+import { RowTabScopeContext } from './rowTabScope';
 
 export type MessageState = 'sent' | 'pending' | 'failed';
 
@@ -91,8 +94,8 @@ export interface MessageRowProps {
    */
   actions?: ReactNode;
   /**
-   * The row's actions were asked for: a long press on touch, a right-click, or the context-menu key (or
-   * Shift+F10, or a screen reader's "show menu") on the row. The native menu is suppressed, except on a field
+   * The row's actions were asked for: a long press on touch, a right-click, or Enter, the context-menu key (or
+   * Shift+F10, or a screen reader's "show menu") on the row itself. The native menu is suppressed, except on a field
    * (paste and select stay native) and for a long press on a link or button inside the row (copy link).
    */
   onOpenActions?: (request: OpenActionsRequest) => void;
@@ -396,6 +399,8 @@ export function MessageRow({
   const keyAskedAt = useRef<number | null>(null);
   // Ends the ghost-click window after a fired long press is released.
   const ghostTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Focus is somewhere in the row: its controls are Tab stops (rowTabScope).
+  const [focusWithin, setFocusWithin] = useState(false);
   const endGhostWindow = () => {
     if (ghostTimer.current !== null) clearTimeout(ghostTimer.current);
     ghostTimer.current = null;
@@ -511,16 +516,28 @@ export function MessageRow({
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     pointerRef.current = null;
-    const asked = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
+    const asked =
+      event.key === 'ContextMenu' ||
+      (event.key === 'F10' && event.shiftKey) ||
+      // Enter on the focused row: a keyboard that cannot hover has no toolbar, so this is its way to the actions.
+      (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.repeat);
     // Only the row itself: a key on a control inside it (a reaction, a link) is that control's.
     if (asked && onOpenActions !== undefined && event.target === event.currentTarget) {
       event.preventDefault();
-      keyAskedAt.current = event.timeStamp;
+      if (event.key !== 'Enter') keyAskedAt.current = event.timeStamp;
       onOpenActions({ via: 'keyboard' });
       return;
     }
     focus?.onKeyDown?.(event);
   };
+
+  const onFocusCapture = () => setFocusWithin(true);
+  const onBlurCapture = (event: FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node) || !event.currentTarget.contains(next)) setFocusWithin(false);
+  };
+  // Without `focus` the row is not in a roving list: its controls keep their natural Tab stops.
+  const tabActive = focus === undefined || focus.tabStop || focusWithin;
 
   const pending = state === 'pending';
   const failed = state === 'failed';
@@ -551,7 +568,11 @@ export function MessageRow({
       aria-labelledby={`${authorId} ${timeId}`}
       aria-busy={pending || undefined}
       tabIndex={focus === undefined ? undefined : focus.tabStop ? 0 : -1}
+      // The list core's roving focus moves focus to the element carrying this attribute.
+      data-row-focus-target={focus === undefined ? undefined : 'true'}
       onFocus={focus?.onFocus}
+      onFocusCapture={focus === undefined ? undefined : onFocusCapture}
+      onBlurCapture={focus === undefined ? undefined : onBlurCapture}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -564,6 +585,7 @@ export function MessageRow({
       $highlighted={highlighted}
       $on={on}
     >
+      <RowTabScopeContext value={tabActive}>
       <Gutter>
         {continued ? (
           <GutterTime data-reveal="" aria-hidden="true">
@@ -586,7 +608,7 @@ export function MessageRow({
         ) : (
           <Header>
             {onOpenAuthor !== undefined ? (
-              <NameButton id={authorId} type="button" dir="auto" onClick={onOpenAuthor}>
+              <NameButton id={authorId} type="button" dir="auto" onClick={onOpenAuthor} tabIndex={tabActive ? undefined : -1}>
                 {author}
               </NameButton>
             ) : (
@@ -628,6 +650,7 @@ export function MessageRow({
           <SurfaceContext value="surface">{actions}</SurfaceContext>
         </Actions>
       )}
+      </RowTabScopeContext>
     </Root>
   );
 }

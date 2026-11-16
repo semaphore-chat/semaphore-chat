@@ -1093,13 +1093,27 @@ screen reader hears who wrote a continued row. The name is a button when
 `onOpenAuthor` is given; the avatar is a pointer shortcut to the same place and
 is not a Tab stop. The row joins the list's roving focus through `focus` (the
 list owns which row is the one Tab stop). The actions open on a touch long press
-(500 ms, cancelled if the finger moves), a right-click and the context-menu key
-or Shift+F10 on the row, through `onOpenActions`. It is told how they were
+(500 ms, cancelled if the finger moves), a right-click, and Enter, the
+context-menu key or Shift+F10 on the row itself, through `onOpenActions`.
+Enter is how a keyboard that cannot hover (a tablet with a keyboard, which never
+shows the toolbar) reaches the actions; without `onOpenActions` the row leaves
+Enter alone. It is told how they were
 asked (`touch`, `pointer` or `keyboard`), so the screen can pick a Sheet or a
 Menu, and for a right-click or a long press where (`x`, `y` in the viewport), so
 a Menu can open at the cursor. A context menu that no pointer made (a screen
 reader's "show menu", the Menu key) is a `keyboard` request with no point:
 anchor the Menu to the row and return focus to it.
+
+**Tab inside a row.** A message list is one Tab stop: the row that holds the
+list's roving focus (`focus.tabStop`). The controls inside a row (links,
+mentions, reactions, a quote, attachments, Retry and Delete, a footer button,
+the name) are Tab stops only in that row and in a row focus is already in; in
+every other row they are `tabIndex -1`, still pressable and still found by a
+screen reader's own navigation. So Tab from the focused row walks its own
+controls and then leaves the list. A row without `focus` keeps every control a
+Tab stop. Kit controls follow this by themselves; a control you put in a slot
+that is not a kit piece must read `useRowTabIndex` too. The row carries
+`data-row-focus-target`, which the list core's roving focus moves to.
 
 A long press does not start on a link, button or field inside the row: those
 keep their own press (a long press on a link is the browser's "copy link").
