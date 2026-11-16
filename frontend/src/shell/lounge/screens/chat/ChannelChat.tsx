@@ -310,11 +310,22 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
 }
 
 /** The chat's frame before (or instead of) a conversation: the header with Back, and one state. */
-function ChannelChatState({ communityId, title, state }: { communityId: string; title: string | null; state: JSX.Element }): JSX.Element {
+function ChannelChatState({
+  communityId,
+  title,
+  isPrivate,
+  state,
+}: {
+  communityId: string;
+  title: string | null;
+  /** The known channel's privacy (the lock); false while the channel is unknown. */
+  isPrivate: boolean;
+  state: JSX.Element;
+}): JSX.Element {
   const { onBack } = useChatBack(communityId);
   return (
     <ChatPane
-      header={<ChatHeader title={title} isPrivate={false} onBack={onBack} />}
+      header={<ChatHeader title={title} isPrivate={isPrivate} onBack={onBack} />}
       state={state}
     />
   );
@@ -370,10 +381,17 @@ export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
     if (isVoice) noteVoiceChannels([channelId]);
   }, [isVoice, channelId]);
   if (isVoice) {
-    return <ChannelChatState communityId={communityId} title={channel.name} state={<VoiceChannelState communityId={communityId} />} />;
+    return (
+      <ChannelChatState
+        communityId={communityId}
+        title={channel.name}
+        isPrivate={channel.isPrivate === true}
+        state={<VoiceChannelState communityId={communityId} />}
+      />
+    );
   }
   if (status === 'pending') {
-    return <ChannelChatState communityId={communityId} title={null} state={<LoadingRows />} />;
+    return <ChannelChatState communityId={communityId} title={null} isPrivate={false} state={<LoadingRows />} />;
   }
   if (status === 'error') {
     // The list's 403 or 404 reads like the messages' own (a removed member's or a stale link): Try again could never work.
@@ -386,7 +404,7 @@ export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
       ) : (
         <StateMessage title="Couldn't load the channel" action={<Button onClick={refetch}>Try again</Button>} />
       );
-    return <ChannelChatState communityId={communityId} title="Channel" state={state} />;
+    return <ChannelChatState communityId={communityId} title="Channel" isPrivate={false} state={state} />;
   }
   return <ChannelChatBody key={`${communityId}/${channelId}`} communityId={communityId} channelId={channelId} />;
 }

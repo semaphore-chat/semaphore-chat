@@ -154,13 +154,13 @@ const theirs = () => createMessage({ id: 'm-theirs', authorId: 'u-aiko', spans: 
 /** The community's channel list as the screen finds it: the channel's type, missing from it, loading, or failed. */
 type ListState = 'TEXT' | 'VOICE' | 'missing' | 'pending' | 'error' | 'forbidden' | 'notFound';
 
-function setup(messages: Message[], list: ListState = 'TEXT') {
+function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false) {
   conversation.current = makeConversation(messages);
   const queryClient = createTestQueryClient();
   if (list === 'TEXT' || list === 'VOICE' || list === 'missing') {
     queryClient.setQueryData(
       channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }),
-      list === 'missing' ? [] : [createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1', type: list })],
+      list === 'missing' ? [] : [createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1', type: list, isPrivate })],
     );
   } else {
     server.use(
@@ -272,6 +272,19 @@ describe('ChannelChat writes only to a channel known to be a text channel (I1)',
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.queryByRole('article')).toBeNull();
     expect(knownVoiceChannels().has('ch-1')).toBe(true);
+  });
+
+  it('a private voice channel keeps the lock in its header; a public one and an unknown one (loading) show none', () => {
+    const first = setup([theirs()], 'VOICE', true);
+    expect(screen.getByRole('heading', { name: 'Voice channel' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Private channel' })).toBeInTheDocument();
+    first.unmount();
+    const second = setup([theirs()], 'VOICE', false);
+    expect(screen.queryByRole('img', { name: 'Private channel' })).toBeNull();
+    second.unmount();
+    setup([theirs()], 'pending');
+    expect(screen.getByText('Loading messages')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Private channel' })).toBeNull();
   });
 
   it('a channel missing from the list (no access, deleted): reads without a composer, actions or reactions', () => {
