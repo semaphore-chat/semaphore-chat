@@ -1,4 +1,5 @@
 import { Avatar, AvatarStack, type AvatarSize, type Presence as PresenceState } from '../../kit';
+import { PEOPLE_COLOURS } from '../../kit/theme/personColour';
 import { KitStage, Row } from '../fixtures/kitStory';
 
 const SIZES: AvatarSize[] = ['xs', 'sm', 'md', 'lg', 'xl'];
@@ -190,5 +191,58 @@ export const StackSpeakingLight = () => (
 export const StackSpeakingTinted = () => (
   <KitStage mode="dark" base="#0d9488" intensity="vibrant">
     <SpeakingBody />
+  </KitStage>
+);
+
+/** Two-letter names, one per colour, so each face has initials. */
+const NINE = ['Pi Nk', 'Or An', 'Ye Lo', 'Li Me', 'Gr Ee', 'Te Al', 'Bl Ue', 'In Di', 'Pu Rp'];
+
+/**
+ * The nine frozen people colours (`personColour`), in list order: plain, online, away, offline and
+ * speaking, at md and lg, and a speaking stack. Green, lime and teal sit next to the green online
+ * dot and speaking ring.
+ */
+const PeopleColoursBody = () => (
+  <>
+    {(['md', 'lg'] as const).map((size) => (
+      <Row key={size} label={`${size}: the nine colours, in list order`}>
+        {PEOPLE_COLOURS.map((colour, index) => (
+          <Avatar key={colour} size={size} name={NINE[index]} colour={colour} />
+        ))}
+      </Row>
+    ))}
+    {PRESENCES.map((presence) => (
+      <Row key={presence} label={presence}>
+        {PEOPLE_COLOURS.map((colour, index) => (
+          <Avatar key={colour} name={NINE[index]} colour={colour} presence={presence} />
+        ))}
+      </Row>
+    ))}
+    <Row label="Stacks: green, lime and teal talking">
+      <AvatarStack
+        max={4}
+        people={[3, 4, 5, 6].map((index) => ({ name: NINE[index], colour: PEOPLE_COLOURS[index], speaking: index !== 6 }))}
+      />
+      <AvatarStack people={PEOPLE_COLOURS.map((colour, index) => ({ name: NINE[index], colour }))} />
+    </Row>
+  </>
+);
+
+/** Every person colour with each presence, dark. */
+export const PeopleColours = () => (
+  <KitStage mode="dark">
+    <PeopleColoursBody />
+  </KitStage>
+);
+
+export const PeopleColoursLight = () => (
+  <KitStage mode="light">
+    <PeopleColoursBody />
+  </KitStage>
+);
+
+export const PeopleColoursTinted = () => (
+  <KitStage mode="dark" base="#0d9488" intensity="vibrant">
+    <PeopleColoursBody />
   </KitStage>
 );

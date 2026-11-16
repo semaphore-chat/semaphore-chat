@@ -104,6 +104,7 @@ COLOUR_FIELDS = (
     "ink",
     "paper",
     "status",
+    "people",
     "modes",
 )
 COLOUR_INTENSITIES = ("minimal", "balanced", "vibrant")
@@ -120,6 +121,20 @@ COLOUR_MODE_ROLES = (
 )
 COLOUR_MODE_FIELDS = COLOUR_MODE_ROLES + ("accentL", "scrim")
 COLOUR_HEX = re.compile(r"#[0-9a-fA-F]{6}")
+# `colour.people`: the avatar colours of people. Frozen: a person's colour is picked by
+# `fnv1a32(id) mod len`, so any change to this list re-colours everyone in both clients.
+PEOPLE_FIELDS = ("frozen", "colours")
+FROZEN_PEOPLE = (
+    "#FF8FB8",
+    "#FFA366",
+    "#E0C060",
+    "#A6D36A",
+    "#5FD49A",
+    "#5ED1D1",
+    "#6FB1F5",
+    "#9AA0FF",
+    "#C792F0",
+)
 # OKLab lightness and chroma bounds for a `[L, C]` pair.
 LIGHTNESS_MAX = 1
 CHROMA_MAX = 0.4
@@ -231,6 +246,20 @@ def validate_colour(data: object) -> dict:
     status = _exact("colour.status", data["status"], COLOUR_STATUS)
     for name in COLOUR_STATUS:
         _hex_colour(f"colour.status.{name}", status[name])
+    people = _exact("colour.people", data["people"], PEOPLE_FIELDS)
+    if not isinstance(people["frozen"], str) or not people["frozen"].strip():
+        _fail("colour.people.frozen", "expected the note that the list is frozen")
+    colours = people["colours"]
+    if not isinstance(colours, list):
+        _fail("colour.people.colours", f"expected a list, got {colours!r}")
+    for index, value in enumerate(colours):
+        _hex_colour(f"colour.people.colours[{index}]", value)
+    if tuple(colours) != FROZEN_PEOPLE:
+        _fail(
+            "colour.people.colours",
+            "the list is frozen: changing, adding, removing or reordering a colour re-colours "
+            "every person (see design/guide/tokens-and-colour.md)",
+        )
     modes = _exact("colour.modes", data["modes"], COLOUR_MODES)
     for name in COLOUR_MODES:
         _colour_mode(f"colour.modes.{name}", modes[name])
@@ -697,6 +726,9 @@ def render_colour_params_ts(sources: dict) -> str:
         f"    {name}: {_ts_string(colour['status'][name])}," for name in COLOUR_STATUS
     )
     lines.append("  },")
+    lines.append(
+        "  people: [" + ", ".join(_ts_string(c) for c in colour["people"]["colours"]) + "],"
+    )
     lines.append("  modes: {")
     for mode in COLOUR_MODES:
         lines.append(f"    {mode}: {{")
@@ -775,6 +807,13 @@ def render_colour_params_rs(sources: dict) -> str:
         "/// `colour.status`: positive, warning and danger as `0xRRGGBB`.",
         f"pub const STATUS: [u32; 3] = [{status}];",
         "",
+        "/// `colour.people.colours`: people's avatar colours as `0xRRGGBB`, frozen. A person's",
+        "/// colour is `PEOPLE[fnv1a32(utf8(id)) % 9]` (see `design/vectors/person-colour.json`).",
+        # rustfmt's layout for an array of short literals: one indented line, trailing comma.
+        f"pub const PEOPLE: [u32; {len(colour['people']['colours'])}] = [",
+        "    " + " ".join(_rs_rgb(c) + "," for c in colour["people"]["colours"]),
+        "];",
+        "",
         "/// One mode's derivation parameters.",
         "#[derive(Debug, Clone, Copy, PartialEq)]",
         "pub struct ModeParams {",
@@ -835,6 +874,88 @@ def render_colour_vectors_rs(sources: dict) -> str:
 
 
 OUTPUTS[COLOUR_RS_VECTORS_OUTPUT] = render_colour_vectors_rs
+
+PERSON_VECTORS_OUTPUT = Path("design") / "vectors" / "person-colour.json"
+PERSON_TS_OUTPUT = Path("frontend/src/theme/generated/personColourVectors.ts")
+# Ids for the person-colour vectors: empty, short ASCII, case, UUIDs and cuids as the API sends them,
+# and non-ASCII (the hash runs over UTF-8 bytes, not UTF-16 code units).
+PERSON_VECTOR_IDS = [
+    "",
+    "a",
+    "A",
+    "foobar",
+    "alexk",
+    "3f2b8c1e-9d4a-4e6b-8f1c-2a7d5e9b0c13",
+    "3F2B8C1E-9D4A-4E6B-8F1C-2A7D5E9B0C13",
+    "00000000-0000-0000-0000-000000000000",
+    "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "a8098c1a-f86e-11da-bd1a-00112444be1e",
+    "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "0b1c2d3e-4f50-4617-8899-aabbccddeeff",
+    "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+    "c56a4180-65aa-42ec-a945-5fd21dec0538",
+    "e7f3a9b2-1c4d-4f8e-9a6b-3d2c1b0a9f8e",
+    "1d5e7f9a-3b2c-4d6e-8f0a-1b3c5d7e9f2a",
+    "9b8a7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d",
+    "4a6c8e0f-2b4d-4f6a-8c0e-2a4c6e8f0b1d",
+    "clx1q2w3e0000abcd1234efgh",
+    "ckz9y8x7w0001mnop5678qrst",
+    "cm3k5l7j90002uvwx9012yzab",
+    "cl0a1b2c30003cdef3456ghij",
+    "zoë",
+    "José",
+    "Ångström",
+    "名前",
+    "😀",
+    "dropbear 🎮",
+    "user_with_underscore",
+    "a much longer id with spaces, punctuation; and more words in it",
+]
+
+
+def person_vectors() -> list[dict]:
+    """Each id with its FNV-1a hash, list index and colour, from `colour_ref`, the definition."""
+    import colour_ref
+
+    vectors = []
+    colours = colour_ref.PARAMS["people"]["colours"]
+    for user_id in PERSON_VECTOR_IDS:
+        h = colour_ref.fnv1a32(user_id.encode("utf-8"))
+        colour = colour_ref.person_colour(user_id)
+        vectors.append(
+            {
+                "id": user_id,
+                "fnv1a32": f"0x{h:08x}",
+                "index": None if colour is None else h % len(colours),
+                "colour": colour,
+            }
+        )
+    return vectors
+
+
+def render_person_vectors(sources: dict) -> str:
+    """The shared person-colour vectors as JSON (UTF-8, not escaped)."""
+    return json.dumps(person_vectors(), indent=2, ensure_ascii=False) + "\n"
+
+
+def render_person_vectors_ts(sources: dict) -> str:
+    """The same vectors for the web client (its test container mounts only frontend/)."""
+    lines = [
+        COLOUR_HEADER,
+        "// A copy of design/vectors/person-colour.json; `gen_tokens.py --check` keeps them equal.",
+        "",
+        "export const personColourVectors: readonly {",
+        "  id: string;",
+        "  fnv1a32: string;",
+        "  index: number | null;",
+        "  colour: string | null;",
+        "}[] = " + json.dumps(person_vectors(), indent=2, ensure_ascii=False) + ";",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+OUTPUTS[PERSON_VECTORS_OUTPUT] = render_person_vectors
+OUTPUTS[PERSON_TS_OUTPUT] = render_person_vectors_ts
 
 
 def _encoded(text: str) -> bytes:

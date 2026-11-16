@@ -83,6 +83,7 @@ export { ESCAPE_PRIORITY, useScreenEscape, useScreenFocusTarget } from './behavi
 export { useAnnounce } from './behaviour/hosts/announce';
 export { useToastClearance, useToasts } from './behaviour/hosts/toasts';
 export { useKitPalette } from './theme/useKitPalette';
+export { personColour } from './theme/personColour';
 export type { Palette as KitPalette } from '../theme/derive/derivePalette';
 export type { ToastRequest, Toasts } from './behaviour/hosts/toasts';
 export { useListFocus } from './behaviour/hosts/listFocus';

@@ -29,6 +29,7 @@ import {
   ReactionChip,
   Stack,
   Text,
+  personColour,
   useAnnounce,
   type MentionSegment,
   type MessageRowFocus,
@@ -378,6 +379,8 @@ function ChatRowBody({
       <MessageRow
         author={view.author}
         avatarSrc={view.webhookAvatar ?? avatar ?? undefined}
+        // A person's colour from their id; a webhook keeps the neutral fill.
+        avatarColour={isWebhook ? undefined : personColour(authorId)}
         time={view.time}
         dateTime={view.dateTime}
         timeLabel={view.timeLabel}

@@ -139,5 +139,32 @@ class ContrastRulesTest(unittest.TestCase):
                     check("onDanger", "danger", 4.5)
 
 
+
+class PersonColourTest(unittest.TestCase):
+    def test_fnv1a32_published_values(self):
+        self.assertEqual(ref.fnv1a32(b""), 0x811C9DC5)
+        self.assertEqual(ref.fnv1a32(b"a"), 0xE40C292C)
+        self.assertEqual(ref.fnv1a32(b"foobar"), 0xBF9CF968)
+
+    def test_missing_or_empty_id_has_no_colour(self):
+        self.assertIsNone(ref.person_colour(""))
+        self.assertIsNone(ref.person_colour(None))
+
+    def test_hashes_utf8_bytes(self):
+        colours = ref.PARAMS["people"]["colours"]
+        self.assertEqual(ref.person_colour("zoë"), colours[ref.fnv1a32("zoë".encode("utf-8")) % 9])
+
+    def test_every_colour_reads_with_dark_ink_in_both_modes(self):
+        # The avatar's inks are the palette's ground and text; the darker of the two must reach 4.5
+        # on every person colour unchanged, in dark and in light, so the kit never nudges them.
+        for colour in ref.PARAMS["people"]["colours"]:
+            for mode in ("dark", "light"):
+                palette = ref.derive("#8E75FF", mode, "minimal")
+                inks = [ref.parse(palette["ground"]), ref.parse(palette["text"])]
+                darker = min(inks, key=ref.luminance)
+                with self.subTest(colour=colour, mode=mode):
+                    self.assertGreaterEqual(ref.contrast(darker, ref.parse(colour)), 4.5)
+
+
 if __name__ == "__main__":
     unittest.main()

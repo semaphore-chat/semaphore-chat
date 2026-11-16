@@ -38,6 +38,7 @@ export const colourParams = {
     warning: '#FFB84D',
     danger: '#FF6B7D',
   },
+  people: ['#FF8FB8', '#FFA366', '#E0C060', '#A6D36A', '#5FD49A', '#5ED1D1', '#6FB1F5', '#9AA0FF', '#C792F0'],
   modes: {
     dark: {
       ground: [0.183, 0.004],

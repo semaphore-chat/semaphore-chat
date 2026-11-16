@@ -6,7 +6,7 @@
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { KitProvider } from '../../../kit';
+import { KitProvider, personColour } from '../../../kit';
 import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChatComposer } from '../../../shell/lounge/screens/chat/ChatComposer';
 import {
@@ -75,6 +75,11 @@ function setup({ replyTo = null as Message | null } = {}) {
   );
   const field = () => screen.getByRole('textbox', { name: 'Message #lobby' }) as HTMLTextAreaElement;
   return { ...view, field, onCancelReply, inputRef };
+}
+
+function hexToRgb(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 describe('ChatComposer', () => {
@@ -176,6 +181,15 @@ describe('ChatComposer', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(sendSpy).not.toHaveBeenCalled();
     expect(field()).toHaveFocus();
+  });
+
+  it("a person in the mention list wears personColour(their id)", async () => {
+    const { user, field } = setup();
+    await user.type(field(), 'hi @al');
+    await screen.findByRole('listbox', { name: 'Mention suggestions' });
+    const faces = screen.getAllByText('AL');
+    const colours = faces.map((face) => getComputedStyle(face).backgroundColor);
+    expect(colours).toEqual(expect.arrayContaining([hexToRgb(personColour('u-alice')!), hexToRgb(personColour('u-alan')!)]));
   });
 
   it('a mention picked by a tap after moving the caret goes in at the caret', async () => {

@@ -12,6 +12,7 @@ import {
   useAnnounce,
   useKeyboardInset,
   useToasts,
+  personColour,
   useWidthRange,
   type ComposerBanner,
   type ComposerNotice,
@@ -40,7 +41,7 @@ function toSuggestion(mention: MentionSuggestion): Suggestion {
     key: `${mention.type}:${mention.id}`,
     label: mention.displayName,
     detail: mention.subtitle,
-    ...(mention.type === 'user' ? { avatar: {} } : { icon: mention.type === 'alias' ? 'Users' : 'Megaphone' }),
+    ...(mention.type === 'user' ? { avatar: { colour: personColour(mention.id) } } : { icon: mention.type === 'alias' ? 'Users' : 'Megaphone' }),
   };
 }
 

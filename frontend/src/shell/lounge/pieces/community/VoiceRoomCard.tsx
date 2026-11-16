@@ -9,7 +9,7 @@
  * (`useChannelPermissions(...).can('connect')`).
  */
 import { memo, useCallback, useMemo, useState, type JSX } from 'react';
-import { AvatarStack, Button, Card, Icon, Pill, Stack, Text, useWidthRange } from '../../../../kit';
+import { AvatarStack, Button, Card, Icon, Pill, Stack, Text, personColour, useWidthRange } from '../../../../kit';
 import type { Channel } from '../../../../types/channel.type';
 import { useVoiceRoomPeople, useJoinVoiceRoom } from '../../../../data/voiceRoom';
 import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
@@ -57,6 +57,7 @@ function VoiceRoomCardView({
   const stack = people.map((p) => ({
     name: p.name,
     src: p.src,
+    colour: personColour(p.id),
     speaking: youAreHere && speaking.has(p.id),
   }));
 

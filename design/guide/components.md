@@ -462,15 +462,21 @@ initials show. Punctuation and symbols at the start of a name are skipped, so
 |---|---|---|---|
 |`name`|text|none (required)|Who it is. It is the accessible name and the source of the initials.|
 |`src`|an image address|none|The picture, shown over the initials.|
-|`colour`|a colour as `#rrggbb`|none|The person's or community's own colour. Without it the avatar uses the neutral fill.|
+|`colour`|a colour as `#rrggbb`|none|The person's or community's own colour. Without it the avatar uses the neutral fill. For a person, pass `personColour(their user id)`.|
 |`size`|`xs`, `sm`, `md`, `lg`, `xl`|`md`|20, 28, 36, 44 or 64 pixels. See Avatar sizes in the Tokens and colour chapter.|
 |`shape`|`circle`, `rounded`|`circle`|`circle` for people, `rounded` for communities.|
 |`presence`|`online`, `away`, `offline`, `speaking`|none|The dot or ring, and the state in the accessible name.|
 |`decorative`|true, false|false|Hides the avatar from screen readers. Use it only when the person's name is written right beside it.|
 
+A person's Avatar in a screen always gets `colour={personColour(id)}`, with
+their user id, so everyone keeps one colour on every screen and in both clients
+(see People colours in the Tokens and colour chapter). A person with no id and a
+webhook keep the neutral fill.
+
 Stories: `kit-avatar--sizes`, `kit-avatar--presence`,
 `kit-avatar--communities`, `kit-avatar--fallbacks`, `kit-avatar--transparent-image`,
-`kit-avatar--sizes-light`, `kit-avatar--presence-tinted`.
+`kit-avatar--sizes-light`, `kit-avatar--presence-tinted`, `kit-avatar--people-colours`,
+`kit-avatar--people-colours-light`, `kit-avatar--people-colours-tinted`.
 
 ## AvatarStack
 
