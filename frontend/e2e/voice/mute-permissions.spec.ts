@@ -110,7 +110,16 @@ test.describe('Mute permissions & rapid toggles', () => {
     await waitForAudioFlow(owner, target, { timeout: 30_000 });
   });
 
-  test('a moderator mute within a second of joining: after the unmute the owner hears the target again (#815)', async () => {
+  // #815, still open. With the browsers and LiveKit limited to 1 CPU, the mute regularly lands while the target's
+  // soundboard warm-up is being published: LiveKit refuses it ("no permission to publish mediaTrack source
+  // UNKNOWN") and livekit-client only gives up on that publish 10-20 s later. Seen in 2 x 10 runs (2026-11-16):
+  //   - the target was heard again in 19 of 20; once, the mic republished after the unmute showed up twice under
+  //     one track id on the server and was unpublished when the refused soundboard publish timed out, so the owner
+  //     heard nothing (the issue's symptom);
+  //   - the soundboard track came back only after that timeout (the warm-up then publishes again), past this
+  //     test's waits in 5-6 of 10.
+  // Passes on an unthrottled machine. Run it with `--grep=#815` and the CPU limits (pr-9a report) when fixing #815.
+  test.fixme('a moderator mute within a second of joining: after the unmute the owner hears the target again (#815)', async () => {
     owner = await launchParticipant(TEST_USER, 'sample-a.wav');
     target = await launchParticipant(TEST_USER_2, 'sample-b.wav');
     await joinVoiceChannel(owner, CH);
