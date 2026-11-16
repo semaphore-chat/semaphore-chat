@@ -62,11 +62,10 @@ If a second style is ever offered, it will be an appearance option that the
 owner decides.
 
 Carried by: the text styles `name`, `body` and `meta`, and the Avatar sizes,
-in [Tokens and colour](tokens-and-colour.md). The message row is built from
-those pieces and is not a kit component yet.
+in [Tokens and colour](tokens-and-colour.md), and the kit's MessageRow (see
+[Components](components.md#messagerow)).
 
-Story: `kit-list-row--people` shows the same density: one picture, one name,
-one small line.
+Story: `kit-message-row--states`.
 
 ## 5. Colour comes from roles, and roles come from one base colour
 

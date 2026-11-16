@@ -53,6 +53,8 @@ export { Toast } from './display/Toast';
 export type { ToastProps, ToastTone } from './display/Toast';
 export { ListRow } from './lists/ListRow';
 export type { ListRowProps } from './lists/ListRow';
+export { ListSeparator } from './lists/ListSeparator';
+export type { ListSeparatorProps, ListSeparatorVariant } from './lists/ListSeparator';
 export { Table } from './lists/Table';
 export type { TableColumn, TableProps, TableRow } from './lists/Table';
 export { Menu } from './overlays/Menu';
@@ -110,3 +112,24 @@ export { SettingsLayout } from './layout/SettingsLayout';
 export type { SettingsLayoutProps } from './layout/SettingsLayout';
 export { StageLayout } from './layout/StageLayout';
 export type { StageLayoutProps } from './layout/StageLayout';
+export { MessageRow } from './chat/MessageRow';
+export type { MessageRowFocus, MessageRowProps, MessageState, OpenActionsRequest, OpenActionsVia } from './chat/MessageRow';
+export { MessageText } from './chat/MessageText';
+export type { MessageTextProps } from './chat/MessageText';
+export type {
+  CodeBlockSegment,
+  CodeSegment,
+  EmojiSegment,
+  LinkSegment,
+  MentionKind,
+  MentionSegment,
+  MessageSegment,
+  SegmentStyle,
+  TextSegment,
+} from './chat/messageSegments';
+export { ReactionChip } from './chat/ReactionChip';
+export type { ReactionChipProps } from './chat/ReactionChip';
+export { Composer } from './chat/Composer';
+export type { ComposerBanner, ComposerCap, ComposerMode, ComposerNotice, ComposerPopup, ComposerProps } from './chat/Composer';
+export { JumpToLatest } from './chat/JumpToLatest';
+export type { JumpToLatestProps } from './chat/JumpToLatest';
