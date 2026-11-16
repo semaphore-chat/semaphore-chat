@@ -69,6 +69,14 @@ async function sessionOnFixture(
   return { context, page, token };
 }
 
+/** The server's unread count of `channelId` for the holder of `token` (0 when it has no entry). */
+async function serverUnreadCount(request: APIRequestContext, token: string, channelId: string): Promise<number> {
+  const res = await request.get(`${API_BASE}/read-receipts/unread-counts`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok()) throw new Error(`GET /read-receipts/unread-counts: ${res.status()}`);
+  const rows = (await res.json()) as Array<{ channelId?: string | null; unreadCount: number }>;
+  return rows.find((row) => row.channelId === channelId)?.unreadCount ?? 0;
+}
+
 /** The "N around" count of the left island's header. */
 async function aroundCount(page: Page): Promise<number> {
   const text = await leftIsland(page).getByText(/^\d+ around$/).textContent();
@@ -287,6 +295,10 @@ test.describe('The Lounge pieces on the community fixture', () => {
         await expect(header(page, world.c1.name)).toBeVisible(EVENTUAL);
         await expect(lobby()).toBeFocused(EVENTUAL);
         await expect(lobby()).not.toHaveAccessibleName(/unread/, EVENTUAL);
+        // The row is cleared in the cache the moment the message is seen; the server must record the read too, even
+        // though Back came within the read's 1 s debounce (it was dropped, and the next refetch of the counts, e.g.
+        // a mention from a test running alongside, brought "unread" back).
+        await expect.poll(() => serverUnreadCount(request, world.owner.token, world.c1.lobbyId), EVENTUAL).toBe(0);
         await expect(page).toHaveURL(loungeUrl(where, world.c1.id));
         await shot(page, testInfo, `p5-back-on-the-row-${where}`);
       } finally {

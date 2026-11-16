@@ -450,19 +450,55 @@ describe('useMessageVisibility', () => {
     });
   });
 
+  // A read waiting on the debounce has already cleared the badge in the cache,
+  // so leaving the conversation must send it, not drop it: a dropped read
+  // leaves the server's count unread, and the next refetch of the counts (any
+  // socket event, a window focus, a reload) brings the badge back.
   describe('cleanup', () => {
-    it('does not emit after unmount', () => {
+    it('sends the pending read at once on unmount, and only once', () => {
+      seedUnreadData([
+        { channelId: 'ch-1', unreadCount: 1, mentionCount: 0 } as UnreadCountDto,
+      ]);
+      const { result, unmount } = renderVisibility({ channelId: 'ch-1' });
+
+      act(() => result.current.markAsRead('msg-1'));
+      expect(getUnreadData()![0].unreadCount).toBe(0);
+      unmount();
+
+      expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emit).toHaveBeenCalledWith(ClientEvents.MARK_AS_READ, {
+        lastReadMessageId: 'msg-1',
+        channelId: 'ch-1',
+      });
+
+      act(() => vi.advanceTimersByTime(1000));
+      expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends nothing on unmount when no read is pending', () => {
+      const { result, unmount } = renderVisibility({ channelId: 'ch-1' });
+
+      act(() => result.current.markAsRead('msg-1'));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+
+      unmount();
+      act(() => vi.advanceTimersByTime(1000));
+      expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not send a background-tab read on unmount', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
       const { result, unmount } = renderVisibility({ channelId: 'ch-1' });
 
       act(() => result.current.markAsRead('msg-1'));
       unmount();
-
       act(() => vi.advanceTimersByTime(1000));
 
       expect(mockSocket.emit).not.toHaveBeenCalled();
     });
 
-    it('cancels pending debounce when channelId changes', () => {
+    it('sends the pending read for the old channel when channelId changes, never for the new one', () => {
       const { result, rerender } = renderHook(
         ({ channelId }: { channelId: string }) =>
           useMessageVisibility({ channelId }),
@@ -472,19 +508,26 @@ describe('useMessageVisibility', () => {
         },
       );
 
-      // Start a debounce on ch-1
       act(() => result.current.markAsRead('msg-1'));
-
-      // Switch channel before debounce fires
       rerender({ channelId: 'ch-2' });
 
-      // Old timer fires — should NOT emit for ch-1
-      act(() => vi.advanceTimersByTime(1000));
+      expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emit).toHaveBeenCalledWith(ClientEvents.MARK_AS_READ, {
+        lastReadMessageId: 'msg-1',
+        channelId: 'ch-1',
+      });
 
-      expect(mockSocket.emit).not.toHaveBeenCalledWith(
-        ClientEvents.MARK_AS_READ,
-        expect.objectContaining({ channelId: 'ch-1' }),
-      );
+      // The old timer is gone; ch-2 gets its own reads only.
+      act(() => vi.advanceTimersByTime(1000));
+      expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+
+      act(() => result.current.markAsRead('msg-2'));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(mockSocket.emit).toHaveBeenCalledTimes(2);
+      expect(mockSocket.emit).toHaveBeenLastCalledWith(ClientEvents.MARK_AS_READ, {
+        lastReadMessageId: 'msg-2',
+        channelId: 'ch-2',
+      });
     });
   });
 });
