@@ -2,8 +2,9 @@
  * The community switcher in the frame's dock slot (design §3.1): the Inbox, every community the server
  * lists for this user (a mention count, or the new-messages dot), and "All communities", which opens the
  * sheet. One keyboard list (`useListFocus`, horizontal): a single Tab stop, Left/Right/Home/End and
- * typeahead. Each community is a link to its route (a hash link: the router's transition applies). On a
- * phone the Dock is the bottom bar; at compact and wide it sits above the left island (ThreeIslands).
+ * typeahead. Each community is a link to its route (a hash link: the router's transition applies; a test
+ * fixture may point it elsewhere, `../links`). On a phone the Dock is the bottom bar; at compact and wide it
+ * sits above the left island (ThreeIslands).
  *
  * `ShellDock` is the view (closed props, stories); `ShellDockConnected` reads `src/data`.
  */
@@ -22,6 +23,7 @@ import {
 } from '../../../kit';
 import { useMyCommunities } from '../../../data/myCommunities';
 import { useUnreadSummary } from '../../../data/unread';
+import { useLoungeLinks } from '../links';
 import { LOUNGE_ROW_ATTRIBUTE, rememberActivatedRow } from '../frame/routeMemory';
 import { CommunityPictureProbes } from './communityPictures';
 import { useCommunityPictures } from './useCommunityPictures';
@@ -79,6 +81,7 @@ function markRow(id: string): (element: HTMLElement | null) => void {
 interface CommunityItemProps {
   id: string;
   name: string;
+  href: string;
   src: string | undefined;
   mentions: number;
   newMessages: boolean;
@@ -99,13 +102,13 @@ function shallowEqual(a: object, b: object): boolean {
  * `focus` is a new object each render with the same contents, so it is compared by contents).
  */
 const CommunityItem = memo(
-  function CommunityItem({ id, name, src, mentions, newMessages, current, focus }: CommunityItemProps): JSX.Element {
+  function CommunityItem({ id, name, href, src, mentions, newMessages, current, focus }: CommunityItemProps): JSX.Element {
     return (
       <DockItem
         ref={markRow(id)}
         name={name}
         src={src}
-        href={`#/community/${id}`}
+        href={href}
         current={current}
         unread={mentions}
         unreadLabel="mentions"
@@ -133,6 +136,7 @@ export function ShellDock({
   onActivate,
 }: ShellDockProps): JSX.Element {
   const shown = status === 'ready' ? communities : NONE;
+  const links = useLoungeLinks();
   // The rows change only when the ids or names do, not on every count change.
   const rowKey = shown.map((community) => `${community.id}\u0000${community.name}`).join('\u0001');
   const rows = useMemo(
@@ -189,6 +193,7 @@ export function ShellDock({
           key={community.id}
           id={community.id}
           name={community.name}
+          href={links.community(community.id)}
           src={community.src}
           mentions={community.mentions}
           newMessages={community.newMessages}

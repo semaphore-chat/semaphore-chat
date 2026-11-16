@@ -5,6 +5,9 @@
  * A phone shows the left pane (a community home) and no user card.
  */
 import type { JSX } from 'react';
+import { useConfirmDestructive } from '../../kit';
+import { SIGN_OUT_DESCRIPTION, SIGN_OUT_LABEL, SIGN_OUT_TITLE } from '../../shell/lounge/pieces/signOutText';
+import { ClickOnMount } from '../fixtures/interactions';
 import { CommunityLeftView, type CommunityLeftViewProps } from '../../shell/lounge/pieces/community/CommunityLeft';
 import { VoiceRoomCard, type VoiceRoomCardProps } from '../../shell/lounge/pieces/community/VoiceRoomCard';
 import { UserCard } from '../../shell/lounge/pieces/community/UserCard';
@@ -45,9 +48,35 @@ interface LeftOptions {
   rooms?: VoiceRoomCardProps[];
   user?: typeof USER_IN_CALL | null;
   members?: boolean;
+  /** Open the user card's account menu; `signOut` goes on to its Sign out… (the question). */
+  account?: 'menu' | 'signOut';
 }
 
-function Left({ mode, view, channels, rooms = [SQUAD_HERE, AFK], user = USER_IN_CALL, members = false }: LeftOptions): JSX.Element {
+/** The sign-out question as the connected card asks it; nothing is signed out in a story. */
+const NEVER = () => new Promise<void>(() => undefined);
+
+/**
+ * What the account stories press. Module-level so their identity never changes: ClickOnMount runs again
+ * when `find` changes, and a new function each render would press again on every render (a loop).
+ */
+const findAccountMenu = (): HTMLElement | null => document.querySelector<HTMLElement>('button[aria-label="Account menu"]');
+const findSignOutItem = (): HTMLElement | null =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'Sign out…') ?? null;
+
+/** The user card with the sign-out question as the connected card asks it (inside the page's KitProvider). */
+function StoryUserCard({ user, account }: { user: typeof USER_IN_CALL; account?: LeftOptions['account'] }): JSX.Element {
+  const signOut = useConfirmDestructive({ title: SIGN_OUT_TITLE, description: SIGN_OUT_DESCRIPTION, confirmLabel: SIGN_OUT_LABEL, run: NEVER });
+  return (
+    <>
+      <UserCard {...user} onSignOut={signOut.request} />
+      {signOut.dialog}
+      {account && <ClickOnMount find={findAccountMenu} />}
+      {account === 'signOut' && <ClickOnMount find={findSignOutItem} />}
+    </>
+  );
+}
+
+function Left({ mode, view, channels, rooms = [SQUAD_HERE, AFK], user = USER_IN_CALL, members = false, account }: LeftOptions): JSX.Element {
   const userShown = useUserCardShown();
   return (
     <CommunityPage
@@ -70,7 +99,7 @@ function Left({ mode, view, channels, rooms = [SQUAD_HERE, AFK], user = USER_IN_
           ))}
         />
       }
-      leftFooter={userShown && user ? <UserCard {...user} /> : undefined}
+      leftFooter={userShown && user ? <StoryUserCard user={user} account={account} /> : undefined}
       right={
         members ? (
           <MembersIsland
@@ -188,3 +217,9 @@ export const UserServerMuted = () => <Left user={USER_SERVER_MUTED} />;
 
 /** In a call with push-to-talk on V. */
 export const UserPushToTalk = () => <Left user={{ ...USER_IN_CALL, call: { mic: 'pushToTalk', deafened: false, keyLabel: 'V' } }} />;
+
+/** The user card's account menu open: Settings, Your profile, Sign out…. A phone has no user card (the All sheet has these). */
+export const AccountMenu = () => <Left user={USER_IDLE} account="menu" />;
+
+/** Sign out… asks first: the question over the screen. Cancel returns to the account menu's button. */
+export const SignOutQuestion = () => <Left user={USER_IDLE} account="signOut" />;

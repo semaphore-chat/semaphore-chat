@@ -8,6 +8,7 @@ import { screen, within } from '@testing-library/react';
 import { renderWithKit } from '../../test-utils/renderWithKit';
 import { ShellDock, type ShellDockProps } from '../../../shell/lounge/pieces/ShellDock';
 import { LOUNGE_ROW_ATTRIBUTE } from '../../../shell/lounge/frame/routeMemory';
+import { LoungeLinksContext } from '../../../shell/lounge/links';
 import { LONG_NAME, MOCKUP_STATES, sampleCommunities } from '../../../stories/fixtures/loungeCommunities';
 
 const noop = () => undefined;
@@ -42,6 +43,27 @@ function itemNames(nav: HTMLElement): string[] {
 }
 
 describe('ShellDock (the view)', () => {
+  it("links each community to its route, or where the frame's links context says (a test fixture)", () => {
+    const { nav, unmount } = renderDock();
+    expect(within(nav).getByRole('link', { name: /^Trailheads/ })).toHaveAttribute('href', '#/community/c-2');
+    unmount();
+    renderWithKit(
+      <LoungeLinksContext value={{ community: (id) => `#/__lounge/community/${id}` }}>
+        <ShellDock
+          communities={sampleCommunities(5, MOCKUP_STATES)}
+          current={{ kind: 'community', id: 'c-1' }}
+          inboxCount={0}
+          status="ready"
+          onOpenInbox={noop}
+          onOpenAll={noop}
+          bottomBar={false}
+        />
+      </LoungeLinksContext>,
+    );
+    const fixtureNav = screen.getByRole('navigation', { name: 'Communities' });
+    expect(within(fixtureNav).getByRole('link', { name: /^Trailheads/ })).toHaveAttribute('href', '#/__lounge/community/c-2');
+  });
+
   it('names every item by what it shows: Inbox with its count, communities with current, mentions or new messages, then All', () => {
     const { nav } = renderDock();
     expect(itemNames(nav)).toEqual([

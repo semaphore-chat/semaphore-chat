@@ -8,6 +8,7 @@
  * A descriptor is plain data a native shell can mirror.
  */
 import { createContext, useContext, type ComponentType } from 'react';
+import type { LoungeLinks } from './links';
 
 /** Params of the matched pattern, as react-router's matchPath returns them. */
 export type LoungeParams = Readonly<Partial<Record<string, string>>>;
@@ -37,6 +38,11 @@ export interface ThreeIslandsScreen {
   readonly useTitle: UseScreenTitle;
   /** Names the right island and its Sheet. Defaults to "Members" for the members island, else "Details". */
   readonly rightLabel?: string;
+  /**
+   * Test fixtures only (`/__lounge/...`): where the shell's community links lead, so a fixture's dock and
+   * sheet stay on the fixture. A real screen leaves it out; the app's routes apply (`shell/lounge/links.ts`).
+   */
+  readonly links?: LoungeLinks;
 }
 
 /** No template: the screen fills the frame on its own (the marker). */

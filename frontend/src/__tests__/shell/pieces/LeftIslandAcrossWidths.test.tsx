@@ -88,7 +88,7 @@ function Frame() {
           />
         </Counted>
       }
-      leftFooter={range === 'phone' ? undefined : <UserCard name="alexk" online line={null} call={null} onSettings={noop} />}
+      leftFooter={range === 'phone' ? undefined : <UserCard name="alexk" online line={null} call={null} onSettings={noop} onProfile={noop} onSignOut={noop} />}
       leftLabel="Couch Co-op"
       centre={null}
       centreLabel="general"
@@ -116,7 +116,7 @@ describe('the left island across widths', () => {
     expect(screen.getByRole('menu', { name: 'Couch Co-op menu' })).toBeInTheDocument();
     const link = screen.getByRole('link', { name: 'channel-5', hidden: true });
     expect(screen.getByRole('button', { name: 'Join Squad Up', hidden: true })).toHaveAttribute('aria-busy', 'true');
-    expect(within(nav).getByRole('button', { name: 'Settings', hidden: true })).toBeInTheDocument();
+    expect(within(nav).getByRole('button', { name: 'Account menu', hidden: true })).toBeInTheDocument();
 
     for (const [width, footer] of [
       [900, true],
@@ -130,7 +130,7 @@ describe('the left island across widths', () => {
       expect(screen.getByRole('menu', { name: 'Couch Co-op menu' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'channel-5', hidden: true })).toBe(link);
       expect(screen.getByRole('button', { name: 'Join Squad Up', hidden: true })).toHaveAttribute('aria-busy', 'true');
-      expect(screen.queryByRole('button', { name: 'Settings', hidden: true }) !== null).toBe(footer);
+      expect(screen.queryByRole('button', { name: 'Account menu', hidden: true }) !== null).toBe(footer);
     }
   });
 

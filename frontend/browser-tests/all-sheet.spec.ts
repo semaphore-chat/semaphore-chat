@@ -4,7 +4,7 @@ import { openStory } from './story.ts';
 /**
  * The "All communities" sheet (shell/lounge/pieces/AllCommunitiesSheet.tsx) opened from the dock in a real browser:
  * focus lands on Close, Tab reaches the filter and then the list, the filter narrows it, Escape returns focus to
- * All, and on a phone it is a bottom sheet over the dock.
+ * All, and on a phone it is a bottom sheet over the dock, with Sign out at its foot asking first.
  */
 const PHONE = { width: 390, height: 844 };
 const TABLET = { width: 820, height: 1180 };
@@ -79,10 +79,32 @@ test.describe('phone', () => {
     expect(onTop).toEqual({ inSheet: true, inDock: false });
     await expect(sheet(page).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '#/settings');
     await expect(sheet(page).getByRole('link', { name: 'Your profile' })).toHaveAttribute('href', '#/profile');
+    await expect(sheet(page).getByRole('button', { name: 'Sign out' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sheet(page)).toBeHidden();
     await expect(all(page)).toBeFocused();
   });
+
+  test('Sign out at the foot asks over the sheet; Escape closes only the question, back on the row', async ({ page }) => {
+    await openStory(page, 'all-communities-sheet--from-dock', PHONE);
+    await openFromAll(page);
+    const row = sheet(page).getByRole('button', { name: 'Sign out' });
+    await row.focus();
+    await page.keyboard.press('Enter');
+    const question = page.getByRole('dialog', { name: 'Sign out?' });
+    await expect(question).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(question).toBeHidden();
+    await expect(sheet(page)).toBeVisible();
+    await expect(row).toBeFocused();
+  });
+});
+
+test('the sign-out question story: over the phone sheet, the sheet still there', async ({ page }) => {
+  await openStory(page, 'all-communities-sheet--sign-out-question', PHONE);
+  await expect(page.getByRole('dialog', { name: 'Sign out?' })).toBeVisible();
+  // Under the question the sheet is hidden from the accessibility tree, not closed.
+  await expect(page.getByRole('dialog', { name: 'All communities', includeHidden: true })).toHaveCount(1);
 });
 
 test('sixty communities: opens with the current row in view, the heading and filter still in view, the page not scrolled', async ({ page }) => {

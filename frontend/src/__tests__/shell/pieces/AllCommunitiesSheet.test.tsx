@@ -10,6 +10,7 @@ import { screen, within } from '@testing-library/react';
 import { renderWithKit } from '../../test-utils/renderWithKit';
 import { AllCommunitiesSheet, type AllCommunitiesSheetProps } from '../../../shell/lounge/pieces/AllCommunitiesSheet';
 import { stateLine } from '../../../shell/lounge/pieces/communitiesModel';
+import { LoungeLinksContext } from '../../../shell/lounge/links';
 import { fixedLoad, LONG_NAME, MOCKUP_STATES, sampleCommunities } from '../../../stories/fixtures/loungeCommunities';
 
 let consoleError: ReturnType<typeof vi.spyOn>;
@@ -39,6 +40,7 @@ function renderSheet(props: Partial<Props> = {}) {
     canCreate: true,
     useLoad: fixedLoad('ready'),
     showSettings: false,
+    onSignOut: () => undefined,
     ...props,
   };
   return renderWithKit(<Harness {...all} />);
@@ -102,14 +104,42 @@ describe('AllCommunitiesSheet (the view)', () => {
     expect(screen.queryByText(/create/i)).toBeNull();
   });
 
-  it('on a phone, Settings and Your profile at the foot', async () => {
-    const { unmount } = renderSheet({ showSettings: true });
+  it('on a phone, Settings, Your profile and Sign out at the foot', async () => {
+    const onSignOut = vi.fn();
+    const { unmount, user } = renderSheet({ showSettings: true, onSignOut });
     expect(await screen.findByRole('link', { name: 'Settings' })).toHaveAttribute('href', '#/settings');
     expect(screen.getByRole('link', { name: 'Your profile' })).toHaveAttribute('href', '#/profile');
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
     unmount();
     renderSheet({ showSettings: false });
     await screen.findByRole('link', { name: /^Couch Co-op/ });
     expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+  });
+
+  it("links each community to its route, or where the frame's links context says (a test fixture)", async () => {
+    const { unmount } = renderSheet();
+    expect(await screen.findByRole('link', { name: /^Trailheads/ })).toHaveAttribute('href', '#/community/c-2');
+    unmount();
+    const all = {
+      open: true,
+      onClose: () => undefined,
+      instanceName: 'moss.social',
+      username: 'alexk',
+      communities: sampleCommunities(5, MOCKUP_STATES),
+      currentId: 'c-1',
+      canCreate: false,
+      useLoad: fixedLoad('ready'),
+      showSettings: false,
+      onSignOut: () => undefined,
+    };
+    renderWithKit(
+      <LoungeLinksContext value={{ community: (id) => `#/__lounge/community/${id}` }}>
+        <Harness {...all} />
+      </LoungeLinksContext>,
+    );
+    expect(await screen.findByRole('link', { name: /^Trailheads/ })).toHaveAttribute('href', '#/__lounge/community/c-2');
   });
 
   it('is one keyboard list: one Tab stop on the current row, Up and Down, typeahead, the foot rows included', async () => {
@@ -126,6 +156,8 @@ describe('AllCommunitiesSheet (the view)', () => {
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('link', { name: /^Trailheads/ })).toHaveFocus();
     await user.keyboard('{End}');
+    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
     expect(screen.getByRole('link', { name: 'Your profile' })).toHaveFocus();
     await user.keyboard('{Home}w');
     expect(screen.getByRole('link', { name: /^Wavelength/ })).toHaveFocus();

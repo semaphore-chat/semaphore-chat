@@ -1,14 +1,16 @@
 /**
  * The "All communities" sheet (shell/lounge/pieces/AllCommunitiesSheet.tsx), open over the chat
  * template with the dock: a centred panel at tablet and desktop width, a bottom sheet on a phone (with
- * Settings and Your profile at the foot). The mock-ups' communities: Couch Co-op current and your call,
+ * Settings, Your profile and Sign out at the foot). The mock-ups' communities: Couch Co-op current and your call,
  * Lumen Studio 2 mentions, Friday LAN new messages, Wavelength both.
  */
 import { useState, type JSX } from 'react';
 import { AllCommunitiesSheet } from '../../shell/lounge/pieces/AllCommunitiesSheet';
 import { ShellDock } from '../../shell/lounge/pieces/ShellDock';
 import type { ModeName } from '../../theme/derive/derivePalette';
-import { useWidthRange } from '../../kit';
+import { useConfirmDestructive, useWidthRange } from '../../kit';
+import { SIGN_OUT_DESCRIPTION, SIGN_OUT_LABEL, SIGN_OUT_TITLE } from '../../shell/lounge/pieces/signOutText';
+import { ClickOnMount } from '../fixtures/interactions';
 import { LoungePiecesFrame } from '../fixtures/LoungePiecesFrame';
 import {
   fixedLoad,
@@ -28,31 +30,49 @@ interface SheetStoryProps {
   filter?: string;
   /** Closed at first: the dock's All button opens it (the browser spec's story). */
   startClosed?: boolean;
+  /** On a phone, press the foot's Sign out: the question over the sheet. */
+  askSignOut?: boolean;
 }
 
 type SheetProps = Required<Omit<SheetStoryProps, 'mode' | 'startClosed'>> & { open: boolean; onClose(): void };
 
-function Sheet({ communities, currentId, canCreate, load, filter: initial, open, onClose }: SheetProps): JSX.Element {
+/** The sign-out question as the connected sheet asks it; nothing is signed out in a story. */
+const NEVER = () => new Promise<void>(() => undefined);
+
+/**
+ * The foot's Sign out row, once it is on the page. Module-level so its identity never changes: ClickOnMount runs
+ * again when `find` changes, and a new function each render would press again on every render.
+ */
+const findSignOutRow = (): HTMLElement | null =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((button) => button.textContent?.trim() === 'Sign out') ?? null;
+
+function Sheet({ communities, currentId, canCreate, load, filter: initial, open, onClose, askSignOut }: SheetProps): JSX.Element {
   const [filter, setFilter] = useState(initial);
   const [useLoad] = useState(() => fixedLoad(load));
   const range = useWidthRange();
+  const signOut = useConfirmDestructive({ title: SIGN_OUT_TITLE, description: SIGN_OUT_DESCRIPTION, confirmLabel: SIGN_OUT_LABEL, run: NEVER });
   return (
-    <AllCommunitiesSheet
-      open={open}
-      onClose={() => {
-        setFilter('');
-        onClose();
-      }}
-      instanceName="moss.social"
-      username="alexk"
-      communities={communities}
-      currentId={currentId}
-      canCreate={canCreate}
-      useLoad={useLoad}
-      filter={filter}
-      onFilterChange={setFilter}
-      showSettings={range === 'phone'}
-    />
+    <>
+      {askSignOut && <ClickOnMount find={findSignOutRow} />}
+      <AllCommunitiesSheet
+        open={open}
+        onClose={() => {
+          setFilter('');
+          onClose();
+        }}
+        instanceName="moss.social"
+        username="alexk"
+        communities={communities}
+        currentId={currentId}
+        canCreate={canCreate}
+        useLoad={useLoad}
+        filter={filter}
+        onFilterChange={setFilter}
+        showSettings={range === 'phone'}
+        onSignOut={signOut.request}
+      />
+      {signOut.dialog}
+    </>
   );
 }
 
@@ -64,6 +84,7 @@ function SheetStory({
   load = 'ready',
   filter = '',
   startClosed = false,
+  askSignOut = false,
 }: SheetStoryProps): JSX.Element {
   const [open, setOpen] = useState(!startClosed);
   const dockCommunities = load === 'ready' ? communities : [];
@@ -92,6 +113,7 @@ function SheetStory({
         filter={filter}
         open={open}
         onClose={() => setOpen(false)}
+        askSignOut={askSignOut}
       />
     </LoungePiecesFrame>
   );
@@ -147,3 +169,9 @@ export const LongNames = () => (
 
 /** Closed: press All communities on the dock to open it (the browser spec drives this one). */
 export const FromDock = () => <SheetStory startClosed />;
+
+/**
+ * On a phone, Sign out at the foot asks first: the question over the sheet (Cancel returns to the row). At tablet and
+ * desktop the sheet has no Sign out (the user card's account menu has it), so those widths show the sheet only.
+ */
+export const SignOutQuestion = () => <SheetStory communities={sampleCommunities(3, MOCKUP_STATES)} askSignOut />;
