@@ -138,8 +138,9 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
       // the row and would overwrite the increment, or after it and land
       // first, so the increment counts the mention twice. Invalidating
       // cancels that fetch and starts one that sees the row; it also fills
-      // in the communityId of an entry synthesized here. Mentions are rare
-      // enough for one request each.
+      // in the communityId of an entry synthesized here. That is one small
+      // request per unread mention-type notification (mentions and direct
+      // messages); a newer one cancels an older one still in flight.
       void queryClient.invalidateQueries({ queryKey: unreadCountsQueryKey });
     }
   }
