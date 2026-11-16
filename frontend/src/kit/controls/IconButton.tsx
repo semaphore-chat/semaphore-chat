@@ -19,6 +19,7 @@ import type { IconName } from '../icons/generated';
 import { kitTheme } from '../theme/KitProvider';
 import { focusRing, interactiveStates } from '../theme/states';
 import { standOutFill, useSurface, type Surface } from '../theme/onSurface';
+import { useRowTabIndex } from '../chat/rowTabScope';
 import { buttonLook, type ButtonVariant } from './buttonLook';
 import { Spinner } from '../display/Spinner';
 import { Badge } from '../display/Badge';
@@ -288,6 +289,8 @@ export function IconButton({
     repeatingRef.current = false;
   };
 
+  // Inside a message row that is not the list's focus stop it is skipped by Tab (rowTabScope).
+  const rowTabIndex = useRowTabIndex();
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
       event.preventDefault();
@@ -320,7 +323,7 @@ export function IconButton({
       aria-controls={ariaControls}
       aria-describedby={describedBy}
       id={id}
-      tabIndex={roving?.tabIndex}
+      tabIndex={roving?.tabIndex ?? rowTabIndex}
       title={title}
       onPointerDown={hold ? startHold : undefined}
       onPointerUp={hold ? endHoldFor : undefined}

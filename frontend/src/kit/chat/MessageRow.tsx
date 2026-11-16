@@ -528,6 +528,9 @@ export function MessageRow({
       onOpenActions({ via: 'keyboard' });
       return;
     }
+    // A field in the row (the inline editor) owns its keys: arrows, Home, End and Escape move its caret or cancel the
+    // edit, never the list's focus.
+    if (within(event.target, event.currentTarget, EDITABLE)) return;
     focus?.onKeyDown?.(event);
   };
 

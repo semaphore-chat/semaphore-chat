@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Composer, IconButton, Pill, type ComposerProps } from '../../kit';
+import { AttachmentTile, Composer, IconButton, Pill, SuggestionList, type ComposerProps, type Suggestion } from '../../kit';
 import { Row } from '../fixtures/kitStory';
 import { ChatColumn, OnPalette } from './kitChatFixtures';
 import { PALETTES, noop } from './kitChatData';
@@ -21,6 +21,25 @@ const Live = ({ initial = '', ...props }: Shown) => {
     />
   );
 };
+
+const SUGGESTIONS: Suggestion[] = [
+  { key: 'here', label: 'here', detail: 'Notify online members in this channel', icon: 'Megaphone' },
+  { key: 'channel', label: 'channel', detail: 'Notify all members in this channel', icon: 'Megaphone' },
+  { key: 'mods', label: 'mods', detail: '4 members', icon: 'Users' },
+  { key: 'aiko', label: 'aiko', detail: 'Aiko Tanaka', avatar: { colour: '#FF8FB8' } },
+  { key: 'long', label: 'a-member-with-a-very-long-username-indeed', detail: 'And an even longer display name that gives way', avatar: { colour: '#5FD49A' } },
+];
+
+const mentionList = (activeIndex: number) => (
+  <SuggestionList
+    id="story-mentions"
+    label="Mention suggestions"
+    options={SUGGESTIONS}
+    activeIndex={activeIndex}
+    optionId={(i) => `story-mention-${i}`}
+    onPick={noop}
+  />
+);
 
 const MANY_LINES = Array.from({ length: 14 }, (_, index) => `line ${index + 1} of a long draft`).join('\n');
 
@@ -55,6 +74,18 @@ const STATES: { label: string; props: Shown }[] = [
         <>
           <Pill icon="Image">deep-dive-clip.png</Pill>
           <Pill icon="Paperclip">notes.txt</Pill>
+        </>
+      ),
+    },
+  },
+  {
+    label: 'Attachments tray with kit tiles (Remove on each, a picture thumbnail)',
+    props: {
+      initial: 'the files',
+      attachments: (
+        <>
+          <AttachmentTile kind="file" name="notes.txt" detail="2.1 KB" onRemove={noop} />
+          <AttachmentTile kind="file" name="a-rather-long-name-for-a-file.pdf" detail="4 MB" onRemove={noop} />
         </>
       ),
     },
@@ -97,6 +128,46 @@ export const StatesLight = () => (
 export const StatesTinted = () => (
   <OnPalette palette={PALETTES[2]}>
     <Body />
+  </OnPalette>
+);
+
+/** The mention list open over the conversation, the second option highlighted (the field's active descendant). */
+const Mentions = () => (
+  <ChatColumn>
+    <div style={{ height: 360 }} />
+    <Live initial="hey @a" popup={{ listId: 'story-mentions', activeId: 'story-mention-1' }} suggestions={mentionList(1)} />
+  </ChatColumn>
+);
+
+export const MentionList = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <Mentions />
+  </OnPalette>
+);
+
+export const MentionListLight = () => (
+  <OnPalette palette={PALETTES[1]}>
+    <Mentions />
+  </OnPalette>
+);
+
+export const MentionListTinted = () => (
+  <OnPalette palette={PALETTES[2]}>
+    <Mentions />
+  </OnPalette>
+);
+
+/** Loading the members: a spinner row. */
+export const MentionListLoading = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <ChatColumn>
+      <div style={{ height: 120 }} />
+      <Live
+        initial="@"
+        popup={{ listId: 'story-mentions' }}
+        suggestions={<SuggestionList id="story-mentions" label="Mention suggestions" options={[]} activeIndex={-1} optionId={(i) => `m-${i}`} onPick={noop} loading />}
+      />
+    </ChatColumn>
   </OnPalette>
 );
 

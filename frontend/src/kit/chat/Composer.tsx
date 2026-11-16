@@ -110,11 +110,17 @@ export interface ComposerProps {
   /** Files queued with the message: a tray above the field. */
   attachments?: ReactNode;
   popup?: ComposerPopup;
+  /**
+   * The open suggestion list (a `SuggestionList`, its id `popup.listId`): drawn over the conversation, just above
+   * the composer, across its width. Give it with `popup`.
+   */
+  suggestions?: ReactNode;
   /** The text field. */
   ref?: Ref<HTMLTextAreaElement>;
 }
 
 const Root = styled('div', { shouldForwardProp: transientProps })<{ $inline: boolean }>(({ $inline }) => ({
+  position: 'relative',
   display: 'flex',
   flexDirection: 'column',
   gap: `${tokens.space.sm}px`,
@@ -226,6 +232,14 @@ const NoticeBox = styled('div', { shouldForwardProp: transientProps })<{ $on: Su
   };
 });
 
+/** Above the composer, over the bottom of the conversation, inset like the field. */
+const Above = styled('div', { shouldForwardProp: transientProps })<{ $inline: boolean }>(({ $inline }) => ({
+  position: 'absolute',
+  bottom: '100%',
+  insetInline: $inline ? 0 : `${tokens.space.md}px`,
+  zIndex: 1,
+}));
+
 const Tray = styled('div')({
   display: 'flex',
   flexWrap: 'wrap',
@@ -261,6 +275,7 @@ export function Composer({
   notice,
   attachments,
   popup,
+  suggestions,
   ref,
 }: ComposerProps): JSX.Element {
   const on = useSurface();
@@ -284,6 +299,7 @@ export function Composer({
 
   return (
     <Root ref={rootRef} $inline={inline}>
+      {suggestions !== undefined && notice === undefined && <Above $inline={inline}>{suggestions}</Above>}
       {banner !== undefined && notice === undefined && (
         <Strip $on={on}>
           <Icon name={banner.kind === 'reply' ? 'Reply' : 'Pencil'} size="sm" tone="secondary" />

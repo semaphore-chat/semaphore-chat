@@ -8,6 +8,9 @@ import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSur
 import { transientProps } from '../theme/transientProps';
 import { Icon } from '../display/Icon';
 import { Spinner } from '../display/Spinner';
+import { LinearProgress } from '../display/LinearProgress';
+import { Button } from '../controls/Button';
+import { IconButton } from '../controls/IconButton';
 import { useRowTabIndex } from './rowTabScope';
 import { IMAGE_MAX, IMAGE_MIN_SIDE, imageBox } from './attachmentBox';
 
@@ -18,15 +21,26 @@ export interface AttachmentTileProps {
   name: string;
   /** The size, written for people ("2.4 MB"). */
   detail?: string;
-  /** The picture to draw (a preview of an image). Until it is known the box shows a quiet fill. */
+  /**
+   * The picture to draw (a preview of an image). Until it is known the box shows a quiet fill. On a `file` it is a
+   * small thumbnail in place of the paperclip (a queued picture in the composer's tray).
+   */
   src?: string;
   /** The image's own width and height in pixels: the box is sized from them before the picture arrives. */
   width?: number | null;
   height?: number | null;
-  /** Opens the image (a new tab), or downloads the file. */
-  onOpen: () => void;
+  /** Opens the image (a new tab), or downloads the file. Without it the tile is not pressable (a queued file). */
+  onOpen?: () => void;
   /** The open or download is on its way: busy, presses ignored. */
   busy?: boolean;
+  /** Shows a Remove button beside the tile ("Remove notes.txt"): a queued file, or an upload to cancel. */
+  onRemove?: () => void;
+  /** The upload is this far, 0 to 100: a bar under the tile ("Uploading notes.txt"). */
+  progress?: number;
+  /** The upload failed: this text, in the danger tone, in place of `detail`. */
+  error?: string;
+  /** With `error`: a Retry button ("Retry uploading notes.txt"). */
+  onRetry?: () => void;
 }
 
 const pressable = (palette: ReturnType<typeof kitTheme>['palette']) => ({
@@ -106,6 +120,39 @@ const FileButton = styled('button', { shouldForwardProp: transientProps })<{ $on
   };
 });
 
+/** A queued picture's thumbnail in a file row, in the paperclip's place. */
+const Thumb = styled('img')({
+  flex: `0 0 ${tokens.avatar.md}px`,
+  width: `${tokens.avatar.md}px`,
+  height: `${tokens.avatar.md}px`,
+  objectFit: 'cover',
+  borderRadius: `${tokens.radius.sm}px`,
+});
+
+/** The tile and its Remove button, with the progress bar or the failure under them. */
+const Wrap = styled('div')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: `${tokens.space.xs}px`,
+  minWidth: 0,
+  maxWidth: `${IMAGE_MAX.width}px`,
+  width: '100%',
+});
+
+const Line = styled('div')({ display: 'flex', alignItems: 'center', gap: `${tokens.space.xs}px`, minWidth: 0 });
+
+const Failure = styled('div')(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: `${tokens.space.sm}px`,
+  color: kitTheme(theme).palette.danger,
+  fontFamily: theme.typography.fontFamily,
+  fontSize: `${tokens.text.small.size}px`,
+  lineHeight: `${tokens.text.small.line}px`,
+  overflowWrap: 'anywhere',
+}));
+
 const FileText = styled('span')({ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column' });
 
 const FileName = styled('span')({
@@ -124,12 +171,40 @@ const FileDetail = styled('span')(({ theme }) => ({
 }));
 
 /**
- * A file sent with a message (`MessageRow`'s `attachments`). An image is drawn in a box sized from its known
+ * A file sent with a message (`MessageRow`'s `attachments`), or one on its way: queued in the composer's tray
+ * (`onRemove`, no `onOpen`) or uploading under a pending message (`progress`, `error` with `onRetry`). An image is drawn in a box sized from its known
  * width and height before the picture arrives, so a late picture never moves the list; pressing it opens the image.
  * Any other file (video and audio too, until they have players) is a row with its name and size; pressing it
  * downloads the file.
  */
-export function AttachmentTile({
+export function AttachmentTile({ onRemove, progress, error, onRetry, ...tile }: AttachmentTileProps): JSX.Element {
+  if (onRemove === undefined && progress === undefined && error === undefined) return <Tile {...tile} />;
+  const { name } = tile;
+  return (
+    <Wrap>
+      <Line>
+        <Tile {...tile} detail={error === undefined ? tile.detail : undefined} />
+        {onRemove !== undefined && (
+          <IconButton icon="X" size="sm" variant="ghost" label={`Remove ${name}`} onClick={onRemove} />
+        )}
+      </Line>
+      {error !== undefined ? (
+        <Failure>
+          <span>{error}</span>
+          {onRetry !== undefined && (
+            <Button variant="text" size="sm" aria-label={`Retry uploading ${name}`} onClick={onRetry}>
+              Retry
+            </Button>
+          )}
+        </Failure>
+      ) : progress !== undefined ? (
+        <LinearProgress label={`Uploading ${name}`} value={progress} />
+      ) : null}
+    </Wrap>
+  );
+}
+
+function Tile({
   kind,
   name,
   detail,
@@ -138,13 +213,26 @@ export function AttachmentTile({
   height,
   onOpen,
   busy = false,
-}: AttachmentTileProps): JSX.Element {
+}: Omit<AttachmentTileProps, 'onRemove' | 'progress' | 'error' | 'onRetry'>): JSX.Element {
   const on = useSurface();
   const tabIndex = useRowTabIndex();
   const [failed, setFailed] = useState(false);
   const press = () => {
-    if (!busy) onOpen();
+    if (!busy) onOpen?.();
   };
+  const pressable = onOpen !== undefined;
+  if (!pressable) {
+    // A queued file: a row with its thumbnail (a picture) or the paperclip, its name and size; nothing to press.
+    return (
+      <FileButton as="div" role="group" aria-label={`${name}${detail ? `, ${detail}` : ''}`} $on={on}>
+        {src !== undefined ? <Thumb src={src} alt="" /> : <Icon name="Paperclip" size="md" tone="secondary" />}
+        <FileText aria-hidden="true">
+          <FileName dir="auto">{name}</FileName>
+          {detail !== undefined && <FileDetail>{detail}</FileDetail>}
+        </FileText>
+      </FileButton>
+    );
+  }
   if (kind === 'image') {
     const box = imageBox(width, height);
     return (
@@ -183,7 +271,7 @@ export function AttachmentTile({
       onClick={press}
       $on={on}
     >
-      <Icon name="Paperclip" size="md" tone="secondary" />
+      {src !== undefined ? <Thumb src={src} alt="" /> : <Icon name="Paperclip" size="md" tone="secondary" />}
       <FileText aria-hidden="true">
         <FileName dir="auto">{name}</FileName>
         {detail !== undefined && <FileDetail>{detail}</FileDetail>}
