@@ -37,6 +37,7 @@ function renderRow(message: Message, ctx: MessageRowContext) {
       {ctx.showDaySeparator && <div data-testid={`day-${message.id}`} />}
       {ctx.showUnreadDivider && <div data-testid="unread">{ctx.unreadCount} new</div>}
       <div
+        role="button"
         data-testid={`row-${message.id}`}
         data-row-focus-target
         data-grouped={ctx.grouped}

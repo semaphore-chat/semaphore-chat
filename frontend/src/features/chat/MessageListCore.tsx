@@ -14,6 +14,9 @@ import {
 import { VList, type VListHandle } from "virtua";
 import { dayMarkers, shouldGroupWithPrevious } from "../../utils/messageGrouping";
 import type { Message } from "../../types/message.type";
+// constants/layout holds plain numbers, not a classic layout: the headless block's `**/Layout*` pattern matches it
+// case-insensitively.
+// eslint-disable-next-line no-restricted-imports -- a number, no classic UI (see above)
 import { TYPING_INDICATOR_HEIGHT } from "../../constants/layout";
 
 /** How close to the top (in item indices) triggers an older-page load. */
