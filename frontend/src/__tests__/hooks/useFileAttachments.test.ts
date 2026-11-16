@@ -174,41 +174,55 @@ describe('useFileAttachments', () => {
       expect(result.current.selectedFiles).toHaveLength(0);
     });
       // #827: previews were keyed by index, so removing a middle file left the next file showing no preview (or
-    // the removed one's), and a file added afterwards could take a stale slot.
-    it('removing a middle file keeps each remaining file with its own preview', async () => {
-      const { result } = renderFileAttachments();
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 10));
-      });
-      const files = ['a.png', 'b.png', 'c.png'].map((name) => new File([name], name, { type: 'image/png' }));
-      act(() => {
-        result.current.handleFileDrop(files);
-      });
-      // FileReader is real in jsdom: wait for the three data URLs.
-      await vi.waitFor(() => expect(result.current.filePreviews.size).toBe(3));
-      const previewOf = (name: string) => {
-        const i = result.current.selectedFiles.findIndex((f) => f.name === name);
-        return result.current.filePreviews.get(i);
-      };
-      const cBefore = previewOf('c.png');
-      const aBefore = previewOf('a.png');
-      expect(cBefore).toBeDefined();
+    // the removed one's), and a file added afterwards could take a stale slot. A removed file's preview is released.
+    it('removing a middle file keeps each remaining file with its own preview, and releases only the removed one', async () => {
+      let n = 0;
+      const created = vi.fn((file: Blob) => `blob:preview-${(file as File).name}-${++n}`);
+      const revoked = vi.fn();
+      const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+      URL.createObjectURL = created as typeof URL.createObjectURL;
+      URL.revokeObjectURL = revoked;
+      try {
+        const { result, unmount } = renderFileAttachments();
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 10));
+        });
+        const files = ['a.png', 'b.png', 'c.png'].map((name) => new File([name], name, { type: 'image/png' }));
+        act(() => {
+          result.current.handleFileDrop(files);
+        });
+        const previewOf = (name: string) => {
+          const i = result.current.selectedFiles.findIndex((f) => f.name === name);
+          return result.current.filePreviews.get(i);
+        };
+        expect(result.current.filePreviews.size).toBe(3);
+        const [aUrl, bUrl, cUrl] = ['a.png', 'b.png', 'c.png'].map(previewOf);
 
-      act(() => {
-        result.current.handleRemoveFile(1);
-      });
-      expect(result.current.selectedFiles.map((f) => f.name)).toEqual(['a.png', 'c.png']);
-      expect(previewOf('a.png')).toBe(aBefore);
-      expect(previewOf('c.png')).toBe(cBefore);
+        act(() => {
+          result.current.handleRemoveFile(1);
+        });
+        expect(result.current.selectedFiles.map((f) => f.name)).toEqual(['a.png', 'c.png']);
+        expect(previewOf('a.png')).toBe(aUrl);
+        expect(previewOf('c.png')).toBe(cUrl);
+        expect(revoked.mock.calls).toEqual([[bUrl]]);
 
-      // A file added after the removal gets its own preview, and the others keep theirs.
-      act(() => {
-        result.current.handleFileDrop([new File(['d.png'], 'd.png', { type: 'image/png' })]);
-      });
-      await vi.waitFor(() => expect(previewOf('d.png')).toBeDefined());
-      expect(previewOf('c.png')).toBe(cBefore);
-      expect(previewOf('d.png')).not.toBe(cBefore);
-      expect(result.current.filePreviews.size).toBe(3);
+        // A file added after the removal gets its own preview, and the others keep theirs.
+        act(() => {
+          result.current.handleFileDrop([new File(['d.png'], 'd.png', { type: 'image/png' })]);
+        });
+        expect(previewOf('d.png')).toBeDefined();
+        expect(previewOf('d.png')).not.toBe(cUrl);
+        expect(previewOf('c.png')).toBe(cUrl);
+        expect(result.current.filePreviews.size).toBe(3);
+
+        // The rest are released when the composer goes.
+        const dUrl = previewOf('d.png');
+        unmount();
+        expect(revoked.mock.calls.map(([url]) => url).sort()).toEqual([aUrl, bUrl, cUrl, dUrl].sort());
+      } finally {
+        URL.createObjectURL = original.create;
+        URL.revokeObjectURL = original.revoke;
+      }
     });
-});
+  });
 });
