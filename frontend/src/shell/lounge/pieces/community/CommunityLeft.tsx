@@ -145,10 +145,12 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
     return () => window.removeEventListener('hashchange', onHashChange);
   }, [busyId, hrefFor]);
 
-  // The classic Home tab returns to the community last opened, in either shell.
+  // The classic Home tab returns to the community last opened, in either shell. Only one that loaded:
+  // a community the user cannot open (not a member, deleted) must not become where Home leads.
+  const communityLoaded = communityStatus === 'success';
   useEffect(() => {
-    rememberLastCommunity(communityId);
-  }, [communityId]);
+    if (communityLoaded) rememberLastCommunity(communityId);
+  }, [communityId, communityLoaded]);
 
   const notMember =
     (communityStatus === 'error' && isPermanentAccessError(communityError)) ||

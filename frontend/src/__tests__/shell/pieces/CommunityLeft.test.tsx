@@ -409,6 +409,14 @@ describe('CommunityLeft (the phone community home, PR 9b)', () => {
     expect(localStorage.getItem(LAST_COMMUNITY_KEY)).toBe('c-1');
   });
 
+  it('does not record a community the user cannot open', async () => {
+    localStorage.removeItem(LAST_COMMUNITY_KEY);
+    serve({ community: () => HttpResponse.json({ statusCode: 403, message: 'Forbidden' }, { status: 403 }) });
+    renderLeft();
+    await screen.findByRole('heading', { name: "You're not a member of this community" });
+    expect(localStorage.getItem(LAST_COMMUNITY_KEY)).toBeNull();
+  });
+
   it('a tapped channel row is busy while its screen loads; a hash change elsewhere clears it', async () => {
     serve();
     const { user } = renderLeft(null);
