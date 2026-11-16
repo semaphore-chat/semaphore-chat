@@ -104,7 +104,6 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
     const contextId = payload.channelId || payload.directMessageGroupId;
     if (contextId) {
       const unreadCountsQueryKey = readReceiptsControllerGetUnreadCountsQueryKey();
-      let inserted = false;
       queryClient.setQueryData(
         unreadCountsQueryKey,
         (old: UnreadCountDto[] | undefined) => {
@@ -120,7 +119,6 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
             };
             return next;
           }
-          inserted = true;
           return [
             ...old,
             {
@@ -132,11 +130,17 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
           ];
         },
       );
-      // The payload carries no communityId, so refetch once to let the
-      // server's row fill in the entry synthesized above.
-      if (inserted) {
-        void queryClient.invalidateQueries({ queryKey: unreadCountsQueryKey });
-      }
+      // The increment above is only for an instant badge: the server counts
+      // mentions from notification rows, and this event is sent once the row
+      // is written, so a fetch started now is exact. Always refetch (#817):
+      // a fetch already in flight (e.g. the one NEW_MESSAGE starts when it
+      // inserts the channel's first entry) may have read the server before
+      // the row and would overwrite the increment, or after it and land
+      // first, so the increment counts the mention twice. Invalidating
+      // cancels that fetch and starts one that sees the row; it also fills
+      // in the communityId of an entry synthesized here. Mentions are rare
+      // enough for one request each.
+      void queryClient.invalidateQueries({ queryKey: unreadCountsQueryKey });
     }
   }
 };

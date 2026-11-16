@@ -324,7 +324,7 @@ describe('notificationHandlers', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: readReceiptsKey });
     });
 
-    it('updates an existing entry without invalidating and keeps its communityId', () => {
+    it('updates an existing entry, keeps its communityId and refetches the counts (#817)', () => {
       queryClient.setQueryData(notificationsKey, makeNotificationList([]));
       queryClient.setQueryData(
         readReceiptsKey,
@@ -342,7 +342,8 @@ describe('notificationHandlers', () => {
         queryClient,
       );
 
-      expect(invalidateSpy).not.toHaveBeenCalled();
+      expect(invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: readReceiptsKey });
       expect(queryClient.getQueryData<UnreadCountDto[]>(readReceiptsKey)).toEqual([
         { channelId: 'ch-1', communityId: 'community-1', unreadCount: 2, mentionCount: 1 },
       ]);

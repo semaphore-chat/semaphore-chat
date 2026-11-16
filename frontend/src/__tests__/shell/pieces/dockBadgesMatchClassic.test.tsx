@@ -161,7 +161,18 @@ describe('dock badges against the classic app, one query client', () => {
     expect(first.now.inbox).toBe(8);
     expect(first.now.perCommunity['c-3'].dot).toBe(true);
 
-    // A message in a quiet community, a mention in another, a read in a third
+    // A message in a quiet community, a mention in another, a read in a third. The mention handler refetches
+    // the counts (#817), so the server answers with all three applied.
+    const after = COUNTS.map((c) =>
+      c.channelId === 'ch-couch-clips'
+        ? { ...c, unreadCount: 1 }
+        : c.channelId === 'ch-lan-lfg'
+          ? { ...c, mentionCount: 1 }
+          : c.channelId === 'ch-lumen-design'
+            ? { ...c, unreadCount: 0, mentionCount: 0 }
+            : c,
+    );
+    server.use(http.get(`${BASE}/api/read-receipts/unread-counts`, () => HttpResponse.json(after)));
     await act(async () => {
       await handleNewMessage({ message: { id: 'm-1', channelId: 'ch-couch-clips', directMessageGroupId: null, authorId: 'pri' } as never }, queryClient);
       handleNewNotification(
@@ -184,6 +195,7 @@ describe('dock badges against the classic app, one query client', () => {
       handleReadReceiptUpdated({ channelId: 'ch-lumen-design', directMessageGroupId: null, lastReadMessageId: 'm-8' } as never, queryClient);
     });
     await waitFor(() => expect(lounge().perCommunity['c-3'].count).toBe(1));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
     const second = expectSame();
     expect(second.now.perCommunity['c-1'].dot).toBe(true);
     expect(second.now.perCommunity['c-2'].count).toBe(2);

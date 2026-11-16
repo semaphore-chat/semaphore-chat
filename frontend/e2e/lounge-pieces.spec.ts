@@ -251,10 +251,9 @@ test.describe('The Lounge pieces on the community fixture', () => {
     await mentionScenario({ browser, request }, testInfo, true);
   });
 
-  // Product race, issue #817 (seen in 1 of 6 runs): when the mention is the FIRST message of a channel the owner has
-  // no unread entry for, the dock shows "new messages" and never the mention until a reload (the entry the message
-  // handler inserts is refetched, and the refetch can overwrite the notification handler's mentionCount increment).
-  test.fixme('a first message that mentions you badges the dock as a mention, not as "new messages" (1 in 6 runs it never does)', async ({
+  // Issue #817: the mention is the FIRST message of a channel the owner has no unread entry for. The refetch the
+  // message handler starts for the new entry used to overwrite the notification handler's mention increment.
+  test('a first message that mentions you badges the dock as a mention, not as "new messages"', async ({
     browser,
     request,
   }, testInfo) => {
