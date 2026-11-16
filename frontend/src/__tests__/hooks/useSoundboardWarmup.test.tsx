@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { TrackSource } from '@livekit/protocol';
-import { soundboardGrantAllows, useSoundboardWarmup } from '../../hooks/useSoundboardWarmup';
+import { MIC_AFTER_LIFT_WAIT_MS, soundboardGrantAllows, useSoundboardWarmup } from '../../hooks/useSoundboardWarmup';
 import { soundboardPlayer, SOUNDBOARD_TRACK_NAME } from '../../features/voice/soundboardPlayer';
 import { PROTO_TRACK_SOURCE_UNKNOWN, type ParticipantPermission } from '../../features/voice/livekitEvents';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
@@ -15,11 +15,14 @@ import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 vi.mock('../../hooks/useVoiceConnection', () => ({ useVoiceConnection: vi.fn() }));
 
 // --- WebAudio (jsdom has none) ---
+let destinations = 0;
 class FakeAudioContext {
   state = 'running';
   destination = {};
+  /** One MediaStreamTrack per destination node, as in a browser. */
   createMediaStreamDestination() {
-    return { stream: { getAudioTracks: () => [{ id: 'sb-track' }] } };
+    const track = { id: `sb-track-${++destinations}`, readyState: 'live' };
+    return { stream: { getAudioTracks: () => [track] } };
   }
   createBufferSource() {
     return { connect: vi.fn(), start: vi.fn(), stop: vi.fn(), onended: null };
@@ -76,6 +79,7 @@ function createRoom(...args: [permissions?: ParticipantPermission | undefined]) 
   const unpublishTrack = vi.fn(async (track: unknown) => {
     for (const [key, publication] of publications) if (publication.track === track) publications.delete(key);
   });
+  const roomListeners = new Set<() => void>();
   const localParticipant = {
     permissions,
     trackPublications: publications,
@@ -92,8 +96,37 @@ function createRoom(...args: [permissions?: ParticipantPermission | undefined]) 
       return localParticipant;
     }),
   };
+  const room = {
+    localParticipant,
+    state: 'connected',
+    on: vi.fn((event: string, listener: () => void) => {
+      if (event === 'connectionStateChanged') roomListeners.add(listener);
+      return room;
+    }),
+    off: vi.fn((event: string, listener: () => void) => {
+      if (event === 'connectionStateChanged') roomListeners.delete(listener);
+      return room;
+    }),
+  };
   return {
-    room: { localParticipant },
+    room,
+    roomListeners,
+    /** The Room's connection state changes (connectionStateChanged). */
+    setState(next: string) {
+      room.state = next;
+      roomListeners.forEach((listener) => listener());
+    },
+    /** LiveKit's full reconnect takes one local track down (with its event). */
+    unpublishWithEvent(match: (p: { trackName: string; source?: string }) => boolean) {
+      for (const [key, publication] of publications) if (match(publication)) publications.delete(key);
+      trackListeners.forEach((listener) => listener());
+    },
+    /** ...and puts one back under a new sid (with its event). */
+    republishWithEvent(publication: { trackSid: string; trackName: string; source?: string; track: unknown }) {
+      const again = { ...publication, trackSid: `sid-${++sid}` };
+      publications.set(again.trackSid, again);
+      trackListeners.forEach((listener) => listener());
+    },
     publishTrack,
     unpublishTrack,
     publications,
@@ -289,6 +322,10 @@ describe('useSoundboardWarmup', () => {
     setCall(communityCall(room, { isServerMuted: false }));
     rerender({ speak: true });
     await flush();
+    // Not alongside the mic: the warm-up waits for the user's unmute (or the timeout, tested below).
+    expect(room.publishTrack).not.toHaveBeenCalled();
+    act(() => room.publishMic());
+    await flush();
     expect(room.publishTrack).toHaveBeenCalledTimes(1);
   });
 
@@ -381,15 +418,92 @@ describe('useSoundboardWarmup', () => {
     expect(soundboards).toHaveLength(1);
   });
 
-  it('a user who joined muted (no mic published yet) warms up at once, and after a lifted mute too', async () => {
+  it('a user who joined muted warms up at once; after a lifted mute the warm-up waits for an unmute, at most MIC_AFTER_LIFT_WAIT_MS', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const room = createRoom();
+      setCall(communityCall(room));
+      const { rerender } = mount();
+      await flush();
+      expect(room.publishTrack).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        room.serverUnpublishSoundboard();
+        room.setPermissions(NO_SOUNDBOARD);
+      });
+      setCall(communityCall(room, { isServerMuted: true }));
+      rerender({ speak: true });
+      await flush();
+      act(() => room.setPermissions(FULL));
+      setCall(communityCall(room, { isServerMuted: false }));
+      rerender({ speak: true });
+      await flush();
+      // No mic to wait for, but the user may unmute any moment: publishing now could race that publish.
+      expect(room.publishTrack).toHaveBeenCalledTimes(1);
+
+      act(() => vi.advanceTimersByTime(MIC_AFTER_LIFT_WAIT_MS - 1));
+      await flush();
+      expect(room.publishTrack).toHaveBeenCalledTimes(1);
+      // The user stayed muted: the warm-up publishes anyway, so it never waits forever.
+      act(() => vi.advanceTimersByTime(1));
+      await flush();
+      expect(room.publishTrack).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('during a full reconnect the mic coming back first does not make the warm-up publish a second soundboard', async () => {
+    // A self-muted user: the mic stays published (muted) until LiveKit's reconnect takes every track down.
     const room = createRoom();
+    room.publishMic();
+    setCall(communityCall(room));
+    mount();
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+    const mic = [...room.publications.values()].find((p) => p.source === 'microphone')!;
+    const soundboard = [...room.publications.values()].find((p) => p.trackName === SOUNDBOARD_TRACK_NAME)!;
+
+    // republishAllTracks: the Room is `reconnecting`; each track is unpublished, then republished one at a time,
+    // the mic first (with its events). The app's own isConnected stays true throughout.
+    act(() => room.setState('reconnecting'));
+    act(() => room.unpublishWithEvent((p) => p.source === 'microphone'));
+    act(() => room.unpublishWithEvent((p) => p.trackName === SOUNDBOARD_TRACK_NAME));
+    act(() => room.republishWithEvent(mic));
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+    act(() => room.republishWithEvent(soundboard));
+    act(() => room.setState('connected'));
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+    expect([...room.publications.values()].filter((p) => p.trackName === SOUNDBOARD_TRACK_NAME)).toHaveLength(1);
+  });
+
+  it('waits for the Room to be connected, and warms up when it is', async () => {
+    const room = createRoom();
+    room.room.state = 'reconnecting';
+    setCall(communityCall(room));
+    mount();
+    await flush();
+    expect(room.publishTrack).not.toHaveBeenCalled();
+    act(() => room.setState('connected'));
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it('after a lifted mute the soundboard is published on a new, live track (LiveKit stopped the old one)', async () => {
+    const room = createRoom();
+    room.publishMic();
     setCall(communityCall(room));
     const { rerender } = mount();
     await flush();
-    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+    const first = room.publishTrack.mock.calls[0][0] as { id: string; readyState: string };
 
+    // The server mute: LiveKit unpublishes the soundboard track and stops it (stopLocalTrackOnUnpublish).
     act(() => {
+      first.readyState = 'ended';
       room.serverUnpublishSoundboard();
+      room.serverUnpublishMic();
       room.setPermissions(NO_SOUNDBOARD);
     });
     setCall(communityCall(room, { isServerMuted: true }));
@@ -398,8 +512,13 @@ describe('useSoundboardWarmup', () => {
     act(() => room.setPermissions(FULL));
     setCall(communityCall(room, { isServerMuted: false }));
     rerender({ speak: true });
+    act(() => room.publishMic());
     await flush();
+
     expect(room.publishTrack).toHaveBeenCalledTimes(2);
+    const second = room.publishTrack.mock.calls[1][0] as { id: string; readyState: string };
+    expect(second).not.toBe(first);
+    expect(second.readyState).toBe('live');
   });
 
   it('a local mute keeps the mic published: nothing waits and nothing is published again', async () => {
@@ -484,5 +603,6 @@ describe('useSoundboardWarmup', () => {
     unmount();
     expect(room.listeners.size).toBe(0);
     expect(room.trackListeners.size).toBe(0);
+    expect(room.roomListeners.size).toBe(0);
   });
 });

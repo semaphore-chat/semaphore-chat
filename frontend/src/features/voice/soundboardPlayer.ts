@@ -22,6 +22,9 @@ import { TRACK_SOURCE } from './livekitEvents';
  */
 export const SOUNDBOARD_TRACK_NAME = 'soundboard';
 
+/** How long play() waits for the soundboard track to be published before it drops the clip. */
+export const PLAY_PUBLISH_WAIT_MS = 2_000;
+
 /**
  * Soundboard playback engine.
  *
@@ -123,7 +126,13 @@ class SoundboardPlayer {
 
   private async publish(room: Room): Promise<void> {
     const generation = this.generation;
-    this.ensureContext();
+    const ctx = this.ensureContext();
+    if (this.destination!.stream.getAudioTracks()[0]?.readyState === 'ended') {
+      // LiveKit stops a local track it unpublishes (stopLocalTrackOnUnpublish), e.g. when a server mute
+      // takes the grant away. That track carries nothing any more: publish a new destination's track.
+      logger.info('[Soundboard] The soundboard track had ended; publishing a new one');
+      this.destination = ctx.createMediaStreamDestination();
+    }
     const track = this.destination!.stream.getAudioTracks()[0];
     if (!track) {
       throw new Error('Soundboard: no audio track on destination node');
@@ -189,7 +198,24 @@ class SoundboardPlayer {
     if (ctx.state === 'suspended') {
       await ctx.resume();
     }
-    await this.ensurePublished(room);
+    // Bounded: a publish refused by the server mid-flight (a moderator mute) is reported by LiveKit
+    // only when it gives up, 10-20 s later. A clip that plays that late is worse than none, so past
+    // PLAY_PUBLISH_WAIT_MS the clip is dropped (not played locally either: the user must not hear a
+    // clip the room did not get) and the error goes to the caller.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.ensurePublished(room),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Soundboard track is not published yet; the clip was dropped')),
+            PLAY_PUBLISH_WAIT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
 
     let buffer = this.bufferCache.get(fileId);
     if (!buffer) {
