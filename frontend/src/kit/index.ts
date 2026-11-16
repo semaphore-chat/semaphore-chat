@@ -113,7 +113,7 @@ export type { SettingsLayoutProps } from './layout/SettingsLayout';
 export { StageLayout } from './layout/StageLayout';
 export type { StageLayoutProps } from './layout/StageLayout';
 export { MessageRow } from './chat/MessageRow';
-export type { MessageRowFocus, MessageRowProps, MessageState, OpenActionsVia } from './chat/MessageRow';
+export type { MessageRowFocus, MessageRowProps, MessageState, OpenActionsRequest, OpenActionsVia } from './chat/MessageRow';
 export { MessageText } from './chat/MessageText';
 export type { MessageTextProps } from './chat/MessageText';
 export type {
@@ -124,11 +124,12 @@ export type {
   MentionKind,
   MentionSegment,
   MessageSegment,
+  SegmentStyle,
   TextSegment,
 } from './chat/messageSegments';
 export { ReactionChip } from './chat/ReactionChip';
 export type { ReactionChipProps } from './chat/ReactionChip';
 export { Composer } from './chat/Composer';
-export type { ComposerBanner, ComposerCap, ComposerNotice, ComposerPopup, ComposerProps } from './chat/Composer';
+export type { ComposerBanner, ComposerCap, ComposerMode, ComposerNotice, ComposerPopup, ComposerProps } from './chat/Composer';
 export { JumpToLatest } from './chat/JumpToLatest';
 export type { JumpToLatestProps } from './chat/JumpToLatest';

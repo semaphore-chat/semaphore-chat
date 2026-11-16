@@ -3,12 +3,13 @@ import packageJson from '../../../package.json?raw';
 import fontsSource from '../../kit/fonts.ts?raw';
 import { tokens } from '../../theme/generated/tokens';
 
-// One `import '...'` per font weight. The kit bundles its own fonts because the
-// CSP only allows `font-src 'self' data:` (frontend/nginx.conf).
+// One `import '...'` per font weight (and the one italic face, for italic message text). The kit bundles its own
+// fonts because the CSP only allows `font-src 'self' data:` (frontend/nginx.conf).
 const WEIGHT_STYLESHEETS = [
   '@fontsource/bricolage-grotesque/600.css',
   '@fontsource/bricolage-grotesque/700.css',
   '@fontsource/figtree/400.css',
+  '@fontsource/figtree/400-italic.css',
   '@fontsource/figtree/500.css',
   '@fontsource/figtree/600.css',
 ];
@@ -30,7 +31,7 @@ describe('kit fonts', () => {
     expect(dependencies['@fontsource/figtree']).toBe('5.3.0');
   });
 
-  it('imports exactly the five weight stylesheets and nothing else', () => {
+  it('imports exactly the six face stylesheets and nothing else', () => {
     const specifiers = [...fontsSource.matchAll(IMPORT_STATEMENT)].map((match) => match[1]);
     expect(specifiers).toEqual(WEIGHT_STYLESHEETS);
     expect(fontsSource.replace(IMPORT_STATEMENT, '').trim()).toBe('');

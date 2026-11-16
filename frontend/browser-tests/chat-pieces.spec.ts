@@ -4,8 +4,9 @@ import { openStory } from './story.ts';
 /**
  * The chat pieces in a real browser, for what jsdom cannot show: nothing overflows a 390 px phone (a very long
  * name cuts with an ellipsis, an unbroken run and a code block wrap), the composer grows to its cap and then
- * scrolls, the row's toolbar and a continued row's time show on hover and on keyboard focus only, and Jump to
- * latest floats centred at the bottom of its list region.
+ * scrolls (at each of its three caps), the row's toolbar and a continued row's time show on hover and on keyboard
+ * focus only, a hidden toolbar takes no Tab stop and no tap, a device that cannot hover never shows it, and Jump
+ * to latest floats centred at the bottom of its list region.
  */
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1024, height: 900 };
@@ -40,17 +41,28 @@ for (const story of ['kit-message-row--states', 'kit-message-text--segments', 'k
   });
 }
 
-test('composer: grows to the desktop cap (10 lines) and then scrolls', async ({ page }) => {
-  await openStory(page, 'kit-composer--at-cap', DESKTOP);
-  const field = page.getByRole('textbox', { name: 'Message #general' });
-  const measured = await field.evaluate((element) => {
+const linesDrawn = (page: Page) =>
+  page.getByRole('textbox', { name: 'Message #general' }).evaluate((element) => {
     const area = element as HTMLTextAreaElement;
     const line = parseFloat(getComputedStyle(area).lineHeight);
     return { lines: Math.round(area.clientHeight / line), scrolls: area.scrollHeight > area.clientHeight };
   });
-  expect(measured).toEqual({ lines: 10, scrolls: true });
-  // An empty field is one line, as tall as the Send button beside it.
-  await field.fill('');
+
+// Each story holds a 14-line draft: the field stops growing at its cap and scrolls the rest.
+for (const [story, cap, lines] of [
+  ['kit-composer--at-keyboard-cap', 'keyboard', 2],
+  ['kit-composer--at-phone-cap', 'phone', 4],
+  ['kit-composer--at-cap', 'desktop', 10],
+] as const) {
+  test(`composer: grows to the ${cap} cap (${lines} lines) and then scrolls`, async ({ page }) => {
+    await openStory(page, story, cap === 'desktop' ? DESKTOP : PHONE);
+    expect(await linesDrawn(page)).toEqual({ lines, scrolls: true });
+  });
+}
+
+test('composer: an empty field is one line, as tall as the Send button beside it', async ({ page }) => {
+  await openStory(page, 'kit-composer--at-cap', DESKTOP);
+  await page.getByRole('textbox', { name: 'Message #general' }).fill('');
   const heights = await page.evaluate(() => {
     const area = document.querySelector('textarea:not([aria-hidden])') as HTMLElement;
     const send = Array.from(document.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Send message') as HTMLElement;
@@ -61,15 +73,21 @@ test('composer: grows to the desktop cap (10 lines) and then scrolls', async ({ 
 
 const revealOpacity = (page: Page, index: number) =>
   page.evaluate((i) => getComputedStyle(document.querySelectorAll('[data-reveal]')[i]).opacity, index);
+const revealVisibility = (page: Page, index: number) =>
+  page.evaluate((i) => getComputedStyle(document.querySelectorAll('[data-reveal]')[i]).visibility, index);
 
 test('row toolbar and continued time: hidden at rest, shown on hover and on keyboard focus', async ({ page }) => {
   await openStory(page, 'kit-message-row--actions', DESKTOP);
   // [data-reveal] 0 is the first row's toolbar, 1 the continued row's gutter time.
   await expect.poll(() => revealOpacity(page, 0)).toBe('0');
+  // At rest the toolbar is not there at all: no Tab stop, no tap target.
+  await expect.poll(() => revealVisibility(page, 0)).toBe('hidden');
   await page.getByRole('article').first().hover();
   await expect.poll(() => revealOpacity(page, 0)).toBe('1');
+  expect(await revealVisibility(page, 0)).toBe('visible');
   await page.mouse.move(0, 0);
   await expect.poll(() => revealOpacity(page, 0)).toBe('0');
+  await expect.poll(() => revealVisibility(page, 0)).toBe('hidden');
 
   await page.keyboard.press('Tab');
   await expect(page.getByRole('article').first()).toBeFocused();
@@ -96,4 +114,45 @@ test('jump to latest floats centred at the bottom of its list region', async ({ 
     };
   });
   expect(placed).toEqual({ centred: true, gap: 16 });
+});
+
+test('row toolbars: Tab from the focused row walks its own toolbar, then leaves the list, never the hidden toolbars of other rows @keyboard', async ({ page }) => {
+  await openStory(page, 'kit-message-row--toolbar-tab-order', DESKTOP);
+  const rows = page.getByRole('article');
+  await expect(rows).toHaveCount(3);
+  await rows.first().focus();
+  const visited: string[] = [];
+  for (let step = 0; step < 4; step += 1) {
+    await page.keyboard.press('Tab');
+    visited.push(
+      await page.evaluate(() => {
+        const active = document.activeElement as HTMLElement;
+        const article = active.closest('[role="article"]');
+        const index = article ? Array.from(document.querySelectorAll('[role="article"]')).indexOf(article) : -1;
+        return `${index}:${active.getAttribute('aria-label') ?? active.textContent?.trim() ?? ''}`;
+      }),
+    );
+  }
+  expect(visited).toEqual(['0:Add reaction', '0:Reply', '0:More actions', '-1:After the list']);
+});
+
+test.describe('on a device that cannot hover', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test('the row toolbar is never shown, even with focus in the row: the actions come from a long press', async ({ page }) => {
+    await openStory(page, 'kit-message-row--actions', PHONE);
+    expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
+    const toolbar = page.getByRole('toolbar', { includeHidden: true });
+    await expect(toolbar).toHaveCount(1);
+    expect(await toolbar.evaluate((element) => getComputedStyle(element).display)).toBe('none');
+    await page.getByRole('article').first().focus();
+    expect(await toolbar.evaluate((element) => getComputedStyle(element).display)).toBe('none');
+    // A tap at the row's top end, where the toolbar would be, lands on the row, not on a hidden action.
+    const box = (await page.getByRole('article').first().boundingBox())!;
+    const hit = await page.evaluate(
+      ({ x, y }) => (document.elementFromPoint(x, y) as HTMLElement).closest('button')?.getAttribute('aria-label') ?? null,
+      { x: box.x + box.width - 24, y: box.y + 4 },
+    );
+    expect(hit).toBeNull();
+  });
 });

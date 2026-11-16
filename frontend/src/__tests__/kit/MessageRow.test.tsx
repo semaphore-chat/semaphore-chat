@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, createEvent, fireEvent, screen } from '@testing-library/react';
 import { MessageRow, type MessageRowProps } from '../../kit';
 import { LONG_PRESS_MS } from '../../kit/chat/MessageRow';
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { expectNoAxeViolations, runAxe } from '../test-utils/a11y';
+import { rawCssFor } from './cssRules';
 
 const row = (props: Partial<MessageRowProps> = {}) => (
   <MessageRow author="aiko" time="8:19 PM" timeLabel="Monday 16 November 2026, 8:19 PM" body={<p>hello</p>} {...props} />
@@ -51,6 +52,26 @@ describe('MessageRow', () => {
     expect(screen.getByText('Sending…')).toBeInTheDocument();
   });
 
+  it('failed shows its reason in place of "Not sent" when given', () => {
+    renderWithKit(row({ state: 'failed', failedReason: 'Timed out until 8:40 PM' }));
+    expect(screen.getByText('Timed out until 8:40 PM')).toBeInTheDocument();
+    expect(screen.queryByText('Not sent')).toBeNull();
+  });
+
+  it('while retrying, Retry is busy: aria-busy and aria-disabled, still focusable, presses ignored', () => {
+    const onRetry = vi.fn();
+    renderWithKit(row({ state: 'failed', retrying: true, onRetry }));
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    expect(retry).toHaveAttribute('aria-busy', 'true');
+    expect(retry).toHaveAttribute('aria-disabled', 'true');
+    expect(retry).not.toBeDisabled();
+    retry.focus();
+    expect(retry).toHaveFocus();
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
   it('failed says "Not sent" with Retry and Delete when given', () => {
     const onRetry = vi.fn();
     const onDelete = vi.fn();
@@ -89,18 +110,62 @@ describe('MessageRow', () => {
     expect(screen.getByRole('article')).toHaveAttribute('tabindex', '-1');
   });
 
-  it('opens the actions on right-click (suppressing the native menu) and on the context-menu key or Shift+F10', () => {
+  it('opens the actions on right-click at the cursor (suppressing the native menu), and on the context-menu key or Shift+F10', () => {
     const onOpenActions = vi.fn();
     const onKeyDown = vi.fn();
     renderWithKit(row({ onOpenActions, focus: { tabStop: true, onKeyDown } }));
     const article = screen.getByRole('article');
-    expect(fireEvent.contextMenu(article)).toBe(false);
-    expect(onOpenActions).toHaveBeenLastCalledWith('pointer');
+    fireEvent.pointerDown(article, { pointerId: 1, pointerType: 'mouse', button: 2, clientX: 40, clientY: 60 });
+    expect(fireEvent.contextMenu(article, { clientX: 40, clientY: 60 })).toBe(false);
+    expect(onOpenActions).toHaveBeenLastCalledWith({ via: 'pointer', x: 40, y: 60 });
     fireEvent.keyDown(article, { key: 'ContextMenu' });
+    expect(onOpenActions).toHaveBeenLastCalledWith({ via: 'keyboard' });
     fireEvent.keyDown(article, { key: 'F10', shiftKey: true });
     expect(onOpenActions).toHaveBeenCalledTimes(3);
-    expect(onOpenActions).toHaveBeenLastCalledWith('keyboard');
+    expect(onOpenActions).toHaveBeenLastCalledWith({ via: 'keyboard' });
     expect(onKeyDown).not.toHaveBeenCalled();
+  });
+
+  it("keeps a Windows right-click's pointer for its context menu, which comes after the button is up", () => {
+    const onOpenActions = vi.fn();
+    renderWithKit(row({ onOpenActions }));
+    const article = screen.getByRole('article');
+    const right = { pointerId: 1, pointerType: 'mouse', button: 2, clientX: 5, clientY: 7 };
+    fireEvent.pointerDown(article, right);
+    fireEvent.pointerUp(article, right);
+    fireEvent.contextMenu(article, { clientX: 5, clientY: 7 });
+    expect(onOpenActions).toHaveBeenCalledWith({ via: 'pointer', x: 5, y: 7 });
+  });
+
+  it('a context menu no pointer made (the Menu key reaching the browser, VoiceOver\'s VO+Shift+M) is a keyboard request', () => {
+    const onOpenActions = vi.fn();
+    renderWithKit(row({ onOpenActions }));
+    const article = screen.getByRole('article');
+    // No pointer went down on the row.
+    expect(fireEvent.contextMenu(article, { clientX: 0, clientY: 0 })).toBe(false);
+    expect(onOpenActions).toHaveBeenLastCalledWith({ via: 'keyboard' });
+    // A pointer went down earlier and was lifted: its context menu was used up, so this one is the keyboard's.
+    fireEvent.pointerDown(article, { pointerId: 1, pointerType: 'mouse', button: 0 });
+    fireEvent.pointerUp(article, { pointerId: 1, pointerType: 'mouse', button: 0 });
+    fireEvent.contextMenu(article);
+    expect(onOpenActions).toHaveBeenLastCalledWith({ via: 'keyboard' });
+    // A browser that says so (a PointerEvent context menu with no pointer type) wins over a pointer still down.
+    fireEvent.pointerDown(article, { pointerId: 1, pointerType: 'mouse', button: 2 });
+    const event = createEvent.contextMenu(article);
+    Object.defineProperty(event, 'pointerType', { value: '' });
+    fireEvent(article, event);
+    expect(onOpenActions).toHaveBeenLastCalledWith({ via: 'keyboard' });
+    expect(onOpenActions).toHaveBeenCalledTimes(3);
+  });
+
+  it('opens once when the context-menu key also raises a context menu', () => {
+    const onOpenActions = vi.fn();
+    renderWithKit(row({ onOpenActions, focus: { tabStop: true } }));
+    const article = screen.getByRole('article');
+    fireEvent.keyDown(article, { key: 'ContextMenu' });
+    expect(fireEvent.contextMenu(article)).toBe(false);
+    expect(onOpenActions).toHaveBeenCalledTimes(1);
+    expect(onOpenActions).toHaveBeenCalledWith({ via: 'keyboard' });
   });
 
   it('leaves the native menu alone without onOpenActions', () => {
@@ -108,18 +173,29 @@ describe('MessageRow', () => {
     expect(fireEvent.contextMenu(screen.getByRole('article'))).toBe(true);
   });
 
-  it('opens the actions on a touch long press, once, and not when the finger moves or lifts early', () => {
+  it("leaves a field's own context menu (paste, select) alone, by mouse or by touch", () => {
+    const onOpenActions = vi.fn();
+    renderWithKit(row({ onOpenActions, body: <textarea aria-label="Edit message" /> }));
+    const field = screen.getByRole('textbox');
+    fireEvent.pointerDown(field, { pointerId: 1, pointerType: 'mouse', button: 2 });
+    expect(fireEvent.contextMenu(field)).toBe(true);
+    fireEvent.pointerDown(field, { pointerId: 2, pointerType: 'touch' });
+    expect(fireEvent.contextMenu(field)).toBe(true);
+    expect(onOpenActions).not.toHaveBeenCalled();
+  });
+
+  it('opens the actions on a touch long press at the finger, once, and not when the finger moves or lifts early', () => {
     vi.useFakeTimers();
     const onOpenActions = vi.fn();
     renderWithKit(row({ onOpenActions }));
     const article = screen.getByRole('article');
-    const touch = { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 10 };
+    const touch = { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 12 };
 
     fireEvent.pointerDown(article, touch);
     act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
-    expect(onOpenActions).toHaveBeenCalledWith('touch');
+    expect(onOpenActions).toHaveBeenCalledWith({ via: 'touch', x: 10, y: 12 });
     // Android's context menu after the same long press does not open them again.
-    fireEvent.contextMenu(article);
+    expect(fireEvent.contextMenu(article)).toBe(false);
     expect(onOpenActions).toHaveBeenCalledTimes(1);
 
     fireEvent.pointerDown(article, touch);
@@ -136,11 +212,97 @@ describe('MessageRow', () => {
     expect(onOpenActions).toHaveBeenCalledTimes(1);
   });
 
-  it('puts the actions in a named toolbar', () => {
-    renderWithKit(row({ actions: <button type="button">Reply</button> }));
-    expect(screen.getByRole('toolbar', { name: "Actions for aiko's message" })).toContainElement(
-      screen.getByRole('button', { name: 'Reply' }),
+  it("an Android long press whose context menu comes first opens once, at the press's start", () => {
+    vi.useFakeTimers();
+    const onOpenActions = vi.fn();
+    renderWithKit(row({ onOpenActions }));
+    const article = screen.getByRole('article');
+    fireEvent.pointerDown(article, { pointerId: 1, pointerType: 'touch', clientX: 3, clientY: 4 });
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS - 50));
+    expect(fireEvent.contextMenu(article, { clientX: 99, clientY: 99 })).toBe(false);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    expect(onOpenActions).toHaveBeenCalledTimes(1);
+    expect(onOpenActions).toHaveBeenCalledWith({ via: 'touch', x: 3, y: 4 });
+  });
+
+  it('swallows the click a fired long press leaves behind (iOS), so the reaction under the finger is not pressed', () => {
+    vi.useFakeTimers();
+    const onOpenActions = vi.fn();
+    const onToggle = vi.fn();
+    renderWithKit(row({ onOpenActions, body: <span>hold here</span>, reactions: <button type="button" onClick={onToggle}>Laugh</button> }));
+    const article = screen.getByRole('article');
+    const chip = screen.getByRole('button', { name: 'Laugh' });
+    const touch = { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 10 };
+
+    fireEvent.pointerDown(screen.getByText('hold here'), touch);
+    act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+    fireEvent.pointerUp(article, touch);
+    // iOS raises no context menu, but a click lands where the finger lifted.
+    fireEvent.click(chip);
+    expect(onOpenActions).toHaveBeenCalledTimes(1);
+    expect(onToggle).not.toHaveBeenCalled();
+
+    // The next press is a press again.
+    fireEvent.pointerDown(chip, touch);
+    fireEvent.pointerUp(chip, touch);
+    fireEvent.click(chip);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a long press on a link, button or field inside the row, and leaves their touch menu native', () => {
+    vi.useFakeTimers();
+    const onOpenActions = vi.fn();
+    renderWithKit(
+      row({
+        onOpenActions,
+        body: (
+          <p>
+            <a href="https://example.com">a link</a> <textarea aria-label="Edit" />
+          </p>
+        ),
+        reactions: <button type="button">Laugh</button>,
+      }),
     );
+    const touch = { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 10 };
+    for (const target of [screen.getByRole('link'), screen.getByRole('button', { name: 'Laugh' }), screen.getByRole('textbox')]) {
+      fireEvent.pointerDown(target, touch);
+      act(() => vi.advanceTimersByTime(LONG_PRESS_MS));
+      // Android's long press on a link raises a context menu: copy the link is the browser's.
+      expect(fireEvent.contextMenu(target)).toBe(true);
+      fireEvent.pointerUp(target, touch);
+    }
+    expect(onOpenActions).not.toHaveBeenCalled();
+    // A mouse right-click on a link inside the row is still the row's menu (as classic).
+    const link = screen.getByRole('link');
+    fireEvent.pointerDown(link, { pointerId: 2, pointerType: 'mouse', button: 2, clientX: 1, clientY: 2 });
+    expect(fireEvent.contextMenu(link, { clientX: 1, clientY: 2 })).toBe(false);
+    expect(onOpenActions).toHaveBeenCalledWith({ via: 'pointer', x: 1, y: 2 });
+  });
+
+  it('turns off the iOS callout and text selection only while a finger is held down (guard: reads the CSS rule)', () => {
+    vi.useFakeTimers();
+    renderWithKit(row({ onOpenActions: vi.fn() }));
+    const article = screen.getByRole('article');
+    expect(article).not.toHaveAttribute('data-pressing');
+    expect(getComputedStyle(article).userSelect).not.toBe('none');
+    fireEvent.pointerDown(article, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    expect(article).toHaveAttribute('data-pressing');
+    expect(rawCssFor(article)).toMatch(/\[data-pressing\]\{[^}]*-webkit-touch-callout:none;[^}]*user-select:none/);
+    fireEvent.pointerUp(article, { pointerId: 1, pointerType: 'touch' });
+    expect(article).not.toHaveAttribute('data-pressing');
+    // A mouse press never marks it: message text stays selectable on a desktop.
+    fireEvent.pointerDown(article, { pointerId: 2, pointerType: 'mouse', button: 0 });
+    expect(article).not.toHaveAttribute('data-pressing');
+  });
+
+  it('puts the actions in a named toolbar that is not there at rest, and is while focus is in the row', () => {
+    renderWithKit(row({ actions: <button type="button">Reply</button>, focus: { tabStop: true } }));
+    const name = "Actions for aiko's message";
+    // visibility: hidden, so it is out of the accessibility tree and Tab order, not just transparent.
+    expect(screen.queryByRole('toolbar', { name })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull();
+    screen.getByRole('article').focus();
+    expect(screen.getByRole('toolbar', { name })).toContainElement(screen.getByRole('button', { name: 'Reply' }));
   });
 
   it('has no axe violations, first of a group, continued and failed', async () => {

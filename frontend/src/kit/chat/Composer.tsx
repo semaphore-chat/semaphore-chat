@@ -16,6 +16,22 @@ export type ComposerCap = 'keyboard' | 'phone' | 'desktop';
 
 const CAP_ROWS: Record<ComposerCap, number> = { keyboard: 2, phone: 4, desktop: 10 };
 
+/** What the trailing button does: send a new message, or save an edit to one. */
+export type ComposerMode = 'send' | 'save';
+
+const SUBMIT: Record<ComposerMode, { label: string; icon: IconName }> = {
+  send: { label: 'Send message', icon: 'Send' },
+  save: { label: 'Save changes', icon: 'Check' },
+};
+
+/**
+ * The keydown of an Enter that only commits an input method's candidate (Japanese, Chinese, Korean). Safari sends
+ * it after `compositionend`, with `isComposing` false and the IME's `keyCode` 229, so both are checked.
+ */
+function committingComposition(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
+  return event.nativeEvent.isComposing || event.keyCode === 229;
+}
+
 /** What the composer is doing to a message other than writing a new one. */
 export interface ComposerBanner {
   kind: 'reply' | 'editing';
@@ -49,13 +65,22 @@ export interface ComposerProps {
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
-  /** Send: the Send button, or Enter when `submitOnEnter`. Not called while it cannot send or is sending. */
+  /** Send (or save): the trailing button, or Enter when `submitOnEnter`. Not called while it cannot send or is sending. */
   onSubmit: () => void;
+  /** `send` (default): "Send message" with the Send icon. `save`: editing a message, "Save changes" with a check. */
+  mode?: ComposerMode;
+  /**
+   * Drawn inside a message row (editing in place): no outer padding, and it does not keep toasts clear of itself
+   * (a row mid-list, or scrolled out of view, must not move the toasts). Default false: the conversation's composer.
+   */
+  inline?: boolean;
   /**
    * Whether there is something to send. Default: the text is not blank. Pass true when only attachments are
    * queued. While false, Send stays focusable but reads as unavailable.
    */
   canSend?: boolean;
+  /** Send was pressed while there is nothing to send: say why (`useAnnounce`), as IconButton's `onUnavailablePress`. */
+  onSendUnavailablePress?: () => void;
   /** A message is on its way: Send is busy (spinner, presses ignored); the field stays editable. */
   sending?: boolean;
   /** Enter sends and Shift+Enter starts a new line. Off on touch, where Enter is a new line. Default true. */
@@ -69,8 +94,13 @@ export interface ComposerProps {
   cap?: ComposerCap;
   /** Shows the leading attach button. */
   onAttach?: () => void;
-  /** The reader may not attach files here: the attach button stays named and focusable, and does nothing. */
+  /**
+   * The reader may not attach files here: the attach button stays named and focusable, reads as unavailable
+   * (`aria-disabled`) and does not call `onAttach`.
+   */
   attachUnavailable?: boolean;
+  /** The unavailable attach button was pressed: say why ("You can't attach files in #announcements"). */
+  onAttachUnavailablePress?: () => void;
   /** The trailing slot inside the field, before Send: the emoji button. */
   emoji?: ReactNode;
   /** Replying or editing: a strip above the field with a cancel button. */
@@ -84,13 +114,13 @@ export interface ComposerProps {
   ref?: Ref<HTMLTextAreaElement>;
 }
 
-const Root = styled('div')({
+const Root = styled('div', { shouldForwardProp: transientProps })<{ $inline: boolean }>(({ $inline }) => ({
   display: 'flex',
   flexDirection: 'column',
   gap: `${tokens.space.sm}px`,
   minWidth: 0,
-  padding: `${tokens.space.sm}px ${tokens.space.md}px ${tokens.space.md}px`,
-});
+  padding: $inline ? 0 : `${tokens.space.sm}px ${tokens.space.md}px ${tokens.space.md}px`,
+}));
 
 const Row = styled('div')({
   display: 'flex',
@@ -207,7 +237,7 @@ const Tray = styled('div')({
  * The chrome of a message composer: a field that grows to a cap, a leading attach button, a trailing emoji slot
  * and Send, with an optional reply or editing strip and a tray of queued files above it. A `notice` replaces the
  * field when the reader cannot write. Holds no message logic: drafts, mentions, typing and sending are the
- * screen's. It keeps toasts clear of itself.
+ * screen's. It keeps toasts clear of itself, unless it is `inline` (editing inside a message row).
  */
 export function Composer({
   label,
@@ -215,13 +245,17 @@ export function Composer({
   value,
   onChange,
   onSubmit,
+  mode = 'send',
+  inline = false,
   canSend,
+  onSendUnavailablePress,
   sending = false,
   submitOnEnter = true,
   onKeyDown,
   cap = 'desktop',
   onAttach,
   attachUnavailable = false,
+  onAttachUnavailablePress,
   emoji,
   banner,
   notice,
@@ -231,7 +265,9 @@ export function Composer({
 }: ComposerProps): JSX.Element {
   const on = useSurface();
   const rootRef = useRef<HTMLDivElement>(null);
-  useToastClearance(rootRef);
+  // An inline editor registers a ref it never attaches: the toast host skips an empty clearance.
+  const noClearance = useRef<HTMLDivElement>(null);
+  useToastClearance(inline ? noClearance : rootRef);
   const sendable = canSend ?? value.trim() !== '';
   const submit = () => {
     if (sendable && !sending) onSubmit();
@@ -239,7 +275,7 @@ export function Composer({
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     onKeyDown?.(event);
     if (event.defaultPrevented) return;
-    if (submitOnEnter && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (submitOnEnter && event.key === 'Enter' && !event.shiftKey && !committingComposition(event)) {
       event.preventDefault();
       submit();
     }
@@ -247,7 +283,7 @@ export function Composer({
   const inside = on === 'fill' ? 'surface' : 'fill';
 
   return (
-    <Root ref={rootRef}>
+    <Root ref={rootRef} $inline={inline}>
       {banner !== undefined && notice === undefined && (
         <Strip $on={on}>
           <Icon name={banner.kind === 'reply' ? 'Reply' : 'Pencil'} size="sm" tone="secondary" />
@@ -276,6 +312,7 @@ export function Composer({
                   variant="soft"
                   label="Attach a file"
                   aria-disabled={attachUnavailable}
+                  onUnavailablePress={onAttachUnavailablePress}
                   onClick={onAttach}
                 />
               )}
@@ -300,11 +337,12 @@ export function Composer({
             </SurfaceContext>
           </FieldBox>
           <IconButton
-            icon="Send"
+            icon={SUBMIT[mode].icon}
             variant="primary"
             size="lg"
-            label="Send message"
+            label={SUBMIT[mode].label}
             aria-disabled={!sendable}
+            onUnavailablePress={onSendUnavailablePress}
             loading={sending}
             onClick={submit}
           />

@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -21,9 +21,17 @@ export interface ReactionChipProps {
   mine?: boolean;
   /** Adds or removes the reader's reaction. */
   onToggle: () => void;
-  /** The reader may not react here: still focusable and named, reads as unavailable, presses do nothing. */
+  /**
+   * The reader may not react here: still focusable and named, reads as unavailable, a press does not toggle. Say
+   * why with `onUnavailablePress`, as IconButton's contract.
+   */
   'aria-disabled'?: boolean;
-  /** The toggle is on its way to the server: busy (`aria-busy`), presses are ignored, focus stays. */
+  /** Called instead of `onToggle` when an unavailable chip is pressed: say why it cannot act (`useAnnounce`). */
+  onUnavailablePress?: () => void;
+  /**
+   * The toggle is on its way to the server: busy (`aria-busy` and `aria-disabled`, as every busy kit control),
+   * presses are ignored, focus stays.
+   */
   busy?: boolean;
 }
 
@@ -64,7 +72,7 @@ const Root = styled('button', { shouldForwardProp: transientProps })<RootProps>(
       '@media (hover: hover)': { '&:hover': { background: mix(palette.text, rest, tokens.state.hover) } },
       '&:active': { background: mix(palette.text, rest, tokens.state.pressed) },
     }),
-    '&[aria-disabled="true"]': { opacity: tokens.state.disabled },
+    '&[aria-disabled="true"]:not([aria-busy="true"])': { opacity: tokens.state.disabled },
   };
 });
 
@@ -94,20 +102,37 @@ export function ReactionChip({
   mine = false,
   onToggle,
   'aria-disabled': unavailable = false,
+  onUnavailablePress,
   busy = false,
 }: ReactionChipProps): JSX.Element {
   const on = useSurface();
   const [failed, setFailed] = useState(false);
   const whole = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
   const inactive = unavailable || busy;
+  // A held key clicks on each repeat: an unavailable chip says why once per press.
+  const repeatingRef = useRef(false);
+  const press = () => {
+    if (busy) return;
+    if (unavailable) {
+      if (!repeatingRef.current) onUnavailablePress?.();
+      return;
+    }
+    onToggle();
+  };
   return (
     <Root
       type="button"
       aria-label={`${label} reaction, ${whole}`}
       aria-pressed={mine}
-      aria-disabled={unavailable || undefined}
+      aria-disabled={inactive || undefined}
       aria-busy={busy || undefined}
-      onClick={inactive ? undefined : onToggle}
+      onClick={press}
+      onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+        repeatingRef.current = event.repeat;
+      }}
+      onKeyUp={() => {
+        repeatingRef.current = false;
+      }}
       $mine={mine}
       $on={on}
       $inactive={inactive}

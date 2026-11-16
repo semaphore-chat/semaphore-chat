@@ -25,8 +25,8 @@ const Body = () => (
         <ReactionChip emoji=":partyparrot:" src={PARROT_SRC} label="partyparrot" count={7} mine onToggle={noop} />
         <ReactionChip emoji=":gone:" label="gone" count={1} onToggle={noop} />
       </Row>
-      <Row label="Unavailable (no permission to react), busy (toggle in flight)">
-        <ReactionChip emoji="👍" label="Thumbs up" count={2} aria-disabled onToggle={noop} />
+      <Row label="Unavailable (no permission to react; a press says why), busy (toggle in flight)">
+        <ReactionChip emoji="👍" label="Thumbs up" count={2} aria-disabled onUnavailablePress={noop} onToggle={noop} />
         <ReactionChip emoji="👍" label="Thumbs up" count={3} mine busy onToggle={noop} />
       </Row>
       <Row label="Press to toggle">

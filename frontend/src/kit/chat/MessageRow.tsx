@@ -29,6 +29,13 @@ export type MessageState = 'sent' | 'pending' | 'failed';
 /** How the actions were asked for, so the screen can choose a Sheet (touch) or a Menu, and buzz on touch. */
 export type OpenActionsVia = 'touch' | 'pointer' | 'keyboard';
 
+/**
+ * What `onOpenActions` is told: how the actions were asked for and, for a pointer (right-click) or a touch long
+ * press, where, in viewport coordinates (`clientX`/`clientY`), so a menu can open at the cursor or finger. A
+ * keyboard or screen-reader request has no point: anchor the menu to the row.
+ */
+export type OpenActionsRequest = { via: 'touch' | 'pointer'; x: number; y: number } | { via: 'keyboard' };
+
 /** What the message list's roving focus needs on a row (the list core owns which row is the Tab stop). */
 export interface MessageRowFocus {
   /** This row is the list's one Tab stop (`tabIndex` 0); every other row is -1, still focusable by the list. */
@@ -57,13 +64,20 @@ export interface MessageRowProps {
   highlighted?: boolean;
   /** `pending`: on its way, dimmed, "Sending…". `failed`: not sent, with Retry and Delete when given. */
   state?: MessageState;
+  /**
+   * Why a `failed` message was not sent, shown in place of "Not sent": the server's reason, or "Timed out until
+   * 8:40 PM".
+   */
+  failedReason?: string;
+  /** A retry of a `failed` message is on its way: Retry is busy (`aria-busy`, `aria-disabled`) and ignores presses. */
+  retrying?: boolean;
   /** Shows "(edited)" after the time. */
   edited?: boolean;
   /** Shows the pin mark after the time. */
   pinned?: boolean;
   /** The reply quote, above the body. */
   quote?: ReactNode;
-  /** The words: a `MessageText`, or an inline editing `Composer`. */
+  /** The words: a `MessageText`, or an inline editing `Composer` (`inline`, `mode="save"`). */
   body?: ReactNode;
   attachments?: ReactNode;
   /** `ReactionChip`s; they wrap onto more lines. */
@@ -71,15 +85,17 @@ export interface MessageRowProps {
   /** Under everything: the thread replies link. */
   footer?: ReactNode;
   /**
-   * A toolbar of `IconButton`s at the row's top end, shown on hover and while focus is in the row. For pointer
-   * screens (compact and wide); on a phone, use `onOpenActions`.
+   * A toolbar of `IconButton`s at the row's top end, shown on hover and while focus is in the row. Hidden, it is
+   * not there at all (`visibility: hidden`): Tab does not walk it and a tap cannot hit it. On a device that cannot
+   * hover it is never shown: the actions come from `onOpenActions` (long press, the context-menu key).
    */
   actions?: ReactNode;
   /**
    * The row's actions were asked for: a long press on touch, a right-click, or the context-menu key (or
-   * Shift+F10) on the focused row. The native menu is suppressed.
+   * Shift+F10, or a screen reader's "show menu") on the row. The native menu is suppressed, except on a field
+   * (paste and select stay native) and for a long press on a link or button inside the row (copy link).
    */
-  onOpenActions?: (via: OpenActionsVia) => void;
+  onOpenActions?: (request: OpenActionsRequest) => void;
   /** The name (and avatar) opens the author's profile. Without it the name is plain text. */
   onOpenAuthor?: () => void;
   onRetry?: () => void;
@@ -93,6 +109,20 @@ export interface MessageRowProps {
 export const LONG_PRESS_MS = 500;
 /** A finger that moves further than this before the long press fires is scrolling, not pressing. */
 const LONG_PRESS_SLOP = tokens.space.sm;
+/** A context menu this soon after the keyboard asked for the actions is the browser's echo of the same request. */
+const KEY_ECHO_MS = 1000;
+
+/** A control inside the row that keeps its own press: a long press there is not the row's (as classic). */
+const NESTED_CONTROL = 'a, button, input, textarea, select, [role="button"], [contenteditable]:not([contenteditable="false"])';
+/** A field: its context menu (paste, select) is always the browser's. */
+const EDITABLE = 'input, textarea, [contenteditable]:not([contenteditable="false"])';
+
+/** Whether `target` is inside an element matching `selector` that is inside `row` (not the row itself). */
+function within(target: EventTarget | null, row: Element, selector: string): boolean {
+  if (!(target instanceof Element)) return false;
+  const hit = target.closest(selector);
+  return hit !== null && hit !== row && row.contains(hit);
+}
 
 interface RootProps {
   $continued: boolean;
@@ -100,6 +130,18 @@ interface RootProps {
   $highlighted: boolean;
   $on: Surface;
 }
+
+/** A revealed quiet part: visible at once (so Tab can reach it), then fading in. */
+const shown = { opacity: 1, visibility: 'visible', transitionDelay: '0s' } as const;
+
+/** A quiet part at rest: faded out and then not there at all (no Tab stop, no tap target). */
+const hidden = {
+  ...reducedMotion,
+  opacity: 0,
+  visibility: 'hidden',
+  // Fade out first, then go: visibility flips at the end of the fade.
+  transition: `opacity ${tokens.motion.fast}ms, visibility 0s linear ${tokens.motion.fast}ms`,
+} as const;
 
 const Root = styled('div', { shouldForwardProp: transientProps })<RootProps>(
   ({ theme, $continued, $mentioned, $highlighted, $on }) => {
@@ -124,12 +166,15 @@ const Root = styled('div', { shouldForwardProp: transientProps })<RootProps>(
       transition: `background-color ${tokens.motion.slow}ms`,
       outline: 'none',
       '&:focus-visible': focusRing(palette, -tokens.border.focus),
+      // While a finger is held down: no iOS callout and no text selection under the actions Sheet. Only then, so
+      // message text stays selectable with a mouse.
+      '&[data-pressing]': { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' },
       '@media (hover: hover)': {
         '&:hover': { background: $highlighted || $mentioned ? rest : mix(palette.text, under, tokens.state.hover) },
       },
       // The quiet parts (a continued row's time, the actions) show on hover and while focus is in the row.
-      '&:focus-within [data-reveal]': { opacity: 1 },
-      '@media (hover: hover) and (pointer: fine)': { '&:hover [data-reveal]': { opacity: 1 } },
+      '&:focus-within [data-reveal]': shown,
+      '@media (hover: hover) and (pointer: fine)': { '&:hover [data-reveal]': shown },
     };
   },
 );
@@ -157,9 +202,7 @@ const GutterTime = styled('span')(({ theme }) => {
   const { palette } = kitTheme(theme);
   const type = tokens.text.small;
   return {
-    ...reducedMotion,
-    opacity: 0,
-    transition: `opacity ${tokens.motion.fast}ms`,
+    ...hidden,
     // On the first line of body text.
     paddingTop: `${(tokens.text.body.line - type.line) / 2}px`,
     whiteSpace: 'nowrap',
@@ -219,29 +262,45 @@ const NameButton = styled('button')(({ theme }) => ({
   '&:focus-visible': focusRing(kitTheme(theme).palette, 0),
 }));
 
-const Meta = styled('span', { shouldForwardProp: transientProps })<{ $tone: 'secondary' | 'danger' }>(
-  ({ theme, $tone }) => {
-    const { palette } = kitTheme(theme);
-    const type = tokens.text.small;
-    return {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: `${tokens.space.xs}px`,
-      flexShrink: 0,
-      whiteSpace: 'nowrap',
-      fontFamily: theme.typography.fontFamily,
-      fontSize: `${type.size}px`,
-      lineHeight: `${type.line}px`,
-      color: $tone === 'danger' ? palette.danger : palette.textSecondary,
-    };
-  },
-);
+const Meta = styled('span')(({ theme }) => {
+  const { palette } = kitTheme(theme);
+  const type = tokens.text.small;
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: `${tokens.space.xs}px`,
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    fontFamily: theme.typography.fontFamily,
+    fontSize: `${type.size}px`,
+    lineHeight: `${type.line}px`,
+    color: palette.textSecondary,
+  };
+});
 
 const Failed = styled('div')({
   display: 'flex',
   flexWrap: 'wrap',
   alignItems: 'center',
   gap: `${tokens.space.sm}px`,
+});
+
+/** Why it was not sent: a server's reason can be long, so it wraps (the icon stays on its first line). */
+const FailedReason = styled('span')(({ theme }) => {
+  const { palette } = kitTheme(theme);
+  const type = tokens.text.small;
+  return {
+    display: 'inline-flex',
+    alignItems: 'flex-start',
+    gap: `${tokens.space.xs}px`,
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+    fontFamily: theme.typography.fontFamily,
+    fontSize: `${type.size}px`,
+    lineHeight: `${type.line}px`,
+    color: palette.danger,
+    '& > svg': { flexShrink: 0, marginTop: `${(type.line - tokens.icon.xs) / 2}px` },
+  };
 });
 
 const Reactions = styled('div')({
@@ -257,7 +316,7 @@ const Actions = styled('div')(({ theme }) => {
   const lounge = kitTheme(theme);
   const { palette } = lounge;
   return {
-    ...reducedMotion,
+    ...hidden,
     position: 'absolute',
     top: `-${tokens.space.md}px`,
     insetInlineEnd: `${tokens.space.md}px`,
@@ -268,8 +327,8 @@ const Actions = styled('div')(({ theme }) => {
     borderRadius: `${tokens.radius.full}px`,
     background: palette.surface,
     border: `${tokens.border.hairline}px solid ${palette.hairline}`,
-    opacity: 0,
-    transition: `opacity ${tokens.motion.fast}ms`,
+    // A device that cannot hover never shows the toolbar: its actions come from a long press or the menu key.
+    '@media (hover: none)': { display: 'none' },
   };
 });
 
@@ -292,6 +351,8 @@ export function MessageRow({
   mentioned = false,
   highlighted = false,
   state = 'sent',
+  failedReason,
+  retrying = false,
   edited = false,
   pinned = false,
   quote,
@@ -312,9 +373,19 @@ export function MessageRow({
   const uid = useId();
   const authorId = `${uid}-author`;
   const timeId = `${uid}-time`;
-  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  // The running long press: its timer, where it started and the row it marks as pressed.
+  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; row: HTMLElement } | null>(null);
+  // A long press fired: the context menu (Android) and the click (iOS) that follow it are its, not new presses.
   const firedRef = useRef(false);
+  // The pointer that last went down on the row, until its context menu (or its release) uses it up. A context menu
+  // with none came from the keyboard or a screen reader.
+  const pointerRef = useRef<{ touch: boolean; nested: boolean } | null>(null);
+  // When the keyboard last asked (the context-menu key, Shift+F10), to drop the context menu the browser may add.
+  const keyAskedAt = useRef<number | null>(null);
 
+  const endPressing = (row: HTMLElement | null) => {
+    if (row !== null) delete row.dataset.pressing;
+  };
   const cancelPress = () => {
     if (press.current !== null) clearTimeout(press.current.timer);
     press.current = null;
@@ -323,39 +394,89 @@ export function MessageRow({
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     firedRef.current = false;
-    if (onOpenActions === undefined || event.pointerType !== 'touch') return;
+    keyAskedAt.current = null;
+    const row = event.currentTarget;
+    const touch = event.pointerType === 'touch';
+    const nested = within(event.target, row, NESTED_CONTROL);
+    pointerRef.current = { touch, nested };
+    if (onOpenActions === undefined || !touch || nested) return;
     cancelPress();
+    const x = event.clientX;
+    const y = event.clientY;
     const timer = setTimeout(() => {
       press.current = null;
       firedRef.current = true;
-      onOpenActions('touch');
+      onOpenActions({ via: 'touch', x, y });
     }, LONG_PRESS_MS);
-    press.current = { timer, x: event.clientX, y: event.clientY };
+    press.current = { timer, x, y, row };
+    row.dataset.pressing = '';
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const start = press.current;
     if (start === null) return;
-    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > LONG_PRESS_SLOP) cancelPress();
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > LONG_PRESS_SLOP) {
+      cancelPress();
+      endPressing(event.currentTarget);
+    }
+  };
+  const onPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+    cancelPress();
+    endPressing(event.currentTarget);
+    // Windows raises a right-click's context menu after the button comes up: keep that pointer for it.
+    if (event.type === 'pointerup' && !(event.pointerType === 'mouse' && event.button === 2)) pointerRef.current = null;
+  };
+  const onClickCapture = (event: MouseEvent<HTMLDivElement>) => {
+    // The click a fired long press leaves behind (iOS): it must not also press the reaction or link under the finger.
+    if (!firedRef.current) return;
+    firedRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
   };
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     if (onOpenActions === undefined) return;
-    event.preventDefault();
+    const row = event.currentTarget;
+    const pointer = pointerRef.current;
+    pointerRef.current = null;
+    // A field's own menu (paste, select) stays.
+    if (within(event.target, row, EDITABLE)) return;
     // A touch long press also raises a context menu (Android): the timer already handled it, or does now.
     if (press.current !== null) {
+      const { x, y } = press.current;
       cancelPress();
       firedRef.current = true;
-      onOpenActions('touch');
+      event.preventDefault();
+      onOpenActions({ via: 'touch', x, y });
       return;
     }
-    if (firedRef.current) return;
-    onOpenActions('pointer');
+    if (firedRef.current) {
+      event.preventDefault();
+      return;
+    }
+    // A pointer went down on the row first, and the browser (when it says) agrees it was a pointer. Otherwise the
+    // keyboard or a screen reader asked, and the coordinates are not a real point.
+    const pointerType = (event.nativeEvent as { pointerType?: unknown }).pointerType;
+    if (pointer === null || pointerType === '') {
+      event.preventDefault();
+      const asked = keyAskedAt.current;
+      keyAskedAt.current = null;
+      // The keydown already opened them; this is the browser's echo of the same key.
+      if (asked !== null && event.timeStamp - asked < KEY_ECHO_MS) return;
+      onOpenActions({ via: 'keyboard' });
+      return;
+    }
+    // A long press on a link or a button inside the row: the browser's own menu (copy the link).
+    if (pointer.touch && pointer.nested) return;
+    event.preventDefault();
+    onOpenActions({ via: pointer.touch ? 'touch' : 'pointer', x: event.clientX, y: event.clientY });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    pointerRef.current = null;
     const asked = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
     // Only the row itself: a key on a control inside it (a reaction, a link) is that control's.
     if (asked && onOpenActions !== undefined && event.target === event.currentTarget) {
       event.preventDefault();
-      onOpenActions('keyboard');
+      keyAskedAt.current = event.timeStamp;
+      onOpenActions({ via: 'keyboard' });
       return;
     }
     focus?.onKeyDown?.(event);
@@ -371,14 +492,14 @@ export function MessageRow({
   );
   const marks = (
     <>
-      {edited && <Meta $tone="secondary">(edited)</Meta>}
+      {edited && <Meta>(edited)</Meta>}
       {pinned && (
-        <Meta $tone="secondary">
+        <Meta>
           <Icon name="Pin" size="xs" />
           <Hidden>Pinned</Hidden>
         </Meta>
       )}
-      {pending && <Meta $tone="secondary">Sending…</Meta>}
+      {pending && <Meta>Sending…</Meta>}
     </>
   );
 
@@ -394,8 +515,9 @@ export function MessageRow({
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={cancelPress}
-      onPointerCancel={cancelPress}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      onClickCapture={onClickCapture}
       onContextMenu={onContextMenu}
       $continued={continued}
       $mentioned={mentioned}
@@ -432,7 +554,7 @@ export function MessageRow({
                 {author}
               </Name>
             )}
-            <Meta $tone="secondary">{timeElement}</Meta>
+            <Meta>{timeElement}</Meta>
             {marks}
           </Header>
         )}
@@ -442,12 +564,12 @@ export function MessageRow({
         {attachments !== undefined && <Slot>{attachments}</Slot>}
         {failed && (
           <Failed>
-            <Meta $tone="danger">
+            <FailedReason>
               <Icon name="CircleAlert" size="xs" tone="danger" />
-              Not sent
-            </Meta>
+              <span>{failedReason ?? 'Not sent'}</span>
+            </FailedReason>
             {onRetry !== undefined && (
-              <Button variant="text" size="sm" onClick={onRetry}>
+              <Button variant="text" size="sm" loading={retrying} onClick={onRetry}>
                 Retry
               </Button>
             )}

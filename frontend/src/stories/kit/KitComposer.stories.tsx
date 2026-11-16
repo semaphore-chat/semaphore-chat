@@ -29,6 +29,7 @@ const STATES: { label: string; props: Shown }[] = [
   { label: 'Typing', props: { initial: 'same time tomorrow?' } },
   { label: 'Multi-line at the cap (desktop: 10 rows, then it scrolls)', props: { initial: MANY_LINES } },
   { label: 'Phone cap (4 rows)', props: { initial: MANY_LINES, cap: 'phone' } },
+  { label: 'Keyboard cap (2 rows, the on-screen keyboard is up)', props: { initial: MANY_LINES, cap: 'keyboard' } },
   {
     label: 'Reply banner',
     props: {
@@ -37,12 +38,15 @@ const STATES: { label: string; props: Shown }[] = [
     },
   },
   {
-    label: 'Editing banner',
+    label: 'Editing banner, save mode: "Save changes" with a check',
     props: {
       initial: "yeah i'll bring it friday",
+      mode: 'save',
       banner: { kind: 'editing', title: 'Editing message', detail: 'Escape to cancel, Enter to save', cancelLabel: 'Cancel editing', onCancel: noop },
     },
   },
+  { label: 'Save mode with nothing changed yet: unavailable', props: { initial: '', mode: 'save', onSendUnavailablePress: noop } },
+  { label: 'Inline (inside a message row: no padding, no toast clearance)', props: { initial: 'edited in place', inline: true, mode: 'save' } },
   {
     label: 'Attachments tray',
     props: {
@@ -56,7 +60,7 @@ const STATES: { label: string; props: Shown }[] = [
     },
   },
   { label: 'Sending: Send is busy, the field stays editable', props: { initial: 'on its way', sending: true } },
-  { label: 'Attach unavailable (no permission to attach)', props: { attachUnavailable: true } },
+  { label: 'Attach unavailable (no permission to attach): a press says why', props: { attachUnavailable: true, onAttachUnavailablePress: noop } },
   { label: 'Notice: no permission', props: { notice: { text: "You can't send messages in #announcements", icon: 'Lock' } } },
   { label: 'Notice: timed out', props: { notice: { text: "You're timed out for 4 more minutes", icon: 'Shield' } } },
   { label: 'Notice: read only', props: { notice: { text: 'This channel is read only', icon: 'Eye' } } },
@@ -74,7 +78,10 @@ const Body = () => (
   </>
 );
 
-/** Empty, typing, at the cap, reply and editing banners, attachments, sending, and the three notices. */
+/**
+ * Empty, typing, the three caps, reply and editing banners, save mode, inline, attachments, sending, attach
+ * unavailable, and the three notices.
+ */
 export const States = () => (
   <OnPalette palette={PALETTES[0]}>
     <Body />
@@ -98,6 +105,24 @@ export const AtCap = () => (
   <OnPalette palette={PALETTES[0]}>
     <ChatColumn>
       <Live initial={MANY_LINES} />
+    </ChatColumn>
+  </OnPalette>
+);
+
+/** One composer at the phone cap (4 lines), for the real-browser test. */
+export const AtPhoneCap = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <ChatColumn>
+      <Live initial={MANY_LINES} cap="phone" />
+    </ChatColumn>
+  </OnPalette>
+);
+
+/** One composer at the keyboard cap (2 lines, with the on-screen keyboard up), for the real-browser test. */
+export const AtKeyboardCap = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <ChatColumn>
+      <Live initial={MANY_LINES} cap="keyboard" />
     </ChatColumn>
   </OnPalette>
 );

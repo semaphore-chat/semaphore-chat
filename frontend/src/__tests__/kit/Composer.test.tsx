@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { Composer, type ComposerProps } from '../../kit';
+import { useBehaviourHost, type BehaviourHostValue } from '../../kit/behaviour/hosts/hostContext';
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { expectNoAxeViolations, runAxe } from '../test-utils/a11y';
 
@@ -32,6 +33,50 @@ describe('Composer', () => {
     expect(onSubmit).not.toHaveBeenCalled();
     await user.keyboard('{Enter}');
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("never sends on the Enter that commits an IME candidate in Safari (isComposing false, keyCode 229)", () => {
+    const onSubmit = vi.fn();
+    renderWithKit(<Live onSubmit={onSubmit} initial="にほん" />);
+    // WebKit sends this keydown after compositionend.
+    expect(fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229, isComposing: false })).toBe(true);
+    fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229, isComposing: true });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.keyDown(field(), { key: 'Enter', keyCode: 13 });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('in save mode the button is "Save changes" with a check, and Enter saves', () => {
+    const onSubmit = vi.fn();
+    renderWithKit(<Live onSubmit={onSubmit} initial="edited" mode="save" />);
+    expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    expect(save.querySelector('svg')).not.toBeNull();
+    fireEvent.click(save);
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps toasts clear of itself, unless it is inline (editing inside a message row)', () => {
+    let host: BehaviourHostValue | null = null;
+    function Probe() {
+      host = useBehaviourHost();
+      return null;
+    }
+    const { rerender } = renderWithKit(
+      <>
+        <Probe />
+        <Live />
+      </>,
+    );
+    expect(host!.toasts.clearances()).toHaveLength(1);
+    rerender(
+      <>
+        <Probe />
+        <Live inline mode="save" />
+      </>,
+    );
+    expect(host!.toasts.clearances()).toHaveLength(0);
   });
 
   it('does not send blank text: Send stays focusable and reads as unavailable', async () => {
@@ -91,6 +136,26 @@ describe('Composer', () => {
     expect(onAttach).toHaveBeenCalledTimes(1);
   });
 
+  it('an unavailable attach or Send stays focusable, reads as unavailable and says why when pressed', async () => {
+    const onAttach = vi.fn();
+    const onAttachUnavailablePress = vi.fn();
+    const onSendUnavailablePress = vi.fn();
+    const { user } = renderWithKit(
+      <Live onAttach={onAttach} attachUnavailable onAttachUnavailablePress={onAttachUnavailablePress} onSendUnavailablePress={onSendUnavailablePress} />,
+    );
+    const attach = screen.getByRole('button', { name: 'Attach a file' });
+    expect(attach).toHaveAttribute('aria-disabled', 'true');
+    expect(attach).not.toBeDisabled();
+    await user.click(attach);
+    expect(onAttach).not.toHaveBeenCalled();
+    expect(onAttachUnavailablePress).toHaveBeenCalledTimes(1);
+    await user.click(send());
+    expect(onSendUnavailablePress).toHaveBeenCalledTimes(1);
+    // Enter on an empty field is not a press of Send: nothing is announced.
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(onSendUnavailablePress).toHaveBeenCalledTimes(1);
+  });
+
   it('draws the reply banner with its cancel button', async () => {
     const onCancel = vi.fn();
     const { user } = renderWithKit(
@@ -130,14 +195,6 @@ describe('Composer', () => {
     expect(field()).toHaveAttribute('aria-activedescendant', 'mention-2');
     rerender(<Live />);
     expect(field()).not.toHaveAttribute('aria-controls');
-  });
-
-  it('caps its growth by row count', () => {
-    const { container, rerender } = renderWithKit(<Live cap="phone" />);
-    // MUI's autosize textarea mirrors the rows in a hidden twin; the cap itself is checked in a real browser.
-    expect(container.querySelectorAll('textarea')).toHaveLength(2);
-    rerender(<Live cap="keyboard" />);
-    expect(field()).toBeInTheDocument();
   });
 
   it('has no axe violations, with a banner and with a notice', async () => {

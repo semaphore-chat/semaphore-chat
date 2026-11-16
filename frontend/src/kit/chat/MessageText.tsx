@@ -7,7 +7,7 @@ import { focusRing } from '../theme/states';
 import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { visuallyHidden } from '../theme/a11y';
-import { safeHref, type MentionSegment, type MessageSegment } from './messageSegments';
+import { checkLink, internalHref, stripBidi, type MentionSegment, type MessageSegment, type SegmentStyle } from './messageSegments';
 
 export interface MessageTextProps {
   segments: readonly MessageSegment[];
@@ -156,7 +156,9 @@ function Mention({
     );
   }
   const spokenMe = segment.me === true && segment.kind !== 'channel' ? <Hidden>, mentions you</Hidden> : null;
-  if (segment.href !== undefined) {
+  // Only an app-internal address is followed; any other is drawn as a mention that is not a link.
+  const href = segment.href === undefined ? null : internalHref(segment.href);
+  if (href !== null) {
     const follow = (event: MouseEvent<HTMLAnchorElement>) => {
       // A plain click routes in place; a modified click (new tab, new window) is the browser's.
       if (onMention === undefined || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -164,7 +166,7 @@ function Mention({
       onMention(segment);
     };
     return (
-      <MentionLink {...look} href={segment.href} onClick={follow}>
+      <MentionLink {...look} href={href} onClick={follow}>
         {segment.text}
         {spokenMe}
       </MentionLink>
@@ -186,6 +188,15 @@ function Mention({
   );
 }
 
+/** Words with their inline formatting: strong, emphasis and strike-through, nested in that order. */
+function withStyle(text: string, style: SegmentStyle): ReactNode {
+  let content: ReactNode = text;
+  if (style.strike === true) content = <s>{content}</s>;
+  if (style.italic === true) content = <em>{content}</em>;
+  if (style.bold === true) content = <strong>{content}</strong>;
+  return content;
+}
+
 function renderSegment(
   segment: MessageSegment,
   key: number,
@@ -193,13 +204,8 @@ function renderSegment(
   on: Surface,
 ): ReactNode {
   switch (segment.type) {
-    case 'text': {
-      let content: ReactNode = segment.text;
-      if (segment.strike === true) content = <s>{content}</s>;
-      if (segment.italic === true) content = <em>{content}</em>;
-      if (segment.bold === true) content = <strong>{content}</strong>;
-      return <span key={key}>{content}</span>;
-    }
+    case 'text':
+      return <span key={key}>{withStyle(segment.text, segment)}</span>;
     case 'code':
       return (
         <InlineCode key={key} $on={on}>
@@ -213,12 +219,12 @@ function renderSegment(
         </CodeBlock>
       );
     case 'link': {
-      const shown = segment.text ?? segment.href;
-      const href = safeHref(segment.href);
-      if (href === null) return <span key={key}>{shown}</span>;
+      // What is shown is always the address itself, as parsed: no masked links, no lookalike host, no bidi tricks.
+      const link = checkLink(segment.href);
+      if (link === null) return <span key={key}>{withStyle(stripBidi(segment.href), segment)}</span>;
       return (
-        <Link key={key} href={href} target="_blank" rel="noopener noreferrer">
-          {shown}
+        <Link key={key} href={link.href} target="_blank" rel="noopener noreferrer">
+          {withStyle(link.label, segment)}
         </Link>
       );
     }

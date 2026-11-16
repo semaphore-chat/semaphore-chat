@@ -1094,10 +1094,32 @@ screen reader hears who wrote a continued row. The name is a button when
 is not a Tab stop. The row joins the list's roving focus through `focus` (the
 list owns which row is the one Tab stop). The actions open on a touch long press
 (500 ms, cancelled if the finger moves), a right-click and the context-menu key
-or Shift+F10 on the row, through `onOpenActions`, which says how it was asked
-so the screen can pick a Sheet or a Menu. `actions` is a toolbar at the row's
-top end that shows on hover and while focus is in the row; Tab from the row
-reaches its buttons.
+or Shift+F10 on the row, through `onOpenActions`. It is told how they were
+asked (`touch`, `pointer` or `keyboard`), so the screen can pick a Sheet or a
+Menu, and for a right-click or a long press where (`x`, `y` in the viewport), so
+a Menu can open at the cursor. A context menu that no pointer made (a screen
+reader's "show menu", the Menu key) is a `keyboard` request with no point:
+anchor the Menu to the row and return focus to it.
+
+A long press does not start on a link, button or field inside the row: those
+keep their own press (a long press on a link is the browser's "copy link").
+The click that follows a long press is swallowed, so a reaction under the
+finger is not toggled. While a finger is held down the row turns off the iOS
+callout and text selection; with a mouse, message text stays selectable. A
+field inside the row (an inline editor) keeps its own context menu.
+
+`actions` is a toolbar at the row's top end that shows on hover and while focus
+is in the row; Tab from the row reaches its buttons. Hidden, it is not there at
+all (`visibility: hidden`): Tab does not walk the hidden toolbars of other rows
+and a tap cannot hit one. On a device that cannot hover it is never shown; the
+actions come from the long press.
+
+A `failed` row says why with `failedReason` ("Timed out until 8:40 PM"), or
+"Not sent". While `retrying`, Retry is busy (it keeps focus and ignores
+presses), so a double tap cannot send twice.
+
+To edit a message in place, the `body` is a Composer with `inline` and
+`mode="save"`: it draws no outer padding and does not move the toasts.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -1110,10 +1132,12 @@ reaches its buttons.
 |`mentioned`|true, false|false|It mentions the reader: an accent rail and tint.|
 |`highlighted`|true, false|false|The jump target: a stronger accent tint while set.|
 |`state`|`sent`, `pending`, `failed`|`sent`|Pending is dimmed and busy, "Sending…". Failed says "Not sent".|
+|`failedReason`|text|none|Why it failed, shown in place of "Not sent".|
+|`retrying`|true, false|false|A retry is on its way: Retry is busy and ignores presses.|
 |`edited`, `pinned`|true, false|false|"(edited)" and the pin mark after the time.|
-|`quote`, `body`, `attachments`, `reactions`, `footer`|kit pieces|none|The slots, in that order. Reactions wrap.|
-|`actions`|IconButtons|none|The hover and focus toolbar (compact and wide).|
-|`onOpenActions`|function of `touch`, `pointer`, `keyboard`|none|Long press, right-click or the context-menu key.|
+|`quote`, `body`, `attachments`, `reactions`, `footer`|kit pieces|none|The slots, in that order. Reactions wrap. `body` is a MessageText, or an inline Composer to edit.|
+|`actions`|IconButtons|none|The hover and focus toolbar (compact and wide; never on a device that cannot hover).|
+|`onOpenActions`|function of `{ via, x, y }` (`touch`, `pointer`) or `{ via }` (`keyboard`)|none|Long press, right-click or the context-menu key, and where.|
 |`onOpenAuthor`|function|none|The name and avatar open the profile.|
 |`onRetry`, `onDelete`|function|none|Retry and Delete on a failed row.|
 |`focus`|`tabStop`, `onKeyDown`, `onFocus`|none|The list's roving focus.|
@@ -1121,7 +1145,8 @@ reaches its buttons.
 Stories: `kit-message-row--states`, `kit-message-row--states-light`,
 `kit-message-row--states-tinted`, `kit-message-row--long-content`,
 `kit-message-row--long-content-light`, `kit-message-row--actions`,
-`kit-message-row--actions-light`.
+`kit-message-row--actions-light`, `kit-message-row--editing`,
+`kit-message-row--editing-light`, `kit-message-row--toolbar-tab-order`.
 
 ### MessageText
 
@@ -1132,14 +1157,26 @@ A message's words, drawn from segments the chat data layer has already parsed.
 **Do not use it when** you show text you wrote for the interface. Use Text.
 
 The segment kinds are `text` (with `bold`, `italic`, `strike`), `code`,
-`codeBlock`, `link`, `mention` (`user`, `role`, `channel`, `everyone`; `me` when
-it is of the reader, `unavailable` when the reader cannot open it) and `emoji`
-(a community's custom emoji, `:name:` when it has no image). It is `dir="auto"`,
-keeps line breaks, and wraps an unbroken run instead of overflowing. Only
-`http` and `https` links are links; any other address is drawn as text. A user
-mention is a button when `onMention` is given; a channel mention with `href` is
-a link whose plain click calls `onMention`. A mention of the reader adds
-", mentions you" to its name. Code uses the platform's monospace font. Emoji-only
+`codeBlock`, `link` (with the same `bold`, `italic`, `strike`, so a link in a
+bold span stays bold), `mention` (`user`, `role`, `channel`, `everyone`; `me`
+when it is of the reader, `unavailable` when the reader cannot open it) and
+`emoji` (a community's custom emoji, `:name:` when it has no image). It is
+`dir="auto"`, keeps line breaks, and wraps an unbroken run instead of
+overflowing. Italic is Figtree's own italic face.
+
+Only `http` and `https` links are links; any other address is drawn as text.
+A link always shows its own address: there are no masked links, so a label
+cannot point somewhere else. What is shown is the parsed address, so a
+lookalike host reads as punycode (`xn--pple-43d.com`, not `аpple.com`), and
+bidi control characters (a right-to-left override) are dropped. A path in
+another script reads decoded.
+
+A user mention is a button when `onMention` is given; a channel mention with an
+`href` is a link whose plain click calls `onMention`. Only an app-internal
+`href` is followed: a hash route (`#/c/clips`) or a path with one leading slash
+(`/c/clips`). Anything else (`//host`, `data:`, `https:`) draws the mention as
+text that is not a link. A mention of the reader adds ", mentions you" to its
+name. Code uses the platform's monospace font. Emoji-only
 messages are drawn at text size, as in the classic chat.
 
 |Prop|Values|Default|Meaning|
@@ -1192,8 +1229,9 @@ count. Pill was not made a toggle: it is a static tag and has no pressed state.
 |`count`|number|none (required)|How many reacted.|
 |`mine`|true, false|false|The reader reacted with it.|
 |`onToggle`|function|none (required)|Adds or removes the reader's reaction.|
-|`aria-disabled`|true, false|false|The reader may not react: focusable, named, presses do nothing.|
-|`busy`|true, false|false|The toggle is on its way: busy, presses ignored.|
+|`aria-disabled`|true, false|false|The reader may not react: focusable, named, a press does not toggle.|
+|`onUnavailablePress`|function|none|An unavailable chip was pressed: say why (`useAnnounce`).|
+|`busy`|true, false|false|The toggle is on its way: `aria-busy` and `aria-disabled`, presses ignored.|
 
 Stories: `kit-reaction-chip--states`, `kit-reaction-chip--states-light`,
 `kit-reaction-chip--states-tinted`.
@@ -1209,26 +1247,38 @@ The chrome of a message composer.
 A field that grows to a cap and then scrolls (`keyboard` 2 lines, `phone` 4,
 `desktop` 10), a leading attach button, a trailing `emoji` slot and Send. Enter
 sends and Shift+Enter starts a line (off on touch with `submitOnEnter`); text
-being composed with an input method never sends. The screen's `onKeyDown` runs
-first and can take a key with `preventDefault`. Send is never disabled: with
-nothing to send it reads as unavailable, and while `sending` it is busy, while
-the field stays editable. A `banner` strip says it is a reply or an edit and has
-a cancel button. A `notice` takes the place of the field when the reader cannot
-write. It keeps toasts clear of itself.
+being composed with an input method never sends, including the Enter that
+picks a candidate in Safari (`isComposing` or `keyCode` 229). The screen's
+`onKeyDown` runs first and can take a key with `preventDefault`. Send is never
+disabled: with nothing to send it reads as unavailable (`onSendUnavailablePress`
+can say why), and while `sending` it is busy, while the field stays editable.
+An unavailable attach button is focusable and `aria-disabled`, and
+`onAttachUnavailablePress` says why. A `banner` strip says it is a reply or an
+edit and has a cancel button. A `notice` takes the place of the field when the
+reader cannot write. It keeps toasts clear of itself.
+
+`mode="save"` is for editing a message: the button is "Save changes" with a
+check. `inline` draws it inside a message row (the row's `body`): no outer
+padding, and it does not keep toasts clear of itself, so an editor mid-list or
+scrolled out of view does not move the toasts.
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`label`|text|none (required)|The field's name and placeholder: "Message #general".|
 |`placeholder`|text|`label`|A different placeholder.|
 |`value`, `onChange`|text, function|none (required)|The draft.|
-|`onSubmit`|function|none (required)|Send.|
+|`onSubmit`|function|none (required)|Send, or save.|
+|`mode`|`send`, `save`|`send`|"Send message" with the Send icon, or "Save changes" with a check.|
+|`inline`|true, false|false|Inside a message row: no padding, no toast clearance.|
 |`canSend`|true, false|text not blank|Whether there is something to send.|
+|`onSendUnavailablePress`|function|none|Send was pressed with nothing to send: say why.|
 |`sending`|true, false|false|Send is busy.|
 |`submitOnEnter`|true, false|true|Enter sends.|
 |`onKeyDown`|function|none|The screen's keys, first.|
 |`cap`|`keyboard`, `phone`, `desktop`|`desktop`|How far the field grows.|
 |`onAttach`|function|none|Shows the attach button.|
-|`attachUnavailable`|true, false|false|The attach button does nothing.|
+|`attachUnavailable`|true, false|false|The attach button is `aria-disabled` and does not call `onAttach`.|
+|`onAttachUnavailablePress`|function|none|The unavailable attach button was pressed: say why.|
 |`emoji`|an IconButton|none|The emoji button.|
 |`banner`|`kind` (`reply`, `editing`), `title`, `detail`, `cancelLabel`, `onCancel`|none|The reply or editing strip.|
 |`notice`|`text`, `icon`|none|Replaces the field.|
@@ -1236,7 +1286,9 @@ write. It keeps toasts clear of itself.
 |`popup`|`listId`, `activeId`|none|A suggestion list is open: the field is its combobox input.|
 
 Stories: `kit-composer--states`, `kit-composer--states-light`,
-`kit-composer--states-tinted`, `kit-composer--at-cap`.
+`kit-composer--states-tinted`, `kit-composer--at-cap`,
+`kit-composer--at-phone-cap`, `kit-composer--at-keyboard-cap`; inline editing
+in a row: `kit-message-row--editing`.
 
 ### JumpToLatest
 
@@ -1255,7 +1307,7 @@ messages".
 |---|---|---|---|
 |`onJump`|function|none (required)|Go to the newest message.|
 |`newCount`|number|none|Messages that arrived while away.|
-|`busy`|true, false|false|Loading the latest: busy, presses ignored.|
+|`busy`|true, false|false|Loading the latest: `aria-busy` and `aria-disabled`, presses ignored.|
 
 Stories: `kit-jump-to-latest--states`, `kit-jump-to-latest--states-light`,
 `kit-jump-to-latest--states-tinted`.
@@ -2101,11 +2153,17 @@ lists below say what each overlay still gets from MUI and the browser.
   direction from the first strong letter (`dir="auto"`). Links open in a new
   tab; a modified click on an in-app link is left to the browser.
 - MessageRow: hover only on a pointer that hovers; the toolbar and a continued
-  row's time show with `:focus-within`; the native context menu is suppressed
-  when the row has actions.
+  row's time show with `:focus-within`, and at rest are `visibility: hidden`,
+  which takes them out of the Tab order and the accessibility tree; a
+  `(hover: none)` media query hides the toolbar on touch devices. The native
+  context menu is suppressed when the row has actions (not on a field, and not
+  for a long press on a link). `-webkit-touch-callout` and `user-select` are
+  turned off only while a finger is down. Whether a context menu came from a
+  pointer is read from the pointer that went down first (and the event's
+  `pointerType` where the browser gives one).
 - Composer: MUI's autosizing textarea measures a hidden twin to grow line by
-  line up to the cap, then scrolls; input-method composition (`isComposing`)
-  holds Enter back.
+  line up to the cap, then scrolls; input-method composition (`isComposing`, or
+  `keyCode` 229 for Safari's commit Enter) holds Enter back.
 
 ### Shared by these pieces
 

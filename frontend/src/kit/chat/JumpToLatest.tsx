@@ -14,7 +14,7 @@ export interface JumpToLatestProps {
   onJump: () => void;
   /** Messages that arrived while the reader was away from the bottom. Shown as "N new" (above 99, "99+ new"). */
   newCount?: number;
-  /** The jump is loading the latest messages: busy, presses ignored, focus stays. */
+  /** The jump is loading the latest messages: busy (`aria-busy` and `aria-disabled`), presses ignored, focus stays. */
   busy?: boolean;
 }
 
@@ -89,6 +89,7 @@ export function JumpToLatest({ onJump, newCount, busy = false }: JumpToLatestPro
       <Root
         type="button"
         aria-label={name}
+        aria-disabled={busy || undefined}
         aria-busy={busy || undefined}
         onClick={busy ? undefined : onJump}
         $busy={busy}

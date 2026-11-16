@@ -56,6 +56,11 @@ How round a corner is.
 |heading|Bricolage Grotesque|Titles, section headings and names|
 |body|Figtree|Everything else|
 
+The web kit bundles the faces it uses and loads them with the new shell, not on
+the first page: Bricolage Grotesque 600 and 700, Figtree 400, 500 and 600, and
+Figtree 400 italic, so italic message text is a real italic, not a slanted
+upright.
+
 ### Text styles
 
 Pick a text style. Do not set a size or weight by hand. Size and line are in

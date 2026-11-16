@@ -1,4 +1,5 @@
-import { Button, Card, Icon, IconButton, MessageRow, MessageText, ReactionChip, Stack, Text } from '../../kit';
+import { useState } from 'react';
+import { Button, Card, Composer, Icon, IconButton, MessageRow, MessageText, ReactionChip, Stack, Text } from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 import { ChatColumn, OnPalette } from './kitChatFixtures';
 import { PALETTES, noop, text } from './kitChatData';
@@ -69,10 +70,26 @@ const Conversation = () => (
     />
     <MessageRow author="alexk" avatarColour="#9AA0FF" time="8:24 PM" state="pending" body={<MessageText segments={text('on its way to the server')} />} />
     <MessageRow author="alexk" avatarColour="#9AA0FF" time="8:24 PM" continued state="failed" onRetry={noop} onDelete={noop} body={<MessageText segments={text('this one did not make it')} />} />
+    <MessageRow author="alexk" avatarColour="#9AA0FF" time="8:25 PM" continued state="failed" failedReason="Timed out until 8:40 PM" onRetry={noop} onDelete={noop} body={<MessageText segments={text('failed with a reason from the server')} />} />
+    <MessageRow
+      author="alexk"
+      avatarColour="#9AA0FF"
+      time="8:25 PM"
+      continued
+      state="failed"
+      failedReason="The server could not store this message because the channel was deleted while it was on its way"
+      retrying
+      onRetry={noop}
+      onDelete={noop}
+      body={<MessageText segments={text('a long reason wraps; Retry is busy while the retry is on its way')} />}
+    />
   </ChatColumn>
 );
 
-/** A conversation with every row state: first of a group, continued, mentioned, highlighted, edited and pinned, quote, attachment, reactions, thread footer, pending and failed. */
+/**
+ * A conversation with every row state: first of a group, continued, mentioned, highlighted, edited and pinned,
+ * quote, attachment, reactions, thread footer, pending, failed, failed with a reason, and retrying.
+ */
 export const States = () => (
   <OnPalette palette={PALETTES[0]}>
     <Conversation />
@@ -168,5 +185,82 @@ export const Actions = () => (
 export const ActionsLight = () => (
   <OnPalette palette={PALETTES[1]}>
     <ActionsBody />
+  </OnPalette>
+);
+
+/** A message being edited in place: an inline Composer in save mode as the row's body. */
+const InlineEditor = ({ initial, cap }: { initial: string; cap?: 'keyboard' | 'phone' | 'desktop' }) => {
+  const [value, setValue] = useState(initial);
+  return (
+    <Composer
+      inline
+      mode="save"
+      cap={cap}
+      label="Edit message"
+      value={value}
+      onChange={setValue}
+      onSubmit={noop}
+      banner={{ kind: 'editing', title: 'Editing message', detail: 'Escape to cancel, Enter to save', cancelLabel: 'Cancel editing', onCancel: noop }}
+    />
+  );
+};
+
+const EditingBody = () => (
+  <ChatColumn>
+    <MessageRow author="kwam3" avatarColour="#6FB1F5" time="8:20 PM" body={<MessageText segments={text('ok that run was cursed, same time tomorrow?')} />} />
+    <MessageRow author="alexk" avatarColour="#9AA0FF" time="8:21 PM" onOpenAuthor={noop} body={<InlineEditor initial="yeah i'll bring it friday" />} />
+    <MessageRow author="alexk" avatarColour="#9AA0FF" time="8:21 PM" continued body={<InlineEditor initial={'a longer edit\nover a few lines\nstill inside the row\nand past the phone cap\nso it scrolls'} cap="phone" />} />
+    <MessageRow author="dropbear" avatarColour="#5FD49A" time="8:22 PM" body={<MessageText segments={text('the rows around an editor stay as they are')} />} />
+  </ChatColumn>
+);
+
+/** Editing in place: the row's body is an inline Composer (`mode="save"`, no toast clearance), short and capped. */
+export const Editing = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <EditingBody />
+  </OnPalette>
+);
+
+export const EditingLight = () => (
+  <OnPalette palette={PALETTES[1]}>
+    <EditingBody />
+  </OnPalette>
+);
+
+const TOOLBAR = (
+  <>
+    <IconButton icon="Smile" size="sm" label="Add reaction" onClick={noop} />
+    <IconButton icon="Reply" size="sm" label="Reply" onClick={noop} />
+    <IconButton icon="Ellipsis" size="sm" label="More actions" onClick={noop} />
+  </>
+);
+
+/**
+ * Three rows with toolbars, the first the list's Tab stop, then a button after the list: Tab from the row walks
+ * that row's toolbar and then leaves, never the hidden toolbars of the other rows (the real-browser test).
+ */
+export const ToolbarTabOrder = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <ChatColumn>
+      <div style={{ height: tokens.space.xl }} />
+      {['first', 'second', 'third'].map((which, index) => (
+        <MessageRow
+          key={which}
+          author="gracie"
+          avatarColour="#FFA366"
+          time={`8:2${index} PM`}
+          continued={index > 0}
+          onOpenActions={noop}
+          focus={{ tabStop: index === 0 }}
+          actions={TOOLBAR}
+          body={<MessageText segments={text(`the ${which} row`)} />}
+        />
+      ))}
+      <div style={{ padding: tokens.space.md }}>
+        <Button variant="soft" onClick={noop}>
+          After the list
+        </Button>
+      </div>
+    </ChatColumn>
   </OnPalette>
 );

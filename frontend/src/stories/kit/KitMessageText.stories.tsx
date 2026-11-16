@@ -25,17 +25,35 @@ const EVERY: MessageSegment[][] = [
     { type: 'text', text: ' ' },
     { type: 'mention', kind: 'everyone', text: '@everyone', me: true },
     { type: 'text', text: ' ' },
-    { type: 'mention', kind: 'channel', text: '#clips', id: 'c1', href: '#clips' },
+    { type: 'mention', kind: 'channel', text: '#clips', id: 'c1', href: '#/c/clips' },
     { type: 'text', text: ' ' },
     { type: 'mention', kind: 'channel', text: '#private-channel', unavailable: true },
   ],
   [
     { type: 'text', text: 'a link: ' },
     { type: 'link', href: 'https://docs.semaphorechat.app' },
-    { type: 'text', text: ', a named one: ' },
-    { type: 'link', href: 'https://docs.semaphorechat.app/guide', text: 'the guide' },
     { type: 'text', text: ', and an unsafe one drawn as text: ' },
     { type: 'link', href: 'javascript:alert(1)' },
+  ],
+  [
+    { type: 'text', text: 'formatted links keep the span: ', bold: true },
+    { type: 'link', href: 'https://docs.semaphorechat.app/guide', bold: true },
+    { type: 'text', text: ', ' },
+    { type: 'link', href: 'https://example.com/italic', italic: true },
+    { type: 'text', text: ', ' },
+    { type: 'link', href: 'https://example.com/gone', strike: true },
+  ],
+  [
+    { type: 'text', text: 'a lookalike host shows as punycode: ' },
+    { type: 'link', href: 'https://\u0430pple.com/login' },
+    { type: 'text', text: '; a right-to-left override is dropped: ' },
+    { type: 'link', href: 'https://example.com/\u202Egnp.exe' },
+    { type: 'text', text: '; a non-Latin path reads decoded: ' },
+    { type: 'link', href: 'https://ja.wikipedia.org/wiki/\u65E5\u672C' },
+  ],
+  [
+    { type: 'text', text: 'a mention whose address leaves the app is not a link: ' },
+    { type: 'mention', kind: 'channel', text: '#elsewhere', id: 'c9', href: '//evil.example/c' },
   ],
   [
     { type: 'text', text: 'custom emoji ' },
@@ -88,7 +106,10 @@ const Body = () => (
   </ChatColumn>
 );
 
-/** Every segment type, a long link, right-to-left text and emoji-only messages (drawn at text size, as classic). */
+/**
+ * Every segment type, formatted links, a lookalike host (punycode), a bidi override (dropped), a mention with an
+ * outside address (not a link), a long link, right-to-left text and emoji-only messages (text size, as classic).
+ */
 export const Segments = () => (
   <OnPalette palette={PALETTES[0]}>
     <Body />

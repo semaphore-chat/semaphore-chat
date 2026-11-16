@@ -42,10 +42,27 @@ describe('ReactionChip', () => {
     rerender(<ReactionChip emoji="👍" label="Thumbs up" count={1} busy onToggle={onToggle} />);
     const busy = screen.getByRole('button');
     expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
     busy.focus();
     expect(busy).toHaveFocus();
     fireEvent.click(busy);
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unavailable chip says why when pressed (once per press, not per key repeat), and never toggles', () => {
+    const onToggle = vi.fn();
+    const onUnavailablePress = vi.fn();
+    renderWithKit(<ReactionChip emoji="👍" label="Thumbs up" count={1} aria-disabled onUnavailablePress={onUnavailablePress} onToggle={onToggle} />);
+    const chip = screen.getByRole('button');
+    fireEvent.click(chip);
+    expect(onUnavailablePress).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(chip, { key: 'Enter', repeat: true });
+    fireEvent.click(chip);
+    expect(onUnavailablePress).toHaveBeenCalledTimes(1);
+    fireEvent.keyUp(chip, { key: 'Enter' });
+    fireEvent.click(chip);
+    expect(onUnavailablePress).toHaveBeenCalledTimes(2);
+    expect(onToggle).not.toHaveBeenCalled();
   });
 
   it('draws counts up to 999 in full and compact above, while the name keeps the exact count', () => {
@@ -95,6 +112,7 @@ describe('JumpToLatest', () => {
     rerender(<JumpToLatest onJump={onJump} busy />);
     const button = screen.getByRole('button');
     expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
     expect(onJump).toHaveBeenCalledTimes(1);
