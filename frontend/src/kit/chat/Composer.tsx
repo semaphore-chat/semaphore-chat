@@ -90,6 +90,8 @@ export interface ComposerProps {
    * composer does nothing more with that key.
    */
   onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
+  /** The caret or the selection in the field moved (typing, keys, a tap): a suggestion list follows the caret. */
+  onCaretMove?: () => void;
   /** How far the field grows before it scrolls. Default `desktop`. */
   cap?: ComposerCap;
   /** Shows the leading attach button. */
@@ -266,6 +268,7 @@ export function Composer({
   sending = false,
   submitOnEnter = true,
   onKeyDown,
+  onCaretMove,
   cap = 'desktop',
   onAttach,
   attachUnavailable = false,
@@ -347,6 +350,7 @@ export function Composer({
                   'aria-controls': popup?.listId,
                   'aria-activedescendant': popup?.activeId,
                   onKeyDown: handleKeyDown,
+                  onSelect: onCaretMove,
                 }}
               />
               {emoji}

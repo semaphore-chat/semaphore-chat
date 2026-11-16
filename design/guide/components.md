@@ -1296,6 +1296,7 @@ scrolled out of view does not move the toasts.
 |`sending`|true, false|false|Send is busy.|
 |`submitOnEnter`|true, false|true|Enter sends.|
 |`onKeyDown`|function|none|The screen's keys, first.|
+|`onCaretMove`|function|none|The caret or selection moved (typing, keys, a tap): a suggestion list follows it.|
 |`cap`|`keyboard`, `phone`, `desktop`|`desktop`|How far the field grows.|
 |`onAttach`|function|none|Shows the attach button.|
 |`attachUnavailable`|true, false|false|The attach button is `aria-disabled` and does not call `onAttach`.|
