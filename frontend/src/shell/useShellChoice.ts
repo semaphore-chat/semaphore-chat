@@ -6,6 +6,7 @@ import { chooseShell, type ShellChoice } from './chooseShell';
 import { parseDesignParam, useDesignPreview } from './designPreview';
 import { loadLoungeRoot } from './loungeRootChunk';
 import { useShellWidthRange } from './widthRange';
+import { useKnownVoiceChannels } from './voiceChannelMemory';
 
 /**
  * Whether the new design is on for this tab: a `?design=` parameter still in
@@ -36,8 +37,13 @@ export function useShellChoice(): ShellChoice {
   const width = useShellWidthRange();
   // The desktop app shows only the fixtures in the new shell (real screens are web-only for now).
   const electron = isElectron();
+  // A voice channel's route is the old shell's call view; the new shell's pieces note them as their lists load.
+  const voiceChannels = useKnownVoiceChannels();
   // The route the current path would show in the new shell at this width, without the deferral.
-  const upcoming = useMemo(() => chooseShell({ pathname, enabled, width, electron }), [pathname, enabled, width, electron]);
+  const upcoming = useMemo(
+    () => chooseShell({ pathname, enabled, width, electron, voiceChannels }),
+    [pathname, enabled, width, electron, voiceChannels],
+  );
   const upcomingRoute = upcoming.kind === 'lounge' ? upcoming.route : null;
 
   useEffect(() => {
@@ -60,8 +66,10 @@ export function useShellChoice(): ShellChoice {
   // (pathname changes are transitions already).
   const shellEnabled = useDeferredValue(enabled);
   const shellWidth = useDeferredValue(width);
+  // Likewise: a store update is a synchronous render.
+  const shellVoiceChannels = useDeferredValue(voiceChannels);
   return useMemo(
-    () => chooseShell({ pathname, enabled: shellEnabled, width: shellWidth, electron }),
-    [pathname, shellEnabled, shellWidth, electron],
+    () => chooseShell({ pathname, enabled: shellEnabled, width: shellWidth, electron, voiceChannels: shellVoiceChannels }),
+    [pathname, shellEnabled, shellWidth, electron, shellVoiceChannels],
   );
 }

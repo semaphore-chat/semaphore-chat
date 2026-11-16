@@ -9,6 +9,7 @@ import type { ReactElement } from 'react';
 import { AppRoutes } from '../../routes';
 import { chooseShell } from '../../shell/chooseShell';
 import {
+  CHANNEL_CHAT_PATH,
   CLASSIC_STATIC_PATHS,
   COMMUNITY_HOME_PATH,
   LOUNGE_CHAT_FIXTURE_PATH,
@@ -62,7 +63,7 @@ describe('chooseShell', () => {
   it('with the new design on, a route that is not registered is the old shell', () => {
     for (const width of WIDTHS) {
       for (const pathname of paths) {
-        if (pathname === '/community/x-communityId' && width === 'phone') continue;
+        if (width === 'phone' && (pathname === '/community/x-communityId' || pathname === '/community/x-communityId/channel/x-channelId')) continue;
         expect(chooseShell({ pathname, enabled: true, width }), `${pathname} at ${width}`).toEqual({ kind: 'classic' });
       }
     }
@@ -74,8 +75,8 @@ describe('chooseShell', () => {
     expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1' });
     expect(chooseShell({ pathname: '/community/c-1', enabled: true, width: 'compact' })).toEqual({ kind: 'classic' });
     expect(chooseShell({ pathname: '/community/c-1', enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
-    // Its channels, its search and its settings stay the old shell's.
-    for (const pathname of ['/community/c-1/channel/ch-2', '/community/c-1/channel/ch-2/search', '/community/c-1/edit']) {
+    // A channel's search and the community's settings stay the old shell's.
+    for (const pathname of ['/community/c-1/channel/ch-2/search', '/community/c-1/edit']) {
       expect(chooseShell({ pathname, enabled: true, width: 'phone' }), pathname).toEqual({ kind: 'classic' });
     }
   });
@@ -151,10 +152,54 @@ describe('chooseShell', () => {
       expect(choice.kind === 'lounge' && choice.route.path).toBe(LOUNGE_CHAT_FIXTURE_PATH);
       expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1', channelId: 'ch-2' });
     }
-    // The real channel route is not registered (10c-1): the old shell at every width, design on or off.
-    for (const width of WIDTHS) {
-      expect(chooseShell({ pathname: '/community/c-1/channel/ch-2', enabled: true, width })).toEqual({ kind: 'classic' });
-    }
+  });
+
+  describe('the real channel route', () => {
+    const pathname = '/community/c-1/channel/ch-2';
+
+    it('is the new shell at phone width, with its community and channel', () => {
+      const choice = chooseShell({ pathname, enabled: true, width: 'phone' });
+      expect(choice.kind === 'lounge' && choice.route.path).toBe(CHANNEL_CHAT_PATH);
+      expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1', channelId: 'ch-2' });
+    });
+
+    it('is the old shell at tablet and desktop widths, and with the new design off at every width', () => {
+      expect(chooseShell({ pathname, enabled: true, width: 'compact' })).toEqual({ kind: 'classic' });
+      expect(chooseShell({ pathname, enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
+      for (const width of WIDTHS) expect(chooseShell({ pathname, enabled: false, width }), width).toEqual({ kind: 'classic' });
+    });
+
+    it('is the old shell in Electron at every width', () => {
+      for (const width of WIDTHS) {
+        expect(chooseShell({ pathname, enabled: true, width, electron: true }), width).toEqual({ kind: 'classic' });
+      }
+      // The chat fixture is not gated.
+      expect(chooseShell({ pathname: loungeChatFixturePath('c-1', 'ch-2'), enabled: true, width: 'phone', electron: true }).kind).toBe('lounge');
+    });
+
+    it('matches the whole path: the channel search and anything longer under it stay the old shell\'s', () => {
+      for (const deeper of [
+        `${pathname}/search`,
+        `${pathname}/search/more`,
+        `${pathname}/x`,
+        '/community/c-1/channel',
+        '/community/c-1/channels/ch-2',
+      ]) {
+        for (const width of WIDTHS) {
+          expect(chooseShell({ pathname: deeper, enabled: true, width }), `${deeper} at ${width}`).toEqual({ kind: 'classic' });
+        }
+      }
+      // A trailing slash is the same route (as the old router has it).
+      expect(chooseShell({ pathname: `${pathname}/`, enabled: true, width: 'phone' }).kind).toBe('lounge');
+    });
+
+    it('a known voice channel is the old shell (its call view); a text channel and the fixture are not affected', () => {
+      const voiceChannels = new Set(['v-1']);
+      expect(chooseShell({ pathname: '/community/c-1/channel/v-1', enabled: true, width: 'phone', voiceChannels })).toEqual({ kind: 'classic' });
+      expect(chooseShell({ pathname, enabled: true, width: 'phone', voiceChannels }).kind).toBe('lounge');
+      expect(chooseShell({ pathname: '/community/v-1', enabled: true, width: 'phone', voiceChannels }).kind).toBe('lounge');
+      expect(chooseShell({ pathname: loungeChatFixturePath('c-1', 'v-1'), enabled: true, width: 'phone', voiceChannels }).kind).toBe('lounge');
+    });
   });
 
   it('a registered route outside its widths is the old shell', () => {
@@ -209,8 +254,18 @@ describe('the registry (LOUNGE_ROUTES)', () => {
       LOUNGE_COMMUNITY_FIXTURE_PATH,
       LOUNGE_CHAT_FIXTURE_PATH,
       COMMUNITY_HOME_PATH,
+      CHANNEL_CHAT_PATH,
     ]);
     expect(LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)?.widths).toEqual(['phone']);
+    expect(LOUNGE_ROUTES.find((route) => route.path === CHANNEL_CHAT_PATH)?.widths).toEqual(['phone']);
+  });
+
+  it("the channel chat: the chat fixture's descriptor without links", async () => {
+    const real = (await LOUNGE_ROUTES.find((route) => route.path === CHANNEL_CHAT_PATH)!.load()).default;
+    const fixture = (await LOUNGE_ROUTES.find((route) => route.path === LOUNGE_CHAT_FIXTURE_PATH)!.load()).default;
+    expect(real.template === 'threeIslands' && real.links).toBeUndefined();
+    const { links: _links, ...fixtureWithoutLinks } = fixture as Extract<typeof fixture, { template: 'threeIslands' }>;
+    expect(real).toEqual(fixtureWithoutLinks);
   });
 
   it('the community home: threeIslands, community, left pane on a phone, no centre, the members island, no links', async () => {

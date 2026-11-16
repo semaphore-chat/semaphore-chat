@@ -4,7 +4,7 @@
  * the dock as the bottom bar and the members as a Sheet from the header's "N around". There is no centre yet
  * (compact and wide stay classic until the chat is converted). No `links`: the dock and the "All communities"
  * sheet lead to the app's routes, so moving between communities stays on this screen and the frame stays
- * mounted. A channel opens the old shell's chat.
+ * mounted. A text channel opens the new shell's chat (`ChannelChatScreen`) in the same frame.
  */
 import type { ThreeIslandsScreen } from '../screen';
 import { useCommunityTitle } from './communityHomeParts';

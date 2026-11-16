@@ -13,8 +13,8 @@
  * notice. So a converted three-islands screen no longer strands a call's video.
  *
  * Registered: the test fixtures (the marker, the community fixture, which
- * assembles every piece of the shell on real data, and the chat fixture) and the first real screen,
- * the community home at phone width (`COMMUNITY_HOME_PATH`). Every
+ * assembles every piece of the shell on real data, and the chat fixture) and two real screens at phone
+ * width: the community home (`COMMUNITY_HOME_PATH`) and a text channel's chat (`CHANNEL_CHAT_PATH`). Every
  * `/__lounge...` path is a fixture: with the new design off it is the old
  * shell's not-found page, and only a fixture's descriptor may set `links`.
  * A real (non-fixture) route is never the new shell in the desktop app
@@ -59,8 +59,8 @@ export function loungeCommunityFixturePath(communityId: string): string {
 }
 
 /**
- * A hidden chat fixture: the new shell's text channel chat (PR 10c-1, the read side) inside the community's frame,
- * reached from the community fixture's channel rows. No real channel route is the new shell's yet.
+ * A hidden chat fixture: the new shell's text channel chat inside the community's frame, reached from the community
+ * fixture's channel rows. The same screen as the real `CHANNEL_CHAT_PATH`, with the fixtures' links.
  */
 export const LOUNGE_CHAT_FIXTURE_PATH = '/__lounge/community/:communityId/channel/:channelId';
 
@@ -71,6 +71,13 @@ export function loungeChatFixturePath(communityId: string, channelId: string): s
 
 /** The community home: the community's channels and rooms. The new shell's at phone width only. */
 export const COMMUNITY_HOME_PATH = '/community/:communityId';
+
+/**
+ * A channel's chat. The new shell's at phone width only, and for a text channel only: a voice channel's route is the
+ * old shell's call view (`chooseShell`'s `voiceChannels`). `.../search` and the rest under it stay the old shell's
+ * (whole-path match).
+ */
+export const CHANNEL_CHAT_PATH = '/community/:communityId/channel/:channelId';
 
 /**
  * The old shell's static routes that a registered pattern would also match (`/community/create` is
@@ -98,8 +105,14 @@ export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
   },
   {
     path: COMMUNITY_HOME_PATH,
-    // Compact would be an empty centre island (no converted chat yet); 820 px and wider stay classic.
+    // Compact would be an empty centre island (no converted chat beside it yet); 820 px and wider stay classic.
     widths: ['phone'],
     load: () => import('./lounge/screens/CommunityHomeScreen'),
+  },
+  {
+    path: CHANNEL_CHAT_PATH,
+    // Wider widths show the chat beside the channel list in the old shell until those layouts are converted.
+    widths: ['phone'],
+    load: () => import('./lounge/screens/ChannelChatScreen'),
   },
 ];

@@ -497,8 +497,14 @@ things and nothing else:
    Do not set `links` on a real screen. It is only for test fixtures (see
    below), and the registry test checks that.
 
-The community home above is the first real entry (`COMMUNITY_HOME_PATH`, phone
-only). Three rules came with it:
+The real entries so far, both at phone width only:
+
+| Path | Screen | Notes |
+|---|---|---|
+| `/community/:communityId` (`COMMUNITY_HOME_PATH`) | `CommunityHomeScreen` | The community's channels and rooms (left pane). |
+| `/community/:communityId/channel/:channelId` (`CHANNEL_CHAT_PATH`) | `ChannelChatScreen` | A text channel's chat (centre pane). The chat fixture's descriptor without `links`. `.../search` stays the old shell's, and so does a voice channel's route (below). |
+
+Four rules came with them:
 
 - **Never claim a static sibling.** A pattern such as `/community/:communityId`
   also matches `/community/create`. `chooseShell` ranks the registered routes
@@ -510,6 +516,13 @@ only). Three rules came with it:
 - **Real screens are web-only for now.** In the desktop app (`isElectron()`)
   only the `/__lounge` fixtures can be the new shell; every real route stays on
   the old shell at every width and zoom.
+- **One pattern, two kinds of channel.** `/community/:communityId/channel/:channelId`
+  is a text channel's chat and a voice channel's call view. The path cannot
+  tell them apart, so the community's left island notes the voice channels of
+  every list it loads (`shell/voiceChannelMemory.ts`), and `chooseShell` gives a
+  noted voice channel's route to the old shell (its call view, where the call
+  bar's "Open call view" leads). A cold link to a voice channel shows the new
+  shell until that list is in; its chat centre draws nothing meanwhile.
 - **Right content needs a way in on a phone.** A phone screen whose descriptor
   has right content (the members) gives a control that opens it: the community
   header's "N around" (`useScreenChrome().setRightOpen(true)`), plain text only

@@ -3,7 +3,7 @@
  * separators, read marking, Jump to latest with "N new", the typing line and `?highlight=` deep links, all on the
  * shared chat layer (`data/chat/useConversation`) (PR 10c-1); and the write side (PR 10c-2a): the composer
  * (`ChatComposer`), a message's actions (`MessageActionsSheet`), editing in place, and Retry or Delete on a failed
- * send. Reached only on the hidden chat fixture until the real route is registered.
+ * send. The real channel route's at phone width (PR 10c-2b, `ChannelChatScreen`), and the hidden chat fixture's.
  *
  * Typing in the composer and opening a message's actions re-render no row: the composer keeps its own state, and
  * what rows share (`ChatRowContext`) holds only stable values.
@@ -30,6 +30,7 @@ import { useHapticFeedback } from '../../../../hooks/useHapticFeedback';
 import { removeOptimisticRow, retryOptimisticMessage } from '../../../../hooks/useOptimisticSendMessage';
 import { useSendMessage } from '../../../../hooks/useSendMessage';
 import type { Message } from '../../../../types/message.type';
+import { ChannelType } from '../../../../types/channel.type';
 import { useAttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import type { MentionChannel } from '../../../../data/chat/toSegments';
 import { findCachedChannel } from '../../../../hooks/useChannelMentionTarget';
@@ -300,9 +301,15 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   );
 }
 
-/** The centre of the chat screen: one conversation per channel (a switch starts the next one fresh). */
-export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
+/**
+ * The centre of the chat screen: one conversation per channel (a switch starts the next one fresh). A voice channel
+ * has no chat here: its route is the old shell's call view, which the shell switches to once the community's channel
+ * list says so (`voiceChannelMemory`); until that render, nothing (no composer, no read marks).
+ */
+export function ChannelChat({ params }: LoungeScreenProps): JSX.Element | null {
   const communityId = params.communityId ?? '';
   const channelId = params.channelId ?? '';
+  const { channel } = useRouteChannel({ communityId, channelId });
+  if (channel?.type === ChannelType.VOICE) return null;
   return <ChannelChatBody key={`${communityId}/${channelId}`} communityId={communityId} channelId={channelId} />;
 }
