@@ -90,7 +90,12 @@ vi.mock('../../../hooks/useMessagePermissions', () => ({
   },
 }));
 const retry = vi.hoisted(() => ({ retry: vi.fn(), remove: vi.fn() }));
-vi.mock('../../../hooks/useOptimisticSendMessage', () => ({ useOptimisticMessageRetry: () => retry }));
+vi.mock('../../../hooks/useOptimisticSendMessage', () => ({
+  retryOptimisticMessage: (_client: unknown, _send: unknown, message: Message) => retry.retry(message),
+  removeOptimisticRow: (_client: unknown, message: Message) => retry.remove(message),
+}));
+const clipboard = vi.hoisted(() => ({ write: vi.fn(async (_text: string) => undefined) }));
+vi.mock('../../../utils/clipboard', () => ({ copyToClipboard: clipboard.write }));
 
 // The composer's outside world.
 vi.mock('../../../hooks/useMessageFileUpload', () => ({ useMessageFileUpload: () => ({ handleSendMessage: vi.fn() }) }));
@@ -150,7 +155,7 @@ function setup(messages: Message[]) {
   queryClient.setQueryData(customEmojiControllerListCommunityEmojisQueryKey({ path: { communityId: 'c-1' } }), []);
   queryClient.setQueryData(aliasGroupsControllerGetCommunityAliasGroupsQueryKey({ path: { communityId: 'c-1' } }), []);
   queryClient.setQueryData(channelsControllerGetMentionableChannelsQueryKey({ path: { communityId: 'c-1' } }), []);
-  const ui = (
+  const ui = () => (
     <FileCacheProvider>
       <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
         <LoungeLinksContext value={FIXTURE_LINKS}>
@@ -161,7 +166,13 @@ function setup(messages: Message[]) {
       </KitProvider>
     </FileCacheProvider>
   );
-  return renderWithProviders(ui, { queryClient, routerProps: { initialEntries: ['/__lounge/community/c-1/channel/ch-1'] } });
+  const view = renderWithProviders(ui(), { queryClient, routerProps: { initialEntries: ['/__lounge/community/c-1/channel/ch-1'] } });
+  /** Shows `next` as the conversation (a status change, a row leaving and coming back). */
+  const show = (next: Message[]) => {
+    conversation.current = makeConversation(next);
+    view.rerender(ui());
+  };
+  return { ...view, show };
 }
 
 const rowOf = (text: string) => screen.getAllByRole('article').find((row) => row.textContent?.includes(text))!;
@@ -269,19 +280,95 @@ describe('ChannelChat write side', () => {
     await waitFor(() => expect(composerField()).toHaveFocus());
   });
 
-  it('a failed send shows Retry (busy while it runs) and Delete', async () => {
+  it('Retry keeps focus and shows busy while the message goes failed → pending → sent; then focus is on the row', async () => {
+    const failedMsg = createMessage({ id: 'pending-1', clientId: 'pending-1', authorId: 'me', sendStatus: 'failed', spans: [{ type: SpanType.PLAINTEXT, text: 'lost words' }] });
     let finish: () => void = () => undefined;
-    retry.retry.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
-    const failed = createMessage({ id: 'pending-1', authorId: 'me', sendStatus: 'failed', spans: [{ type: SpanType.PLAINTEXT, text: 'lost words' }] });
-    setup([failed]);
-    const row = rowOf('lost words');
-    fireEvent.click(within(row).getByRole('button', { name: 'Retry' }));
+    let view: ReturnType<typeof setup>;
+    // As the real retry: the message is pending again at once, and the promise settles on the server's answer.
+    retry.retry.mockImplementation(() => {
+      view.show([{ ...failedMsg, sendStatus: 'pending' }]);
+      return new Promise<void>((resolve) => (finish = resolve));
+    });
+    view = setup([failedMsg]);
+    const button = within(rowOf('lost words')).getByRole('button', { name: 'Retry' });
+    act(() => button.focus());
+    fireEvent.click(button);
     expect(retry.retry).toHaveBeenCalledTimes(1);
-    expect(within(row).getByRole('button', { name: 'Retry' })).toHaveAttribute('aria-busy', 'true');
-    await act(async () => finish());
-    expect(within(rowOf('lost words')).getByRole('button', { name: 'Retry' })).not.toHaveAttribute('aria-busy');
+    // The same button, still focused, busy.
+    const busy = within(rowOf('lost words')).getByRole('button', { name: 'Retry' });
+    expect(busy).toBe(button);
+    expect(busy).toHaveFocus();
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    // Sent: Retry goes, focus goes to the row (the same element as before).
+    const row = rowOf('lost words');
+    await act(async () => {
+      view.show([{ ...failedMsg, sendStatus: undefined }]);
+      finish();
+    });
+    expect(within(rowOf('lost words')).queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(rowOf('lost words')).toBe(row);
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it('a failed send’s Delete removes it', () => {
+    const failedMsg = createMessage({ id: 'pending-2', authorId: 'me', sendStatus: 'failed', spans: [{ type: SpanType.PLAINTEXT, text: 'lost words' }] });
+    setup([failedMsg]);
     fireEvent.click(within(rowOf('lost words')).getByRole('button', { name: 'Delete' }));
     expect(retry.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['pending', 'failed'] as const)('a %s message offers only Copy', async (sendStatus) => {
+    perms.moderator = true;
+    setup([createMessage({ id: `pending-${sendStatus}`, authorId: 'me', sendStatus, spans: [{ type: SpanType.PLAINTEXT, text: 'on its way' }] })]);
+    const sheet = await openActionsWithEnter('on its way');
+    expect(sheetActions(sheet)).toEqual(['Copy message content']);
+  });
+
+  it('Copy says it copied only when the clipboard took it, and says so when it did not', async () => {
+    setup([theirs()]);
+    let sheet = await openActionsWithEnter('their words');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Copy message content' }));
+    await waitFor(() => expect(clipboard.write).toHaveBeenCalledWith('their words'));
+    expect(screen.queryByText("Couldn't copy the message")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    clipboard.write.mockRejectedValueOnce(new TypeError('no clipboard'));
+    sheet = await openActionsWithEnter('their words');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Copy message content' }));
+    expect(await screen.findByText("Couldn't copy the message")).toBeInTheDocument();
+  });
+
+  it('while an input method composes, Escape does not cancel an edit and Enter does not save it', async () => {
+    setup([mine()]);
+    const sheet = await openActionsWithEnter('my words');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Edit message' }));
+    const editor = await screen.findByRole('textbox', { name: 'Edit message' });
+    fireEvent.keyDown(editor, { key: 'Escape', isComposing: true });
+    fireEvent.keyDown(editor, { key: 'Escape', keyCode: 229 });
+    fireEvent.keyDown(editor, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(editor, { key: 'Enter', keyCode: 229 });
+    expect(screen.getByRole('textbox', { name: 'Edit message' })).toBeInTheDocument();
+    expect(actions.save).not.toHaveBeenCalled();
+  });
+
+  it('an edit whose row leaves the list and comes back keeps its text and does not take focus again', async () => {
+    const own = mine();
+    const other = theirs();
+    const { show } = setup([own, other]);
+    const sheet = await openActionsWithEnter('my words');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Edit message' }));
+    const editor = await screen.findByRole('textbox', { name: 'Edit message' });
+    await waitFor(() => expect(editor).toHaveFocus());
+    fireEvent.change(editor, { target: { value: 'half-typed change' } });
+    act(() => composerField().focus());
+    // The row leaves the render window and comes back.
+    show([other]);
+    expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull();
+    show([own, other]);
+    const back = await screen.findByRole('textbox', { name: 'Edit message' });
+    await waitFor(() => expect(back).toHaveValue('half-typed change'));
+    await act(async () => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))));
+    expect(composerField()).toHaveFocus();
   });
 
   it('Escape on a row moves focus to the composer’s field', () => {

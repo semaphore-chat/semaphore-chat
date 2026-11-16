@@ -12,7 +12,9 @@
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
-import { Button, Icon, ListRow, Sheet, Stack, useAnnounce, useConfirmDestructive, type IconName } from '../../../../kit';
+import { Button, Icon, ListRow, Sheet, Stack, useAnnounce, useConfirmDestructive, useToasts, type IconName } from '../../../../kit';
+import { copyToClipboard } from '../../../../utils/clipboard';
+import { spansToText } from '../../../../utils/mentionParser';
 import { getMessageActionModel, type MessageActionId } from '../../../../data/chat/messageActionModel';
 import { useMessageActions } from '../../../../data/chat/useMessageActions';
 import { findCachedChannel } from '../../../../hooks/useChannelMentionTarget';
@@ -71,6 +73,7 @@ function ActionsFor({
 }: MessageActionsSheetProps & { message: Message }): JSX.Element {
   const queryClient = useQueryClient();
   const announce = useAnnounce();
+  const toasts = useToasts();
   const [open, setOpen] = useState(true);
   const { data: author } = useQuery({
     ...userControllerGetUserByIdOptions({ path: { id: message.authorId ?? '' } }),
@@ -120,6 +123,16 @@ function ActionsFor({
     },
   }).filter((action) => action.group !== 'reaction');
 
+  // Copy says whether it worked (a page served over plain http has no clipboard).
+  const copy = async () => {
+    try {
+      await copyToClipboard(spansToText(message.spans, (id) => findCachedChannel(queryClient, id)?.name));
+      announce('Message copied');
+    } catch {
+      toasts.show({ tone: 'danger', message: "Couldn't copy the message" });
+    }
+  };
+
   const react = (emoji: string) => {
     void actions.handleReactionClick(emoji);
     close();
@@ -149,8 +162,8 @@ function ActionsFor({
                 leading={<Icon name={ICON[action.key] ?? 'Pin'} size="md" tone={action.destructive ? 'danger' : 'secondary'} />}
                 onClick={() => {
                   close();
-                  void action.run();
-                  if (action.key === 'copy') announce('Message copied');
+                  if (action.key === 'copy') void copy();
+                  else void action.run();
                 }}
               />
             ))}

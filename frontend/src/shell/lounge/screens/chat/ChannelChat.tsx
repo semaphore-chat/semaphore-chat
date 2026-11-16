@@ -27,6 +27,8 @@ import { createEditingStore } from '../../../../data/chat/editingStore';
 import { useReplyAndEdit } from '../../../../data/chat/useReplyAndEdit';
 import { VoiceSessionType } from '../../../../contexts/VoiceContext';
 import { useHapticFeedback } from '../../../../hooks/useHapticFeedback';
+import { removeOptimisticRow, retryOptimisticMessage } from '../../../../hooks/useOptimisticSendMessage';
+import { useSendMessage } from '../../../../hooks/useSendMessage';
 import type { Message } from '../../../../types/message.type';
 import { useAttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import type { MentionChannel } from '../../../../data/chat/toSegments';
@@ -144,6 +146,13 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     [handleQuoteReply, focusComposer],
   );
   const onEdit = useCallback((message: Message) => editing.start(message.id), [editing]);
+  // One sender for the whole list's Retry (not one socket hook per row), read through a ref so the rows' shared
+  // context stays the same when the connection changes.
+  const { sendMessage: rawSend } = useSendMessage(VoiceSessionType.Channel);
+  const rawSendRef = useRef(rawSend);
+  rawSendRef.current = rawSend;
+  const retrySend = useCallback((message: Message) => retryOptimisticMessage(queryClient, rawSendRef.current, message), [queryClient]);
+  const removeFailed = useCallback((message: Message) => removeOptimisticRow(queryClient, message), [queryClient]);
   const escapeToInput = useCallback(() => inputRef.current?.focus({ preventScroll: true }), []);
 
   // A visible channel by id, from every community's cached channel list (as the old renderer's mention lookup);
@@ -191,8 +200,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       opener,
       openActions,
       editing,
+      retrySend,
+      removeFailed,
     }),
-    [conversation.me, communityId, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing],
+    [conversation.me, communityId, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing, retrySend, removeFailed],
   );
 
   // Back (B6): to the community's home. When the screen before this one was that home, it is a step back in the
