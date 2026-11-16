@@ -66,14 +66,8 @@ const SOCKET_EMITTERS: Record<string, { targets: readonly string[]; why: string 
     targets: ['src/utils/SocketContext.ts'],
     why: 'MARK_AS_READ: the debounced read mark of a conversation (useReadMarks, both shells)',
   },
-  'src/hooks/useSendMessage.ts': {
-    targets: ['src/utils/SocketContext.ts'],
-    why: 'SEND_MESSAGE with its ack: sending a message (the composer, both shells)',
-  },
-  'src/hooks/useTypingEmitter.ts': {
-    targets: ['src/hooks/useSocket.ts'],
-    why: 'TYPING_START / TYPING_STOP: the composer saying the reader is typing',
-  },
+  // useSendMessage (SEND_MESSAGE) and useTypingEmitter (typing) join this list, with their reasons, in the PR whose
+  // Lounge code first imports them (the composer, 10c-2), so that step gets its own review.
   'src/data/connection.ts': {
     targets: ['src/hooks/useSocket.ts'],
     why: 'useSocketConnected only: whether the socket is connected (the offline banner), no traffic',
@@ -91,6 +85,13 @@ const SOCKET_EMITTERS: Record<string, { targets: readonly string[]; why: string 
     why: 'the socket context accessor itself; reached only through the emitters above',
   },
 };
+
+/**
+ * The socket module: the only files that may import `socket.io-client` values (a second `io()` connection anywhere
+ * else would bypass the hub). What this cannot see statically: a hook that takes a socket as an argument (as
+ * `utils/sendAck.ts` does) imports nothing of the socket itself, so whoever hands it the socket is what is checked.
+ */
+const SOCKET_MODULE = ['src/utils/socketSingleton.ts', 'src/utils/SocketContext.ts', 'src/utils/SocketProvider.tsx'];
 
 /** Comments out, so an import quoted in a comment is not an import. */
 function stripComments(source: string): string {
@@ -148,6 +149,9 @@ function socketViolation(target: string, importer: string, typeOnly: boolean): s
 
 /** Why `target` (a file or a package) may not be reached from `root`, or null. */
 function violation(target: string, importer: string, typeOnly: boolean): string | null {
+  if (target === 'socket.io-client' && !typeOnly && !SOCKET_MODULE.includes(importer)) {
+    return 'a socket.io-client value outside the socket module';
+  }
   if (target.startsWith('src/components/') || target.startsWith('src/pages/')) return 'classic UI';
   if (target.startsWith('src/contexts/NotificationContext')) return 'renders an MUI Snackbar';
   if (target === '@mui/icons-material' || target.startsWith('@mui/icons-material/')) return 'MUI icons (the kit uses Lucide)';
@@ -248,6 +252,23 @@ describe('the new shell and the data layer stay headless', () => {
       'src/data/b.ts -> ./missing (unresolved import: the walker cannot see past it)',
       'src/data/c.ts -> src/hooks/leaky.ts -> src/contexts/NotificationContext.tsx (renders an MUI Snackbar)',
       'src/data/c.ts -> src/hooks/leaky.ts -> @mui/material (MUI outside the kit)',
+    ]);
+  });
+
+  it('no file under src/shell, src/kit, src/data or src/features imports a socket.io-client value', () => {
+    const offenders = [...SOURCES.entries()]
+      .filter(([path]) => /^src\/(shell|kit|data|features)\//.test(path))
+      .filter(([, source]) => importsOf(source).some((ref) => ref.specifier === 'socket.io-client' && !ref.typeOnly))
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
+    // The rule bites, directly and through a walked hook.
+    const tree = new Map([
+      ['src/data/a.ts', "import { io } from 'socket.io-client';\nimport { x } from '../hooks/second';"],
+      ['src/hooks/second.ts', "import { io } from 'socket.io-client';"],
+    ]);
+    expect(forbiddenPaths('src/data/', tree)).toEqual([
+      'src/data/a.ts -> socket.io-client (a socket.io-client value outside the socket module)',
+      'src/data/a.ts -> src/hooks/second.ts -> socket.io-client (a socket.io-client value outside the socket module)',
     ]);
   });
 
