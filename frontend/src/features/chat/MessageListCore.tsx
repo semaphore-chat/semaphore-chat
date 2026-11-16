@@ -8,15 +8,12 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
 } from "react";
-import { Box, LinearProgress } from "@mui/material";
 import { VList, type VListHandle } from "virtua";
-import MessageComponent from "../../components/Message/MessageComponent";
-import { UnreadMessageDivider } from "../../components/Message/UnreadMessageDivider";
-import { DaySeparator } from "../../components/Message/DaySeparator";
 import { dayMarkers, shouldGroupWithPrevious } from "../../utils/messageGrouping";
 import type { Message } from "../../types/message.type";
-import { VoiceSessionType } from "../../contexts/VoiceContext";
 import { TYPING_INDICATOR_HEIGHT } from "../../constants/layout";
 
 /** How close to the top (in item indices) triggers an older-page load. */
@@ -36,16 +33,48 @@ const ROW_GROWTH_EPSILON_PX = 0.5;
  */
 const CAP_EVICTION_SCAN_PREFIX = 51;
 
-export interface VirtualMessageListHandle {
+export interface MessageListCoreHandle {
   scrollToBottom: () => void;
   /** Bring a message into view (nearest edge); no-op if it isn't in the list. */
   scrollToMessage: (messageId: string) => void;
 }
 
-export interface VirtualMessageListProps {
+/** What a row needs from the list, besides its message (see `renderRow`). */
+export interface MessageRowContext {
+  /** The row's index in `orderedMessages`. */
+  index: number;
+  /** Same-author run within 5 min (utils/messageGrouping); never right below the unread divider. */
+  grouped: boolean;
+  /** The row's day is already named by a day separator above it. */
+  dayShownAbove: boolean;
+  /** A day separator goes above this row. */
+  showDaySeparator: boolean;
+  /** The unread divider goes above this row (the first unread message). */
+  showUnreadDivider: boolean;
+  unreadCount: number;
+  /** The row is the search highlight / jump target. */
+  isHighlighted: boolean;
+  /** The row holds the list's one Tab stop (roving focus). */
+  isRovingFocused: boolean;
+  onRovingKeyDown: (event: KeyboardEvent<HTMLDivElement>, index: number) => void;
+  onRovingFocus: (index: number) => void;
+  /** The list's container: the fallback focus target when a row goes away. */
+  listContainerRef: RefObject<HTMLDivElement | null>;
+}
+
+export interface MessageListCoreProps {
   /** Messages in chronological (oldest-first) render order. */
   orderedMessages: Message[];
-  authorId: string;
+
+  /**
+   * Renders one row's content (separators, then the message). The row's focus
+   * target carries `data-row-focus-target`, which roving focus looks for.
+   */
+  renderRow: (message: Message, ctx: MessageRowContext) => ReactNode;
+  /** The older-page indicator, shown while `isLoadingMore`; it must not take layout space. */
+  renderLoadingOlder?: () => ReactNode;
+  /** The newer-page indicator, shown while `isLoadingNewer`; it must not take layout space. */
+  renderLoadingNewer?: () => ReactNode;
 
   /** 'anchored' disables stick-to-bottom and centers on the jump target instead of homing to the bottom. */
   mode?: 'normal' | 'anchored';
@@ -68,13 +97,6 @@ export interface VirtualMessageListProps {
   highlightMessageId?: string;
   highlightSeq?: number;
 
-  // Thread / reply handling
-  contextId?: string;
-  communityId?: string;
-  directMessageGroupId?: string;
-  onOpenThread?: (message: Message) => void;
-  onQuoteReply?: (message: Message) => void;
-
   /** Changing this (channel/DM switch) re-homes the list at the bottom (or centers, in anchored mode). */
   resetKey?: string;
 
@@ -96,7 +118,12 @@ export interface VirtualMessageListProps {
 }
 
 /**
- * Virtualized message list built on virtua's {@link VList}.
+ * Virtualized message list built on virtua's {@link VList}: the scroll
+ * machine both shells share. It owns no look: each row's content comes from
+ * `renderRow(message, ctx)` and the page-load indicators from
+ * `renderLoadingOlder/Newer()` (the classic list is
+ * components/Message/VirtualMessageList, which renders MessageComponent rows
+ * and MUI progress bars).
  *
  * virtua owns the scroll container and scroll position — the single renderer
  * for both normal and anchored (jump-to-message) modes. Key wiring:
@@ -180,18 +207,20 @@ export interface VirtualMessageListProps {
  * `setAnnouncement`, which — like every other piece of state this
  * component's parent already owns (`atBottom`, loading flags, etc.) —
  * re-renders `MessageContainer` and cascades a re-render of this
- * (non-memoized) `VirtualMessageList`. That's harmless here: `orderedMessages`
+ * (non-memoized) list. That's harmless here: `orderedMessages`
  * keeps its memoized reference, virtua's own diffing is cheap, and every row
- * (`MessageComponent`) is wrapped in `React.memo` with an explicit
+ * (classic: `MessageComponent`) is wrapped in `React.memo` with an explicit
  * comparator, so the cascade stops there without re-rendering the list body.
  * Same category of re-render this component has always tolerated from its
  * parent; not a new performance concern from the announcer.
  */
-const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageListProps>(
+const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
   (
     {
       orderedMessages,
-      authorId,
+      renderRow,
+      renderLoadingOlder,
+      renderLoadingNewer,
       mode = 'normal',
       isLoadingMore,
       continuationToken,
@@ -203,11 +232,6 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
       lastReadIndex,
       highlightMessageId,
       highlightSeq,
-      contextId,
-      communityId,
-      directMessageGroupId,
-      onOpenThread,
-      onQuoteReply,
       resetKey,
       onAtBottomChange,
       onVisibleRangeChange,
@@ -815,14 +839,14 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
     const dayRows = dayMarkers(orderedMessages);
 
     return (
-      <Box
+      <div
         ref={listContainerRef}
         data-testid="virtual-scroll-container"
         // Not in the natural Tab order — only a fallback focus target for
         // the context-menu restore when a row is removed while its menu is
         // still closing (see MessageComponent's listContainerRef usage).
         tabIndex={-1}
-        sx={{
+        style={{
           flex: 1,
           minHeight: 0,
           display: "flex",
@@ -879,31 +903,19 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
 
             return (
               <div key={key} ref={observeRow} data-message-id={message.id} role="listitem">
-                {showDaySeparator && <DaySeparator date={message.sentAt} />}
-                {showDividerBefore && (
-                  <UnreadMessageDivider unreadCount={unreadCount} />
-                )}
-                <MessageComponent
-                  message={message}
-                  grouped={grouped}
-                  dayShownAbove={dayShownAbove}
-                  isAuthor={message.authorId === authorId}
-                  isSearchHighlight={isHighlighted}
-                  contextId={contextId}
-                  communityId={communityId}
-                  onOpenThread={onOpenThread}
-                  onQuoteReply={onQuoteReply}
-                  contextType={
-                    directMessageGroupId
-                      ? VoiceSessionType.Dm
-                      : VoiceSessionType.Channel
-                  }
-                  rowIndex={index}
-                  isRovingFocused={index === effectiveFocusedIndex}
-                  onRovingKeyDown={handleRowKeyDown}
-                  onRovingFocus={handleRowFocus}
-                  listContainerRef={listContainerRef}
-                />
+                {renderRow(message, {
+                  index,
+                  grouped,
+                  dayShownAbove,
+                  showDaySeparator,
+                  showUnreadDivider: showDividerBefore,
+                  unreadCount,
+                  isHighlighted,
+                  isRovingFocused: index === effectiveFocusedIndex,
+                  onRovingKeyDown: handleRowKeyDown,
+                  onRovingFocus: handleRowFocus,
+                  listContainerRef,
+                })}
                 {index === len - 1 && (
                   <div
                     aria-hidden="true"
@@ -919,40 +931,13 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
             loading into, absolutely positioned so it takes no layout space
             (an in-flow placeholder would resize the VList mid-scroll). The
             list's aria-busy tells assistive tech instead. */}
-        {isLoadingMore && (
-          <PageLoadBar edge="top" testId="load-older-progress" />
-        )}
-        {isLoadingNewer && (
-          <PageLoadBar edge="bottom" testId="load-newer-progress" />
-        )}
-      </Box>
+        {isLoadingMore && renderLoadingOlder?.()}
+        {isLoadingNewer && renderLoadingNewer?.()}
+      </div>
     );
   },
 );
 
-VirtualMessageList.displayName = "VirtualMessageList";
+MessageListCore.displayName = "MessageListCore";
 
-/** Thin indeterminate bar overlaid on one edge of the message list. */
-const PageLoadBar = ({
-  edge,
-  testId,
-}: {
-  edge: "top" | "bottom";
-  testId: string;
-}) => (
-  <LinearProgress
-    aria-hidden="true"
-    data-testid={testId}
-    sx={{
-      position: "absolute",
-      left: 0,
-      right: 0,
-      [edge]: 0,
-      height: 2,
-      zIndex: 1,
-      pointerEvents: "none",
-    }}
-  />
-);
-
-export default VirtualMessageList;
+export default MessageListCore;
