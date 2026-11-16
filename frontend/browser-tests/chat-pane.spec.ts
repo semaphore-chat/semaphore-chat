@@ -103,14 +103,14 @@ test.describe('2,000 kit rows on the shared list core', () => {
 
   test('Tab from the focused row walks its own controls, then leaves the list @keyboard', async ({ page }) => {
     await openStory(page, 'kit-chat-pane--long-history', PHONE);
-    // The newest row has an image (every tenth row has one, the last included) and the list opens at the bottom, so
-    // no scroll is needed: focus that row as a click would.
+    // The two newest rows have an image and the list opens at the bottom, so no scroll is needed. Focus the second
+    // newest: after its own Open button, Tab must skip the newest row's Open button and leave the list.
     await expect(page.getByRole('list', { name: 'Messages' })).toBeVisible();
     const target = await page.evaluate(async () => {
       for (let f = 0; f < 10; f += 1) await new Promise((r) => requestAnimationFrame(r));
-      const row = document.querySelector<HTMLElement>('[data-message-id="m-1999"] [role="article"]');
+      const row = document.querySelector<HTMLElement>('[data-message-id="m-1998"] [role="article"]');
       row?.focus();
-      return row ? 'm-1999' : null;
+      return row ? 'm-1998' : null;
     });
     expect(target).not.toBeNull();
     const active = () =>

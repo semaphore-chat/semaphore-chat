@@ -103,7 +103,7 @@ function longHistory(): Message[] {
     sentAt: new Date(START + i * 7 * 60_000).toISOString(),
     spans: [{ type: 'PLAINTEXT', text: `message ${i}: ${'words that fill a line or two of a phone column '.repeat((i % 3) + 1)}` }],
     attachments:
-      i % 10 === 9
+      i % 10 === 9 || i === 1998
         ? [{ id: `f-${i}`, filename: `shot-${i}.png`, fileType: 'IMAGE', size: 1024, width: 1600, height: 900 } as Message['attachments'][number]]
         : [],
     reactions: [],
