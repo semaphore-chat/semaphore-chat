@@ -23,3 +23,12 @@ export function rememberLastCommunity(id: string): void {
     // ignore storage failures (private mode, etc.)
   }
 }
+
+/** Forgets the remembered community: it belongs to the session that ended, not to the next user of this browser. */
+export function forgetLastCommunity(): void {
+  try {
+    localStorage.removeItem(LAST_COMMUNITY_KEY);
+  } catch {
+    // ignore storage failures (private mode, etc.)
+  }
+}

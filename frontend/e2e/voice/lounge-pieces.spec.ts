@@ -637,9 +637,9 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     const profile = a.page.waitForResponse((res) => new URL(res.url()).pathname === '/api/users/profile', { timeout: 20_000 });
     await a.page.goto('/');
     await Promise.all([connectionInfo, profile]);
-    // Signed in again, on the old shell's home (820 px is its touch layout). Its sidebar shows the community last
-    // opened (utils/lastCommunity, which the Lounge writes too); the content pane, no community.
-    await expect(a.page.getByRole('heading', { name: 'No Community Selected' })).toBeVisible({ timeout: 20_000 });
+    // Signed in again, on the old shell's home (820 px is its mobile layout). Nothing of the previous session's
+    // community is remembered, so the sidebar offers none.
+    await expect(a.page.getByRole('button', { name: /^choose a community$/i })).toBeVisible({ timeout: 20_000 });
     // Settled: the network goes idle within seconds when no call starts. A started call keeps it busy, so the wait
     // is bounded and the token check below names the failure.
     await a.page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
