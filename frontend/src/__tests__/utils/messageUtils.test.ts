@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isUserMentioned, getLoneGifUrl, getMessageLoneGifUrl } from '../../components/Message/messageUtils';
+import { isUserMentioned, getLoneGifUrl, getMessageLoneGifUrl } from '../../data/chat/messageUtils';
 import { SpanType } from '../../types/message.type';
 import { createMessage } from '../test-utils/factories';
 

@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { EditRequestContext, type EditRequest, type EditRequestContextValue } from "../../contexts/EditRequestContext";
-import { isOptimisticMessageId } from "../../utils/messageCacheUpdaters";
+import React from "react";
+import { EditRequestContext } from "../../contexts/EditRequestContext";
+import { useReplyAndEdit } from "../../data/chat/useReplyAndEdit";
 import MessageContainer from "../Message/MessageContainer";
 import MessageInput from "./MessageInput";
 import ReplyComposerBanner from "./ReplyComposerBanner";
@@ -61,26 +61,6 @@ const MessageContainerWrapper: React.FC<MessageContainerWrapperProps> = ({
   const { data: user } = useQuery(userControllerGetProfileOptions());
   const authorId = user?.id || "";
 
-  // Quote reply state — reset when navigating to a different channel/DM
-  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
-  useEffect(() => {
-    setReplyToMessage(null);
-  }, [contextId, contextType]);
-  const handleQuoteReply = useCallback((message: Message) => {
-    setReplyToMessage(message);
-  }, []);
-  const handleCancelReply = useCallback(() => {
-    setReplyToMessage(null);
-  }, []);
-
-  const wrappedOnSendMessage = useCallback(
-    (messageContent: string, spans: Span[], files?: File[]) => {
-      onSendMessage(messageContent, spans, files, replyToMessage?.id);
-      setReplyToMessage(null);
-    },
-    [onSendMessage, replyToMessage],
-  );
-
   // Use the injected hook for messages
   const {
     messages,
@@ -99,27 +79,14 @@ const MessageContainerWrapper: React.FC<MessageContainerWrapperProps> = ({
     highlightSeq,
   } = useMessagesHook();
 
-  // ↑ in an empty composer: open the edit form of your newest message
-  // (messages arrive newest-first).
-  const [editRequest, setEditRequest] = useState<EditRequest | null>(null);
-  const editSeqRef = useRef(0);
-  const handleEditLastMessage = useCallback((): boolean => {
-    if (!authorId) return false;
-    const last = messages.find(
-      (m) => m.authorId === authorId && !m.deletedAt && m.sendStatus === undefined && !isOptimisticMessageId(m.id),
-    );
-    if (!last) return false;
-    editSeqRef.current += 1;
-    setEditRequest({ messageId: last.id, seq: editSeqRef.current });
-    return true;
-  }, [messages, authorId]);
-  const clearEditRequest = useCallback((seq: number) => {
-    setEditRequest((current) => (current?.seq === seq ? null : current));
-  }, []);
-  const editRequestValue = useMemo<EditRequestContextValue>(
-    () => ({ request: editRequest, clear: clearEditRequest }),
-    [editRequest, clearEditRequest],
-  );
+  const {
+    replyToMessage,
+    handleQuoteReply,
+    handleCancelReply,
+    wrappedOnSendMessage,
+    handleEditLastMessage,
+    editRequestValue,
+  } = useReplyAndEdit({ contextType, contextId, authorId, messages, onSendMessage });
 
   // Register the composer's measured height (BottomChromeContext) so toasts
   // and the reconnecting chip float above it instead of covering it. A

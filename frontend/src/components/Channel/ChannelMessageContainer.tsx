@@ -13,16 +13,11 @@ import { MessageSearchPanel } from "../Message/MessageSearchPanel";
 import { DockedSidePanel, DOCKED_PANEL_ATTR, type DockedPanelKind } from "./DockedSidePanel";
 import { PinnedMessagesPanel } from "../Moderation";
 import { ThreadPanel } from "../Thread";
-import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { useJumpToMessage } from "../../hooks/useJumpToMessage";
+import { useParams } from "react-router-dom";
+import { useChannelChat } from "../../data/chat/useChannelChat";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
 import { useQuery } from "@tanstack/react-query";
-import {
-  channelsControllerGetMentionableChannelsOptions,
-  channelsControllerFindOneOptions,
-  moderationControllerGetPinnedMessagesOptions,
-} from "../../api-client/@tanstack/react-query.gen";
-import { useAllCommunityMembers } from "../../hooks/useAllCommunityMembers";
+import { channelsControllerFindOneOptions } from "../../api-client/@tanstack/react-query.gen";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import ChannelNotificationMenu from "./ChannelNotificationMenu";
 import { useAutoMarkNotificationsRead } from "../../hooks/useAutoMarkNotificationsRead";
@@ -32,7 +27,6 @@ import { VOICE_BAR_HEIGHT, CHAT_COLUMN_MIN_WIDTH } from "../../constants/layout"
 import { DEVICE_BREAKPOINTS } from "../../utils/breakpoints";
 import { useResponsive } from "../../hooks/useResponsive";
 import { useOverlayHistory } from "../../hooks/useOverlayHistory";
-import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 import type { Message } from "../../types/message.type";
 
 interface ChannelMessageContainerProps {
@@ -71,11 +65,6 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   }>();
   const communityId = communityIdProp || communityIdParam;
 
-  // Get highlight message ID from URL params
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const highlightMessageId = searchParams.get("highlight");
-
   const { handleSendMessage } = useMessageFileUpload({
     contextType: VoiceSessionType.Channel,
     contextId: channelId,
@@ -107,7 +96,6 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
 
   // Pinned messages state
   const [pinnedPanelOpen, setPinnedPanelOpen] = useState(false);
-  const { data: pinnedMessages = [] } = useQuery(moderationControllerGetPinnedMessagesOptions({ path: { channelId } }));
 
   // Thread state
   const { openThreadId, openThread, closeThread } = useThreadPanel();
@@ -247,44 +235,11 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     contextId: channelId,
   });
 
-  // Fetch community members and channels for mention resolution
-  const { data: memberData = [] } = useAllCommunityMembers(communityId || "", {
-    enabled: !!communityId,
-  });
-  const { data: channelData = [] } = useQuery({
-    ...channelsControllerGetMentionableChannelsOptions({ path: { communityId: communityId || "" } }),
-    enabled: !!communityId,
-  });
-
-  // Convert to mention format
-  const userMentions: UserMention[] = React.useMemo(() =>
-    memberData.map((member) => ({
-      id: member.user!.id,
-      username: member.user!.username,
-      displayName: member.user!.displayName || undefined,
-    })), [memberData]);
-
-  const channelMentions: ChannelMention[] = React.useMemo(() =>
-    channelData.map((channel) => ({
-      id: channel.id,
-      name: channel.name,
-    })), [channelData]);
-
-  // Get messages using the jump-to-message hook (supports anchored mode for pinned/search/notification links)
-  const messagesHookResult = useJumpToMessage('channel', channelId, highlightMessageId || undefined);
-  const { isJumpPending } = messagesHookResult;
-
-  // Clear the highlight param from the URL once the jump has settled (target
-  // loaded, in the normal or anchored window). useJumpToMessage keeps the id
-  // locally for scroll/flash, and clearing lets the same pinned message be
-  // re-clicked. Clearing earlier would drop a cold deep link on the floor.
-  useEffect(() => {
-    if (highlightMessageId && !isJumpPending) {
-      navigate(`/community/${communityId}/channel/${channelId}`, {
-        replace: true,
-      });
-    }
-  }, [highlightMessageId, isJumpPending, communityId, channelId, navigate]);
+  const { pinnedMessages, userMentions, channelMentions, messagesHookResult, jumpToPinnedMessage } = useChannelChat(
+    channelId,
+    communityId,
+    { onPinnedThreadReply: setPendingThreadParentId },
+  );
 
   // When a pinned thread reply is clicked, we jump to the parent and then open the thread
   useEffect(() => {
@@ -304,14 +259,7 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     // On touch layouts the open panel owns the current history entry
     // (useOverlayHistory); replace it so back doesn't land on a dead entry.
     const navOptions = { replace: shouldUseTouchUI && !docked };
-    const pinnedMsg = pinnedMessages.find(m => m.id === messageId);
-    if (pinnedMsg?.parentMessageId) {
-      // Thread reply: jump to parent message and open the thread panel
-      setPendingThreadParentId(pinnedMsg.parentMessageId);
-      navigate(`/community/${communityId}/channel/${channelId}?highlight=${pinnedMsg.parentMessageId}`, navOptions);
-    } else {
-      navigate(`/community/${communityId}/channel/${channelId}?highlight=${messageId}`, navOptions);
-    }
+    jumpToPinnedMessage(messageId, navOptions);
   };
 
   // Create member list component for the channel

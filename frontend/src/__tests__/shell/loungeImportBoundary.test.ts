@@ -2,12 +2,12 @@
  * The new shell's chunk and the shared data layer stay headless
  * (design report §2, enforcement 2).
  *
- * The ESLint block for `src/data/**` and `src/shell/lounge/**` (eslint.config.js)
+ * The ESLint block for `src/data/**`, `src/features/chat/**` and `src/shell/lounge/**` (eslint.config.js)
  * stops direct imports; it cannot see transitive ones, such as a headless-looking
  * hook that imports a component type or the old snackbar (design F6). This test
  * walks every static import (regex over the source, `import type` and
  * all-`type` specifier lists skipped, dynamic `import()` not followed: a lazy
- * chunk is its own boundary) from those two trees and fails on any path into:
+ * chunk is its own boundary) from those three trees and fails on any path into:
  *
  * - `src/components/` or `src/pages/` (the classic UI),
  * - `@mui/icons-material` (the kit uses Lucide),
@@ -164,10 +164,15 @@ describe('the new shell and the data layer stay headless', () => {
   it('scans the trees it guards', () => {
     expect([...SOURCES.keys()].some((p) => p.startsWith('src/data/'))).toBe(true);
     expect([...SOURCES.keys()].some((p) => p.startsWith('src/shell/lounge/'))).toBe(true);
+    expect([...SOURCES.keys()].some((p) => p.startsWith('src/features/chat/'))).toBe(true);
   });
 
   it('src/data reaches no classic UI, MUI icons, old snackbar or livekit-client value', () => {
     expect(forbiddenPaths('src/data/')).toEqual([]);
+  });
+
+  it('src/features/chat (the shared message list core) reaches none of them either', () => {
+    expect(forbiddenPaths('src/features/chat/')).toEqual([]);
   });
 
   it('src/shell/lounge reaches none of them either (except the listed exceptions)', () => {
@@ -204,7 +209,7 @@ describe('the new shell and the data layer stay headless', () => {
   });
 });
 
-describe('the lint block for src/data and src/shell/lounge (eslint.config.js)', () => {
+describe('the lint block for src/data, src/features/chat and src/shell/lounge (eslint.config.js)', () => {
   async function rulesHit(code: string, filePath: string): Promise<string[]> {
     const [result] = await new ESLint().lintText(code, { filePath });
     // The restriction rules only (a one-line sample also trips no-unused-vars), each once
@@ -230,6 +235,9 @@ describe('the lint block for src/data and src/shell/lounge (eslint.config.js)', 
     ["import { ErrorBoundary } from '../../components/ErrorBoundary';", 'src/shell/lounge/LoungeRoot.tsx'],
     ["import { getSocketSingleton } from '../utils/socketSingleton';", 'src/data/x.ts'],
     ["import { SocketProvider } from '../../utils/SocketProvider';", 'src/shell/lounge/x.tsx'],
+    ["import { Box } from '@mui/material';", 'src/features/chat/x.tsx'],
+    ["import MessageComponent from '../../components/Message/MessageComponent';", 'src/features/chat/x.tsx'],
+    ["import { useNotification } from '../../contexts/NotificationContext';", 'src/features/chat/x.tsx'],
   ])('rejects %s in %s', async (code, filePath) => {
     expect(await rulesHit(code, filePath)).toEqual(restricted);
   });

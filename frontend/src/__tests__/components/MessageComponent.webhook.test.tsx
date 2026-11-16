@@ -54,7 +54,7 @@ const mockActions = {
   handlePin: vi.fn(),
   handleUnpin: vi.fn(),
 };
-vi.mock('../../components/Message/useMessageActions', () => ({
+vi.mock('../../data/chat/useMessageActions', () => ({
   useMessageActions: () => mockActions,
 }));
 
