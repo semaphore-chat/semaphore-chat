@@ -51,8 +51,12 @@ async function goTo(page: Page, hashPath: string): Promise<void> {
   }, `#${hashPath}`);
 }
 
-/** The new shell is on screen (the community fixture). */
-const fixture = (page: Page) => page.locator('[data-shell="lounge"]');
+/**
+ * The community fixture is on screen and loaded: the new shell with the community's header (its name as the left
+ * island's heading, what the fixture's screen renders at phone width, where the left pane shows).
+ */
+const fixture = (page: Page) =>
+  page.locator('[data-shell="lounge"]').getByRole('heading', { name: 'Test Community', level: 2 });
 
 /** The seeded Test Community's id, for the fixture's path. */
 async function testCommunityId(p: Participant): Promise<string> {

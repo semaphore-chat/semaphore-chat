@@ -270,7 +270,7 @@ export async function joinVoiceChannel(
       message: `${p.name} channelId never resolved after join`,
     })
     .toBeTruthy();
-  p.channelId = await page.evaluate(() => window.__lkRoom!.name);
+  p.channelId = await page.evaluate(() => window.__lkRoom?.name ?? '');
 }
 
 /**
