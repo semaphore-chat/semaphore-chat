@@ -1,10 +1,14 @@
 /**
- * The new shell's text channel chat, the read side (PR 10c-1): the header, the shared message list with kit rows,
- * the day and unread separators, read marking, Jump to latest with "N new", the typing line and `?highlight=`
- * deep links, all on the shared chat layer (`data/chat/useConversation`). No composer and no message actions yet
- * (10c-2). Reached only on the hidden chat fixture until the real route is registered.
+ * The new shell's text channel chat: the header, the shared message list with kit rows, the day and unread
+ * separators, read marking, Jump to latest with "N new", the typing line and `?highlight=` deep links, all on the
+ * shared chat layer (`data/chat/useConversation`) (PR 10c-1); and the write side (PR 10c-2a): the composer
+ * (`ChatComposer`), a message's actions (`MessageActionsSheet`), editing in place, and Retry or Delete on a failed
+ * send. Reached only on the hidden chat fixture until the real route is registered.
+ *
+ * Typing in the composer and opening a message's actions re-render no row: the composer keeps its own state, and
+ * what rows share (`ChatRowContext`) holds only stable values.
  */
-import { useCallback, useContext, useMemo, useRef, type JSX } from 'react';
+import { useCallback, useContext, useMemo, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -19,6 +23,11 @@ import {
   useWidthRange,
 } from '../../../../kit';
 import { useConversation, type Conversation } from '../../../../data/chat/useConversation';
+import { createEditingStore } from '../../../../data/chat/editingStore';
+import { useReplyAndEdit } from '../../../../data/chat/useReplyAndEdit';
+import { VoiceSessionType } from '../../../../contexts/VoiceContext';
+import { useHapticFeedback } from '../../../../hooks/useHapticFeedback';
+import type { Message } from '../../../../types/message.type';
 import { useAttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import type { MentionChannel } from '../../../../data/chat/toSegments';
 import { findCachedChannel } from '../../../../hooks/useChannelMentionTarget';
@@ -33,7 +42,13 @@ import { useScreenChrome, type LoungeScreenProps } from '../../screen';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { ChatRowContext, type ChatRowShared } from './ChatRow';
+import { ChatComposer } from './ChatComposer';
+import { MessageActionsSheet } from './MessageActionsSheet';
+import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
+
+const NO_MESSAGES: Message[] = [];
+const noSend = () => undefined;
 
 /** A hash href as a router path. */
 const pathOf = (href: string) => href.replace(/^#/, '');
@@ -97,6 +112,39 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   const reportOpenError = useCallback((message: string) => void toasts.show({ tone: 'danger', message }), [toasts]);
   const opener = useAttachmentOpener(reportOpenError);
   const { byId: emojiById } = useCommunityCustomEmojis(communityId);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [editing] = useState(createEditingStore);
+  const haptics = useHapticFeedback();
+  const hapticsRef = useRef(haptics);
+  hapticsRef.current = haptics;
+  // The message whose actions are open (one host for the whole list).
+  const [actionsFor, setActionsFor] = useState<Message | null>(null);
+  const openActions = useCallback((message: Message, via: OpenActionsVia) => {
+    if (via === 'touch') hapticsRef.current.longPress();
+    setActionsFor(message);
+  }, []);
+  const closeActions = useCallback(() => setActionsFor(null), []);
+  // Reply (the shared quote-reply state; it resets when the channel changes). Sending goes through the composer.
+  const { replyToMessage, handleQuoteReply, handleCancelReply } = useReplyAndEdit({
+    contextType: VoiceSessionType.Channel,
+    contextId: channelId,
+    authorId: conversation.me,
+    messages: NO_MESSAGES,
+    onSendMessage: noSend,
+  });
+  const focusComposer = useCallback(() => {
+    // After the actions sheet has given focus back to the row.
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+  }, []);
+  const onReply = useCallback(
+    (message: Message) => {
+      handleQuoteReply(message);
+      focusComposer();
+    },
+    [handleQuoteReply, focusComposer],
+  );
+  const onEdit = useCallback((message: Message) => editing.start(message.id), [editing]);
+  const escapeToInput = useCallback(() => inputRef.current?.focus({ preventScroll: true }), []);
 
   // A visible channel by id, from every community's cached channel list (as the old renderer's mention lookup);
   // read again when this community's list changes.
@@ -141,8 +189,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       openPath,
       openProfile: hasProfile ? openProfileStable : undefined,
       opener,
+      openActions,
+      editing,
     }),
-    [conversation.me, communityId, segments, showMessage, openPath, hasProfile, openProfileStable, opener],
+    [conversation.me, communityId, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing],
   );
 
   // Back (B6): to the community's home. When the screen before this one was that home, it is a step back in the
@@ -206,7 +256,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
           />
         }
         state={state}
-        list={face === 'list' ? <ChatList conversation={conversation} /> : undefined}
+        list={face === 'list' ? <ChatList conversation={conversation} onEscapeToInput={escapeToInput} /> : undefined}
         typing={<TypingLine names={typingNames} />}
         jump={
           face === 'list' && conversation.jump.shown ? (
@@ -214,6 +264,26 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
           ) : undefined
         }
         announcement={conversation.announcement}
+        composer={
+          face === 'list' || face === 'empty' ? (
+            <ChatComposer
+              communityId={communityId}
+              channelId={channelId}
+              me={conversation.me}
+              inputRef={inputRef}
+              replyTo={replyToMessage}
+              onCancelReply={handleCancelReply}
+            />
+          ) : undefined
+        }
+      />
+      <MessageActionsSheet
+        message={actionsFor}
+        me={conversation.me}
+        communityId={communityId}
+        onDone={closeActions}
+        onReply={onReply}
+        onEdit={onEdit}
       />
     </ChatRowContext>
   );

@@ -1,7 +1,7 @@
 /**
  * The chat's message list: the shared scroll machine (`features/chat/MessageListCore`, the same one the old chat
  * uses) with kit rows. `renderRow` hands each row only scalars from the core's context (never the context
- * object), so `ChatRow`'s memo holds.
+ * object), so `ChatRow`'s memo holds. Escape on a row moves focus to the composer's field.
  */
 import { useCallback, type JSX } from 'react';
 import MessageListCore, { type MessageRowContext } from '../../../../features/chat/MessageListCore';
@@ -9,7 +9,7 @@ import type { Conversation } from '../../../../data/chat/useConversation';
 import type { Message } from '../../../../types/message.type';
 import { ChatRow } from './ChatRow';
 
-export function ChatList({ conversation }: { conversation: Conversation }): JSX.Element {
+export function ChatList({ conversation, onEscapeToInput }: { conversation: Conversation; onEscapeToInput?: () => void }): JSX.Element {
   const renderRow = useCallback(
     (message: Message, ctx: MessageRowContext) => (
       <ChatRow
@@ -32,6 +32,7 @@ export function ChatList({ conversation }: { conversation: Conversation }): JSX.
       ref={conversation.listRef}
       orderedMessages={conversation.orderedMessages}
       renderRow={renderRow}
+      onEscapeToInput={onEscapeToInput}
       {...conversation.list}
     />
   );
