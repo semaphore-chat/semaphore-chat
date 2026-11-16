@@ -232,6 +232,49 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
     }
   });
 
+  test('a reader in the old shell sees the Lounge user’s message, edit, reaction and delete', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    const n = await openSession(browser, world.member, PHONE);
+    // The owner reads the same channel in the old shell (the real route, the new design off).
+    const classic = await openSession(browser, TEST_USER, { width: 1280, height: 800 });
+    try {
+      await openChat(n.page, world.c1.id, world.c1.lobbyId);
+      await classic.page.goto(`/#/community/${world.c1.id}/channel/${world.c1.lobbyId}`);
+      await expect(classic.page.getByRole('textbox', { name: /^Message #lobby/ }).or(classic.page.getByPlaceholder(/lobby/))).toBeVisible(EVENTUAL);
+      await expect(classic.page.locator('[data-shell="lounge"]')).toHaveCount(0);
+      const body = (text: string) => classic.page.getByTestId('message-body').filter({ hasText: text });
+
+      const page = n.page;
+      await page.getByRole('textbox', { name: 'Message #lobby' }).fill('hello from the new shell');
+      await page.getByRole('button', { name: 'Send message' }).click();
+      await expect(body('hello from the new shell')).toBeVisible(EVENTUAL);
+
+      const actionsOf = async (text: string) => {
+        await row(page, text).first().focus();
+        await page.keyboard.press('Enter');
+        const sheet = page.getByRole('dialog');
+        await expect(sheet).toBeVisible(EVENTUAL);
+        return sheet;
+      };
+      await (await actionsOf('hello from the new shell')).getByRole('button', { name: 'React with party' }).click();
+      await expect(classic.page.getByText('🎉 1')).toBeVisible(EVENTUAL);
+
+      await (await actionsOf('hello from the new shell')).getByRole('button', { name: 'Edit message' }).click();
+      const editor = page.getByRole('textbox', { name: 'Edit message' });
+      await editor.fill('hello, edited in the new shell');
+      await editor.press('Enter');
+      await expect(body('hello, edited in the new shell')).toBeVisible(EVENTUAL);
+
+      await (await actionsOf('hello, edited in the new shell')).getByRole('button', { name: 'Delete message' }).click();
+      const confirm = page.getByRole('dialog', { name: 'Delete this message?' }).or(page.getByRole('alertdialog', { name: 'Delete this message?' }));
+      await confirm.getByRole('button', { name: 'Delete message' }).click();
+      await expect(body('hello, edited in the new shell')).toHaveCount(0, EVENTUAL);
+    } finally {
+      await n.context.close();
+      await classic.context.close();
+    }
+  });
+
   test('the real channel route stays the old shell’s chat, even with the new design on', async ({ browser, request }) => {
     const world = await loungeWorld(request);
     const { context, page } = await openSession(browser, world.member, PHONE);
