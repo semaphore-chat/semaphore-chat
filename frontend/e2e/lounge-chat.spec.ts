@@ -1,7 +1,8 @@
 /**
- * The Lounge chat (PR 10c-1 read side, PR 10c-2a write side) on real data, through the hidden chat fixture
- * `/__lounge/community/:communityId/channel/:channelId` at phone width. The real channel route stays the old
- * shell's until 10c-2 (checked here too), so these run on the fixture only.
+ * The Lounge chat (PR 10c-1 read side, PR 10c-2a write side) on real data at phone width, on the real channel route
+ * `/community/:communityId/channel/:channelId` (PR 10c-2b, the new design on) and, where cheap, on the hidden chat
+ * fixture `/__lounge/community/:communityId/channel/:channelId` too (`LOUNGE_WHERES`). The real route stays the old
+ * shell's with the new design off, at tablet width, for its search and for a voice channel (checked here).
  *
  * Each test builds its own world (`loungeWorld`): C1 with `lobby` (public) and `staff` (private, the owner's),
  * owned by the seeded `testuser`, and a fresh plain member N in no private channel.
@@ -10,7 +11,7 @@
  */
 import type { Page } from '@playwright/test';
 import { test, expect, TEST_USER, API_BASE, openSession, shot, sendTestMessage } from './fixtures';
-import { chatFixturePath, fixturePath, loungeWorld, openFixture } from './fixtures/lounge';
+import { chatFixturePath, chatPath, goTo, LOUNGE_WHERES, loungePath, loungeWorld, openFixture, type LoungeWhere } from './fixtures/lounge';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -22,12 +23,15 @@ const chatHeading = (page: Page, name: string) => page.getByRole('heading', { na
 const messages = (page: Page) => page.getByRole('list', { name: 'Messages' });
 const row = (page: Page, text: string) => messages(page).getByRole('article').filter({ hasText: text });
 
-/** Opens the chat fixture with the new design on for this tab (`?design=lounge`), plus any other query. */
-async function openChat(page: Page, communityId: string, channelId: string, query = ''): Promise<void> {
+/** Opens a channel's chat on `where` with the new design on for this tab (`?design=lounge`), plus any other query. */
+async function openChat(page: Page, communityId: string, channelId: string, query = '', where: LoungeWhere = 'fixture'): Promise<void> {
   const extra = query ? `${query}&` : '';
-  await page.goto(`/#${chatFixturePath(communityId, channelId)}?${extra}design=lounge`);
+  await page.goto(`/#${chatPath(where, communityId, channelId)}?${extra}design=lounge`);
   await expect(page.locator('[data-shell="lounge"]')).toBeAttached(EVENTUAL);
 }
+
+/** The whole-hash URL of a path. */
+const hashUrl = (path: string) => new RegExp(`#${escapeRe(path)}$`);
 
 async function serverUnreadCount(request: Parameters<typeof sendTestMessage>[0], token: string, channelId: string) {
   const res = await request.get(`${API_BASE}/read-receipts/unread-counts`, { headers: { Authorization: `Bearer ${token}` } });
@@ -35,8 +39,9 @@ async function serverUnreadCount(request: Parameters<typeof sendTestMessage>[0],
   return rows.find((r) => r.channelId === channelId)?.unreadCount ?? 0;
 }
 
-test.describe('The Lounge chat on the chat fixture (390 px)', () => {
-  test('a channel row opens the chat; history, a live message and the read reach the server; Back returns to the row', async ({
+test.describe('The Lounge chat (390 px)', () => {
+  for (const where of LOUNGE_WHERES) {
+  test(`a channel row opens the chat; history, a live message and the read reach the server; Back returns to the row (${where})`, async ({
     browser,
     request,
   }, testInfo) => {
@@ -51,13 +56,14 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
     expect(reply.ok()).toBe(true);
     const { context, page } = await openSession(browser, world.member, PHONE);
     try {
-      await openFixture(page, world.c1.id, { communityName: world.c1.name });
+      await openFixture(page, world.c1.id, { communityName: world.c1.name, where });
       const lobby = page.getByRole('navigation', { name: 'Community', exact: true }).getByRole('link', { name: /^lobby/ });
       await expect(lobby).toHaveAccessibleName(/unread/, EVENTUAL);
       await lobby.click();
 
-      await expect(page).toHaveURL(new RegExp(`#${escapeRe(chatFixturePath(world.c1.id, world.c1.lobbyId))}$`));
+      await expect(page).toHaveURL(hashUrl(chatPath(where, world.c1.id, world.c1.lobbyId)));
       await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
       await expect(row(page, 'anyone around?')).toBeVisible(EVENTUAL);
       await expect(messages(page).getByRole('separator', { name: 'Today' })).toBeVisible();
       // N had never read the channel: the server's count goes to 0 once the newest message is in view.
@@ -67,14 +73,14 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
       await sendTestMessage(request, world.c1.lobbyId, 'on my way', world.owner.token);
       await expect(row(page, 'on my way')).toBeVisible(EVENTUAL);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
-      await shot(page, testInfo, 'c1-chat-with-history');
+      await shot(page, testInfo, `c1-chat-with-history-${where}`);
 
       // Opening the quoted message is an in-chat jump: it replaces the entry, so one Back still leaves the chat.
       await row(page, 'replying to the first').getByRole('button', { name: /^Reply to / }).click();
-      await expect(page).toHaveURL(new RegExp(`#${escapeRe(chatFixturePath(world.c1.id, world.c1.lobbyId))}$`), EVENTUAL);
+      await expect(page).toHaveURL(hashUrl(chatPath(where, world.c1.id, world.c1.lobbyId)), EVENTUAL);
 
       await page.getByRole('button', { name: 'Back to the community' }).click();
-      await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c1.id))}$`));
+      await expect(page).toHaveURL(hashUrl(loungePath(where, world.c1.id)));
       await expect(lobby).toBeFocused(EVENTUAL);
       await expect(lobby).not.toHaveAccessibleName(/unread/, EVENTUAL);
     } finally {
@@ -82,7 +88,7 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
     }
   });
 
-  test('a cold ?highlight= deep link lands on that message, and the address stays on the fixture', async ({ browser, request }, testInfo) => {
+  test(`a cold ?highlight= deep link lands on that message, and the address stays on the chat's own path (${where})`, async ({ browser, request }, testInfo) => {
     const world = await loungeWorld(request);
     let target = '';
     for (let i = 1; i <= 40; i += 1) {
@@ -91,21 +97,23 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
     }
     const { context, page } = await openSession(browser, world.member, PHONE);
     try {
-      await openChat(page, world.c1.id, world.c1.lobbyId, `highlight=${target}`);
+      await openChat(page, world.c1.id, world.c1.lobbyId, `highlight=${target}`, where);
       const highlighted = row(page, 'numbered message 3');
       await expect(highlighted).toBeInViewport(EVENTUAL);
-      // The param is cleared once the jump settles, to the fixture's own path (not the real channel route).
-      await expect(page).toHaveURL(new RegExp(`#${escapeRe(chatFixturePath(world.c1.id, world.c1.lobbyId))}$`), EVENTUAL);
+      // The param is cleared once the jump settles, to the chat's own path (the fixture stays on the fixture).
+      await expect(page).toHaveURL(hashUrl(chatPath(where, world.c1.id, world.c1.lobbyId)), EVENTUAL);
       await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
-      await shot(page, testInfo, 'c2-deep-link');
+      await shot(page, testInfo, `c2-deep-link-${where}`);
 
       // A cold link has nothing to go back to: Back replaces the entry with the community's home.
       await page.getByRole('button', { name: 'Back to the community' }).click();
-      await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c1.id))}$`), EVENTUAL);
+      await expect(page).toHaveURL(hashUrl(loungePath(where, world.c1.id)), EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
     } finally {
       await context.close();
     }
   });
+  }
 
   test('a private channel’s members are the channel’s own, not the community’s', async ({ browser, request }, testInfo) => {
     const world = await loungeWorld(request);
@@ -142,7 +150,7 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
       await openChat(page, world.c1.id, world.c1.staffId!);
       await expect(page.getByRole('heading', { name: /You don't have access to this channel|Channel not found/ })).toBeVisible(EVENTUAL);
       await page.getByRole('button', { name: 'Go to the community' }).click();
-      await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c1.id))}$`), EVENTUAL);
+      await expect(page).toHaveURL(hashUrl(loungePath('fixture', world.c1.id)), EVENTUAL);
     } finally {
       await context.close();
     }
@@ -232,13 +240,21 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
     }
   });
 
-  test('a reader in the old shell sees the Lounge user’s message, edit, reaction and delete', async ({ browser, request }) => {
+  for (const where of LOUNGE_WHERES) {
+  test(`a reader in the old shell sees the Lounge user’s message, edit, reaction and delete (${where})`, async ({ browser, request }) => {
     const world = await loungeWorld(request);
     const n = await openSession(browser, world.member, PHONE);
     // The owner reads the same channel in the old shell (the real route, the new design off).
     const classic = await openSession(browser, TEST_USER, { width: 1280, height: 800 });
     try {
-      await openChat(n.page, world.c1.id, world.c1.lobbyId);
+      if (where === 'real') {
+        // From the community home, as a user gets there.
+        await openFixture(n.page, world.c1.id, { communityName: world.c1.name, where });
+        await n.page.getByRole('navigation', { name: 'Community', exact: true }).getByRole('link', { name: /^lobby/ }).click();
+        await expect(chatHeading(n.page, 'lobby')).toBeVisible(EVENTUAL);
+      } else {
+        await openChat(n.page, world.c1.id, world.c1.lobbyId);
+      }
       await classic.page.goto(`/#/community/${world.c1.id}/channel/${world.c1.lobbyId}`);
       await expect(classic.page.getByRole('textbox', { name: /^Message #lobby/ }).or(classic.page.getByPlaceholder(/lobby/))).toBeVisible(EVENTUAL);
       await expect(classic.page.locator('[data-shell="lounge"]')).toHaveCount(0);
@@ -269,19 +285,107 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
       const confirm = page.getByRole('dialog', { name: 'Delete this message?' }).or(page.getByRole('alertdialog', { name: 'Delete this message?' }));
       await confirm.getByRole('button', { name: 'Delete message' }).click();
       await expect(body('hello, edited in the new shell')).toHaveCount(0, EVENTUAL);
+      await expect(row(page, 'hello, edited in the new shell')).toHaveCount(0, EVENTUAL);
+
+      // Back to the community home, still the new shell.
+      await page.getByRole('button', { name: 'Back to the community' }).click();
+      await expect(page).toHaveURL(hashUrl(loungePath(where, world.c1.id)), EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
     } finally {
       await n.context.close();
       await classic.context.close();
     }
   });
+  }
 
-  test('the real channel route stays the old shell’s chat, even with the new design on', async ({ browser, request }) => {
+  test('the real channel route is the old shell’s with the new design off; the account setting turns it on', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    const { context, page } = await openSession(browser, world.member, PHONE);
+    const real = chatPath('real', world.c1.id, world.c1.lobbyId);
+    try {
+      await page.goto(`/#${real}`);
+      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+      await expect(chatHeading(page, 'lobby')).toHaveCount(0);
+
+      // The account's (hidden) switch, no preview: a reload on the chat's URL is the new shell's chat.
+      const res = await request.patch(`${API_BASE}/appearance-settings`, {
+        headers: { Authorization: `Bearer ${world.member.token}` },
+        data: { newDesign: true },
+      });
+      expect(res.ok()).toBe(true);
+      await page.reload();
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
+      await expect(page).toHaveURL(hashUrl(real));
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('the real route stays the old shell’s at 820 px, for its search and for a voice channel (the call view)', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    const { context, page } = await openSession(browser, world.member, { width: 820, height: 1180 });
+    const real = chatPath('real', world.c1.id, world.c1.lobbyId);
+    try {
+      await page.goto(`/#${real}?design=lounge`);
+      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+
+      await page.setViewportSize(PHONE);
+      // The chat's search stays the old shell's full-screen search.
+      await page.goto(`/#${real}/search`);
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+      await expect(page.getByPlaceholder('Search #lobby')).toBeVisible(EVENTUAL);
+
+      // A voice channel's route is the old shell's call view, also on a cold link with nothing known yet.
+      await page.goto(`/#${chatPath('real', world.c1.id, world.c1.hangoutId)}`);
+      await expect(page.getByText('Voice channel', { exact: true })).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0, EVENTUAL);
+      await expect(page.getByRole('textbox', { name: /^Message #/ })).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('resizing across the phone boundary in the chat keeps the place and the draft; the shell swaps both ways', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    await sendTestMessage(request, world.c1.lobbyId, 'keep my place', world.owner.token);
+    const { context, page } = await openSession(browser, world.member, PHONE);
+    const real = chatPath('real', world.c1.id, world.c1.lobbyId);
+    try {
+      await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
+      await expect(row(page, 'keep my place')).toBeVisible(EVENTUAL);
+      await page.getByRole('textbox', { name: 'Message #lobby' }).fill('half a thought');
+
+      await page.setViewportSize({ width: 820, height: 1180 });
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0, EVENTUAL);
+      await expect(page).toHaveURL(hashUrl(real));
+      await expect(page.getByTestId('message-body').filter({ hasText: 'keep my place' })).toBeVisible(EVENTUAL);
+      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toHaveValue('half a thought', EVENTUAL);
+
+      await page.setViewportSize(PHONE);
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await expect(page).toHaveURL(hashUrl(real));
+      await expect(row(page, 'keep my place')).toBeVisible(EVENTUAL);
+      await expect(page.getByRole('textbox', { name: 'Message #lobby' })).toHaveValue('half a thought', EVENTUAL);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('a cold link to a chat in another community makes it the last opened: the classic Home tab returns there', async ({ browser, request }) => {
     const world = await loungeWorld(request);
     const { context, page } = await openSession(browser, world.member, PHONE);
     try {
-      await page.goto(`/#/community/${world.c1.id}/channel/${world.c1.lobbyId}?design=lounge`);
-      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
-      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+      await openChat(page, world.c2.id, world.c2.lobbyId, '', 'real');
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await goTo(page, '/direct-messages');
+      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0, EVENTUAL);
+      await page.getByRole('button', { name: 'Home', exact: true }).click();
+      await expect(page).toHaveURL(hashUrl(loungePath('real', world.c2.id)), EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached(EVENTUAL);
     } finally {
       await context.close();
     }

@@ -98,12 +98,12 @@ export async function expectCallUntouched(
 /** The fixture's path for one community (the hash route). */
 export const fixturePath = (communityId: string) => `/__lounge/community/${communityId}`;
 
-/** The hidden chat fixture of one channel (PR 10c-1): the Lounge chat, reached only here until 10c-2. */
+/** The hidden chat fixture of one channel (PR 10c-1): the Lounge chat at every width. */
 export const chatFixturePath = (communityId: string, channelId: string) => `/__lounge/community/${communityId}/channel/${channelId}`;
 
 /**
- * Where a phone-width chat spec opens a channel: the hidden chat fixture, or (from 10c-2) the real channel route.
- * Only `fixture` is the Lounge's in 10c-1.
+ * Where a phone-width chat spec opens a channel: the hidden chat fixture, or the real channel route (the new shell's
+ * at phone width since PR 10c-2b).
  */
 export const chatPath = (where: LoungeWhere, communityId: string, channelId: string) =>
   where === 'fixture' ? chatFixturePath(communityId, channelId) : `/community/${communityId}/channel/${channelId}`;
