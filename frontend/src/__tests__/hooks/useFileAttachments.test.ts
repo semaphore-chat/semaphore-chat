@@ -215,8 +215,14 @@ describe('useFileAttachments', () => {
         expect(previewOf('c.png')).toBe(cUrl);
         expect(result.current.filePreviews.size).toBe(3);
 
-        // The rest are released when the composer goes.
+        // A send clears the tray and releases what it showed (the pending row has its own thumbnails).
         const dUrl = previewOf('d.png');
+        act(() => {
+          result.current.clearFiles();
+        });
+        expect(revoked.mock.calls.map(([url]) => url).sort()).toEqual([aUrl, bUrl, cUrl, dUrl].sort());
+
+        // Nothing is left to release when the composer goes.
         unmount();
         expect(revoked.mock.calls.map(([url]) => url).sort()).toEqual([aUrl, bUrl, cUrl, dUrl].sort());
       } finally {

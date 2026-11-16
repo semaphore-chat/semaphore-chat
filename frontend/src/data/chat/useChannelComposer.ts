@@ -221,8 +221,10 @@ export function useChannelComposer({ communityId, channelId, inputRef, send, onE
       clearDraft();
       files.clearFiles();
       mentionHook.close();
-      await sent;
+      // "Typing" ends with the send, not with the server's answer: a slow answer must not leave "is typing" up
+      // for a message already in the list, nor cut off the indicator for the next message being typed.
       sendTypingStop();
+      await sent;
     } catch (error) {
       logger.error('Failed to send message:', error);
       onError('Failed to send message. Please try again.');

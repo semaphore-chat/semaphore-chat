@@ -109,8 +109,12 @@ describe('ChatComposer', () => {
     // The pending row is in the list: the field is empty at once, Send is busy.
     expect(field().value).toBe('');
     expect(screen.getByRole('button', { name: 'Send message' })).toHaveAttribute('aria-busy', 'true');
+    // Typing stopped with the send, before the server answered.
+    expect(typing.stop).toHaveBeenCalledTimes(1);
     await user.type(field(), 'next one');
     await act(async () => acks.answer());
+    // The answer does not stop the typing of the next message.
+    expect(typing.stop).toHaveBeenCalledTimes(1);
     expect(field().value).toBe('next one');
     expect(screen.getByRole('button', { name: 'Send message' })).not.toHaveAttribute('aria-busy');
   });
