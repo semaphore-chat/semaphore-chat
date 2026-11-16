@@ -25,6 +25,7 @@ export {
   createCommunityInvite,
   getUserCommunities,
   deleteCommunity,
+  deleteWorlds,
   generateTestName,
   waitForMessage,
   cleanupTestCommunities,

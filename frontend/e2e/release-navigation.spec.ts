@@ -3,7 +3,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { test, expect, TEST_USER } from './fixtures';
+import { test, expect, TEST_USER, deleteWorlds } from './fixtures';
 import {
   MEMBER_USER,
   createWorld,
@@ -13,6 +13,9 @@ import {
   shot,
   channelUrl,
 } from './fixtures';
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('Release smoke: navigation', () => {
   test('opening a community lands in a text channel, not the placeholder @smoke', async ({
