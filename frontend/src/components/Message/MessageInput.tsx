@@ -46,6 +46,8 @@ import { useDropZone } from "../../data/chat/useDropZone";
 import { DropZoneOverlay } from "./DropZoneOverlay";
 import { useMentionHandling } from "../../data/chat/useMentionHandling";
 import type { MentionSuggestion } from "../../data/chat/useMentionHandling";
+import { useComposerKeys } from "../../data/chat/useComposerKeys";
+import type { SimpleMentionState } from "../../data/chat/useComposerKeys";
 import { useMentionAutocomplete } from "../../hooks/useMentionAutocomplete";
 import {
   parseMessageWithMentions,
@@ -58,7 +60,6 @@ import type {
   AliasMention,
   EmojiMention,
 } from "../../utils/mentionParser";
-import { wrapSelection, markerForShortcut } from "../../utils/richTextShortcuts";
 import { useQuery } from "@tanstack/react-query";
 import { aliasGroupsControllerGetCommunityAliasGroupsOptions } from "../../api-client/@tanstack/react-query.gen";
 import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
@@ -150,16 +151,6 @@ export function ComposerUnavailableNotice({ availability }: { availability: Comp
       </Box>
     </StyledNoticePaper>
   );
-}
-
-// --- Local mention state for DM context ---
-interface SimpleMentionState {
-  isOpen: boolean;
-  suggestions: MentionSuggestion[];
-  selectedIndex: number;
-  query: string;
-  type: 'user' | 'special' | null;
-  isLoading: boolean;
 }
 
 export default function MessageInput({
@@ -456,43 +447,6 @@ export default function MessageInput({
     }
   };
 
-  // --- DM mention keyboard handling ---
-  const handleDmMentionKeyDown = (event: KeyboardEvent): boolean => {
-    if (!dmMentionState.isOpen) return false;
-
-    switch (event.key) {
-      case 'ArrowUp':
-        event.preventDefault();
-        setDmMentionState(prev => ({
-          ...prev,
-          selectedIndex: Math.max(0, prev.selectedIndex - 1)
-        }));
-        return true;
-      case 'ArrowDown':
-        event.preventDefault();
-        setDmMentionState(prev => ({
-          ...prev,
-          selectedIndex: Math.min(prev.suggestions.length - 1, prev.selectedIndex + 1)
-        }));
-        return true;
-      case 'Tab':
-      case 'Enter': {
-        event.preventDefault();
-        const selected = dmMentionState.suggestions[dmMentionState.selectedIndex];
-        if (selected) {
-          handleDmInsertMention(selected);
-        }
-        return true;
-      }
-      case 'Escape':
-        event.preventDefault();
-        closeDmMentions();
-        return true;
-      default:
-        return false;
-    }
-  };
-
   // --- Send (core) ---
   // Shared by the composer's send button/Enter key and the GIF picker, so
   // there is exactly one place that builds spans and calls onSendMessage.
@@ -642,85 +596,23 @@ export default function MessageInput({
     [isTouchDevice, emitTypingKeyPress, setText]
   );
 
-  // --- Rich-text formatting shortcut (Ctrl/Cmd+B, Ctrl/Cmd+I) ---
-  const applyFormattingShortcut = (event: React.KeyboardEvent): boolean => {
-    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
-      return false;
-    }
-    const marker = markerForShortcut(event.key);
-    if (!marker) return false;
-    event.preventDefault();
-    const el = inputRef.current;
-    if (!el) return true;
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? el.value.length;
-    const result = wrapSelection(el.value, start, end, marker);
-    setText(result.newText);
-    requestAnimationFrame(() => {
-      const input = inputRef.current;
-      if (input) {
-        input.focus();
-        input.setSelectionRange(result.selectionStart, result.selectionEnd);
-      }
-    });
-    return true;
-  };
-
-  // --- Keyboard handler ---
-  const handleKeyPress = (event: React.KeyboardEvent) => {
-    if (applyFormattingShortcut(event)) {
-      return;
-    }
-    if (isChannel) {
-      if (mentionHook.state.isOpen && mentionHook.handleKeyDown(event.nativeEvent)) {
-        if (event.key === "Enter" || event.key === "Tab") {
-          const selectedSuggestion = mentionHook.getSelectedSuggestion();
-          if (selectedSuggestion) {
-            handleMentionSelect(mentionHook.state.selectedIndex);
-          }
-        }
-        return;
-      }
-    } else {
-      if (dmMentionState.isOpen && handleDmMentionKeyDown(event.nativeEvent)) {
-        if (event.key === "Enter" || event.key === "Tab") {
-          const selected = dmMentionState.suggestions[dmMentionState.selectedIndex];
-          if (selected) {
-            handleMentionSelect(dmMentionState.selectedIndex);
-          }
-        }
-        return;
-      }
-    }
-
-    // Esc cancels an active quote reply (handled, so the global Esc
-    // shortcut doesn't also mark the conversation read).
-    if (event.key === "Escape" && onCancelReply) {
-      event.preventDefault();
-      onCancelReply();
-      return;
-    }
-
-    // ↑ in an empty composer edits your last message (desktop keyboards).
-    if (
-      event.key === "ArrowUp" &&
-      !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-      !isTouchDevice &&
-      onEditLastMessage &&
-      !text &&
-      selectedFiles.length === 0
-    ) {
-      if (onEditLastMessage()) event.preventDefault();
-      return;
-    }
-
-    // On touch devices, Enter inserts a newline (send is via the button only).
-    // On desktop, Enter sends and Shift+Enter inserts a newline.
-    if (event.key === "Enter" && !event.shiftKey && !isTouchDevice) {
-      event.preventDefault();
-      handleSend();
-    }
-  };
+  const { handleKeyPress } = useComposerKeys({
+    inputRef,
+    text,
+    setText,
+    selectedFiles,
+    isTouchDevice,
+    isChannel,
+    mentionHook,
+    dmMentionState,
+    setDmMentionState,
+    handleDmInsertMention,
+    closeDmMentions,
+    handleMentionSelect,
+    handleSend,
+    onEditLastMessage,
+    onCancelReply,
+  });
 
   const hasContent = Boolean(text && text.trim()) || selectedFiles.length > 0;
   // Desktop keeps a (disabled) send button at all times; touch shows it only
