@@ -18,6 +18,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { useInfiniteQuery, useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import {
+  channelMembershipControllerFindAllForChannelOptions,
   presenceControllerGetBulkPresenceOptions,
   presenceControllerGetCommunityPresenceOptions,
   voicePresenceControllerGetChannelPresenceOptions,
@@ -379,5 +380,64 @@ export function useCommunityMembers(communityId: string): CommunityMembers {
     status,
     refetch,
     pagesQuery: pages.query,
+  };
+}
+
+/** A channel as the members model needs it. */
+export interface MembersChannel {
+  id: string;
+  isPrivate: boolean;
+}
+
+const NO_ROOMS: ReadonlyMap<string, string> = new Map();
+const noop = () => undefined;
+
+/**
+ * The members of a channel (design F4): for a public channel the community's (`useCommunityMembers`); for a
+ * private one only the people in it (the channel membership list, as the old member list: no display roles, so
+ * nobody is a host), with presence from the same bulk presence query. Null `channel` (still loading): the
+ * community's, which is what a public channel shows; a private channel never shows them once it is known.
+ */
+export function useChannelMembers(communityId: string, channel: MembersChannel | null): CommunityMembers {
+  const community = useCommunityMembers(communityId);
+  const isPrivate = channel?.isPrivate === true;
+  const query = useQuery({
+    ...channelMembershipControllerFindAllForChannelOptions({ path: { channelId: channel?.id ?? '' } }),
+    enabled: isPrivate,
+  });
+  const memberships = query.data;
+  const presence = useBulkPresence(isPrivate && (memberships?.length ?? 0) > 0);
+  const summaries = useMemo(
+    () =>
+      summarizeMembers(
+        (memberships ?? []).map((m) => ({ user: m.user, roles: [] }) as unknown as MembershipResponseDto),
+        presence.data?.presence,
+        NO_ROOMS,
+      ),
+    [memberships, presence.data],
+  );
+  const kept = useIdentityCache(
+    useMemo(() => summaries.map((s) => s.summary), [summaries]),
+    sameSummary,
+  );
+  const grouped = useMemo(
+    () => groupMembers(summaries.map((s, i) => ({ summary: kept[i], rolePosition: s.rolePosition }))),
+    [summaries, kept],
+  );
+  const { refetch: refetchMembers } = query;
+  const refetch = useCallback(() => void refetchMembers(), [refetchMembers]);
+  if (!isPrivate) return community;
+  const status: QueryStatus =
+    query.status === 'error' ? 'error' : query.status === 'pending' ? 'pending' : 'success';
+  return {
+    ...grouped,
+    // One request lists every member of a private channel, so the loaded count is the whole count.
+    aroundCount: query.status === 'success' ? grouped.loadedAroundCount : null,
+    allLoaded: query.status === 'success',
+    loadMore: noop,
+    loadingMore: false,
+    status,
+    refetch,
+    pagesQuery: query as UseQueryResult<unknown>,
   };
 }
