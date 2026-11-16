@@ -96,6 +96,8 @@ export const USER_IN_CALL: UserCardProps = {
   line: 'In Squad Up',
   call: { mic: 'on', deafened: false },
   onSettings: noop,
+  onProfile: noop,
+  onSignOut: noop,
 };
 
 export const USER_IDLE: UserCardProps = { ...USER_IN_CALL, line: 'keeping it chill', call: null };

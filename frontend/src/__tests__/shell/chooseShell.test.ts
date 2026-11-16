@@ -8,7 +8,14 @@ import { createRoutesFromChildren, matchRoutes, type RouteObject } from 'react-r
 import type { ReactElement } from 'react';
 import { AppRoutes } from '../../routes';
 import { chooseShell } from '../../shell/chooseShell';
-import { LOUNGE_CALL_FIXTURE_PATH, LOUNGE_MARKER_PATH, LOUNGE_ROUTES, type LoungeRoute } from '../../shell/loungeRoutes';
+import {
+  LOUNGE_COMMUNITY_FIXTURE_PATH,
+  LOUNGE_FIXTURE_PREFIX,
+  LOUNGE_MARKER_PATH,
+  LOUNGE_ROUTES,
+  loungeCommunityFixturePath,
+  type LoungeRoute,
+} from '../../shell/loungeRoutes';
 import type { WidthRange } from '../../kit/layout/breakpoints';
 
 const WIDTHS: WidthRange[] = ['phone', 'compact', 'wide'];
@@ -43,7 +50,7 @@ describe('chooseShell', () => {
   });
 
   it.each(WIDTHS)('with the new design off, every route of the app is the old shell at %s width', (width) => {
-    for (const pathname of [...paths, LOUNGE_MARKER_PATH]) {
+    for (const pathname of [...paths, LOUNGE_MARKER_PATH, loungeCommunityFixturePath('c-1')]) {
       expect(chooseShell({ pathname, enabled: false, width }), pathname).toEqual({ kind: 'classic' });
     }
   });
@@ -62,6 +69,16 @@ describe('chooseShell', () => {
       expect(choice.kind).toBe('lounge');
       expect(choice.kind === 'lounge' && choice.route.path).toBe(LOUNGE_MARKER_PATH);
     }
+  });
+
+  it('with the new design on, the community fixture is the new shell at every width, with its community', () => {
+    for (const width of WIDTHS) {
+      const choice = chooseShell({ pathname: loungeCommunityFixturePath('c-1'), enabled: true, width });
+      expect(choice.kind === 'lounge' && choice.route.path).toBe(LOUNGE_COMMUNITY_FIXTURE_PATH);
+      expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1' });
+    }
+    // Only the community itself: its channels are the old shell's (an unknown page).
+    expect(chooseShell({ pathname: '/__lounge/community/c-1/channel/ch-2', enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
   });
 
   it('a registered route outside its widths is the old shell', () => {
@@ -90,6 +107,17 @@ describe('chooseShell', () => {
   });
 });
 
+/** The registered paths outside `/__lounge` whose descriptor sets `links` (only a fixture may). */
+async function routesSettingLinksOutsideFixtures(routes: readonly LoungeRoute[]): Promise<string[]> {
+  const offenders: string[] = [];
+  for (const route of routes) {
+    if (route.path.startsWith(LOUNGE_FIXTURE_PREFIX)) continue;
+    const { default: screen } = await route.load();
+    if (screen.template === 'threeIslands' && screen.links !== undefined) offenders.push(route.path);
+  }
+  return offenders;
+}
+
 describe('the registry (LOUNGE_ROUTES)', () => {
   const table = appRoutes();
 
@@ -99,8 +127,8 @@ describe('the registry (LOUNGE_ROUTES)', () => {
     for (const route of LOUNGE_ROUTES) expect(route.widths.length).toBeGreaterThan(0);
   });
 
-  it('registers only the test fixtures for now: the marker and the call-slot fixture', () => {
-    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([LOUNGE_MARKER_PATH, LOUNGE_CALL_FIXTURE_PATH]);
+  it('registers only the test fixtures for now: the marker and the community fixture', () => {
+    expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([LOUNGE_MARKER_PATH, LOUNGE_COMMUNITY_FIXTURE_PATH]);
   });
 
   it("every registered real path is an old screen in routes.tsx, and the fixtures are the old shell's not-found page", () => {
@@ -108,13 +136,43 @@ describe('the registry (LOUNGE_ROUTES)', () => {
       const sample = route.path.replace(/:(\w+)/g, 'x-$1');
       const matches = matchRoutes(table, sample) ?? [];
       const leaf = matches[matches.length - 1]?.route;
-      if (route.path === LOUNGE_MARKER_PATH || route.path === LOUNGE_CALL_FIXTURE_PATH) {
+      if (route.path.startsWith(LOUNGE_FIXTURE_PREFIX)) {
         expect(leaf?.path, `the fixture ${route.path} falls through to *`).toBe('*');
       } else {
         expect(leaf?.path, `${route.path} must exist in routes.tsx`).not.toBe('*');
         expect(leaf, `${route.path} must exist in routes.tsx`).toBeDefined();
       }
     }
+  });
+
+  it('only a fixture sets `links`: a real screen links to the app\'s routes', async () => {
+    expect(await routesSettingLinksOutsideFixtures(LOUNGE_ROUTES)).toEqual([]);
+    // The rule bites: a real route whose descriptor sets links is reported.
+    const realWithLinks: LoungeRoute = {
+      path: '/community/:communityId',
+      widths: ['phone'],
+      load: async () => ({
+        default: {
+          template: 'threeIslands',
+          place: 'community',
+          phonePane: 'left',
+          Centre: null,
+          right: 'members',
+          useTitle: () => null,
+          links: { community: (id: string) => `#/x/${id}` },
+        },
+      }),
+    };
+    expect(await routesSettingLinksOutsideFixtures([...LOUNGE_ROUTES, realWithLinks])).toEqual(['/community/:communityId']);
+  });
+
+  it('the community fixture keeps its dock and sheet on the fixture', async () => {
+    const route = LOUNGE_ROUTES.find((candidate) => candidate.path === LOUNGE_COMMUNITY_FIXTURE_PATH)!;
+    const { default: screen } = await route.load();
+    expect(screen.template).toBe('threeIslands');
+    if (screen.template !== 'threeIslands') return;
+    expect(screen.links?.community('c-2')).toBe(`#${loungeCommunityFixturePath('c-2')}`);
+    expect(screen).toMatchObject({ place: 'community', phonePane: 'left', right: 'members' });
   });
 
   it('every screen loads from shell/lounge/screens/', () => {

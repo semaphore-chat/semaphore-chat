@@ -10,7 +10,7 @@ export const SHEET_TITLE = 'All communities';
 /** More communities than this and the sheet shows its filter field. */
 export const FILTER_THRESHOLD = 8;
 /** The sheet's foot rows (list focus ids). */
-export const FOOT_ROWS = { create: 'create-community', settings: 'settings', profile: 'profile' } as const;
+export const FOOT_ROWS = { create: 'create-community', settings: 'settings', profile: 'profile', signOut: 'sign-out' } as const;
 const FOOT_IDS: ReadonlySet<string> = new Set(Object.values(FOOT_ROWS));
 
 export function isFootRow(id: string): boolean {

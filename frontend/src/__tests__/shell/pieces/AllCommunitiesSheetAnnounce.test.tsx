@@ -34,6 +34,7 @@ function Harness({ count }: { count: number }) {
       filter={filter}
       onFilterChange={setFilter}
       showSettings={false}
+      onSignOut={() => undefined}
     />
   );
 }

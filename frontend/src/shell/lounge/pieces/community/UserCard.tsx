@@ -4,11 +4,13 @@
  * call the mic and deafen STATE as status (an icon and words, no buttons: the call controls live on the
  * call bar at every width). The state comes from the call bar model, the one model both shells read, so
  * push-to-talk, server mute and a missing SPEAK permission read as they do on the classic bar.
- * Settings goes to the classic settings screen.
+ * The account menu at its end (a "more" button): Settings and Your profile (the classic screens), and Sign
+ * out…, asked first (the frame's sign-out question, `../signOutConfirm`).
  */
-import { startTransition, type JSX } from 'react';
+import { startTransition, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avatar, Card, Icon, IconButton, Skeleton, Stack, Text } from '../../../../kit';
+import { Avatar, Card, Icon, IconButton, Menu, Skeleton, Stack, Text, type MenuEntry } from '../../../../kit';
+import { useSignOutRequest } from '../signOutRequest';
 import { useCallBarModel } from '../../../../data/callBar';
 import { callFromModel, callState } from './lines';
 import { useConnectionState } from '../../../../data/connection';
@@ -35,10 +37,54 @@ export interface UserCardProps {
   /** In a call: how your mic and sound are. Null out of a call. */
   call: UserCardCall | null;
   onSettings(): void;
+  onProfile(): void;
+  /** Sign out… : the connected card opens the confirmation. */
+  onSignOut(): void;
 }
 
-export function UserCard({ name, src, online, line, call, onSettings }: UserCardProps): JSX.Element {
+export const ACCOUNT_MENU_LABEL = 'Account menu';
+
+type AccountMenuProps = Pick<UserCardProps, 'onSettings' | 'onProfile' | 'onSignOut'>;
+
+/** The card's one button: a menu of the account's places and Sign out…. */
+function AccountMenu({ onSettings, onProfile, onSignOut }: AccountMenuProps): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const choose = (action: () => void) => () => {
+    setOpen(false);
+    action();
+  };
+  const items: MenuEntry[] = [
+    { id: 'settings', label: 'Settings', icon: 'Settings', onSelect: choose(onSettings) },
+    { id: 'profile', label: 'Your profile', icon: 'User', onSelect: choose(onProfile) },
+    { id: 'sign-out', label: 'Sign out…', icon: 'LogOut', tone: 'danger', onSelect: choose(onSignOut) },
+  ];
+  return (
+    <>
+      <IconButton
+        ref={button}
+        icon="Ellipsis"
+        label={ACCOUNT_MENU_LABEL}
+        size="sm"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((was) => !was)}
+      />
+      <Menu
+        open={open}
+        anchor={button.current}
+        onClose={() => setOpen(false)}
+        label={ACCOUNT_MENU_LABEL}
+        items={items}
+        placement="top-end"
+      />
+    </>
+  );
+}
+
+export function UserCard({ name, src, online, line, call, onSettings, onProfile, onSignOut }: UserCardProps): JSX.Element {
   const state = call ? callState(call) : null;
+  const menu = <AccountMenu onSettings={onSettings} onProfile={onProfile} onSignOut={onSignOut} />;
   if (name === null) {
     return (
       <Card padding="md">
@@ -47,7 +93,7 @@ export function UserCard({ name, src, online, line, call, onSettings }: UserCard
           <Stack gap="xs" fill>
             <Skeleton shape="text" lines={2} />
           </Stack>
-          <IconButton icon="Settings" label="Settings" size="sm" onClick={onSettings} />
+          {menu}
         </Stack>
       </Card>
     );
@@ -75,7 +121,7 @@ export function UserCard({ name, src, online, line, call, onSettings }: UserCard
             </Stack>
           )}
         </Stack>
-        <IconButton icon="Settings" label="Settings" size="sm" onClick={onSettings} />
+        {menu}
       </Stack>
     </Card>
   );
@@ -88,6 +134,7 @@ export function UserCardConnected(): JSX.Element {
   const connection = useConnectionState();
   const model = useCallBarModel(false);
   const { blobUrl } = useAuthenticatedImage(user?.avatarUrl ?? null);
+  const requestSignOut = useSignOutRequest();
 
   // While a join runs the card says so (the model already names the room being joined).
   const line = model ? `${model.phase === 'connecting' ? 'Joining' : 'In'} ${model.place.name}` : (user?.status ?? null);
@@ -99,6 +146,8 @@ export function UserCardConnected(): JSX.Element {
       line={line || null}
       call={model ? callFromModel(model) : null}
       onSettings={() => startTransition(() => navigate('/settings'))}
+      onProfile={() => startTransition(() => navigate('/profile'))}
+      onSignOut={requestSignOut}
     />
   );
 }

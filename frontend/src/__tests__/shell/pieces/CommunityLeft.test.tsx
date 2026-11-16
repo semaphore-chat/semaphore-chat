@@ -74,6 +74,7 @@ import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityL
 import { CommunityHeader } from '../../../shell/lounge/pieces/community/CommunityHeader';
 import { VoiceRoomCard } from '../../../shell/lounge/pieces/community/VoiceRoomCard';
 import { UserCard, UserCardConnected } from '../../../shell/lounge/pieces/community/UserCard';
+import { SignOutQuestionHost } from '../../../shell/lounge/pieces/signOutConfirm';
 import { ChannelSection } from '../../../shell/lounge/pieces/community/ChannelSection';
 import { callFromModel, callState } from '../../../shell/lounge/pieces/community/lines';
 import { peopleLine, talkingLine, aroundLine } from '../../../shell/lounge/pieces/community/lines';
@@ -473,18 +474,19 @@ describe('the pieces (views)', () => {
     expect(talkingLine(twelve, new Set(['me']), 'me')).toBeNull();
   });
 
-  it('user card: status only, never a call control; settings always', async () => {
+  it('user card: status only, never a call control; the account menu always', async () => {
     const onSettings = vi.fn();
     const user = userEvent.setup();
     const card = (call: Parameters<typeof UserCard>[0]['call'], line: string | null = 'In Squad Up') => (
       <Kit>
-        <UserCard name="alexk" online line={line} call={call} onSettings={onSettings} />
+        <UserCard name="alexk" online line={line} call={call} onSettings={onSettings} onProfile={() => undefined} onSignOut={() => undefined} />
       </Kit>
     );
     const { rerender } = render(card(null, 'keeping it chill'));
     expect(screen.getByText('keeping it chill')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'alexk, online' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Settings' }));
     expect(onSettings).toHaveBeenCalled();
     const states: [Parameters<typeof UserCard>[0]['call'], string][] = [
       [{ mic: 'on', deafened: false }, 'Mic on'],
@@ -498,8 +500,8 @@ describe('the pieces (views)', () => {
       rerender(card(call));
       expect(screen.getByText(text)).toBeInTheDocument();
       expect(screen.getByText('In Squad Up')).toBeInTheDocument();
-      // The call controls live on the call bar: the card has only Settings
-      expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Settings']);
+      // The call controls live on the call bar: the card has only its account menu
+      expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Account menu']);
     }
   });
 
@@ -546,7 +548,9 @@ describe('UserCard (connected)', () => {
       <Hub>
         <MemoryRouter>
           <Kit>
-            <UserCardConnected />
+            <SignOutQuestionHost run={() => Promise.resolve()}>
+              <UserCardConnected />
+            </SignOutQuestionHost>
           </Kit>
         </MemoryRouter>
       </Hub>,
@@ -571,7 +575,9 @@ describe('UserCard (connected)', () => {
       <Hub>
         <MemoryRouter>
           <Kit>
-            <UserCardConnected />
+            <SignOutQuestionHost run={() => Promise.resolve()}>
+              <UserCardConnected />
+            </SignOutQuestionHost>
           </Kit>
         </MemoryRouter>
       </Hub>,

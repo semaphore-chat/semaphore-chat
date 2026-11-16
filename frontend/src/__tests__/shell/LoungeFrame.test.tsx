@@ -30,7 +30,7 @@ import { chooseShell } from '../../shell/chooseShell';
 import { LOUNGE_ROUTES, type LoungeRoute } from '../../shell/loungeRoutes';
 import { readShownShellKind } from '../../shell/shownShellKind';
 import { useScreenChrome, type LoungeScreenProps, type ThreeIslandsScreen } from '../../shell/lounge/screen';
-import { forgetActivatedRows, rememberActivatedRow } from '../../shell/lounge/frame/routeMemory';
+import { forgetRouteMemory, rememberActivatedRow } from '../../shell/routeMemory';
 import LoungeRoot from '../../shell/lounge/LoungeRoot';
 
 vi.mock('../../hooks/useAppearance', () => ({
@@ -44,15 +44,27 @@ vi.mock('../../hooks/useCurrentUser', () => ({
 const pieces = vi.hoisted(() => ({ dock: 0, left: 0, members: 0, leftProps: [] as unknown[] }));
 vi.mock('../../shell/lounge/pieces/ShellDock', async () => {
   const { useEffect: useMountEffect } = await import('react');
+  const { useLoungeLinks } = await import('../../shell/lounge/links');
   return {
     ShellDockConnected: () => {
       useMountEffect(() => {
         pieces.dock += 1;
       }, []);
-      return <button type="button">Dock item</button>;
+      // Where a dock item for community c-2 would lead (the frame's links context).
+      const links = useLoungeLinks();
+      return (
+        <button type="button" data-community-href={links.community('c-2')}>
+          Dock item
+        </button>
+      );
     },
   };
 });
+// The community fixture's centre and title read the community's name.
+vi.mock('../../data/communities', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useCommunity: (id: string) => ({ community: { id, name: `Community ${id}`, avatarFileId: null }, status: 'success', error: null, refetch: () => undefined }),
+}));
 vi.mock('../../shell/lounge/pieces/community/CommunityLeft', async () => {
   const { useEffect: useMountEffect } = await import('react');
   return {
@@ -226,7 +238,7 @@ beforeEach(() => {
   pieces.left = 0;
   pieces.members = 0;
   pieces.leftProps.length = 0;
-  forgetActivatedRows();
+  forgetRouteMemory();
   forgetAllAnnouncements();
   centreRenders.count = 0;
   document.querySelector('meta[name="theme-color"]')?.remove();
@@ -272,6 +284,46 @@ describe('descriptors', () => {
 
     await go('/fx/community/c-1');
     await screen.findByRole('heading', { name: 'Home of c-1' });
+    expect(pieces).toMatchObject({ dock: 1, left: 1, members: 1 });
+  });
+
+  it("the shell's community links are the app's routes, unless the descriptor (a fixture) sets its own", async () => {
+    const fixtureLike: LoungeRoute = {
+      path: '/fx/fixture/:communityId',
+      widths: ALL,
+      load: async () => ({ default: { ...homeScreen, links: { community: (id: string) => `#/fx/fixture/${id}` } } }),
+    };
+    ROUTES.unshift(fixtureLike);
+    try {
+      renderFrame('/fx/community/c-1');
+      await screen.findByRole('heading', { name: 'Home of c-1' });
+      expect(screen.getByRole('button', { name: 'Dock item' })).toHaveAttribute('data-community-href', '#/community/c-2');
+      await go('/fx/fixture/c-1');
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Dock item' })).toHaveAttribute('data-community-href', '#/fx/fixture/c-2'),
+      );
+    } finally {
+      ROUTES.shift();
+    }
+  });
+
+  it('the community fixture: every piece around a placeholder centre, and the pieces stay mounted from one community to the next', async () => {
+    renderFrame('/__lounge/community/c-1');
+    expect(await screen.findByRole('heading', { name: 'Community c-1', level: 1 })).toBeInTheDocument();
+    expect(screen.getByTestId('lounge-fixture-centre')).toHaveTextContent('Pick a channel or a room on the left.');
+    expect(screen.getByRole('main', { name: 'Community c-1' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Community' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Members' })).toHaveTextContent('members of c-1');
+    // The members show beside it at wide: no Members button.
+    expect(screen.queryByRole('button', { name: 'Members' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Dock item' })).toHaveAttribute('data-community-href', '#/__lounge/community/c-2');
+    const nav = screen.getByRole('navigation', { name: 'Community' });
+
+    await go('/__lounge/community/c-2');
+    expect(await screen.findByRole('heading', { name: 'Community c-2', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Community' })).toBe(nav);
+    expect(screen.getByRole('complementary', { name: 'Members' })).toHaveTextContent('members of c-2');
+    expect(pieces.leftProps[pieces.leftProps.length - 1]).toEqual({ communityId: 'c-2', channelId: null });
     expect(pieces).toMatchObject({ dock: 1, left: 1, members: 1 });
   });
 

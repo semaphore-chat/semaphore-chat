@@ -1,8 +1,7 @@
 /**
- * The new shell's call slot against real LiveKit, on the hidden fixture screen `/__lounge/call` (a
- * three-islands screen whose only job is to mount the frame's call slot; PR 8 replaces it with the fixture
- * community route). A is on a phone (390 px), where the call bar has mute (or hold to talk), deafen, Open and
- * Leave:
+ * The new shell's call slot against real LiveKit, on the hidden community fixture
+ * `/__lounge/community/:communityId` (every piece of the shell on real data; here the seeded Test Community).
+ * A is on a phone (390 px), where the call bar has mute (or hold to talk), deafen, Open and Leave:
  *
  *   1. Mute and Deafen on the Lounge bar: B stops and resumes receiving A; Mute while deafened is the
  *      classic Mute (the mic opens, A stays deafened, and the bar says so); Leave ends the call;
@@ -52,7 +51,24 @@ async function goTo(page: Page, hashPath: string): Promise<void> {
   }, `#${hashPath}`);
 }
 
-const fixture = (page: Page) => page.getByRole('heading', { name: 'Call fixture' });
+/**
+ * The community fixture is on screen and loaded: the new shell with the community's header (its name as the left
+ * island's heading, what the fixture's screen renders at phone width, where the left pane shows).
+ */
+const fixture = (page: Page) =>
+  page.locator('[data-shell="lounge"]').getByRole('heading', { name: 'Test Community', level: 2 });
+
+/** The seeded Test Community's id, for the fixture's path. */
+async function testCommunityId(p: Participant): Promise<string> {
+  const mine = await p.context.request.get(`${API_BASE}/community/mine`, {
+    headers: { Authorization: `Bearer ${p.accessToken}` },
+  });
+  expect(mine.ok(), `GET /community/mine: ${mine.status()}`).toBe(true);
+  const communities = (await mine.json()) as Array<{ id: string; name: string } | null>;
+  const community = communities.find((x) => x?.name === 'Test Community');
+  expect(community, 'the seeded Test Community').toBeDefined();
+  return community!.id;
+}
 const callBar = (page: Page) => page.getByTestId('lounge-call-bar');
 const classicBar = (page: Page) => page.getByTestId('voice-bar-controls');
 const micOn = (p: Participant) =>
@@ -65,7 +81,7 @@ const micOn = (p: Participant) =>
 /** A on the Lounge fixture at phone width, in the call it already joined. */
 async function toLounge(p: Participant): Promise<void> {
   await p.page.setViewportSize(PHONE);
-  await goTo(p.page, '/__lounge/call?design=lounge');
+  await goTo(p.page, `/__lounge/community/${await testCommunityId(p)}?design=lounge`);
   await expect(fixture(p.page)).toBeVisible();
   await expect(callBar(p.page)).toBeVisible();
   await expect(classicBar(p.page)).toHaveCount(0);
@@ -313,7 +329,7 @@ test.describe('The Lounge call bar and call surface', () => {
 
       // In the Lounge, the same notice is in the call slot, with Retry.
       await a.page.setViewportSize(PHONE);
-      await goTo(a.page, '/__lounge/call?design=lounge');
+      await goTo(a.page, `/__lounge/community/${community!.id}?design=lounge`);
       await expect(fixture(a.page)).toBeVisible();
       const notice = a.page.getByTestId('lounge-voice-notice');
       await expect(notice).toBeVisible();

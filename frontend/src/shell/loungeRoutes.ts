@@ -11,8 +11,10 @@
  * shows the call bar (shell/lounge/pieces/call), the call's video with Watch /
  * Stop watching (shell/lounge/call/surface, its own lazy chunk), and the voice
  * notice. So a converted three-islands screen no longer strands a call's video.
- * Only test fixtures are registered so far: the marker and the call-slot
- * fixture (PR 8 replaces the latter with the fixture community route).
+ * Only test fixtures are registered so far: the marker and the community
+ * fixture, which assembles every piece of the shell on real data. Every
+ * `/__lounge...` path is a fixture: with the new design off it is the old
+ * shell's not-found page, and only a fixture's descriptor may set `links`.
  */
 import type { WidthRange } from '../kit/layout/breakpoints';
 import type { LoungeScreen } from './lounge/screen';
@@ -38,8 +40,19 @@ export interface LoungeRoute {
 /** The path of the marker screen: a test fixture kept until the new design becomes the default. */
 export const LOUNGE_MARKER_PATH = '/__lounge';
 
-/** A hidden three-islands fixture that mounts the frame's call slot (call bar, call surface, voice notice). */
-export const LOUNGE_CALL_FIXTURE_PATH = '/__lounge/call';
+/** Every test fixture's path starts with this. */
+export const LOUNGE_FIXTURE_PREFIX = '/__lounge';
+
+/**
+ * A hidden three-islands fixture: a community's dock, left island, members, call slot and banners on real
+ * data around a placeholder centre (shell/lounge/screens/CommunityFixtureScreen).
+ */
+export const LOUNGE_COMMUNITY_FIXTURE_PATH = '/__lounge/community/:communityId';
+
+/** The community fixture's path for one community. */
+export function loungeCommunityFixturePath(communityId: string): string {
+  return `/__lounge/community/${communityId}`;
+}
 
 export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
   {
@@ -48,8 +61,8 @@ export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
     load: () => import('./lounge/screens/MarkerScreen'),
   },
   {
-    path: LOUNGE_CALL_FIXTURE_PATH,
+    path: LOUNGE_COMMUNITY_FIXTURE_PATH,
     widths: ['phone', 'compact', 'wide'],
-    load: () => import('./lounge/screens/CallFixtureScreen'),
+    load: () => import('./lounge/screens/CommunityFixtureScreen'),
   },
 ];

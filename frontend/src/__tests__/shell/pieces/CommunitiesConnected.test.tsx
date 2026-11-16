@@ -16,7 +16,8 @@ import { VoiceProvider } from '../../../contexts/VoiceProvider';
 import { VoiceActionType, useVoiceDispatch } from '../../../contexts/VoiceContext';
 import { ShellDockConnected, type DockCurrent } from '../../../shell/lounge/pieces/ShellDock';
 import { AllCommunitiesSheetConnected } from '../../../shell/lounge/pieces/AllCommunitiesSheet';
-import { forgetActivatedRows, rememberedRow } from '../../../shell/lounge/frame/routeMemory';
+import { SignOutConfirmHost } from '../../../shell/lounge/pieces/signOutConfirm';
+import { forgetRouteMemory, rememberedRow } from '../../../shell/routeMemory';
 import { handleNewMessage, handleReadReceiptUpdated } from '../../../socket-hub/handlers/messageHandlers';
 import { handleNewNotification } from '../../../socket-hub/handlers/notificationHandlers';
 import { handleMemberAddedToCommunity } from '../../../socket-hub/handlers/communityHandlers';
@@ -31,7 +32,31 @@ vi.mock('../../../api-client/client.gen', async (importOriginal) => {
   };
 });
 
+// Sign out: the app's one sequence is tested with useLogout; here only that the sheet asks, then calls it once.
+const signOut = vi.hoisted(() => ({ fn: vi.fn(() => Promise.resolve()) }));
+vi.mock('../../../data/session', () => ({ useSignOut: () => ({ signOut: signOut.fn }) }));
+
 const BASE = 'http://localhost:3000';
+
+/** A matchMedia answering the kit's width queries for `width` (a phone below 600). Returns the restore. */
+function installWidth(width: number): () => void {
+  const original = window.matchMedia;
+  const min = (query: string) => Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? 0);
+  window.matchMedia = ((query: string) =>
+    ({
+      matches: width >= min(query),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      onchange: null,
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList) as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
 
 const COMMUNITIES = [
   { id: 'c-1', name: 'Couch Co-op', description: null, avatar: null, banner: null, createdAt: '2026-01-01T00:00:00Z' },
@@ -94,7 +119,10 @@ function renderPieces(current: DockCurrent = { kind: 'community', id: 'c-1' }, e
       <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
         {/* AppFrame holds the toast region */}
         <AppFrame>
-          <Pieces current={current} />
+          {/* The frame's one sign-out question. */}
+          <SignOutConfirmHost>
+            <Pieces current={current} />
+          </SignOutConfirmHost>
           {extra}
         </AppFrame>
       </KitProvider>
@@ -108,7 +136,7 @@ const dockNames = () => [...dock().querySelectorAll('a, button')].map((element) 
 
 let consoleError: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
-  forgetActivatedRows();
+  forgetRouteMemory();
   consoleError = vi.spyOn(console, 'error');
 });
 afterEach(() => {
@@ -257,6 +285,55 @@ describe('AllCommunitiesSheetConnected', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'All communities' })).toHaveFocus());
   });
 
+  it('on a phone, Sign out at the foot asks first: confirming signs out once, and the sheet stays under the question', async () => {
+    const restore = installWidth(390);
+    try {
+      signOut.fn.mockClear();
+      serve();
+      const { user } = renderPieces();
+      await user.click(await screen.findByRole('button', { name: 'All communities' }));
+      const sheet = await screen.findByRole('dialog', { name: 'All communities' });
+      await user.click(await within(sheet).findByRole('button', { name: 'Sign out…' }));
+      const question = await screen.findByRole('dialog', { name: 'Sign out?' });
+      expect(signOut.fn).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog', { name: 'All communities', hidden: true })).toBeInTheDocument();
+      await user.click(within(question).getByRole('button', { name: 'Sign out' }));
+      await waitFor(() => expect(signOut.fn).toHaveBeenCalledTimes(1));
+    } finally {
+      restore();
+    }
+  });
+
+  it('on a phone, Cancel on the sign-out question does nothing, and focus is back on the Sign out row', async () => {
+    const restore = installWidth(390);
+    try {
+      signOut.fn.mockClear();
+      serve();
+      const { user } = renderPieces();
+      await user.click(await screen.findByRole('button', { name: 'All communities' }));
+      const sheet = await screen.findByRole('dialog', { name: 'All communities' });
+      await user.click(await within(sheet).findByRole('button', { name: 'Sign out…' }));
+      const question = await screen.findByRole('dialog', { name: 'Sign out?' });
+      await user.click(within(question).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sign out?' })).toBeNull());
+      expect(signOut.fn).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog', { name: 'All communities' })).toBeInTheDocument();
+      await waitFor(() => expect(within(sheet).getByRole('button', { name: 'Sign out…' })).toHaveFocus());
+    } finally {
+      restore();
+    }
+  });
+
+  it('at tablet and desktop width the sheet has no Sign out (the user card has it)', async () => {
+    serve();
+    const { user, queryClient } = renderPieces();
+    await user.click(await screen.findByRole('button', { name: 'All communities' }));
+    const sheet = await screen.findByRole('dialog', { name: 'All communities' });
+    await within(sheet).findByRole('link', { name: /^Couch Co-op/ });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(within(sheet).queryByRole('button', { name: 'Sign out…' })).toBeNull();
+  });
+
   it('no communities: the empty state, with Create', async () => {
     serve({ communities: [] });
     const { user } = renderPieces(null);
@@ -304,7 +381,9 @@ describe('AllCommunitiesSheetConnected', () => {
       <VoiceProvider>
         <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
           <AppFrame>
-            <AllCommunitiesSheetConnected open={open} onClose={() => undefined} currentId={null} />
+            <SignOutConfirmHost>
+              <AllCommunitiesSheetConnected open={open} onClose={() => undefined} currentId={null} />
+            </SignOutConfirmHost>
           </AppFrame>
         </KitProvider>
       </VoiceProvider>

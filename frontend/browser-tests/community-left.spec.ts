@@ -4,7 +4,8 @@ import { openStory } from './story.ts';
 /**
  * The community left island (shell/lounge/pieces/community) in a real browser: the channel list is one
  * Tab stop with arrows, Home, End and typeahead; the voice cards' Join and Leave and the user card's
- * Settings are reached with Tab; nothing scrolls sideways at 320 px.
+ * account menu are reached with Tab; the menu works from the keyboard and Sign out… asks first, Cancel
+ * returning to the menu's button; nothing scrolls sideways at 320 px.
  */
 const PHONE = { width: 320, height: 700 };
 const TABLET = { width: 820, height: 1180 };
@@ -52,14 +53,47 @@ test.describe('community-left @keyboard', () => {
     expect(await focusedName(page)).toBe('Join AFK');
   });
 
-  test('user card: status only; Settings is its one control and is reached with Tab after the voice rooms', async ({ page }) => {
+  test('user card: status only; the account menu is its one control and is reached with Tab after the voice rooms', async ({ page }) => {
     await openStory(page, 'community-left--user-deafened', TABLET);
     await expect(page.getByText('Deafened')).toBeVisible();
     await tabTo(page, 'Join AFK');
     await page.keyboard.press('Tab');
-    expect(await focusedName(page)).toBe('Settings');
+    expect(await focusedName(page)).toBe('Account menu');
     expect(await page.getByRole('button', { name: /^(Mute|Deafen)$/ }).count()).toBe(0);
   });
+
+  test('the account menu from the keyboard: Enter opens it, Escape closes it back to its button; Sign out… asks, Cancel returns', async ({ page }) => {
+    await openStory(page, 'community-left--not-in-call', TABLET);
+    const button = page.getByRole('button', { name: 'Account menu' });
+    await button.focus();
+    await page.keyboard.press('Enter');
+    const menu = page.getByRole('menu', { name: 'Account menu' });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem')).toHaveText(['Settings', 'Your profile', 'Sign out…']);
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(button).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(menu).toBeVisible();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    const question = page.getByRole('dialog', { name: 'Sign out?' });
+    await expect(question).toBeVisible();
+    await question.getByRole('button', { name: 'Cancel' }).click();
+    await expect(question).toBeHidden();
+    await expect(button).toBeFocused();
+  });
+});
+
+test('the account stories: the menu open, and the sign-out question over the screen', async ({ page }) => {
+  await openStory(page, 'community-left--account-menu', TABLET);
+  await expect(page.getByRole('menu', { name: 'Account menu' })).toBeVisible();
+  await openStory(page, 'community-left--sign-out-question', TABLET);
+  const question = page.getByRole('dialog', { name: 'Sign out?' });
+  await expect(question).toBeVisible();
+  await expect(question.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
 for (const story of ['community-left--default', 'community-left--long-names', 'community-left--voice-rooms', 'members-island--long-status']) {
@@ -78,7 +112,7 @@ for (const story of ['community-left--default', 'community-left--long-names', 'c
 
 test('the user card stays at the foot of the island while 200 channels scroll', async ({ page }) => {
   await openStory(page, 'community-left--two-hundred-channels', TABLET);
-  const settings = page.getByRole('button', { name: 'Settings' });
+  const settings = page.getByRole('button', { name: 'Account menu' });
   const before = await settings.boundingBox();
   // The island's body scrolls; its footer (the user card) does not.
   await island(page).evaluate((nav) => (nav.firstElementChild as HTMLElement).scrollBy(0, 2000));

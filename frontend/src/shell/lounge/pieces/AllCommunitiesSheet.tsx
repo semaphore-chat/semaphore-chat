@@ -1,8 +1,9 @@
 /**
  * The "All communities" sheet the dock's All button opens (design §3.2): the instance heading, every
  * community the server lists for this user as a row with its state line, a filter field above 8
- * communities, "Create a community" when the user may, and on a phone Settings and Your profile at the
- * foot (PA-10: a phone Lounge screen has no user card and no navigation). One keyboard list over the rows
+ * communities, "Create a community" when the user may, and on a phone Settings, Your profile and Sign out
+ * at the foot (PA-10: a phone Lounge screen has no user card and no navigation). Sign out… is asked first
+ * (the frame's question); the sheet stays open under it, so Cancel returns to the row. One keyboard list over the rows
  * (`useListFocus`, vertical, typeahead). Loading, empty and error through `LoadState`.
  *
  * `AllCommunitiesSheet` is the view (closed props, stories); `AllCommunitiesSheetConnected` reads
@@ -36,7 +37,9 @@ import {
   useMyCommunities,
 } from '../../../data/myCommunities';
 import { useUnreadSummary } from '../../../data/unread';
-import { rememberActivatedRow } from '../frame/routeMemory';
+import { rememberActivatedRow } from '../../routeMemory';
+import { useLoungeLinks } from '../links';
+import { useSignOutRequest } from './signOutRequest';
 import { CommunityPictureProbes } from './communityPictures';
 import { useCommunityPictures } from './useCommunityPictures';
 import {
@@ -82,8 +85,10 @@ export interface AllCommunitiesSheetProps {
   /** The filter field's text (the field shows above `FILTER_THRESHOLD` communities). */
   filter: string;
   onFilterChange(value: string): void;
-  /** A phone: Settings and Your profile at the foot. */
+  /** A phone: Settings, Your profile and Sign out at the foot. */
   showSettings: boolean;
+  /** The foot's Sign out row: the connected sheet opens the confirmation. */
+  onSignOut(): void;
   /** A row was chosen (its link has already navigated), with its row id: a community id or a `FOOT_ROWS` id. */
   onActivate?(id: string): void;
 }
@@ -99,8 +104,10 @@ function Body({
   useLoad,
   filter,
   showSettings,
+  onSignOut,
   onActivate,
 }: BodyProps): JSX.Element {
+  const links = useLoungeLinks();
   const load = useLoad();
   const filtering = communities.length > FILTER_THRESHOLD;
   const shown = useMemo(
@@ -114,6 +121,7 @@ function Body({
         ? [
             { id: FOOT_ROWS.settings, label: 'Settings', disabled: false },
             { id: FOOT_ROWS.profile, label: 'Your profile', disabled: false },
+            { id: FOOT_ROWS.signOut, label: 'Sign out…', disabled: false },
           ]
         : []),
     ],
@@ -177,6 +185,12 @@ function Body({
             href={PROFILE_PATH}
             focus={list.rowFocus(FOOT_ROWS.profile)}
           />
+          <ListRow
+            primary="Sign out…"
+            leading={<Icon name="LogOut" />}
+            onClick={onSignOut}
+            focus={list.rowFocus(FOOT_ROWS.signOut)}
+          />
         </>
       )}
     </>
@@ -220,7 +234,7 @@ function Body({
                   <Badge count={community.mentions} tone="danger" label={mentionText(community.mentions)} />
                 ) : undefined
               }
-              href={`#/community/${community.id}`}
+              href={links.community(community.id)}
               focus={list.rowFocus(community.id)}
             />
           ))}
@@ -297,6 +311,7 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
     if (!open) setFilter('');
   }
   const { pictures, onUrl } = useCommunityPictures();
+  const requestSignOut = useSignOutRequest();
 
   const items = useMemo<SheetCommunity[]>(
     () =>
@@ -329,6 +344,8 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
 
   const onActivate = useCallback(
     (id: string) => {
+      // Sign out asks first: the sheet stays under the question, so Cancel lands back on the row.
+      if (id === FOOT_ROWS.signOut) return;
       // Back from the community's (old-shell) screen lands on its dock item.
       if (!isFootRow(id)) rememberActivatedRow(pathname, dockRowId(id));
       // The link has navigated; the sheet goes with the screen it was opened from.
@@ -352,6 +369,7 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
         filter={filter}
         onFilterChange={setFilter}
         showSettings={range === 'phone'}
+        onSignOut={requestSignOut}
         onActivate={onActivate}
       />
     </>

@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, type RefObject } from 'react';
 import { useAnnounce, useScreenFocusTarget } from '../../../kit';
-import { LOUNGE_ROW_ATTRIBUTE, rememberedRow } from './routeMemory';
+import { LOUNGE_ROW_ATTRIBUTE, rememberedRow } from '../../routeMemory';
 
 function shown(element: Element): boolean {
   return element.closest('[hidden], [inert]') === null;

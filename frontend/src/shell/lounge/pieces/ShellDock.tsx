@@ -2,8 +2,9 @@
  * The community switcher in the frame's dock slot (design §3.1): the Inbox, every community the server
  * lists for this user (a mention count, or the new-messages dot), and "All communities", which opens the
  * sheet. One keyboard list (`useListFocus`, horizontal): a single Tab stop, Left/Right/Home/End and
- * typeahead. Each community is a link to its route (a hash link: the router's transition applies). On a
- * phone the Dock is the bottom bar; at compact and wide it sits above the left island (ThreeIslands).
+ * typeahead. Each community is a link to its route (a hash link: the router's transition applies; a test
+ * fixture may point it elsewhere, `../links`). On a phone the Dock is the bottom bar; at compact and wide it
+ * sits above the left island (ThreeIslands).
  *
  * `ShellDock` is the view (closed props, stories); `ShellDockConnected` reads `src/data`.
  */
@@ -22,7 +23,8 @@ import {
 } from '../../../kit';
 import { useMyCommunities } from '../../../data/myCommunities';
 import { useUnreadSummary } from '../../../data/unread';
-import { LOUNGE_ROW_ATTRIBUTE, rememberActivatedRow } from '../frame/routeMemory';
+import { useLoungeLinks } from '../links';
+import { rememberActivatedRow, rowMarker } from '../../routeMemory';
 import { CommunityPictureProbes } from './communityPictures';
 import { useCommunityPictures } from './useCommunityPictures';
 import { ALL_LABEL, ALL_ROW, DOCK_LABEL, INBOX_ROW, dockRowId } from './communitiesModel';
@@ -62,23 +64,10 @@ const NONE: readonly DockCommunity[] = [];
 /** How many placeholder circles stand for the communities while they load. */
 const SKELETONS = 3;
 
-/**
- * The ref callback that marks a dock item for RouteFocus's remembered row (DockItem takes no data attributes). One
- * per id for the app's life, so an item's ref never changes and is never detached and attached again.
- */
-const markers = new Map<string, (element: HTMLElement | null) => void>();
-function markRow(id: string): (element: HTMLElement | null) => void {
-  let marker = markers.get(id);
-  if (marker === undefined) {
-    marker = (element) => element?.setAttribute(LOUNGE_ROW_ATTRIBUTE, dockRowId(id));
-    markers.set(id, marker);
-  }
-  return marker;
-}
-
 interface CommunityItemProps {
   id: string;
   name: string;
+  href: string;
   src: string | undefined;
   mentions: number;
   newMessages: boolean;
@@ -99,13 +88,14 @@ function shallowEqual(a: object, b: object): boolean {
  * `focus` is a new object each render with the same contents, so it is compared by contents).
  */
 const CommunityItem = memo(
-  function CommunityItem({ id, name, src, mentions, newMessages, current, focus }: CommunityItemProps): JSX.Element {
+  function CommunityItem({ id, name, href, src, mentions, newMessages, current, focus }: CommunityItemProps): JSX.Element {
     return (
       <DockItem
-        ref={markRow(id)}
+        // Marks the item for RouteFocus's remembered row (DockItem takes no data attributes).
+        ref={rowMarker(dockRowId(id))}
         name={name}
         src={src}
-        href={`#/community/${id}`}
+        href={href}
         current={current}
         unread={mentions}
         unreadLabel="mentions"
@@ -133,6 +123,7 @@ export function ShellDock({
   onActivate,
 }: ShellDockProps): JSX.Element {
   const shown = status === 'ready' ? communities : NONE;
+  const links = useLoungeLinks();
   // The rows change only when the ids or names do, not on every count change.
   const rowKey = shown.map((community) => `${community.id}\u0000${community.name}`).join('\u0001');
   const rows = useMemo(
@@ -189,6 +180,7 @@ export function ShellDock({
           key={community.id}
           id={community.id}
           name={community.name}
+          href={links.community(community.id)}
           src={community.src}
           mentions={community.mentions}
           newMessages={community.newMessages}
