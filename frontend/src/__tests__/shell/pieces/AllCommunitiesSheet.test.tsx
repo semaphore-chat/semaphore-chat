@@ -118,6 +118,21 @@ describe('AllCommunitiesSheet (the view)', () => {
     expect(screen.queryByRole('button', { name: 'Sign out…' })).toBeNull();
   });
 
+  it('on a phone, Notifications with its unread count leads to the notifications page; at 0 no count', async () => {
+    const { unmount } = renderSheet({ showSettings: true, notificationCount: 3 });
+    const row = await screen.findByRole('link', { name: 'Notifications, 3 unread' });
+    expect(row).toHaveAttribute('href', '#/notifications');
+    expect(screen.getByRole('img', { name: '3 unread' })).toHaveTextContent('3');
+    unmount();
+    const zero = renderSheet({ showSettings: true, notificationCount: 0 });
+    expect(await screen.findByRole('link', { name: 'Notifications' })).toHaveAttribute('href', '#/notifications');
+    expect(screen.queryByRole('img', { name: /unread/ })).toBeNull();
+    zero.unmount();
+    renderSheet({ showSettings: false, notificationCount: 3 });
+    await screen.findByRole('link', { name: /^Couch Co-op/ });
+    expect(screen.queryByRole('link', { name: /^Notifications/ })).toBeNull();
+  });
+
   it("links each community to its route, or where the frame's links context says (a test fixture)", async () => {
     const { unmount } = renderSheet();
     expect(await screen.findByRole('link', { name: /^Trailheads/ })).toHaveAttribute('href', '#/community/c-2');
@@ -159,6 +174,8 @@ describe('AllCommunitiesSheet (the view)', () => {
     expect(screen.getByRole('button', { name: 'Sign out…' })).toHaveFocus();
     await user.keyboard('{ArrowUp}');
     expect(screen.getByRole('link', { name: 'Your profile' })).toHaveFocus();
+    await user.keyboard('{ArrowUp}{ArrowUp}');
+    expect(screen.getByRole('link', { name: 'Notifications' })).toHaveFocus();
     await user.keyboard('{Home}w');
     expect(screen.getByRole('link', { name: /^Wavelength/ })).toHaveFocus();
   });
