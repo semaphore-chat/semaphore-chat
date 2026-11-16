@@ -21,11 +21,12 @@
  *   V3. Leave from the card and from the bar both end the call;
  *   V4. a failed join shows once, in the voice notice; Retry joins;
  *   V6. the call survives moving between communities in the Lounge (dock and sheet);
- *   V7. signing out mid-call from the account menu leaves the call.
+ *   V7. signing out mid-call from the account menu leaves the call;
+ *   V8. a card joiner publishes the soundboard track like a classic one: B renders A's mic and soundboard, and
+ *       opening the classic shell afterwards (a channel tap, and Back) adds no <audio> element on B.
  *
- * A participant who joins from a Lounge card never publishes the soundboard track (a known gap, G3: the warm-up is
- * only mounted by the classic bar), so no test here waits for a card joiner's <audio> elements on a peer. Every B
- * below joins with the classic `joinVoiceChannel`, which does publish one.
+ * The soundboard warm-up runs above both shells (VoiceSessionEffects → useSoundboardWarmup), so a card joiner and a
+ * classic joiner (`joinVoiceChannel`) publish the same tracks, and a shell change publishes nothing late.
  *
  * Requires the real-LiveKit stack: scripts/run-voice-e2e.sh lounge-pieces
  */
@@ -493,8 +494,9 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     await waitForAudioFlow(a, b);
     await waitForAudioFlow(b, a);
 
-    // B is classic, so it published a soundboard track; A (a card join) has none to wait for on B's side.
+    // Both published their soundboard tracks (A from the card, B from the classic page): tag both sides.
     const before = await tagCall(a, b);
+    const onB = await tagCall(b, a);
     expect(before.gum).toBeGreaterThan(0);
     await a.page.evaluate(() => {
       (document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>).__keptDock = true;
@@ -527,6 +529,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
       ).toBeVisible({ timeout: 20_000 });
       await expect(callBar(a.page), step).toBeVisible();
       await expectCallUntouched(a, before, step);
+      await expectCallUntouched(b, onB, `${step} (on B)`);
       await waitForAudioFlow(b, a);
       expect(
         await a.page.evaluate(() => !!(document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>)?.__keptDock),
@@ -534,8 +537,7 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
       ).toBe(true);
     }
 
-    // One channel tap into the classic chat and Back. From here on only A is asserted: A's classic bar now
-    // publishes A's soundboard track, so B gets a new <audio> element.
+    // One channel tap into the classic chat and Back: the classic bar publishes nothing late, so B keeps its elements.
     const firstChannel = shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first();
     await firstChannel.click();
     await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
@@ -543,6 +545,45 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     await expect(shell(a.page).getByRole('heading', { name: 'Second Community', level: 2, exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(callBar(a.page)).toBeVisible();
     await expectCallUntouched(a, before, 'after a channel tap and Back');
+    await waitForAudioFlow(b, a);
+    await expectCallUntouched(b, onB, 'after a channel tap and Back (on B)');
+  });
+
+  test('V8: a card joiner publishes the soundboard track once; opening the classic shell adds no <audio> element on B', async () => {
+    test.setTimeout(180_000);
+    await aOnFixtureWithBInRoom(CH);
+    await joinFromRoomCard(a, CH);
+    await waitForAudioFlow(a, b);
+    await waitForAudioFlow(b, a);
+
+    // B renders exactly one element for A's mic and one for A's soundboard track (waitForRemoteAudioElements, in
+    // tagCall): before the warm-up moved above the shells, a card joiner never published the soundboard track.
+    const onB = await tagCall(b, a);
+    const soundboardTracks = (p: Participant) =>
+      p.page.evaluate(() => {
+        const lp = (window.__lkRoom as unknown as {
+          localParticipant: { trackPublications: Map<string, { trackName?: string }> };
+        } | null)?.localParticipant;
+        return lp ? [...lp.trackPublications.values()].filter((pub) => pub.trackName === 'soundboard').length : -1;
+      });
+    expect(await soundboardTracks(a), "A's soundboard publications").toBe(1);
+
+    // A opens the classic shell (a channel's chat, with the classic voice bar) and stays there while audio flows.
+    const firstChannel = shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first();
+    await firstChannel.click();
+    await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
+    await expect(classicBar(a.page)).toBeVisible({ timeout: 20_000 });
+    await waitForAudioFlow(b, a);
+    await waitForAudioFlow(a, b);
+    expect(await soundboardTracks(a), "A's soundboard publications in the classic shell").toBe(1);
+    await expectCallUntouched(b, onB, 'A in the classic chat (on B)');
+
+    // And back to the Lounge.
+    await a.page.goBack();
+    await expect(callBar(a.page)).toBeVisible({ timeout: 20_000 });
+    await waitForAudioFlow(b, a);
+    expect(await soundboardTracks(a), "A's soundboard publications back in the Lounge").toBe(1);
+    await expectCallUntouched(b, onB, 'A back in the Lounge (on B)');
   });
 
   test('V7: signing out mid-call from the account menu leaves the call', async () => {
