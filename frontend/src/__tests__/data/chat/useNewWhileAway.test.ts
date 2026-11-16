@@ -58,10 +58,28 @@ describe('useNewWhileAway', () => {
     expect(result.current).toBe(0);
   });
 
-  it('a previous newest that left the window counts only the new newest', () => {
+  it('a window replaced by newer messages counts each one that arrived', () => {
     const { result, rerender, props } = setup();
     rerender({ ...props, orderedMessages: [msg('m-9'), msg('m-10')] });
+    expect(result.current).toBe(2);
+  });
+
+  it('the newest message deleted while away is not a new one', () => {
+    const { result, rerender, props } = setup({ orderedMessages: [msg('m-1'), msg('m-2'), msg('m-3')] });
+    // The author of m-3 deletes it: the list ends on m-2 again, which was already there.
+    rerender({ ...props, orderedMessages: [props.orderedMessages[0], props.orderedMessages[1]] });
+    expect(result.current).toBe(0);
+    // A real arrival after that still counts.
+    rerender({ ...props, orderedMessages: [props.orderedMessages[0], props.orderedMessages[1], msg('m-4')] });
     expect(result.current).toBe(1);
+  });
+
+  it('an older page loaded at the top while away is history, not new', () => {
+    const start = Date.now();
+    const at = (id: string, minutesAgo: number) => createMessage({ id, authorId: 'other', sentAt: new Date(start - minutesAgo * 60_000).toISOString() });
+    const { result, rerender, props } = setup({ orderedMessages: [at('m-5', 5), at('m-6', 4)] });
+    rerender({ ...props, orderedMessages: [at('m-1', 60), at('m-2', 50), ...props.orderedMessages] });
+    expect(result.current).toBe(0);
   });
 
   it('after a ?highlight= jump, pages loaded toward the present are history, not new; live arrivals then count', () => {

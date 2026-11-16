@@ -20,24 +20,33 @@ export interface UseNewWhileAwayOptions {
 
 const rowKey = (message: Message) => message.clientId ?? message.id;
 
+/** A message's time in milliseconds (0 when unreadable). */
+const timeOf = (message: Message) => {
+  const ms = Date.parse(message.sentAt);
+  return Number.isFinite(ms) ? ms : 0;
+};
+
 /**
  * How many messages from others arrived while the reader was away from the bottom: the "N new" of Jump to latest.
- * Counted as the announcer counts (`hooks/useMessageListAnnouncer`), but only while the list is `live`: the first
- * live look only records where the list ends (an initial page, or a window just brought back to the present, is not
- * "new"), messages appended after it count once each, own messages and messages that
- * arrive while at the bottom do not, and a previous newest that left the loaded window counts only the new newest.
- * Back at the bottom (or on a switch) the count is 0.
+ * Only arrivals count: a message whose id was never in the window before and that is at least as new as the newest
+ * one already seen, while the list is `live` and the reader is away from the bottom. Everything else only widens what
+ * is known: the first live look (an initial page, or a window just brought back to the present), pages of history,
+ * and whatever is there while at the bottom. So a deleted newest message, an older page, or a refetched window never
+ * counts, and the reader's own messages never do. Back at the bottom (or on a switch) the count is 0.
  */
 export function useNewWhileAway({ orderedMessages, atBottom, authorId, contextKey, live }: UseNewWhileAwayOptions): number {
   const [count, setCount] = useState(0);
-  const newestRef = useRef<string | undefined>(undefined);
+  // Every row key and id seen in this conversation, and the newest time among them.
+  const knownRef = useRef<Set<string>>(new Set());
+  const latestRef = useRef(0);
   const atBottomRef = useRef(atBottom);
   atBottomRef.current = atBottom;
-  // Whether the last look was already live: the first live look only records where the list ends.
+  // Whether the last look was already live: the first live look only records what is there.
   const wasLiveRef = useRef(false);
 
   useEffect(() => {
-    newestRef.current = undefined;
+    knownRef.current = new Set();
+    latestRef.current = 0;
     wasLiveRef.current = false;
     setCount(0);
   }, [contextKey]);
@@ -47,24 +56,19 @@ export function useNewWhileAway({ orderedMessages, atBottom, authorId, contextKe
   }, [atBottom]);
 
   useEffect(() => {
-    const newest = orderedMessages[orderedMessages.length - 1];
-    const newestKey = newest ? rowKey(newest) : undefined;
+    const known = knownRef.current;
     const wasLive = wasLiveRef.current;
     wasLiveRef.current = live;
-    if (!live || !wasLive) {
-      newestRef.current = newestKey;
-      return;
+    const countNow = live && wasLive && !atBottomRef.current;
+    let incoming = 0;
+    for (const message of orderedMessages) {
+      const key = rowKey(message);
+      const isNew = !known.has(key) && !known.has(message.id);
+      if (isNew && countNow && timeOf(message) >= latestRef.current && message.authorId !== authorId) incoming += 1;
+      known.add(key);
+      known.add(message.id);
     }
-    if (newestRef.current === undefined) {
-      newestRef.current = newestKey;
-      return;
-    }
-    if (newestKey === undefined || newestKey === newestRef.current) return;
-    const previous = orderedMessages.findIndex((m) => rowKey(m) === newestRef.current);
-    const tail = previous === -1 ? [newest!] : orderedMessages.slice(previous + 1);
-    newestRef.current = newestKey;
-    if (atBottomRef.current) return;
-    const incoming = tail.filter((m) => m.authorId !== authorId).length;
+    for (const message of orderedMessages) latestRef.current = Math.max(latestRef.current, timeOf(message));
     if (incoming > 0) setCount((c) => c + incoming);
   }, [orderedMessages, authorId, live]);
 
