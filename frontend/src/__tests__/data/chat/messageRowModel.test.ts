@@ -64,9 +64,26 @@ describe('toReactionViews', () => {
         'me',
       ),
     ).toEqual([
-      { emoji: '😂', label: '😂', count: 2, mine: true },
-      { emoji: '👍', label: '👍', count: 1, mine: false },
+      { key: '😂', emoji: '😂', label: '😂', count: 2, mine: true },
+      { key: '👍', emoji: '👍', label: '👍', count: 1, mine: false },
     ]);
+  });
+
+  it('a custom emoji reaction draws the community’s emoji and is named by it; an unknown one never shows its id', () => {
+    const emojiById = new Map([['e-1', { name: 'partyparrot', fileId: 'f-9' }]]);
+    const views = toReactionViews(
+      [
+        { emoji: 'custom:e-1', userIds: ['me'] },
+        { emoji: 'custom:gone-3f2a', userIds: ['a', 'b'] },
+      ],
+      'me',
+      { emojiById, fileUrl: (id) => `/api/file/${id}` },
+    );
+    expect(views).toEqual([
+      { key: 'custom:e-1', emoji: ':partyparrot:', src: '/api/file/f-9', label: 'partyparrot', count: 1, mine: true },
+      { key: 'custom:gone-3f2a', emoji: '❓', label: 'Custom emoji', count: 2, mine: false },
+    ]);
+    expect(JSON.stringify(views[1])).not.toMatch(/gone-3f2a"[^,]*label|emoji":"custom/);
   });
 });
 
@@ -91,14 +108,14 @@ describe('toQuoteView', () => {
 describe('toAttachmentViews', () => {
   it('images are drawn with their size; video, audio and documents are file rows', () => {
     const views = toAttachmentViews([
-      { id: 'f-1', filename: 'a.png', fileType: 'IMAGE', size: 2048, width: 1600, height: 900 },
-      { id: 'f-2', filename: 'b.mp4', fileType: 'VIDEO', size: 1024 * 1024, width: 1920, height: 1080 },
-      { id: 'f-3', filename: 'c.txt', fileType: 'DOCUMENT', size: 12 },
+      { id: 'f-1', filename: 'a.png', fileType: 'IMAGE', mimeType: 'image/png', size: 2048, width: 1600, height: 900 },
+      { id: 'f-2', filename: 'b.mp4', fileType: 'VIDEO', mimeType: 'video/mp4', size: 1024 * 1024, width: 1920, height: 1080 },
+      { id: 'f-3', filename: 'c.txt', fileType: 'DOCUMENT', mimeType: 'text/plain', size: 12 },
     ] as never);
     expect(views).toEqual([
-      { id: 'f-1', kind: 'image', name: 'a.png', detail: '2 KB', width: 1600, height: 900 },
-      { id: 'f-2', kind: 'file', name: 'b.mp4', detail: '1 MB', width: 1920, height: 1080 },
-      { id: 'f-3', kind: 'file', name: 'c.txt', detail: '12 Bytes', width: null, height: null },
+      { id: 'f-1', kind: 'image', name: 'a.png', mimeType: 'image/png', detail: '2 KB', width: 1600, height: 900 },
+      { id: 'f-2', kind: 'file', name: 'b.mp4', mimeType: 'video/mp4', detail: '1 MB', width: 1920, height: 1080 },
+      { id: 'f-3', kind: 'file', name: 'c.txt', mimeType: 'text/plain', detail: '12 Bytes', width: null, height: null },
     ]);
   });
 });

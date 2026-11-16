@@ -75,23 +75,44 @@ export function toRowView(message: Message, { author, me, dayShownAbove, now }: 
 
 /** A reaction as a chip draws it. */
 export interface ReactionView {
+  /** The stored reaction (`😂`, or `custom:<emoji id>`): what a toggle sends back. */
+  key: string;
+  /** What is drawn: the emoji itself, a custom emoji's `:name:` (its image's fallback), or a neutral placeholder. */
   emoji: string;
+  /** A custom emoji's image. */
+  src?: string;
   /** The words a screen reader says for the emoji. For a custom emoji its name. */
   label: string;
   count: number;
   mine: boolean;
 }
 
-/** The reactions with at least one person, in their order. */
-export function toReactionViews(reactions: Message['reactions'], me: string | undefined): ReactionView[] {
+/** The stored prefix of a community (custom) emoji reaction: `custom:{emojiId}` (as the old chips). */
+export const CUSTOM_REACTION_PREFIX = 'custom:';
+/** What an unknown or deleted custom emoji draws (as the old chips). */
+export const UNKNOWN_CUSTOM_EMOJI = '❓';
+
+export interface ReactionContext {
+  emojiById?: ReadonlyMap<string, { name: string; fileId: string }>;
+  fileUrl?: (fileId: string) => string | null;
+}
+
+/** The reactions with at least one person, in their order; custom emoji resolved through the community's. */
+export function toReactionViews(
+  reactions: Message['reactions'],
+  me: string | undefined,
+  { emojiById, fileUrl }: ReactionContext = {},
+): ReactionView[] {
   return (reactions ?? [])
     .filter((r) => (r.userIds?.length ?? 0) > 0)
-    .map((r) => ({
-      emoji: r.emoji,
-      label: r.emoji,
-      count: r.userIds.length,
-      mine: me !== undefined && r.userIds.includes(me),
-    }));
+    .map((r) => {
+      const base = { key: r.emoji, count: r.userIds.length, mine: me !== undefined && r.userIds.includes(me) };
+      if (!r.emoji.startsWith(CUSTOM_REACTION_PREFIX)) return { ...base, emoji: r.emoji, label: r.emoji };
+      const custom = emojiById?.get(r.emoji.slice(CUSTOM_REACTION_PREFIX.length));
+      if (!custom) return { ...base, emoji: UNKNOWN_CUSTOM_EMOJI, label: 'Custom emoji' };
+      const src = fileUrl?.(custom.fileId) ?? undefined;
+      return { ...base, emoji: `:${custom.name}:`, label: custom.name, ...(src ? { src } : {}) };
+    });
 }
 
 /** A reply's quote. */
@@ -116,6 +137,8 @@ export interface AttachmentView {
   /** Images are drawn; everything else (video and audio too, until they have players) is a file row. */
   kind: 'image' | 'file';
   name: string;
+  /** The type the server reported: decides whether pressing it opens or downloads it. */
+  mimeType: string;
   detail: string;
   width: number | null;
   height: number | null;
@@ -126,6 +149,7 @@ export function toAttachmentViews(attachments: Message['attachments']): Attachme
     id: a.id,
     kind: a.fileType === 'IMAGE' ? 'image' : 'file',
     name: a.filename,
+    mimeType: a.mimeType ?? '',
     detail: formatFileSize(a.size),
     width: a.width ?? null,
     height: a.height ?? null,

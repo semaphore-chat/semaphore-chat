@@ -4,7 +4,7 @@
  * deep links, all on the shared chat layer (`data/chat/useConversation`). No composer and no message actions yet
  * (10c-2). Reached only on the hidden chat fixture until the real route is registered.
  */
-import { useCallback, useContext, useMemo, type JSX } from 'react';
+import { useCallback, useContext, useMemo, useRef, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -109,22 +109,40 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     // eslint-disable-next-line react-hooks/exhaustive-deps -- channelsKey re-reads the cache once the list is in
     [queryClient, channelsKey],
   );
+  // The rows' shared context changes only when what it holds does (the reader, the community's emoji or channels):
+  // never on an incoming message, a typing change or a scroll. Callbacks go through refs so they are stable.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const openProfileRef = useRef(openProfile);
+  openProfileRef.current = openProfile;
+  const hasProfile = openProfile !== undefined;
+  // An in-chat jump (a reply's original) replaces the entry: Back still leaves the chat in one press.
+  const showMessage = useCallback(
+    (messageId: string) => navigateRef.current(`${chatPath}?highlight=${messageId}`, { replace: true }),
+    [chatPath],
+  );
+  const openPath = useCallback((path: string) => navigateRef.current(path), []);
+  const openProfileStable = useCallback((userId: string) => openProfileRef.current?.(userId), []);
+  const segments = useMemo(
+    () => ({
+      emojiById,
+      channelById,
+      fileUrl: getFileUrl,
+      channelHref: (target: MentionChannel) => links.channel(target.communityId, target.id),
+    }),
+    [emojiById, channelById, links],
+  );
   const shared = useMemo<ChatRowShared>(
     () => ({
       me: conversation.me,
       communityId,
-      segments: {
-        emojiById,
-        channelById,
-        fileUrl: getFileUrl,
-        channelHref: (target) => links.channel(target.communityId, target.id),
-      },
-      showMessage: (messageId) => navigate(`${chatPath}?highlight=${messageId}`),
-      openPath: (path) => navigate(path),
-      openProfile,
+      segments,
+      showMessage,
+      openPath,
+      openProfile: hasProfile ? openProfileStable : undefined,
       opener,
     }),
-    [conversation.me, communityId, emojiById, channelById, links, navigate, chatPath, openProfile, opener],
+    [conversation.me, communityId, segments, showMessage, openPath, hasProfile, openProfileStable, opener],
   );
 
   // Back (B6): to the community's home. When the screen before this one was that home, it is a step back in the
@@ -178,7 +196,12 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
             title={channel === null ? (loaded ? 'Channel' : null) : channelTitle(channel)}
             isPrivate={channel?.isPrivate === true}
             onBack={onBack}
-            onShowMembers={range === 'wide' && rightOpen ? undefined : () => setRightOpen(true)}
+            // Only for a channel the reader can see: never a member list for one they have no access to.
+            onShowMembers={
+              channel === null || face === 'noAccess' || face === 'gone' || (range === 'wide' && rightOpen)
+                ? undefined
+                : () => setRightOpen(true)
+            }
             onSearch={() => navigate(`/community/${communityId}/channel/${channelId}/search`)}
           />
         }

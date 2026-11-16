@@ -33,7 +33,7 @@ import {
   toRowView,
   type AttachmentView,
 } from '../../../../data/chat/messageRowModel';
-import type { AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
+import { useAttachmentBusy, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import type { Message } from '../../../../types/message.type';
 import { formatDaySeparator } from '../../../../utils/messageTime';
 
@@ -99,6 +99,7 @@ function Quote({ replyTo }: { replyTo: NonNullable<Message['replyTo']> }): JSX.E
 
 function Attachment({ file }: { file: AttachmentView }): JSX.Element {
   const { opener } = useShared();
+  const busy = useAttachmentBusy(opener, file.id);
   // Images show their preview (the thumbnail, falling back to the file); other files load only when opened.
   const { blobUrl } = useAuthenticatedFile(file.kind === 'image' ? file.id : null, { fetchThumbnail: true });
   return (
@@ -109,8 +110,8 @@ function Attachment({ file }: { file: AttachmentView }): JSX.Element {
       src={blobUrl ?? undefined}
       width={file.width}
       height={file.height}
-      busy={opener.busy.has(file.id)}
-      onOpen={() => opener.open({ id: file.id, kind: file.kind, name: file.name })}
+      busy={busy}
+      onOpen={() => opener.open({ id: file.id, name: file.name, mimeType: file.mimeType })}
     />
   );
 }
@@ -120,20 +121,21 @@ function Reactions({ message }: { message: Message }): JSX.Element | null {
   const announce = useAnnounce();
   const { canReact } = useMessagePermissions({ message, currentUserId: shared.me, communityId: shared.communityId });
   const { handleReactionClick } = useMessageActions(message, shared.me);
-  const reactions = toReactionViews(message.reactions, shared.me);
+  const reactions = toReactionViews(message.reactions, shared.me, shared.segments);
   if (reactions.length === 0) return null;
   return (
     <>
       {reactions.map((reaction) => (
         <ReactionChip
-          key={reaction.emoji}
+          key={reaction.key}
           emoji={reaction.emoji}
+          src={reaction.src}
           label={reaction.label}
           count={reaction.count}
           mine={reaction.mine}
           aria-disabled={!canReact}
           onUnavailablePress={() => announce("You can't react in this channel")}
-          onToggle={() => void handleReactionClick(reaction.emoji)}
+          onToggle={() => void handleReactionClick(reaction.key)}
         />
       ))}
     </>

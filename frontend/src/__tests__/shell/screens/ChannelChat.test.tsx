@@ -37,6 +37,43 @@ vi.mock('virtua', async () => {
 });
 
 const conversation = vi.hoisted(() => ({ current: null as unknown as Conversation }));
+
+// Every navigate call the screen makes, so a test can tell a step back from a replace.
+const navCalls = vi.hoisted(() => [] as unknown[][]);
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return {
+    ...actual,
+    useNavigate: () => {
+      const real = actual.useNavigate();
+      return (...args: Parameters<typeof real>) => {
+        navCalls.push(args);
+        return real(...(args as [never]));
+      };
+    },
+  };
+});
+
+// Renders of kit rows (by author) and runs of toSegments: the row memo must hold.
+const counts = vi.hoisted(() => ({ rows: new Map<string, number>(), segments: 0 }));
+vi.mock('../../../kit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../kit')>();
+  const MessageRow = (props: Parameters<typeof actual.MessageRow>[0]) => {
+    counts.rows.set(props.author, (counts.rows.get(props.author) ?? 0) + 1);
+    return actual.MessageRow(props);
+  };
+  return { ...actual, MessageRow };
+});
+vi.mock('../../../data/chat/toSegments', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../data/chat/toSegments')>();
+  return {
+    ...actual,
+    toSegments: (...args: Parameters<typeof actual.toSegments>) => {
+      counts.segments += 1;
+      return actual.toSegments(...args);
+    },
+  };
+});
 vi.mock('../../../data/chat/useConversation', () => ({ useConversation: () => conversation.current }));
 
 const FIXTURE_CHAT = '/__lounge/community/c-1/channel/ch-1';
@@ -81,7 +118,7 @@ function setup({ isPrivate = false, entries = [FIXTURE_CHAT], rightOpen = false 
     displayName: 'Aiko',
   });
   const setRightOpen = vi.fn();
-  const view = renderWithProviders(
+  const ui = () => (
     <FileCacheProvider>
     <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
       <LoungeLinksContext value={FIXTURE_LINKS}>
@@ -91,10 +128,13 @@ function setup({ isPrivate = false, entries = [FIXTURE_CHAT], rightOpen = false 
         </ScreenChromeContext>
       </LoungeLinksContext>
     </KitProvider>
-    </FileCacheProvider>,
-    { queryClient, routerProps: { initialEntries: entries, initialIndex: entries.length - 1 } },
+    </FileCacheProvider>
   );
-  return { ...view, setRightOpen };
+  const view = renderWithProviders(ui(), {
+    queryClient,
+    routerProps: { initialEntries: entries, initialIndex: entries.length - 1 },
+  });
+  return { ...view, setRightOpen, rerenderSame: () => view.rerender(ui()) };
 }
 
 const where = () => screen.getByTestId('where').textContent;
@@ -103,6 +143,9 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
   beforeEach(() => {
     resetFactoryCounter();
     forgetRouteMemory();
+    navCalls.length = 0;
+    counts.rows.clear();
+    counts.segments = 0;
     conversation.current = makeConversation();
   });
 
@@ -210,13 +253,68 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     notePathname(FIXTURE_CHAT);
     setup({ entries: [FIXTURE_HOME, FIXTURE_CHAT] });
     fireEvent.click(screen.getByRole('button', { name: 'Back to the community' }));
+    expect(navCalls).toEqual([[-1]]);
     expect(where()).toBe(FIXTURE_HOME);
   });
 
   it('Back from a cold deep link replaces the entry with the community’s home', () => {
     setup({ entries: [`${FIXTURE_CHAT}`] });
     fireEvent.click(screen.getByRole('button', { name: 'Back to the community' }));
+    expect(navCalls).toEqual([[FIXTURE_HOME, { replace: true }]]);
     expect(where()).toBe(FIXTURE_HOME);
+  });
+
+  it('opening a quote replaces the entry, so Back after it still leaves in one step', () => {
+    notePathname(FIXTURE_HOME);
+    notePathname(FIXTURE_CHAT);
+    conversation.current = makeConversation({
+      orderedMessages: [
+        createMessage({
+          id: 'm-2',
+          replyTo: { id: 'm-1', authorId: 'u-aiko', sentAt: '2026-11-16T10:00:00Z', deletedAt: null, spans: [{ type: SpanType.PLAINTEXT, text: 'hi' }] },
+        }),
+      ],
+    });
+    setup({ entries: [FIXTURE_HOME, FIXTURE_CHAT] });
+    fireEvent.click(screen.getByRole('button', { name: 'Reply to Aiko: hi' }));
+    expect(navCalls).toEqual([[`${FIXTURE_CHAT}?highlight=m-1`, { replace: true }]]);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the community' }));
+    expect(navCalls[1]).toEqual([-1]);
+    expect(where()).toBe(FIXTURE_HOME);
+  });
+
+  it('no Members button for a channel the reader has no access to, or one not in their list', () => {
+    conversation.current = makeConversation({ error: { status: 403 } });
+    setup();
+    expect(screen.queryByRole('button', { name: 'Members' })).toBeNull();
+  });
+
+  it('the row memo holds: a new message, a typing change and a scroll re-render no row already drawn', () => {
+    const list = makeConversation().list;
+    const a = createMessage({ id: 'm-1', authorId: 'u-a', spans: [{ type: SpanType.PLAINTEXT, text: 'one' }] });
+    const b = createMessage({ id: 'm-2', authorId: 'u-b', spans: [{ type: SpanType.PLAINTEXT, text: 'two' }] });
+    const c = createMessage({ id: 'm-3', authorId: 'u-c', spans: [{ type: SpanType.PLAINTEXT, text: 'three' }] });
+    conversation.current = makeConversation({ orderedMessages: [a, b], list });
+    const { rerenderSame } = setup();
+    expect(counts.rows.get('u-a')).toBeGreaterThan(0);
+    counts.rows.clear();
+    counts.segments = 0;
+
+    // Typing starts.
+    conversation.current = { ...conversation.current, typingUserIds: ['u-aiko'] };
+    rerenderSame();
+    // Scrolled away: Jump to latest shows.
+    conversation.current = { ...conversation.current, jump: { shown: true, newCount: 0, onJump: () => undefined } };
+    rerenderSame();
+    expect(counts.rows.size).toBe(0);
+    expect(counts.segments).toBe(0);
+
+    // A message arrives: only it is drawn (and the old last row, whose Tab stop moves to the new one).
+    conversation.current = { ...conversation.current, orderedMessages: [a, b, c] };
+    rerenderSame();
+    expect(counts.rows.get('u-a')).toBeUndefined();
+    expect(counts.rows.get('u-c')).toBe(1);
+    expect(counts.segments).toBe(1);
   });
 
   it('Members opens the right content; Search is the old shell’s search screen', () => {
