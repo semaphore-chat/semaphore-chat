@@ -165,7 +165,7 @@ describe('useComposerKeys', () => {
     it('Escape and Ctrl+B during composition do nothing', () => {
       const onCancelReply = vi.fn();
       const { options, press } = setup({ onCancelReply });
-      const esc = press({ key: 'Escape', keyCode: 229 });
+      const esc = press({ key: 'Escape', isComposing: true });
       const bold = press({ key: 'b', ctrlKey: true, isComposing: true });
       expect(onCancelReply).not.toHaveBeenCalled();
       expect(options.setText).not.toHaveBeenCalled();
