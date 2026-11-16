@@ -6,10 +6,14 @@
  * Data: `useCommunity`, `useCommunityActions` (the menu), `useCommunityPresence` (the header's
  * "N around", no number while it is unknown), `useCommunityChannels` (only the server's
  * filtered list), `useUnreadSummary`, a `VoiceRoomCardConnected` per room.
+ *
+ * The header's "N around" opens the frame's members (`useScreenChrome`) while they are not beside the list. A
+ * tapped channel row is busy until its screen (the old shell's chat) takes over. The community is remembered for
+ * the classic Home tab (`utils/lastCommunity`).
  */
-import { startTransition, useCallback, useMemo, type JSX, type ReactNode } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Button, Stack, Text, useQueryLoadState } from '../../../../kit';
+import { Button, Stack, Text, useQueryLoadState, useWidthRange } from '../../../../kit';
 import { useCommunity, useCommunityActions } from '../../../../data/communities';
 import { sortCommunityChannels, useCommunityChannels } from '../../../../data/channels';
 import type { Channel } from '../../../../types/channel.type';
@@ -17,7 +21,9 @@ import { useCommunityPresence, useIdentityCache } from '../../../../data/members
 import { useUnreadSummary } from '../../../../data/unread';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
 import { isPermanentAccessError } from '../../../../utils/httpError';
+import { rememberLastCommunity } from '../../../../utils/lastCommunity';
 import { rememberActivatedRow } from '../../../routeMemory';
+import { useScreenChrome } from '../../screen';
 import { CommunityHeader, type CommunityAction, type CommunityHeaderProps } from './CommunityHeader';
 import { ChannelSection, type ChannelItem, type ChannelSectionProps } from './ChannelSection';
 import { VoiceRoomCardConnected } from './VoiceRoomCard';
@@ -85,6 +91,9 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
   const aroundCount = useCommunityPresence(communityId).data?.onlineCount ?? null;
   const { text, voice, status, error, query } = useCommunityChannels(communityId);
   const unread = useUnreadSummary();
+  const range = useWidthRange();
+  const { rightOpen, setRightOpen } = useScreenChrome();
+  const onShowMembers = useCallback(() => setRightOpen(true), [setRightOpen]);
   const { blobUrl } = useAuthenticatedImage(community?.avatarFileId ?? null);
   // Loaded channels stay through a failed refetch (a toast says so); the error face only with nothing to show.
   const channelsState = useQueryLoadState(query, { notifyId: 'lounge-channels', resetKey: communityId, isEmpty: noTextChannels });
@@ -115,7 +124,31 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
     [navigate, communityId],
   );
   const hrefFor = useCallback((id: string) => `#/community/${communityId}/channel/${id}`, [communityId]);
-  const onActivate = useCallback((id: string) => rememberActivatedRow(pathname, id), [pathname]);
+  // The row whose screen is loading: only on the path it was tapped from. A later hash change that is not
+  // that row's (Back before the chat showed, another link) clears it.
+  const [pending, setPending] = useState<{ path: string; id: string } | null>(null);
+  const busyId = pending !== null && pending.path === pathname ? pending.id : null;
+  const onActivate = useCallback(
+    (id: string) => {
+      rememberActivatedRow(pathname, id);
+      setPending({ path: pathname, id });
+    },
+    [pathname],
+  );
+  useEffect(() => {
+    if (busyId === null) return undefined;
+    const href = hrefFor(busyId);
+    const onHashChange = () => {
+      if (window.location.hash !== href) setPending(null);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [busyId, hrefFor]);
+
+  // The classic Home tab returns to the community last opened, in either shell.
+  useEffect(() => {
+    rememberLastCommunity(communityId);
+  }, [communityId]);
 
   const notMember =
     (communityStatus === 'error' && isPermanentAccessError(communityError)) ||
@@ -130,6 +163,9 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
         aroundCount,
         actions,
         onAction,
+        onShowMembers,
+        // At wide the members can be an island beside the list; below it they are always a Sheet over it.
+        membersShown: range === 'wide' && rightOpen,
       }}
       channels={{
         channels: channelItems,
@@ -138,6 +174,7 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
         onActivate,
         state: channelsState,
         hasRooms: voice.length > 0,
+        busyId,
       }}
       rooms={voice.map((room) => (
         <VoiceRoomCardConnected key={room.id} room={room} communityId={communityId} />

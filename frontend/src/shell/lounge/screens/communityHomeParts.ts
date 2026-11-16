@@ -1,7 +1,7 @@
 /**
- * What a community's home screen and its hidden fixture (`CommunityFixtureScreen`) share: the title, the
- * community's name for the centre's label and RouteFocus's announcement. When the real community home is
- * registered (`/community/:communityId`) its descriptor uses these too.
+ * What the community home (`CommunityHomeScreen`, `/community/:communityId`) and its hidden fixture
+ * (`CommunityFixtureScreen`) share: the title, the community's name for the centre's label and RouteFocus's
+ * announcement.
  */
 import { useCommunity } from '../../../data/communities';
 import type { LoungeParams } from '../screen';

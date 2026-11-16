@@ -7,6 +7,7 @@ import { reducedMotion } from '../overlays/surface';
 import { mix } from '../theme/mix';
 import { focusRing } from '../theme/states';
 import { Icon } from '../display/Icon';
+import { Spinner } from '../display/Spinner';
 import { SurfaceContext, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { visuallyHidden } from '../theme/a11y';
@@ -60,6 +61,12 @@ export interface ListRowProps {
    * goes somewhere. Ignored on a plain row.
    */
   chevron?: boolean;
+  /**
+   * The link or button is working: what it opens is still loading (a tapped channel whose screen is a chunk on
+   * its way). It says so to assistive technology (`aria-busy`) and shows a small spinner at its end, and it stays
+   * focusable. A busy button ignores presses. Ignored on a plain or disabled row.
+   */
+  busy?: boolean;
   ref?: Ref<HTMLElement>;
   id?: string;
   /**
@@ -266,6 +273,7 @@ export function ListRow({
   onClick,
   label,
   chevron = false,
+  busy = false,
   ref,
   id,
   focus,
@@ -299,6 +307,7 @@ export function ListRow({
     [ref, rovingRef],
   );
   const handleClick = (event: MouseEvent<HTMLElement>) => {
+    if (busy) return;
     roving?.onClick(event);
     onClick?.();
   };
@@ -309,6 +318,7 @@ export function ListRow({
   const tone = (dim: boolean, strong: boolean): 'row' | 'strong' | 'dim' =>
     selected ? 'row' : dim ? 'dim' : strong ? 'strong' : 'row';
   const interactive = href !== undefined || onClick !== undefined;
+  const working = busy && interactive && !disabled;
   // Words for the name only: ", unread" and the trailing slot's meaning, then a comma before the second line.
   const spokenParts = [unread && !selected ? 'unread' : '', trailingLabel ?? ''].filter((part) => part !== '');
   const spokenState =
@@ -339,7 +349,12 @@ export function ListRow({
           </Line>
         )}
       </Column>
-      {chevron && interactive && (
+      {working && (
+        <Chevron>
+          <Spinner size="sm" />
+        </Chevron>
+      )}
+      {chevron && interactive && !working && (
         <Chevron>
           <Icon name="ChevronRight" size="sm" tone="secondary" />
         </Chevron>
@@ -357,6 +372,7 @@ export function ListRow({
         aria-label={labelName}
         aria-describedby={describedBy}
         aria-current={current}
+        aria-busy={working || undefined}
         $on={on}
         {...focusProps}
         onClick={roving === undefined ? undefined : roving.onClick}
@@ -392,9 +408,10 @@ export function ListRow({
         aria-label={labelName}
         aria-describedby={describedBy}
         aria-current={current}
+        aria-busy={working || undefined}
         $on={on}
         {...focusProps}
-        onClick={roving === undefined ? onClick : handleClick}
+        onClick={roving === undefined && !working ? onClick : handleClick}
       >
         {content}
       </Button>

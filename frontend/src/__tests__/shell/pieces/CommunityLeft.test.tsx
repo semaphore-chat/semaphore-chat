@@ -71,6 +71,8 @@ import { userControllerGetProfileQueryKey } from '../../../api-client/@tanstack/
 import { handleNewMessage } from '../../../socket-hub/handlers/messageHandlers';
 import { handleVoiceUserJoined } from '../../../socket-hub/handlers/voiceHandlers';
 import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityLeft';
+import { ScreenChromeContext, type ScreenChrome } from '../../../shell/lounge/screen';
+import { LAST_COMMUNITY_KEY } from '../../../utils/lastCommunity';
 import { CommunityHeader } from '../../../shell/lounge/pieces/community/CommunityHeader';
 import { VoiceRoomCard } from '../../../shell/lounge/pieces/community/VoiceRoomCard';
 import { UserCard, UserCardConnected } from '../../../shell/lounge/pieces/community/UserCard';
@@ -148,7 +150,7 @@ function Kit({ children }: { children: ReactNode }) {
   );
 }
 
-function renderLeft(channelId: string | null = 'ch-general') {
+function renderLeft(channelId: string | null = 'ch-general', chrome?: ScreenChrome) {
   const queryClient = createTestQueryClient();
   queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'u-alexk', username: 'alexk' } as never);
   const Hub = createTestHubWrapper({ queryClient, eventBus: createEventBus() });
@@ -160,7 +162,13 @@ function renderLeft(channelId: string | null = 'ch-general') {
           <SpeakingContext.Provider value={{ speakingMap: new Map(), isSpeaking: () => false }}>
             <AppFrame>
               <nav aria-label="Community">
-                <CommunityLeft communityId="c-1" channelId={channelId} />
+                {chrome === undefined ? (
+                  <CommunityLeft communityId="c-1" channelId={channelId} />
+                ) : (
+                  <ScreenChromeContext value={chrome}>
+                    <CommunityLeft communityId="c-1" channelId={channelId} />
+                  </ScreenChromeContext>
+                )}
               </nav>
             </AppFrame>
             <LocationProbe />
@@ -374,10 +382,47 @@ describe('CommunityLeft (connected)', () => {
     expect(await screen.findByRole('link', { name: /^general\b/ })).toBeInTheDocument();
   });
 
-  it('no channels: the empty state', async () => {
+  it('no channels: the empty state, with no "Create channel" even for someone who may create one', async () => {
+    mocks.permissions = new Set(['CREATE_CHANNEL', 'UPDATE_COMMUNITY']);
     serve({ channels: [] });
     renderLeft(null);
     expect(await screen.findByText(/No channels yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create channel/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /create channel/i })).toBeNull();
+  });
+});
+
+describe('CommunityLeft (the phone community home, PR 9b)', () => {
+  it('the header\'s "N around" opens the frame\'s members', async () => {
+    serve();
+    const setRightOpen = vi.fn();
+    const { user } = renderLeft('ch-general', { rightOpen: false, setRightOpen });
+    await user.click(await screen.findByRole('button', { name: '9 around, show members' }));
+    expect(setRightOpen).toHaveBeenCalledWith(true);
+  });
+
+  it('records the community for the classic Home tab', async () => {
+    localStorage.removeItem(LAST_COMMUNITY_KEY);
+    serve();
+    renderLeft();
+    await screen.findByRole('heading', { name: 'Couch Co-op', level: 2 });
+    expect(localStorage.getItem(LAST_COMMUNITY_KEY)).toBe('c-1');
+  });
+
+  it('a tapped channel row is busy while its screen loads; a hash change elsewhere clears it', async () => {
+    serve();
+    const { user } = renderLeft(null);
+    const clipsLink = await screen.findByRole('link', { name: /^clips\b/ });
+    expect(clipsLink).not.toHaveAttribute('aria-busy');
+    await user.click(clipsLink);
+    expect(screen.getByRole('link', { name: /^clips\b/ })).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('link', { name: /^general\b/ })).not.toHaveAttribute('aria-busy');
+    // Back before the chat showed (or any other link): the row is no longer waiting.
+    act(() => {
+      window.location.hash = '#/community/c-1';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await waitFor(() => expect(screen.getByRole('link', { name: /^clips\b/ })).not.toHaveAttribute('aria-busy'));
   });
 });
 

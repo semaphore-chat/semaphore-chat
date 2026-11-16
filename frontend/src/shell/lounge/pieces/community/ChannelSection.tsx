@@ -36,6 +36,11 @@ export interface ChannelSectionProps {
   state: LoadController;
   /** The community has voice rooms: an empty list says "No text channels yet". */
   hasRooms?: boolean;
+  /**
+   * The row just chosen whose screen is still on its way (the old shell's chat chunk): `aria-busy` and a spinner,
+   * so a slow phone shows the tap was taken.
+   */
+  busyId?: string | null;
 }
 
 const SKELETON_ROWS = 6;
@@ -56,9 +61,10 @@ interface ChannelRowProps {
   href: string;
   focus: RowFocus;
   marker: (element: HTMLElement | null) => void;
+  busy?: boolean;
 }
 
-function ChannelRowView({ channel, selected, href, focus, marker }: ChannelRowProps): JSX.Element {
+function ChannelRowView({ channel, selected, href, focus, marker, busy = false }: ChannelRowProps): JSX.Element {
   // The classic rule: the channel you are in shows neither unread nor mentions.
   const mentions = selected ? 0 : channel.mentions;
   const icon = channel.announcement ? 'Megaphone' : channel.isPrivate ? 'Lock' : 'Hash';
@@ -73,6 +79,7 @@ function ChannelRowView({ channel, selected, href, focus, marker }: ChannelRowPr
       trailing={mentions > 0 ? <Badge count={mentions} tone="accent" label={mentions === 1 ? '1 mention' : `${mentions} mentions`} /> : undefined}
       trailingLabel={channelTrailingLabel(channel, mentions)}
       focus={focus}
+      busy={busy}
     />
   );
 }
@@ -81,7 +88,12 @@ function ChannelRowView({ channel, selected, href, focus, marker }: ChannelRowPr
 export const ChannelRow = memo(
   ChannelRowView,
   (a, b) =>
-    a.channel === b.channel && a.selected === b.selected && a.href === b.href && a.marker === b.marker && sameRowFocus(a.focus, b.focus),
+    a.channel === b.channel &&
+    a.selected === b.selected &&
+    a.href === b.href &&
+    a.marker === b.marker &&
+    a.busy === b.busy &&
+    sameRowFocus(a.focus, b.focus),
 );
 
 /** Marks a row's link for RouteFocus (`data-lounge-row`), one stable ref per id. */
@@ -97,7 +109,15 @@ function useRowMarkers(): (id: string) => (element: HTMLElement | null) => void 
   }, []);
 }
 
-export function ChannelSection({ channels, selectedId, hrefFor, onActivate, state, hasRooms = false }: ChannelSectionProps): JSX.Element {
+export function ChannelSection({
+  channels,
+  selectedId,
+  hrefFor,
+  onActivate,
+  state,
+  hasRooms = false,
+  busyId = null,
+}: ChannelSectionProps): JSX.Element {
   const rows = useMemo(() => channels.map((channel) => ({ id: channel.id, label: channel.name, disabled: false })), [channels]);
   const list = useListFocus({ rows, selected: selectedId, onSelect: onActivate });
   const marker = useRowMarkers();
@@ -127,6 +147,7 @@ export function ChannelSection({ channels, selectedId, hrefFor, onActivate, stat
               href={hrefFor(channel.id)}
               focus={list.rowFocus(channel.id)}
               marker={marker(channel.id)}
+              busy={channel.id === busyId}
             />
           ))}
         </div>
