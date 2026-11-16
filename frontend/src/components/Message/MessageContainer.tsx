@@ -17,7 +17,7 @@ function splitFirstSentence(text: string): [string, string] {
   const match = /^(.+?)\.\s+(.+)$/.exec(text);
   return match ? [match[1], match[2]] : [text, ""];
 }
-import VirtualMessageList, { type VirtualMessageListHandle } from "./VirtualMessageList";
+import VirtualMessageList, { type VirtualMessageListHandle } from "../../features/chat/MessageListCore";
 import { useEditRequest } from "../../contexts/EditRequestContext";
 import type { Message } from "../../types/message.type";
 import { useMessageVisibility } from "../../hooks/useMessageVisibility";

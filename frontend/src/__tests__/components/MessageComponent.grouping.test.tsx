@@ -30,7 +30,7 @@ vi.mock('../../hooks/useMessagePermissions', () => ({
   }),
 }));
 
-vi.mock('../../components/Message/useMessageActions', () => ({
+vi.mock('../../data/chat/useMessageActions', () => ({
   useMessageActions: () => ({
     isEditing: false,
     editText: '',

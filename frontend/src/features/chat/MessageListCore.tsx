@@ -11,9 +11,9 @@ import {
 } from "react";
 import { Box, LinearProgress } from "@mui/material";
 import { VList, type VListHandle } from "virtua";
-import MessageComponent from "./MessageComponent";
-import { UnreadMessageDivider } from "./UnreadMessageDivider";
-import { DaySeparator } from "./DaySeparator";
+import MessageComponent from "../../components/Message/MessageComponent";
+import { UnreadMessageDivider } from "../../components/Message/UnreadMessageDivider";
+import { DaySeparator } from "../../components/Message/DaySeparator";
 import { dayMarkers, shouldGroupWithPrevious } from "../../utils/messageGrouping";
 import type { Message } from "../../types/message.type";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
