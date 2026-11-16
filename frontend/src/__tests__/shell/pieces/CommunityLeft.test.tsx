@@ -197,6 +197,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Module state: a failed test must not leak noted voice ids into the next one.
+  forgetVoiceChannels();
   expect(consoleError).not.toHaveBeenCalled();
 });
 
@@ -417,7 +419,6 @@ describe('CommunityLeft (the phone community home, PR 9b)', () => {
     await screen.findByRole('heading', { name: 'Couch Co-op', level: 2 });
     await waitFor(() => expect(knownVoiceChannels().has('vc-squad')).toBe(true));
     expect(knownVoiceChannels().has('ch-general')).toBe(false);
-    forgetVoiceChannels();
   });
 
   it('does not record a community the user cannot open', async () => {

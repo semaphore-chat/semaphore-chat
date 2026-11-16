@@ -4,7 +4,10 @@
  * failed send, Escape from the list to the composer, and that typing in the composer re-renders no row.
  */
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../msw/server';
+import { forgetVoiceChannels, knownVoiceChannels } from '../../../shell/voiceChannelMemory';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { KitProvider } from '../../../kit';
 import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
@@ -24,6 +27,14 @@ import { clearComposerDrafts } from '../../../hooks/useComposerDraft';
 import { createChannel, createMessage, createTestQueryClient, renderWithProviders, resetFactoryCounter } from '../../test-utils';
 import { SpanType, type Message } from '../../../types/message.type';
 
+// The API client against MSW (the channel list's pending and failed cases are served per test).
+vi.mock('../../../api-client/client.gen', async (importOriginal) => {
+  const { createClient, createConfig } = await import('../../../api-client/client');
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    client: createClient(createConfig({ baseUrl: 'http://localhost:3000' })),
+  };
+});
 vi.mock('virtua', async () => {
   const ReactMod = await import('react');
   return {
@@ -140,12 +151,24 @@ function makeConversation(orderedMessages: Message[]): Conversation {
 const mine = () => createMessage({ id: 'm-mine', authorId: 'me', spans: [{ type: SpanType.PLAINTEXT, text: 'my words' }] });
 const theirs = () => createMessage({ id: 'm-theirs', authorId: 'u-aiko', spans: [{ type: SpanType.PLAINTEXT, text: 'their words' }] });
 
-function setup(messages: Message[]) {
+/** The community's channel list as the screen finds it: the channel's type, missing from it, loading, or failed. */
+type ListState = 'TEXT' | 'VOICE' | 'missing' | 'pending' | 'error';
+
+function setup(messages: Message[], list: ListState = 'TEXT') {
   conversation.current = makeConversation(messages);
   const queryClient = createTestQueryClient();
-  queryClient.setQueryData(channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }), [
-    createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1' }),
-  ]);
+  if (list === 'TEXT' || list === 'VOICE' || list === 'missing') {
+    queryClient.setQueryData(
+      channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }),
+      list === 'missing' ? [] : [createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1', type: list })],
+    );
+  } else {
+    server.use(
+      http.get('*/api/channels/community/c-1', () =>
+        list === 'pending' ? new Promise<never>(() => undefined) : HttpResponse.json({ statusCode: 500 }, { status: 500 }),
+      ),
+    );
+  }
   for (const [id, name] of [
     ['u-aiko', 'Aiko'],
     ['me', 'Me'],
@@ -190,6 +213,63 @@ async function openActionsWithEnter(text: string) {
   fireEvent.keyDown(row, { key: 'Enter' });
   return screen.findByRole('dialog');
 }
+
+describe('ChannelChat writes only to a channel known to be a text channel (I1)', () => {
+  afterEach(() => forgetVoiceChannels());
+
+  it('TEXT: the composer, reactions and the actions sheet', async () => {
+    setup([theirs()], 'TEXT');
+    expect(composerField()).toBeInTheDocument();
+    expect(await openActionsWithEnter('their words')).toBeInTheDocument();
+  });
+
+  it('the list still loading: skeleton rows with Back, no conversation, no composer', () => {
+    setup([theirs()], 'pending');
+    expect(screen.getByText('Loading messages')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to the community' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('article')).toBeNull();
+  });
+
+  it('the list failed: the load-error state with Try again (asks again), no composer', async () => {
+    setup([theirs()], 'error');
+    const retry = await screen.findByRole('button', { name: 'Try again' }, { timeout: 5000 });
+    expect(screen.getByRole('heading', { name: "Couldn't load the channel" })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    let asked = 0;
+    server.use(
+      http.get('*/api/channels/community/c-1', () => {
+        asked += 1;
+        return HttpResponse.json([createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1' })]);
+      }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() => expect(asked).toBe(1));
+    expect(await screen.findByRole('textbox', { name: 'Message #lobby' })).toBeInTheDocument();
+  });
+
+  it('VOICE: a plain "Voice channel" state with Back, no chat; the chat notes the id for the shell', () => {
+    setup([theirs()], 'VOICE');
+    expect(screen.getByRole('heading', { level: 1, name: 'lobby' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Voice channel' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Go to the community' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to the community' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('article')).toBeNull();
+    expect(knownVoiceChannels().has('ch-1')).toBe(true);
+  });
+
+  it('a channel missing from the list (no access, deleted): reads without a composer, actions or reactions', () => {
+    setup([theirs()], 'missing');
+    expect(screen.getByRole('article')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    const row = rowOf('their words');
+    act(() => row.focus());
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
 
 describe('ChannelChat write side', () => {
   beforeEach(() => {

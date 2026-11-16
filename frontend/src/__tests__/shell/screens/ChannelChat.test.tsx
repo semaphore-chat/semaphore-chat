@@ -206,9 +206,10 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
       expect(navCalls).toEqual([[`${REAL_CHAT}?highlight=m-1`, { replace: true }]]);
     });
 
-    it('a voice channel gets no chat (its route is the old shell’s call view): no heading, no composer, no conversation', () => {
+    it('a voice channel gets no chat (its route is the old shell’s call view): a "Voice channel" state with Back, no composer, no conversation', () => {
       setup({ entries: [REAL_CHAT], links: APP_LINKS, type: 'VOICE' });
-      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.getByRole('heading', { name: 'Voice channel' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Back to the community' })).toBeInTheDocument();
       expect(screen.queryByRole('textbox')).toBeNull();
       expect(conversationCalls).toEqual([]);
     });

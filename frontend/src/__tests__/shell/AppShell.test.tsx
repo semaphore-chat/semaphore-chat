@@ -250,7 +250,7 @@ function createRoom() {
 const IN_A_CALL = {
   isConnected: true,
   contextType: VoiceSessionType.Channel,
-  currentChannelId: 'ch-1',
+  currentChannelId: 'vc-call',
   channelName: 'general',
   communityId: 'c-1',
   isPrivate: false,
@@ -463,6 +463,8 @@ describe('with the new design on', () => {
 });
 
 describe('the phone community home (/community/:communityId)', () => {
+  afterEach(() => forgetVoiceChannels());
+
   /** A stub for the real screen module: it would pull the kit in after the test environment is gone (D8). */
   function stubHomeLoad() {
     // The channel chat too: a channel tap from the home opens it at phone width.
@@ -577,7 +579,15 @@ describe('the phone community home (/community/:communityId)', () => {
     expectCallUp('the classic call view, known');
     act(() => handles.navigate!(-1));
     await flush();
-    forgetVoiceChannels();
+
+    // The connected call's channel is noted by the app shell (M2): its route is the classic call view at once, with
+    // no community list involved.
+    act(() => handles.navigate!('/community/c-9/channel/vc-call'));
+    await flush();
+    expect(loungeShell(container)).toBeNull();
+    expectCallUp('the call view of the connected call');
+    act(() => handles.navigate!(-1));
+    await flush();
 
     act(() => viewport.setWidth(820));
     await flush();

@@ -115,7 +115,7 @@ const pushToTalkEngineSelector = {
 const PUSH_TO_TALK_ENGINE_FILES = ['src/components/Voice/VoiceSessionEffects.tsx', 'src/__tests__/**']
 
 export default tseslint.config(
-  { ignores: ['dist', 'src/api-client', 'coverage', '.ladle/public', '.ux-shots'] },
+  { ignores: ['dist', 'build-ladle', 'src/api-client', 'coverage', '.ladle/public', '.ux-shots'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

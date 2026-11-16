@@ -348,26 +348,47 @@ test.describe('The Lounge chat (390 px)', () => {
     }
   });
 
-  test('resizing across the phone boundary in the chat keeps the place and the draft; the shell swaps both ways', async ({ browser, request }) => {
+  // The scroll place is NOT kept across a shell swap: each shell mounts its own list, which opens at the newest
+  // message (the read marks are shared, so nothing is marked read twice). The URL and the draft are kept.
+  test('resizing across the phone boundary in the chat keeps the URL and the draft; each shell reopens at the newest message', async ({
+    browser,
+    request,
+  }) => {
     const world = await loungeWorld(request);
-    await sendTestMessage(request, world.c1.lobbyId, 'keep my place', world.owner.token);
+    for (let i = 1; i <= 40; i += 1) await sendTestMessage(request, world.c1.lobbyId, `numbered message ${i}`, world.owner.token);
     const { context, page } = await openSession(browser, world.member, PHONE);
     const real = chatPath('real', world.c1.id, world.c1.lobbyId);
+    const inView = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom > 0 && r.top < innerHeight;
+    };
     try {
       await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
-      await expect(row(page, 'keep my place')).toBeVisible(EVENTUAL);
+      await expect(row(page, 'numbered message 40')).toBeVisible(EVENTUAL);
       await page.getByRole('textbox', { name: 'Message #lobby' }).fill('half a thought');
+      // Scroll back to an older message: the newest leaves the view.
+      const older = row(page, 'numbered message 12');
+      const box = await messages(page).boundingBox();
+      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      for (let i = 0; i < 30 && !(await older.isVisible().catch(() => false)); i += 1) await page.mouse.wheel(0, -400);
+      await older.scrollIntoViewIfNeeded();
+      await expect(older).toBeInViewport();
+      await expect(row(page, 'numbered message 40')).not.toBeInViewport();
 
       await page.setViewportSize({ width: 820, height: 1180 });
       await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0, EVENTUAL);
       await expect(page).toHaveURL(hashUrl(real));
-      await expect(page.getByTestId('message-body').filter({ hasText: 'keep my place' })).toBeVisible(EVENTUAL);
+      const classicNewest = page.getByTestId('message-body').filter({ hasText: 'numbered message 40' });
+      await expect(classicNewest).toBeVisible(EVENTUAL);
+      expect(await classicNewest.evaluate(inView)).toBe(true);
       await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toHaveValue('half a thought', EVENTUAL);
 
       await page.setViewportSize(PHONE);
       await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
       await expect(page).toHaveURL(hashUrl(real));
-      await expect(row(page, 'keep my place')).toBeVisible(EVENTUAL);
+      await expect(row(page, 'numbered message 40')).toBeInViewport(EVENTUAL);
+      // The older message the user had scrolled to is not where they were: the place is not kept.
+      expect(await row(page, 'numbered message 12').evaluate(inView).catch(() => false)).toBe(false);
       await expect(page.getByRole('textbox', { name: 'Message #lobby' })).toHaveValue('half a thought', EVENTUAL);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
     } finally {

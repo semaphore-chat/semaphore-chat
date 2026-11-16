@@ -522,8 +522,12 @@ Four rules came with them:
   every list it loads (`shell/voiceChannelMemory.ts`), and `chooseShell` gives a
   noted voice channel's route to the old shell (its call view, where the call
   bar's "Open call view" leads). A cold link to a voice channel shows the new
-  shell until that list is in; once the channel is known to be a voice one, the
-  chat centre draws nothing until the old shell takes over.
+  shell until that list is in. The chat itself waits for the list too: skeleton
+  rows while it loads, "Couldn't load the channel" with Try again if it fails,
+  a plain "Voice channel" state with Back for a voice channel (it also notes the
+  id, so the shell flips), and a composer, reactions and message actions only
+  for a channel the list says is a text channel. The connected call's channel
+  is noted by the app shell, so "Open call view" never needs the list.
 - **Right content needs a way in on a phone.** A phone screen whose descriptor
   has right content (the members) gives a control that opens it: the community
   header's "N around" (`useScreenChrome().setRightOpen(true)`), plain text only

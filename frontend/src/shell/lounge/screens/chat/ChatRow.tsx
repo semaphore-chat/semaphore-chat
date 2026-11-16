@@ -60,6 +60,8 @@ import { formatDaySeparator } from '../../../../utils/messageTime';
 export interface ChatRowShared {
   me: string;
   communityId: string;
+  /** The channel is known to be a text channel: reactions may be toggled (otherwise they are read-only). */
+  writable: boolean;
   /** The segments' lookups and links (`toSegments`). */
   segments: Omit<ToSegmentsOptions, 'me'>;
   /** Shows a message of this chat (a reply's original): the chat's path with `?highlight=`. */
@@ -196,7 +198,7 @@ function Reactions({ message }: { message: Message }): JSX.Element | null {
           label={reaction.label}
           count={reaction.count}
           mine={reaction.mine}
-          aria-disabled={!canReact}
+          aria-disabled={!canReact || !shared.writable}
           onUnavailablePress={() => announce("You can't react in this channel")}
           onToggle={() => void handleReactionClick(reaction.key)}
         />

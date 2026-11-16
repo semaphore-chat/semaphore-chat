@@ -292,6 +292,39 @@ export const Gone = story({ handlers: [failWith(404)] });
 /** Any other failure: Try again. */
 export const LoadError = story({ handlers: [failWith(500)] });
 
+// --- The channel's type (PR 10c-2b) ---
+
+/** The community's list with this channel as a voice room. */
+const voiceListHandler = http.get(channelsPath, () =>
+  HttpResponse.json([
+    {
+      id: CHANNEL,
+      name: 'Squad Up',
+      communityId: LOUNGE_COMMUNITY_ID,
+      type: 'VOICE',
+      isPrivate: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      position: 0,
+      slowmodeSeconds: 0,
+      preset: 'NORMAL',
+    },
+  ]),
+);
+
+/**
+ * A voice channel has no chat: a plain state with Back. On the real route the shell shows the old call view as soon as
+ * the chat notes the channel; this is what shows on the fixture, or for that moment.
+ */
+export const VoiceChannel = story({ handlers: [voiceListHandler] });
+
+/** The same, light. */
+export const VoiceChannelLight = story({ mode: 'light', handlers: [voiceListHandler] });
+
+/** The community's channel list failed: the chat says so with Try again (nothing it could write to). */
+export const ChannelListFailed = story({
+  handlers: [http.get(channelsPath, () => HttpResponse.json({ statusCode: 500, message: 'nope' }, { status: 500 }))],
+});
+
 // --- Write side (PR 10c-2a) ---
 
 /** The channel's capabilities for the reader (`useComposerAvailability`, reactions), and its name and preset. */
