@@ -447,11 +447,68 @@ make up an answer on your own screen.
   what the browser reports, but the page's viewport setting (`index.html`, the
   `interactive-widget` option for Android) is an app-level change that is not
   made yet. Until it is, a phone may pan the page instead of resizing it.
-- **The call bar across screens.** The three-islands template has a place for the
-  in-call strip. Keeping it on screen when the user goes to a settings screen or
-  a full stage belongs to the app shell, which has not been built.
+- **The call bar on other templates.** The call bar stays on screen while the
+  user moves between three-islands screens: the frame keeps it mounted, with
+  the dock, the left island and the members. Settings screens and the full stage
+  are still the old shell's, so the call bar is not on them yet. "Open call view"
+  goes to the old shell's call stage.
 - **A phone thread as a full pane.** Below wide the right content is a Sheet. A
   thread with a composer may want to be a pane of its own on a phone.
+
+## Registering a screen
+
+The web app shows a screen in the new shell only where it is registered. A
+route that is not registered, and a registered route at a width it does not
+list, stays on the old shell exactly as before. Registering a screen takes two
+things and nothing else:
+
+1. **One entry in `LOUNGE_ROUTES`** (`frontend/src/shell/loungeRoutes.ts`):
+
+   ```ts
+   {
+     path: '/community/:communityId',
+     widths: ['phone'],
+     load: () => import('./lounge/screens/CommunityHome'),
+   },
+   ```
+
+   - `path` is the same pattern as in `routes.tsx`: the old screen still shows
+     it at the other widths, and for everyone with the new design off. The
+     registry test fails when the path is missing from `routes.tsx`.
+   - `widths` lists the width ranges where the screen is converted. List a
+     width only when the screen is finished there.
+   - `load` imports one module under `shell/lounge/screens/`, so each screen is
+     its own lazy chunk.
+2. **A descriptor**, the module's default export (`shell/lounge/screen.ts`).
+   It names the template and gives the screen's parts. The frame draws the rest:
+
+   ```ts
+   const communityHome: ThreeIslandsScreen = {
+     template: 'threeIslands',
+     place: 'community',      // the left island: the community's channels and rooms
+     phonePane: 'left',       // a phone shows the left pane
+     Centre: null,            // nothing in the centre yet
+     right: 'members',        // the shell's members island
+     useTitle: useCommunityTitle,
+   };
+   export default communityHome;
+   ```
+
+   Do not set `links` on a real screen. It is only for test fixtures (see
+   below), and the registry test checks that.
+
+Moving between two screens of the same template keeps the dock, the left island
+(its scroll and focus), the members and the call bar mounted. Only the centre
+changes. Every screen still names its template in its pull request (see "The
+rule").
+
+**Test fixtures.** A path under `/__lounge` is a hidden fixture, never a real
+route: with the new design off it is the old shell's "Page not found". The
+community fixture, `/__lounge/community/:communityId`, puts every piece of the
+shell on real data around a placeholder centre, so the end-to-end tests can
+check the pieces before a real screen is registered. Its descriptor sets
+`links`, so its dock and "All communities" sheet stay on the fixture. When a
+real screen takes over, point those tests at the real path.
 
 ## A new template
 

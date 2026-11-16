@@ -29,6 +29,9 @@ screen. There is one path, and it is the same for a person and for an LLM.
 |Behaviour|How things respond: what Escape does, how a confirmation works, how an empty or error state shows|The [Behaviour](behaviour.md) chapter of this guide, its pattern files in `design/behaviour/` and the code it describes|
 |Layout template|A new arrangement of islands for a whole screen|The [Layouts](layouts.md) chapter of this guide and the layout components|
 
+A new screen is not a new kind. It uses an existing template and is registered
+as "Registering a screen" in [Layouts](layouts.md) describes.
+
 A new colour is not a new kind. It is a token value: a colour need that has no
 role goes in as a role in `design/colour.json`, and the palette derivation
 keeps it readable. Do not pick a close colour and use it.
