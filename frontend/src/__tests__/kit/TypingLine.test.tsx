@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 import { TypingLine } from '../../kit';
-import { typingText } from '../../kit/chat/TypingLine';
+import { typingText } from '../../kit/chat/typingText';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 describe('TypingLine', () => {

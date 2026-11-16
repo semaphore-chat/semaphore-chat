@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 import { AttachmentTile, MessageRow } from '../../kit';
-import { IMAGE_FALLBACK, IMAGE_MAX, imageBox } from '../../kit/chat/AttachmentTile';
+import { IMAGE_FALLBACK, IMAGE_MAX, imageBox } from '../../kit/chat/attachmentBox';
 import { renderWithKit } from '../test-utils/renderWithKit';
 
 describe('imageBox', () => {

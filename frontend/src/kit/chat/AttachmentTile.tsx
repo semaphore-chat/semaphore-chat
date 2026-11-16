@@ -9,11 +9,7 @@ import { transientProps } from '../theme/transientProps';
 import { Icon } from '../display/Icon';
 import { Spinner } from '../display/Spinner';
 import { useRowTabIndex } from './rowTabScope';
-
-/** The largest box an image is drawn in; a smaller image keeps its own size. */
-export const IMAGE_MAX = { width: 320, height: 240 } as const;
-/** The box of an image whose size is not known. */
-export const IMAGE_FALLBACK = { width: 240, height: 160 } as const;
+import { IMAGE_MAX, imageBox } from './attachmentBox';
 
 export interface AttachmentTileProps {
   /** `image`: a picture, drawn in a box of its known size. `file`: a row with the file's name and size. */
@@ -31,15 +27,6 @@ export interface AttachmentTileProps {
   onOpen: () => void;
   /** The open or download is on its way: busy, presses ignored. */
   busy?: boolean;
-}
-
-/** The box an image is drawn in: its own size, shrunk to fit `IMAGE_MAX`, or the fallback box. */
-export function imageBox(width?: number | null, height?: number | null): { width: number; height: number } {
-  if (!width || !height || width <= 0 || height <= 0 || !Number.isFinite(width) || !Number.isFinite(height)) {
-    return { ...IMAGE_FALLBACK };
-  }
-  const scale = Math.min(1, IMAGE_MAX.width / width, IMAGE_MAX.height / height);
-  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
 const pressable = (palette: ReturnType<typeof kitTheme>['palette']) => ({

@@ -1348,7 +1348,8 @@ for a list that is not messages.
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`header`|kit pieces|none|The conversation's header (Back, its name, buttons).|
-|`list`|a message list|none (required)|The list, or its loading, empty or error state. Only it scrolls.|
+|`list`|a message list|none|The list. Only it scrolls.|
+|`state`|kit pieces|none|In the list's place, centred: skeleton rows, empty, no access, an error with Try again.|
 |`typing`|a TypingLine|none|Floats at the bottom of the list region.|
 |`jump`|a JumpToLatest|none|Floats over the bottom of the list region.|
 |`announcement`|text|none|Said politely, never shown ("2 new messages from aiko").|

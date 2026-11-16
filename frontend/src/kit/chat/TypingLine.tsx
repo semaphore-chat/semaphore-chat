@@ -2,12 +2,7 @@ import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
-
-/**
- * The typing line's height: the room the message list core keeps under its last row for it
- * (`TYPING_INDICATOR_HEIGHT`, 32 px), so it never covers a message.
- */
-export const TYPING_LINE_HEIGHT = tokens.space['2xl'];
+import { TYPING_LINE_HEIGHT, typingText } from './typingText';
 
 export interface TypingLineProps {
   /** Who is typing, by name, the first to start first. Nothing is drawn while it is empty. */
@@ -32,15 +27,6 @@ const Root = styled('div')(({ theme }) => {
 });
 
 const Words = styled('span')({ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
-
-/** The words, as the old shell writes them: one name, two names, or the first name and how many others. */
-export function typingText(names: readonly string[]): string {
-  if (names.length === 0) return '';
-  if (names.length === 1) return `${names[0]} is typing…`;
-  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
-  const others = names.length - 1;
-  return `${names[0]} and ${others} others are typing…`;
-}
 
 /**
  * Who is typing in the conversation, one quiet line at the bottom of the message list (`ChatPane`'s `typing`).
