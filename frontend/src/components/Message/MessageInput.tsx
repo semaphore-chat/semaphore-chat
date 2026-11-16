@@ -41,11 +41,11 @@ import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { FilePreview } from "./FilePreview";
 import { MentionDropdown } from "./MentionDropdown";
 import { MENTION_LISTBOX_ID, mentionOptionId } from "./mentionDropdownIds";
-import { useFileAttachments } from "./useFileAttachments";
-import { useDropZone } from "./useDropZone";
+import { useFileAttachments } from "../../data/chat/useFileAttachments";
+import { useDropZone } from "../../data/chat/useDropZone";
 import { DropZoneOverlay } from "./DropZoneOverlay";
-import { useMentionHandling } from "./useMentionHandling";
-import type { MentionSuggestion } from "./useMentionHandling";
+import { useMentionHandling } from "../../data/chat/useMentionHandling";
+import type { MentionSuggestion } from "../../data/chat/useMentionHandling";
 import { useMentionAutocomplete } from "../../hooks/useMentionAutocomplete";
 import {
   parseMessageWithMentions,
