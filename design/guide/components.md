@@ -15,12 +15,13 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Forty-four components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Forty-eight components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
 Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
 Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, and the chat pieces
-MessageRow, MessageText, ListSeparator, ReactionChip, Composer and JumpToLatest.
+MessageRow, MessageText, ListSeparator, ReactionChip, Composer, JumpToLatest,
+ChatPane, MessageQuote, AttachmentTile and TypingLine.
 
 ## Rules every component follows
 
@@ -1331,6 +1332,85 @@ messages".
 
 Stories: `kit-jump-to-latest--states`, `kit-jump-to-latest--states-light`,
 `kit-jump-to-latest--states-tinted`.
+
+### ChatPane
+
+A conversation inside the centre island: its header at the top, the message list
+filling what is left, and the composer under it. The list region is the
+positioned container the floating parts place themselves in: the typing line at
+its bottom (over the room the list core keeps under its last row) and
+JumpToLatest. It also holds the polite live region that says new messages the
+reader cannot see. A screen never positions these itself.
+
+**Use it when** you build a channel, DM or thread conversation. **Do not use it**
+for a list that is not messages.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`header`|kit pieces|none|The conversation's header (Back, its name, buttons).|
+|`list`|a message list|none (required)|The list, or its loading, empty or error state. Only it scrolls.|
+|`typing`|a TypingLine|none|Floats at the bottom of the list region.|
+|`jump`|a JumpToLatest|none|Floats over the bottom of the list region.|
+|`announcement`|text|none|Said politely, never shown ("2 new messages from aiko").|
+|`composer`|a Composer|none|Under the list.|
+
+Stories: `kit-chat-pane--conversation`, `kit-chat-pane--conversation-light`,
+`kit-chat-pane--conversation-tinted`, `kit-chat-pane--with-composer`,
+`kit-chat-pane--long-history` (2,000 rows on the list core: the performance check).
+
+### MessageQuote
+
+The message a reply answers, above the reply's words (MessageRow's `quote`): the
+author and one line that gives way with an ellipsis. With `onOpen` it is a
+button named "Reply to aiko: …" that shows the original (a jump in the list).
+A deleted original reads "Original message was deleted" and opens nothing.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`author`|text|none (required)|Who wrote the original.|
+|`line`|text|none (required)|One line of it.|
+|`deleted`|true, false|false|The original is gone.|
+|`onOpen`|function|none|Shows the original.|
+
+Stories: `kit-message-quote--states`, `kit-message-quote--states-light`,
+`kit-message-quote--states-tinted`.
+
+### AttachmentTile
+
+A file sent with a message (MessageRow's `attachments`). An `image` is drawn in
+a box sized from its known width and height, shrunk to fit 320 by 240 (240 by
+160 when the size is unknown), so a picture that arrives late never moves the
+list; the picture loads lazily and pressing it opens the image. Any other
+`file` (video and audio too, until they have players) is a row with its name
+and size; pressing it downloads the file. While `busy` presses are ignored.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`kind`|`image`, `file`|none (required)|A picture, or a file row.|
+|`name`|text|none (required)|The file's name.|
+|`detail`|text|none|Its size, written for people ("2.4 MB").|
+|`src`|image|none|The picture (a preview); a quiet fill until it is known.|
+|`width`, `height`|pixels|none|The image's own size: the box is sized from them.|
+|`onOpen`|function|none (required)|Opens the image or downloads the file.|
+|`busy`|true, false|false|The open or download is on its way.|
+
+Stories: `kit-attachment-tile--states`, `kit-attachment-tile--states-light`,
+`kit-attachment-tile--states-tinted`.
+
+### TypingLine
+
+Who is typing, one quiet line at the bottom of the message list (ChatPane's
+`typing`): "aiko is typing…", "aiko and dropbear are typing…", "aiko and 3
+others are typing…". It is 32 px tall, the room the list core keeps under its
+last row, so it never covers a message. A long name gives way; nothing is drawn
+while nobody types.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`names`|list of names|none (required)|Who is typing, first to start first.|
+
+Stories: `kit-typing-line--states`, `kit-typing-line--states-light`,
+`kit-typing-line--states-tinted`.
 
 ## Which overlay
 
