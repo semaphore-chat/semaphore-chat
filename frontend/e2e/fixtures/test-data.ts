@@ -12,6 +12,25 @@ const API_BASE = '/api';
 /**
  * Create a test community
  */
+/**
+ * Communities created with an owner token in this worker (each Playwright worker has its own module
+ * instance). `createWorld`, `loungeWorld` and direct calls all go through `createTestCommunity`, so every
+ * one is recorded here; `deleteWorlds` removes them so the shared `testuser` does not pile up communities.
+ */
+const createdCommunities: Array<{ id: string; token: string }> = [];
+
+/** Delete every community recorded in this worker as its owner. A failed delete only logs a warning. */
+export async function deleteWorlds(request: APIRequestContext): Promise<void> {
+  const batch = createdCommunities.splice(0);
+  for (const { id, token } of batch) {
+    try {
+      await deleteCommunity(request, id, token);
+    } catch (error) {
+      console.warn(`deleteWorlds: could not delete community ${id}: ${(error as Error).message}`);
+    }
+  }
+}
+
 export async function createTestCommunity(
   request: APIRequestContext,
   data: { name: string; description?: string },
@@ -35,7 +54,9 @@ export async function createTestCommunity(
     throw new Error(`Failed to create community: ${response.status()} - ${error}`);
   }
 
-  return response.json();
+  const community = await response.json();
+  if (token) createdCommunities.push({ id: community.id, token });
+  return community;
 }
 
 /**
@@ -140,7 +161,7 @@ export async function getUserCommunities(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await request.get(`${API_BASE}/community/me`, { headers });
+  const response = await request.get(`${API_BASE}/community/mine`, { headers });
 
   if (!response.ok()) {
     const error = await response.text();

@@ -9,7 +9,7 @@
  * Run: scripts/run-e2e.sh lounge-chat
  */
 import type { Page } from '@playwright/test';
-import { test, expect, TEST_USER, API_BASE, openSession, shot, sendTestMessage } from './fixtures';
+import { test, expect, TEST_USER, API_BASE, openSession, shot, sendTestMessage, deleteWorlds } from './fixtures';
 import { chatFixturePath, fixturePath, loungeWorld, openFixture } from './fixtures/lounge';
 
 test.describe.configure({ timeout: 120_000 });
@@ -34,6 +34,9 @@ async function serverUnreadCount(request: Parameters<typeof sendTestMessage>[0],
   const rows = (await res.json()) as Array<{ channelId?: string | null; unreadCount: number }>;
   return rows.find((r) => r.channelId === channelId)?.unreadCount ?? 0;
 }
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('The Lounge chat on the chat fixture (390 px)', () => {
   test('a channel row opens the chat; history, a live message and the read reach the server; Back returns to the row', async ({
