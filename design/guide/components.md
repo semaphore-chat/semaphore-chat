@@ -1113,8 +1113,8 @@ is in the row; Tab from the row reaches its buttons. Hidden, it is not there at
 all (`visibility: hidden`): Tab does not walk the hidden toolbars of other rows
 and a tap cannot hit one. While a Menu or Popover opened from it is open (its
 button is `aria-expanded`), the toolbar stays, so closing it returns focus to
-that button. On a device that cannot hover a tap never shows it (the actions
-come from the long press), but a keyboard still does (an iPad with a keyboard).
+that button. On a device that cannot hover it is never shown: the actions come
+from the long press and the context-menu key.
 Events from a Menu or picker opened from a slot are not the row's: they reach
 the row through React's tree, from outside its DOM, and are ignored.
 
@@ -1140,7 +1140,7 @@ To edit a message in place, the `body` is a Composer with `inline` and
 |`retrying`|true, false|false|A retry is on its way: Retry is busy and ignores presses.|
 |`edited`, `pinned`|true, false|false|"(edited)" and the pin mark after the time.|
 |`quote`, `body`, `attachments`, `reactions`, `footer`|kit pieces|none|The slots, in that order. Reactions wrap. `body` is a MessageText, or an inline Composer to edit.|
-|`actions`|IconButtons|none|The hover and focus toolbar (compact and wide; on a device that cannot hover, for the keyboard only).|
+|`actions`|IconButtons|none|The hover and focus toolbar (compact and wide; never on a device that cannot hover).|
 |`onOpenActions`|function of `{ via, x, y }` (`touch`, `pointer`) or `{ via }` (`keyboard`)|none|Long press, right-click or the context-menu key, and where.|
 |`onOpenAuthor`|function|none|The name and avatar open the profile.|
 |`onRetry`, `onDelete`|function|none|Retry and Delete on a failed row.|
@@ -2161,9 +2161,8 @@ lists below say what each overlay still gets from MUI and the browser.
 - MessageRow: hover only on a pointer that hovers; the toolbar and a continued
   row's time show with `:focus-within`, and at rest are `visibility: hidden`,
   which takes them out of the Tab order and the accessibility tree; a
-  `(hover: none)` media query keeps the toolbar from a tap (a finger's focus
-  marks the row) but not from a keyboard; `:has([aria-expanded="true"])` keeps
-  it while its popup is open. The native
+  `(hover: none)` media query hides the toolbar on touch devices;
+  `:has([aria-expanded="true"])` keeps it while its popup is open. The native
   context menu is suppressed when the row has actions (not on a field, and not
   for a long press on a link). `-webkit-touch-callout` and `user-select` are
   turned off only while a finger is down. Whether a context menu came from a

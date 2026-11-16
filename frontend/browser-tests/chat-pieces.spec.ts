@@ -162,42 +162,33 @@ test('a Menu opened from the row toolbar keeps the toolbar, so Escape returns fo
 test.describe('on a device that cannot hover', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test('the row toolbar is not shown to touch, even when a tap focuses the row: the actions come from a long press', async ({ page }) => {
+  test('the row toolbar is never shown, even with focus in the row or after the window blurs and focus returns: the actions come from a long press', async ({ page }) => {
     await openStory(page, 'kit-message-row--actions', PHONE);
     expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
     const toolbar = page.getByRole('toolbar', { includeHidden: true });
     await expect(toolbar).toHaveCount(1);
-    const visibility = () => toolbar.evaluate((element) => getComputedStyle(element).visibility);
-    expect(await visibility()).toBe('hidden');
-    // A tap focuses the row, but not as keyboard focus: the toolbar stays away.
-    await page.getByRole('article').first().tap();
-    await expect(page.getByRole('article').first()).toBeFocused();
-    expect(await visibility()).toBe('hidden');
+    const display = () => toolbar.evaluate((element) => getComputedStyle(element).display);
+    expect(await display()).toBe('none');
     // A tap at the row's top end, where the toolbar would be, lands on the row, not on a hidden action.
-    const box = (await page.getByRole('article').first().boundingBox())!;
+    const row = page.getByRole('article').first();
+    const box = (await row.boundingBox())!;
     const hit = await page.evaluate(
       ({ x, y }) => (document.elementFromPoint(x, y) as HTMLElement).closest('button')?.getAttribute('aria-label') ?? null,
       { x: box.x + box.width - 24, y: box.y + 4 },
     );
     expect(hit).toBeNull();
-  });
-
-  test('a keyboard (an iPad with a keyboard, no trackpad) still reaches the toolbar; a tap on the row does not show it', async ({ page }) => {
-    await openStory(page, 'kit-message-row--actions', PHONE);
-    // Reduced motion: no fade, so the checks below see the end state at once.
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    const toolbar = page.getByRole('toolbar', { includeHidden: true });
-    const visibility = () => toolbar.evaluate((element) => getComputedStyle(element).visibility);
-    await page.getByRole('article').first().tap();
-    await expect(page.getByRole('article').first()).toBeFocused();
-    await expect.poll(visibility).toBe('hidden');
-    // Keyboard focus is focus-visible: the toolbar shows, and Tab reaches its buttons.
-    await page.keyboard.press('Shift+Tab');
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('article').first()).toBeFocused();
-    await expect.poll(visibility).toBe('visible');
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('button', { name: 'Add reaction' })).toBeFocused();
-    await expect.poll(visibility).toBe('visible');
+    await row.tap();
+    await expect(row).toBeFocused();
+    expect(await display()).toBe('none');
+    // Keyboard-style focus on the row does not show it either.
+    await row.focus();
+    expect(await display()).toBe('none');
+    // The window loses focus (another tab or app) and gets it back: focus returns to the row, the toolbar stays away.
+    const other = await page.context().newPage();
+    await other.bringToFront();
+    await page.bringToFront();
+    await other.close();
+    await expect(row).toBeFocused();
+    expect(await display()).toBe('none');
   });
 });

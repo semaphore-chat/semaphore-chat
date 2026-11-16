@@ -2,7 +2,6 @@ import {
   useEffect,
   useId,
   useRef,
-  type FocusEvent,
   type FocusEventHandler,
   type JSX,
   type KeyboardEvent,
@@ -188,11 +187,6 @@ const Root = styled('div', { shouldForwardProp: transientProps })<RootProps>(
       // A Menu or Popover opened from the toolbar is in a portal, outside the row: while it is open (its trigger is
       // aria-expanded) the toolbar stays, so closing it can return focus to the trigger.
       '&:has([data-toolbar] [aria-expanded="true"]) [data-reveal]': shown,
-      // A device that cannot hover keeps the toolbar from touch: while the focus in the row came from a finger
-      // (`data-touch-focus`), focus does not reveal it, so a tap cannot hit it. A keyboard (an iPad with a keyboard
-      // and no trackpad) still reaches it: any key in the row clears the mark, and keyboard focus shows it as on a
-      // desktop.
-      '@media (hover: none)': { '&[data-touch-focus] [data-toolbar]': { opacity: 0, visibility: 'hidden' } },
     };
   },
 );
@@ -345,6 +339,8 @@ const Actions = styled('div')(({ theme }) => {
     borderRadius: `${tokens.radius.full}px`,
     background: palette.surface,
     border: `${tokens.border.hairline}px solid ${palette.hairline}`,
+    // A device that cannot hover never shows it: its actions come from a long press or the context-menu key.
+    '@media (hover: none)': { display: 'none' },
   };
 });
 
@@ -431,8 +427,6 @@ export function MessageRow({
     keyAskedAt.current = null;
     const row = event.currentTarget;
     const touch = event.pointerType === 'touch';
-    if (touch) row.dataset.touchFocus = '';
-    else delete row.dataset.touchFocus;
     const nested = within(event.target, row, NESTED_CONTROL);
     pointerRef.current = { touch, nested };
     if (onOpenActions === undefined || !touch || nested) return;
@@ -515,13 +509,7 @@ export function MessageRow({
     event.preventDefault();
     onOpenActions({ via: pointer.touch ? 'touch' : 'pointer', x: event.clientX, y: event.clientY });
   };
-  const onBlur = (event: FocusEvent<HTMLDivElement>) => {
-    // Focus left the row: the next focus in it is not a finger's until a finger says so.
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) delete event.currentTarget.dataset.touchFocus;
-  };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    // A key in the row: the keyboard is in use, so the toolbar may show (devices without hover).
-    delete event.currentTarget.dataset.touchFocus;
     pointerRef.current = null;
     const asked = event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
     // Only the row itself: a key on a control inside it (a reaction, a link) is that control's.
@@ -564,7 +552,6 @@ export function MessageRow({
       aria-busy={pending || undefined}
       tabIndex={focus === undefined ? undefined : focus.tabStop ? 0 : -1}
       onFocus={focus?.onFocus}
-      onBlur={onBlur}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
