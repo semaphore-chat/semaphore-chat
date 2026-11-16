@@ -12,8 +12,8 @@
  * Stop watching (shell/lounge/call/surface, its own lazy chunk), and the voice
  * notice. So a converted three-islands screen no longer strands a call's video.
  *
- * Registered: the test fixtures (the marker and the community fixture, which
- * assembles every piece of the shell on real data) and the first real screen,
+ * Registered: the test fixtures (the marker, the community fixture, which
+ * assembles every piece of the shell on real data, and the chat fixture) and the first real screen,
  * the community home at phone width (`COMMUNITY_HOME_PATH`). Every
  * `/__lounge...` path is a fixture: with the new design off it is the old
  * shell's not-found page, and only a fixture's descriptor may set `links`.
@@ -58,6 +58,17 @@ export function loungeCommunityFixturePath(communityId: string): string {
   return `/__lounge/community/${communityId}`;
 }
 
+/**
+ * A hidden chat fixture: the new shell's text channel chat (PR 10c-1, the read side) inside the community's frame,
+ * reached from the community fixture's channel rows. No real channel route is the new shell's yet.
+ */
+export const LOUNGE_CHAT_FIXTURE_PATH = '/__lounge/community/:communityId/channel/:channelId';
+
+/** The chat fixture's path for one channel. */
+export function loungeChatFixturePath(communityId: string, channelId: string): string {
+  return `/__lounge/community/${communityId}/channel/${channelId}`;
+}
+
 /** The community home: the community's channels and rooms. The new shell's at phone width only. */
 export const COMMUNITY_HOME_PATH = '/community/:communityId';
 
@@ -79,6 +90,11 @@ export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
     path: LOUNGE_COMMUNITY_FIXTURE_PATH,
     widths: ['phone', 'compact', 'wide'],
     load: () => import('./lounge/screens/CommunityFixtureScreen'),
+  },
+  {
+    path: LOUNGE_CHAT_FIXTURE_PATH,
+    widths: ['phone', 'compact', 'wide'],
+    load: () => import('./lounge/screens/ChatFixtureScreen'),
   },
   {
     path: COMMUNITY_HOME_PATH,

@@ -48,7 +48,7 @@ describe('ShellDock (the view)', () => {
     expect(within(nav).getByRole('link', { name: /^Trailheads/ })).toHaveAttribute('href', '#/community/c-2');
     unmount();
     renderWithKit(
-      <LoungeLinksContext value={{ community: (id) => `#/__lounge/community/${id}` }}>
+      <LoungeLinksContext value={{ community: (id) => `#/__lounge/community/${id}`, channel: (c, ch) => `#/__lounge/community/${c}/channel/${ch}` }}>
         <ShellDock
           communities={sampleCommunities(5, MOCKUP_STATES)}
           current={{ kind: 'community', id: 'c-1' }}

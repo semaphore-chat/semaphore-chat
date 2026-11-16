@@ -13,6 +13,10 @@ const rows = new Map<string, string>();
 /** Stable ref callbacks that mark an element as a row (for items that take no data attributes). */
 const markers = new Map<string, (element: HTMLElement | null) => void>();
 
+/** The Lounge paths shown last, for a screen's Back (the chat's Back goes back only when it came from its home). */
+let currentPathname: string | null = null;
+let lastPathname: string | null = null;
+
 export const LOUNGE_ROW_ATTRIBUTE = 'data-lounge-row';
 
 export function rememberActivatedRow(pathname: string, rowId: string): void {
@@ -36,8 +40,28 @@ export function rowMarker(rowId: string): (element: HTMLElement | null) => void 
   return marker;
 }
 
+/** The frame tells the memory which Lounge path shows now. */
+export function notePathname(pathname: string): void {
+  if (pathname === currentPathname) return;
+  lastPathname = currentPathname;
+  currentPathname = pathname;
+}
+
+/** The new shell went away (the old shell shows now): what was shown before it is not a Lounge path any more. */
+export function leftLounge(): void {
+  currentPathname = null;
+  lastPathname = null;
+}
+
+/** The Lounge path shown before the current one, or null (a cold start, or the previous screen was the old shell's). */
+export function previousPathname(): string | null {
+  return lastPathname;
+}
+
 /** Forgets every remembered row and row marker: the session ended (or a test starts). */
 export function forgetRouteMemory(): void {
   rows.clear();
   markers.clear();
+  currentPathname = null;
+  lastPathname = null;
 }
