@@ -30,6 +30,9 @@ export const MessageEditForm: React.FC<MessageEditFormProps> = ({
   onRemoveAttachment,
 }) => {
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // An input method owns every key while composing (Safari reports the confirming Enter with isComposing
+    // false and keyCode 229): run no rule and leave the event alone.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSave();

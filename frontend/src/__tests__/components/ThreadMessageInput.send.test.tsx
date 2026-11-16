@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { ErrorCode } from '@semaphore-chat/shared';
 import { renderWithProviders, createMockSocket } from '../test-utils';
 import { ThreadMessageInput } from '../../components/Thread/ThreadMessageInput';
@@ -28,6 +28,15 @@ describe('ThreadMessageInput sending', () => {
       socket: socket as never,
     });
   };
+
+  it('does not send on the Enter that confirms an input-method candidate', async () => {
+    setup();
+    const box = screen.getByRole('textbox');
+    fireEvent.change(box, { target: { value: 'ni' } });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 });
+    expect(socket.emit).not.toHaveBeenCalled();
+  });
 
   const send = async (user: ReturnType<typeof setup>['user'], text?: string) => {
     if (text) await user.type(screen.getByRole('textbox'), text);
