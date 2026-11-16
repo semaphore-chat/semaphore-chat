@@ -64,11 +64,12 @@ pub enum LoungeIcon {
     CircleAlert,
     CircleCheck,
     LoaderCircle,
+    Megaphone,
 }
 
 impl LoungeIcon {
     /// Every icon, in `design/icons/icons.json` order.
-    pub const ALL: [LoungeIcon; 55] = [
+    pub const ALL: [LoungeIcon; 56] = [
         LoungeIcon::Inbox,
         LoungeIcon::Hash,
         LoungeIcon::Volume2,
@@ -124,6 +125,7 @@ impl LoungeIcon {
         LoungeIcon::CircleAlert,
         LoungeIcon::CircleCheck,
         LoungeIcon::LoaderCircle,
+        LoungeIcon::Megaphone,
     ];
 
     /// The icon's name in `design/icons/icons.json` (`Mic`).
@@ -184,6 +186,7 @@ impl LoungeIcon {
             Self::CircleAlert => "CircleAlert",
             Self::CircleCheck => "CircleCheck",
             Self::LoaderCircle => "LoaderCircle",
+            Self::Megaphone => "Megaphone",
         }
     }
 
@@ -245,6 +248,7 @@ impl LoungeIcon {
             Self::CircleAlert => "lucide/circle-alert.svg",
             Self::CircleCheck => "lucide/circle-check.svg",
             Self::LoaderCircle => "lucide/loader-circle.svg",
+            Self::Megaphone => "lucide/megaphone.svg",
         }
     }
 
@@ -306,6 +310,7 @@ impl LoungeIcon {
             Self::CircleAlert => include_bytes!("../assets/lucide/circle-alert.svg"),
             Self::CircleCheck => include_bytes!("../assets/lucide/circle-check.svg"),
             Self::LoaderCircle => include_bytes!("../assets/lucide/loader-circle.svg"),
+            Self::Megaphone => include_bytes!("../assets/lucide/megaphone.svg"),
         }
     }
 }

@@ -7,7 +7,7 @@
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
 import { useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { channelsControllerFindAllForCommunityOptions } from '../api-client/@tanstack/react-query.gen';
 import { ChannelType, type Channel } from '../types/channel.type';
 
@@ -36,12 +36,13 @@ export interface CommunityChannels extends SortedChannels {
   isLoading: boolean;
   error: unknown;
   refetch(): void;
+  /** The query itself, for a load face that keeps cached rows through a failed refetch (`useQueryLoadState`). */
+  query: UseQueryResult<Channel[]>;
 }
 
 export function useCommunityChannels(communityId: string): CommunityChannels {
-  const { data, status, isLoading, error, refetch } = useQuery(
-    channelsControllerFindAllForCommunityOptions({ path: { communityId } }),
-  );
+  const query = useQuery(channelsControllerFindAllForCommunityOptions({ path: { communityId } }));
+  const { data, status, isLoading, error, refetch } = query;
   const sorted = useMemo(() => sortCommunityChannels(data), [data]);
   const refetchChannels = useCallback(() => void refetch(), [refetch]);
   return {
@@ -51,5 +52,6 @@ export function useCommunityChannels(communityId: string): CommunityChannels {
     isLoading,
     error,
     refetch: refetchChannels,
+    query: query as UseQueryResult<Channel[]>,
   };
 }

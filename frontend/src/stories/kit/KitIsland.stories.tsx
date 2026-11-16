@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { Island, Text } from '../../kit';
+import { Avatar, Card, IconButton, Island, Stack, Text } from '../../kit';
 import { tokens } from '../../theme/generated/tokens';
 import { KitStage, Row } from '../fixtures/kitStory';
 
@@ -74,6 +74,57 @@ export const Scrolling = () => (
         ))}
       </Island>
     </div>
+  </KitStage>
+);
+
+function FooterBody({ count }: { count: number }): JSX.Element {
+  return (
+    <div style={{ height: 360, width: tokens.layout.leftColumn, maxWidth: '100%' }}>
+      <Island as="nav" label="Couch Co-op" padding="md" scroll
+        footer={
+          <Card>
+            <Stack direction="row" gap="sm">
+              <Avatar name="alexk" presence="online" />
+              <Stack gap="xs" fill>
+                <Text variant="name" truncate>alexk</Text>
+                <Text variant="meta" tone="secondary" truncate>In Squad Up</Text>
+              </Stack>
+              <IconButton icon="Settings" label="Settings" size="sm" />
+            </Stack>
+          </Card>
+        }
+      >
+        {lines.slice(0, count).map((line) => (
+          <Text key={line}>{line}</Text>
+        ))}
+      </Island>
+    </div>
+  );
+}
+
+/** `footer`: the user's card stays at the island's foot while the content above it scrolls; with little content it still sits at the foot. */
+export const WithFooter = () => (
+  <KitStage mode="dark">
+    <Row label="long content: only the body scrolls">
+      <FooterBody count={24} />
+    </Row>
+    <Row label="short content: the footer stays at the foot">
+      <FooterBody count={3} />
+    </Row>
+  </KitStage>
+);
+
+/** The same, light. */
+export const WithFooterLight = () => (
+  <KitStage mode="light">
+    <FooterBody count={24} />
+  </KitStage>
+);
+
+/** The same, tinted. */
+export const WithFooterTinted = () => (
+  <KitStage mode="dark" base="#0d9488" intensity="vibrant">
+    <FooterBody count={24} />
   </KitStage>
 );
 

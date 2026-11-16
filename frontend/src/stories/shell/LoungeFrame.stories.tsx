@@ -3,7 +3,9 @@
  * its template. `bare` is the marker filling the frame; `threeIslands` is the chat template with the
  * shell's pieces in their slots. The pieces are placeholders until PRs 5-7: here each slot shows its
  * name, so the screenshots show where the dock, the community, the members and the call bar sit at
- * phone, tablet and desktop width. In the app the placeholders render nothing.
+ * phone, tablet and desktop width. In the app the placeholders render nothing. The community left island
+ * and the members (PR 6) are the real, connected pieces, on the mock-ups' people and places
+ * (`fixtures/loungeCommunityHandlers.ts`).
  */
 import { useRef, type JSX } from 'react';
 import { IncomingCallProvider } from '../../contexts/IncomingCallContext';
@@ -16,12 +18,7 @@ import type { ModeName } from '../../theme/derive/derivePalette';
 import { defineComponent } from '../fixtures/componentStory';
 import { KitFrameStage } from '../fixtures/kitStory';
 import { bigCommunityScenario } from '../fixtures/scenarios';
-import { http, HttpResponse } from 'msw';
-
-/** The mock-ups' sample user. */
-const sampleUser = http.get('/api/users/profile', () =>
-  HttpResponse.json({ ...bigCommunityScenario.me, username: 'alexk', displayName: null }),
-);
+import { LOUNGE_COMMUNITY_ID, loungeCommunityHandlers } from '../fixtures/loungeCommunityHandlers';
 
 const placeholderScreen = (phonePane: 'left' | 'centre'): ThreeIslandsScreen => ({
   template: 'threeIslands',
@@ -61,14 +58,14 @@ const bare = (mode: ModeName) =>
   defineComponent(
     bigCommunityScenario,
     () => <Frame mode={mode} placeholders={false} choice={{ kind: 'lounge', route: LOUNGE_ROUTES[0], params: {} }} />,
-    { maxWidth: false, extraHandlers: [sampleUser] },
+    { maxWidth: false, extraHandlers: loungeCommunityHandlers },
   );
 
 const threeIslands = (mode: ModeName, route: LoungeRoute) =>
   defineComponent(
     bigCommunityScenario,
-    () => <Frame mode={mode} placeholders choice={{ kind: 'lounge', route, params: { communityId: 'c-1' } }} />,
-    { maxWidth: false, extraHandlers: [sampleUser] },
+    () => <Frame mode={mode} placeholders choice={{ kind: 'lounge', route, params: { communityId: LOUNGE_COMMUNITY_ID } }} />,
+    { maxWidth: false, extraHandlers: loungeCommunityHandlers },
   );
 
 /** `bare`: the marker screen fills the frame with its own island. Dark. */

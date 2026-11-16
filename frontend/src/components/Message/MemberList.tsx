@@ -19,6 +19,7 @@ import { useUserProfile } from "../../contexts/UserProfileContext";
 import { useResponsive } from "../../hooks/useResponsive";
 import { useLongPress } from "../../hooks/useSwipeGesture";
 import { useContextMenuFocusRestore } from "../../hooks/useContextMenuFocusRestore";
+import { compareMemberNames, compareOnlineThenName } from "../../data/members";
 
 export interface MemberData {
   id: string;
@@ -265,21 +266,17 @@ const MemberList: React.FC<MemberListProps> = ({
     );
 
     // Sort members within each group: online first, then alphabetically
+    // (the comparators are shared with the new shell's members island: data/members)
+    const nameOf = (m: MemberData) => m.displayName || m.username;
     for (const group of sortedGroups) {
-      group.members.sort((a, b) => {
-        if (a.isOnline && !b.isOnline) return -1;
-        if (!a.isOnline && b.isOnline) return 1;
-        return (a.displayName || a.username).localeCompare(b.displayName || b.username);
-      });
+      group.members.sort((a, b) =>
+        compareOnlineThenName({ online: !!a.isOnline, name: nameOf(a) }, { online: !!b.isOnline, name: nameOf(b) }),
+      );
     }
 
     // Sort ungrouped members alphabetically
-    ungroupedOnline.sort((a, b) =>
-      (a.displayName || a.username).localeCompare(b.displayName || b.username),
-    );
-    ungroupedOffline.sort((a, b) =>
-      (a.displayName || a.username).localeCompare(b.displayName || b.username),
-    );
+    ungroupedOnline.sort((a, b) => compareMemberNames(nameOf(a), nameOf(b)));
+    ungroupedOffline.sort((a, b) => compareMemberNames(nameOf(a), nameOf(b)));
 
     return {
       roleGroups: sortedGroups,

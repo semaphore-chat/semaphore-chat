@@ -467,9 +467,9 @@ aiko, dropbear is talking", or "pri and dropbear are talking" for two or more. T
 name counts everyone who is talking, also someone behind the "+N", who has no ring
 to show. More than three speakers are "A, B and 4 more are talking". A `label`
 replaces the whole name, so it must say who is talking itself. A speaking avatar
-is drawn above its neighbours so its ring is whole, which covers a few pixels of
-the next avatar's initials; the stack is its own stacking context, so it never
-paints over anything outside it. (Avatar and MediaTile say ", speaking" in their
+does not overlap its neighbours: it and the avatar after it sit a ring's width
+apart, so the ring is whole and covers no one's initials; the stack is its own
+stacking context, so it never paints over anything outside it. (Avatar and MediaTile say ", speaking" in their
 names; the stack says "is talking" because it names a group.)
 
 Web kit only so far; the native kit has not caught up (see
@@ -870,7 +870,8 @@ used.
 |`trailing`|a Badge, a Pill or an IconButton|none|What sits at the end of the row. See below.|
 |`size`|`md`, `lg`|`md`|`md` is one line high and fully rounded. `lg` has room for two lines and rounded corners like a card.|
 |`selected`|true, false|false|The current item: the solid accent pill.|
-|`unread`|true, false|false|A bolder main line in the full text colour.|
+|`unread`|true, false|false|A bolder main line in the full text colour, and ", unread" in the row's name.|
+|`trailingLabel`|text|none|What the trailing slot means, added to the row's name ("2 mentions", "admin"). See below.|
 |`muted`|true, false|false|Both lines dimmed.|
 |`disabled`|true, false|false|The row is not available.|
 |`href`|an address|none|Makes the row a link.|
@@ -880,7 +881,17 @@ used.
 `leading` holds an Avatar (a person or a community) or an Icon (a channel, a
 setting). The text lines up in the same place whichever you use. `trailing`
 holds a Badge for an unread count, a Pill for a short tag, or an IconButton for
-a row action such as "More". Put one thing there, or a few small ones.
+a row action such as "More". Put one thing there, or a few small ones. The slot takes at most half
+the row: a long tag (a role written out in full) cuts with an ellipsis instead of
+squeezing the name (`kit-list-row--long-trailing-pill`). Web kit only so far; the
+native kit has not caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).
+
+`trailing` sits outside the row's link or button, so its meaning is not in the row's
+name. Pass it as words in `trailingLabel` ("2 mentions", "admin"): the row adds them
+to its accessible name after the main line, and `unread` adds ", unread". A channel
+row reads "clips, unread, 2 mentions"; a member row "Samira, admin, keeping the
+server warm". Never put a per-screen `aria-label` on a row instead. Web kit only so
+far.
 
 ### A keyboard list
 
@@ -974,11 +985,23 @@ It is layout only: no surface, no padding, no semantics of its own.
 |---|---|---|---|
 |`gap`|`xs`, `sm`, `md`, `lg`, `xl`|none (required)|The space between the children: 4, 8, 12, 16 or 24 pixels.|
 |`children`|content|none (required)|The blocks.|
+|`direction`|`column`, `row`|`column`|`row` puts the children side by side, centred on the cross axis, each keeping its own width (an Avatar, a button), except a Stack with `fill`.|
+|`fill`|true, false|false|In a row: this Stack takes the room the others leave, and text in it can cut with an ellipsis (`truncate`). Use it for the name and line beside an avatar. It is for a child of a row only.|
+|`align`|`stretch`, `start`|`stretch`|In a column: `start` keeps each child its own width (a Pill under a name), never wider than the Stack.|
+
+A row is for a few pieces that belong together on one line: an avatar, a name with
+its line under it, and a control at the end (a header, the user's card, a voice
+room's title). A list of things is still ListRows. A row centres its children on the
+cross axis; there is no justify or wrap.
+
+`direction`, `fill` and `align` are web kit only so far; the native kit has not
+caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).
 
 Web kit only so far; the native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)).
 
-Stories: `kit-stack--gaps`, `kit-stack--gaps-light`, `kit-stack--gaps-tinted`.
+Stories: `kit-stack--gaps`, `kit-stack--gaps-light`, `kit-stack--gaps-tinted`, `kit-stack--rows`,
+`kit-stack--rows-light`, `kit-stack--rows-tinted`.
 
 ## Which overlay
 
@@ -1237,13 +1260,15 @@ part is something people jump to, and then pick the element with `as`:
 |`label`|text|none|Names the region for screen readers. Required for `nav` and `aside`, not allowed for `div`.|
 |`padding`|`none`, `md`, `lg`|`lg`|The space inside. Use `none` when the content brings its own, such as a list of rows.|
 |`scroll`|true, false|false|The island fills the height its parent gives it, and its content scrolls inside it, never the page.|
+|`footer`|content|none|A block that stays at the island's foot while the content above it scrolls (the user's own card in the left island). It sits inside the island's padding, a small gap below the content. Pass `null` while there is nothing to show: the island keeps its structure, so its content is never rebuilt. A footer taller than the island is cut off (the body shrinks to nothing first), and it adds no safe-area inset of its own. Web kit only so far; the native kit has not caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).|
 |`id`|text|none|The id of the element.|
 
 Without `scroll`, whatever is wider or taller than the island is cut off. With
 `scroll`, the parent must give the island a height. An island is the `surface`
 layer for everything inside it.
 
-Stories: `kit-island--layout`, `kit-island--scrolling`, `kit-island--paddings`,
+Stories: `kit-island--layout`, `kit-island--scrolling`, `kit-island--with-footer`,
+`kit-island--with-footer-light`, `kit-island--with-footer-tinted`, `kit-island--paddings`,
 `kit-island--layout-light`, `kit-island--layout-tinted`.
 
 ## Card
