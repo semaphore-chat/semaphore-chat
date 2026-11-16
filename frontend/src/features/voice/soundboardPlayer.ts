@@ -87,16 +87,33 @@ class SoundboardPlayer {
     return null;
   }
 
-  private ensurePublished(room: Room): Promise<void> {
-    const existing = this.findPublication(room);
-    if (existing) {
-      this.publication = existing;
-      return Promise.resolve();
-    }
+  private async ensurePublished(room: Room): Promise<void> {
+    if (this.adopt(room)) return;
     // One publish at a time per room: a second caller waits for the first (#803).
-    if (this.pending && this.pending.room === room) {
-      return this.pending.promise;
+    const running = this.pending;
+    if (running && running.room === room) {
+      try {
+        await running.promise;
+        return;
+      } catch {
+        // The publish this caller waited for failed: one that started before this caller asked
+        // (a warm-up refused mid-flight by a moderator mute, which LiveKit only reports by timing
+        // out). This caller asked now, with the grant it has now: publish again below.
+      }
+      if (this.adopt(room)) return;
+      if (this.pending && this.pending.room === room) return this.pending.promise;
     }
+    return this.startPublish(room);
+  }
+
+  /** Reuses this room's soundboard publication, if there is one. */
+  private adopt(room: Room): boolean {
+    const existing = this.findPublication(room);
+    if (existing) this.publication = existing;
+    return existing !== null;
+  }
+
+  private startPublish(room: Room): Promise<void> {
     const promise = this.publish(room).finally(() => {
       if (this.pending?.promise === promise) this.pending = null;
     });

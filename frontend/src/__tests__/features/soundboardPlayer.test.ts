@@ -243,6 +243,27 @@ describe('soundboardPlayer', () => {
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
   });
 
+  it('a caller that joined a publish which then fails publishes again (refused mid-flight, the grant back since)', async () => {
+    const room = createMockRoom();
+    let refuse: (error: Error) => void = () => undefined;
+    room.localParticipant.publishTrack.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+
+    const first = soundboardPlayer.warmup(room as never); // the warm-up a moderator mute refuses mid-flight
+    await Promise.resolve();
+    const second = soundboardPlayer.warmup(room as never); // the warm-up after the mute is lifted
+    await Promise.resolve();
+    refuse(new Error('publication of local track timed out, no response from server'));
+    await Promise.all([first, second]);
+
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+    expect(room.localParticipant.trackPublications.size).toBe(1);
+  });
+
   it('a running publish for another room is not shared', async () => {
     const roomA = createMockRoom();
     const roomB = createMockRoom();

@@ -347,6 +347,40 @@ describe('useSoundboardWarmup', () => {
     expect(soundboards).toHaveLength(1);
   });
 
+  it('a warm-up refused mid-flight by a mute is published again after the lift, once the refusal lands', async () => {
+    const room = createRoom();
+    room.publishMic();
+    room.holdPublishes();
+    setCall(communityCall(room));
+    const { rerender } = mount();
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+
+    // The mute lands while that publish is in flight: the server refuses it (LiveKit reports it by timing out later).
+    act(() => {
+      room.serverUnpublishMic();
+      room.setPermissions(NO_SOUNDBOARD);
+    });
+    setCall(communityCall(room, { isServerMuted: true }));
+    rerender({ speak: true });
+    await flush();
+    // Lifted, and the user unmutes: the warm-up asks again and waits for the running (doomed) publish.
+    act(() => room.setPermissions(FULL));
+    setCall(communityCall(room, { isServerMuted: false }));
+    rerender({ speak: true });
+    act(() => room.publishMic());
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+
+    await act(async () => room.waiting[0].reject(new Error('publication of local track timed out, no response from server')));
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(2);
+    await act(async () => room.waiting[1].resolve());
+    await flush();
+    const soundboards = [...room.publications.values()].filter((p) => p.trackName === SOUNDBOARD_TRACK_NAME);
+    expect(soundboards).toHaveLength(1);
+  });
+
   it('a user who joined muted (no mic published yet) warms up at once, and after a lifted mute too', async () => {
     const room = createRoom();
     setCall(communityCall(room));
