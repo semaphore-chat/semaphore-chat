@@ -337,8 +337,12 @@ describe('useChannelMembers (the chat screen’s members)', () => {
 
   it('a private channel lists only the people in it, never the rest of the community', async () => {
     const channelMembers = vi.fn();
+    const communityMembers = vi.fn();
     server.use(
-      memberPages(5),
+      http.get(`${BASE}/api/membership/community/c-1`, () => {
+        communityMembers();
+        return HttpResponse.json({ members: [] });
+      }),
       bulkPresence({ 'user-2': true }),
       noRooms(),
       http.get(`${BASE}/api/channel-membership/channel/ch-staff`, () => {
@@ -359,6 +363,8 @@ describe('useChannelMembers (the chat screen’s members)', () => {
     expect(result.current.hosts).toEqual([]);
     expect(result.current.allLoaded).toBe(true);
     expect(result.current.aroundCount).toBe(1);
+    // A cold link to a private channel never asks for the community's roster.
+    expect(communityMembers).not.toHaveBeenCalled();
   });
 
   it('a private channel whose list fails reports an error', async () => {
@@ -372,11 +378,29 @@ describe('useChannelMembers (the chat screen’s members)', () => {
     await waitFor(() => expect(result.current.status).toBe('error'));
   });
 
-  it('while the channel is not known it shows what a public channel shows', async () => {
-    server.use(memberPages(2), bulkPresence({}), noRooms());
+  it('while the channel is not known (loading, or not in the reader’s list) it fetches and lists nobody', async () => {
+    const communityMembers = vi.fn();
+    const channelMembers = vi.fn();
+    server.use(
+      http.get(`${BASE}/api/membership/community/c-1`, () => {
+        communityMembers();
+        return HttpResponse.json({ members: [membership(1)] });
+      }),
+      http.get(`${BASE}/api/channel-membership/channel/:id`, () => {
+        channelMembers();
+        return HttpResponse.json([]);
+      }),
+      bulkPresence({}),
+      noRooms(),
+    );
     const { result } = renderChannelMembers(null);
-    await waitFor(() => expect(result.current.status).toBe('success'));
-    expect(result.current.away).toHaveLength(2);
+    // Give any request the chance to go out.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.status).toBe('pending');
+    expect([...result.current.hosts, ...result.current.around, ...result.current.away]).toEqual([]);
+    expect(result.current.aroundCount).toBeNull();
+    expect(communityMembers).not.toHaveBeenCalled();
+    expect(channelMembers).not.toHaveBeenCalled();
   });
 });
 

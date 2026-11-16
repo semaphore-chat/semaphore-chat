@@ -9,6 +9,7 @@ import { useCommunityChannels } from '../../../data/channels';
 import { useChannelMembers } from '../../../data/members';
 import { UserProfileContext } from '../../../contexts/UserProfileContext';
 import type { LoungeScreenProps } from '../screen';
+
 import { MembersIsland } from './MembersIsland';
 
 function isEmpty(data: unknown): boolean {
@@ -17,11 +18,25 @@ function isEmpty(data: unknown): boolean {
   return pages.every((page) => (Array.isArray(page) ? page : ((page as { members?: unknown[] })?.members ?? [])).length === 0);
 }
 
-export function ChannelMembersIsland({ params }: LoungeScreenProps): JSX.Element {
+export function ChannelMembersIsland({ params }: LoungeScreenProps): JSX.Element | null {
   const communityId = params.communityId ?? '';
   const channelId = params.channelId ?? '';
   const channels = useCommunityChannels(communityId);
   const found = channels.all?.find((c) => c.id === channelId);
+  // The reader's list loaded without this channel (gone, or private and not theirs): there are no members to show.
+  if (channels.status !== 'pending' && found === undefined) return null;
+  return <ChannelMembersList communityId={communityId} channelId={channelId} found={found} />;
+}
+
+function ChannelMembersList({
+  communityId,
+  channelId,
+  found,
+}: {
+  communityId: string;
+  channelId: string;
+  found: { id: string; isPrivate: boolean } | undefined;
+}): JSX.Element {
   const members = useChannelMembers(communityId, found ? { id: found.id, isPrivate: found.isPrivate } : null);
   const openProfile = useContext(UserProfileContext)?.openProfile;
   const onOpenProfile = useCallback((id: string) => openProfile?.(id), [openProfile]);

@@ -308,8 +308,8 @@ export function groupMembers(entries: readonly { summary: MemberSummary; rolePos
 }
 
 /** The community's members for the members island (Hosts / Around / Away). */
-export function useCommunityMembers(communityId: string): CommunityMembers {
-  const pages = useCommunityMemberPages(communityId);
+export function useCommunityMembers(communityId: string, enabled = true): CommunityMembers {
+  const pages = useCommunityMemberPages(communityId, enabled);
   const hasLoadedMembers = (pages.memberships?.length ?? 0) > 0;
   const presence = useBulkPresence(hasLoadedMembers);
   // The community-wide count, without the pages having to reach the last one.
@@ -327,6 +327,7 @@ export function useCommunityMembers(communityId: string): CommunityMembers {
     queries: voice.map((room) => ({
       ...voicePresenceControllerGetChannelPresenceOptions({ path: { channelId: room.id } }),
       refetchInterval: room.id === ownRoomId ? (false as const) : 120_000,
+      enabled,
     })),
   });
   const roomData = rooms.map((r) => r.data);
@@ -393,19 +394,21 @@ const NO_ROOMS: ReadonlyMap<string, string> = new Map();
 const noop = () => undefined;
 
 /**
- * The members of a channel (design F4): for a public channel the community's (`useCommunityMembers`); for a
- * private one only the people in it (the channel membership list, as the old member list: no display roles, so
- * nobody is a host), with presence from the same bulk presence query. Null `channel` (still loading): the
- * community's, which is what a public channel shows; a private channel never shows them once it is known.
+ * The members of a channel (design F4). A public channel lists the community's (`useCommunityMembers`); a private
+ * one only the people in it (the channel membership list, as the old member list: no display roles, so nobody is a
+ * host), with presence from the same bulk presence query. While the channel is not known (`null`: still loading, or
+ * not in the reader's list at all) nothing is fetched and nothing is listed: the community's roster is never shown,
+ * not even for a moment, as the members of a channel that may be private.
  */
 export function useChannelMembers(communityId: string, channel: MembersChannel | null): CommunityMembers {
-  const community = useCommunityMembers(communityId);
+  const isPublic = channel !== null && !channel.isPrivate;
   const isPrivate = channel?.isPrivate === true;
+  const community = useCommunityMembers(communityId, isPublic);
   const query = useQuery({
     ...channelMembershipControllerFindAllForChannelOptions({ path: { channelId: channel?.id ?? '' } }),
     enabled: isPrivate,
   });
-  const memberships = query.data;
+  const memberships = isPrivate ? query.data : undefined;
   const presence = useBulkPresence(isPrivate && (memberships?.length ?? 0) > 0);
   const summaries = useMemo(
     () =>
@@ -426,14 +429,14 @@ export function useChannelMembers(communityId: string, channel: MembersChannel |
   );
   const { refetch: refetchMembers } = query;
   const refetch = useCallback(() => void refetchMembers(), [refetchMembers]);
-  if (!isPrivate) return community;
+  if (isPublic) return community;
   const status: QueryStatus =
-    query.status === 'error' ? 'error' : query.status === 'pending' ? 'pending' : 'success';
+    !isPrivate ? 'pending' : query.status === 'error' ? 'error' : query.status === 'pending' ? 'pending' : 'success';
   return {
     ...grouped,
     // One request lists every member of a private channel, so the loaded count is the whole count.
-    aroundCount: query.status === 'success' ? grouped.loadedAroundCount : null,
-    allLoaded: query.status === 'success',
+    aroundCount: isPrivate && query.status === 'success' ? grouped.loadedAroundCount : null,
+    allLoaded: isPrivate && query.status === 'success',
     loadMore: noop,
     loadingMore: false,
     status,
