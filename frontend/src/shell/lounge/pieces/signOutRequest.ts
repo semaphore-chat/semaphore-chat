@@ -9,6 +9,6 @@ export const SignOutRequestContext = createContext<(() => void) | null>(null);
 /** Opens the sign-out question. Stable. Inside a `SignOutConfirmHost` (the frame) only. */
 export function useSignOutRequest(): () => void {
   const request = useContext(SignOutRequestContext);
-  if (request === null) throw new Error('useSignOutRequest needs a SignOutConfirmHost above it (the Lounge frame).');
+  if (request === null) throw new Error('useSignOutRequest needs a SignOutRequestContext provider above it (SignOutConfirmHost in the Lounge frame, or SignOutQuestionHost).');
   return request;
 }

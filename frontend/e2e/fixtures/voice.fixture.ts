@@ -264,13 +264,18 @@ export async function joinVoiceChannel(
   // default text channel (`/channel/<general>`), and on a slow runner the URL
   // can still show that channel after the Room is connected, so moderator
   // actions went to the wrong room (500) and presence reads came back empty.
+  // Keep the name the poll saw: a second read could race a room being cleared and come back empty.
+  let roomName = '';
   await expect
-    .poll(() => page.evaluate(() => window.__lkRoom?.name ?? ''), {
-      timeout: 10_000,
-      message: `${p.name} channelId never resolved after join`,
-    })
+    .poll(
+      async () => {
+        roomName = await page.evaluate(() => window.__lkRoom?.name ?? '');
+        return roomName;
+      },
+      { timeout: 10_000, message: `${p.name} channelId never resolved after join` },
+    )
     .toBeTruthy();
-  p.channelId = await page.evaluate(() => window.__lkRoom?.name ?? '');
+  p.channelId = roomName;
 }
 
 /**
