@@ -14,7 +14,11 @@
  * - `src/contexts/NotificationContext` (its module renders an MUI Snackbar),
  * - `@mui/*` or `@emotion/*` imported by any module that is not in `src/kit/` (MUI is the kit's own),
  * - a `livekit-client` value import outside `src/shell/lounge/call/surface/`
- *   (the lazy call-surface chunk).
+ *   (the lazy call-surface chunk),
+ * - the raw socket (`src/utils/SocketContext`, `SocketProvider`, `socketSingleton`, and `src/hooks/useSocket`)
+ *   from anywhere but the named emitters in `SOCKET_EMITTERS`: the hooks that own one kind of socket traffic each.
+ *   The new shell reads server state from the query cache (kept live by socket-hub) or `useServerEvent`; what it
+ *   sends goes through one of these hooks. A new kind of socket use from these trees is a new, reviewed entry.
  */
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
@@ -47,6 +51,44 @@ const EXCEPTIONS: Record<string, { from: string; why: string }> = {
     why:
       "the user's appearance settings live in the app's ThemeProvider (App, already in the first load, so the " +
       'chunk pays nothing); it builds the classic MUI theme too. Goes when the settings move to a store of their own',
+  },
+};
+
+/** The raw socket: reached only by the named emitters below. */
+const RAW_SOCKET = ['src/utils/SocketContext.ts', 'src/utils/SocketProvider.tsx', 'src/utils/socketSingleton.ts', 'src/hooks/useSocket.ts'];
+
+/**
+ * The named emitters: each file may reach the raw socket target it lists, for the one kind of traffic it owns.
+ * Keyed by the importer; the value names the targets it may reach and why.
+ */
+const SOCKET_EMITTERS: Record<string, { targets: readonly string[]; why: string }> = {
+  'src/hooks/useMessageVisibility.ts': {
+    targets: ['src/utils/SocketContext.ts'],
+    why: 'MARK_AS_READ: the debounced read mark of a conversation (useReadMarks, both shells)',
+  },
+  'src/hooks/useSendMessage.ts': {
+    targets: ['src/utils/SocketContext.ts'],
+    why: 'SEND_MESSAGE with its ack: sending a message (the composer, both shells)',
+  },
+  'src/hooks/useTypingEmitter.ts': {
+    targets: ['src/hooks/useSocket.ts'],
+    why: 'TYPING_START / TYPING_STOP: the composer saying the reader is typing',
+  },
+  'src/data/connection.ts': {
+    targets: ['src/hooks/useSocket.ts'],
+    why: 'useSocketConnected only: whether the socket is connected (the offline banner), no traffic',
+  },
+  'src/utils/signOutSession.ts': {
+    targets: ['src/utils/socketSingleton.ts'],
+    why: 'disconnectSocket only: signing out closes the socket (the user card, both shells)',
+  },
+  'src/utils/endLocalSession.ts': {
+    targets: ['src/utils/socketSingleton.ts'],
+    why: 'disconnectSocket only: ending the local session closes the socket',
+  },
+  'src/hooks/useSocket.ts': {
+    targets: ['src/utils/SocketContext.ts'],
+    why: 'the socket context accessor itself; reached only through the emitters above',
   },
 };
 
@@ -98,6 +140,12 @@ function resolve(from: string, specifier: string, sources: ReadonlyMap<string, s
   return null;
 }
 
+/** Why `importer` may not import `target` (the raw socket), or null. */
+function socketViolation(target: string, importer: string, typeOnly: boolean): string | null {
+  if (!RAW_SOCKET.includes(target) || typeOnly) return null;
+  return SOCKET_EMITTERS[importer]?.targets.includes(target) ? null : 'the raw socket outside the named emitters';
+}
+
 /** Why `target` (a file or a package) may not be reached from `root`, or null. */
 function violation(target: string, importer: string, typeOnly: boolean): string | null {
   if (target.startsWith('src/components/') || target.startsWith('src/pages/')) return 'classic UI';
@@ -141,6 +189,12 @@ export function forbiddenPaths(prefix: string, sources: ReadonlyMap<string, stri
         if (!/\.(css|json|svg|png|webp|jpe?g|woff2?|wav|mp3)(\?.*)?$|\?/.test(specifier)) {
           found.push(`${[...chain(file), specifier].join(' -> ')} (unresolved import: the walker cannot see past it)`);
         }
+        continue;
+      }
+      // The raw socket is about who imports it, not whether it was reached before: check every importer.
+      const socketReason = socketViolation(target, file, typeOnly);
+      if (socketReason) {
+        found.push(`${[...chain(file), target].join(' -> ')} (${socketReason})`);
         continue;
       }
       if (parent.has(target)) continue;
@@ -194,6 +248,20 @@ describe('the new shell and the data layer stay headless', () => {
       'src/data/b.ts -> ./missing (unresolved import: the walker cannot see past it)',
       'src/data/c.ts -> src/hooks/leaky.ts -> src/contexts/NotificationContext.tsx (renders an MUI Snackbar)',
       'src/data/c.ts -> src/hooks/leaky.ts -> @mui/material (MUI outside the kit)',
+    ]);
+  });
+
+  it('the raw socket is reached only through a named emitter', () => {
+    const tree = new Map([
+      ['src/data/a.ts', "import { useMessageVisibility } from '../hooks/useMessageVisibility';\nimport { x } from '../hooks/sneaky';"],
+      ['src/hooks/useMessageVisibility.ts', "import { SocketContext } from '../utils/SocketContext';"],
+      ['src/hooks/sneaky.ts', "import { SocketContext } from '../utils/SocketContext';\nimport { useSocket } from './useSocket';"],
+      ['src/hooks/useSocket.ts', "import { SocketContext } from '../utils/SocketContext';"],
+      ['src/utils/SocketContext.ts', ''],
+    ]);
+    expect(forbiddenPaths('src/data/', tree)).toEqual([
+      'src/data/a.ts -> src/hooks/sneaky.ts -> src/utils/SocketContext.ts (the raw socket outside the named emitters)',
+      'src/data/a.ts -> src/hooks/sneaky.ts -> src/hooks/useSocket.ts (the raw socket outside the named emitters)',
     ]);
   });
 
