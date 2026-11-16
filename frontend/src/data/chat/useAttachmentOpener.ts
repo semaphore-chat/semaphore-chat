@@ -1,62 +1,105 @@
 /**
- * Opening a message's file from the new shell's chat: an image in a new tab, any other file as a download. Files
- * are fetched with the reader's token (the shared file cache), so the address opened is the file's local copy.
- * There is no lightbox yet (design §1.2): the new tab is it.
+ * Opening a message's file from the new shell's chat. Files are fetched with the reader's token (the shared file
+ * cache). Only a raster picture of a known type opens in a new tab (there is no lightbox yet, design §1.2); every
+ * other file, whatever its name says, is downloaded and never shown as a page. The decision is made from the type
+ * the server reported for the file, and the tab gets a copy of the bytes labelled with exactly that type.
+ *
+ * The opener is one stable object for the whole list (it goes into the rows' shared context): which files are on
+ * their way is read per file through `useAttachmentBusy`, so one download re-renders only its own tile.
  */
-import { useCallback, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useFileCache } from '../../contexts/AvatarCacheContext';
 import { downloadBlob } from '../../utils/format';
 import { logger } from '../../utils/logger';
 
+/** The picture types a tab may show. Anything else (SVG, HTML, PDF, unknown) is downloaded. */
+export const VIEWABLE_IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'];
+
+/** What pressing a file does, from the type the server reported: show it in a tab, or download it. */
+export function attachmentAction(mimeType: string | null | undefined): 'open' | 'download' {
+  const type = (mimeType ?? '').split(';')[0].trim().toLowerCase();
+  return VIEWABLE_IMAGE_TYPES.includes(type) ? 'open' : 'download';
+}
+
+export interface AttachmentFile {
+  id: string;
+  name: string;
+  /** The type the server reported for the file. */
+  mimeType: string;
+}
+
 export interface AttachmentOpener {
-  /** The file ids on their way. */
-  busy: ReadonlySet<string>;
-  open(file: { id: string; kind: 'image' | 'file'; name: string }): void;
+  open(file: AttachmentFile): void;
+  /** Whether the file's open or download is on its way. */
+  isBusy(id: string): boolean;
+  subscribe(listener: () => void): () => void;
+}
+
+/** Whether `id`'s open or download is on its way; re-renders only when that file's state changes. */
+export function useAttachmentBusy(opener: AttachmentOpener, id: string): boolean {
+  return useSyncExternalStore(
+    opener.subscribe,
+    () => opener.isBusy(id),
+    () => false,
+  );
 }
 
 export function useAttachmentOpener(onError?: (message: string) => void): AttachmentOpener {
   const cache = useFileCache();
-  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
-  const open = useCallback(
-    ({ id, kind, name }: { id: string; kind: 'image' | 'file'; name: string }) => {
-      // The tab is opened inside the press (a tab opened after an await is a blocked pop-up), then pointed at the
-      // file once it is here.
-      const tab = kind === 'image' ? window.open('', '_blank') : null;
-      const cached = cache.getBlob(id);
-      const finish = (url: string) => {
-        if (tab !== null) {
-          tab.opener = null;
-          tab.location.href = url;
-        } else if (kind === 'image') {
-          window.open(url, '_blank', 'noopener');
-        } else {
-          downloadBlob(url, name);
-        }
-      };
-      if (cached !== null) {
-        finish(cached);
-        return;
-      }
-      setBusy((prev) => new Set(prev).add(id));
-      cache
-        .fetchBlob(id)
-        .then(finish)
-        .catch((error: unknown) => {
-          tab?.close();
-          logger.warn('[chat] could not open a file', error);
-          onError?.(`Couldn't open ${name}`);
-        })
-        .finally(() =>
-          setBusy((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          }),
-        );
-    },
-    [cache, onError],
-  );
+  const [opener] = useState<AttachmentOpener>(() => {
+    const busy = new Set<string>();
+    const listeners = new Set<() => void>();
+    const notify = () => listeners.forEach((listener) => listener());
+    const setBusy = (id: string, on: boolean) => {
+      if (on) busy.add(id);
+      else busy.delete(id);
+      notify();
+    };
+    return {
+      isBusy: (id) => busy.has(id),
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      open: ({ id, name, mimeType }) => {
+        const action = attachmentAction(mimeType);
+        // A tab opened after an await is a blocked pop-up: open it inside the press, point it at the file later.
+        const tab = action === 'open' ? window.open('', '_blank') : null;
+        const fileCache = cacheRef.current;
+        setBusy(id, true);
+        void (async () => {
+          try {
+            const url = fileCache.getBlob(id) ?? (await fileCache.fetchBlob(id));
+            if (action === 'download') {
+              downloadBlob(url, name);
+              return;
+            }
+            // A copy labelled with exactly the reported (allow-listed) type, whatever the response said.
+            const bytes = await (await fetch(url)).blob();
+            const typed = URL.createObjectURL(new Blob([bytes], { type: mimeType.split(';')[0].trim().toLowerCase() }));
+            if (tab !== null) {
+              tab.opener = null;
+              tab.location.href = typed;
+            } else {
+              downloadBlob(typed, name);
+            }
+          } catch (error: unknown) {
+            tab?.close();
+            logger.warn('[chat] could not open a file', error);
+            onErrorRef.current?.(`Couldn't open ${name}`);
+          } finally {
+            setBusy(id, false);
+          }
+        })();
+      },
+    };
+  });
 
-  return { busy, open };
+  // The same object on every render.
+  return opener;
 }
