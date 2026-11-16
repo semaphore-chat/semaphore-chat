@@ -201,14 +201,14 @@ export default tseslint.config(
       ],
     },
   },
-  // The shared data layer (src/data) and the new shell's chunk (src/shell/lounge)
-  // stay headless: no classic UI, no MUI, no classic theme or breakpoints, no
+  // The shared data layer (src/data), the shared chat list core
+  // (src/features/chat) and the new shell's chunk (src/shell/lounge) stay headless: no classic UI, no MUI, no classic theme or breakpoints, no
   // raw socket, no screen-share picker, no old snackbar (design report §2).
   // This object replaces the MUI block's no-restricted-imports options for these
   // files, so it restates the MUI and reducer-step patterns. Transitive imports
   // are checked by src/__tests__/shell/loungeImportBoundary.test.ts.
   {
-    files: ['src/data/**/*.{ts,tsx}', 'src/shell/lounge/**/*.{ts,tsx}'],
+    files: ['src/data/**/*.{ts,tsx}', 'src/features/chat/**/*.{ts,tsx}', 'src/shell/lounge/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { patterns: headlessPatterns('(^|/)components(/|$)') }],
     },
