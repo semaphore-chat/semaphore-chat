@@ -150,7 +150,8 @@ describe('MessageInput channel capabilities', () => {
       fireEvent.paste(screen.getByPlaceholderText('Type a message...'), {
         clipboardData: { items: [{ kind: 'file', getAsFile: () => file }] },
       });
-      expect(await screen.findByText('photo.png')).toBeInTheDocument();
+      // The queued picture's tile (its preview is ready at once, so the tile shows the picture, named by title).
+      expect(await screen.findByTitle('photo.png')).toBeInTheDocument();
     });
   });
 });

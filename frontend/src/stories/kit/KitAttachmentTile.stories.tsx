@@ -69,7 +69,43 @@ const Body = () => (
         </Stack>
       }
     />
+    <MessageRow
+      author="me"
+      avatarColour="#8E75FF"
+      time="8:23 PM"
+      body={<MessageText segments={text('sent, its files still on their way: uploading, failed with Retry, a picture uploading')} />}
+      attachments={
+        <Stack gap="sm">
+          <AttachmentTile kind="file" name="recording.mp3" detail="38.4 MB" progress={42} onRemove={noop} />
+          <AttachmentTile kind="file" name="too-big.zip" detail="2 GB" error="Upload failed: File too large" onRetry={noop} onRemove={noop} />
+          <AttachmentTile kind="file" name="sunset.png" detail="1.2 MB" src={picture(1600, 900, '#FFA366')} progress={90} />
+        </Stack>
+      }
+    />
   </ChatColumn>
+);
+
+/** Queued in the composer's tray: not pressable, a thumbnail for a picture, Remove, a long name. */
+const Tray = () => (
+  <ChatColumn width={390}>
+    <Stack gap="sm">
+      <AttachmentTile kind="file" name="notes.txt" detail="2.1 KB" onRemove={noop} />
+      <AttachmentTile kind="file" name="sunset.png" detail="1.2 MB" src={picture(1600, 900, '#FFA366')} onRemove={noop} />
+      <AttachmentTile kind="file" name="a-very-long-file-name-that-has-to-give-way-at-phone-width.pdf" detail="4 MB" onRemove={noop} />
+    </Stack>
+  </ChatColumn>
+);
+
+export const Queued = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <Tray />
+  </OnPalette>
+);
+
+export const QueuedLight = () => (
+  <OnPalette palette={PALETTES[1]}>
+    <Tray />
+  </OnPalette>
 );
 
 /** Images in boxes sized before they load, unknown size, broken, busy, extreme shapes; files with long names. */

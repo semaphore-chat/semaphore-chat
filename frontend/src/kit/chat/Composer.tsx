@@ -25,10 +25,11 @@ const SUBMIT: Record<ComposerMode, { label: string; icon: IconName }> = {
 };
 
 /**
- * The keydown of an Enter that only commits an input method's candidate (Japanese, Chinese, Korean). Safari sends
- * it after `compositionend`, with `isComposing` false and the IME's `keyCode` 229, so both are checked.
+ * A keydown that belongs to an input method (Japanese, Chinese, Korean): while it composes, and the Enter that
+ * commits its candidate, which Safari sends after `compositionend` with `isComposing` false and the IME's `keyCode`
+ * 229, so both are checked.
  */
-function committingComposition(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
+function inputMethodKey(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
   return event.nativeEvent.isComposing || event.keyCode === 229;
 }
 
@@ -87,9 +88,11 @@ export interface ComposerProps {
   submitOnEnter?: boolean;
   /**
    * The screen's own keys (mentions list, Escape, ↑ to edit), called first. If it calls `preventDefault`, the
-   * composer does nothing more with that key.
+   * composer does nothing more with that key. Never called while an input method is composing.
    */
   onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
+  /** The caret or the selection in the field moved (typing, keys, a tap): a suggestion list follows the caret. */
+  onCaretMove?: () => void;
   /** How far the field grows before it scrolls. Default `desktop`. */
   cap?: ComposerCap;
   /** Shows the leading attach button. */
@@ -110,11 +113,17 @@ export interface ComposerProps {
   /** Files queued with the message: a tray above the field. */
   attachments?: ReactNode;
   popup?: ComposerPopup;
+  /**
+   * The open suggestion list (a `SuggestionList`, its id `popup.listId`): drawn over the conversation, just above
+   * the composer, across its width. Give it with `popup`.
+   */
+  suggestions?: ReactNode;
   /** The text field. */
   ref?: Ref<HTMLTextAreaElement>;
 }
 
 const Root = styled('div', { shouldForwardProp: transientProps })<{ $inline: boolean }>(({ $inline }) => ({
+  position: 'relative',
   display: 'flex',
   flexDirection: 'column',
   gap: `${tokens.space.sm}px`,
@@ -226,6 +235,14 @@ const NoticeBox = styled('div', { shouldForwardProp: transientProps })<{ $on: Su
   };
 });
 
+/** Above the composer, over the bottom of the conversation, inset like the field. */
+const Above = styled('div', { shouldForwardProp: transientProps })<{ $inline: boolean }>(({ $inline }) => ({
+  position: 'absolute',
+  bottom: '100%',
+  insetInline: $inline ? 0 : `${tokens.space.md}px`,
+  zIndex: 1,
+}));
+
 const Tray = styled('div')({
   display: 'flex',
   flexWrap: 'wrap',
@@ -252,6 +269,7 @@ export function Composer({
   sending = false,
   submitOnEnter = true,
   onKeyDown,
+  onCaretMove,
   cap = 'desktop',
   onAttach,
   attachUnavailable = false,
@@ -261,6 +279,7 @@ export function Composer({
   notice,
   attachments,
   popup,
+  suggestions,
   ref,
 }: ComposerProps): JSX.Element {
   const on = useSurface();
@@ -273,9 +292,12 @@ export function Composer({
     if (sendable && !sending) onSubmit();
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // While an input method composes, every key is its own (Enter picks a candidate, Escape closes its list, the
+    // arrows move in it): neither the screen's keys nor the composer's run.
+    if (inputMethodKey(event)) return;
     onKeyDown?.(event);
     if (event.defaultPrevented) return;
-    if (submitOnEnter && event.key === 'Enter' && !event.shiftKey && !committingComposition(event)) {
+    if (submitOnEnter && event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       submit();
     }
@@ -284,6 +306,7 @@ export function Composer({
 
   return (
     <Root ref={rootRef} $inline={inline}>
+      {suggestions !== undefined && notice === undefined && <Above $inline={inline}>{suggestions}</Above>}
       {banner !== undefined && notice === undefined && (
         <Strip $on={on}>
           <Icon name={banner.kind === 'reply' ? 'Reply' : 'Pencil'} size="sm" tone="secondary" />
@@ -331,6 +354,7 @@ export function Composer({
                   'aria-controls': popup?.listId,
                   'aria-activedescendant': popup?.activeId,
                   onKeyDown: handleKeyDown,
+                  onSelect: onCaretMove,
                 }}
               />
               {emoji}

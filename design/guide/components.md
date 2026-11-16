@@ -15,13 +15,13 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Forty-eight components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Forty-nine components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
 Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
 Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, and the chat pieces
 MessageRow, MessageText, ListSeparator, ReactionChip, Composer, JumpToLatest,
-ChatPane, MessageQuote, AttachmentTile and TypingLine.
+ChatPane, MessageQuote, AttachmentTile, TypingLine and SuggestionList.
 
 ## Rules every component follows
 
@@ -1269,8 +1269,10 @@ A field that grows to a cap and then scrolls (`keyboard` 2 lines, `phone` 4,
 `desktop` 10), a leading attach button, a trailing `emoji` slot and Send. Enter
 sends and Shift+Enter starts a line (off on touch with `submitOnEnter`); text
 being composed with an input method never sends, including the Enter that
-picks a candidate in Safari (`isComposing` or `keyCode` 229). The screen's
-`onKeyDown` runs first and can take a key with `preventDefault`. Send is never
+picks a candidate in Safari (`isComposing` or `keyCode` 229). While an input
+method composes no key reaches the screen's `onKeyDown` either (Escape closes
+the candidate list, it never cancels a reply or an edit). Otherwise the
+screen's `onKeyDown` runs first and can take a key with `preventDefault`. Send is never
 disabled: with nothing to send it reads as unavailable (`onSendUnavailablePress`
 can say why), and while `sending` it is busy, while the field stays editable.
 An unavailable attach button is focusable and `aria-disabled`, and
@@ -1296,6 +1298,7 @@ scrolled out of view does not move the toasts.
 |`sending`|true, false|false|Send is busy.|
 |`submitOnEnter`|true, false|true|Enter sends.|
 |`onKeyDown`|function|none|The screen's keys, first.|
+|`onCaretMove`|function|none|The caret or selection moved (typing, keys, a tap): a suggestion list follows it.|
 |`cap`|`keyboard`, `phone`, `desktop`|`desktop`|How far the field grows.|
 |`onAttach`|function|none|Shows the attach button.|
 |`attachUnavailable`|true, false|false|The attach button is `aria-disabled` and does not call `onAttach`.|
@@ -1305,11 +1308,18 @@ scrolled out of view does not move the toasts.
 |`notice`|`text`, `icon`|none|Replaces the field.|
 |`attachments`|kit pieces|none|The tray of queued files.|
 |`popup`|`listId`, `activeId`|none|A suggestion list is open: the field is its combobox input.|
+|`suggestions`|a SuggestionList|none|The open list, drawn over the conversation just above the composer, across its width. Not under a `notice`.|
 
 Stories: `kit-composer--states`, `kit-composer--states-light`,
 `kit-composer--states-tinted`, `kit-composer--at-cap`,
-`kit-composer--at-phone-cap`, `kit-composer--at-keyboard-cap`; inline editing
-in a row: `kit-message-row--editing`.
+`kit-composer--at-phone-cap`, `kit-composer--at-keyboard-cap`,
+`kit-composer--mention-list`, `kit-composer--mention-list-light`,
+`kit-composer--mention-list-tinted`, `kit-composer--mention-list-loading`; inline
+editing in a row: `kit-message-row--editing`.
+
+Inside a MessageRow (inline editing) the field owns its keys: ↑, ↓, Home, End
+and Escape move its caret or cancel the edit and never reach the list's roving
+focus.
 
 ### JumpToLatest
 
@@ -1385,6 +1395,14 @@ list; the picture loads lazily and pressing it opens the image. Any other
 `file` (video and audio too, until they have players) is a row with its name
 and size; pressing it downloads the file. While `busy` presses are ignored.
 
+A file on its way uses the same tile. Queued in the composer's tray it has no
+`onOpen` (nothing to press: a group named "notes.txt, 2 KB"), a thumbnail in
+the paperclip's place when it is a picture (`src` on a `file`), and a Remove
+button (`onRemove`, "Remove notes.txt"). Uploading under a pending message it
+has a bar (`progress`, "Uploading notes.txt") and, when the upload failed, the
+reason in the danger tone with Retry (`error`, `onRetry`, "Retry uploading
+notes.txt").
+
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`kind`|`image`, `file`|none (required)|A picture, or a file row.|
@@ -1392,11 +1410,16 @@ and size; pressing it downloads the file. While `busy` presses are ignored.
 |`detail`|text|none|Its size, written for people ("2.4 MB").|
 |`src`|image|none|The picture (a preview); a quiet fill until it is known.|
 |`width`, `height`|pixels|none|The image's own size: the box is sized from them.|
-|`onOpen`|function|none (required)|Opens the image or downloads the file.|
+|`onOpen`|function|none|Opens the image or downloads the file. Without it the tile is not pressable (a queued file).|
 |`busy`|true, false|false|The open or download is on its way.|
+|`onRemove`|function|none|A Remove button beside the tile.|
+|`progress`|0 to 100|none|An upload bar under the tile.|
+|`error`|text|none|The upload failed: shown in place of `detail`, in the danger tone.|
+|`onRetry`|function|none|With `error`: Retry.|
 
 Stories: `kit-attachment-tile--states`, `kit-attachment-tile--states-light`,
-`kit-attachment-tile--states-tinted`.
+`kit-attachment-tile--states-tinted`, `kit-attachment-tile--queued`,
+`kit-attachment-tile--queued-light`.
 
 ### TypingLine
 
@@ -1412,6 +1435,33 @@ while nobody types.
 
 Stories: `kit-typing-line--states`, `kit-typing-line--states-light`,
 `kit-typing-line--states-tinted`.
+
+### SuggestionList
+
+The suggestions a composer offers while the reader types a mention
+(Composer's `suggestions`, with `popup`): a listbox the field drives as a
+combobox. Focus never leaves the field: ↑ and ↓ move the highlight (read
+through the field's `aria-activedescendant`), Enter or Tab picks and Escape
+closes, all in the screen's keys. A press on an option picks it without taking
+focus from the field, so the on-screen keyboard stays up. A person shows their
+avatar, anything else (`@here`, a mention group) an icon; a long name gives way.
+About six rows show, then it scrolls. Web only so far (native follows, #805).
+
+**Use it when** a field offers completions as the reader types. **Do not use
+it** for a list of actions (use Menu) or a choice in a form (use SelectField).
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`id`|text|none (required)|The listbox's id: the composer's `popup.listId`.|
+|`label`|text|none (required)|Names the list: "Mention suggestions".|
+|`options`|`key`, `label`, `detail`, `avatar` or `icon`|none (required)|The suggestions.|
+|`activeIndex`|number|none (required)|The highlighted option, or -1.|
+|`optionId`|function|none (required)|Each option's element id (the composer's `popup.activeId`).|
+|`onPick`|function|none (required)|An option was pressed.|
+|`loading`|true, false|false|Nothing to show yet: a "Loading…" row, `aria-busy`.|
+
+Stories: `kit-composer--mention-list`, `kit-composer--mention-list-light`,
+`kit-composer--mention-list-tinted`, `kit-composer--mention-list-loading`.
 
 ## Which overlay
 

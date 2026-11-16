@@ -336,7 +336,7 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     // Scrolled away: Jump to latest shows.
     conversation.current = { ...conversation.current, jump: { shown: true, newCount: 0, onJump: () => undefined } };
     rerenderSame();
-    expect(counts.rows.size).toBe(0);
+    expect(Object.fromEntries(counts.rows)).toEqual({});
     expect(counts.segments).toBe(0);
 
     // A message arrives: only it is drawn (and the old last row, whose Tab stop moves to the new one).

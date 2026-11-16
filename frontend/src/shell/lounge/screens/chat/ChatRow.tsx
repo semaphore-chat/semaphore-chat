@@ -6,10 +6,22 @@
  * What the screen knows around every row (the reader, where links lead, the community's emoji, the visible
  * channels) comes from `ChatRowContext`, one value for the whole list.
  */
-import { createContext, memo, useCallback, useContext, useMemo, type JSX, type KeyboardEvent } from 'react';
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+} from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AttachmentTile,
+  Composer,
   ListSeparator,
   MessageQuote,
   MessageRow,
@@ -20,6 +32,7 @@ import {
   useAnnounce,
   type MentionSegment,
   type MessageRowFocus,
+  type OpenActionsVia,
 } from '../../../../kit';
 import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
 import { useAuthenticatedFile, useAuthenticatedImage } from '../../../../hooks/useAuthenticatedFile';
@@ -34,6 +47,12 @@ import {
   type AttachmentView,
 } from '../../../../data/chat/messageRowModel';
 import { useAttachmentBusy, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
+import { useIsEditing, type EditingStore } from '../../../../data/chat/editingStore';
+import { usePendingUpload } from '../../../../hooks/usePendingUpload';
+import { removeAttachment, retryAttachment, startAttachmentUploads } from '../../../../utils/attachmentSend';
+import { formatFileSize } from '../../../../utils/format';
+import { isOptimisticMessageId } from '../../../../utils/messageCacheUpdaters';
+import type { PendingFile } from '../../../../utils/pendingUploadStore';
 import type { Message } from '../../../../types/message.type';
 import { formatDaySeparator } from '../../../../utils/messageTime';
 
@@ -49,6 +68,14 @@ export interface ChatRowShared {
   openPath(path: string): void;
   openProfile?: (userId: string) => void;
   opener: AttachmentOpener;
+  /** The row asked for its actions (the row has focus by then). */
+  openActions(message: Message, via: OpenActionsVia): void;
+  /** Which message is being edited in place. */
+  editing: EditingStore;
+  /** Sends a failed message again (the same row); settles on the server's answer. */
+  retrySend(message: Message): Promise<void>;
+  /** Drops a failed message (it was never sent). */
+  removeFailed(message: Message): void;
 }
 
 export const ChatRowContext = createContext<ChatRowShared | null>(null);
@@ -73,6 +100,42 @@ export interface ChatRowProps {
   tabStop: boolean;
   onRovingKeyDown: (event: KeyboardEvent<HTMLDivElement>, index: number) => void;
   onRovingFocus: (index: number) => void;
+}
+
+/**
+ * A failed send's Retry and Delete (the list's one sender, `retryOptimisticMessage`). Every row calls it, so a row keeps
+ * one component type from pending to failed to retrying to sent: Retry keeps keyboard focus while it is busy. While
+ * the retry runs the row still shows as failed with Retry busy (the message itself is pending again); when it is
+ * done and Retry goes away, focus that was on it goes to the row.
+ */
+function useFailedSend(message: Message, row: { current: HTMLDivElement | null }) {
+  const { retrySend, removeFailed } = useShared();
+  const retry = useCallback(() => retrySend(message), [retrySend, message]);
+  const remove = useCallback(() => removeFailed(message), [removeFailed, message]);
+  const [retrying, setRetrying] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const onRetry = useCallback(() => {
+    setRetrying(true);
+    void retry().finally(() => {
+      if (!mounted.current) return;
+      const hadFocus = row.current?.contains(document.activeElement) === true;
+      setRetrying(false);
+      if (hadFocus) {
+        requestAnimationFrame(() => {
+          const node = row.current;
+          if (node !== null && !node.contains(document.activeElement)) node.focus({ preventScroll: true });
+        });
+      }
+    });
+  }, [retry, row]);
+  const shown = message.sendStatus === 'failed' || retrying;
+  return shown ? { onRetry, onDelete: remove, retrying } : undefined;
 }
 
 function useUserName(userId: string | null | undefined): { name?: string; avatarFileId?: string | null } {
@@ -142,11 +205,118 @@ function Reactions({ message }: { message: Message }): JSX.Element | null {
   );
 }
 
+/** What an uploading file's tile says under its name (as the old chat's `PendingAttachments`). */
+function uploadDetail(file: PendingFile, sendFailed: boolean): string {
+  switch (file.status) {
+    case 'waiting':
+      return sendFailed ? "Not uploaded: the message wasn't sent" : 'Waiting to upload…';
+    case 'attaching':
+      return 'Finishing…';
+    default:
+      if (file.progress >= 1) return 'Finishing…';
+      return `${formatFileSize(file.size * file.progress)} of ${formatFileSize(file.size)}`;
+  }
+}
+
+/** The files the reader's own message is still uploading: progress, and Retry or Remove when one failed. */
+function Uploads({ message }: { message: Message }): JSX.Element | null {
+  const entry = usePendingUpload(message);
+  const isServerMessage = !message.sendStatus && !isOptimisticMessageId(message.id);
+  // The message became real without its uploads hearing about it (a late echo): start them now (as the old chat).
+  useEffect(() => {
+    if (entry && !entry.messageId && isServerMessage) startAttachmentUploads(entry.clientId, message.id);
+  }, [entry, isServerMessage, message.id]);
+  if (!entry) return null;
+  const attached = new Set((message.attachments ?? []).map((a) => a.id));
+  const files = entry.files.filter((f) => f.status !== 'done' && !(f.fileId && attached.has(f.fileId)));
+  if (files.length === 0) return null;
+  const sendFailed = message.sendStatus === 'failed';
+  return (
+    <>
+      {files.map((file) => (
+        <AttachmentTile
+          key={file.localId}
+          kind="file"
+          name={file.name}
+          detail={uploadDetail(file, sendFailed)}
+          src={file.previewUrl && file.mimeType.startsWith('image/') ? file.previewUrl : undefined}
+          progress={file.status === 'failed' ? undefined : file.status === 'attaching' ? 100 : Math.round(file.progress * 100)}
+          error={file.status === 'failed' ? (file.error ? `Upload failed: ${file.error}` : 'Upload failed') : undefined}
+          onRetry={file.status === 'failed' ? () => void retryAttachment(entry.clientId, file.localId) : undefined}
+          onRemove={() => void removeAttachment(entry.clientId, file.localId)}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
+ * The message's words, edited in place (the old chat's phone behaviour): the kit composer inline, in save mode,
+ * on the shared edit state. Enter saves, Shift+Enter starts a line, Escape (or Cancel) leaves it unchanged. When
+ * the edit ends, focus goes back to the row.
+ */
+function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDivElement | null } }): JSX.Element {
+  const shared = useShared();
+  const { isEditing, editText, setEditText, handleEditClick, handleEditSave, handleEditCancel } = useMessageActions(message, shared.me);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const [started, setStarted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { editing } = shared;
+  useEffect(() => {
+    handleEditClick();
+    // The row came back into the list mid-edit: what the reader had typed, not the original.
+    const draft = editing.draft(message.id);
+    if (draft !== null) setEditText(draft);
+    setStarted(true);
+    // The field takes focus once the actions sheet has given it back to the row, and only when the edit starts.
+    const frame = requestAnimationFrame(() => {
+      const input = field.current;
+      if (input === null || !editing.claimFocus(message.id)) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the editor mounts
+  }, []);
+  useEffect(() => {
+    if (started && !isEditing) {
+      editing.stop(message.id);
+      requestAnimationFrame(() => row.current?.focus({ preventScroll: true }));
+    }
+  }, [started, isEditing, editing, message.id, row]);
+  return (
+    <Composer
+      ref={field}
+      inline
+      mode="save"
+      label="Edit message"
+      value={editText}
+      onChange={(text) => {
+        setEditText(text);
+        editing.setDraft(message.id, text);
+      }}
+      sending={saving}
+      canSend={editText.trim() !== '' || message.attachments.length > 0}
+      onSubmit={() => {
+        setSaving(true);
+        void handleEditSave().finally(() => setSaving(false));
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          handleEditCancel();
+        }
+      }}
+      banner={{ kind: 'editing', title: 'Editing message', detail: 'Escape to cancel, Enter to save', cancelLabel: 'Cancel editing', onCancel: handleEditCancel }}
+    />
+  );
+}
+
 function repliesText(count: number): string {
   return count === 1 ? '1 reply' : `${count} replies`;
 }
 
-function ChatRowView({
+function ChatRowBody({
   message,
   index,
   grouped,
@@ -159,6 +329,10 @@ function ChatRowView({
   onRovingFocus,
 }: ChatRowProps): JSX.Element {
   const shared = useShared();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const failed = useFailedSend(message, rowRef);
+  const isEditing = useIsEditing(shared.editing, message.id);
+  const pendingUpload = usePendingUpload(message);
   const isWebhook = !!message.webhook;
   const author = useUserName(isWebhook ? null : message.authorId);
   const { blobUrl: avatar } = useAuthenticatedImage(isWebhook ? null : author.avatarFileId);
@@ -185,6 +359,15 @@ function ChatRowView({
   );
   const files = toAttachmentViews(message.attachments);
   const authorId = message.authorId;
+  const { openActions } = shared;
+  const onOpenActions = useCallback(
+    ({ via }: { via: OpenActionsVia }) => {
+      // The row holds focus while its actions are open, so closing them brings focus back here.
+      rowRef.current?.focus({ preventScroll: true });
+      openActions(message, via);
+    },
+    [openActions, message],
+  );
 
   return (
     <>
@@ -199,18 +382,25 @@ function ChatRowView({
         continued={grouped}
         mentioned={view.mentioned}
         highlighted={isHighlighted}
-        state={view.state}
+        state={failed?.retrying ? 'failed' : view.state}
         failedReason={view.failedReason}
         edited={view.edited}
         pinned={view.pinned}
         quote={message.replyTo ? <Quote replyTo={message.replyTo} /> : undefined}
-        body={segments.length > 0 ? <MessageText segments={segments} onMention={onMention} /> : undefined}
+        body={
+          isEditing ? (
+            <InlineEdit message={message} row={rowRef} />
+          ) : segments.length > 0 ? (
+            <MessageText segments={segments} onMention={onMention} />
+          ) : undefined
+        }
         attachments={
-          files.length > 0 ? (
+          files.length > 0 || pendingUpload !== undefined ? (
             <Stack gap="sm" align="start">
               {files.map((file) => (
                 <Attachment key={file.id} file={file} />
               ))}
+              <Uploads message={message} />
             </Stack>
           ) : undefined
         }
@@ -224,10 +414,15 @@ function ChatRowView({
           ) : undefined
         }
         onOpenAuthor={view.hasProfile && openProfile && authorId ? () => openProfile(authorId) : undefined}
+        onOpenActions={isEditing ? undefined : onOpenActions}
+        onRetry={failed?.onRetry}
+        onDelete={failed?.onDelete}
+        retrying={failed?.retrying}
         focus={focus}
+        ref={rowRef}
       />
     </>
   );
 }
 
-export const ChatRow = memo(ChatRowView);
+export const ChatRow = memo(ChatRowBody);

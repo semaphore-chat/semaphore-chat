@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "./useCurrentUser";
 import {
   useSendMessage,
@@ -155,46 +155,67 @@ export interface UseOptimisticMessageRetryResult {
  * (mirrors useMessageActions), so retry/delete don't need to be threaded
  * down as props through the container → VirtualMessageList chain.
  */
+/**
+ * Retry a failed optimistic message (the body of `useOptimisticMessageRetry`, for a caller that holds one sender for
+ * a whole list instead of one hook per row): the SAME clientId, never a duplicate row.
+ */
+export async function retryOptimisticMessage(
+  queryClient: QueryClient,
+  rawSendMessage: ReturnType<typeof useSendMessage>["sendMessage"],
+  message: Message,
+): Promise<void> {
+  const contextType = message.channelId ? VoiceSessionType.Channel : VoiceSessionType.Dm;
+  const contextId = message.channelId || message.directMessageGroupId || "";
+  const queryKey = messagesQueryKeyFor(contextType, contextId);
+  const clientId = message.clientId;
+  if (!clientId) return;
+  // Guard: a retry already in flight for this clientId (e.g. double-clicked
+  // Retry) no-ops rather than firing a second concurrent send.
+  if (inFlightClientIds.has(clientId)) return;
+
+  const sentAt = new Date().toISOString();
+  const retryPayload = buildRetryPayload(message, sentAt, pendingAttachmentCount(clientId));
+  const optimisticMessage: Message = { ...message, sentAt, sendStatus: "pending" };
+
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => markOptimisticPending(old, clientId));
+
+  inFlightClientIds.add(clientId);
+  try {
+    const result = await rawSendMessage(retryPayload);
+    reconcileAfterSend(queryClient, queryKey, clientId, optimisticMessage, result);
+    // A message with files: now that it exists, upload them.
+    if (result.success && result.messageId && hasAttachmentSend(clientId)) {
+      startAttachmentUploads(clientId, result.messageId);
+    }
+    if (isDeletedWhileSending(result.error)) discardAttachmentSend(clientId);
+  } finally {
+    inFlightClientIds.delete(clientId);
+  }
+}
+
+/** Remove a failed optimistic message (and any files it was going to upload). No API call. */
+export function removeOptimisticRow(queryClient: QueryClient, message: Message): void {
+  const contextType = message.channelId ? VoiceSessionType.Channel : VoiceSessionType.Dm;
+  const contextId = message.channelId || message.directMessageGroupId || "";
+  const clientId = message.clientId;
+  if (!clientId) return;
+  discardAttachmentSend(clientId);
+  queryClient.setQueryData<MessagesInfiniteData>(messagesQueryKeyFor(contextType, contextId), (old) =>
+    removeOptimisticMessage(old, clientId),
+  );
+}
+
 export function useOptimisticMessageRetry(message: Message): UseOptimisticMessageRetryResult {
   const queryClient = useQueryClient();
   const contextType = message.channelId ? VoiceSessionType.Channel : VoiceSessionType.Dm;
-  const contextId = message.channelId || message.directMessageGroupId || "";
   const { sendMessage: rawSendMessage } = useSendMessage(contextType);
-  const queryKey = messagesQueryKeyFor(contextType, contextId);
 
-  const retry = useCallback(async () => {
-    const clientId = message.clientId;
-    if (!clientId) return;
-    // Guard: a retry already in flight for this clientId (e.g. double-clicked
-    // Retry) no-ops rather than firing a second concurrent send.
-    if (inFlightClientIds.has(clientId)) return;
+  const retry = useCallback(
+    () => retryOptimisticMessage(queryClient, rawSendMessage, message),
+    [message, queryClient, rawSendMessage],
+  );
 
-    const sentAt = new Date().toISOString();
-    const retryPayload = buildRetryPayload(message, sentAt, pendingAttachmentCount(clientId));
-    const optimisticMessage: Message = { ...message, sentAt, sendStatus: "pending" };
-
-    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => markOptimisticPending(old, clientId));
-
-    inFlightClientIds.add(clientId);
-    try {
-      const result = await rawSendMessage(retryPayload);
-      reconcileAfterSend(queryClient, queryKey, clientId, optimisticMessage, result);
-      // A message with files: now that it exists, upload them.
-      if (result.success && result.messageId && hasAttachmentSend(clientId)) {
-        startAttachmentUploads(clientId, result.messageId);
-      }
-      if (isDeletedWhileSending(result.error)) discardAttachmentSend(clientId);
-    } finally {
-      inFlightClientIds.delete(clientId);
-    }
-  }, [message, queryClient, queryKey, rawSendMessage]);
-
-  const remove = useCallback(() => {
-    const clientId = message.clientId;
-    if (!clientId) return;
-    discardAttachmentSend(clientId);
-    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => removeOptimisticMessage(old, clientId));
-  }, [message, queryClient, queryKey]);
+  const remove = useCallback(() => removeOptimisticRow(queryClient, message), [message, queryClient]);
 
   return { retry, remove };
 }

@@ -14,10 +14,10 @@ interface UseMessageFileUploadOptions {
   /**
    * Shows an error to the user (a failed upload or send). Injected so the hook
    * stays free of a notification UI; classic passes
-   * `(message) => showNotification(message, "error")`. Optional so a caller
-   * (or a test) without a reporter still gets the inline failure states.
+   * `(message) => showNotification(message, "error")`, the new shell a kit
+   * toast. Required: a failed upload must always be told to the user.
    */
-  onError?: (message: string) => void;
+  onError: (message: string) => void;
 }
 
 /**
@@ -65,7 +65,7 @@ export const useMessageFileUpload = ({ contextType, contextId, authorId, onError
           queryClient,
           contextType,
           contextId,
-          notifyError: (message) => onError?.(message),
+          notifyError: (message) => onError(message),
           seedFileBlob,
         },
         payload: msg,

@@ -141,4 +141,6 @@ export type { MessageQuoteProps } from './chat/MessageQuote';
 export { AttachmentTile } from './chat/AttachmentTile';
 export type { AttachmentTileProps } from './chat/AttachmentTile';
 export { TypingLine } from './chat/TypingLine';
+export { SuggestionList } from './chat/SuggestionList';
+export type { Suggestion, SuggestionListProps } from './chat/SuggestionList';
 export type { TypingLineProps } from './chat/TypingLine';

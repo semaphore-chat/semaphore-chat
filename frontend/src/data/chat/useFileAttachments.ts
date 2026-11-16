@@ -5,7 +5,7 @@
  * Handles file selection, image previews, file removal, and validation.
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { instanceControllerGetPublicSettingsOptions } from "../../api-client/@tanstack/react-query.gen";
 import { MAX_FILE_SIZE, MAX_FILES_PER_MESSAGE } from "../../constants/messages";
@@ -32,15 +32,31 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
   const maxFileSize = publicSettings?.maxFileSizeBytes ?? MAX_FILE_SIZE;
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [filePreviews, setFilePreviews] = useState<Map<number, string>>(new Map());
+  // Each preview belongs to its file, not to a position: removing a middle file (or adding one later) must not
+  // hand a remaining file another file's preview, or none (#827). `filePreviews` is derived by position. A preview is
+  // an object URL of the local file, released when its file is removed, the files are cleared or the composer goes.
+  const [previewByFile, setPreviewByFile] = useState<Map<File, string>>(new Map());
+  const previewsRef = useRef<Map<File, string>>(new Map());
+  const selectedRef = useRef<File[]>([]);
+  const setPreviews = useCallback((next: Map<File, string>) => {
+    previewsRef.current = next;
+    setPreviewByFile(next);
+  }, []);
+  const setSelected = useCallback((next: File[]) => {
+    selectedRef.current = next;
+    setSelectedFiles(next);
+  }, []);
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileCountRef = useRef(0);
 
-  // Cleanup file previews on unmount to prevent memory leaks
+  // Release the previews on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
-      setFilePreviews(new Map());
+      previewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewsRef.current = new Map();
+      selectedRef.current = [];
+      setPreviewByFile(new Map());
       setSelectedFiles([]);
     };
   }, []);
@@ -66,25 +82,19 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
       return false;
     }
 
-    const startIndex = fileCountRef.current;
-
-    // Generate previews for image files
-    files.forEach((file, idx) => {
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            setFilePreviews(prev => new Map(prev).set(startIndex + idx, e.target!.result as string));
-          }
-        };
-        reader.readAsDataURL(file);
-      }
-    });
+    // Previews for image files: object URLs of the local files (made at once, so none can arrive late).
+    if (typeof URL.createObjectURL === 'function') {
+      const next = new Map(previewsRef.current);
+      files.forEach((file) => {
+        if (file.type.startsWith('image/') && !next.has(file)) next.set(file, URL.createObjectURL(file));
+      });
+      if (next.size !== previewsRef.current.size) setPreviews(next);
+    }
 
     fileCountRef.current += files.length;
-    setSelectedFiles(prev => [...prev, ...files]);
+    setSelected([...selectedRef.current, ...files]);
     return true;
-  }, [maxFileSize]);
+  }, [maxFileSize, setPreviews, setSelected]);
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -103,13 +113,18 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
 
   const handleRemoveFile = useCallback((index: number) => {
     fileCountRef.current = Math.max(0, fileCountRef.current - 1);
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    setFilePreviews(prev => {
-      const newPreviews = new Map(prev);
-      newPreviews.delete(index);
-      return newPreviews;
-    });
-  }, []);
+    const removed = selectedRef.current[index];
+    const rest = selectedRef.current.filter((_, i) => i !== index);
+    setSelected(rest);
+    // Its preview is released, unless the same file is still queued.
+    const url = removed === undefined ? undefined : previewsRef.current.get(removed);
+    if (removed !== undefined && url !== undefined && !rest.includes(removed)) {
+      URL.revokeObjectURL(url);
+      const next = new Map(previewsRef.current);
+      next.delete(removed);
+      setPreviews(next);
+    }
+  }, [setPreviews, setSelected]);
 
   const handleFileButtonClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -117,9 +132,19 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
 
   const clearFiles = useCallback(() => {
     fileCountRef.current = 0;
-    setSelectedFiles([]);
-    setFilePreviews(new Map());
-  }, []);
+    previewsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    setSelected([]);
+    setPreviews(new Map());
+  }, [setPreviews, setSelected]);
+
+  const filePreviews = useMemo(() => {
+    const byIndex = new Map<number, string>();
+    selectedFiles.forEach((file, i) => {
+      const preview = previewByFile.get(file);
+      if (preview !== undefined) byIndex.set(i, preview);
+    });
+    return byIndex;
+  }, [selectedFiles, previewByFile]);
 
   return {
     selectedFiles,

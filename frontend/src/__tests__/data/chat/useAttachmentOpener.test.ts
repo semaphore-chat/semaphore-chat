@@ -9,6 +9,7 @@ vi.mock('../../../utils/format', async (importOriginal) => ({
   downloadBlob: download,
 }));
 
+import { createElectronWrapper, createFakeElectronAPI } from '../../test-utils';
 import { TYPED_URL_LIFETIME_MS, attachmentAction, useAttachmentBusy, useAttachmentOpener } from '../../../data/chat/useAttachmentOpener';
 
 describe('attachmentAction (from the server-reported type)', () => {
@@ -73,6 +74,21 @@ describe('useAttachmentOpener', () => {
     await waitFor(() => expect(download).toHaveBeenCalledWith('blob:cached', name));
     expect(open).not.toHaveBeenCalled();
     expect(tab.location.href).toBe('');
+  });
+
+  it('in the desktop app a picture downloads too (no tab), and a failure is told', async () => {
+    const onError = vi.fn();
+    const wrapper = createElectronWrapper(createFakeElectronAPI());
+    const { result } = renderHook(() => useAttachmentOpener(onError), { wrapper });
+    act(() => result.current.open({ id: 'f-1', name: 'shot.png', mimeType: 'image/png' }));
+    await waitFor(() => expect(download).toHaveBeenCalledWith('blob:cached', 'shot.png'));
+    expect(open).not.toHaveBeenCalled();
+
+    cache.getBlob.mockReturnValueOnce(null as never);
+    cache.fetchBlob.mockRejectedValueOnce(new Error('offline'));
+    act(() => result.current.open({ id: 'f-2', name: 'notes.txt', mimeType: 'text/plain' }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith("Couldn't download notes.txt"));
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('cuts the tab’s opener before any wait, and nothing later depends on it', async () => {

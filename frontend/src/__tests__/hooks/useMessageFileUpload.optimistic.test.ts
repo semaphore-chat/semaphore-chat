@@ -69,7 +69,7 @@ describe('useMessageFileUpload — optimistic rows', () => {
     });
 
     const { result } = renderHook(
-      () => useMessageFileUpload({ contextType: VoiceSessionType.Channel, contextId: 'ch-1', authorId: 'me' }),
+      () => useMessageFileUpload({ contextType: VoiceSessionType.Channel, contextId: 'ch-1', authorId: 'me', onError: vi.fn() }),
       { wrapper },
     );
 
@@ -88,7 +88,7 @@ describe('useMessageFileUpload — optimistic rows', () => {
     });
 
     const { result } = renderHook(
-      () => useMessageFileUpload({ contextType: VoiceSessionType.Channel, contextId: 'ch-1', authorId: 'me' }),
+      () => useMessageFileUpload({ contextType: VoiceSessionType.Channel, contextId: 'ch-1', authorId: 'me', onError: vi.fn() }),
       { wrapper },
     );
 
@@ -115,7 +115,7 @@ describe('useMessageFileUpload — optimistic rows', () => {
     queryClient.setQueryData(dmMessagesQueryKey('dm-1'), createInfiniteData([]));
 
     const { result } = renderHook(
-      () => useMessageFileUpload({ contextType: VoiceSessionType.Dm, contextId: 'dm-1', authorId: 'me' }),
+      () => useMessageFileUpload({ contextType: VoiceSessionType.Dm, contextId: 'dm-1', authorId: 'me', onError: vi.fn() }),
       { wrapper },
     );
 
