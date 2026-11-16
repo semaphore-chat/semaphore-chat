@@ -13,10 +13,11 @@
  *   close button, which only hides the tiles.
  * - Your own share: a row with Stop sharing (no picker needed to stop).
  *
- * Starting a share, the camera and everything else of the call view are reached with "Open call view".
+ * Starting a share, the camera and everything else of the call view are reached through the bar's room name (Open
+ * call view); "See all" here opens it too, for the shares and cameras past the first rows.
  */
 import { useCallback, useRef, type JSX } from 'react';
-import { Button, Card, Icon, IconButton, ListRow, MediaTile, Stack } from '../../../../kit';
+import { Button, Card, Icon, ListRow, MediaTile, Stack } from '../../../../kit';
 import type { CallVideoTile, CallVideoTrack } from '../../../../data/callVideo';
 import { OFFERED_ROWS, offeredSummary, tileLabel } from '../../pieces/call/callSurfaceText';
 
@@ -104,12 +105,9 @@ export function CallSurface({
           <ListRow
             primary={watched.length === 1 ? `Watching ${tileLabel(watched[0])}` : `Watching ${watched.length}`}
             trailing={
-              <>
-                <Button variant="soft" size="sm" onClick={onStopWatching}>
-                  Stop watching
-                </Button>
-                <IconButton icon="Maximize" label="Open call view" size="sm" onClick={onOpenCallView} />
-              </>
+              <Button variant="soft" size="sm" onClick={onStopWatching}>
+                Stop watching
+              </Button>
             }
           />
         )}

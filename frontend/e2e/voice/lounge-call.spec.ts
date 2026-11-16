@@ -201,6 +201,10 @@ test.describe('The Lounge call bar and call surface', () => {
     await mute.focus();
     await expect(mute).toBeFocused();
     await mute.press('Enter');
+    // The press says why, through the kit's announcer (its polite live region keeps the text).
+    await expect(
+      a.page.locator('[data-kit-live-slot] [aria-live="polite"]', { hasText: 'Muted by a moderator' }),
+    ).toHaveCount(1, POLL);
     // Playwright counts aria-disabled as not enabled; the user can still tap it.
     await mute.click({ force: true });
     expect(await micOn(a)).toBe(false);

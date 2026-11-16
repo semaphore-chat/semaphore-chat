@@ -190,7 +190,11 @@ describe('CallBar: every state', () => {
         focusable: true,
       });
       expect(control('Leave call')).toEqual({ name: 'Leave call', pressed: null, available: true, focusable: true });
-      // The room (with its line) is the Open call view control.
+      // The room is the Open call view control. Its name stays fixed; the row's line is its description, so a
+      // screen reader hears "Open call view, Squad Up, Muted" (a full-width line is read after the row).
+      expect(screen.getByRole('button', { name: `Open call view, ${model.place.name}` })).toHaveAccessibleDescription(
+        expected.line && !expected.line.full ? expected.line.text : '',
+      );
       expect(control(`Open call view, ${model.place.name}`)).toEqual({
         name: `Open call view, ${model.place.name}`,
         pressed: null,

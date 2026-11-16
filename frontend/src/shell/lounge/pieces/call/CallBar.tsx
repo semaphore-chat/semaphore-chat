@@ -82,6 +82,9 @@ export function CallBar({ model }: CallBarProps): JSX.Element {
       // pressed and focus states over the whole row). Nothing to press while joining.
       onClick={joining ? undefined : actions.openCallView}
       label={joining ? undefined : `Open call view, ${place.name}`}
+      // The visible sign that the room opens something, on touch too. The line is its description (the kit's
+      // ListRow describes a labelled row by its secondary line).
+      chevron
       trailing={
         joining ? undefined : (
           <>

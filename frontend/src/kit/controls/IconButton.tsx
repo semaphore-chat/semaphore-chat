@@ -4,6 +4,7 @@ import {
   useRef,
   type AriaAttributes,
   type JSX,
+  type KeyboardEvent,
   type MouseEvent,
   type MouseEventHandler,
   type PointerEvent,
@@ -277,6 +278,16 @@ export function IconButton({
   }, [holdAllowed, endHold]);
   useEffect(() => endHold, [endHold]);
 
+  // A held key repeats its keydown, and a button clicks on each repeated Enter: an unavailable button says why
+  // once per press, not once per repeat.
+  const repeatingRef = useRef(false);
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    repeatingRef.current = event.repeat;
+  };
+  const handleKeyUp = () => {
+    repeatingRef.current = false;
+  };
+
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     if (busy) {
       event.preventDefault();
@@ -285,7 +296,7 @@ export function IconButton({
     roving?.onClick(event);
     if (unavailable) {
       event.preventDefault();
-      onUnavailablePress?.();
+      if (!repeatingRef.current) onUnavailablePress?.();
       return;
     }
     onClick?.(event);
@@ -297,6 +308,8 @@ export function IconButton({
       type="button"
       disabled={disabled}
       onClick={handleClick}
+      onKeyDown={unavailable ? handleKeyDown : undefined}
+      onKeyUp={unavailable ? handleKeyUp : undefined}
       aria-label={name}
       aria-current={current ? 'page' : undefined}
       aria-pressed={selected}

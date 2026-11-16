@@ -49,7 +49,16 @@ interface GridProps {
   $dock: boolean;
   $call: boolean;
   $right: boolean;
+  /** The on-screen keyboard is up. */
+  $keyboard: boolean;
 }
+
+/**
+ * The least a phone's shown pane keeps while a call bar is there: a composer (a field, `control.md`, with the
+ * space screens draw above (`space.sm`) and below (`space.lg`) it). The call's video gives way first. With the
+ * keyboard up and the frame very short, the call bar (Leave) wins over it.
+ */
+const PANE_MIN = tokens.control.md + tokens.space.sm + tokens.space.lg;
 
 /** Rows top to bottom: the dock (if any), the left island, the call bar (if any). The centre (and right) span them all. */
 function columnRange({ $dock, $call, $right }: GridProps) {
@@ -74,8 +83,8 @@ function columnRange({ $dock, $call, $right }: GridProps) {
 }
 
 /** One column of cells, top to bottom: the shown pane, the call bar (if any), the dock bar (if any). */
-function phoneRange({ $dock, $call }: GridProps) {
-  const rows: [string, string][] = [['pane', 'minmax(0, 1fr)']];
+function phoneRange({ $dock, $call, $keyboard }: GridProps) {
+  const rows: [string, string][] = [['pane', $call && !$keyboard ? `minmax(${PANE_MIN}px, 1fr)` : 'minmax(0, 1fr)']];
   if ($call) {
     rows.push(['call', 'auto']);
   }
@@ -99,6 +108,9 @@ const Grid = styled('div', { shouldForwardProp: transientProps })<GridProps>((pr
   minHeight: 0,
   display: 'grid',
   gap: `${tokens.layout.gutter}px`,
+  // A size container: the call slot's video is capped against the height this grid really has (after the banner
+  // row, the keyboard and the safe areas), in `cqh`.
+  containerType: 'size',
   ...columnRange({ ...props, $right: false }),
   [atMedia(media.wide)]: columnRange(props),
   [atMedia(media.phone)]: phoneRange(props),
@@ -106,7 +118,18 @@ const Grid = styled('div', { shouldForwardProp: transientProps })<GridProps>((pr
 
 const DockSlot = styled('div')({ gridArea: 'dock', minWidth: 0, display: 'block' });
 
-const CallSlot = styled('div')({ gridArea: 'call', minWidth: 0, display: 'block' });
+/**
+ * The call slot's track is `auto`, but the slot's minimum is 0: when the frame is short the track gets only what
+ * the fixed rows and the pane's minimum leave, and the slot's contents (a CallStack) give it back by shrinking the
+ * call's video, never the bar.
+ */
+const CallSlot = styled('div')({
+  gridArea: 'call',
+  minWidth: 0,
+  minHeight: 0,
+  display: 'flex',
+  flexDirection: 'column',
+});
 
 /** The left and centre islands share the `pane` cell of a phone; the other one is hidden there. */
 const PhonePane = styled(Pane)({ [atMedia(media.phone)]: { gridArea: 'pane' } });
@@ -174,7 +197,7 @@ export function ThreeIslands({
   );
 
   return (
-    <Grid $dock={hasDock} $call={hasCall} $right={showIsland}>
+    <Grid $dock={hasDock} $call={hasCall} $right={showIsland} $keyboard={keyboard}>
       {!phone && hasDock && <DockSlot>{dock}</DockSlot>}
       <PhonePane
         ref={leftRef}

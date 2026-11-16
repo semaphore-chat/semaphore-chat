@@ -141,8 +141,9 @@ export const SelectedWithTrailingLight = () => (
 );
 
 /**
- * `label`: a pressable row whose visible lines do not say what it does gets its own accessible name. The call
- * bar's room row is "Open call view, Squad Up"; its trailing controls keep their own names and presses.
+ * `label`: a pressable row whose visible lines do not say what it does gets its own accessible name ("Open call
+ * view, Squad Up"), and its secondary line becomes the description. `chevron`: the visible sign that it goes
+ * somewhere. Its trailing controls keep their own names and presses.
  */
 const LabelledBody = () => (
   <div style={{ width: 288, maxWidth: '100%' }}><Island padding="md">
@@ -152,6 +153,7 @@ const LabelledBody = () => (
       primary="Squad Up"
       secondary="Voice connected"
       label="Open call view, Squad Up"
+      chevron
       onClick={noop}
       trailing={<IconButton icon="PhoneOff" label="Leave call" variant="danger" />}
     />

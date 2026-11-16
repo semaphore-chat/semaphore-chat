@@ -1,5 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openStory } from './story.ts';
+import { tokens } from '../src/theme/generated/tokens.ts';
+
+/** The least the shown pane keeps while a call bar is there: a composer (as kit/layout/ThreeIslands PANE_MIN). */
+const PANE_MIN = tokens.control.md + tokens.space.sm + tokens.space.lg;
+
+/** The height of the three-islands grid (the size container the surface's cap is measured against). */
+const gridHeight = (page: Page) =>
+  page.evaluate(() => {
+    let el = document.querySelector('[data-kit-call-surface]')?.parentElement ?? null;
+    while (el && getComputedStyle(el).containerType !== 'size') el = el.parentElement;
+    return el ? el.getBoundingClientRect().height : -1;
+  });
 
 /**
  * The call slot at real sizes (review C1, I2): however much video the call has, the surface keeps to its share
@@ -88,9 +100,11 @@ for (const { story, view, keyboard } of CASES) {
       expect(s.height).toBeLessThanOrEqual(80);
     } else {
       await expect(summary).toBeHidden();
-      // Bounded to two fifths of the frame (the viewport here), scrolling inside itself when there is more.
+      // Bounded to two fifths of the layout's grid (less than the viewport), scrolling inside itself.
       const box = (await surface.boundingBox())!;
-      expect(box.height).toBeLessThanOrEqual(Math.ceil(view.height * 0.4) + 1);
+      const grid = await gridHeight(page);
+      expect(grid).toBeGreaterThan(0);
+      expect(box.height).toBeLessThanOrEqual(Math.ceil(grid * 0.4) + 1);
     }
   });
 }
@@ -149,7 +163,13 @@ test('an unavailable mic: Tab reaches it, Enter says why and changes nothing', a
   await expect(mute).toBeFocused();
   await expect(mute).toHaveAttribute('aria-disabled', 'true');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('unavailable-said')).toHaveText('Said: Muted by a moderator');
+  await expect(page.getByTestId('unavailable-said')).toHaveText('Said "Muted by a moderator" 1×');
+  // Holding Enter (the key repeats, the button clicks on each repeat) says it once more, not once per repeat.
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
+  await expect(page.getByTestId('unavailable-said')).toHaveText('Said "Muted by a moderator" 2×');
   // Hovering shows no hover layer (it is unavailable), but the title is there for a pointer.
   expect(await mute.getAttribute('title')).toBe('Muted by a moderator');
 });
@@ -174,4 +194,48 @@ test.describe('on a touch screen', () => {
     );
     expect(hit).toBe(await watch.getAttribute('aria-label'));
   });
+});
+
+/** The worst cases at 320×640 (review N1): app banners take height first; the cap counts what is left. */
+const WORST: { story: string; keyboard: boolean; banners: number }[] = [
+  { story: 'call-surface--everything-one-banner', keyboard: false, banners: 1 },
+  { story: 'call-surface--everything-two-banners', keyboard: false, banners: 2 },
+  { story: 'call-surface--everything-two-banners-keyboard', keyboard: true, banners: 2 },
+];
+
+for (const { story, keyboard, banners } of WORST) {
+  test(`${story} at 320×640: Leave and Mute whole and on top${keyboard ? '' : ', the pane keeps a composer, the dock whole'}`, async ({ page }) => {
+    await openStory(page, story, SMALL);
+    await expect(page.locator('[data-slot="banner"] > *')).toHaveCount(banners);
+    await expectWholeAndOnTop(page, 'Leave call', SMALL);
+    await expectWholeAndOnTop(page, 'Mute', SMALL);
+    await expectNoPageScroll(page);
+    if (!keyboard) {
+      await expectBarWhole(page);
+      const pane = (await page.getByRole('main').boundingBox())!;
+      expect(pane.height, 'the shown pane keeps at least a composer').toBeGreaterThanOrEqual(PANE_MIN - 1);
+      const dock = (await page.locator('nav[aria-label="Pinned communities"]').boundingBox())!;
+      expect(dock.y + dock.height, 'the dock is not clipped').toBeLessThanOrEqual(SMALL.height);
+      // The video gave way: within two fifths of the grid, and the bar's reason line is whole.
+      const surface = (await page.locator('[data-kit-call-surface]').boundingBox())!;
+      expect(surface.height).toBeLessThanOrEqual(Math.ceil((await gridHeight(page)) * 0.4) + 1);
+      const line = (await page.getByTestId('lounge-call-line').boundingBox())!;
+      expect(line.y + line.height).toBeLessThanOrEqual(dock.y);
+    } else {
+      await expect(page.getByTestId('lounge-call-summary')).toBeVisible();
+    }
+  });
+}
+
+test('keyboard up while you share: Stop sharing is in the one-line summary, whole and on top', async ({ page }) => {
+  await openStory(page, 'call-surface--own-share-keyboard', PHONE);
+  const stop = page.getByTestId('lounge-call-summary').getByRole('button', { name: 'Stop sharing' });
+  await expect(stop).toBeVisible();
+  const b = (await stop.boundingBox())!;
+  expect(b.y + b.height).toBeLessThanOrEqual(await visibleBottom(page));
+  const hit = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x, y)?.closest('button')?.textContent ?? null,
+    [b.x + b.width / 2, b.y + b.height / 2],
+  );
+  expect(hit).toBe('Stop sharing');
 });

@@ -51,16 +51,18 @@ function Surface({
   tiles,
   sharingScreen = false,
   keyboard = false,
+  banners = 0,
   model = {},
 }: {
   mode?: ModeName;
   tiles: CallVideoTile[];
   sharingScreen?: boolean;
   keyboard?: boolean;
+  banners?: 0 | 1 | 2;
   model?: Partial<Omit<CallBarModel, 'actions'>>;
 }) {
   return (
-    <CallSlotFrame mode={mode} keyboard={keyboard}>
+    <CallSlotFrame mode={mode} keyboard={keyboard} banners={banners}>
       {() => (
         <CallStack
           bar={<CallBar model={fakeCallBarModel({ talking: 'dropbear', sharingScreen, ...model })} />}
@@ -74,7 +76,7 @@ function Surface({
               onOpenCallView={noop}
             />
           }
-          summary={<CallSurfaceSummary tiles={tiles} sharingScreen={sharingScreen} />}
+          summary={<CallSurfaceSummary tiles={tiles} sharingScreen={sharingScreen} onStopSharing={noop} />}
         />
       )}
     </CallSlotFrame>
@@ -122,3 +124,17 @@ export const LongNameEverything = () => (
     model={{ place: LONG_PLACE, phase: 'reconnecting', reconnectAttempt: 3, mic: MIC.serverMuted }}
   />
 );
+
+const everything = {
+  tiles: [screen, otherScreen, camera, ...tenOffered.slice(3, 7)],
+  sharingScreen: true,
+  model: { place: LONG_PLACE, phase: 'reconnecting', reconnectAttempt: 3, mic: MIC.serverMuted } as const,
+};
+/** Everything, under one app banner: the video gives way first; the pane keeps a composer's height. */
+export const EverythingOneBanner = () => <Surface {...everything} banners={1} />;
+/** Everything, under two app banners: the video gives way further; the dock and the bar stay whole. */
+export const EverythingTwoBanners = () => <Surface {...everything} banners={2} />;
+/** Two banners with the keyboard up, reconnecting and a reason line: Leave and Mute stay whole (the bar wins). */
+export const EverythingTwoBannersKeyboard = () => <Surface {...everything} banners={2} keyboard />;
+/** Your own share with the keyboard up: the one-line summary keeps Stop sharing. */
+export const OwnShareKeyboard = () => <Surface tiles={[screen]} sharingScreen keyboard />;

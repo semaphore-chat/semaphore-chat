@@ -5,7 +5,7 @@
  * "shown" flag agrees with what it renders.
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { VoiceActionType, VoiceSessionType } from '../../../contexts/VoiceContext';
 
 const m = vi.hoisted(() => ({
@@ -429,8 +429,28 @@ describe('ShellCall: the call surface', () => {
     m.media = { ...m.media, isScreenShareEnabled: true };
     renderWithKit(<ShellCall />);
     await screen.findByTestId('lounge-call-surface');
-    click('Stop sharing');
+    fireEvent.click(within(screen.getByTestId('lounge-call-surface')).getByRole('button', { name: 'Stop sharing' }));
     expect(actions.toggleScreenShare).toHaveBeenCalledTimes(1);
+  });
+
+  it("while the keyboard is up, the one-line summary keeps Stop sharing (the surface's is hidden then)", async () => {
+    m.media = { ...m.media, isScreenShareEnabled: true };
+    renderWithKit(<ShellCall />);
+    await screen.findByTestId('lounge-call-surface');
+    const summary = screen.getByTestId('lounge-call-summary');
+    fireEvent.click(within(summary).getByRole('button', { name: 'Stop sharing', hidden: true }));
+    expect(actions.toggleScreenShare).toHaveBeenCalledTimes(1);
+  });
+
+  it('the surface has no Open call view of its own (the room name is it); See all stays', async () => {
+    for (const name of ['a1', 'a2', 'a3', 'a4']) room.publish(`u-${name}`, name, 'camera');
+    const track = { attach: vi.fn((el: HTMLMediaElement) => el), detach: vi.fn((el: HTMLMediaElement) => el) };
+    room.publish('u-drop', 'dropbear', 'screen_share', track);
+    m.state = { ...IN_CHANNEL(), watchingScreenShares: new Set(['u-drop']) };
+    renderWithKit(<ShellCall />);
+    const surface = await screen.findByTestId('lounge-call-surface');
+    expect(within(surface).queryByRole('button', { name: /open call view/i })).toBeNull();
+    expect(within(surface).getByRole('button', { name: 'See all in the call view' })).toBeInTheDocument();
   });
 
   it('stops listening to the room when it unmounts', () => {

@@ -899,7 +899,8 @@ used.
 |`disabled`|true, false|false|The row is not available.|
 |`href`|an address|none|Makes the row a link.|
 |`onClick`|a function|none|Makes the row a button.|
-|`label`|text|none|The accessible name of the link or button, when its visible lines do not say what it does: the call bar's room row is "Open call view, Squad Up". Ignored on a plain row. Web kit only so far.|
+|`label`|text|none|The accessible name of the link or button, when its visible lines do not say what it does: the call bar's room row is "Open call view, Squad Up". The `secondary` line is then no longer in the name, so it becomes the description (`aria-describedby`): a screen reader hears "Open call view, Squad Up, Muted". Ignored on a plain row. Web kit only so far.|
+|`chevron`|true, false|false|A chevron (`ChevronRight`, `icon.sm`) at the end of the link or button, before `trailing`: a visible sign, on touch too, that the row goes somewhere. It takes `icon.sm` + `space.sm` from the text. Hidden from screen readers. Ignored on a plain row. Web kit only so far.|
 |`focus`|`rowFocus(id)` from `useListFocus`|none|Joins a keyboard list. See below.|
 
 `leading` holds an Avatar (a person or a community) or an Icon (a channel, a
@@ -1041,9 +1042,12 @@ it that can grow (the call's video, what it offers).
 is. Do not use it anywhere but the call slot.
 
 The bar never gives up height: it is never shrunk, clipped or scrolled. The
-surface takes at most two fifths of the frame's height (the viewport less the
-on-screen keyboard) and scrolls inside itself beyond that, so the bar, its
-Leave and the screen's composer always keep their room. While the on-screen
+surface takes at most two fifths of the layout's height (the three-islands
+grid, a size container: what is left after the banner row, the on-screen
+keyboard and the safe areas, as `40cqh`) and scrolls inside itself beyond
+that. When the frame is shorter still, the surface gives way further: the call
+slot gets only what the fixed rows and the pane's minimum leave, so the bar, its
+Leave and the screen's composer keep their room. While the on-screen
 keyboard is up the surface is left out and `summary`, one line, stands in for
 it. Layout only: no surface colour, no padding, no landmark.
 

@@ -134,7 +134,7 @@ export const BadgeAndCurrentTinted = () => (
 
 /** `aria-disabled`: still a Tab stop with its name, dimmed, and a press says why instead of acting. */
 function UnavailableDemo() {
-  const [said, setSaid] = useState('Nothing said yet');
+  const [said, setSaid] = useState(0);
   return (
     <Row label="aria-disabled (focusable), then disabled">
       <IconButton
@@ -143,11 +143,11 @@ function UnavailableDemo() {
         selected
         aria-disabled
         title="Muted by a moderator"
-        onUnavailablePress={() => setSaid('Said: Muted by a moderator')}
+        onUnavailablePress={() => setSaid((n) => n + 1)}
       />
       <IconButton icon="MicOff" label="Mute" selected disabled />
       <Text variant="meta" tone="secondary">
-        <span data-testid="unavailable-said">{said}</span>
+        <span data-testid="unavailable-said">{said === 0 ? 'Nothing said yet' : `Said "Muted by a moderator" ${said}×`}</span>
       </Text>
     </Row>
   );

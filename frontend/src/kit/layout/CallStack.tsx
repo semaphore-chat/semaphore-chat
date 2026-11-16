@@ -7,8 +7,9 @@ export interface CallStackProps {
   /** The call bar (the room, the mic, Leave): always whole, never shrunk, clipped or scrolled. */
   bar: ReactNode;
   /**
-   * The call's video and what it offers, above the bar. It takes at most two fifths of the frame's height and
-   * scrolls inside itself beyond that, so the bar and the screen's composer always keep their room.
+   * The call's video and what it offers, above the bar. It takes at most two fifths of the layout's height (what
+   * the three-islands grid has after the banner row, the keyboard and the safe areas), less when the frame is too
+   * short for that and the pane's minimum, and scrolls inside itself, so the bar and the composer keep their room.
    */
   surface?: ReactNode;
   /**
@@ -18,10 +19,12 @@ export interface CallStackProps {
   summary?: ReactNode;
 }
 
-/** The frame's height (`AppFrame`: the viewport less the on-screen keyboard), as CSS. */
-const FRAME = (unit: 'vh' | 'dvh') => `(100${unit} - var(--kit-keyboard-inset, 0px))`;
-/** The share of the frame's height the surface may take. */
-const SURFACE_SHARE = '2 / 5';
+/**
+ * The share of the layout's height the surface may take: of the three-islands grid (a size container), so the
+ * banner row, the keyboard and the safe areas are already taken off. Outside such a container `cqh` falls back to
+ * the viewport.
+ */
+const SURFACE_SHARE = '40cqh';
 
 /** Set by `AppFrame` while the on-screen keyboard is up. */
 const KEYBOARD_UP = '[data-keyboard] &';
@@ -32,14 +35,16 @@ const Root = styled('div')({
   alignItems: 'stretch',
   gap: `${tokens.space.sm}px`,
   minWidth: 0,
+  // In the call slot (a flex column of the height the grid gives it) it shrinks: the surface first.
+  flex: '0 1 auto',
+  minHeight: 0,
 });
 
 const Surface = styled('div')({
   flex: '0 1 auto',
   minWidth: 0,
   minHeight: 0,
-  maxHeight: `calc(${FRAME('vh')} * ${SURFACE_SHARE})`,
-  '@supports (height: 100dvh)': { maxHeight: `calc(${FRAME('dvh')} * ${SURFACE_SHARE})` },
+  maxHeight: SURFACE_SHARE,
   overflowY: 'auto',
   overscrollBehavior: 'contain',
   // The card inside has rounded corners; the scroll keeps them.
@@ -50,6 +55,9 @@ const Surface = styled('div')({
 const Summary = styled('div')({
   display: 'none',
   minWidth: 0,
+  minHeight: 0,
+  flex: '0 1 auto',
+  overflow: 'hidden',
   [KEYBOARD_UP]: { display: 'block' },
 });
 

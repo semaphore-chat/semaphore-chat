@@ -24,6 +24,27 @@ describe('ListRow label', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  it('with a label, the secondary line describes the button (it is no longer in the name)', () => {
+    renderWithKit(<ListRow primary="Squad Up" secondary="Muted" label="Open call view, Squad Up" onClick={() => {}} />);
+    const button = screen.getByRole('button', { name: 'Open call view, Squad Up' });
+    expect(button).toHaveAccessibleDescription('Muted');
+  });
+
+  it('without a label nothing is described twice (the line is in the name already)', () => {
+    renderWithKit(<ListRow primary="Squad Up" secondary="Muted" onClick={() => {}} />);
+    const button = screen.getByRole('button', { name: 'Squad Up Muted' });
+    expect(button).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('chevron: drawn inside the link or button, hidden from the accessibility tree; not on a plain row', () => {
+    const { container, rerender } = renderWithKit(<ListRow primary="Squad Up" chevron onClick={() => {}} />);
+    const button = screen.getByRole('button', { name: 'Squad Up' });
+    expect(button.querySelectorAll('svg')).toHaveLength(1);
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    rerender(<ListRow primary="Squad Up" chevron />);
+    expect(container.querySelectorAll('svg')).toHaveLength(0);
+  });
+
   it('names a link', () => {
     renderWithKit(<ListRow primary="general" label="Go to general" href="#general" />);
     expect(screen.getByRole('link', { name: 'Go to general' })).toHaveAttribute('href', '#general');

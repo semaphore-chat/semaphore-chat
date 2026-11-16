@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openStory } from './story.ts';
+import { tokens } from '../src/theme/generated/tokens.ts';
 
 /**
  * The new shell's call bar at real widths (jsdom does not lay out or capture pointers): its Tab order (the room,
@@ -164,6 +165,15 @@ for (const view of [SMALL, PHONE, COMPACT, WIDE]) {
     );
     expect(hit).toBe('Open call view, Squad Up');
     expect(await nameFits(page, 'Squad Up')).toMatchObject({ fits: true, text: 'Squad Up' });
+    // The chevron: the room button's visible sign on touch, inside the button, right of the name.
+    const chevron = await room.evaluate((el) => {
+      const svg = el.querySelector('svg');
+      if (!svg) return null;
+      const r = svg.getBoundingClientRect();
+      const b = el.getBoundingClientRect();
+      return { inside: r.left >= b.left && r.right <= b.right, width: r.width };
+    });
+    expect(chevron).toEqual({ inside: true, width: tokens.icon.sm });
 
     await openStory(page, 'call-bar--typical-name', view);
     const typical = await nameFits(page, TYPICAL);

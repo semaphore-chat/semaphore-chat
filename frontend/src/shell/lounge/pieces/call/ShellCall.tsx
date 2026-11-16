@@ -51,7 +51,7 @@ export function ShellCall(): JSX.Element | null {
             </Suspense>
           ) : undefined
         }
-        summary={showSurface ? <CallSurfaceSummary tiles={video.tiles} sharingScreen={model.sharingScreen} /> : undefined}
+        summary={showSurface ? <CallSurfaceSummary tiles={video.tiles} sharingScreen={model.sharingScreen} onStopSharing={model.actions.stopSharing} /> : undefined}
       />
     );
   }

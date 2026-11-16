@@ -41,6 +41,25 @@ describe('IconButton aria-disabled', () => {
     expect(onUnavailablePress).toHaveBeenCalledTimes(1);
   });
 
+  it('a held key says why once per press, not on every repeat', () => {
+    const onUnavailablePress = vi.fn();
+    renderWithKit(<IconButton icon="MicOff" label="Mute" aria-disabled onUnavailablePress={onUnavailablePress} />);
+    const button = mute();
+    // A native button clicks on each Enter keydown, repeats included.
+    fireEvent.keyDown(button, { key: 'Enter' });
+    fireEvent.click(button);
+    fireEvent.keyDown(button, { key: 'Enter', repeat: true });
+    fireEvent.click(button);
+    fireEvent.keyDown(button, { key: 'Enter', repeat: true });
+    fireEvent.click(button);
+    fireEvent.keyUp(button, { key: 'Enter' });
+    expect(onUnavailablePress).toHaveBeenCalledTimes(1);
+    // The next press says it again.
+    fireEvent.keyDown(button, { key: 'Enter' });
+    fireEvent.click(button);
+    expect(onUnavailablePress).toHaveBeenCalledTimes(2);
+  });
+
   it('available again: a press runs onClick and not onUnavailablePress', () => {
     const onClick = vi.fn();
     const onUnavailablePress = vi.fn();

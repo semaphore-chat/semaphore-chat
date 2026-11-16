@@ -213,7 +213,8 @@ who is talking, reconnecting with Cancel, "Hold V to talk", or why the mic is
 blocked), and **Mute, Deafen and Leave at every width** (Mute is a hold-to-talk
 control on a touch layout under push-to-talk). The room's name with its line is
 itself the Open call view control at every width (a pressable row named "Open
-call view, <room>"); there is no separate Open button, so the name has the
+call view, <room>", described by its line, with a chevron); there is no
+separate Open button, on the bar or on the video above it, so the name has the
 room it needs (a typical name shows whole in the 288 px column). The
 call's controls never depend on which left island is shown and nobody is ever
 deafened without a control on screen to undeafen. The user's own card in the
@@ -242,10 +243,16 @@ picture you watch (unlike the old app's close button on the video overlay,
 which only hid it). Your own share has Stop sharing.
 
 **The video never pushes the bar or the composer off the screen.** It takes at
-most two fifths of the frame's height and scrolls inside itself beyond that;
-the bar under it keeps its whole row at every width. While the on-screen
+most two fifths of the layout's height (what the three islands have after the
+app banners, the keyboard and the safe areas) and scrolls inside itself beyond
+that; the bar under it keeps its whole row at every width. On a phone the shown
+pane keeps at least a composer's height (`control.md` + `space.sm` +
+`space.lg`, 64 px) while a call bar is there, and the video gives way first, so
+banners never push the composer, the bar or the dock off the screen. With the
+keyboard up on a very short frame the bar (Leave) wins over the pane's minimum. While the on-screen
 keyboard is up the video is one summary line ("Watching dropbear's screen · 1
-camera on") so the composer keeps its room. The kit's CallStack does this; see
+camera on") so the composer keeps its room; while you share it keeps Stop
+sharing. The kit's CallStack does this; see
 [Components](components.md#callstack). Out of a
 call, the slot shows the voice notice instead: a join that failed or why the
 call ended, with Retry when trying again can help, and Dismiss.
