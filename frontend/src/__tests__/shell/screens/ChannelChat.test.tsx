@@ -16,6 +16,7 @@ import { ScreenChromeContext } from '../../../shell/lounge/screen';
 import { forgetRouteMemory, notePathname } from '../../../shell/routeMemory';
 import type { Conversation } from '../../../data/chat/useConversation';
 import {
+  customEmojiControllerListCommunityEmojisQueryKey,
   channelsControllerFindAllForCommunityQueryKey,
   userControllerGetUserByIdQueryKey,
 } from '../../../api-client/@tanstack/react-query.gen';
@@ -37,6 +38,11 @@ vi.mock('virtua', async () => {
 });
 
 const conversation = vi.hoisted(() => ({ current: null as unknown as Conversation }));
+
+// The reaction toggle and the permission it needs, so a chip's payload can be read.
+const reactionClick = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock('../../../data/chat/useMessageActions', () => ({ useMessageActions: () => ({ handleReactionClick: reactionClick }) }));
+vi.mock('../../../hooks/useMessagePermissions', () => ({ useMessagePermissions: () => ({ canReact: true }) }));
 
 // Every navigate call the screen makes, so a test can tell a step back from a replace.
 const navCalls = vi.hoisted(() => [] as unknown[][]);
@@ -117,6 +123,9 @@ function setup({ isPrivate = false, entries = [FIXTURE_CHAT], rightOpen = false 
     username: 'aiko',
     displayName: 'Aiko',
   });
+  queryClient.setQueryData(customEmojiControllerListCommunityEmojisQueryKey({ path: { communityId: 'c-1' } }), [
+    { id: 'e-1', name: 'partyparrot', fileId: 'f-9', communityId: 'c-1' },
+  ]);
   const setRightOpen = vi.fn();
   const ui = () => (
     <FileCacheProvider>
@@ -144,6 +153,7 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     resetFactoryCounter();
     forgetRouteMemory();
     navCalls.length = 0;
+    reactionClick.mockClear();
     counts.rows.clear();
     counts.segments = 0;
     conversation.current = makeConversation();
@@ -287,6 +297,26 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     conversation.current = makeConversation({ error: { status: 403 } });
     setup();
     expect(screen.queryByRole('button', { name: 'Members' })).toBeNull();
+  });
+
+  it('a custom-emoji reaction shows the community’s emoji and its toggle sends the stored key', () => {
+    conversation.current = makeConversation({
+      orderedMessages: [
+        createMessage({
+          id: 'm-1',
+          reactions: [
+            { emoji: 'custom:e-1', userIds: ['other'] },
+            { emoji: 'custom:gone', userIds: ['other'] },
+          ],
+        }),
+      ],
+    });
+    setup();
+    const chip = screen.getByRole('button', { name: 'partyparrot reaction, 1' });
+    expect(chip.querySelector('img')).toHaveAttribute('src', '/api/file/f-9');
+    expect(screen.getByRole('button', { name: 'Custom emoji reaction, 1' })).not.toHaveTextContent('custom:');
+    fireEvent.click(chip);
+    expect(reactionClick).toHaveBeenCalledWith('custom:e-1');
   });
 
   it('the row memo holds: a new message, a typing change and a scroll re-render no row already drawn', () => {
