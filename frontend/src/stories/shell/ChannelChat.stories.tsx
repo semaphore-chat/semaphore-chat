@@ -6,8 +6,13 @@
  * States: a conversation (day and unread separators, a reply quote, an image and a file, reactions, a replies count,
  * a mention of the reader, a long unbroken word, a code block), light, a private channel, empty, loading, no
  * access (403), gone (404) and a load error with Try again.
+ *
+ * Write side (PR 10c-2a): the composer typing, with the mention list open, replying, and its three notices (no
+ * permission, timed out, read-only); a message's actions Sheet on your own message, on someone else's (as the
+ * sandbox's owner, who may pin and delete), and without the right to react; editing in place; a failed send with
+ * Retry. Stories that need a press (the Sheet, Reply, Edit) make it themselves once the chat has loaded.
  */
-import { useRef, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
 import { IncomingCallProvider } from '../../contexts/IncomingCallContext';
 import { LOUNGE_CHAT_FIXTURE_PATH, LOUNGE_ROUTES } from '../../shell/loungeRoutes';
@@ -17,6 +22,8 @@ import { defineComponent } from '../fixtures/componentStory';
 import { KitFrameStage } from '../fixtures/kitStory';
 import { bigCommunityScenario } from '../fixtures/scenarios';
 import { LOUNGE_COMMUNITY_ID, loungeCommunityHandlers } from '../fixtures/loungeCommunityHandlers';
+import { ALL_CAPS, timedOutCaps, type Caps } from '../fixtures/channelPermissions';
+import { composerDraftStorageKey } from '../../hooks/useComposerDraft';
 
 const chat = LOUNGE_ROUTES.find((route) => route.path === LOUNGE_CHAT_FIXTURE_PATH)!;
 const CHANNEL = 'ch-general';
@@ -93,7 +100,11 @@ const MESSAGES = [
   message('u-aiko', at(0, 18), [text('hey '), { type: 'USER_MENTION', userId: 'me', text: '@alexk' }, text(', you in?')], {
     editedAt: at(0, 19),
   }),
+  message('me', at(0, 20), [text('on my way, bringing the headset')]),
 ];
+
+/** A send of the reader's that did not go through (as the cache holds it after a refused send). */
+const FAILED = message('me', at(0, 21), [text('did this one go through?')], { id: 'pending-story-1', clientId: 'pending-story-1', sendStatus: 'failed', sendError: 'Failed to send' });
 
 const channelsPath = `/api/channels/community/${LOUNGE_COMMUNITY_ID}`;
 const messagesPath = `/api/messages/channel/${CHANNEL}`;
@@ -119,7 +130,62 @@ const chatHandlers: HttpHandler[] = [
   ),
 ];
 
-function Frame({ mode }: { mode: ModeName }): JSX.Element {
+/** Runs `steps` in order once each finds its element (polled, bounded): a story's own press after the chat loads. */
+function useSteps(steps: readonly { find: () => HTMLElement | null; run: (el: HTMLElement) => void }[]): void {
+  useEffect(() => {
+    let step = 0;
+    let tries = 0;
+    const timer = setInterval(() => {
+      const el = steps[step]?.find() ?? null;
+      tries += 1;
+      if (el !== null) {
+        steps[step].run(el);
+        step += 1;
+        tries = 0;
+      }
+      if (step >= steps.length || tries > 100) clearInterval(timer);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [steps]);
+}
+
+const rowWith = (words: string) => () =>
+  [...document.querySelectorAll<HTMLElement>('[role="article"]')].find((row) => row.textContent?.includes(words)) ?? null;
+const buttonNamed = (name: string) => () =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"] button, [role="dialog"] [role="button"]')].find(
+    (b) => (b.getAttribute('aria-label') ?? b.textContent) === name,
+  ) ?? null;
+const openActions = (words: string) => ({
+  find: rowWith(words),
+  run: (row: HTMLElement) => {
+    row.focus();
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  },
+});
+const press = (name: string) => ({ find: buttonNamed(name), run: (el: HTMLElement) => el.click() });
+const composerField = () => document.querySelector<HTMLTextAreaElement>('textarea[aria-label^="Message"]');
+/** The caret to the end of the draft, so the mention list reads the word being typed. */
+const caretToEnd = {
+  find: composerField,
+  run: (el: HTMLElement) => {
+    const field = el as HTMLTextAreaElement;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  },
+};
+
+function Frame({ mode, draft, steps = NO_STEPS }: { mode: ModeName; draft?: string; steps?: Parameters<typeof useSteps>[0] }): JSX.Element {
+  // A draft in the composer's storage before it mounts (the sandbox clears drafts first).
+  useState(() => {
+    if (draft !== undefined) sessionStorage.setItem(composerDraftStorageKey(`channel:${CHANNEL}`), draft);
+  });
+  useSteps(steps);
+  return <FrameOnly mode={mode} />;
+}
+
+const NO_STEPS: Parameters<typeof useSteps>[0] = [];
+
+function FrameOnly({ mode }: { mode: ModeName }): JSX.Element {
   const root = useRef<HTMLDivElement>(null);
   return (
     <KitFrameStage mode={mode}>
@@ -135,8 +201,8 @@ function Frame({ mode }: { mode: ModeName }): JSX.Element {
   );
 }
 
-const story = (options: { mode?: ModeName; handlers?: HttpHandler[] } = {}) =>
-  defineComponent(bigCommunityScenario, () => <Frame mode={options.mode ?? 'dark'} />, {
+const story = (options: { mode?: ModeName; handlers?: HttpHandler[]; draft?: string; steps?: Parameters<typeof useSteps>[0] } = {}) =>
+  defineComponent(bigCommunityScenario, () => <Frame mode={options.mode ?? 'dark'} draft={options.draft} steps={options.steps} />, {
     maxWidth: false,
     // First match wins: the story's own, then the chat's, then the community's.
     extraHandlers: [...(options.handlers ?? []), ...chatHandlers, ...loungeCommunityHandlers],
@@ -204,3 +270,70 @@ export const Gone = story({ handlers: [failWith(404)] });
 
 /** Any other failure: Try again. */
 export const LoadError = story({ handlers: [failWith(500)] });
+
+// --- Write side (PR 10c-2a) ---
+
+/** The channel's capabilities for the reader (`useComposerAvailability`, reactions), and its name and preset. */
+const capsHandlers = (caps: Partial<Caps>, channel: { preset?: string; name?: string } = {}): HttpHandler[] => [
+  http.get(`/api/channels/community/${LOUNGE_COMMUNITY_ID}/permissions/me`, () =>
+    HttpResponse.json({ communityId: LOUNGE_COMMUNITY_ID, channels: [{ channelId: CHANNEL, ...ALL_CAPS, ...caps }] }),
+  ),
+  http.get(`/api/channels/${CHANNEL}`, () =>
+    HttpResponse.json({
+      id: CHANNEL,
+      name: channel.name ?? 'general',
+      communityId: LOUNGE_COMMUNITY_ID,
+      type: 'TEXT',
+      isPrivate: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      position: 0,
+      slowmodeSeconds: 0,
+      preset: channel.preset ?? 'NORMAL',
+    }),
+  ),
+];
+
+/** Typing: a draft in the field (Send is available). */
+export const ComposerTyping = story({ draft: 'same time tomorrow? I can host' });
+
+/** Typing a mention: the suggestion list over the conversation, the first option highlighted. */
+export const ComposerMentionList = story({ draft: 'hey @', steps: [caretToEnd] });
+
+/** Replying: the banner names who, with a line of the original; Escape cancels. */
+export const ComposerReply = story({ steps: [openActions('you in?'), press('Reply')] });
+
+/** No permission to post: the notice in the field's place. */
+export const ComposerNoPermission = story({ handlers: capsHandlers({ post: false, attach: false }) });
+
+/** Timed out: the time left. */
+export const ComposerTimedOut = story({
+  handlers: capsHandlers(timedOutCaps(new Date(Date.now() + 4 * 60_000).toISOString())),
+});
+
+/** A read-only channel: who may post. */
+export const ComposerReadOnly = story({
+  handlers: capsHandlers({ post: false, attach: false, postingRoleNames: ['Moderator', 'Community Admin'] }, { preset: 'ANNOUNCEMENT', name: 'announcements' }),
+});
+
+/** Your own message's actions: quick reactions, Reply, Edit, Copy, Delete (and Pin as the owner). */
+export const ActionsOwnMessage = story({ steps: [openActions('bringing the headset')] });
+
+/** Someone else's message, as the sandbox's owner (a moderator): Reply, Pin, Copy, Delete. */
+export const ActionsSomeoneElses = story({ steps: [openActions('you in?')] });
+
+/** Without the right to react (and no posting): no quick reactions. */
+export const ActionsNoPermissions = story({
+  handlers: capsHandlers({ react: false, post: false, attach: false }),
+  steps: [openActions('you in?')],
+});
+
+/** Delete asks first. */
+export const ActionsDeleteConfirm = story({ steps: [openActions('bringing the headset'), press('Delete message')] });
+
+/** Editing your message in place: the inline composer in save mode. */
+export const EditingInPlace = story({ steps: [openActions('bringing the headset'), press('Edit message')] });
+
+/** A send that failed: the reason, Retry and Delete (Retry turns busy while it runs: `kit-message-row--states`). */
+export const FailedSend = story({
+  handlers: [http.get(messagesPath, () => HttpResponse.json({ messages: [...MESSAGES, FAILED].reverse(), continuationToken: undefined }))],
+});

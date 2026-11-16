@@ -1,5 +1,5 @@
 /**
- * The Lounge chat's read side (PR 10c-1) on real data, through the hidden chat fixture
+ * The Lounge chat (PR 10c-1 read side, PR 10c-2a write side) on real data, through the hidden chat fixture
  * `/__lounge/community/:communityId/channel/:channelId` at phone width. The real channel route stays the old
  * shell's until 10c-2 (checked here too), so these run on the fixture only.
  *
@@ -145,6 +145,90 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
       await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c1.id))}$`), EVENTUAL);
     } finally {
       await context.close();
+    }
+  });
+
+  test('the write side: send (a second user sees it), reply, react, edit, delete, attach and mention', async ({ browser, request }, testInfo) => {
+    const world = await loungeWorld(request);
+    await sendTestMessage(request, world.c1.lobbyId, 'who is around tonight?', world.owner.token);
+    const n = await openSession(browser, world.member, PHONE);
+    const owner = await openSession(browser, TEST_USER, PHONE);
+    try {
+      await openChat(n.page, world.c1.id, world.c1.lobbyId);
+      await openChat(owner.page, world.c1.id, world.c1.lobbyId);
+      const page = n.page;
+      await expect(row(page, 'who is around tonight?')).toBeVisible(EVENTUAL);
+      const field = page.getByRole('textbox', { name: 'Message #lobby' });
+      const send = page.getByRole('button', { name: 'Send message' });
+      // Opens a row's actions from the keyboard (Enter on the focused row).
+      const actionsOf = async (text: string) => {
+        // The first row with the words: the original, not a reply quoting it.
+        await row(page, text).first().focus();
+        await page.keyboard.press('Enter');
+        const sheet = page.getByRole('dialog');
+        await expect(sheet).toBeVisible(EVENTUAL);
+        return sheet;
+      };
+
+      // Send: it shows here, and arrives for the other user.
+      await field.fill('me, from the new composer');
+      await send.click();
+      await expect(row(page, 'me, from the new composer')).toBeVisible(EVENTUAL);
+      await expect(row(owner.page, 'me, from the new composer')).toBeVisible(EVENTUAL);
+      await expect(field).toHaveValue('');
+
+      // Reply: the banner, then the reply's quote.
+      await (await actionsOf('who is around tonight?')).getByRole('button', { name: 'Reply' }).click();
+      await expect(page.getByText('Replying to', { exact: false })).toBeVisible(EVENTUAL);
+      await field.fill('count me in');
+      await send.click();
+      await expect(row(page, 'count me in').getByRole('button', { name: /^Reply to .*who is around tonight\?/ })).toBeVisible(EVENTUAL);
+
+      // React through the sheet.
+      await (await actionsOf('who is around tonight?')).getByRole('button', { name: 'React with party' }).click();
+      await expect(row(page, 'who is around tonight?').first().getByRole('button', { name: /reaction, 1$/ })).toBeVisible(EVENTUAL);
+      await expect(row(owner.page, 'who is around tonight?').first().getByRole('button', { name: /reaction, 1$/ })).toBeVisible(EVENTUAL);
+
+      // Edit in place: Enter saves.
+      await (await actionsOf('me, from the new composer')).getByRole('button', { name: 'Edit message' }).click();
+      const editor = page.getByRole('textbox', { name: 'Edit message' });
+      await expect(editor).toBeFocused(EVENTUAL);
+      await editor.fill('me, edited in place');
+      await editor.press('Enter');
+      await expect(row(page, 'me, edited in place')).toContainText('(edited)', EVENTUAL);
+      await expect(row(owner.page, 'me, edited in place')).toBeVisible(EVENTUAL);
+
+      // Delete asks first.
+      await (await actionsOf('me, edited in place')).getByRole('button', { name: 'Delete message' }).click();
+      const confirm = page.getByRole('dialog', { name: 'Delete this message?' }).or(page.getByRole('alertdialog', { name: 'Delete this message?' }));
+      await expect(confirm).toBeVisible(EVENTUAL);
+      await confirm.getByRole('button', { name: 'Delete message' }).click();
+      await expect(row(page, 'me, edited in place')).toHaveCount(0, EVENTUAL);
+      await expect(row(owner.page, 'me, edited in place')).toHaveCount(0, EVENTUAL);
+
+      // Attach a file: the tray, then the sent file.
+      await page.getByTestId('chat-composer-file-input').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('bring snacks') });
+      await expect(page.getByRole('group', { name: /^notes\.txt/ })).toBeVisible(EVENTUAL);
+      await field.fill('the list');
+      await send.click();
+      await expect(row(page, 'the list').getByRole('button', { name: /^Download notes\.txt/ })).toBeVisible(EVENTUAL);
+      await expect(row(owner.page, 'the list').getByRole('button', { name: /^Download notes\.txt/ })).toBeVisible(EVENTUAL);
+
+      // Mention with the suggestion list.
+      await field.fill('');
+      await field.pressSequentially('ping @testu');
+      const option = page.getByRole('listbox', { name: 'Mention suggestions' }).getByRole('option', { name: /testuser/ });
+      await expect(option).toBeVisible(EVENTUAL);
+      await option.click();
+      await expect(field).toHaveValue(/^ping @testuser /);
+      await expect(field).toBeFocused();
+      await send.click();
+      await expect(row(page, 'ping').getByRole('button', { name: '@testuser' })).toBeVisible(EVENTUAL);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+      await shot(page, testInfo, 'c4-write-side');
+    } finally {
+      await n.context.close();
+      await owner.context.close();
     }
   });
 
