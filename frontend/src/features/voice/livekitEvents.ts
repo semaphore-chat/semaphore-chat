@@ -109,6 +109,8 @@ export const ROOM_EVENT = {
 export const PARTICIPANT_EVENT = {
   ParticipantPermissionsChanged:
     'participantPermissionsChanged' satisfies `${ParticipantEvent.ParticipantPermissionsChanged}`,
+  LocalTrackPublished: 'localTrackPublished' satisfies `${ParticipantEvent.LocalTrackPublished}`,
+  LocalTrackUnpublished: 'localTrackUnpublished' satisfies `${ParticipantEvent.LocalTrackUnpublished}`,
 } as const;
 
 // ---- Publish permissions (protobuf `TrackSource`, numeric) ----

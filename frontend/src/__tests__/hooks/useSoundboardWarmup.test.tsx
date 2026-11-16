@@ -38,6 +38,7 @@ class FakeAudioContext {
 
 // --- A LiveKit room's local participant: publications, a grant, and its permission event ---
 const PERMISSIONS_CHANGED = 'participantPermissionsChanged';
+const TRACK_EVENTS = ['localTrackPublished', 'localTrackUnpublished'];
 const FULL: ParticipantPermission = { canPublish: true, canPublishSources: [] } as unknown as ParticipantPermission;
 const grant = (canPublish: boolean, sources: TrackSource[]) =>
   ({ canPublish, canPublishSources: sources }) as unknown as ParticipantPermission;
@@ -54,15 +55,17 @@ interface Deferred {
 function createRoom(...args: [permissions?: ParticipantPermission | undefined]) {
   const permissions = args.length > 0 ? args[0] : FULL;
   const listeners = new Set<() => void>();
-  const publications = new Map<string, { trackSid: string; trackName: string; track: unknown }>();
+  const trackListeners = new Set<() => void>();
+  const publications = new Map<string, { trackSid: string; trackName: string; source?: string; track: unknown }>();
   let sid = 0;
   /** When set, publishes wait until the test settles them. */
   let manual = false;
   const waiting: Deferred[] = [];
   const publishTrack = vi.fn((track: unknown, opts: { name: string }) => {
-    const publication = { trackSid: `sid-${++sid}`, trackName: opts.name, track: { mediaStreamTrack: track } };
+    const publication = { trackSid: `sid-${++sid}`, trackName: opts.name, source: 'unknown', track: { mediaStreamTrack: track } };
     const done = () => {
       publications.set(publication.trackSid, publication);
+      trackListeners.forEach((listener) => listener());
       return publication;
     };
     if (!manual) return Promise.resolve(done());
@@ -80,10 +83,12 @@ function createRoom(...args: [permissions?: ParticipantPermission | undefined]) 
     unpublishTrack,
     on: vi.fn((event: string, listener: () => void) => {
       if (event === PERMISSIONS_CHANGED) listeners.add(listener);
+      if (TRACK_EVENTS.includes(event)) trackListeners.add(listener);
       return localParticipant;
     }),
     off: vi.fn((event: string, listener: () => void) => {
       if (event === PERMISSIONS_CHANGED) listeners.delete(listener);
+      if (TRACK_EVENTS.includes(event)) trackListeners.delete(listener);
       return localParticipant;
     }),
   };
@@ -93,6 +98,7 @@ function createRoom(...args: [permissions?: ParticipantPermission | undefined]) 
     unpublishTrack,
     publications,
     listeners,
+    trackListeners,
     holdPublishes() {
       manual = true;
     },
@@ -107,6 +113,20 @@ function createRoom(...args: [permissions?: ParticipantPermission | undefined]) 
       for (const [key, publication] of publications) {
         if (publication.trackName === SOUNDBOARD_TRACK_NAME) publications.delete(key);
       }
+      trackListeners.forEach((listener) => listener());
+    },
+    /** The user's mic is published (join with the mic on, or an unmute after a server mute). */
+    publishMic() {
+      const publication = { trackSid: `sid-${++sid}`, trackName: 'microphone', source: 'microphone', track: {} };
+      publications.set(publication.trackSid, publication);
+      trackListeners.forEach((listener) => listener());
+    },
+    /** A server mute takes the mic down with the grant. */
+    serverUnpublishMic() {
+      for (const [key, publication] of publications) {
+        if (publication.source === 'microphone') publications.delete(key);
+      }
+      trackListeners.forEach((listener) => listener());
     },
     /** A full reconnect republishes the local tracks under new sids. */
     republishUnderNewSids() {
@@ -292,16 +312,18 @@ describe('useSoundboardWarmup', () => {
     expect(room.publishTrack).toHaveBeenCalledTimes(1);
   });
 
-  it('a mute after the warm-up, then the mute lifted: the track the server took down is published again', async () => {
+  it('a mute after the warm-up, then the mute lifted: the soundboard comes back only once the mic is published again', async () => {
     const room = createRoom();
+    room.publishMic();
     setCall(communityCall(room));
     const { rerender } = mount();
     await flush();
     expect(room.publishTrack).toHaveBeenCalledTimes(1);
 
-    // Muted: the grant loses MICROPHONE and UNKNOWN, the server unpublishes the soundboard track.
+    // Muted: the grant loses MICROPHONE and UNKNOWN, the server unpublishes the mic and the soundboard track.
     act(() => {
       room.serverUnpublishSoundboard();
+      room.serverUnpublishMic();
       room.setPermissions(NO_SOUNDBOARD);
     });
     setCall(communityCall(room, { isServerMuted: true }));
@@ -309,12 +331,54 @@ describe('useSoundboardWarmup', () => {
     await flush();
     expect(room.publishTrack).toHaveBeenCalledTimes(1);
 
+    // Lifted: the grant is back, but the user has not unmuted yet. Publishing now would race the mic's republish
+    // (two audio publishes in flight can land under one track on the server), so nothing yet.
+    act(() => room.setPermissions(FULL));
+    setCall(communityCall(room, { isServerMuted: false }));
+    rerender({ speak: true });
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+
+    // The user unmutes: the mic is published, then the soundboard follows.
+    act(() => room.publishMic());
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(2);
+    const soundboards = [...room.publications.values()].filter((p) => p.trackName === SOUNDBOARD_TRACK_NAME);
+    expect(soundboards).toHaveLength(1);
+  });
+
+  it('a user who joined muted (no mic published yet) warms up at once, and after a lifted mute too', async () => {
+    const room = createRoom();
+    setCall(communityCall(room));
+    const { rerender } = mount();
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      room.serverUnpublishSoundboard();
+      room.setPermissions(NO_SOUNDBOARD);
+    });
+    setCall(communityCall(room, { isServerMuted: true }));
+    rerender({ speak: true });
+    await flush();
     act(() => room.setPermissions(FULL));
     setCall(communityCall(room, { isServerMuted: false }));
     rerender({ speak: true });
     await flush();
     expect(room.publishTrack).toHaveBeenCalledTimes(2);
-    expect(room.publications.size).toBe(1);
+  });
+
+  it('a local mute keeps the mic published: nothing waits and nothing is published again', async () => {
+    const room = createRoom();
+    room.publishMic();
+    setCall(communityCall(room));
+    mount();
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
+    // A local mute only mutes the track (the publication stays); an unrelated track event fires.
+    act(() => room.trackListeners.forEach((listener) => listener()));
+    await flush();
+    expect(room.publishTrack).toHaveBeenCalledTimes(1);
   });
 
   it('a timed-out member (no speak) publishes nothing', async () => {
@@ -382,7 +446,9 @@ describe('useSoundboardWarmup', () => {
     const { unmount } = mount();
     await flush();
     expect(room.listeners.size).toBe(1);
+    expect(room.trackListeners.size).toBe(1);
     unmount();
     expect(room.listeners.size).toBe(0);
+    expect(room.trackListeners.size).toBe(0);
   });
 });
