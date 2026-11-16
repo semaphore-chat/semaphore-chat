@@ -1,7 +1,7 @@
 /**
  * useComposerKeys: the composer key rules lifted from MessageInput. These pin
- * what the classic composer does today (including that it has no IME guard),
- * not what it should do.
+ * what the classic composer does, including that none of its rules run while
+ * an input method (IME) is composing.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type React from 'react';
@@ -136,18 +136,48 @@ describe('useComposerKeys', () => {
       expect(options.handleSend).toHaveBeenCalledTimes(1);
     });
 
-    // Classic has no IME guard: Enter that confirms a composition still sends.
-    it('sends during IME composition (isComposing) — no IME guard today', () => {
+    // The input method owns every key while composing.
+    it('does not send or preventDefault on the Enter that confirms an IME candidate (isComposing)', () => {
       const { options, press } = setup();
-      press({ key: 'Enter', isComposing: true });
-      expect(options.handleSend).toHaveBeenCalledTimes(1);
+      const { preventDefault } = press({ key: 'Enter', isComposing: true });
+      expect(options.handleSend).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
     });
 
-    it('does not look at keyCode 229 (key "Process" does nothing, key "Enter" sends)', () => {
+    it('does not send on Safari\'s confirming Enter (keyCode 229, isComposing false)', () => {
       const { options, press } = setup();
-      press({ key: 'Process', keyCode: 229, isComposing: true });
+      const { preventDefault } = press({ key: 'Enter', keyCode: 229, isComposing: false });
       expect(options.handleSend).not.toHaveBeenCalled();
-      press({ key: 'Enter', keyCode: 229, isComposing: true });
+      expect(preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('a mention-list Enter/Tab during composition does not select', () => {
+      for (const key of ['Enter', 'Tab']) {
+        const mentionHook = openChannelMentions(true, alice, 1);
+        const { options, press } = setup({ mentionHook });
+        press({ key, isComposing: true });
+        expect(mentionHook.handleKeyDown).not.toHaveBeenCalled();
+        expect(options.handleMentionSelect).not.toHaveBeenCalled();
+        expect(options.handleSend).not.toHaveBeenCalled();
+      }
+    });
+
+    it('Escape and Ctrl+B during composition do nothing', () => {
+      const onCancelReply = vi.fn();
+      const { options, press } = setup({ onCancelReply });
+      const esc = press({ key: 'Escape', keyCode: 229 });
+      const bold = press({ key: 'b', ctrlKey: true, isComposing: true });
+      expect(onCancelReply).not.toHaveBeenCalled();
+      expect(options.setText).not.toHaveBeenCalled();
+      expect(esc.preventDefault).not.toHaveBeenCalled();
+      expect(bold.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('after composition ends a plain Enter sends', () => {
+      const { options, press } = setup();
+      press({ key: 'Enter', isComposing: true });
+      expect(options.handleSend).not.toHaveBeenCalled();
+      press({ key: 'Enter', isComposing: false, keyCode: 13 });
       expect(options.handleSend).toHaveBeenCalledTimes(1);
     });
 

@@ -7,6 +7,8 @@
  * the empty composer handing off to "edit my last message", and Enter
  * (send on desktop; Shift+Enter, and any Enter on touch, inserts a newline).
  *
+ * While an input method is composing (IME), none of these rules run.
+ *
  * Order matters and is the classic one: formatting shortcut, then the open
  * mention list, then Esc, then ↑, then Enter.
  */
@@ -132,6 +134,9 @@ export function useComposerKeys({
 
   // --- Keyboard handler ---
   const handleKeyPress = (event: React.KeyboardEvent) => {
+    // An input method owns every key while composing (Safari reports the confirming Enter with isComposing
+    // false and keyCode 229): run no rule and leave the event alone.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (applyFormattingShortcut(event)) {
       return;
     }

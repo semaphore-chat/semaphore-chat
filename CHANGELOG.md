@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Appearance settings gained a `baseColor` (any lowercase `#rrggbb` colour), `matchSystem` (follow the operating system's light/dark setting) and `newDesign` ("try the new design"). `PATCH /appearance-settings` keeps `accentColor` equal to the accent nearest `baseColor`, so clients that only know the named accents keep working; changing `accentColor` to a different accent sets `baseColor` to that accent's primary. Older app versions keep working and do not reset a custom colour: they repeat the accent they already had when the user only changes the mode or intensity, and the server leaves `baseColor` untouched unless the accent actually changes. `GET /appearance-settings` returns all three fields.
 
+### Fixed
+
+- Pressing Enter to confirm an input-method candidate (Chinese, Japanese, Korean typing) no longer sends the half-typed message (#824).
+
 ## [0.10.0] - 2026-11-13
 
 A security release, from a second audit that also covered the web and desktop apps, deployment files and CI. Several fixes change how an instance is deployed and set up, so read the checklist before upgrading.

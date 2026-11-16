@@ -213,6 +213,9 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // An input method owns every key while composing (Safari reports the confirming Enter with isComposing
+    // false and keyCode 229): run no rule and leave the event alone.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (applyFormattingShortcut(e)) return;
     // Touch: Enter inserts a newline (send via button only). Desktop: Enter sends.
     if (e.key === "Enter" && !e.shiftKey && !isTouchDevice) {
