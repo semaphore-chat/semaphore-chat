@@ -73,8 +73,7 @@ const Body = () => (
       author="me"
       avatarColour="#8E75FF"
       time="8:23 PM"
-      state="pending"
-      body={<MessageText segments={text('on its way: uploading, failed with Retry, a picture uploading')} />}
+      body={<MessageText segments={text('sent, its files still on their way: uploading, failed with Retry, a picture uploading')} />}
       attachments={
         <Stack gap="sm">
           <AttachmentTile kind="file" name="recording.mp3" detail="38.4 MB" progress={42} onRemove={noop} />

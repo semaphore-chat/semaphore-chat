@@ -8,9 +8,9 @@
  * access (403), gone (404) and a load error with Try again.
  *
  * Write side (PR 10c-2a): the composer typing, with the mention list open, replying, and its three notices (no
- * permission, timed out, read-only); a message's actions Sheet on your own message, on someone else's (as the
- * sandbox's owner, who may pin and delete), and without the right to react; editing in place; a failed send with
- * Retry. Stories that need a press (the Sheet, Reply, Edit) make it themselves once the chat has loaded.
+ * permission, timed out, read-only); a message's actions Sheet on your own message, on someone else's (a plain
+ * member), as a moderator (Pin and Delete), and without the right to react; editing in place; a failed send with
+ * Retry; light variants of the main ones. The signed-in user is alexk (id `me`). Stories that need a press (the Sheet, Reply, Edit) make it themselves once the chat has loaded.
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
@@ -109,9 +109,28 @@ const FAILED = message('me', at(0, 21), [text('did this one go through?')], { id
 const channelsPath = `/api/channels/community/${LOUNGE_COMMUNITY_ID}`;
 const messagesPath = `/api/messages/channel/${CHANNEL}`;
 
+/** The channel itself (its name for the composer's label and notices). */
+const channelHandler = (channel: { preset?: string; name?: string } = {}) =>
+  http.get(`/api/channels/${CHANNEL}`, () =>
+    HttpResponse.json({
+      id: CHANNEL,
+      name: channel.name ?? 'general',
+      communityId: LOUNGE_COMMUNITY_ID,
+      type: 'TEXT',
+      isPrivate: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      position: 0,
+      slowmodeSeconds: 0,
+      preset: channel.preset ?? 'NORMAL',
+    }),
+  );
+
 const chatHandlers: HttpHandler[] = [
+  channelHandler(),
   http.get(messagesPath, () => HttpResponse.json({ messages: [...MESSAGES].reverse(), continuationToken: undefined })),
   http.get('/api/users/:id', ({ params }) => {
+    // The signed-in user's own profile is the community fixture's (alexk, id `me`): not this route's.
+    if (params.id === 'profile') return undefined;
     const person = PEOPLE[String(params.id)];
     return person ? HttpResponse.json({ id: params.id, avatarUrl: null, ...person }) : HttpResponse.json({}, { status: 404 });
   }),
@@ -171,6 +190,8 @@ const caretToEnd = {
     const field = el as HTMLTextAreaElement;
     field.focus();
     field.setSelectionRange(field.value.length, field.value.length);
+    // A key's release is when the field reads the caret (React's select event), as after typing the "@".
+    field.dispatchEvent(new KeyboardEvent('keyup', { key: '@', bubbles: true }));
   },
 };
 
@@ -278,26 +299,17 @@ const capsHandlers = (caps: Partial<Caps>, channel: { preset?: string; name?: st
   http.get(`/api/channels/community/${LOUNGE_COMMUNITY_ID}/permissions/me`, () =>
     HttpResponse.json({ communityId: LOUNGE_COMMUNITY_ID, channels: [{ channelId: CHANNEL, ...ALL_CAPS, ...caps }] }),
   ),
-  http.get(`/api/channels/${CHANNEL}`, () =>
-    HttpResponse.json({
-      id: CHANNEL,
-      name: channel.name ?? 'general',
-      communityId: LOUNGE_COMMUNITY_ID,
-      type: 'TEXT',
-      isPrivate: false,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      position: 0,
-      slowmodeSeconds: 0,
-      preset: channel.preset ?? 'NORMAL',
-    }),
-  ),
+  channelHandler(channel),
 ];
 
 /** Typing: a draft in the field (Send is available). */
 export const ComposerTyping = story({ draft: 'same time tomorrow? I can host' });
 
-/** Typing a mention: the suggestion list over the conversation, the first option highlighted. */
+/** Typing a mention: the suggestion list over the conversation (@here, @channel, the people), the first highlighted. */
 export const ComposerMentionList = story({ draft: 'hey @', steps: [caretToEnd] });
+
+/** The same, light. */
+export const ComposerMentionListLight = story({ mode: 'light', draft: 'hey @', steps: [caretToEnd] });
 
 /** Replying: the banner names who, with a line of the original; Escape cancels. */
 export const ComposerReply = story({ steps: [openActions('you in?'), press('Reply')] });
@@ -315,11 +327,26 @@ export const ComposerReadOnly = story({
   handlers: capsHandlers({ post: false, attach: false, postingRoleNames: ['Moderator', 'Community Admin'] }, { preset: 'ANNOUNCEMENT', name: 'announcements' }),
 });
 
-/** Your own message's actions: quick reactions, Reply, Edit, Copy, Delete (and Pin as the owner). */
+/** Your own message's actions: the quick reactions, Reply, Edit, Copy and Delete (no Pin: a plain member). */
 export const ActionsOwnMessage = story({ steps: [openActions('bringing the headset')] });
 
-/** Someone else's message, as the sandbox's owner (a moderator): Reply, Pin, Copy, Delete. */
+/** Someone else's message, as a plain member: the quick reactions, Reply and Copy (no Pin, no Delete). */
 export const ActionsSomeoneElses = story({ steps: [openActions('you in?')] });
+
+/** The reader's roles in this channel may delete and pin others' messages (a moderator). */
+const moderatorHandlers: HttpHandler[] = [
+  http.get(`/api/roles/my/channel/${CHANNEL}`, () =>
+    HttpResponse.json({
+      resourceType: 'CHANNEL',
+      userId: 'me',
+      resourceId: CHANNEL,
+      roles: [{ id: 'r-mod', name: 'Moderator', actions: ['DELETE_MESSAGE', 'PIN_MESSAGE', 'UNPIN_MESSAGE'] }],
+    }),
+  ),
+];
+
+/** Someone else's message, as a moderator: the quick reactions, Reply, Pin, Copy and Delete. */
+export const ActionsModerator = story({ handlers: moderatorHandlers, steps: [openActions('you in?')] });
 
 /** Without the right to react (and no posting): no quick reactions. */
 export const ActionsNoPermissions = story({
@@ -337,3 +364,18 @@ export const EditingInPlace = story({ steps: [openActions('bringing the headset'
 export const FailedSend = story({
   handlers: [http.get(messagesPath, () => HttpResponse.json({ messages: [...MESSAGES, FAILED].reverse(), continuationToken: undefined }))],
 });
+
+/** Light: your own message's actions. */
+export const ActionsOwnMessageLight = story({ mode: 'light', steps: [openActions('bringing the headset')] });
+
+/** Light: editing in place. */
+export const EditingInPlaceLight = story({ mode: 'light', steps: [openActions('bringing the headset'), press('Edit message')] });
+
+/** Light: a failed send. */
+export const FailedSendLight = story({
+  mode: 'light',
+  handlers: [http.get(messagesPath, () => HttpResponse.json({ messages: [...MESSAGES, FAILED].reverse(), continuationToken: undefined }))],
+});
+
+/** Light: no permission to post. */
+export const ComposerNoPermissionLight = story({ mode: 'light', handlers: capsHandlers({ post: false, attach: false }) });
