@@ -214,11 +214,15 @@ export function useChannelComposer({ communityId, channelId, inputRef, send, onE
       const content = text.trim();
       let spans: Span[] = parseMessageWithMentions(content, userMentions, channelMentions, aliasMentions, emojiMentions);
       if (spans.length === 0) spans = [{ type: SpanType.PLAINTEXT, text: '' }];
-      await send(content, spans, selected);
-      sendTypingStop();
+      // The send puts its pending row in the list at once (before it waits for the server): the field and the tray
+      // clear now, as the old composer's do, and are never touched again by this send. What the reader types while
+      // it waits for the server stays, whatever the answer.
+      const sent = send(content, spans, selected);
       clearDraft();
       files.clearFiles();
       mentionHook.close();
+      await sent;
+      sendTypingStop();
     } catch (error) {
       logger.error('Failed to send message:', error);
       onError('Failed to send message. Please try again.');

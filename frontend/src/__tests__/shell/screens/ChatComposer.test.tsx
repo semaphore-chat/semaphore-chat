@@ -5,7 +5,7 @@
  */
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { KitProvider } from '../../../kit';
 import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChatComposer } from '../../../shell/lounge/screens/chat/ChatComposer';
@@ -20,7 +20,26 @@ import { clearComposerDrafts } from '../../../hooks/useComposerDraft';
 import { SpanType, type Message } from '../../../types/message.type';
 import { createMessage, createTestQueryClient, renderWithProviders } from '../../test-utils';
 
-const sendSpy = vi.hoisted(() => vi.fn(async () => undefined));
+/**
+ * The server's acknowledgement, held until a test answers it (as a real send, which settles only on the ack or a
+ * timeout). `acks.answer()` settles the oldest send; `acks.refuse()` rejects it.
+ */
+const acks = vi.hoisted(() => {
+  const waiting: { resolve: () => void; reject: (error: Error) => void }[] = [];
+  return {
+    waiting,
+    answer: () => waiting.shift()?.resolve(),
+    refuse: () => waiting.shift()?.reject(new Error('refused')),
+  };
+});
+const sendSpy = vi.hoisted(() =>
+  vi.fn(
+    (..._args: unknown[]) =>
+      new Promise<void>((resolve, reject) => {
+        acks.waiting.push({ resolve, reject });
+      }),
+  ),
+);
 vi.mock('../../../hooks/useMessageFileUpload', () => ({ useMessageFileUpload: () => ({ handleSendMessage: sendSpy }) }));
 const availability = vi.hoisted(() => ({ current: { state: 'ok', channelName: 'lobby', canAttach: true } as ComposerAvailability }));
 vi.mock('../../../hooks/useComposerAvailability', () => ({ useComposerAvailability: () => availability.current }));
@@ -61,6 +80,7 @@ function setup({ replyTo = null as Message | null } = {}) {
 describe('ChatComposer', () => {
   beforeEach(() => {
     sendSpy.mockClear();
+    acks.waiting.length = 0;
     typing.start.mockClear();
     typing.stop.mockClear();
     touch.current = false;
@@ -76,8 +96,32 @@ describe('ChatComposer', () => {
     await user.keyboard('{Enter}');
     await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
     expect(sendSpy).toHaveBeenCalledWith('hello there', [{ type: SpanType.PLAINTEXT, text: 'hello there' }], [], undefined);
-    await waitFor(() => expect(field().value).toBe(''));
+    expect(field().value).toBe('');
+    // Typing stops once the server has the message.
+    await act(async () => acks.answer());
     expect(typing.stop).toHaveBeenCalled();
+  });
+
+  it('the field clears as soon as the send is under way; what is typed while it waits is never touched', async () => {
+    const { user, field } = setup();
+    await user.type(field(), 'on my way{Enter}');
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    // The pending row is in the list: the field is empty at once, Send is busy.
+    expect(field().value).toBe('');
+    expect(screen.getByRole('button', { name: 'Send message' })).toHaveAttribute('aria-busy', 'true');
+    await user.type(field(), 'next one');
+    await act(async () => acks.answer());
+    expect(field().value).toBe('next one');
+    expect(screen.getByRole('button', { name: 'Send message' })).not.toHaveAttribute('aria-busy');
+  });
+
+  it('a refused send leaves the field alone (the failed row offers Retry) and says it failed', async () => {
+    const { user, field } = setup();
+    await user.type(field(), 'on my way{Enter}');
+    await user.type(field(), 'still typing');
+    await act(async () => acks.refuse());
+    expect(field().value).toBe('still typing');
+    expect(await screen.findByText('Failed to send message. Please try again.')).toBeInTheDocument();
   });
 
   it('Enter while an input method composes never sends (the IME guard of useComposerKeys)', async () => {
