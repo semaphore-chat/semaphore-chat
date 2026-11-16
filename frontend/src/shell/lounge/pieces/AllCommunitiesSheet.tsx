@@ -2,8 +2,8 @@
  * The "All communities" sheet the dock's All button opens (design §3.2): the instance heading, every
  * community the server lists for this user as a row with its state line, a filter field above 8
  * communities, "Create a community" when the user may, and on a phone Settings, Your profile and Sign out
- * at the foot (PA-10: a phone Lounge screen has no user card and no navigation). Sign out is asked first;
- * the sheet stays open under the question, so Cancel returns to the row. One keyboard list over the rows
+ * at the foot (PA-10: a phone Lounge screen has no user card and no navigation). Sign out… is asked first
+ * (the frame's question); the sheet stays open under it, so Cancel returns to the row. One keyboard list over the rows
  * (`useListFocus`, vertical, typeahead). Loading, empty and error through `LoadState`.
  *
  * `AllCommunitiesSheet` is the view (closed props, stories); `AllCommunitiesSheetConnected` reads
@@ -37,9 +37,9 @@ import {
   useMyCommunities,
 } from '../../../data/myCommunities';
 import { useUnreadSummary } from '../../../data/unread';
-import { rememberActivatedRow } from '../frame/routeMemory';
+import { rememberActivatedRow } from '../../routeMemory';
 import { useLoungeLinks } from '../links';
-import { useSignOutConfirm } from './signOutConfirm';
+import { useSignOutRequest } from './signOutRequest';
 import { CommunityPictureProbes } from './communityPictures';
 import { useCommunityPictures } from './useCommunityPictures';
 import {
@@ -121,7 +121,7 @@ function Body({
         ? [
             { id: FOOT_ROWS.settings, label: 'Settings', disabled: false },
             { id: FOOT_ROWS.profile, label: 'Your profile', disabled: false },
-            { id: FOOT_ROWS.signOut, label: 'Sign out', disabled: false },
+            { id: FOOT_ROWS.signOut, label: 'Sign out…', disabled: false },
           ]
         : []),
     ],
@@ -186,7 +186,7 @@ function Body({
             focus={list.rowFocus(FOOT_ROWS.profile)}
           />
           <ListRow
-            primary="Sign out"
+            primary="Sign out…"
             leading={<Icon name="LogOut" />}
             onClick={onSignOut}
             focus={list.rowFocus(FOOT_ROWS.signOut)}
@@ -311,7 +311,7 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
     if (!open) setFilter('');
   }
   const { pictures, onUrl } = useCommunityPictures();
-  const signOut = useSignOutConfirm();
+  const requestSignOut = useSignOutRequest();
 
   const items = useMemo<SheetCommunity[]>(
     () =>
@@ -369,10 +369,9 @@ export function AllCommunitiesSheetConnected({ open, onClose, currentId }: AllCo
         filter={filter}
         onFilterChange={setFilter}
         showSettings={range === 'phone'}
-        onSignOut={signOut.request}
+        onSignOut={requestSignOut}
         onActivate={onActivate}
       />
-      {signOut.dialog}
     </>
   );
 }

@@ -24,7 +24,7 @@ import {
 import { useMyCommunities } from '../../../data/myCommunities';
 import { useUnreadSummary } from '../../../data/unread';
 import { useLoungeLinks } from '../links';
-import { LOUNGE_ROW_ATTRIBUTE, rememberActivatedRow } from '../frame/routeMemory';
+import { rememberActivatedRow, rowMarker } from '../../routeMemory';
 import { CommunityPictureProbes } from './communityPictures';
 import { useCommunityPictures } from './useCommunityPictures';
 import { ALL_LABEL, ALL_ROW, DOCK_LABEL, INBOX_ROW, dockRowId } from './communitiesModel';
@@ -64,20 +64,6 @@ const NONE: readonly DockCommunity[] = [];
 /** How many placeholder circles stand for the communities while they load. */
 const SKELETONS = 3;
 
-/**
- * The ref callback that marks a dock item for RouteFocus's remembered row (DockItem takes no data attributes). One
- * per id for the app's life, so an item's ref never changes and is never detached and attached again.
- */
-const markers = new Map<string, (element: HTMLElement | null) => void>();
-function markRow(id: string): (element: HTMLElement | null) => void {
-  let marker = markers.get(id);
-  if (marker === undefined) {
-    marker = (element) => element?.setAttribute(LOUNGE_ROW_ATTRIBUTE, dockRowId(id));
-    markers.set(id, marker);
-  }
-  return marker;
-}
-
 interface CommunityItemProps {
   id: string;
   name: string;
@@ -105,7 +91,8 @@ const CommunityItem = memo(
   function CommunityItem({ id, name, href, src, mentions, newMessages, current, focus }: CommunityItemProps): JSX.Element {
     return (
       <DockItem
-        ref={markRow(id)}
+        // Marks the item for RouteFocus's remembered row (DockItem takes no data attributes).
+        ref={rowMarker(dockRowId(id))}
         name={name}
         src={src}
         href={href}

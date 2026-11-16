@@ -5,8 +5,8 @@
  * A phone shows the left pane (a community home) and no user card.
  */
 import type { JSX } from 'react';
-import { useConfirmDestructive } from '../../kit';
-import { SIGN_OUT_DESCRIPTION, SIGN_OUT_LABEL, SIGN_OUT_TITLE } from '../../shell/lounge/pieces/signOutText';
+import { SignOutQuestionHost } from '../../shell/lounge/pieces/signOutConfirm';
+import { useSignOutRequest } from '../../shell/lounge/pieces/signOutRequest';
 import { ClickOnMount } from '../fixtures/interactions';
 import { CommunityLeftView, type CommunityLeftViewProps } from '../../shell/lounge/pieces/community/CommunityLeft';
 import { VoiceRoomCard, type VoiceRoomCardProps } from '../../shell/lounge/pieces/community/VoiceRoomCard';
@@ -63,13 +63,25 @@ const findAccountMenu = (): HTMLElement | null => document.querySelector<HTMLEle
 const findSignOutItem = (): HTMLElement | null =>
   [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'Sign out…') ?? null;
 
-/** The user card with the sign-out question as the connected card asks it (inside the page's KitProvider). */
-function StoryUserCard({ user, account }: { user: typeof USER_IN_CALL; account?: LeftOptions['account'] }): JSX.Element {
-  const signOut = useConfirmDestructive({ title: SIGN_OUT_TITLE, description: SIGN_OUT_DESCRIPTION, confirmLabel: SIGN_OUT_LABEL, run: NEVER });
+interface StoryUserCardProps {
+  user: typeof USER_IN_CALL;
+  account?: LeftOptions['account'];
+}
+
+/** The user card under the frame's sign-out question (the shared host, inside the page's KitProvider). */
+function StoryUserCard(props: StoryUserCardProps): JSX.Element {
+  return (
+    <SignOutQuestionHost run={NEVER}>
+      <StoryUserCardBody {...props} />
+    </SignOutQuestionHost>
+  );
+}
+
+function StoryUserCardBody({ user, account }: StoryUserCardProps): JSX.Element {
+  const requestSignOut = useSignOutRequest();
   return (
     <>
-      <UserCard {...user} onSignOut={signOut.request} />
-      {signOut.dialog}
+      <UserCard {...user} onSignOut={requestSignOut} />
       {account && <ClickOnMount find={findAccountMenu} />}
       {account === 'signOut' && <ClickOnMount find={findSignOutItem} />}
     </>

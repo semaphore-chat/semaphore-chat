@@ -10,7 +10,7 @@
  */
 import { memo, useCallback, useMemo, useRef, type JSX } from 'react';
 import { Badge, Icon, ListRow, LoadState, Skeleton, Stack, Text, useListFocus, type LoadController, type RowFocus } from '../../../../kit';
-import { LOUNGE_ROW_ATTRIBUTE } from '../../frame/routeMemory';
+import { LOUNGE_ROW_ATTRIBUTE } from '../../../routeMemory';
 import { sameRowFocus } from '../sameRowFocus';
 import { channelTrailingLabel } from './lines';
 

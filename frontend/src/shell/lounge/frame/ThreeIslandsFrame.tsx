@@ -9,6 +9,7 @@ import { ESCAPE_PRIORITY, ThreeIslands, useScreenEscape, useWidthRange } from '.
 import type { LoungeParams, ScreenChrome, ThreeIslandsScreen } from '../screen';
 import { ScreenChromeContext } from '../screen';
 import { APP_LINKS, LoungeLinksContext } from '../links';
+import { SignOutConfirmHost } from '../pieces/signOutConfirm';
 import { ShellDockConnected, type DockCurrent } from '../pieces/ShellDock';
 import { AllCommunitiesSheetConnected } from '../pieces/AllCommunitiesSheet';
 import { CommunityLeft } from '../pieces/community/CommunityLeft';
@@ -83,36 +84,39 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
   return (
     <ScreenChromeContext value={chrome}>
       <LoungeLinksContext value={screen.links ?? APP_LINKS}>
-        <ThreeIslands
-          dock={<ShellDockConnected current={dockCurrent(screen, params)} onOpenAll={() => setAllOpen(true)} allOpen={allOpen} />}
-          left={
-            screen.place === 'community' ? (
-              communityId === null ? null : (
-                <CommunityLeft communityId={communityId} channelId={params.channelId ?? null} />
+        {/* One sign-out question above the width switch: the controls that open it come and go with the width. */}
+        <SignOutConfirmHost>
+          <ThreeIslands
+            dock={<ShellDockConnected current={dockCurrent(screen, params)} onOpenAll={() => setAllOpen(true)} allOpen={allOpen} />}
+            left={
+              screen.place === 'community' ? (
+                communityId === null ? null : (
+                  <CommunityLeft communityId={communityId} channelId={params.channelId ?? null} />
+                )
+              ) : (
+                <InboxLeft />
               )
-            ) : (
-              <InboxLeft />
-            )
-          }
-          leftFooter={
-            // The user's own card stays at the left island's foot at compact and wide; a phone has none.
-            screen.place === 'community' && communityId !== null && range !== 'phone' ? <UserCardConnected /> : undefined
-          }
-          leftLabel={screen.place === 'community' ? 'Community' : 'Inbox'}
-          centre={
-            <ScreenBoundary resetKey={resetKey} fallback={(reset) => <ScreenError inIsland onRetry={reset} />}>
-              <Suspense fallback={<CentreSkeleton />}>{Centre === null ? null : <Centre params={params} />}</Suspense>
-            </ScreenBoundary>
-          }
-          centreLabel={title ?? 'Conversation'}
-          right={rightContent}
-          rightLabel={screen.rightLabel ?? (right === 'members' ? 'Members' : undefined)}
-          rightOpen={rightChoice ?? undefined}
-          onRightClose={() => setRightChoice(false)}
-          callBar={callShown ? <ShellCall /> : undefined}
-          phonePane={screen.phonePane}
-        />
-        <AllCommunitiesSheetConnected open={allOpen} onClose={() => setAllOpen(false)} currentId={communityId} />
+            }
+            leftFooter={
+              // The user's own card stays at the left island's foot at compact and wide; a phone has none.
+              screen.place === 'community' && communityId !== null && range !== 'phone' ? <UserCardConnected /> : undefined
+            }
+            leftLabel={screen.place === 'community' ? 'Community' : 'Inbox'}
+            centre={
+              <ScreenBoundary resetKey={resetKey} fallback={(reset) => <ScreenError inIsland onRetry={reset} />}>
+                <Suspense fallback={<CentreSkeleton />}>{Centre === null ? null : <Centre params={params} />}</Suspense>
+              </ScreenBoundary>
+            }
+            centreLabel={title ?? 'Conversation'}
+            right={rightContent}
+            rightLabel={screen.rightLabel ?? (right === 'members' ? 'Members' : undefined)}
+            rightOpen={rightChoice ?? undefined}
+            onRightClose={() => setRightChoice(false)}
+            callBar={callShown ? <ShellCall /> : undefined}
+            phonePane={screen.phonePane}
+          />
+          <AllCommunitiesSheetConnected open={allOpen} onClose={() => setAllOpen(false)} currentId={communityId} />
+        </SignOutConfirmHost>
       </LoungeLinksContext>
     </ScreenChromeContext>
   );

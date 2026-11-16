@@ -74,6 +74,7 @@ import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityL
 import { CommunityHeader } from '../../../shell/lounge/pieces/community/CommunityHeader';
 import { VoiceRoomCard } from '../../../shell/lounge/pieces/community/VoiceRoomCard';
 import { UserCard, UserCardConnected } from '../../../shell/lounge/pieces/community/UserCard';
+import { SignOutQuestionHost } from '../../../shell/lounge/pieces/signOutConfirm';
 import { ChannelSection } from '../../../shell/lounge/pieces/community/ChannelSection';
 import { callFromModel, callState } from '../../../shell/lounge/pieces/community/lines';
 import { peopleLine, talkingLine, aroundLine } from '../../../shell/lounge/pieces/community/lines';
@@ -547,7 +548,9 @@ describe('UserCard (connected)', () => {
       <Hub>
         <MemoryRouter>
           <Kit>
-            <UserCardConnected />
+            <SignOutQuestionHost run={() => Promise.resolve()}>
+              <UserCardConnected />
+            </SignOutQuestionHost>
           </Kit>
         </MemoryRouter>
       </Hub>,
@@ -572,7 +575,9 @@ describe('UserCard (connected)', () => {
       <Hub>
         <MemoryRouter>
           <Kit>
-            <UserCardConnected />
+            <SignOutQuestionHost run={() => Promise.resolve()}>
+              <UserCardConnected />
+            </SignOutQuestionHost>
           </Kit>
         </MemoryRouter>
       </Hub>,

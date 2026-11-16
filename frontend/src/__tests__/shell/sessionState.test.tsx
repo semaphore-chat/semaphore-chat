@@ -9,6 +9,7 @@ import { clearShellSessionState } from '../../shell/sessionState';
 import { setDesignPreview, readDesignPreview, clearDesignPreview } from '../../shell/designPreview';
 import { showDesktopSignInNotice, useDesktopSignInBanner } from '../../data/signInNotice';
 import { takeFirstAnnouncement } from '../../shell/bannerMemory';
+import { rememberActivatedRow, rememberedRow, rowMarker } from '../../shell/routeMemory';
 import { STORAGE_KEY } from '../../theme/constants';
 import { createTestQueryClient } from '../test-utils';
 
@@ -33,6 +34,17 @@ describe('clearShellSessionState', () => {
     expect(readDesignPreview()).toBeNull();
     expect(notice.result.current).toBeNull();
     expect(takeFirstAnnouncement('signIn')).toBe(true);
+  });
+
+  it("forgets the new shell's route memory: the previous user's remembered rows and row markers", () => {
+    rememberActivatedRow('/__lounge/community/c-1', 'dock:c-2');
+    const marker = rowMarker('dock:c-2');
+    expect(rowMarker('dock:c-2')).toBe(marker);
+
+    clearShellSessionState(createTestQueryClient());
+    expect(rememberedRow('/__lounge/community/c-1')).toBeNull();
+    // A new marker: nothing keyed by the previous user's ids is kept.
+    expect(rowMarker('dock:c-2')).not.toBe(marker);
   });
 
   it('keeps the preview on a page load that finds no session (a link opened before signing in)', () => {

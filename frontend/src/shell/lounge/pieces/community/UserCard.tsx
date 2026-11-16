@@ -4,13 +4,13 @@
  * call the mic and deafen STATE as status (an icon and words, no buttons: the call controls live on the
  * call bar at every width). The state comes from the call bar model, the one model both shells read, so
  * push-to-talk, server mute and a missing SPEAK permission read as they do on the classic bar.
- * The account menu at its end: Settings and Your profile (the classic screens), and Sign out…, asked first
- * (the kit's confirm host over the app's one sign-out).
+ * The account menu at its end (a "more" button): Settings and Your profile (the classic screens), and Sign
+ * out…, asked first (the frame's sign-out question, `../signOutConfirm`).
  */
 import { startTransition, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar, Card, Icon, IconButton, Menu, Skeleton, Stack, Text, type MenuEntry } from '../../../../kit';
-import { useSignOutConfirm } from '../signOutConfirm';
+import { useSignOutRequest } from '../signOutRequest';
 import { useCallBarModel } from '../../../../data/callBar';
 import { callFromModel, callState } from './lines';
 import { useConnectionState } from '../../../../data/connection';
@@ -63,7 +63,7 @@ function AccountMenu({ onSettings, onProfile, onSignOut }: AccountMenuProps): JS
     <>
       <IconButton
         ref={button}
-        icon="Settings"
+        icon="Ellipsis"
         label={ACCOUNT_MENU_LABEL}
         size="sm"
         aria-haspopup="menu"
@@ -134,23 +134,20 @@ export function UserCardConnected(): JSX.Element {
   const connection = useConnectionState();
   const model = useCallBarModel(false);
   const { blobUrl } = useAuthenticatedImage(user?.avatarUrl ?? null);
-  const signOut = useSignOutConfirm();
+  const requestSignOut = useSignOutRequest();
 
   // While a join runs the card says so (the model already names the room being joined).
   const line = model ? `${model.phase === 'connecting' ? 'Joining' : 'In'} ${model.place.name}` : (user?.status ?? null);
   return (
-    <>
-      <UserCard
-        name={user ? user.displayName || user.username : null}
-        src={blobUrl ?? undefined}
-        online={connection === 'connected'}
-        line={line || null}
-        call={model ? callFromModel(model) : null}
-        onSettings={() => startTransition(() => navigate('/settings'))}
-        onProfile={() => startTransition(() => navigate('/profile'))}
-        onSignOut={signOut.request}
-      />
-      {signOut.dialog}
-    </>
+    <UserCard
+      name={user ? user.displayName || user.username : null}
+      src={blobUrl ?? undefined}
+      online={connection === 'connected'}
+      line={line || null}
+      call={model ? callFromModel(model) : null}
+      onSettings={() => startTransition(() => navigate('/settings'))}
+      onProfile={() => startTransition(() => navigate('/profile'))}
+      onSignOut={requestSignOut}
+    />
   );
 }

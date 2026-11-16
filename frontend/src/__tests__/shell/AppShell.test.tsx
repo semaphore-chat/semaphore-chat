@@ -135,7 +135,7 @@ import { AppRoutes } from '../../routes';
 import { DesignPreviewPage } from '../../pages/debug/PWADebugPage';
 import { clearDesignPreview, setDesignPreview } from '../../shell/designPreview';
 import { renewLoungeRoot } from '../../shell/loungeRootLazy';
-import { LOUNGE_ROUTES } from '../../shell/loungeRoutes';
+import { LOUNGE_ROUTES, loungeCommunityFixturePath } from '../../shell/loungeRoutes';
 import { readShownShellKind } from '../../shell/shownShellKind';
 
 // --- A viewport whose width can change, with real media-query listeners ------
@@ -372,10 +372,10 @@ describe('with the new design off', () => {
     [390, 'mobile-screen'],
     [820, 'tablet-content'],
     [1440, 'rail'],
-  ] as const)('shows the old shell at %d px, on the marker route too, and never loads the new shell', async (width, marker) => {
+  ] as const)('shows the old shell at %d px, on the marker and the community fixture too, and never loads the new shell', async (width, marker) => {
     createViewport(width);
     lounge.loaded = 0;
-    for (const route of ['/', '/__lounge', '/settings']) {
+    for (const route of ['/', '/__lounge', loungeCommunityFixturePath('c-1'), '/settings']) {
       const { container, unmount } = renderShell({ route, inCall: false });
       await flush();
       expect(screen.getByTestId(marker)).toBeInTheDocument();

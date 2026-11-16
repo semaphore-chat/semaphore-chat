@@ -7,7 +7,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import { renderWithKit } from '../../test-utils/renderWithKit';
 import { ShellDock, type ShellDockProps } from '../../../shell/lounge/pieces/ShellDock';
-import { LOUNGE_ROW_ATTRIBUTE } from '../../../shell/lounge/frame/routeMemory';
+import { LOUNGE_ROW_ATTRIBUTE } from '../../../shell/routeMemory';
 import { LoungeLinksContext } from '../../../shell/lounge/links';
 import { LONG_NAME, MOCKUP_STATES, sampleCommunities } from '../../../stories/fixtures/loungeCommunities';
 

@@ -107,6 +107,17 @@ describe('chooseShell', () => {
   });
 });
 
+/** The registered paths outside `/__lounge` whose descriptor sets `links` (only a fixture may). */
+async function routesSettingLinksOutsideFixtures(routes: readonly LoungeRoute[]): Promise<string[]> {
+  const offenders: string[] = [];
+  for (const route of routes) {
+    if (route.path.startsWith(LOUNGE_FIXTURE_PREFIX)) continue;
+    const { default: screen } = await route.load();
+    if (screen.template === 'threeIslands' && screen.links !== undefined) offenders.push(route.path);
+  }
+  return offenders;
+}
+
 describe('the registry (LOUNGE_ROUTES)', () => {
   const table = appRoutes();
 
@@ -135,11 +146,24 @@ describe('the registry (LOUNGE_ROUTES)', () => {
   });
 
   it('only a fixture sets `links`: a real screen links to the app\'s routes', async () => {
-    for (const route of LOUNGE_ROUTES) {
-      const { default: screen } = await route.load();
-      if (route.path.startsWith(LOUNGE_FIXTURE_PREFIX)) continue;
-      expect(screen.template === 'threeIslands' && screen.links, `${route.path} sets links`).toBeFalsy();
-    }
+    expect(await routesSettingLinksOutsideFixtures(LOUNGE_ROUTES)).toEqual([]);
+    // The rule bites: a real route whose descriptor sets links is reported.
+    const realWithLinks: LoungeRoute = {
+      path: '/community/:communityId',
+      widths: ['phone'],
+      load: async () => ({
+        default: {
+          template: 'threeIslands',
+          place: 'community',
+          phonePane: 'left',
+          Centre: null,
+          right: 'members',
+          useTitle: () => null,
+          links: { community: (id: string) => `#/x/${id}` },
+        },
+      }),
+    };
+    expect(await routesSettingLinksOutsideFixtures([...LOUNGE_ROUTES, realWithLinks])).toEqual(['/community/:communityId']);
   });
 
   it('the community fixture keeps its dock and sheet on the fixture', async () => {

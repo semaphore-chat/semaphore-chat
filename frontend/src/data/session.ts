@@ -9,11 +9,10 @@ import { useLogout } from '../hooks/useLogout';
 export interface SignOut {
   /** Runs the sign-out. While one runs, a second call returns the running one. Resolves after navigating. */
   signOut(): Promise<void>;
-  /** A sign-out is running (any control's). */
-  signingOut: boolean;
 }
 
 export function useSignOut(): SignOut {
-  const { handleLogout, logoutLoading } = useLogout();
-  return { signOut: () => handleLogout(), signingOut: logoutLoading };
+  // The busy state is the sign-out question's (its confirm button), owned by the frame across widths.
+  const { handleLogout } = useLogout();
+  return { signOut: () => handleLogout() };
 }

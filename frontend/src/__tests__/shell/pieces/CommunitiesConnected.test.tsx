@@ -16,7 +16,8 @@ import { VoiceProvider } from '../../../contexts/VoiceProvider';
 import { VoiceActionType, useVoiceDispatch } from '../../../contexts/VoiceContext';
 import { ShellDockConnected, type DockCurrent } from '../../../shell/lounge/pieces/ShellDock';
 import { AllCommunitiesSheetConnected } from '../../../shell/lounge/pieces/AllCommunitiesSheet';
-import { forgetActivatedRows, rememberedRow } from '../../../shell/lounge/frame/routeMemory';
+import { SignOutConfirmHost } from '../../../shell/lounge/pieces/signOutConfirm';
+import { forgetRouteMemory, rememberedRow } from '../../../shell/routeMemory';
 import { handleNewMessage, handleReadReceiptUpdated } from '../../../socket-hub/handlers/messageHandlers';
 import { handleNewNotification } from '../../../socket-hub/handlers/notificationHandlers';
 import { handleMemberAddedToCommunity } from '../../../socket-hub/handlers/communityHandlers';
@@ -33,7 +34,7 @@ vi.mock('../../../api-client/client.gen', async (importOriginal) => {
 
 // Sign out: the app's one sequence is tested with useLogout; here only that the sheet asks, then calls it once.
 const signOut = vi.hoisted(() => ({ fn: vi.fn(() => Promise.resolve()) }));
-vi.mock('../../../data/session', () => ({ useSignOut: () => ({ signOut: signOut.fn, signingOut: false }) }));
+vi.mock('../../../data/session', () => ({ useSignOut: () => ({ signOut: signOut.fn }) }));
 
 const BASE = 'http://localhost:3000';
 
@@ -118,7 +119,10 @@ function renderPieces(current: DockCurrent = { kind: 'community', id: 'c-1' }, e
       <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
         {/* AppFrame holds the toast region */}
         <AppFrame>
-          <Pieces current={current} />
+          {/* The frame's one sign-out question. */}
+          <SignOutConfirmHost>
+            <Pieces current={current} />
+          </SignOutConfirmHost>
           {extra}
         </AppFrame>
       </KitProvider>
@@ -132,7 +136,7 @@ const dockNames = () => [...dock().querySelectorAll('a, button')].map((element) 
 
 let consoleError: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
-  forgetActivatedRows();
+  forgetRouteMemory();
   consoleError = vi.spyOn(console, 'error');
 });
 afterEach(() => {
@@ -289,7 +293,7 @@ describe('AllCommunitiesSheetConnected', () => {
       const { user } = renderPieces();
       await user.click(await screen.findByRole('button', { name: 'All communities' }));
       const sheet = await screen.findByRole('dialog', { name: 'All communities' });
-      await user.click(await within(sheet).findByRole('button', { name: 'Sign out' }));
+      await user.click(await within(sheet).findByRole('button', { name: 'Sign out…' }));
       const question = await screen.findByRole('dialog', { name: 'Sign out?' });
       expect(signOut.fn).not.toHaveBeenCalled();
       expect(screen.getByRole('dialog', { name: 'All communities', hidden: true })).toBeInTheDocument();
@@ -308,13 +312,13 @@ describe('AllCommunitiesSheetConnected', () => {
       const { user } = renderPieces();
       await user.click(await screen.findByRole('button', { name: 'All communities' }));
       const sheet = await screen.findByRole('dialog', { name: 'All communities' });
-      await user.click(await within(sheet).findByRole('button', { name: 'Sign out' }));
+      await user.click(await within(sheet).findByRole('button', { name: 'Sign out…' }));
       const question = await screen.findByRole('dialog', { name: 'Sign out?' });
       await user.click(within(question).getByRole('button', { name: 'Cancel' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sign out?' })).toBeNull());
       expect(signOut.fn).not.toHaveBeenCalled();
       expect(screen.getByRole('dialog', { name: 'All communities' })).toBeInTheDocument();
-      await waitFor(() => expect(within(sheet).getByRole('button', { name: 'Sign out' })).toHaveFocus());
+      await waitFor(() => expect(within(sheet).getByRole('button', { name: 'Sign out…' })).toHaveFocus());
     } finally {
       restore();
     }
@@ -327,7 +331,7 @@ describe('AllCommunitiesSheetConnected', () => {
     const sheet = await screen.findByRole('dialog', { name: 'All communities' });
     await within(sheet).findByRole('link', { name: /^Couch Co-op/ });
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
-    expect(within(sheet).queryByRole('button', { name: 'Sign out' })).toBeNull();
+    expect(within(sheet).queryByRole('button', { name: 'Sign out…' })).toBeNull();
   });
 
   it('no communities: the empty state, with Create', async () => {
@@ -377,7 +381,9 @@ describe('AllCommunitiesSheetConnected', () => {
       <VoiceProvider>
         <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
           <AppFrame>
-            <AllCommunitiesSheetConnected open={open} onClose={() => undefined} currentId={null} />
+            <SignOutConfirmHost>
+              <AllCommunitiesSheetConnected open={open} onClose={() => undefined} currentId={null} />
+            </SignOutConfirmHost>
           </AppFrame>
         </KitProvider>
       </VoiceProvider>

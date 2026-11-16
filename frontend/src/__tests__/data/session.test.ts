@@ -18,10 +18,4 @@ describe('useSignOut', () => {
     expect(logout.handleLogout).toHaveBeenCalledWith();
   });
 
-  it('says when a sign-out is running', () => {
-    logout.logoutLoading = true;
-    const { result } = renderHook(() => useSignOut());
-    expect(result.current.signingOut).toBe(true);
-    logout.logoutLoading = false;
-  });
 });

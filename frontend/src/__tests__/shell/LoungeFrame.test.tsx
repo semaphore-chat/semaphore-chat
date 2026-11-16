@@ -30,7 +30,7 @@ import { chooseShell } from '../../shell/chooseShell';
 import { LOUNGE_ROUTES, type LoungeRoute } from '../../shell/loungeRoutes';
 import { readShownShellKind } from '../../shell/shownShellKind';
 import { useScreenChrome, type LoungeScreenProps, type ThreeIslandsScreen } from '../../shell/lounge/screen';
-import { forgetActivatedRows, rememberActivatedRow } from '../../shell/lounge/frame/routeMemory';
+import { forgetRouteMemory, rememberActivatedRow } from '../../shell/routeMemory';
 import LoungeRoot from '../../shell/lounge/LoungeRoot';
 
 vi.mock('../../hooks/useAppearance', () => ({
@@ -238,7 +238,7 @@ beforeEach(() => {
   pieces.left = 0;
   pieces.members = 0;
   pieces.leftProps.length = 0;
-  forgetActivatedRows();
+  forgetRouteMemory();
   forgetAllAnnouncements();
   centreRenders.count = 0;
   document.querySelector('meta[name="theme-color"]')?.remove();

@@ -104,18 +104,18 @@ describe('AllCommunitiesSheet (the view)', () => {
     expect(screen.queryByText(/create/i)).toBeNull();
   });
 
-  it('on a phone, Settings, Your profile and Sign out at the foot', async () => {
+  it('on a phone, Settings, Your profile and Sign out… at the foot', async () => {
     const onSignOut = vi.fn();
     const { unmount, user } = renderSheet({ showSettings: true, onSignOut });
     expect(await screen.findByRole('link', { name: 'Settings' })).toHaveAttribute('href', '#/settings');
     expect(screen.getByRole('link', { name: 'Your profile' })).toHaveAttribute('href', '#/profile');
-    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    await user.click(screen.getByRole('button', { name: 'Sign out…' }));
     expect(onSignOut).toHaveBeenCalledTimes(1);
     unmount();
     renderSheet({ showSettings: false });
     await screen.findByRole('link', { name: /^Couch Co-op/ });
     expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign out…' })).toBeNull();
   });
 
   it("links each community to its route, or where the frame's links context says (a test fixture)", async () => {
@@ -156,7 +156,7 @@ describe('AllCommunitiesSheet (the view)', () => {
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('link', { name: /^Trailheads/ })).toHaveFocus();
     await user.keyboard('{End}');
-    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Sign out…' })).toHaveFocus();
     await user.keyboard('{ArrowUp}');
     expect(screen.getByRole('link', { name: 'Your profile' })).toHaveFocus();
     await user.keyboard('{Home}w');

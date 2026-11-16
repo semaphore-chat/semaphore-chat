@@ -17,7 +17,7 @@ import { useCommunityPresence, useIdentityCache } from '../../../../data/members
 import { useUnreadSummary } from '../../../../data/unread';
 import { useAuthenticatedImage } from '../../../../hooks/useAuthenticatedImage';
 import { isPermanentAccessError } from '../../../../utils/httpError';
-import { rememberActivatedRow } from '../../frame/routeMemory';
+import { rememberActivatedRow } from '../../../routeMemory';
 import { CommunityHeader, type CommunityAction, type CommunityHeaderProps } from './CommunityHeader';
 import { ChannelSection, type ChannelItem, type ChannelSectionProps } from './ChannelSection';
 import { VoiceRoomCardConnected } from './VoiceRoomCard';

@@ -8,8 +8,9 @@ import { useState, type JSX } from 'react';
 import { AllCommunitiesSheet } from '../../shell/lounge/pieces/AllCommunitiesSheet';
 import { ShellDock } from '../../shell/lounge/pieces/ShellDock';
 import type { ModeName } from '../../theme/derive/derivePalette';
-import { useConfirmDestructive, useWidthRange } from '../../kit';
-import { SIGN_OUT_DESCRIPTION, SIGN_OUT_LABEL, SIGN_OUT_TITLE } from '../../shell/lounge/pieces/signOutText';
+import { useWidthRange } from '../../kit';
+import { SignOutQuestionHost } from '../../shell/lounge/pieces/signOutConfirm';
+import { useSignOutRequest } from '../../shell/lounge/pieces/signOutRequest';
 import { ClickOnMount } from '../fixtures/interactions';
 import { LoungePiecesFrame } from '../fixtures/LoungePiecesFrame';
 import {
@@ -44,13 +45,22 @@ const NEVER = () => new Promise<void>(() => undefined);
  * again when `find` changes, and a new function each render would press again on every render.
  */
 const findSignOutRow = (): HTMLElement | null =>
-  [...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((button) => button.textContent?.trim() === 'Sign out') ?? null;
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((button) => button.textContent?.trim() === 'Sign out…') ?? null;
 
-function Sheet({ communities, currentId, canCreate, load, filter: initial, open, onClose, askSignOut }: SheetProps): JSX.Element {
+/** The sheet under the frame's sign-out question (the shared host; nothing is signed out in a story). */
+function Sheet(props: SheetProps): JSX.Element {
+  return (
+    <SignOutQuestionHost run={NEVER}>
+      <SheetBody {...props} />
+    </SignOutQuestionHost>
+  );
+}
+
+function SheetBody({ communities, currentId, canCreate, load, filter: initial, open, onClose, askSignOut }: SheetProps): JSX.Element {
   const [filter, setFilter] = useState(initial);
   const [useLoad] = useState(() => fixedLoad(load));
   const range = useWidthRange();
-  const signOut = useConfirmDestructive({ title: SIGN_OUT_TITLE, description: SIGN_OUT_DESCRIPTION, confirmLabel: SIGN_OUT_LABEL, run: NEVER });
+  const requestSignOut = useSignOutRequest();
   return (
     <>
       {askSignOut && <ClickOnMount find={findSignOutRow} />}
@@ -69,9 +79,8 @@ function Sheet({ communities, currentId, canCreate, load, filter: initial, open,
         filter={filter}
         onFilterChange={setFilter}
         showSettings={range === 'phone'}
-        onSignOut={signOut.request}
+        onSignOut={requestSignOut}
       />
-      {signOut.dialog}
     </>
   );
 }

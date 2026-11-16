@@ -79,7 +79,7 @@ test.describe('phone', () => {
     expect(onTop).toEqual({ inSheet: true, inDock: false });
     await expect(sheet(page).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '#/settings');
     await expect(sheet(page).getByRole('link', { name: 'Your profile' })).toHaveAttribute('href', '#/profile');
-    await expect(sheet(page).getByRole('button', { name: 'Sign out' })).toBeVisible();
+    await expect(sheet(page).getByRole('button', { name: 'Sign out…' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sheet(page)).toBeHidden();
     await expect(all(page)).toBeFocused();
@@ -88,7 +88,7 @@ test.describe('phone', () => {
   test('Sign out at the foot asks over the sheet; Escape closes only the question, back on the row', async ({ page }) => {
     await openStory(page, 'all-communities-sheet--from-dock', PHONE);
     await openFromAll(page);
-    const row = sheet(page).getByRole('button', { name: 'Sign out' });
+    const row = sheet(page).getByRole('button', { name: 'Sign out…' });
     await row.focus();
     await page.keyboard.press('Enter');
     const question = page.getByRole('dialog', { name: 'Sign out?' });
