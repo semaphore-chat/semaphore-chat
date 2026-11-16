@@ -4,6 +4,7 @@ import MessageContainerWrapper from "../Message/MessageContainerWrapper";
 import MemberListContainer from "../Message/MemberListContainer";
 import { useJumpToMessage } from "../../hooks/useJumpToMessage";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
+import { useNotification } from "../../contexts/NotificationContext";
 import { useQuery } from "@tanstack/react-query";
 import { directMessagesControllerFindDmGroupOptions } from "../../api-client/@tanstack/react-query.gen";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -23,10 +24,12 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
   const { user } = useCurrentUser();
   const authorId = user?.id || "";
 
+  const { showNotification } = useNotification();
   const { handleSendMessage } = useMessageFileUpload({
     contextType: VoiceSessionType.Dm,
     contextId: dmGroupId,
     authorId,
+    onError: (message) => showNotification(message, "error"),
   });
 
   // Get DM group info to get members for mentions

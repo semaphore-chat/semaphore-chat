@@ -16,6 +16,7 @@ import { ThreadPanel } from "../Thread";
 import { useParams } from "react-router-dom";
 import { useChannelChat } from "../../data/chat/useChannelChat";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
+import { useNotification } from "../../contexts/NotificationContext";
 import { useQuery } from "@tanstack/react-query";
 import { channelsControllerFindOneOptions } from "../../api-client/@tanstack/react-query.gen";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -65,10 +66,12 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   }>();
   const communityId = communityIdProp || communityIdParam;
 
+  const { showNotification } = useNotification();
   const { handleSendMessage } = useMessageFileUpload({
     contextType: VoiceSessionType.Channel,
     contextId: channelId,
     authorId,
+    onError: (message) => showNotification(message, "error"),
   });
 
   // The element that opened the docked panel, to return focus to on close.

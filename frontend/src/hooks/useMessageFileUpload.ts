@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { VoiceSessionType } from "../contexts/VoiceContext";
 import { useSendMessage } from "./useSendMessage";
 import { useOptimisticSendMessage } from "./useOptimisticSendMessage";
-import { useNotification } from "../contexts/NotificationContext";
 import { useFileCache } from "../contexts/AvatarCacheContext";
 import { sendMessageWithAttachments } from "../utils/attachmentSend";
 import type { Span } from "../types/message.type";
@@ -12,6 +11,13 @@ interface UseMessageFileUploadOptions {
   contextType: VoiceSessionType;
   contextId: string;
   authorId: string;
+  /**
+   * Shows an error to the user (a failed upload or send). Injected so the hook
+   * stays free of a notification UI; classic passes
+   * `(message) => showNotification(message, "error")`. Optional so a caller
+   * (or a test) without a reporter still gets the inline failure states.
+   */
+  onError?: (message: string) => void;
 }
 
 /**
@@ -25,9 +31,8 @@ interface UseMessageFileUploadOptions {
  * inline: a failed send as the row's 'failed' state (Retry/Delete in
  * MessageComponent), a failed upload on that file's tile (plus a toast).
  */
-export const useMessageFileUpload = ({ contextType, contextId, authorId }: UseMessageFileUploadOptions) => {
+export const useMessageFileUpload = ({ contextType, contextId, authorId, onError }: UseMessageFileUploadOptions) => {
   const queryClient = useQueryClient();
-  const { showNotification } = useNotification();
   const fileCache = useFileCache();
   const { sendMessage: rawSendMessage } = useSendMessage(contextType);
   const { sendMessage: sendOptimisticMessage } = useOptimisticSendMessage(contextType, contextId);
@@ -60,7 +65,7 @@ export const useMessageFileUpload = ({ contextType, contextId, authorId }: UseMe
           queryClient,
           contextType,
           contextId,
-          notifyError: (message) => showNotification(message, "error"),
+          notifyError: (message) => onError?.(message),
           seedFileBlob,
         },
         payload: msg,
