@@ -554,8 +554,9 @@ test.describe('The Lounge pieces on the community fixture', () => {
     const { context, page } = await openSession(browser, world.member, COMPACT);
     try {
       await page.goto(`/#/community/${world.c1.id}?design=lounge`);
-      // The old tablet layout opens the community's first channel.
-      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
+      // The old shell's touch layout: its community header and categorised channel list.
+      await expect(page.getByRole('button', { name: 'Switch community' })).toBeVisible(EVENTUAL);
+      await expect(page.getByRole('button', { name: 'lobby', exact: true })).toBeVisible(EVENTUAL);
       await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
       await shot(page, testInfo, 'r1-real-path-820-classic');
     } finally {
@@ -592,7 +593,8 @@ test.describe('The Lounge pieces on the community fixture', () => {
       await button.click();
       const sheet = page.getByRole('dialog', { name: 'Members', exact: true });
       await expect(sheet).toBeVisible();
-      await expect(sheet.getByRole('heading', { name: 'Around', level: 3, exact: true })).toBeVisible(EVENTUAL);
+      // The owner is the community's host.
+      await expect(sheet.getByRole('heading', { name: 'Hosts', level: 3, exact: true })).toBeVisible(EVENTUAL);
       await shot(page, testInfo, 'r3-members-sheet');
       await page.keyboard.press('Escape');
       await expect(sheet).toHaveCount(0);
