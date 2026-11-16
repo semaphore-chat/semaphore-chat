@@ -17,10 +17,12 @@
  *
  * Then, on the room cards of the left island (A joins from a card, B classic):
  *
- *   V1. joining from a card stays on the screen and outlines the card; the server lists A; audio both ways;
+ *   V1. joining from a card stays on the screen and outlines the card; the server lists A; audio both ways
+ *       (on the fixture and on the real community home `/community/:id`, PR 9b);
  *   V3. Leave from the card and from the bar both end the call;
  *   V4. a failed join shows once, in the voice notice; Retry joins;
- *   V6. the call survives moving between communities in the Lounge (dock and sheet);
+ *   V6. the call survives moving between communities in the Lounge (dock and sheet), on the fixture and on the
+ *       real community home;
  *   V7. signing out mid-call from the account menu leaves the call;
  *   V8. a card joiner publishes the soundboard track like a classic one: B renders A's mic and soundboard, and
  *       opening the classic shell afterwards (a channel tap, and Back) adds no <audio> element on B.
@@ -50,7 +52,17 @@ import {
 } from '../fixtures/voice.fixture';
 import { API_BASE, loginViaApi } from '../fixtures/auth.fixture';
 import { createTestChannel } from '../fixtures/test-data';
-import { expectCallUntouched, goTo, joinFromRoomCard, openFixture, tagCall, countGetUserMedia } from '../fixtures/lounge';
+import {
+  LOUNGE_WHERES,
+  expectCallUntouched,
+  goTo,
+  joinFromRoomCard,
+  loungeUrl,
+  openFixture,
+  tagCall,
+  countGetUserMedia,
+  type LoungeWhere,
+} from '../fixtures/lounge';
 
 // Each test launches its own participants: independent, so one failing never skips the others.
 
@@ -366,7 +378,6 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
   const joinButton = (page: Page, room: string) => shell(page).getByRole('button', { name: `Join ${room}`, exact: true });
   const leaveButton = (page: Page, room: string) => shell(page).getByRole('button', { name: `Leave ${room}`, exact: true });
   const state = (p: Participant) => p.page.evaluate(() => window.__lkRoom?.state ?? 'none');
-  const fixtureUrl = (communityId: string) => new RegExp(`#/__lounge/community/${communityId}$`);
 
   /** Whether `viewer` (a classic participant) is told that `who` is in the room: the server's voice presence. */
   const roomLists = async (viewer: Participant, who: Participant): Promise<boolean> => {
@@ -386,36 +397,38 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     return found!.id;
   }
 
-  /** A on the fixture of Test Community at `viewport`, in no call; B (classic) is in `room` already. */
-  async function aOnFixtureWithBInRoom(room: string, viewport = PHONE): Promise<string> {
+  /** A on Test Community (the fixture, or the real home) at `viewport`, in no call; B (classic) is in `room` already. */
+  async function aOnFixtureWithBInRoom(room: string, viewport = PHONE, where: LoungeWhere = 'fixture'): Promise<string> {
     a = await launchA();
     b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
     await joinVoiceChannel(b, room);
     await a.page.setViewportSize(viewport);
     const id = await testCommunityId(a);
-    await openFixture(a.page, id, { communityName: 'Test Community' });
-    await expect(a.page).toHaveURL(fixtureUrl(id), { timeout: 20_000 });
+    await openFixture(a.page, id, { communityName: 'Test Community', where });
+    await expect(a.page).toHaveURL(loungeUrl(where, id), { timeout: 20_000 });
     return id;
   }
 
-  test('V1: joining from a room card stays on the screen, outlines the card "You\'re here", and the server lists A', async () => {
-    test.setTimeout(180_000);
-    const id = await aOnFixtureWithBInRoom(CH);
-    await expect(youAreHereCard(a.page, CH)).toHaveCount(0);
+  for (const where of LOUNGE_WHERES) {
+    test(`V1: joining from a room card stays on the screen, outlines the card "You're here", and the server lists A (${where})`, async () => {
+      test.setTimeout(180_000);
+      const id = await aOnFixtureWithBInRoom(CH, PHONE, where);
+      await expect(youAreHereCard(a.page, CH)).toHaveCount(0);
 
-    await joinFromRoomCard(a, CH);
-    await expect(a.page).toHaveURL(fixtureUrl(id));
-    expect(await state(a)).toBe('connected');
-    const card = youAreHereCard(a.page, CH);
-    await expect(card).toHaveCount(1);
-    await expect(card.getByText("You're here", { exact: true })).toBeVisible();
-    expect(await card.evaluate((el) => getComputedStyle(el).borderTopColor)).not.toBe('rgba(0, 0, 0, 0)');
-    await expect(leaveButton(a.page, CH)).toBeVisible();
-    await expect(callBar(a.page)).toBeVisible();
-    await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: "the server's voice presence lists A" }).toBe(true);
-    await waitForAudioFlow(b, a);
-    await waitForAudioFlow(a, b);
-  });
+      await joinFromRoomCard(a, CH);
+      await expect(a.page).toHaveURL(loungeUrl(where, id));
+      expect(await state(a)).toBe('connected');
+      const card = youAreHereCard(a.page, CH);
+      await expect(card).toHaveCount(1);
+      await expect(card.getByText("You're here", { exact: true })).toBeVisible();
+      expect(await card.evaluate((el) => getComputedStyle(el).borderTopColor)).not.toBe('rgba(0, 0, 0, 0)');
+      await expect(leaveButton(a.page, CH)).toBeVisible();
+      await expect(callBar(a.page)).toBeVisible();
+      await expect.poll(() => roomLists(b, a), { timeout: 20_000, message: "the server's voice presence lists A" }).toBe(true);
+      await waitForAudioFlow(b, a);
+      await waitForAudioFlow(a, b);
+    });
+  }
 
   test('V3: Leave from the card and from the bar both end the call', async () => {
     test.setTimeout(180_000);
@@ -479,75 +492,77 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
     await expect(a.page.locator('[data-kit-toast-region]').getByText(/voice|join/i)).toHaveCount(0);
   });
 
-  test('V6: the call survives moving between communities in the Lounge', async () => {
-    test.setTimeout(240_000);
-    a = await launchA();
-    b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
-    await joinVoiceChannel(b, ROOM2);
-    await a.page.setViewportSize(PHONE);
-    // A probe on this page only: counts getUserMedia from here on (the page is not reloaded below).
-    await a.page.evaluate(countGetUserMedia);
-    const testId = await testCommunityId(a);
-    const secondId = await communityIdByName(a, 'Second Community');
-    await openFixture(a.page, testId, { communityName: 'Test Community' });
-    await joinFromRoomCard(a, ROOM2);
-    await waitForAudioFlow(a, b);
-    await waitForAudioFlow(b, a);
-
-    // Both published their soundboard tracks (A from the card, B from the classic page): tag both sides.
-    const before = await tagCall(a, b);
-    const onB = await tagCall(b, a);
-    expect(before.gum).toBeGreaterThan(0);
-    await a.page.evaluate(() => {
-      (document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>).__keptDock = true;
-    });
-
-    const dock = a.page.getByRole('navigation', { name: 'Communities', exact: true });
-    const dockLink = (name: string) => dock.getByRole('link', { name: new RegExp(`^${name}`) });
-    const moves: Array<{ via: 'dock' | 'sheet'; name: string; id: string }> = [
-      { via: 'dock', name: 'Second Community', id: secondId },
-      { via: 'sheet', name: 'Test Community', id: testId },
-      { via: 'dock', name: 'Second Community', id: secondId },
-      { via: 'sheet', name: 'Test Community', id: testId },
-      { via: 'dock', name: 'Second Community', id: secondId },
-    ];
-    for (const [i, move] of moves.entries()) {
-      const step = `move ${i + 1}: ${move.via} to ${move.name}`;
-      if (move.via === 'dock') {
-        await dockLink(move.name).click();
-      } else {
-        await dock.getByRole('button', { name: 'All communities', exact: true }).click();
-        await a.page
-          .getByRole('dialog', { name: 'All communities', exact: true })
-          .getByRole('link', { name: new RegExp(`^${move.name}`) })
-          .click();
-      }
-      await expect(a.page, step).toHaveURL(fixtureUrl(move.id), { timeout: 20_000 });
-      await expect(
-        shell(a.page).getByRole('heading', { name: move.name, level: 2, exact: true }),
-        step,
-      ).toBeVisible({ timeout: 20_000 });
-      await expect(callBar(a.page), step).toBeVisible();
-      await expectCallUntouched(a, before, step);
-      await expectCallUntouched(b, onB, `${step} (on B)`);
+  for (const where of LOUNGE_WHERES) {
+    test(`V6: the call survives moving between communities in the Lounge (${where})`, async () => {
+      test.setTimeout(240_000);
+      a = await launchA();
+      b = await launchParticipant(TEST_USER_2, 'sample-b.wav');
+      await joinVoiceChannel(b, ROOM2);
+      await a.page.setViewportSize(PHONE);
+      // A probe on this page only: counts getUserMedia from here on (the page is not reloaded below).
+      await a.page.evaluate(countGetUserMedia);
+      const testId = await testCommunityId(a);
+      const secondId = await communityIdByName(a, 'Second Community');
+      await openFixture(a.page, testId, { communityName: 'Test Community', where });
+      await joinFromRoomCard(a, ROOM2);
+      await waitForAudioFlow(a, b);
       await waitForAudioFlow(b, a);
-      expect(
-        await a.page.evaluate(() => !!(document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>)?.__keptDock),
-        `${step}: the dock was not remounted`,
-      ).toBe(true);
-    }
 
-    // One channel tap into the classic chat and Back: the classic bar publishes nothing late, so B keeps its elements.
-    const firstChannel = shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first();
-    await firstChannel.click();
-    await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
-    await a.page.goBack();
-    await expect(shell(a.page).getByRole('heading', { name: 'Second Community', level: 2, exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(callBar(a.page)).toBeVisible();
-    await expectCallUntouched(a, before, 'after a channel tap and Back');
-    await waitForAudioFlow(b, a);
-    await expectCallUntouched(b, onB, 'after a channel tap and Back (on B)');
-  });
+      // Both published their soundboard tracks (A from the card, B from the classic page): tag both sides.
+      const before = await tagCall(a, b);
+      const onB = await tagCall(b, a);
+      expect(before.gum).toBeGreaterThan(0);
+      await a.page.evaluate(() => {
+        (document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>).__keptDock = true;
+      });
+
+      const dock = a.page.getByRole('navigation', { name: 'Communities', exact: true });
+      const dockLink = (name: string) => dock.getByRole('link', { name: new RegExp(`^${name}`) });
+      const moves: Array<{ via: 'dock' | 'sheet'; name: string; id: string }> = [
+        { via: 'dock', name: 'Second Community', id: secondId },
+        { via: 'sheet', name: 'Test Community', id: testId },
+        { via: 'dock', name: 'Second Community', id: secondId },
+        { via: 'sheet', name: 'Test Community', id: testId },
+        { via: 'dock', name: 'Second Community', id: secondId },
+      ];
+      for (const [i, move] of moves.entries()) {
+        const step = `move ${i + 1}: ${move.via} to ${move.name}`;
+        if (move.via === 'dock') {
+          await dockLink(move.name).click();
+        } else {
+          await dock.getByRole('button', { name: 'All communities', exact: true }).click();
+          await a.page
+            .getByRole('dialog', { name: 'All communities', exact: true })
+            .getByRole('link', { name: new RegExp(`^${move.name}`) })
+            .click();
+        }
+        await expect(a.page, step).toHaveURL(loungeUrl(where, move.id), { timeout: 20_000 });
+        await expect(
+          shell(a.page).getByRole('heading', { name: move.name, level: 2, exact: true }),
+          step,
+        ).toBeVisible({ timeout: 20_000 });
+        await expect(callBar(a.page), step).toBeVisible();
+        await expectCallUntouched(a, before, step);
+        await expectCallUntouched(b, onB, `${step} (on B)`);
+        await waitForAudioFlow(b, a);
+        expect(
+          await a.page.evaluate(() => !!(document.querySelector('nav[aria-label="Communities"]') as unknown as Record<string, unknown>)?.__keptDock),
+          `${step}: the dock was not remounted`,
+        ).toBe(true);
+      }
+
+      // One channel tap into the classic chat and Back: the classic bar publishes nothing late, so B keeps its elements.
+      const firstChannel = shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first();
+      await firstChannel.click();
+      await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
+      await a.page.goBack();
+      await expect(shell(a.page).getByRole('heading', { name: 'Second Community', level: 2, exact: true })).toBeVisible({ timeout: 20_000 });
+      await expect(callBar(a.page)).toBeVisible();
+      await expectCallUntouched(a, before, 'after a channel tap and Back');
+      await waitForAudioFlow(b, a);
+      await expectCallUntouched(b, onB, 'after a channel tap and Back (on B)');
+    });
+  }
 
   test('V8: a card joiner publishes the soundboard track once; opening the classic shell adds no <audio> element on B', async () => {
     test.setTimeout(180_000);
