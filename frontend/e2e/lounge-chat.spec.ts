@@ -41,8 +41,14 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
     request,
   }, testInfo) => {
     const world = await loungeWorld(request);
-    await sendTestMessage(request, world.c1.lobbyId, 'first of the evening', world.owner.token);
+    const first = await sendTestMessage(request, world.c1.lobbyId, 'first of the evening', world.owner.token);
     await sendTestMessage(request, world.c1.lobbyId, 'anyone around?', world.owner.token);
+    // A reply quoting the first message.
+    const reply = await request.post(`${API_BASE}/messages`, {
+      data: { channelId: world.c1.lobbyId, spans: [{ type: 'PLAINTEXT', text: 'replying to the first' }], attachments: [], replyToId: first.id },
+      headers: { Authorization: `Bearer ${world.owner.token}` },
+    });
+    expect(reply.ok()).toBe(true);
     const { context, page } = await openSession(browser, world.member, PHONE);
     try {
       await openFixture(page, world.c1.id, { communityName: world.c1.name });
@@ -62,6 +68,10 @@ test.describe('The Lounge chat on the chat fixture (390 px)', () => {
       await expect(row(page, 'on my way')).toBeVisible(EVENTUAL);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
       await shot(page, testInfo, 'c1-chat-with-history');
+
+      // Opening the quoted message is an in-chat jump: it replaces the entry, so one Back still leaves the chat.
+      await row(page, 'replying to the first').getByRole('button', { name: /^Reply to / }).click();
+      await expect(page).toHaveURL(new RegExp(`#${escapeRe(chatFixturePath(world.c1.id, world.c1.lobbyId))}$`), EVENTUAL);
 
       await page.getByRole('button', { name: 'Back to the community' }).click();
       await expect(page).toHaveURL(new RegExp(`#${escapeRe(fixturePath(world.c1.id))}$`));
