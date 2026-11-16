@@ -283,13 +283,14 @@ describe('ChannelChat write side', () => {
   it('Retry keeps focus and shows busy while the message goes failed → pending → sent; then focus is on the row', async () => {
     const failedMsg = createMessage({ id: 'pending-1', clientId: 'pending-1', authorId: 'me', sendStatus: 'failed', spans: [{ type: SpanType.PLAINTEXT, text: 'lost words' }] });
     let finish: () => void = () => undefined;
-    let view: ReturnType<typeof setup>;
+    const held: { view?: ReturnType<typeof setup> } = {};
     // As the real retry: the message is pending again at once, and the promise settles on the server's answer.
     retry.retry.mockImplementation(() => {
-      view.show([{ ...failedMsg, sendStatus: 'pending' }]);
+      held.view!.show([{ ...failedMsg, sendStatus: 'pending' }]);
       return new Promise<void>((resolve) => (finish = resolve));
     });
-    view = setup([failedMsg]);
+    const view = setup([failedMsg]);
+    held.view = view;
     const button = within(rowOf('lost words')).getByRole('button', { name: 'Retry' });
     act(() => button.focus());
     fireEvent.click(button);
