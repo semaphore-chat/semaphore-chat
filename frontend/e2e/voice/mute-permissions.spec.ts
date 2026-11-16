@@ -25,6 +25,7 @@ import {
   expectNoAudioGrowth,
   setMicEnabled,
   moderatorMute,
+  waitForRemoteAudioElements,
   tryModeratorMuteAs,
   MEMBER_USER,
   TEST_USER,
@@ -53,6 +54,11 @@ test.describe('Mute permissions & rapid toggles', () => {
     await joinVoiceChannel(owner, CH);
     await joinVoiceChannel(target, CH);
     await waitForAudioFlow(owner, target);
+    // The target's soundboard track is published about a second after joining, after its mic already
+    // flows. A moderator mute that lands while that publish is in flight takes the soundboard source
+    // away mid-publish (the muted grant has no UNKNOWN source), and the target's later mic republish
+    // never reaches the owner (on a slow runner: CI run 43792103516). Mute a settled participant.
+    await waitForRemoteAudioElements(owner, target);
 
     // A non-privileged member (REST-only, never joined) is FORBIDDEN to mute.
     const memberStatus = await tryModeratorMuteAs(
