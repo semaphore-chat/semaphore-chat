@@ -1,7 +1,7 @@
 /**
  * The chat's header (design §3 PR 10c, B6): Back to the community, the channel's name as the screen's heading (a
  * lock when it is private), Members (where they are not beside the list), and More with Search, which is the old
- * shell's search screen (owner default: phone search stays classic).
+ * shell's search screen (owner default: phone search stays classic), and Pinned messages with their count (PR 10d-B).
  */
 import { useRef, useState, type JSX } from 'react';
 import { Icon, IconButton, Menu, Skeleton, Stack, Text, type MenuEntry } from '../../../../kit';
@@ -15,9 +15,13 @@ export interface ChatHeaderProps {
   onShowMembers?: () => void;
   /** The More menu's Search; undefined: no More menu (a voice channel has nothing to search). */
   onSearch?: () => void;
+  /** The More menu's Pinned messages; `opener` is the More button (focus returns there when the list closes). */
+  onShowPinned?: (opener: HTMLElement | null) => void;
+  /** How many messages are pinned, for the menu's label. */
+  pinnedCount?: number;
 }
 
-export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch }: ChatHeaderProps): JSX.Element {
+export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch, onShowPinned, pinnedCount }: ChatHeaderProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
   const items: MenuEntry[] = [
@@ -30,6 +34,19 @@ export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch }
         onSearch?.();
       },
     },
+    ...(onShowPinned !== undefined
+      ? [
+          {
+            id: 'pinned',
+            label: pinnedCount ? `Pinned messages (${pinnedCount})` : 'Pinned messages',
+            icon: 'Pin' as const,
+            onSelect: () => {
+              setOpen(false);
+              onShowPinned(more.current);
+            },
+          },
+        ]
+      : []),
   ];
   return (
     <Stack direction="row" gap="sm">

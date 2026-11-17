@@ -10,7 +10,10 @@
  */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { moderationControllerGetPinnedMessagesOptions } from '../../../../api-client/@tanstack/react-query.gen';
+import type { PinnedMessageDto } from '../../../../api-client/types.gen';
+import { pinnedJumpTarget } from '../../../../data/chat/usePinnedList';
 import {
   Button,
   ChatPane,
@@ -52,6 +55,7 @@ import { MessageActionsSheet } from './MessageActionsSheet';
 import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
 import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
 import { ThreadView } from './ThreadView';
+import { PinnedSheet } from './PinnedSheet';
 import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
 
@@ -274,6 +278,29 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     threadOpener.current = null;
     focusAfterThread(opener, was, (id) => conversation.listRef.current?.scrollToMessage(id), inputRef.current);
   }, [threadId, conversation.listRef]);
+  // --- Pinned messages: a sheet from More; a jump closes it and centres the message (a thread reply: its parent,
+  // then its thread opens, in a new entry so Back closes it) ---
+  const { data: pins = [] } = useQuery(moderationControllerGetPinnedMessagesOptions({ path: { channelId } }));
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [pinnedOpener, setPinnedOpener] = useState<HTMLElement | null>(null);
+  const showPinned = useCallback((opener: HTMLElement | null) => {
+    setPinnedOpener(opener);
+    setPinnedOpen(true);
+  }, []);
+  const closePinned = useCallback(() => setPinnedOpen(false), []);
+  const jumpToPin = useCallback(
+    (pin: PinnedMessageDto) => {
+      const target = pinnedJumpTarget(pin);
+      if (target.thread !== undefined) {
+        threadOpener.current = null;
+        const state: ThreadEntryState = { threadFrom: chatPath };
+        navigate(`${chatPath}?highlight=${target.highlight}&${THREAD_PARAM}=${target.thread}`, { state });
+      } else {
+        navigate(`${chatPath}?highlight=${target.highlight}`, { replace: true });
+      }
+    },
+    [chatPath, navigate],
+  );
   const threadParent = useMemo(
     () => (threadId === null ? null : (conversation.orderedMessages.find((m) => m.id === threadId) ?? null)),
     [threadId, conversation.orderedMessages],
@@ -401,6 +428,8 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
                 : () => setRightOpen(true)
             }
             onSearch={() => navigate(`/community/${communityId}/channel/${channelId}/search`)}
+            onShowPinned={face === 'gone' || face === 'noAccess' ? undefined : showPinned}
+            pinnedCount={pins.length}
           />
         }
         state={state}
@@ -453,6 +482,16 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         onEdit={onEdit}
         onShowReactions={showReactionsFromActions}
       />
+      {pinnedOpen && (
+        <PinnedSheet
+          communityId={communityId}
+          channelId={channelId}
+          writable={writable}
+          opener={pinnedOpener}
+          onDone={closePinned}
+          onJump={jumpToPin}
+        />
+      )}
       <MessageMediaViewer request={viewer} opener={opener} onDone={closeViewer} />
       <ReactionPeopleSheet request={reactionPeople} me={conversation.me} emoji={segments} onDone={closeReactions} />
     </ChatRowContext>

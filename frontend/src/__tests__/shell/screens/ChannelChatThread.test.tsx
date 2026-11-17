@@ -8,21 +8,22 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useLocation } from 'react-router-dom';
-import { KitProvider, personColour } from '../../../kit';
+import { KitProvider } from '../../../kit';
 import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
-import { APP_LINKS, LoungeLinksContext, type LoungeLinks } from '../../../shell/lounge/links';
+import { LoungeLinksContext, type LoungeLinks } from '../../../shell/lounge/links';
 import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
 import { ScreenChromeContext } from '../../../shell/lounge/screen';
-import { forgetRouteMemory, notePathname } from '../../../shell/routeMemory';
+import { forgetRouteMemory } from '../../../shell/routeMemory';
 import type { Conversation } from '../../../data/chat/useConversation';
 import {
   customEmojiControllerListCommunityEmojisQueryKey,
+  moderationControllerGetPinnedMessagesQueryKey,
   channelsControllerFindAllForCommunityQueryKey,
   userControllerGetUserByIdQueryKey,
 } from '../../../api-client/@tanstack/react-query.gen';
 import { createChannel, createMessage, createTestQueryClient, renderWithProviders, resetFactoryCounter } from '../../test-utils';
-import { SpanType, type Message } from '../../../types/message.type';
+import { SpanType } from '../../../types/message.type';
 
 vi.mock('virtua', async () => {
   const ReactMod = await import('react');
@@ -53,6 +54,11 @@ vi.mock('../../../data/chat/useThreadConversation', () => ({
     const parent = options.parent ?? threadModel.current.fetchedParent ?? null;
     return { ...threadModel.current, parent };
   },
+}));
+const pinned = vi.hoisted(() => ({ current: null as unknown as Record<string, unknown> }));
+vi.mock('../../../data/chat/usePinnedList', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  usePinnedList: () => pinned.current,
 }));
 vi.mock('../../../shell/lounge/screens/chat/ChatComposer', () => ({
   ChatComposer: ({ thread }: { thread?: { parentMessageId: string } }) => (
@@ -324,5 +330,93 @@ describe('ChannelChat threads', () => {
     const sheet = await screen.findByRole('dialog');
     expect(sheet).not.toHaveTextContent('Reply in thread');
     expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull();
+  });
+});
+
+const pin = (id: string, text: string, parentMessageId: string | null = null) => ({
+  ...createMessage({ id, channelId: 'ch-1', authorId: 'u-aiko', spans: [{ type: SpanType.PLAINTEXT, text }] }),
+  parentMessageId,
+  author: { id: 'u-aiko', username: 'aiko', displayName: 'Aiko', avatarUrl: null },
+});
+
+describe('ChannelChat pinned messages', () => {
+  beforeEach(() => {
+    resetFactoryCounter();
+    forgetRouteMemory();
+    navCalls.length = 0;
+    conversation.current = makeConversation({ orderedMessages: [parent()] });
+    thread();
+    pinned.current = {
+      pins: [pin('m-5', 'pinned words'), pin('r-7', 'a pinned reply', 'm-1')],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+      canUnpin: false,
+      unpin: vi.fn(async () => true),
+    };
+  });
+
+  async function openPinned(user: ReturnType<typeof setup>['user'], queryClient: ReturnType<typeof setup>['queryClient']) {
+    queryClient.setQueryData(moderationControllerGetPinnedMessagesQueryKey({ path: { channelId: 'ch-1' } }), pinned.current.pins);
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Pinned messages/ }));
+    return screen.findByRole('dialog', { name: /Pinned messages/ });
+  }
+
+  it('More lists the pins; a pin jumps to its message, replacing the entry; focus is never on the page', async () => {
+    const { user, queryClient } = setup();
+    const sheet = await openPinned(user, queryClient);
+    expect(sheet).toHaveAccessibleName('Pinned messages (2)');
+    expect(screen.queryByRole('button', { name: /Unpin/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Show the message from Aiko: pinned words/ }));
+    await waitFor(() => expect(where()).toBe(`${FIXTURE_CHAT}?highlight=m-5`));
+    expect(navCalls[navCalls.length - 1]).toEqual([`${FIXTURE_CHAT}?highlight=m-5`, { replace: true }]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await frames();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('a pinned thread reply jumps to its parent and opens its thread, in a new entry', async () => {
+    const { user, queryClient } = setup();
+    await openPinned(user, queryClient);
+    await user.click(screen.getByRole('button', { name: /a pinned reply/ }));
+    await waitFor(() => expect(where()).toBe(`${FIXTURE_CHAT}?highlight=m-1&thread=m-1`));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Thread' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to # lobby' }));
+    expect(navCalls[navCalls.length - 1]).toEqual([-1]);
+  });
+
+  it('a moderator may unpin; a failed unpin says so', async () => {
+    pinned.current = { ...pinned.current, canUnpin: true, unpin: vi.fn(async () => false) };
+    const { user, queryClient } = setup();
+    await openPinned(user, queryClient);
+    await user.click(screen.getAllByRole('button', { name: 'Unpin the message from Aiko' })[0]);
+    expect(pinned.current.unpin).toHaveBeenCalledWith('m-5');
+    expect(await screen.findByText("Couldn't unpin the message")).toBeInTheDocument();
+  });
+
+  it('a moderator gets Unpin on every pin of a text channel', async () => {
+    pinned.current = { ...pinned.current, canUnpin: true };
+    const { user, queryClient } = setup();
+    await openPinned(user, queryClient);
+    expect(screen.getAllByRole('button', { name: /Unpin/ })).toHaveLength(2);
+  });
+
+  it('empty, loading and error', async () => {
+    pinned.current = { ...pinned.current, pins: [] };
+    const first = setup();
+    await openPinned(first.user, first.queryClient);
+    expect(screen.getByText('No pinned messages yet.')).toBeInTheDocument();
+    first.unmount();
+    pinned.current = { ...pinned.current, pins: undefined, isLoading: true };
+    const second = setup();
+    await openPinned(second.user, second.queryClient);
+    expect(screen.getByText('Loading pinned messages')).toBeInTheDocument();
+    second.unmount();
+    pinned.current = { ...pinned.current, pins: undefined, isLoading: false, error: new Error('down') };
+    const third = setup();
+    await openPinned(third.user, third.queryClient);
+    await third.user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(pinned.current.refetch).toHaveBeenCalled();
   });
 });
