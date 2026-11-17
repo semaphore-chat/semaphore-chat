@@ -4,6 +4,7 @@ import { useAuthenticatedFile } from "../../hooks/useAuthenticatedFile";
 import { AudioPlayer } from "./AudioPlayer";
 import { DownloadLink } from "./DownloadLink";
 import { VideoPreview } from "./VideoPreview";
+import { attachmentMediaType } from "../../data/chat/messageRowModel";
 
 const AttachmentCard = styled(Card)(({ theme }) => ({
   position: "relative",
@@ -71,14 +72,6 @@ interface AttachmentPreviewProps {
   onImageClick?: () => void;
 }
 
-function getMediaType(mimeType?: string): "image" | "video" | "audio" | "other" {
-  if (!mimeType) return "other";
-  const lower = mimeType.toLowerCase();
-  if (lower.startsWith("image/")) return "image";
-  if (lower.startsWith("video/")) return "video";
-  if (lower.startsWith("audio/")) return "audio";
-  return "other";
-}
 
 export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   metadata,
@@ -86,7 +79,7 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   onClick,
   onImageClick,
 }) => {
-  const mediaType = getMediaType(metadata?.mimeType);
+  const mediaType = attachmentMediaType(metadata?.mimeType);
 
   // Videos get their own component — no blob download needed
   if (mediaType === "video") {

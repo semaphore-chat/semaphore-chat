@@ -142,6 +142,23 @@ export function toQuoteView(replyTo: Message['replyTo']): QuoteView | null {
   return { id: replyTo.id, authorId: replyTo.authorId, line, deleted };
 }
 
+/** What a file is to the reader, from its type (as the old attachment preview): drawn, played, or downloaded. */
+export type MediaType = 'image' | 'video' | 'audio' | 'other';
+
+export function attachmentMediaType(mimeType?: string | null): MediaType {
+  if (!mimeType) return 'other';
+  const lower = mimeType.toLowerCase();
+  if (lower.startsWith('image/')) return 'image';
+  if (lower.startsWith('video/')) return 'video';
+  if (lower.startsWith('audio/')) return 'audio';
+  return 'other';
+}
+
+/** The pictures of a message the full-size viewer steps through, in their order (as the old lightbox). */
+export function viewerImages<T extends { mimeType?: string | null }>(attachments: readonly T[] | null | undefined): T[] {
+  return (attachments ?? []).filter((a) => attachmentMediaType(a.mimeType) === 'image');
+}
+
 /** A file of a message, as a tile draws it. */
 export interface AttachmentView {
   id: string;

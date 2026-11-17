@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DELETED_USER,
+  attachmentMediaType,
   sendFailureReason,
+  viewerImages,
   toAttachmentViews,
   toQuoteView,
   toReactionViews,
@@ -128,5 +130,27 @@ describe('sendFailureReason', () => {
     expect(sendFailureReason('Message too long', undefined)).toBe('Message too long');
     expect(sendFailureReason(undefined, undefined)).toBeUndefined();
     expect(sendFailureReason(null, undefined)).toBeUndefined();
+  });
+});
+
+describe('attachmentMediaType and viewerImages', () => {
+  it('reads the type as the old preview: image, video, audio, else other (any case, missing is other)', () => {
+    expect(attachmentMediaType('image/png')).toBe('image');
+    expect(attachmentMediaType('VIDEO/MP4')).toBe('video');
+    expect(attachmentMediaType('audio/ogg')).toBe('audio');
+    expect(attachmentMediaType('application/pdf')).toBe('other');
+    expect(attachmentMediaType(undefined)).toBe('other');
+    expect(attachmentMediaType('')).toBe('other');
+  });
+
+  it('the viewer steps through the pictures only, in order', () => {
+    const files = [
+      { id: 'a', mimeType: 'image/png' },
+      { id: 'b', mimeType: 'video/mp4' },
+      { id: 'c', mimeType: 'image/gif' },
+      { id: 'd', mimeType: null },
+    ];
+    expect(viewerImages(files).map((f) => f.id)).toEqual(['a', 'c']);
+    expect(viewerImages(null)).toEqual([]);
   });
 });
