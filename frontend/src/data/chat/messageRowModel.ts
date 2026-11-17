@@ -4,7 +4,7 @@
  * (`AttachmentTile`). The rules are the old row's (`components/Message/MessageComponent.tsx`), so both shells say
  * the same thing about the same message. No React, no data fetching: a native shell can mirror them.
  */
-import type { Message } from '../../types/message.type';
+import type { LinkPreview, Message } from '../../types/message.type';
 import { SpanType } from '../../types/message.type';
 import { formatClockTime, formatFullTimestamp, formatMessageTime } from '../../utils/messageTime';
 import { formatFileSize } from '../../utils/format';
@@ -181,5 +181,41 @@ export function toAttachmentViews(attachments: Message['attachments']): Attachme
     detail: formatFileSize(a.size),
     width: a.width ?? null,
     height: a.height ?? null,
+  }));
+}
+
+/** A link preview as a card draws it. The addresses come from the server's preview of a link someone sent. */
+export interface LinkCardView {
+  href: string;
+  title?: string;
+  /** The site's name, else the link's host, with the author when known ("Example · Aiko"), as the old card. */
+  site: string;
+  description?: string;
+  /** The page's banner picture (a third-party address). */
+  imageSrc?: string;
+  /** The site's icon (a third-party address). */
+  iconSrc?: string;
+}
+
+/** The line a preview card names its site with (as the old card). */
+export function linkPreviewSite(preview: Pick<LinkPreview, 'url' | 'siteName' | 'authorName'>): string {
+  let host: string;
+  try {
+    host = new URL(preview.url).hostname;
+  } catch {
+    host = preview.url;
+  }
+  const site = preview.siteName || host;
+  return preview.authorName ? `${site} · ${preview.authorName}` : site;
+}
+
+export function toLinkCards(previews: readonly LinkPreview[] | null | undefined): LinkCardView[] {
+  return (previews ?? []).map((p) => ({
+    href: p.url,
+    site: linkPreviewSite(p),
+    ...(p.title ? { title: p.title } : {}),
+    ...(p.description ? { description: p.description } : {}),
+    ...(p.imageUrl ? { imageSrc: p.imageUrl } : {}),
+    ...(p.faviconUrl ? { iconSrc: p.faviconUrl } : {}),
   }));
 }

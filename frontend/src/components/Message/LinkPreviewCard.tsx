@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Card, Typography, styled } from "@mui/material";
 import LinkIcon from "@mui/icons-material/Link";
 import type { LinkPreview } from "../../types/message.type";
+import { linkPreviewSite } from "../../data/chat/messageRowModel";
 
 const PreviewCard = styled(Card)(({ theme }) => ({
   display: "flex",
@@ -73,13 +74,6 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
       }
     };
 
-    let hostname: string;
-    try {
-      hostname = new URL(preview.url).hostname;
-    } catch {
-      hostname = preview.url;
-    }
-
     const showBannerImage = preview.imageUrl && !imageError;
 
     return (
@@ -109,8 +103,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
               </FallbackDot>
             )}
             <Typography variant="caption" color="text.secondary" noWrap>
-              {preview.siteName || hostname}
-              {preview.authorName && ` · ${preview.authorName}`}
+              {linkPreviewSite(preview)}
             </Typography>
           </Box>
 

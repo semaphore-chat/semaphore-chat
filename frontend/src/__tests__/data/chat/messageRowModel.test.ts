@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DELETED_USER,
   attachmentMediaType,
+  linkPreviewSite,
+  toLinkCards,
   sendFailureReason,
   viewerImages,
   toAttachmentViews,
@@ -152,5 +154,26 @@ describe('attachmentMediaType and viewerImages', () => {
     ];
     expect(viewerImages(files).map((f) => f.id)).toEqual(['a', 'c']);
     expect(viewerImages(null)).toEqual([]);
+  });
+});
+
+describe('toLinkCards and linkPreviewSite', () => {
+  it('names the site by its name, else the host, else the raw address; adds the author', () => {
+    expect(linkPreviewSite({ url: 'https://example.com/a', siteName: 'Example' })).toBe('Example');
+    expect(linkPreviewSite({ url: 'https://news.example.org/a' })).toBe('news.example.org');
+    expect(linkPreviewSite({ url: 'not a url', authorName: 'Aiko' })).toBe('not a url · Aiko');
+  });
+
+  it('maps each preview to a card, leaving out what the server did not find', () => {
+    expect(
+      toLinkCards([
+        { url: 'https://e.com/1', title: 'One', description: 'Words', imageUrl: 'https://e.com/b.jpg', faviconUrl: 'https://e.com/f.ico' },
+        { url: 'https://e.com/2', title: '' },
+      ]),
+    ).toEqual([
+      { href: 'https://e.com/1', site: 'e.com', title: 'One', description: 'Words', imageSrc: 'https://e.com/b.jpg', iconSrc: 'https://e.com/f.ico' },
+      { href: 'https://e.com/2', site: 'e.com' },
+    ]);
+    expect(toLinkCards(null)).toEqual([]);
   });
 });
