@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, act, waitFor } from '@testing-library/react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { renderWithProviders, createChannel } from '../test-utils';
 import ChannelMessageContainer from '../../components/Channel/ChannelMessageContainer';
 import { ThreadPanelProvider } from '../../contexts/ThreadPanelProvider';
@@ -50,9 +50,15 @@ vi.mock('../../contexts/VoiceContext', () => ({
 }));
 
 
+const handlerIdentities = vi.hoisted(() => ({ seen: new Set<unknown>() }));
+function Probe({ fn }: { fn: unknown }) {
+  handlerIdentities.seen.add(fn);
+  return null;
+}
 vi.mock('../../components/Message/MessageContainerWrapper', () => ({
   default: ({ onOpenThread }: { onOpenThread: (m: Message) => void }) => (
     <>
+      <Probe fn={onOpenThread} />
       <button onClick={() => onOpenThread(parent)}>open thread</button>
       <button onClick={() => onOpenThread(other)}>open other thread</button>
     </>
@@ -160,5 +166,58 @@ describe('ChannelMessageContainer and ?thread=', () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(screen.queryByTestId('thread-panel')).toBeNull();
+  });
+
+  it('following a link to another thread while one is open keeps the new ?thread=', async () => {
+    function Go() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate('/community/c1/channel/ch-1?thread=parent-2')}>follow link</button>;
+    }
+    const { user } = renderWithProviders(
+      <ThreadPanelProvider>
+        <ChannelMessageContainer channelId="ch-1" communityId="c1" />
+        <Where />
+        <Go />
+      </ThreadPanelProvider>,
+      { routerProps: { initialEntries: ['/community/c1/channel/ch-1?thread=parent-1'] } },
+    );
+    await waitFor(() => expect(screen.getByTestId('thread-panel')).toHaveAttribute('data-parent', 'parent-1'));
+    await user.click(screen.getByRole('button', { name: 'follow link', hidden: true }));
+    await waitFor(() => expect(screen.getByTestId('thread-panel')).toHaveAttribute('data-parent', 'parent-2'));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.getByTestId('where')).toHaveTextContent('?thread=parent-2');
+  });
+
+  it('a ?thread= naming a thread reply opens nothing', async () => {
+    loaded.messages = [{ id: 'parent-1', parentMessageId: 'root' } as unknown as Message, other];
+    renderWithProviders(
+      <ThreadPanelProvider>
+        <ChannelMessageContainer channelId="ch-1" communityId="c1" />
+      </ThreadPanelProvider>,
+      { routerProps: { initialEntries: ['/community/c1/channel/ch-1?thread=parent-1'] } },
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.queryByTestId('thread-panel')).toBeNull();
+  });
+
+  it('the open-thread handler keeps its identity when the search changes', async () => {
+    function Go() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate('/community/c1/channel/ch-1?highlight=x')}>set highlight</button>;
+    }
+    handlerIdentities.seen.clear();
+    const { user } = renderWithProviders(
+      <ThreadPanelProvider>
+        <ChannelMessageContainer channelId="ch-1" communityId="c1" />
+        <Go />
+      </ThreadPanelProvider>,
+      { routerProps: { initialEntries: ['/community/c1/channel/ch-1'] } },
+    );
+    await user.click(screen.getByRole('button', { name: 'set highlight' }));
+    expect(handlerIdentities.seen.size).toBe(1);
   });
 });

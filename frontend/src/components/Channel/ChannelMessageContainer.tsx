@@ -115,15 +115,18 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   // Drops the param once any overlay entry (the touch layout's thread layer) has unwound: a replace before the
   // overlay's own back() lands would rewrite the overlay entry, and the back() would then land on the entry that
   // still names the thread, reopening it.
+  // Through a ref: `setSearchParams` changes with every search change, which must not re-render the message rows.
+  const setSearchParamsRef = useRef(setSearchParams);
+  setSearchParamsRef.current = setSearchParams;
   const dropThreadParam = useCallback(() => {
     navigateAfterOverlays(() =>
-      setSearchParams((params) => {
+      setSearchParamsRef.current((params) => {
         const next = new URLSearchParams(params);
         next.delete(THREAD_PARAM);
         return next;
       }, { replace: true }),
     );
-  }, [setSearchParams]);
+  }, []);
   // The thread the URL named that was just closed: not opened again until the param changes.
   const closedThreadRef = useRef<string | null>(null);
 
@@ -157,14 +160,17 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
 
   // A thread that was open closed (its own Back or Close, the channel's Esc): the URL no longer names it.
   const threadWasOpenRef = useRef(false);
+  const lastOpenThreadIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (openThreadId) {
       threadWasOpenRef.current = true;
+      lastOpenThreadIdRef.current = openThreadId;
       return;
     }
     if (!threadWasOpenRef.current) return;
     threadWasOpenRef.current = false;
-    if (threadParam) {
+    // Only the thread that was open: a link to another thread followed meanwhile keeps its param.
+    if (threadParam && threadParam === lastOpenThreadIdRef.current) {
       closedThreadRef.current = threadParam;
       dropThreadParam();
     }
@@ -297,7 +303,8 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   useEffect(() => {
     if (!pendingThreadParentId) return;
     const parentMsg = messagesHookResult.messages.find((m: Message) => m.id === pendingThreadParentId);
-    if (parentMsg) {
+    // A message that is itself a thread reply is no thread: treated like a link that cannot be loaded.
+    if (parentMsg && parentMsg.parentMessageId == null) {
       pendingFromUrlRef.current = false;
       handleOpenThread(parentMsg);
       setPendingThreadParentId(null);
@@ -307,9 +314,9 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     // it, so stop waiting instead of opening it out of the blue later.
     if (
       pendingFromUrlRef.current &&
-      !messagesHookResult.isLoading &&
+      (parentMsg || (!messagesHookResult.isLoading &&
       !messagesHookResult.isJumpPending &&
-      !searchParams.has("highlight")
+      !searchParams.has("highlight")))
     ) {
       pendingFromUrlRef.current = false;
       setPendingThreadParentId(null);

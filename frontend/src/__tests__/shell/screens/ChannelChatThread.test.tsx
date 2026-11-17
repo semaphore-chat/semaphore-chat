@@ -358,6 +358,23 @@ describe('ChannelChat threads', () => {
     expect(screen.queryByRole('textbox', { name: /composer for thread/ })).toBeNull();
   });
 
+  it('a message that is itself a thread reply is not a thread', async () => {
+    conversation.current = makeConversation({ orderedMessages: [] });
+    thread({ fetchedParent: reply('r-9', 'a reply') });
+    setup({ entries: [`${FIXTURE_CHAT}?thread=r-9`] });
+    expect(await screen.findByRole('heading', { name: 'This thread is gone' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /composer for thread/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Follow thread' })).toBeNull();
+  });
+
+  it('no Follow while the parent is still being fetched (it may be a DM message)', async () => {
+    conversation.current = makeConversation({ orderedMessages: [] });
+    thread({ parentLoading: true });
+    setup({ entries: [`${FIXTURE_CHAT}?thread=m-9`] });
+    expect(await screen.findByText('Loading the thread')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Follow thread' })).toBeNull();
+  });
+
   it('Follow toggles the subscription and says whether it is on', async () => {
     thread({ isSubscribed: true });
     setup({ entries: [`${FIXTURE_CHAT}?thread=m-1`] });

@@ -141,8 +141,10 @@ export function ThreadView({
 }: ThreadViewProps): JSX.Element {
   const thread = useThreadConversation({ parentMessageId, parent });
   const parentMessage = thread.parent;
-  // A parent from another channel or a DM (a hand-made link) is not this channel's thread.
-  const foreign = parentMessage !== null && parentMessage.channelId !== channelId;
+  // A parent from another channel or a DM, or a message that is itself a thread reply (a hand-made link), is not this
+  // channel's thread.
+  const foreign =
+    parentMessage !== null && (parentMessage.channelId !== channelId || parentMessage.parentMessageId != null);
   const listRef = useRef<MessageListCoreHandle>(null);
   const [atBottom, setAtBottom] = useState(false);
 
@@ -224,6 +226,9 @@ export function ThreadView({
       <ThreadState title="Couldn't load replies" action={<Button onClick={() => void thread.refetch()}>Try again</Button>} />
     ) : undefined;
 
+  // The composer and Follow show together: only for a thread that is known to be this channel's and loaded.
+  const interactive = writable && state === undefined;
+
   return (
     <ChatRowContext value={threadShared}>
       <ChatPane
@@ -231,7 +236,7 @@ export function ThreadView({
           <ThreadHeader
             backLabel={backLabel}
             onBack={onClose}
-            follow={writable && !parentGone ? { following: thread.isSubscribed, onToggle: () => void thread.toggleSubscription() } : undefined}
+            follow={interactive ? { following: thread.isSubscribed, onToggle: () => void thread.toggleSubscription() } : undefined}
           />
         }
         state={state}
@@ -256,7 +261,7 @@ export function ThreadView({
         }
         announcement={announcement}
         composer={
-          writable && state === undefined ? (
+          interactive ? (
             <ChatComposer
               communityId={communityId}
               channelId={channelId}
