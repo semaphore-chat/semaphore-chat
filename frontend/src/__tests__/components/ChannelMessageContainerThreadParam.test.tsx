@@ -10,6 +10,8 @@ import type { Message } from '../../types/message.type';
 
 const env = vi.hoisted(() => ({ electron: false, phone: true }));
 const parent = vi.hoisted(() => ({ id: 'parent-1' }) as unknown as Message);
+const other = vi.hoisted(() => ({ id: 'parent-2' }) as unknown as Message);
+const loaded = vi.hoisted(() => ({ messages: [] as Message[] }));
 
 vi.mock('../../utils/platform', () => ({
   isElectron: () => env.electron,
@@ -40,7 +42,7 @@ vi.mock('../../hooks/useMessageFileUpload', () => ({
   useMessageFileUpload: () => ({ handleSendMessage: vi.fn() }),
 }));
 vi.mock('../../hooks/useJumpToMessage', () => ({
-  useJumpToMessage: () => ({ isJumpPending: false, highlightMessageId: undefined, messages: [parent] }),
+  useJumpToMessage: () => ({ isJumpPending: false, isLoading: false, highlightMessageId: undefined, messages: loaded.messages }),
 }));
 vi.mock('../../contexts/VoiceContext', () => ({
   useVoice: () => ({ isConnected: false }),
@@ -50,7 +52,10 @@ vi.mock('../../contexts/VoiceContext', () => ({
 
 vi.mock('../../components/Message/MessageContainerWrapper', () => ({
   default: ({ onOpenThread }: { onOpenThread: (m: Message) => void }) => (
-    <button onClick={() => onOpenThread(parent)}>open thread</button>
+    <>
+      <button onClick={() => onOpenThread(parent)}>open thread</button>
+      <button onClick={() => onOpenThread(other)}>open other thread</button>
+    </>
   ),
 }));
 vi.mock('../../components/Message/MemberListContainer', () => ({
@@ -89,6 +94,45 @@ describe('ChannelMessageContainer and ?thread=', () => {
   beforeEach(() => {
     env.electron = false;
     env.phone = false;
+    loaded.messages = [parent, other];
+  });
+
+  it('opening another thread drops the param (a reload must not reopen the first)', async () => {
+    const { user } = renderWithProviders(
+      <ThreadPanelProvider>
+        <ChannelMessageContainer channelId="ch-1" communityId="c1" />
+        <Where />
+      </ThreadPanelProvider>,
+      { routerProps: { initialEntries: ['/community/c1/channel/ch-1?thread=parent-1'] } },
+    );
+    await waitFor(() => expect(screen.getByTestId('thread-panel')).toHaveAttribute('data-parent', 'parent-1'));
+    await user.click(screen.getByRole('button', { name: 'open other thread', hidden: true }));
+    await waitFor(() => expect(screen.getByTestId('thread-panel')).toHaveAttribute('data-parent', 'parent-2'));
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/community\/c1\/channel\/ch-1$/));
+  });
+
+  it('a link to a thread whose parent is not loaded gives up: it does not open out of the blue later', async () => {
+    loaded.messages = [other];
+    const view = renderWithProviders(
+      <ThreadPanelProvider>
+        <ChannelMessageContainer channelId="ch-1" communityId="c1" />
+      </ThreadPanelProvider>,
+      { routerProps: { initialEntries: ['/community/c1/channel/ch-1?thread=parent-1'] } },
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    // Much later the parent turns up in the window (scrolling back): no thread pops open.
+    loaded.messages = [parent, other];
+    view.rerender(
+      <ThreadPanelProvider>
+        <ChannelMessageContainer channelId="ch-1" communityId="c1" />
+      </ThreadPanelProvider>,
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.queryByTestId('thread-panel')).toBeNull();
   });
 
   it('opens the thread the URL names, and closing it drops only the param', async () => {
