@@ -32,6 +32,8 @@ test('link card: the picture box is 1.91:1 with or without its picture; the card
   );
   // The loaded card, the one still loading and the broken one.
   expect(boxes.length).toBe(3);
+  // The slow card's picture has not arrived yet (it answers after 3 s), and the loaded one's has.
+  expect(boxes.filter((b) => !b.loaded).length).toBeGreaterThanOrEqual(1);
   for (const box of boxes) {
     expect(box.banner!.width / box.banner!.height).toBeCloseTo(1.91, 1);
     expect(box.right).toBeLessThanOrEqual(PHONE.width);

@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { LinkCard, MessageRow, MessageText, Stack } from '../../kit';
 import { ChatColumn, OnPalette } from './kitChatFixtures';
 import { PALETTES, text } from './kitChatData';
@@ -49,9 +49,10 @@ const Cards = () => (
       author="kwam3"
       avatarColour="#6FB1F5"
       time="8:21 PM"
-      body={<MessageText segments={text('a picture that failed, and an address the kit will not open')} />}
+      body={<MessageText segments={text('a picture that is still loading, one that failed, and an address the kit will not open')} />}
       attachments={
         <Stack gap="sm" align="start">
+          <LinkCard href="https://slow.example/" site="slow.example" title="Its picture arrives late" imageSrc="https://slow.story.example/banner.svg" />
           <LinkCard href="https://broken.example/" site="broken.example" title="Broken picture and icon" imageSrc="https://broken.story.example/b.png" iconSrc="https://broken.story.example/f.ico" />
           <LinkCard href="https://bank.example@evil.example/" site="bank.example" title="Drawn, but not a link" />
         </Stack>
@@ -68,6 +69,11 @@ const pictures = [
   http.get('https://pictures.story.example/icon.svg', () =>
     new HttpResponse(decodeURIComponent(picture(32, 32, '#FFA366').split(',')[1]), { headers: { 'Content-Type': 'image/svg+xml' } }),
   ),
+  // Answers after a pause, so the card shows its empty picture box for a moment, then ends (the screenshot tool waits for idle).
+  http.get('https://slow.story.example/banner.svg', async () => {
+    await delay(3000);
+    return new HttpResponse(decodeURIComponent(picture(1200, 630, '#6FB1F5').split(',')[1]), { headers: { 'Content-Type': 'image/svg+xml' } });
+  }),
   http.get('https://broken.story.example/*', () => new HttpResponse(null, { status: 404 })),
 ];
 
