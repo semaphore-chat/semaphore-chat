@@ -13,7 +13,8 @@ import { MessageSearchPanel } from "../Message/MessageSearchPanel";
 import { DockedSidePanel, DOCKED_PANEL_ATTR, type DockedPanelKind } from "./DockedSidePanel";
 import { PinnedMessagesPanel } from "../Moderation";
 import { ThreadPanel } from "../Thread";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
+import { readThreadParam, THREAD_PARAM } from "../../data/chat/threadParam";
 import { useChannelChat } from "../../data/chat/useChannelChat";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
 import { useNotification } from "../../contexts/NotificationContext";
@@ -116,10 +117,36 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     openThread(message.id);
   }, [openThread, rememberPanelTrigger]);
 
+  // `?thread=<id>` (the new shell's open thread, and links to one) opens that thread once its parent is in the
+  // loaded messages (the pinned-thread-reply path below); closing a thread drops the param again.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const threadParam = readThreadParam(searchParams);
+  useEffect(() => {
+    if (threadParam) setPendingThreadParentId(threadParam);
+  }, [threadParam]);
+
   const handleCloseThread = useCallback(() => {
     closeThread();
     setThreadParentMessage(null);
   }, [closeThread]);
+
+  // A thread that was open closed (its own Back or Close, the channel's Esc): the URL no longer names it.
+  const threadWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (openThreadId) {
+      threadWasOpenRef.current = true;
+      return;
+    }
+    if (!threadWasOpenRef.current) return;
+    threadWasOpenRef.current = false;
+    if (threadParam) {
+      setSearchParams((params) => {
+        const next = new URLSearchParams(params);
+        next.delete(THREAD_PARAM);
+        return next;
+      }, { replace: true });
+    }
+  }, [openThreadId, threadParam, setSearchParams]);
 
   const threadOpen = !!openThreadId && !!threadParentMessage;
   // Back closes a modal layer on touch layouts; the docked panel isn't a layer.
