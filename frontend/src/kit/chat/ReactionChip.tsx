@@ -148,6 +148,7 @@ export function ReactionChip({
       onClick={press}
       {...longPress.handlers}
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+        longPress.onKey();
         repeatingRef.current = event.repeat;
       }}
       onKeyUp={() => {
@@ -193,8 +194,10 @@ function useLongPressPeople(onShowPeople: (() => void) | undefined) {
     }, GHOST_CLICK_MS);
     onShowPeople?.();
   };
-  if (onShowPeople === undefined) return { handlers: {}, swallowClick: () => false };
+  if (onShowPeople === undefined) return { handlers: {}, swallowClick: () => false, onKey: () => undefined };
   return {
+    // A key press is a new press: the echo window is for the click a touch or a context menu leaves behind.
+    onKey: endEcho,
     swallowClick(event: MouseEvent<HTMLButtonElement>): boolean {
       if (echo.current === null) return false;
       endEcho();

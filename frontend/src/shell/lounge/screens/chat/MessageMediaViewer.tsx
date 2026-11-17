@@ -1,12 +1,12 @@
 /**
- * A message's pictures, full size (the old chat's lightbox, on the kit's MediaViewer): the message's image files in
- * order (`viewerImages`, as the old lightbox), the one showing fetched whole through the file cache (the old
+ * A message's pictures, full size (the old chat's lightbox, on the kit's MediaViewer): the message's raster pictures
+ * in order (`viewableImages`: the old lightbox's list, narrowed to the types the opener shows), the one showing fetched whole through the file cache (the old
  * lightbox's `useAuthenticatedFile`), and Download for it. Escape, Close and a press beside the picture close it;
  * focus returns to the picture that opened it.
  */
 import { useEffect, useState, type JSX } from 'react';
 import { MediaViewer } from '../../../../kit';
-import { viewerImages } from '../../../../data/chat/messageRowModel';
+import { viewableImages } from '../../../../data/chat/useAttachmentOpener';
 import { useAuthenticatedFile } from '../../../../hooks/useAuthenticatedFile';
 import { downloadBlob } from '../../../../utils/format';
 import type { Message } from '../../../../types/message.type';
@@ -23,7 +23,7 @@ export function MessageMediaViewer({ request, onDone }: { request: ViewerRequest
 }
 
 function ViewerFor({ request, onDone }: { request: ViewerRequest; onDone: () => void }): JSX.Element {
-  const images = viewerImages(request.message.attachments);
+  const images = viewableImages(request.message.attachments);
   const [index, setIndex] = useState(() => Math.max(0, images.findIndex((f) => f.id === request.fileId)));
   const [open, setOpen] = useState(true);
   const current = images[index];
@@ -43,7 +43,11 @@ function ViewerFor({ request, onDone }: { request: ViewerRequest; onDone: () => 
       items={items}
       index={index}
       onIndexChange={setIndex}
-      onDownload={blobUrl && current ? () => downloadBlob(blobUrl, current.filename) : undefined}
+      // Download is there from the start (no reflow), busy until the picture is in.
+      onDownload={() => {
+        if (blobUrl && current) downloadBlob(blobUrl, current.filename);
+      }}
+      downloading={!blobUrl && !error}
     />
   );
 }

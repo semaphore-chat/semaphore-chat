@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AttachmentTile, MessageRow, MessageText, Stack } from '../../kit';
 import { ChatColumn, OnPalette } from './kitChatFixtures';
 import { PALETTES, noop, text } from './kitChatData';
@@ -184,5 +185,28 @@ export const MediaStates = () => (
 export const MediaStatesLight = () => (
   <OnPalette palette={PALETTES[1]}>
     <Media />
+  </OnPalette>
+);
+
+/** A short silent WAV, so the players have something to load. */
+const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+
+/** Press Play: the screen gives the address at once and the tile becomes the player (focus moves to it). */
+function PlayHarness() {
+  const [video, setVideo] = useState<string | undefined>(undefined);
+  const [audio, setAudio] = useState<string | undefined>(undefined);
+  return (
+    <ChatColumn width={390}>
+      <Stack gap="sm" align="start">
+        <AttachmentTile kind="video" name="clip.mp4" detail="1 MB" width={1280} height={720} src={video} onOpen={() => setVideo('data:video/mp4;base64,')} />
+        <AttachmentTile kind="audio" name="note.wav" detail="1 KB" src={audio} onOpen={() => setAudio(SILENCE)} />
+      </Stack>
+    </ChatColumn>
+  );
+}
+
+export const PressToPlay = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <PlayHarness />
   </OnPalette>
 );

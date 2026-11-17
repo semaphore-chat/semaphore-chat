@@ -122,6 +122,31 @@ vi.mock('../../../hooks/useAuthenticatedFile', () => ({
   },
   useAuthenticatedImage: () => ({ blobUrl: null }),
 }));
+// The file cache, as the poster and the opener use it: thumbnails answer (or fail), every whole-file fetch is recorded.
+const cache = vi.hoisted(() => ({ thumbFails: new Set<string>(), whole: [] as string[] }));
+vi.mock('../../../contexts/AvatarCacheContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../contexts/AvatarCacheContext')>();
+  const fake = {
+    fetchThumbnail: (id: string) => (cache.thumbFails.has(id) ? Promise.reject(new Error('no thumbnail')) : Promise.resolve(`blob:${id}-thumb`)),
+    fetchBlob: (id: string) => {
+      cache.whole.push(id);
+      return Promise.resolve(`blob:${id}`);
+    },
+    getBlob: () => undefined,
+  };
+  return { ...actual, useFileCache: () => fake };
+});
+// The opener: what a press downloads or opens is recorded (its own rules are tested in useAttachmentOpener.test.ts).
+const opened = vi.hoisted(() => ({ files: [] as Array<{ id: string; mimeType?: string }> }));
+vi.mock('../../../data/chat/useAttachmentOpener', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../data/chat/useAttachmentOpener')>();
+  const opener = {
+    open: (f: { id: string; mimeType?: string }) => void opened.files.push(f),
+    isBusy: () => false,
+    subscribe: () => () => undefined,
+  };
+  return { ...actual, useAttachmentOpener: () => opener };
+});
 const timeout = vi.hoisted(() => ({ until: undefined as Date | undefined }));
 vi.mock('../../../hooks/useChannelPermissions', () => ({ useChannelPermissions: () => ({ timedOutUntil: timeout.until }) }));
 
@@ -235,6 +260,23 @@ describe('ChannelChat rich rows', () => {
     expect(row.textContent).toContain('giphy.gif');
   });
 
+  it('a GIF address with a user name is not drawn as the GIF (its words show)', () => {
+    const tricky = 'https://trusted.example@media.giphy.com/media/x/giphy.gif';
+    setup([createMessage({ id: 'm-tricky', authorId: 'u-aiko', spans: words(tricky) })]);
+    expect(screen.queryByRole('button', { name: 'Open image GIF' })).toBeNull();
+    expect(screen.getAllByRole('article')[0].textContent).toContain('giphy.gif');
+  });
+
+  it('a GIF that failed once stays failed when its row comes back (no retry, no jump)', () => {
+    const gif = 'https://media.giphy.com/media/once/giphy.gif';
+    const message = createMessage({ id: 'm-once', authorId: 'u-aiko', spans: words(gif) });
+    const first = setup([message]);
+    fireEvent.error(screen.getByRole('button', { name: 'Open image GIF' }).querySelector('img')!);
+    first.unmount();
+    setup([message]);
+    expect(screen.queryByRole('button', { name: 'Open image GIF' })).toBeNull();
+  });
+
   it("a picture opens the viewer at it, steps through the message's pictures, and Escape brings focus back", async () => {
     const { user } = setup([
       createMessage({
@@ -274,11 +316,69 @@ describe('ChannelChat rich rows', () => {
     expect(document.querySelector('audio')).toBeNull();
     expect(files.asked).not.toContain('f-a');
     const play = screen.getByRole('button', { name: 'Play video clip.mp4, 2 KB' });
-    expect(play.querySelector('img')).toHaveAttribute('src', 'blob:f-v-thumb');
+    await waitFor(() => expect(play.querySelector('img')).toHaveAttribute('src', 'blob:f-v-thumb'));
     await user.click(play);
     expect(document.querySelector('video')?.getAttribute('src')).toMatch(/\/file\/f-v$/);
     await user.click(screen.getByRole('button', { name: 'Play audio song.ogg, 2 KB' }));
     expect(document.querySelector('audio')).toHaveAttribute('src', 'blob:f-a');
+  });
+
+  it('a video whose still fails never fetches the video before Play (no fallback to the whole file)', async () => {
+    cache.thumbFails.add('f-nothumb');
+    cache.whole = [];
+    files.asked = [];
+    setup([
+      createMessage({
+        id: 'm-nothumb',
+        authorId: 'u-aiko',
+        spans: words('no still'),
+        attachments: [file('f-nothumb', 'clip.mp4', 'video/mp4', { hasThumbnail: true, width: 640, height: 360 })] as never,
+      }),
+    ]);
+    const play = screen.getByRole('button', { name: 'Play video clip.mp4, 2 KB' });
+    // Let the failed thumbnail settle.
+    await act(async () => undefined);
+    expect(play.querySelector('img')).toBeNull();
+    expect(cache.whole).not.toContain('f-nothumb');
+    expect(files.asked.filter((f) => f.startsWith('f-nothumb'))).toEqual([]);
+    expect(document.querySelector('video')).toBeNull();
+    cache.thumbFails.delete('f-nothumb');
+  });
+
+  it('only a raster picture opens the viewer: SVG, HTML and a type/kind mismatch download, nothing drawn as a page', async () => {
+    opened.files = [];
+    const { user } = setup([
+      createMessage({
+        id: 'm-types',
+        authorId: 'u-aiko',
+        spans: words('types'),
+        attachments: [
+          file('f-svg', 'x.svg', 'image/svg+xml'),
+          // The server called it a picture, its type says a page.
+          { ...file('f-html', 'y.png', 'image/png'), mimeType: 'text/html' },
+          // The type says a picture, the server did not.
+          { ...file('f-doc', 'z.png', 'image/png'), fileType: 'DOCUMENT' },
+          file('f-png', 'ok.png', 'image/png'),
+        ] as never,
+      }),
+    ]);
+    for (const [label, id] of [
+      ['Open image x.svg', 'f-svg'],
+      ['Open image y.png', 'f-html'],
+    ] as const) {
+      await user.click(screen.getByRole('button', { name: label }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(opened.files[opened.files.length - 1]?.id).toBe(id);
+    }
+    await user.click(screen.getByRole('button', { name: /^Download z\.png/ }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(opened.files[opened.files.length - 1]?.id).toBe('f-doc');
+    expect(document.querySelector('iframe, object, embed')).toBeNull();
+    // The viewer lists the raster picture alone: "ok.png", no count.
+    await user.click(screen.getByRole('button', { name: 'Open image ok.png' }));
+    const viewer = await screen.findByRole('dialog', { name: 'ok.png' });
+    expect(viewer).not.toHaveTextContent(/of \d/);
+    expect(opened.files.map((f) => f.id)).not.toContain('f-png');
   });
 
   it('audio that cannot be fetched becomes its download row', async () => {
@@ -319,7 +419,22 @@ describe('ChannelChat rich rows', () => {
     fireEvent.keyDown(row, { key: 'Enter' });
     const actionsSheet = await screen.findByRole('dialog');
     fireEvent.click(within(actionsSheet).getByRole('button', { name: 'See reactions' }));
-    expect(await screen.findByRole('dialog', { name: 'Reactions' })).toBeInTheDocument();
+    const fromActions = await screen.findByRole('dialog', { name: 'Reactions' });
+    // Closing it returns focus to the message's row, not the page.
+    fireEvent.keyDown(fromActions, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(rowOf('react to me')));
+  });
+
+  it('who reacted from a focused chip returns focus to that chip', async () => {
+    setup([createMessage({ id: 'm-r2', authorId: 'u-aiko', spans: words('chip focus'), reactions: [{ emoji: '😂', userIds: ['u-bo'] }] as never })]);
+    const chip = screen.getByRole('button', { name: '😂 reaction, 1' });
+    act(() => chip.focus());
+    fireEvent.contextMenu(chip);
+    const sheet = await screen.findByRole('dialog', { name: 'Reactions' });
+    fireEvent.keyDown(sheet, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(chip));
   });
 
   it("a failed send names the time-out the reader is under, else the server's reason", () => {

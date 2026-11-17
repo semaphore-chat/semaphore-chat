@@ -44,6 +44,8 @@ export interface ModalProps {
   container: CSSObject;
   /** Styles the panel itself; read the kit theme from the MUI theme it is given. */
   panel: (theme: Theme) => CSSObject;
+  /** Where focus returns when it closes, whatever has focus as it opens. Default: what had focus as it opened. */
+  opener?: HTMLElement | null;
   children: ReactNode;
 }
 
@@ -55,6 +57,7 @@ export function Modal({
   describedBy,
   container,
   panel,
+  opener,
   children,
 }: ModalProps): JSX.Element {
   // The element MUI's focus trap guards: layers opened from inside render in it.
@@ -69,6 +72,7 @@ export function Modal({
     kind,
     open,
     panel: paper,
+    opener,
     // A press on the scrim focuses the container: focus there is still in the modal.
     root,
     onRequestClose: (reason) => {

@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -288,7 +288,20 @@ function Tile({
   const on = useSurface();
   const tabIndex = useRowTabIndex();
   const [failed, setFailed] = useState(false);
-  const press = () => {
+  // Play was pressed with focus on it: when the player replaces the button, focus moves to the player (never the page).
+  const focusPlayer = useRef(false);
+  const player = useRef<HTMLMediaElement | null>(null);
+  const playing = (kind === 'video' || kind === 'audio') && src !== undefined;
+  useLayoutEffect(() => {
+    if (playing && focusPlayer.current) {
+      focusPlayer.current = false;
+      player.current?.focus({ preventScroll: true });
+    }
+  }, [playing]);
+  const press = (event?: { currentTarget: Element }) => {
+    if (kind === 'video' || kind === 'audio') {
+      focusPlayer.current = event !== undefined && event.currentTarget.contains(document.activeElement);
+    }
     if (!busy) onOpen?.();
   };
   const pressable = onOpen !== undefined;
@@ -311,7 +324,7 @@ function Tile({
       return (
         <VideoBox $on={on} $w={box.width} $h={box.height}>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a file someone sent has no caption track to give */}
-          <video src={src} poster={poster} controls autoPlay playsInline preload="metadata" aria-label={name} tabIndex={tabIndex} />
+          <video ref={(el) => void (player.current = el)} src={src} poster={poster} controls autoPlay playsInline preload="metadata" aria-label={name} tabIndex={tabIndex ?? 0} />
         </VideoBox>
       );
     }
@@ -344,7 +357,7 @@ function Tile({
           </FileText>
         </AudioHead>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a file someone sent has no caption track to give */}
-        <audio src={src} controls autoPlay preload="metadata" aria-label={name} tabIndex={tabIndex} />
+        <audio ref={(el) => void (player.current = el)} src={src} controls autoPlay preload="metadata" aria-label={name} tabIndex={tabIndex ?? 0} />
       </AudioBox>
     );
   }

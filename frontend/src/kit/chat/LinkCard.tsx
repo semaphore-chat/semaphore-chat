@@ -8,7 +8,7 @@ import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSur
 import { transientProps } from '../theme/transientProps';
 import { Icon } from '../display/Icon';
 import { IMAGE_MAX } from './attachmentBox';
-import { checkLink } from './messageSegments';
+import { checkLink, safeHref } from './messageSegments';
 import { useRowTabIndex } from './rowTabScope';
 
 export interface LinkCardProps {
@@ -22,7 +22,8 @@ export interface LinkCardProps {
   description?: string;
   /**
    * The page's picture, drawn in a fixed 1.91:1 box (the shape link previews are made for), so a picture that loads
-   * late never changes the card's height. Loaded lazily and without a Referer.
+   * late never changes the card's height. Loaded lazily and without a Referer. Only an http or https address without
+   * a user name is drawn (the link's check); anything else is left out.
    */
   imageSrc?: string;
   /** The site's icon, beside its name. Loaded without a Referer. */
@@ -127,11 +128,14 @@ export function LinkCard({ href, title, site, description, imageSrc, iconSrc }: 
   const [iconFailed, setIconFailed] = useState(false);
   const [bannerFailed, setBannerFailed] = useState(false);
   const link = checkLink(href);
+  // The pictures pass the same check as the link (http or https, no user name): anything else is left out.
+  const banner = imageSrc === undefined ? null : safeHref(imageSrc);
+  const icon = iconSrc === undefined ? null : safeHref(iconSrc);
   const content = (
     <>
       <SiteLine>
-        {iconSrc !== undefined && !iconFailed ? (
-          <SiteIcon src={iconSrc} alt="" referrerPolicy="no-referrer" onError={() => setIconFailed(true)} />
+        {icon !== null && !iconFailed ? (
+          <SiteIcon src={icon} alt="" referrerPolicy="no-referrer" onError={() => setIconFailed(true)} />
         ) : (
           <Icon name="Link" size="sm" />
         )}
@@ -139,11 +143,11 @@ export function LinkCard({ href, title, site, description, imageSrc, iconSrc }: 
       </SiteLine>
       {title !== undefined && <Title dir="auto">{title}</Title>}
       {description !== undefined && <Description dir="auto">{description}</Description>}
-      {imageSrc !== undefined && (
+      {banner !== null && (
         <Banner $on={on}>
           {!bannerFailed && (
             <BannerImage
-              src={imageSrc}
+              src={banner}
               alt=""
               loading="lazy"
               decoding="async"

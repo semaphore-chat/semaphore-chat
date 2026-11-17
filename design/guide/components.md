@@ -1404,7 +1404,7 @@ MediaViewer). A `video` gets the same box with its still (`poster`) and Play
 voice-note.ogg, 420 KB"). Nothing plays, and nothing is fetched, until it is
 pressed: `onOpen` asks the screen for the address, and once the screen gives it
 as `src` the tile becomes the browser's own player in the same place and
-starts. Any other `file` is a row with its name and size; pressing it
+starts; when Play had focus, focus moves to the player. Any other `file` is a row with its name and size; pressing it
 downloads the file. While `busy` presses are ignored (the control stays
 focusable). A picture from another site (a GIF someone linked) is `remote`: it
 loads without a Referer, though the site still sees the reader's address.
@@ -1457,7 +1457,8 @@ address without a user name is a link (the same check as MessageText); anything
 else is drawn as a plain group. The picture sits in a box of fixed shape
 (1.91:1, the shape preview pictures are made for), so it never changes the
 card's height when it arrives; one that fails leaves the box empty. Both
-pictures come from other sites: they load without a Referer, the banner lazily.
+pictures come from other sites: they load without a Referer, the banner lazily,
+and only an address that passes the same check as the link is drawn.
 A card that arrives after the message (the server fetches previews later) grows
 its row; the message list follows the growth when the reader is at the bottom.
 
@@ -2069,6 +2070,7 @@ a request.
 |`actions`|Buttons|none|The buttons, in a row pinned to the bottom. On a phone they stack.|
 |`top`|content|none|Content fixed under the title, above the scrolling body, such as a heading and a search field that filters the body. It never scrolls out of view. Web kit only so far.|
 |`size`|`md`, `lg`|`md`|The width. `md` is 560 pixels and `lg` is 800.|
+|`opener`|element|what had focus|Where focus returns when it closes. For a sheet opened from a layer that closes at the same moment (a "See reactions" row in another sheet), so focus does not return into the gone layer. Web kit only so far.|
 
 When there are no `actions`, focus starts on the Close button (the panel is not
 a control). With actions, focus lands on the sheet itself, so Close is the first

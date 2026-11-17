@@ -1,3 +1,4 @@
+import { delay, http, HttpResponse } from 'msw';
 import { LinkCard, MessageRow, MessageText, Stack } from '../../kit';
 import { ChatColumn, OnPalette } from './kitChatFixtures';
 import { PALETTES, text } from './kitChatData';
@@ -22,8 +23,8 @@ const Cards = () => (
           site="Trailheads · Aiko Tanaka"
           title="The ridge loop, in late autumn"
           description="Eleven kilometres, one steep climb and the best view of the valley before the snow comes in."
-          imageSrc={picture(1200, 630, '#6FB1F5')}
-          iconSrc={picture(32, 32, '#FFA366')}
+          imageSrc="https://pictures.story.example/banner.svg"
+          iconSrc="https://pictures.story.example/icon.svg"
         />
       }
     />
@@ -51,14 +52,29 @@ const Cards = () => (
       body={<MessageText segments={text('a picture that is still loading, one that failed, and an address the kit will not open')} />}
       attachments={
         <Stack gap="sm" align="start">
-          <LinkCard href="https://slow.example/" site="slow.example" title="Its picture never arrives" imageSrc="data:image/png;base64," />
-          <LinkCard href="https://broken.example/" site="broken.example" title="Broken picture and icon" imageSrc="data:image/png;base64,broken" iconSrc="data:image/png;base64,broken" />
+          <LinkCard href="https://slow.example/" site="slow.example" title="Its picture never arrives" imageSrc="https://slow.story.example/banner.png" />
+          <LinkCard href="https://broken.example/" site="broken.example" title="Broken picture and icon" imageSrc="https://broken.story.example/b.png" iconSrc="https://broken.story.example/f.ico" />
           <LinkCard href="https://bank.example@evil.example/" site="bank.example" title="Drawn, but not a link" />
         </Stack>
       }
     />
   </ChatColumn>
 );
+
+/** The cards' pictures, from "other sites" served here (a link card draws only http(s) pictures, so no data URLs). */
+const pictures = [
+  http.get('https://pictures.story.example/banner.svg', () =>
+    new HttpResponse(decodeURIComponent(picture(1200, 630, '#6FB1F5').split(',')[1]), { headers: { 'Content-Type': 'image/svg+xml' } }),
+  ),
+  http.get('https://pictures.story.example/icon.svg', () =>
+    new HttpResponse(decodeURIComponent(picture(32, 32, '#FFA366').split(',')[1]), { headers: { 'Content-Type': 'image/svg+xml' } }),
+  ),
+  http.get('https://slow.story.example/*', async () => {
+    await delay('infinite');
+    return new HttpResponse(null);
+  }),
+  http.get('https://broken.story.example/*', () => new HttpResponse(null, { status: 404 })),
+];
 
 /** Cards with and without a picture, long text, a broken picture, a refused address. */
 export const States = () => (
@@ -67,14 +83,20 @@ export const States = () => (
   </OnPalette>
 );
 
+States.msw = pictures;
+
 export const StatesLight = () => (
   <OnPalette palette={PALETTES[1]}>
     <Cards />
   </OnPalette>
 );
 
+StatesLight.msw = pictures;
+
 export const StatesTinted = () => (
   <OnPalette palette={PALETTES[2]}>
     <Cards />
   </OnPalette>
 );
+
+StatesTinted.msw = pictures;

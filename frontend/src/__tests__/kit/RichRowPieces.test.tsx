@@ -291,3 +291,46 @@ describe('MediaViewer', () => {
     expect(screen.getByRole('dialog', { name: 'two.png' })).toBeInTheDocument();
   });
 });
+
+describe('fix wave 1', () => {
+  it('a link card leaves out a picture address the link check refuses (scheme, user name)', () => {
+    const { container } = renderWithKit(
+      <LinkCard href="https://example.com/a" title="T" site="S" imageSrc="https://a@evil.example/b.jpg" iconSrc="javascript:alert(1)" />,
+    );
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+  });
+
+  it('Play pressed with focus on it: focus moves to the player that replaces it (video and audio)', () => {
+    for (const kind of ['video', 'audio'] as const) {
+      const { rerender, unmount } = renderWithKit(<AttachmentTile kind={kind} name="m" onOpen={() => {}} />);
+      const play = screen.getByRole('button', { name: new RegExp(`^Play ${kind}`) });
+      play.focus();
+      fireEvent.click(play);
+      rerender(<AttachmentTile kind={kind} name="m" src="blob:m" onOpen={() => {}} />);
+      expect(document.activeElement).toBe(document.querySelector(kind));
+      unmount();
+    }
+  });
+
+  it('a key press right after a context menu toggles (no swallowed press)', () => {
+    const onToggle = vi.fn();
+    renderWithKit(<ReactionChip emoji="😂" label="Laugh" count={3} onToggle={onToggle} onShowPeople={() => {}} />);
+    const chip = screen.getByRole('button', { name: 'Laugh reaction, 3' });
+    fireEvent.contextMenu(chip);
+    fireEvent.keyDown(chip, { key: 'Enter' });
+    fireEvent.click(chip);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('a pinch never steps the viewer; Previous and Next carry no stray attribute', async () => {
+    const { user } = renderWithKit(<Viewer />);
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    const stage = screen.getByRole('img', { name: 'one.png' }).parentElement as HTMLElement;
+    fireEvent.pointerDown(stage, { pointerType: 'touch', pointerId: 1, clientX: 200, clientY: 400 });
+    fireEvent.pointerDown(stage, { pointerType: 'touch', pointerId: 2, clientX: 220, clientY: 420 });
+    fireEvent.pointerUp(stage, { pointerType: 'touch', pointerId: 2, clientX: 40, clientY: 420 });
+    fireEvent.pointerUp(stage, { pointerType: 'touch', pointerId: 1, clientX: 360, clientY: 400 });
+    expect(screen.getByRole('dialog', { name: 'one.png' })).toBeInTheDocument();
+    expect(document.querySelector('[side]')).toBeNull();
+  });
+});

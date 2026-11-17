@@ -31,6 +31,7 @@ import {
   Stack,
   Text,
   personColour,
+  safeHref,
   useAnnounce,
   type MentionSegment,
   type MessageRowFocus,
@@ -53,7 +54,8 @@ import {
 import { getMessageLoneGifUrl } from '../../../../data/chat/messageUtils';
 import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
 import { useVideoUrl } from '../../../../hooks/useVideoUrl';
-import { useAttachmentBusy, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
+import { useFileCache } from '../../../../contexts/AvatarCacheContext';
+import { useAttachmentBusy, viewableImages, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import { useIsEditing, type EditingStore } from '../../../../data/chat/editingStore';
 import { usePendingUpload } from '../../../../hooks/usePendingUpload';
 import { removeAttachment, retryAttachment, startAttachmentUploads } from '../../../../utils/attachmentSend';
@@ -81,8 +83,8 @@ export interface ChatRowShared {
   openActions(message: Message, via: OpenActionsVia): void;
   /** A picture of the message was pressed: the full-size viewer, at that picture. */
   openViewer(message: Message, fileId: string): void;
-  /** Who reacted to the message (a reaction's chip asked: that reaction first). */
-  showReactions(message: Message, reactionKey?: string): void;
+  /** Who reacted to the message (a reaction's chip asked: that reaction first); focus returns to `returnTo`. */
+  showReactions(message: Message, reactionKey?: string, returnTo?: HTMLElement | null): void;
   /** Which message is being edited in place. */
   editing: EditingStore;
   /** Sends a failed message again (the same row); settles on the server's answer. */
@@ -195,7 +197,8 @@ function FileAttachment({ file, message }: { file: AttachmentView; message?: Mes
       height={file.height}
       busy={busy}
       onOpen={
-        file.kind === 'image' && message !== undefined
+        // Only a raster picture the opener would show opens the viewer; every other type is downloaded, as before.
+        file.kind === 'image' && message !== undefined && viewableImages(message.attachments).some((a) => a.id === file.id)
           ? () => openViewer(message, file.id)
           : () => opener.open({ id: file.id, name: file.name, mimeType: file.mimeType })
       }
@@ -210,13 +213,13 @@ function FileAttachment({ file, message }: { file: AttachmentView; message?: Mes
 function VideoAttachment({ file }: { file: AttachmentView }): JSX.Element {
   const [play, setPlay] = useState(false);
   const { url } = useVideoUrl(play ? file.id : null);
-  const { blobUrl: poster } = useAuthenticatedFile(file.hasThumbnail ? file.id : null, { fetchThumbnail: true });
+  const poster = useVideoPoster(file);
   return (
     <AttachmentTile
       kind="video"
       name={file.name}
       detail={file.detail}
-      poster={file.hasThumbnail ? (poster ?? undefined) : undefined}
+      poster={poster}
       src={play ? (url ?? undefined) : undefined}
       width={file.width}
       height={file.height}
@@ -224,6 +227,29 @@ function VideoAttachment({ file }: { file: AttachmentView }): JSX.Element {
       onOpen={() => setPlay(true)}
     />
   );
+}
+
+/**
+ * A video's still: its thumbnail only, as the old `VideoPreview` (the file cache's `fetchThumbnail`, no fallback to
+ * the whole file): a missing still leaves the quiet fill and never pulls the video before Play.
+ */
+function useVideoPoster(file: AttachmentView): string | undefined {
+  const fileCache = useFileCache();
+  const [poster, setPoster] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!file.hasThumbnail) return;
+    let cancelled = false;
+    fileCache
+      .fetchThumbnail(file.id)
+      .then((url) => {
+        if (!cancelled) setPoster(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [file.id, file.hasThumbnail, fileCache]);
+  return poster;
 }
 
 /** An audio file: a row with Play; Play fetches it (as the old player, through the file cache) and plays it in place. */
@@ -244,6 +270,9 @@ function AudioAttachment({ file }: { file: AttachmentView }): JSX.Element {
   );
 }
 
+/** GIF addresses that failed to draw this session: their rows show the words and the card instead. */
+const failedGifs = new Set<string>();
+
 /** A lone GIF link, drawn as the GIF (the old row's embed). Pressing it opens the GIF in a new tab, as there. */
 function GifAttachment({ url, onFailed }: { url: string; onFailed: () => void }): JSX.Element {
   return (
@@ -258,7 +287,7 @@ function GifAttachment({ url, onFailed }: { url: string; onFailed: () => void })
   );
 }
 
-function Reactions({ message }: { message: Message }): JSX.Element | null {
+function Reactions({ message, row }: { message: Message; row: { current: HTMLDivElement | null } }): JSX.Element | null {
   const shared = useShared();
   const announce = useAnnounce();
   const { canReact } = useMessagePermissions({ message, currentUserId: shared.me, communityId: shared.communityId });
@@ -278,7 +307,12 @@ function Reactions({ message }: { message: Message }): JSX.Element | null {
           aria-disabled={!canReact || !shared.writable}
           onUnavailablePress={() => announce("You can't react in this channel")}
           onToggle={() => void handleReactionClick(reaction.key)}
-          onShowPeople={() => shared.showReactions(message, reaction.key)}
+          onShowPeople={() => {
+            // Focus comes back to the chip that asked when it had focus, else to the row (a touch long press focuses nothing).
+            const active = document.activeElement;
+            const returnTo = active instanceof HTMLElement && row.current?.contains(active) ? active : row.current;
+            shared.showReactions(message, reaction.key, returnTo);
+          }}
         />
       ))}
     </>
@@ -449,9 +483,16 @@ function ChatRowBody({
   );
   const files = toAttachmentViews(message.attachments);
   // A lone GIF link is drawn as the GIF, without its words or a preview card; one that fails falls back to both.
-  const [gifFailed, setGifFailed] = useState(false);
-  const onGifFailed = useCallback(() => setGifFailed(true), []);
-  const gifUrl = gifFailed || isEditing ? null : getMessageLoneGifUrl(message);
+  // A failure is remembered by address for the session, so a row the list remounts does not retry it (and jump).
+  const [, setGifFailures] = useState(0);
+  const onGifFailed = useCallback((url: string) => {
+    failedGifs.add(url);
+    setGifFailures((n) => n + 1);
+  }, []);
+  const lone = isEditing ? null : getMessageLoneGifUrl(message);
+  // The kit's link check too (no user name or password in the address: its words are hidden, so nobody would see it).
+  const checkedGif = lone === null ? null : safeHref(lone);
+  const gifUrl = checkedGif === null || failedGifs.has(checkedGif) ? null : checkedGif;
   const cards = gifUrl === null ? toLinkCards(message.linkPreviews) : [];
   const failedReason = useFailedReason(message, shared.communityId, view.failedReason);
   const authorId = message.authorId;
@@ -495,18 +536,18 @@ function ChatRowBody({
         attachments={
           files.length > 0 || pendingUpload !== undefined || gifUrl !== null || cards.length > 0 ? (
             <Stack gap="sm" align="start">
-              {gifUrl !== null && <GifAttachment url={gifUrl} onFailed={onGifFailed} />}
+              {gifUrl !== null && <GifAttachment url={gifUrl} onFailed={() => onGifFailed(gifUrl)} />}
               {files.map((file) => (
                 <Attachment key={file.id} file={file} message={message} />
               ))}
               <Uploads message={message} />
-              {cards.map((card) => (
-                <LinkCard key={card.href} {...card} />
+              {cards.map((card, i) => (
+                <LinkCard key={`${i}:${card.href}`} {...card} />
               ))}
             </Stack>
           ) : undefined
         }
-        reactions={!view.optimistic && message.reactions.length > 0 ? <Reactions message={message} /> : undefined}
+        reactions={!view.optimistic && message.reactions.length > 0 ? <Reactions message={message} row={rowRef} /> : undefined}
         footer={
           message.replyCount > 0 ? (
             // Threads are not in the new shell yet (owner default): the count, as plain text.

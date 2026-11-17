@@ -14,6 +14,8 @@ export interface ReactionPeopleRequest {
   message: Message;
   /** The reaction asked about: its group comes first. */
   reactionKey?: string;
+  /** Where focus returns when the sheet closes (the row, or the chip that asked). */
+  returnTo?: HTMLElement | null;
 }
 
 export interface ReactionPeopleSheetProps {
@@ -40,7 +42,7 @@ function PeopleFor({ request, me, emoji, onDone }: ReactionPeopleSheetProps & { 
     if (!open) onDone();
   }, [open, onDone]);
   return (
-    <Sheet open={open} onClose={close} title="Reactions">
+    <Sheet open={open} onClose={close} title="Reactions" opener={request.returnTo ?? null}>
       <Stack gap="lg">
         {ordered.length === 0 ? (
           <Text tone="secondary">No reactions.</Text>
@@ -56,7 +58,8 @@ function PeopleFor({ request, me, emoji, onDone }: ReactionPeopleSheetProps & { 
 
 function Group({ view, userIds }: { view: ReactionView; userIds: string[] }): JSX.Element {
   const { people, more } = useReactionPeople(userIds);
-  const heading = `${view.emoji} ${view.label === view.emoji ? '' : `${view.label} `}· ${view.count}`;
+  // The emoji (a custom one's `:name:`) and the count: its name is the region's label, not said twice.
+  const heading = `${view.emoji} · ${view.count}`;
   return (
     <section aria-label={`${view.label}, ${view.count}`}>
       <Stack gap="xs">

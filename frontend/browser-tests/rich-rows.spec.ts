@@ -71,3 +71,50 @@ test('viewer: fills the screen, holds Tab inside, steps with the arrows; a tall 
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+test('Play from the keyboard: focus moves to the player that replaces the button, never the page', async ({ page }) => {
+  await openStory(page, 'kit-attachment-tile--press-to-play', PHONE);
+  for (const [name, tag] of [
+    ['Play video clip.mp4, 1 MB', 'VIDEO'],
+    ['Play audio note.wav, 1 KB', 'AUDIO'],
+  ] as const) {
+    await page.getByRole('button', { name }).focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe(tag);
+  }
+});
+
+test('viewer: a pinch (two fingers) never steps the picture; a one-finger swipe does', async ({ page }) => {
+  await openStory(page, 'kit-media-viewer--several', PHONE);
+  await expect(page.getByRole('dialog', { name: 'sunset.png' })).toBeVisible();
+  const gesture = (fingers: Array<{ id: number; from: number; to: number }>) =>
+    page.evaluate((list) => {
+      const stage = document.querySelector('[role="dialog"] img')!.parentElement!;
+      const fire = (type: string, id: number, x: number) =>
+        stage.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: x, clientY: 400, bubbles: true }));
+      for (const f of list) fire('pointerdown', f.id, f.from);
+      for (const f of [...list].reverse()) fire('pointerup', f.id, f.to);
+    }, fingers);
+  // The second finger is lifted first after moving far left: read alone, that would be a swipe to the next picture.
+  await gesture([
+    { id: 1, from: 180, to: 360 },
+    { id: 2, from: 210, to: 40 },
+  ]);
+  await expect(page.getByRole('dialog', { name: 'sunset.png' })).toBeVisible();
+  await gesture([{ id: 3, from: 300, to: 150 }]);
+  await expect(page.getByRole('dialog', { name: 'tall.png' })).toBeVisible();
+});
+
+test('who reacted, opened from "See reactions": closing it returns focus to the message row', async ({ page }) => {
+  await openStory(page, 'channel-chat--reactions-sheet', PHONE);
+  const sheet = page.getByRole('dialog', { name: 'Reactions' });
+  await expect(sheet.getByText('aiko').first()).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => {
+      const el = document.activeElement;
+      return el?.getAttribute('role') === 'article' ? el.textContent?.includes('two more screens') : el?.tagName;
+    }))
+    .toBe(true);
+});

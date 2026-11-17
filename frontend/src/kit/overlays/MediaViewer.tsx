@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type JSX, type KeyboardEvent, type 
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
+import { transientProps } from '../theme/transientProps';
 import { IconButton } from '../controls/IconButton';
 import { Icon } from '../display/Icon';
 import { Spinner } from '../display/Spinner';
@@ -108,11 +109,11 @@ const Failed = styled('div')(({ theme }) => ({
 const Keys = styled('div')({ display: 'contents' });
 
 /** Previous and Next, over the picture at its sides. */
-const Side = styled('div')<{ side: 'start' | 'end' }>(({ side }) => ({
+const Side = styled('div', { shouldForwardProp: transientProps })<{ $side: 'start' | 'end' }>(({ $side }) => ({
   position: 'absolute',
   top: '50%',
   transform: 'translateY(-50%)',
-  [side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']: `${tokens.space.sm}px`,
+  [$side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']: `${tokens.space.sm}px`,
 }));
 
 /**
@@ -133,6 +134,9 @@ export function MediaViewer({
   const titleId = `${useId()}-title`;
   const close = useRef<HTMLButtonElement>(null);
   const swipe = useRef<{ x: number; y: number } | null>(null);
+  // Fingers down now, and whether this gesture ever had two (a pinch is the browser's zoom, never a swipe).
+  const pointers = useRef(new Set<number>());
+  const pinched = useRef(false);
   const count = items.length;
   const at = Math.min(Math.max(0, index), Math.max(0, count - 1));
   const item = items[at] as MediaViewerItem | undefined;
@@ -156,12 +160,19 @@ export function MediaViewer({
     }
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    swipe.current = event.pointerType === 'mouse' ? null : { x: event.clientX, y: event.clientY };
+    if (pointers.current.size === 0) pinched.current = false;
+    pointers.current.add(event.pointerId);
+    if (pointers.current.size > 1) pinched.current = true;
+    swipe.current = event.pointerType === 'mouse' || pinched.current ? null : { x: event.clientX, y: event.clientY };
+  };
+  const endPointer = (event: PointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(event.pointerId);
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    endPointer(event);
     const start = swipe.current;
     swipe.current = null;
-    if (start === null) return;
+    if (start === null || pinched.current) return;
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
     if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) <= Math.abs(dy)) return;
@@ -210,7 +221,8 @@ export function MediaViewer({
         <Stage
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
-          onPointerCancel={() => {
+          onPointerCancel={(event) => {
+            endPointer(event);
             swipe.current = null;
           }}
           onClick={(event) => {
@@ -230,10 +242,10 @@ export function MediaViewer({
           {count > 1 && (
             <>
               {/* At either end the button stays (unavailable), so focus on it is never dropped. */}
-              <Side side="start">
+              <Side $side="start">
                 <IconButton icon="ChevronLeft" label="Previous picture" variant="soft" aria-disabled={!hasPrevious} onClick={() => step(-1)} />
               </Side>
-              <Side side="end">
+              <Side $side="end">
                 <IconButton icon="ChevronRight" label="Next picture" variant="soft" aria-disabled={!hasNext} onClick={() => step(1)} />
               </Side>
             </>
