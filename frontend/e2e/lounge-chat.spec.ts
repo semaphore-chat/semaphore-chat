@@ -535,7 +535,8 @@ test.describe('The Lounge chat: threads and pinned messages (390 px, real route)
         await classic.context.close();
       }
 
-      // A reload on ?thread= opens it again; Back (no entry before it now) closes it to the channel, focus on the row.
+      // A reload on ?thread= opens it again (the entry keeps its state, so Back still steps back one entry) and Back
+      // closes it to the channel, focus kept off the page.
       await page.reload();
       await expect(threadHeading(page)).toBeVisible(EVENTUAL);
       await expect(page.getByText('a reply from the lounge')).toBeVisible(EVENTUAL);

@@ -386,7 +386,8 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
               if (focusTarget) {
                 focusTarget.focus();
                 // virtua mounts a far row hidden (visibility) until it is measured, and a hidden element takes no
-                // focus: try again next frame until it has it.
+                // focus: try again next frame until it has it. (No row target hands focus on to a child today; one
+                // that did would be refocused for these few frames.)
                 if (document.activeElement === focusTarget) return;
               }
               break;
