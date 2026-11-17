@@ -333,4 +333,16 @@ describe('fix wave 1', () => {
     expect(screen.getByRole('dialog', { name: 'one.png' })).toBeInTheDocument();
     expect(document.querySelector('[side]')).toBeNull();
   });
+
+  it('a press that ends off the stage leaves no finger counted: the next swipe still steps', async () => {
+    const { user } = renderWithKit(<Viewer />);
+    await user.click(screen.getByRole('button', { name: 'open' }));
+    const stage = screen.getByRole('img', { name: 'one.png' }).parentElement as HTMLElement;
+    // A pen goes down and leaves the stage without a release there.
+    fireEvent.pointerDown(stage, { pointerType: 'pen', pointerId: 7, clientX: 200, clientY: 400 });
+    fireEvent.pointerLeave(stage, { pointerType: 'pen', pointerId: 7 });
+    fireEvent.pointerDown(stage, { pointerType: 'touch', pointerId: 8, clientX: 300, clientY: 400 });
+    fireEvent.pointerUp(stage, { pointerType: 'touch', pointerId: 8, clientX: 150, clientY: 400 });
+    expect(screen.getByRole('dialog', { name: 'two.png' })).toBeInTheDocument();
+  });
 });

@@ -55,7 +55,7 @@ import { getMessageLoneGifUrl } from '../../../../data/chat/messageUtils';
 import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
 import { useVideoUrl } from '../../../../hooks/useVideoUrl';
 import { useFileCache } from '../../../../contexts/AvatarCacheContext';
-import { useAttachmentBusy, viewableImages, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
+import { attachmentAction, useAttachmentBusy, viewableImages, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import { useIsEditing, type EditingStore } from '../../../../data/chat/editingStore';
 import { usePendingUpload } from '../../../../hooks/usePendingUpload';
 import { removeAttachment, retryAttachment, startAttachmentUploads } from '../../../../utils/attachmentSend';
@@ -185,11 +185,13 @@ function Attachment({ file, message }: { file: AttachmentView; message: Message 
 function FileAttachment({ file, message }: { file: AttachmentView; message?: Message }): JSX.Element {
   const { opener, openViewer } = useShared();
   const busy = useAttachmentBusy(opener, file.id);
-  // Images show their preview (the thumbnail, falling back to the file); other files load only when opened.
-  const { blobUrl } = useAuthenticatedFile(file.kind === 'image' ? file.id : null, { fetchThumbnail: true });
+  // Only a raster picture the opener would show is drawn (its thumbnail, falling back to the file). Any other type,
+  // an SVG or a "picture" whose type says otherwise, is a file tile: nothing fetched until pressed, then downloaded.
+  const drawn = file.kind === 'image' && attachmentAction(file.mimeType) === 'open';
+  const { blobUrl } = useAuthenticatedFile(drawn ? file.id : null, { fetchThumbnail: true });
   return (
     <AttachmentTile
-      kind={file.kind === 'image' ? 'image' : 'file'}
+      kind={drawn ? 'image' : 'file'}
       name={file.name}
       detail={file.detail}
       src={blobUrl ?? undefined}
@@ -198,7 +200,7 @@ function FileAttachment({ file, message }: { file: AttachmentView; message?: Mes
       busy={busy}
       onOpen={
         // Only a raster picture the opener would show opens the viewer; every other type is downloaded, as before.
-        file.kind === 'image' && message !== undefined && viewableImages(message.attachments).some((a) => a.id === file.id)
+        drawn && message !== undefined && viewableImages(message.attachments).some((a) => a.id === file.id)
           ? () => openViewer(message, file.id)
           : () => opener.open({ id: file.id, name: file.name, mimeType: file.mimeType })
       }
@@ -254,10 +256,23 @@ function useVideoPoster(file: AttachmentView): string | undefined {
 
 /** An audio file: a row with Play; Play fetches it (as the old player, through the file cache) and plays it in place. */
 function AudioAttachment({ file }: { file: AttachmentView }): JSX.Element {
+  const { opener } = useShared();
+  const downloading = useAttachmentBusy(opener, file.id);
   const [play, setPlay] = useState(false);
   const { blobUrl, error } = useAuthenticatedFile(play ? file.id : null, { fetchBlob: true, fetchMetadata: false });
-  // It could not be fetched: the row offers the download instead (the opener reports a failure there).
-  if (play && error) return <FileAttachment file={{ ...file, kind: 'file' }} />;
+  // It could not be fetched: the same tile turns into the download (the opener reports a failure there); the button
+  // stays the same element, so focus on it stays.
+  if (play && error) {
+    return (
+      <AttachmentTile
+        kind="file"
+        name={file.name}
+        detail={file.detail}
+        busy={downloading}
+        onOpen={() => opener.open({ id: file.id, name: file.name, mimeType: file.mimeType })}
+      />
+    );
+  }
   return (
     <AttachmentTile
       kind="audio"

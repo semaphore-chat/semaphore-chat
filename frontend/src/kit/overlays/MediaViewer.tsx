@@ -160,10 +160,15 @@ export function MediaViewer({
     }
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    // A mouse never swipes or pinches, and its release can land off the stage: it is not counted.
+    if (event.pointerType === 'mouse') {
+      swipe.current = null;
+      return;
+    }
     if (pointers.current.size === 0) pinched.current = false;
     pointers.current.add(event.pointerId);
     if (pointers.current.size > 1) pinched.current = true;
-    swipe.current = event.pointerType === 'mouse' || pinched.current ? null : { x: event.clientX, y: event.clientY };
+    swipe.current = pinched.current ? null : { x: event.clientX, y: event.clientY };
   };
   const endPointer = (event: PointerEvent<HTMLDivElement>) => {
     pointers.current.delete(event.pointerId);
@@ -225,6 +230,9 @@ export function MediaViewer({
             endPointer(event);
             swipe.current = null;
           }}
+          // A finger whose release the stage never hears (capture lost, left the stage) is no longer down.
+          onLostPointerCapture={endPointer}
+          onPointerLeave={endPointer}
           onClick={(event) => {
             if (event.target === event.currentTarget) onClose('scrim');
           }}

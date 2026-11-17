@@ -345,8 +345,9 @@ describe('ChannelChat rich rows', () => {
     cache.thumbFails.delete('f-nothumb');
   });
 
-  it('only a raster picture opens the viewer: SVG, HTML and a type/kind mismatch download, nothing drawn as a page', async () => {
+  it('only a raster picture is drawn or opens the viewer: SVG, HTML and a type/kind mismatch are file tiles that download', async () => {
     opened.files = [];
+    files.asked = [];
     const { user } = setup([
       createMessage({
         id: 'm-types',
@@ -362,23 +363,57 @@ describe('ChannelChat rich rows', () => {
         ] as never,
       }),
     ]);
-    for (const [label, id] of [
-      ['Open image x.svg', 'f-svg'],
-      ['Open image y.png', 'f-html'],
+    // Nothing is fetched or drawn for the non-raster ones; they are file tiles.
+    expect(files.asked.filter((f) => f.startsWith('f-svg') || f.startsWith('f-html'))).toEqual([]);
+    expect(cache.whole).not.toContain('f-svg');
+    expect(cache.whole).not.toContain('f-html');
+    for (const [name, id] of [
+      ['x.svg', 'f-svg'],
+      ['y.png', 'f-html'],
+      ['z.png', 'f-doc'],
     ] as const) {
-      await user.click(screen.getByRole('button', { name: label }));
+      const tile = screen.getByRole('button', { name: new RegExp(`^Download ${name.replace('.', '\\.')}`) });
+      expect(tile.querySelector('img')).toBeNull();
+      await user.click(tile);
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(opened.files[opened.files.length - 1]?.id).toBe(id);
     }
-    await user.click(screen.getByRole('button', { name: /^Download z\.png/ }));
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(opened.files[opened.files.length - 1]?.id).toBe('f-doc');
+    expect(screen.queryByRole('button', { name: /^Open image (x\.svg|y\.png)/ })).toBeNull();
     expect(document.querySelector('iframe, object, embed')).toBeNull();
-    // The viewer lists the raster picture alone: "ok.png", no count.
+    // The raster picture is drawn, and the viewer lists it alone: "ok.png", no count.
+    expect(files.asked).toContain('f-png:thumb');
     await user.click(screen.getByRole('button', { name: 'Open image ok.png' }));
     const viewer = await screen.findByRole('dialog', { name: 'ok.png' });
     expect(viewer).not.toHaveTextContent(/of \d/);
     expect(opened.files.map((f) => f.id)).not.toContain('f-png');
+  });
+
+  it('audio whose Play fails keeps focus on the same tile, now its download', async () => {
+    files.fail.add('f-bad2');
+    const { user } = setup([
+      createMessage({ id: 'm-bad2', authorId: 'u-aiko', spans: words('bad2'), attachments: [file('f-bad2', 'bad.ogg', 'audio/ogg')] as never }),
+    ]);
+    const play = screen.getByRole('button', { name: 'Play audio bad.ogg, 2 KB' });
+    await user.click(play);
+    const download = screen.getByRole('button', { name: 'Download bad.ogg, 2 KB' });
+    expect(download).toBe(play);
+    expect(document.activeElement).toBe(download);
+    files.fail.delete('f-bad2');
+  });
+
+  it('the viewer\'s Download after a failed load goes through the opener (fetches again, reports a failure)', async () => {
+    opened.files = [];
+    files.fail.add('f-gone');
+    const { user } = setup([
+      createMessage({ id: 'm-gone', authorId: 'u-aiko', spans: words('gone'), attachments: [file('f-gone', 'gone.png', 'image/png')] as never }),
+    ]);
+    // The tile's preview failed too; it is still pressable.
+    await user.click(screen.getByRole('button', { name: 'Open image gone.png' }));
+    const viewer = await screen.findByRole('dialog', { name: 'gone.png' });
+    expect(viewer).toHaveTextContent("Couldn't load the picture");
+    await user.click(within(viewer).getByRole('button', { name: 'Download gone.png' }));
+    expect(opened.files.map((f) => f.id)).toEqual(['f-gone']);
+    files.fail.delete('f-gone');
   });
 
   it('audio that cannot be fetched becomes its download row', async () => {

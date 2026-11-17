@@ -6,7 +6,7 @@
  */
 import { useEffect, useState, type JSX } from 'react';
 import { MediaViewer } from '../../../../kit';
-import { viewableImages } from '../../../../data/chat/useAttachmentOpener';
+import { viewableImages, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import { useAuthenticatedFile } from '../../../../hooks/useAuthenticatedFile';
 import { downloadBlob } from '../../../../utils/format';
 import type { Message } from '../../../../types/message.type';
@@ -17,12 +17,19 @@ export interface ViewerRequest {
   fileId: string;
 }
 
-export function MessageMediaViewer({ request, onDone }: { request: ViewerRequest | null; onDone: () => void }): JSX.Element | null {
-  if (request === null) return null;
-  return <ViewerFor key={`${request.message.id}:${request.fileId}`} request={request} onDone={onDone} />;
+interface ViewerProps {
+  request: ViewerRequest | null;
+  /** The chat's opener: Download when the picture could not be loaded here (it fetches again and reports a failure). */
+  opener: AttachmentOpener;
+  onDone: () => void;
 }
 
-function ViewerFor({ request, onDone }: { request: ViewerRequest; onDone: () => void }): JSX.Element {
+export function MessageMediaViewer({ request, opener, onDone }: ViewerProps): JSX.Element | null {
+  if (request === null) return null;
+  return <ViewerFor key={`${request.message.id}:${request.fileId}`} request={request} opener={opener} onDone={onDone} />;
+}
+
+function ViewerFor({ request, opener, onDone }: ViewerProps & { request: ViewerRequest }): JSX.Element {
   const images = viewableImages(request.message.attachments);
   const [index, setIndex] = useState(() => Math.max(0, images.findIndex((f) => f.id === request.fileId)));
   const [open, setOpen] = useState(true);
@@ -45,7 +52,9 @@ function ViewerFor({ request, onDone }: { request: ViewerRequest; onDone: () => 
       onIndexChange={setIndex}
       // Download is there from the start (no reflow), busy until the picture is in.
       onDownload={() => {
-        if (blobUrl && current) downloadBlob(blobUrl, current.filename);
+        if (!current) return;
+        if (blobUrl) downloadBlob(blobUrl, current.filename);
+        else if (error) opener.open({ id: current.id, name: current.filename, mimeType: current.mimeType ?? '' });
       }}
       downloading={!blobUrl && !error}
     />

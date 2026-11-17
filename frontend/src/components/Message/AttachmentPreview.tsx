@@ -5,6 +5,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { DownloadLink } from "./DownloadLink";
 import { VideoPreview } from "./VideoPreview";
 import { attachmentMediaType } from "../../data/chat/messageRowModel";
+import { attachmentAction } from "../../data/chat/useAttachmentOpener";
 
 const AttachmentCard = styled(Card)(({ theme }) => ({
   position: "relative",
@@ -91,8 +92,9 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
     return <AudioPlayer metadata={metadata} />;
   }
 
-  // Other file types get a download link
-  if (mediaType === "other") {
+  // Other file types get a download link, and so does a picture of a type that is not shown on screen (an SVG):
+  // only the raster types the attachment rule allows are fetched as a preview and drawn.
+  if (mediaType === "other" || (mediaType === "image" && attachmentAction(metadata?.mimeType) !== "open")) {
     return <DownloadLink metadata={metadata} />;
   }
 

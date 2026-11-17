@@ -346,7 +346,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         onEdit={onEdit}
         onShowReactions={showReactionsFromActions}
       />
-      <MessageMediaViewer request={viewer} onDone={closeViewer} />
+      <MessageMediaViewer request={viewer} opener={opener} onDone={closeViewer} />
       <ReactionPeopleSheet request={reactionPeople} me={conversation.me} emoji={segments} onDone={closeReactions} />
     </ChatRowContext>
   );
