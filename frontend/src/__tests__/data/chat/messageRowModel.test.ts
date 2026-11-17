@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DELETED_USER,
+  sendFailureReason,
   toAttachmentViews,
   toQuoteView,
   toReactionViews,
@@ -117,5 +118,15 @@ describe('toAttachmentViews', () => {
       { id: 'f-2', kind: 'file', name: 'b.mp4', mimeType: 'video/mp4', detail: '1 MB', width: 1920, height: 1080 },
       { id: 'f-3', kind: 'file', name: 'c.txt', mimeType: 'text/plain', detail: '12 Bytes', width: null, height: null },
     ]);
+  });
+});
+
+describe('sendFailureReason', () => {
+  it('a time-out the reader is under wins over the server refusal; else the server text; else nothing', () => {
+    const until = new Date('2026-11-16T14:05:00');
+    expect(sendFailureReason('Forbidden', until)).toBe(`Timed out until ${formatClockTime(until)}`);
+    expect(sendFailureReason('Message too long', undefined)).toBe('Message too long');
+    expect(sendFailureReason(undefined, undefined)).toBeUndefined();
+    expect(sendFailureReason(null, undefined)).toBeUndefined();
   });
 });

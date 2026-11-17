@@ -73,6 +73,17 @@ export function toRowView(message: Message, { author, me, dayShownAbove, now }: 
   };
 }
 
+/**
+ * Why a failed send failed, in words (as the old row's Retry line). A send that raced a timeout comes back as a
+ * plain refusal, so a time-out the reader is under (from the channel's capabilities, the same the composer's
+ * countdown uses) wins over the server's message. `undefined` when there is nothing to say: the caller's default
+ * ("Failed to send", "Not sent").
+ */
+export function sendFailureReason(sendError: string | null | undefined, timedOutUntil: Date | undefined): string | undefined {
+  if (timedOutUntil) return `Timed out until ${formatClockTime(timedOutUntil)}`;
+  return sendError ?? undefined;
+}
+
 /** A reaction as a chip draws it. */
 export interface ReactionView {
   /** The stored reaction (`😂`, or `custom:<emoji id>`): what a toggle sends back. */
