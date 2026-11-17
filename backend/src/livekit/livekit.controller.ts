@@ -381,6 +381,8 @@ export class LivekitController {
       const stats = await this.storageService.getFileStats(pathToSend);
 
       res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="replay-${Date.now()}.mp4"`,

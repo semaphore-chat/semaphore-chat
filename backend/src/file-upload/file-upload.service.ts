@@ -30,6 +30,7 @@ import { SOUNDBOARD_SOUND_MAX_DURATION_SECONDS } from './validators/strategies/s
 import { FfmpegProvider } from '@/livekit/providers/ffmpeg.provider';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { FileUploadResponseDto } from './dto/file-upload-response.dto';
+import { normaliseMimeType } from '@/file/file-disposition';
 
 /** Uploads of these types get a generated thumbnail, best-effort. */
 const THUMBNAIL_FILE_TYPES: Partial<Record<FileType, true>> = {
@@ -248,7 +249,7 @@ export class FileUploadService {
               resourceId,
             ),
             filename: this.sanitizeFilename(file.originalname),
-            mimeType: file.mimetype,
+            mimeType: normaliseMimeType(file.mimetype),
             fileType,
             size: file.size,
             width: dimensions?.width ?? null,

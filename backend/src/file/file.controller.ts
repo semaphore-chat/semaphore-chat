@@ -23,6 +23,11 @@ import { Public } from '@/auth/public.decorator';
 import { FileMetadataResponseDto } from './dto/file-metadata-response.dto';
 import { SignedUrlResponseDto } from './dto/signed-url-response.dto';
 import { AuthenticatedRequest } from '@/types';
+import {
+  STORED_FILE_CSP,
+  dispositionFor,
+  normaliseMimeType,
+} from './file-disposition';
 
 @Controller('file')
 export class FileController {
@@ -106,6 +111,8 @@ export class FileController {
 
     res.set({
       'Content-Type': 'image/jpeg',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': STORED_FILE_CSP,
       'Cache-Control': 'private, max-age=86400', // Thumbnails are immutable, cache 24h in user's browser
       'Cross-Origin-Resource-Policy': 'cross-origin', // Allow Electron (different origin) to load
     });
@@ -147,21 +154,18 @@ export class FileController {
     const sanitizedFilename = file.filename.replace(/["\\\n\r]/g, '_');
     const encodedFilename = encodeURIComponent(file.filename);
 
-    // Force download for MIME types that can execute scripts
-    const dangerousMimeTypes = [
-      'image/svg+xml',
-      'text/html',
-      'application/xhtml+xml',
-    ];
-    const disposition = dangerousMimeTypes.includes(file.mimeType)
-      ? 'attachment'
-      : 'inline';
+    // Stored types are client-declared: normalise, and force download for
+    // anything that can run script.
+    const contentType = normaliseMimeType(file.mimeType);
+    const disposition = dispositionFor(contentType);
 
     const fileSize = file.size;
     const rangeHeader = req.headers.range;
 
     res.set({
       'Accept-Ranges': 'bytes',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': STORED_FILE_CSP,
       'Content-Disposition': `${disposition}; filename="${sanitizedFilename}"; filename*=UTF-8''${encodedFilename}`,
       'Cross-Origin-Resource-Policy': 'cross-origin', // Allow Electron (different origin) to load
     });
@@ -190,7 +194,7 @@ export class FileController {
         });
 
         res.status(206).set({
-          'Content-Type': file.mimeType,
+          'Content-Type': contentType,
           'Content-Range': `bytes ${start}-${clampedEnd}/${fileSize}`,
           'Content-Length': chunkSize,
         });
@@ -203,7 +207,7 @@ export class FileController {
     const stream = await provider.getReadStream(file.storagePath);
 
     res.set({
-      'Content-Type': file.mimeType,
+      'Content-Type': contentType,
       'Content-Length': fileSize,
     });
 
