@@ -2,10 +2,10 @@
  * ThreadMessageInput Component
  *
  * Input for composing thread reply messages.
- * Uses WebSocket to send messages in real-time.
+ * Sends through the shared thread send (hooks/useSendThreadReply).
  */
 
-import React, { useState, useContext, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   Box,
   TextField,
@@ -15,21 +15,13 @@ import {
 import SendIcon from "@mui/icons-material/Send";
 import EmojiEmotionsOutlinedIcon from "@mui/icons-material/EmojiEmotionsOutlined";
 import { useTheme } from "@mui/material/styles";
-import { SocketContext } from "../../utils/SocketContext";
-import { ClientEvents } from '@semaphore-chat/shared';
 import { SpanType } from "../../types/message.type";
-import { logger } from "../../utils/logger";
 import { useNotification } from "../../contexts/NotificationContext";
-import {
-  describeSendFailure,
-  emitSend,
-  isDeletedWhileSending,
-} from "../../utils/sendAck";
+import { useSendThreadReply } from "../../hooks/useSendThreadReply";
 import { EmojiPickerPopover } from "../Message/EmojiPicker";
 import { useResponsive } from "../../hooks/useResponsive";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { parseMessageWithMentions } from "../../utils/mentionParser";
-import { randomUuid } from "../../utils/deviceId";
 import type { EmojiMention } from "../../utils/mentionParser";
 import { wrapSelection, markerForShortcut } from "../../utils/richTextShortcuts";
 import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
@@ -57,13 +49,12 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
     communityId,
     thread: true,
   });
-  const { socket } = useContext(SocketContext);
+  const { sendReply } = useSendThreadReply(parentMessageId);
   const { isTouchDevice, shouldUseTouchUI } = useResponsive();
   // 44px touch targets on touch layouts (TOUCH_TARGETS.MINIMUM), 40px on desktop.
   const actionButtonSize = shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 40;
   const [content, setContent] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const nonceRef = useRef<{ content: string; clientNonce: string } | null>(null);
   const { showNotification } = useNotification();
 
   const { emojis: customEmojis } = useCommunityCustomEmojis(communityId);
@@ -147,12 +138,6 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
 
     setIsSending(true);
 
-    if (!socket?.connected) {
-      logger.error("Socket not connected");
-      setIsSending(false);
-      return;
-    }
-
     // Parse markdown-style rich-text formatting (bold/italic/strike/code).
     // Thread replies have no mention autocomplete context, so mentions are
     // left unresolved (rendered as plaintext), matching prior behaviour.
@@ -161,34 +146,14 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
       spans = [{ type: SpanType.PLAINTEXT, text: trimmedContent }];
     }
 
-    // The same nonce until this text goes through, so sending it again after a
-    // lost ack can't post it twice.
-    if (nonceRef.current?.content !== trimmedContent) {
-      nonceRef.current = { content: trimmedContent, clientNonce: randomUuid() };
-    }
-
-    const result = await emitSend(socket, ClientEvents.SEND_THREAD_REPLY, {
-      parentMessageId,
-      spans,
-      attachments: [],
-      pendingAttachments: 0,
-      clientNonce: nonceRef.current.clientNonce,
-    });
+    // The shared thread send (hooks/useSendThreadReply): the same nonce until
+    // this text goes through; null when the socket is not connected.
+    const outcome = await sendReply({ content: trimmedContent, spans });
     setIsSending(false);
+    if (!outcome) return;
 
-    if (result.success || isDeletedWhileSending(result.error)) {
-      nonceRef.current = null;
-      setContent("");
-    }
-    if (!result.success) {
-      logger.error("Failed to send thread reply:", result.error);
-      showNotification(
-        isDeletedWhileSending(result.error)
-          ? "That reply was deleted"
-          : describeSendFailure(result.error),
-        "error",
-      );
-    }
+    if (outcome.clear) setContent("");
+    if (outcome.error) showNotification(outcome.error, "error");
   };
 
   const applyFormattingShortcut = (e: React.KeyboardEvent): boolean => {
