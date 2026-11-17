@@ -259,7 +259,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       const active = document.activeElement;
       threadOpener.current = opener ?? (active instanceof HTMLElement && active !== document.body ? active : null);
       const state: ThreadEntryState = { threadFrom: chatPath };
-      threadNavigate.current(`${chatPath}${searchWith(searchRef.current, THREAD_PARAM, message.id)}`, { state });
+      // A jump still settling stays with the channel's entry: the thread's entry has no `?highlight=` (Back would
+      // run the jump again).
+      const withoutJump = new URLSearchParams(searchWith(searchRef.current, 'highlight', null));
+      threadNavigate.current(`${chatPath}${searchWith(withoutJump, THREAD_PARAM, message.id)}`, { state });
     },
     [chatPath],
   );

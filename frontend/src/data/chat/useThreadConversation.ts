@@ -6,7 +6,7 @@
  *
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   messagesControllerFindOneOptions,
@@ -21,9 +21,15 @@ import { logger } from '../../utils/logger';
 /** The page size of a thread's replies (the cache key every writer uses: `socket-hub/handlers/threadHandlers`). */
 export const THREAD_PAGE_SIZE = 50;
 
+const timeOf = (reply: { sentAt: string }) => {
+  const ms = Date.parse(reply.sentAt);
+  return Number.isFinite(ms) ? ms : 0;
+};
+
 /**
- * A next page merged into the first page's entry: appended in order, without a reply the list already has (a live
- * reply that came over the socket can also be on the next page).
+ * A next page merged into the first page's entry, in time order (a stable sort), without a reply the list already
+ * has: a live reply that came over the socket before the later pages were loaded sits at the end of the loaded
+ * list, and can also be on the next page; once that page is in, it goes after it, not between two pages.
  */
 export function mergeThreadPage(
   old: ThreadRepliesResponseDto | undefined,
@@ -31,9 +37,13 @@ export function mergeThreadPage(
 ): ThreadRepliesResponseDto {
   if (!old) return next;
   const known = new Set(old.replies.map((reply) => reply.id));
+  const replies = [...old.replies, ...(next.replies ?? []).filter((reply) => !known.has(reply.id))];
   return {
     ...old,
-    replies: [...old.replies, ...(next.replies ?? []).filter((reply) => !known.has(reply.id))],
+    replies: replies
+      .map((reply, index) => ({ reply, index }))
+      .sort((a, b) => timeOf(a.reply) - timeOf(b.reply) || a.index - b.index)
+      .map(({ reply }) => reply),
     continuationToken: next.continuationToken,
   };
 }
@@ -50,14 +60,23 @@ export function useThreadConversation({ parentMessageId, parent }: UseThreadConv
   const { isSubscribed, toggleSubscription } = useThreadSubscription(parentMessageId);
 
   const known = parent ?? null;
+  // The last copy the caller had: when the parent leaves the caller's window (a reset, a reconnect), the view keeps
+  // it while it is fetched again by id, instead of blanking (a refetch then replaces it; a 404 is `parentError`).
+  const lastKnown = useRef<Message | null>(null);
+  if (known !== null && known.id === parentMessageId) lastKnown.current = known;
+  const seed = known === null && lastKnown.current?.id === parentMessageId ? lastKnown.current : undefined;
   const fetched = useQuery({
     ...messagesControllerFindOneOptions({ path: { id: parentMessageId } }),
     enabled: known === null && parentMessageId !== '',
     retry: false,
+    // Shown (not cached) while the fetch runs; the server's copy replaces it.
+    placeholderData: seed as never,
   });
   const parentMessage: Message | null = known ?? (fetched.data as Message | undefined) ?? null;
 
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // Pages loaded since the thread opened: a list keys its "new reply" announcements on it, so a page is never news.
+  const [pagesLoaded, setPagesLoaded] = useState(0);
   const loadMore = useCallback(async () => {
     if (!continuationToken || isLoading) return;
     setIsLoadingMore(true);
@@ -74,6 +93,7 @@ export function useThreadConversation({ parentMessageId, parent }: UseThreadConv
         query: { limit: THREAD_PAGE_SIZE, continuationToken: '' },
       }).queryKey;
       queryClient.setQueryData(baseQueryKey, (old: ThreadRepliesResponseDto | undefined) => mergeThreadPage(old, nextPage));
+      setPagesLoaded((n) => n + 1);
     } catch (loadError) {
       logger.error('Failed to load more thread replies:', loadError);
     } finally {
@@ -90,6 +110,7 @@ export function useThreadConversation({ parentMessageId, parent }: UseThreadConv
     refetch,
     loadMore,
     isLoadingMore,
+    pagesLoaded,
     isSubscribed,
     toggleSubscription,
     parent: parentMessage,

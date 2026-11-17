@@ -14,12 +14,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type RefOb
 import {
   Button,
   ChatPane,
+  ESCAPE_PRIORITY,
   IconButton,
   ListSeparator,
   Skeleton,
   Stack,
   Text,
   useAnnounce,
+  useScreenEscape,
 } from '../../../../kit';
 import MessageListCore, { type MessageListCoreHandle, type MessageRowContext } from '../../../../features/chat/MessageListCore';
 import { useThreadConversation } from '../../../../data/chat/useThreadConversation';
@@ -139,8 +141,8 @@ export function ThreadView({
 }: ThreadViewProps): JSX.Element {
   const thread = useThreadConversation({ parentMessageId, parent });
   const parentMessage = thread.parent;
-  // A parent from another channel (a hand-made link) is not this channel's thread.
-  const foreign = parentMessage !== null && parentMessage.channelId !== null && parentMessage.channelId !== channelId;
+  // A parent from another channel or a DM (a hand-made link) is not this channel's thread.
+  const foreign = parentMessage !== null && parentMessage.channelId !== channelId;
   const listRef = useRef<MessageListCoreHandle>(null);
   const [atBottom, setAtBottom] = useState(false);
 
@@ -148,13 +150,21 @@ export function ThreadView({
     () => (parentMessage === null || foreign ? [] : [parentMessage, ...thread.replies]),
     [parentMessage, foreign, thread.replies],
   );
+  // Replies said politely as they arrive; a loaded page is not news: off while a page loads, and a fresh baseline
+  // once it is in.
   const announcement = useMessageListAnnouncer({
     orderedMessages,
     atBottom,
     authorId: shared.me,
-    contextKey: parentMessageId,
-    enabled: !thread.isLoading,
+    contextKey: `${parentMessageId}:${thread.pagesLoaded}`,
+    enabled: !thread.isLoading && !thread.isLoadingMore,
   });
+
+  // Escape that reaches the screen (nothing used it: no mention list, no edit, no layer) closes the thread.
+  useScreenEscape(() => {
+    onClose();
+    return true;
+  }, ESCAPE_PRIORITY.conversation);
 
   // The reader's own reply: once it is in the list, down to it (the old thread did the same for every reply).
   const followOwn = useRef(false);
@@ -170,7 +180,8 @@ export function ThreadView({
   }, [newest, shared.me]);
 
   const threadShared = useMemo<ChatRowShared>(() => ({ ...shared, editing, openThread: undefined }), [shared, editing]);
-  const replyCount = thread.replies.length;
+  // The thread's total (the parent's count), not the loaded replies: a long thread loads in pages.
+  const replyCount = Math.max(parentMessage?.replyCount ?? 0, thread.replies.length);
   const renderRow = useCallback(
     (message: Message, ctx: MessageRowContext) => (
       <>
@@ -194,8 +205,8 @@ export function ThreadView({
   const escapeToInput = useCallback(() => inputRef.current?.focus({ preventScroll: true }), [inputRef]);
 
   const backLabel = channelTitle ? `Back to ${channelTitle}` : 'Back to the channel';
-  const parentGone = !thread.parentLoading && (parentMessage === null || foreign);
   const parentStatus = getHttpStatus(thread.parentError);
+  const parentGone = !thread.parentLoading && (parentMessage === null || foreign || parentStatus === 404 || parentStatus === 403);
   const state =
     thread.parentLoading || (thread.isLoading && !parentGone) ? (
       <LoadingThread />

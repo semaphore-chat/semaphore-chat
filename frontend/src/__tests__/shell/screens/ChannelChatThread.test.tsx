@@ -25,11 +25,13 @@ import {
 import { createChannel, createMessage, createTestQueryClient, renderWithProviders, resetFactoryCounter } from '../../test-utils';
 import { SpanType } from '../../../types/message.type';
 
+// The list's measured size: a thread longer than the screen is not at its bottom.
+const vsize = vi.hoisted(() => ({ scroll: 0, viewport: 0 }));
 vi.mock('virtua', async () => {
   const ReactMod = await import('react');
   return {
     VList: ReactMod.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
-      ReactMod.useImperativeHandle(ref, () => ({ scrollToIndex: () => undefined, findItemIndex: () => 0, scrollSize: 0, viewportSize: 0 }), []);
+      ReactMod.useImperativeHandle(ref, () => ({ scrollToIndex: () => undefined, findItemIndex: () => 0, get scrollSize() { return vsize.scroll; }, get viewportSize() { return vsize.viewport; } }), []);
       return (
         <div role={props.role as string} aria-label={props['aria-label'] as string}>
           {props.children as React.ReactNode}
@@ -215,7 +217,84 @@ describe('ChannelChat threads', () => {
     conversation.current = makeConversation({ orderedMessages: [parent()] });
     conversationCalls.length = 0;
     threadModel.calls.length = 0;
+    vsize.scroll = 0;
+    vsize.viewport = 0;
     thread();
+  });
+
+  /** The thread pane's live region (the channel's is under the cover). */
+  const threadLive = () =>
+    screen.getAllByRole('status', { hidden: true }).filter((el) => el.closest('[inert]') === null && el.getAttribute('aria-live') === 'polite');
+  const BATCH_WINDOW_MS = 2000;
+
+  it('a live reply while away from the bottom is announced; a loaded page of replies is not', async () => {
+    vsize.scroll = 4000;
+    vsize.viewport = 400;
+    thread({ continuationToken: 'r-2', pagesLoaded: 0 });
+    const { rerenderSame: rerender } = setup({ entries: [`${FIXTURE_CHAT}?thread=m-1`] });
+    await screen.findByRole('heading', { level: 1, name: 'Thread' });
+    // The list has measured itself: longer than the screen, so not at its bottom.
+    await frames();
+    // A page lands at the end (the reader scrolled near it).
+    const page = Array.from({ length: 50 }, (_, i) => reply(`p-${i}`, `paged reply ${i}`));
+    thread({ replies: [reply('r-1', 'first reply'), reply('r-2', 'second reply'), ...page], continuationToken: undefined, pagesLoaded: 1 });
+    rerender();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, BATCH_WINDOW_MS + 300));
+    });
+    expect(threadLive().map((el) => el.textContent).join('')).toBe('');
+    // A live reply (no page) is: the setup does announce.
+    thread({ replies: [reply('r-1', 'first reply'), reply('r-2', 'second reply'), ...page, reply('r-live', 'just now')], continuationToken: undefined, pagesLoaded: 1 });
+    rerender();
+    await waitFor(() => expect(threadLive().map((el) => el.textContent).join('')).toContain('just now'), { timeout: BATCH_WINDOW_MS + 2000 });
+  }, 15_000);
+
+  it('the count under the parent is the thread’s real total, not the loaded replies', async () => {
+    conversation.current = makeConversation({ orderedMessages: [{ ...parent(), replyCount: 120 }] });
+    thread({ continuationToken: 'r-2' });
+    setup({ entries: [`${FIXTURE_CHAT}?thread=m-1`] });
+    expect(await screen.findByRole('separator', { name: '120 replies' })).toBeInTheDocument();
+  });
+
+  it('while the thread is open the channel underneath says nothing', async () => {
+    conversation.current = makeConversation({ orderedMessages: [parent()], announcement: '2 new messages from aiko' });
+    setup({ entries: [`${FIXTURE_CHAT}?thread=m-1`] });
+    await screen.findByRole('heading', { level: 1, name: 'Thread' });
+    expect(screen.queryByText('2 new messages from aiko')).toBeNull();
+  });
+
+  it('Escape closes the thread; an Escape the composer used (a mention list) does not', async () => {
+    const { user } = setup();
+    const button = screen.getByRole('button', { name: '2 replies, open the thread' });
+    button.focus();
+    fireEvent.click(button);
+    const field = await screen.findByRole('textbox', { name: 'composer for thread m-1' });
+    const owns = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') event.preventDefault();
+    };
+    field.addEventListener('keydown', owns);
+    field.focus();
+    await user.keyboard('{Escape}');
+    expect(where()).toBe(`${FIXTURE_CHAT}?thread=m-1`);
+    field.removeEventListener('keydown', owns);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(where()).toBe(FIXTURE_CHAT));
+    await frames();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '2 replies, open the thread' }));
+  });
+
+  it('opening a thread while a jump has not settled leaves ?highlight= behind', () => {
+    setup({ entries: [`${FIXTURE_CHAT}?highlight=m-1`] });
+    fireEvent.click(screen.getByRole('button', { name: '2 replies, open the thread' }));
+    expect(where()).toBe(`${FIXTURE_CHAT}?thread=m-1`);
+  });
+
+  it('a message from a DM (no channel) is not this channel’s thread', async () => {
+    conversation.current = makeConversation({ orderedMessages: [] });
+    thread({ fetchedParent: createMessage({ id: 'm-9', channelId: null, directMessageGroupId: 'dm-1' }) });
+    setup({ entries: [`${FIXTURE_CHAT}?thread=m-9`] });
+    expect(await screen.findByRole('heading', { name: 'This thread is gone' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /composer for thread/ })).toBeNull();
   });
 
   it('"2 replies" opens the thread on the chat’s path; its heading takes focus; the channel is covered', async () => {
@@ -307,6 +386,7 @@ describe('ChannelChat threads', () => {
   });
 
   it('an empty thread says so under its parent', async () => {
+    conversation.current = makeConversation({ orderedMessages: [{ ...parent(), replyCount: 0 }] });
     thread({ replies: [] });
     setup({ entries: [`${FIXTURE_CHAT}?thread=m-1`] });
     expect(await screen.findByRole('separator', { name: 'No replies yet' })).toBeInTheDocument();
@@ -346,6 +426,8 @@ describe('ChannelChat pinned messages', () => {
     navCalls.length = 0;
     conversation.current = makeConversation({ orderedMessages: [parent()] });
     thread();
+    vsize.scroll = 0;
+    vsize.viewport = 0;
     pinned.current = {
       pins: [pin('m-5', 'pinned words'), pin('r-7', 'a pinned reply', 'm-1')],
       isLoading: false,

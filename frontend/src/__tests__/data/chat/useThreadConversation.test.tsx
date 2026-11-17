@@ -26,6 +26,17 @@ describe('mergeThreadPage', () => {
     });
     expect(mergeThreadPage(undefined, { replies: [c] })).toEqual({ replies: [c] });
   });
+
+  it('a live reply that came before the later pages ends up after them (by time), not between pages', () => {
+    const at = (m: number) => new Date(Date.UTC(2026, 10, 16, 9, m)).toISOString();
+    const a = createThreadReply({ id: 'a', sentAt: at(1) });
+    const b = createThreadReply({ id: 'b', sentAt: at(2) });
+    const live = createThreadReply({ id: 'live', sentAt: at(9) });
+    const c = createThreadReply({ id: 'c', sentAt: at(3) });
+    const d = createThreadReply({ id: 'd', sentAt: at(4) });
+    const merged = mergeThreadPage({ replies: [a, b, live], continuationToken: 'b' }, { replies: [c, d], continuationToken: undefined });
+    expect(merged.replies.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd', 'live']);
+  });
 });
 
 describe('useThreadConversation', () => {
@@ -72,6 +83,29 @@ describe('useThreadConversation', () => {
     expect(result.current.parent).toBe(parent);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(fetched).not.toHaveBeenCalled();
+  });
+
+  it('a parent that leaves the caller’s window keeps showing (no loading, no blank) while it is fetched again', async () => {
+    serve();
+    const parent = createMessage({ id: 'p1', channelId: 'ch-1' });
+    const { result, rerender } = renderHook(({ known }) => useThreadConversation({ parentMessageId: 'p1', parent: known }), {
+      wrapper: createTestWrapper({ queryClient: createTestQueryClient() }),
+      initialProps: { known: parent as ReturnType<typeof createMessage> | null },
+    });
+    rerender({ known: null });
+    expect(result.current.parent?.id).toBe('p1');
+    expect(result.current.parentLoading).toBe(false);
+  });
+
+  it('a page load reports itself (pagesLoaded), so a list can tell a page from live replies', async () => {
+    serve();
+    const { result } = render({ parentMessageId: 'p1', parent: createMessage({ id: 'p1' }) });
+    await waitFor(() => expect(result.current.replies).toHaveLength(2));
+    expect(result.current.pagesLoaded).toBe(0);
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    expect(result.current.pagesLoaded).toBe(1);
   });
 
   it('without one, the parent is fetched by id; a failed fetch is the parent error', async () => {
