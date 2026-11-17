@@ -85,8 +85,8 @@ describe('ChatComposer in a thread', () => {
 
   it("checks the thread's posting permission and says nothing about typing", () => {
     setup();
-    expect(availabilityArgs.at(-1)).toEqual(expect.objectContaining({ thread: true, contextId: 'ch-1' }));
-    expect(typingArgs.at(-1)).toEqual({ channelId: undefined });
+    expect(availabilityArgs[availabilityArgs.length - 1]).toEqual(expect.objectContaining({ thread: true, contextId: 'ch-1' }));
+    expect(typingArgs[typingArgs.length - 1]).toEqual({ channelId: undefined });
   });
 
   it('sends a reply as spans; the words stay until the server has it, then clear and onSent runs', async () => {

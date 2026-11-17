@@ -31,7 +31,7 @@ vi.mock('virtua', async () => {
 
 function renderRow(message: Message, ctx: MessageRowContext) {
   return (
-    <div data-testid={`row-${message.id}`} data-row-focus-target tabIndex={ctx.isRovingFocused ? 0 : -1}>
+    <div role="button" data-testid={`row-${message.id}`} data-row-focus-target tabIndex={ctx.isRovingFocused ? 0 : -1}>
       {message.id}
     </div>
   );

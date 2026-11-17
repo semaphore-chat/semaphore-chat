@@ -26,7 +26,8 @@ beforeEach(() => {
   acks.length = 0;
   socket = createMockSocket();
   socket.connected = true;
-  socket.emit.mockImplementation((_event: string, _payload: unknown, ack?: (answer: unknown) => void) => {
+  socket.emit.mockImplementation((_event: string, ...args: unknown[]) => {
+    const ack = args[1] as ((answer: unknown) => void) | undefined;
     if (acks.length > 0) ack?.(acks.shift());
   });
 });

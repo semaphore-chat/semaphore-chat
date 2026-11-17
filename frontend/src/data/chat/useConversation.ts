@@ -7,7 +7,7 @@
  * channel's notifications read. What is new is only the "N new" count (`useNewWhileAway`) and that the three
  * "jump" buttons of the old chat are one Jump to latest here (the same three actions, chosen the same way).
  */
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { MessageListCoreHandle } from '../../features/chat/MessageListCore';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { useAnchoredModeTransition } from '../../hooks/useAnchoredModeTransition';
@@ -25,6 +25,12 @@ export interface UseConversationOptions {
   channelId: string;
   /** Where clearing `?highlight=` leads (`useChannelChat`'s `chatPath`). Default: the app's channel route. */
   chatPath?: string;
+  /**
+   * Another conversation covers this one (a thread over its channel; this list stays mounted underneath): nothing
+   * is marked read and nothing is announced while covered. Uncovered again, the last range the list reported is
+   * read as if it had just been reported, so what arrived meanwhile in view is read then, not before.
+   */
+  covered?: boolean;
 }
 
 export interface ConversationJump {
@@ -66,7 +72,7 @@ export interface Conversation {
   announcement: string;
 }
 
-export function useConversation({ communityId, channelId, chatPath }: UseConversationOptions): Conversation {
+export function useConversation({ communityId, channelId, chatPath, covered = false }: UseConversationOptions): Conversation {
   const { user } = useCurrentUser();
   const me = user?.id ?? '';
 
@@ -126,6 +132,22 @@ export function useConversation({ communityId, channelId, chatPath }: UseConvers
     atBottomRef,
   });
 
+  // While covered the list's range is only remembered; uncovered, the last one is read.
+  const coveredRef = useRef(covered);
+  coveredRef.current = covered;
+  const lastRangeRef = useRef<[number, number] | null>(null);
+  const onVisibleRangeChange = useCallback(
+    (startIndex: number, endIndex: number) => {
+      lastRangeRef.current = [startIndex, endIndex];
+      if (!coveredRef.current) handleVisibleRangeChange(startIndex, endIndex);
+    },
+    [handleVisibleRangeChange],
+  );
+  useEffect(() => {
+    const range = lastRangeRef.current;
+    if (!covered && range !== null) handleVisibleRangeChange(range[0], range[1]);
+  }, [covered, handleVisibleRangeChange]);
+
   const newCount = useNewWhileAway({
     orderedMessages,
     atBottom,
@@ -164,10 +186,10 @@ export function useConversation({ communityId, channelId, chatPath }: UseConvers
       highlightSeq,
       resetKey: channelId,
       onAtBottomChange: setAtBottom,
-      onVisibleRangeChange: handleVisibleRangeChange,
+      onVisibleRangeChange,
     },
     jump,
     typingUserIds,
-    announcement,
+    announcement: covered ? '' : announcement,
   };
 }

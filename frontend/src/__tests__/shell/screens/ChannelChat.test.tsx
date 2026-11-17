@@ -294,11 +294,11 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     expect(counts.colours.get('Deleted user')).toBeUndefined();
   });
 
-  it('a replies count is plain text, not a control (threads are not built yet)', () => {
+  it('a replies count is a button that opens the thread on the chat’s own path (PR 10d-B)', () => {
     conversation.current = makeConversation({ orderedMessages: [createMessage({ id: 'm-1', replyCount: 3 })] });
     setup();
-    expect(screen.getByText('3 replies')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /replies/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '3 replies, open the thread' }));
+    expect(where()).toBe(`${FIXTURE_CHAT}?thread=m-1`);
   });
 
   it('a reply’s quote shows its original in this chat (on the fixture)', () => {

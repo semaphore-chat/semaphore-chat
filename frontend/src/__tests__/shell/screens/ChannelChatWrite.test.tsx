@@ -338,20 +338,20 @@ describe('ChannelChat write side', () => {
     setup([mine()]);
     const sheet = await openActionsWithEnter('my words');
     expect(sheet).toHaveAccessibleName('Message from Me');
-    expect(sheetActions(sheet)).toEqual([...QUICK, 'Reply', 'Edit message', 'Copy message content', 'Delete message']);
+    expect(sheetActions(sheet)).toEqual([...QUICK, 'Reply', 'Reply in thread', 'Edit message', 'Copy message content', 'Delete message']);
   });
 
   it('someone else’s message: no Edit, Pin or Delete', async () => {
     setup([theirs()]);
     const sheet = await openActionsWithEnter('their words');
-    expect(sheetActions(sheet)).toEqual([...QUICK, 'Reply', 'Copy message content']);
+    expect(sheetActions(sheet)).toEqual([...QUICK, 'Reply', 'Reply in thread', 'Copy message content']);
   });
 
   it('a moderator may pin and delete someone else’s message', async () => {
     perms.moderator = true;
     setup([theirs()]);
     const sheet = await openActionsWithEnter('their words');
-    expect(sheetActions(sheet)).toEqual([...QUICK, 'Reply', 'Pin message', 'Copy message content', 'Delete message']);
+    expect(sheetActions(sheet)).toEqual([...QUICK, 'Reply', 'Reply in thread', 'Pin message', 'Copy message content', 'Delete message']);
     fireEvent.click(within(sheet).getByRole('button', { name: 'Pin message' }));
     expect(actions.pin).toHaveBeenCalledTimes(1);
   });
@@ -360,7 +360,7 @@ describe('ChannelChat write side', () => {
     perms.canReact = false;
     setup([theirs()]);
     const sheet = await openActionsWithEnter('their words');
-    expect(sheetActions(sheet)).toEqual(['Reply', 'Copy message content']);
+    expect(sheetActions(sheet)).toEqual(['Reply', 'Reply in thread', 'Copy message content']);
   });
 
   it('a right-click opens the actions too; a quick reaction toggles it and closes the sheet, focus back on the row', async () => {
