@@ -81,4 +81,5 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant, via ashpd in gpui-pre-linux" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names, via ashpd in gpui-pre-linux" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive, via ashpd in gpui-pre-linux" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono, via gpui-base in gpui-kit and used by our own crates; moving ours to another crate is tracked separately" },
 ]
