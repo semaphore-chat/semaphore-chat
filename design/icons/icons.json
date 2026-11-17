@@ -56,6 +56,9 @@
     "CircleAlert": "circle-alert",
     "CircleCheck": "circle-check",
     "LoaderCircle": "loader-circle",
-    "Megaphone": "megaphone"
+    "Megaphone": "megaphone",
+    "Play": "play",
+    "Download": "download",
+    "Music": "music"
   }
 }
