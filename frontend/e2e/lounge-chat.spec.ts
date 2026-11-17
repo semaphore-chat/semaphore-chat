@@ -189,7 +189,7 @@ test.describe('The Lounge chat (390 px)', () => {
       await expect(field).toHaveValue('');
 
       // Reply: the banner, then the reply's quote.
-      await (await actionsOf('who is around tonight?')).getByRole('button', { name: 'Reply' }).click();
+      await (await actionsOf('who is around tonight?')).getByRole('button', { name: 'Reply', exact: true }).click();
       await expect(page.getByText('Replying to', { exact: false })).toBeVisible(EVENTUAL);
       await field.fill('count me in');
       await send.click();
