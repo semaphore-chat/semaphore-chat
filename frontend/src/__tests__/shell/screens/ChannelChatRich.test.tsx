@@ -150,6 +150,8 @@ function makeConversation(orderedMessages: Message[]): Conversation {
 function setup(messages: Message[]) {
   conversation.current = makeConversation(messages);
   const queryClient = createTestQueryClient();
+  // What the test seeds stays fresh: no refetch races the test's end (an aborted request MSW already answered).
+  queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, staleTime: Infinity } });
   queryClient.setQueryData(channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }), [
     createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1', type: 'TEXT' }),
   ]);
