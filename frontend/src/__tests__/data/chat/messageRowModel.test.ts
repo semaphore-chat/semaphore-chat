@@ -111,16 +111,18 @@ describe('toQuoteView', () => {
 });
 
 describe('toAttachmentViews', () => {
-  it('images are drawn with their size; video, audio and documents are file rows', () => {
+  it('images are drawn with their size; video and audio play (by their type, as the old row); documents are file rows', () => {
     const views = toAttachmentViews([
       { id: 'f-1', filename: 'a.png', fileType: 'IMAGE', mimeType: 'image/png', size: 2048, width: 1600, height: 900 },
-      { id: 'f-2', filename: 'b.mp4', fileType: 'VIDEO', mimeType: 'video/mp4', size: 1024 * 1024, width: 1920, height: 1080 },
+      { id: 'f-2', filename: 'b.mp4', fileType: 'VIDEO', mimeType: 'video/mp4', size: 1024 * 1024, width: 1920, height: 1080, hasThumbnail: true },
       { id: 'f-3', filename: 'c.txt', fileType: 'DOCUMENT', mimeType: 'text/plain', size: 12 },
+      { id: 'f-4', filename: 'd.ogg', fileType: 'AUDIO', mimeType: 'audio/ogg', size: 12 },
     ] as never);
     expect(views).toEqual([
-      { id: 'f-1', kind: 'image', name: 'a.png', mimeType: 'image/png', detail: '2 KB', width: 1600, height: 900 },
-      { id: 'f-2', kind: 'file', name: 'b.mp4', mimeType: 'video/mp4', detail: '1 MB', width: 1920, height: 1080 },
-      { id: 'f-3', kind: 'file', name: 'c.txt', mimeType: 'text/plain', detail: '12 Bytes', width: null, height: null },
+      { id: 'f-1', kind: 'image', name: 'a.png', mimeType: 'image/png', detail: '2 KB', width: 1600, height: 900, hasThumbnail: false },
+      { id: 'f-2', kind: 'video', name: 'b.mp4', mimeType: 'video/mp4', detail: '1 MB', width: 1920, height: 1080, hasThumbnail: true },
+      { id: 'f-3', kind: 'file', name: 'c.txt', mimeType: 'text/plain', detail: '12 Bytes', width: null, height: null, hasThumbnail: false },
+      { id: 'f-4', kind: 'audio', name: 'd.ogg', mimeType: 'audio/ogg', detail: '12 Bytes', width: null, height: null, hasThumbnail: false },
     ]);
   });
 });

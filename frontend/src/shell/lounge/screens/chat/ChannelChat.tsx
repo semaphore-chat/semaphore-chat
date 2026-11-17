@@ -48,6 +48,8 @@ import { ChatList } from './ChatList';
 import { ChatRowContext, type ChatRowShared } from './ChatRow';
 import { ChatComposer } from './ChatComposer';
 import { MessageActionsSheet } from './MessageActionsSheet';
+import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
+import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
 import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
 
@@ -150,6 +152,16 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     setActionsFor(message);
   }, []);
   const closeActions = useCallback(() => setActionsFor(null), []);
+  // The picture viewer and who reacted: one host each for the whole list.
+  const [viewer, setViewer] = useState<ViewerRequest | null>(null);
+  const openViewer = useCallback((message: Message, fileId: string) => setViewer({ message, fileId }), []);
+  const closeViewer = useCallback(() => setViewer(null), []);
+  const [reactionPeople, setReactionPeople] = useState<ReactionPeopleRequest | null>(null);
+  const showReactions = useCallback(
+    (message: Message, reactionKey?: string) => setReactionPeople({ message, ...(reactionKey ? { reactionKey } : {}) }),
+    [],
+  );
+  const closeReactions = useCallback(() => setReactionPeople(null), []);
   // Reply (the shared quote-reply state; it resets when the channel changes). Sending goes through the composer.
   const { replyToMessage, handleQuoteReply, handleCancelReply } = useReplyAndEdit({
     contextType: VoiceSessionType.Channel,
@@ -224,11 +236,29 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       openProfile: hasProfile ? openProfileStable : undefined,
       opener,
       openActions,
+      openViewer,
+      showReactions,
       editing,
       retrySend,
       removeFailed,
     }),
-    [conversation.me, communityId, writable, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing, retrySend, removeFailed],
+    [
+      conversation.me,
+      communityId,
+      writable,
+      segments,
+      showMessage,
+      openPath,
+      hasProfile,
+      openProfileStable,
+      opener,
+      openActions,
+      openViewer,
+      showReactions,
+      editing,
+      retrySend,
+      removeFailed,
+    ],
   );
 
   const { onBack } = useChatBack(communityId);
@@ -304,7 +334,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         onDone={closeActions}
         onReply={onReply}
         onEdit={onEdit}
+        onShowReactions={showReactions}
       />
+      <MessageMediaViewer request={viewer} onDone={closeViewer} />
+      <ReactionPeopleSheet request={reactionPeople} me={conversation.me} emoji={segments} onDone={closeReactions} />
     </ChatRowContext>
   );
 }

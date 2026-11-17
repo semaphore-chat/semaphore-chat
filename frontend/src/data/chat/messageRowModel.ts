@@ -162,25 +162,34 @@ export function viewerImages<T extends { mimeType?: string | null }>(attachments
 /** A file of a message, as a tile draws it. */
 export interface AttachmentView {
   id: string;
-  /** Images are drawn; everything else (video and audio too, until they have players) is a file row. */
-  kind: 'image' | 'file';
+  /** Images are drawn, video and audio play in place (as the old row's players), everything else is a file row. */
+  kind: 'image' | 'video' | 'audio' | 'file';
   name: string;
   /** The type the server reported: decides whether pressing it opens or downloads it. */
   mimeType: string;
   detail: string;
   width: number | null;
   height: number | null;
+  /** The server made a still of it (a video's poster). */
+  hasThumbnail: boolean;
+}
+
+function attachmentKind(a: Message['attachments'][number]): AttachmentView['kind'] {
+  if (a.fileType === 'IMAGE') return 'image';
+  const media = attachmentMediaType(a.mimeType);
+  return media === 'video' || media === 'audio' ? media : 'file';
 }
 
 export function toAttachmentViews(attachments: Message['attachments']): AttachmentView[] {
   return (attachments ?? []).map((a) => ({
     id: a.id,
-    kind: a.fileType === 'IMAGE' ? 'image' : 'file',
+    kind: attachmentKind(a),
     name: a.filename,
     mimeType: a.mimeType ?? '',
     detail: formatFileSize(a.size),
     width: a.width ?? null,
     height: a.height ?? null,
+    hasThumbnail: !!a.hasThumbnail,
   }));
 }
 

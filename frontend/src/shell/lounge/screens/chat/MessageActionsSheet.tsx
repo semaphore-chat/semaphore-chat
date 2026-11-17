@@ -2,7 +2,8 @@
  * A message's actions on the new shell's chat (PR 10c-2a): a kit Sheet opened by a long press, a right-click, the
  * context-menu key or Enter on the focused row. Six quick reactions on top, then the shared action model
  * (`data/chat/messageActionModel`, the old chat's menu and sheet): Reply, Edit, Pin or Unpin, Copy message content
- * and Delete, which asks first (the kit's destructive confirmation). Reply in thread is not offered (no threads in
+ * and Delete, which asks first (the kit's destructive confirmation), and See reactions when there are any (who
+ * reacted, `ReactionPeopleSheet`). Reply in thread is not offered (no threads in
  * the new shell yet). Who may do what is the old chat's (`useMessagePermissions`; nothing on a message still
  * sending or not sent).
  *
@@ -56,6 +57,8 @@ export interface MessageActionsSheetProps {
   onDone: () => void;
   onReply: (message: Message) => void;
   onEdit: (message: Message) => void;
+  /** Who reacted: offered when the message has reactions. */
+  onShowReactions: (message: Message) => void;
 }
 
 export function MessageActionsSheet({ message, ...rest }: MessageActionsSheetProps): JSX.Element | null {
@@ -70,6 +73,7 @@ function ActionsFor({
   onDone,
   onReply,
   onEdit,
+  onShowReactions,
 }: MessageActionsSheetProps & { message: Message }): JSX.Element {
   const queryClient = useQueryClient();
   const announce = useAnnounce();
@@ -97,10 +101,16 @@ function ActionsFor({
     errorMessage: () => "Couldn't delete the message. Try again.",
   });
 
+  // "See reactions" opens its sheet once this one has closed (focus is back on the row by then, so it returns there).
+  const [then, setThen] = useState<(() => void) | null>(null);
   // Done once the sheet is closed and no delete question is open or running.
   useEffect(() => {
-    if (!open && confirm.phase === 'idle') onDone();
-  }, [open, confirm.phase, onDone]);
+    if (!open && confirm.phase === 'idle') {
+      onDone();
+      then?.();
+    }
+  }, [open, confirm.phase, onDone, then]);
+  const hasReactions = message.reactions.some((r) => r.userIds.length > 0);
 
   const close = useCallback(() => setOpen(false), []);
   const model = getMessageActionModel({
@@ -167,6 +177,16 @@ function ActionsFor({
                 }}
               />
             ))}
+            {hasReactions && (
+              <ListRow
+                primary="See reactions"
+                leading={<Icon name="Smile" size="md" tone="secondary" />}
+                onClick={() => {
+                  setThen(() => () => onShowReactions(message));
+                  close();
+                }}
+              />
+            )}
           </Stack>
         </Stack>
       </Sheet>
