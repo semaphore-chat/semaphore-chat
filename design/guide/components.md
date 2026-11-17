@@ -1371,9 +1371,11 @@ for a list that is not messages.
 |`jump`|a JumpToLatest|none|Floats over the bottom of the list region.|
 |`announcement`|text|none|Said politely, never shown ("2 new messages from aiko").|
 |`composer`|a Composer|none|Under the list.|
+|`cover`|a ChatPane|none|A second conversation over this one, filling the pane (a thread over its channel). This one stays mounted underneath (its scroll and draft kept) but hidden and inert, and says nothing, until the cover goes.|
 
 Stories: `kit-chat-pane--conversation`, `kit-chat-pane--conversation-light`,
 `kit-chat-pane--conversation-tinted`, `kit-chat-pane--with-composer`,
+`kit-chat-pane--covered`, `kit-chat-pane--covered-light`,
 `kit-chat-pane--long-history` (2,000 rows on the list core: the performance check).
 
 ### MessageQuote
