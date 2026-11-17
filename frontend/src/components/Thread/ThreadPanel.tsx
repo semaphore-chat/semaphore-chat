@@ -27,17 +27,11 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  threadsControllerGetRepliesOptions,
-} from "../../api-client/@tanstack/react-query.gen";
 import { Message } from "../../types/message.type";
 import MessageComponent from "../Message/MessageComponent";
 import ThreadMessageInput from "./ThreadMessageInput";
 import { useThreadPanel } from "../../contexts/ThreadPanelContext";
-import { useThreadReplies } from "../../hooks/useThreadReplies";
-import { useThreadSubscription } from "../../hooks/useThreadSubscription";
-import { logger } from "../../utils/logger";
+import { useThreadConversation } from "../../data/chat/useThreadConversation";
 import ListState from "../Common/ListState";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { useResponsive } from "../../hooks/useResponsive";
@@ -68,7 +62,6 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
 }) => {
   const theme = useTheme();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
   const parentMessageId = parentMessage.id;
   const { closeThread } = useThreadPanel();
   // Tablet keeps the side drawer, but it is still a touch layout: header
@@ -76,11 +69,9 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
   const { shouldUseTouchUI } = useResponsive();
   const touchHeader = fullScreen || shouldUseTouchUI;
 
-  // Thread replies via TanStack Query
-  const { replies, continuationToken, isLoading, error, refetch } = useThreadReplies(parentMessageId);
-
-  // Subscription status via TanStack Query
-  const { isSubscribed, toggleSubscription } = useThreadSubscription(parentMessageId);
+  // Replies, the next page and the follow state: the shared thread model (data/chat/useThreadConversation).
+  const { replies, continuationToken, isLoading, error, refetch, loadMore, isSubscribed, toggleSubscription } =
+    useThreadConversation({ parentMessageId, parent: parentMessage });
 
   // The thread whose replies have loaded since it was opened, and how many
   // replies it had when this effect last looked.
@@ -110,35 +101,7 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
     closeThread();
   };
 
-  const handleLoadMore = useCallback(async () => {
-    if (continuationToken && !isLoading) {
-      try {
-        const nextPage = await queryClient.fetchQuery(
-          threadsControllerGetRepliesOptions({
-            path: { parentMessageId },
-            query: { limit: 50, continuationToken },
-          })
-        );
-
-        // Merge into the base query cache (continuationToken: '') so useThreadReplies sees the results
-        const baseQueryKey = threadsControllerGetRepliesOptions({
-          path: { parentMessageId },
-          query: { limit: 50, continuationToken: '' },
-        }).queryKey;
-
-        queryClient.setQueryData(baseQueryKey, (old: typeof nextPage | undefined) => {
-          if (!old) return nextPage;
-          return {
-            ...old,
-            replies: [...old.replies, ...(nextPage.replies ?? [])],
-            continuationToken: nextPage.continuationToken,
-          };
-        });
-      } catch (error) {
-        logger.error("Failed to load more thread replies:", error);
-      }
-    }
-  }, [continuationToken, isLoading, queryClient, parentMessageId]);
+  const handleLoadMore = useCallback(() => void loadMore(), [loadMore]);
 
   const contextId = channelId || directMessageGroupId || "";
 
