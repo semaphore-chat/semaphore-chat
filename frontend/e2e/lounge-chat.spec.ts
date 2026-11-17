@@ -493,3 +493,102 @@ test.describe('The Lounge chat: rich rows (390 px, real route)', () => {
     }
   });
 });
+
+test.describe('The Lounge chat: threads and pinned messages (390 px, real route)', () => {
+  const threadHeading = (page: Page) => page.getByRole('heading', { name: 'Thread', level: 1 });
+
+  test('a classic user’s thread: the Lounge reader opens it, replies, the classic user sees it; reload and Back', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    const parent = await sendTestMessage(request, world.c1.lobbyId, 'shall we start a thread?', world.owner.token);
+    const started = await request.post(`${API_BASE}/threads/${parent.id}/replies`, {
+      data: { spans: [{ type: 'PLAINTEXT', text: 'first reply from classic' }], attachments: [] },
+      headers: { Authorization: `Bearer ${world.owner.token}` },
+    });
+    expect(started.ok()).toBe(true);
+    const real = chatPath('real', world.c1.id, world.c1.lobbyId);
+    const reader = await openSession(browser, world.member, PHONE);
+    try {
+      const page = reader.page;
+      await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      const replies = row(page, 'shall we start a thread?').getByRole('button', { name: '1 reply, open the thread' });
+      await expect(replies).toBeVisible(EVENTUAL);
+      await replies.click();
+      await expect(threadHeading(page)).toBeFocused(EVENTUAL);
+      await expect(page).toHaveURL(new RegExp(`#${escapeRe(real)}\\?.*thread=${parent.id}`));
+      await expect(page.getByText('first reply from classic')).toBeVisible(EVENTUAL);
+
+      // A reply from the Lounge; it shows in the thread once the server has it.
+      const field = page.getByRole('textbox', { name: 'Reply in thread' });
+      await field.fill('a reply from the lounge');
+      await page.getByRole('button', { name: 'Send message' }).click();
+      await expect(page.getByRole('list', { name: 'Messages' }).getByText('a reply from the lounge')).toBeVisible(EVENTUAL);
+      await expect(field).toHaveValue('');
+
+      // The classic user (1280 px, old shell) sees it in their thread panel.
+      const classic = await openSession(browser, { username: TEST_USER.username, password: TEST_USER.password }, { width: 1280, height: 800 });
+      try {
+        await classic.page.goto(`/#${real}`);
+        await classic.page.getByRole('button', { name: /2 replies/ }).click({ timeout: 20_000 });
+        await expect(classic.page.getByTestId('thread-panel').getByText('a reply from the lounge')).toBeVisible(EVENTUAL);
+      } finally {
+        await classic.context.close();
+      }
+
+      // A reload on ?thread= opens it again; Back (no entry before it now) closes it to the channel, focus on the row.
+      await page.reload();
+      await expect(threadHeading(page)).toBeVisible(EVENTUAL);
+      await expect(page.getByText('a reply from the lounge')).toBeVisible(EVENTUAL);
+      await page.getByRole('button', { name: 'Back to # lobby' }).click();
+      await expect(threadHeading(page)).toHaveCount(0, EVENTUAL);
+      await expect(page).toHaveURL(hashUrl(real));
+      await expect(chatHeading(page, 'lobby')).toBeVisible();
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+    } finally {
+      await reader.context.close();
+    }
+  });
+
+  test('pinned messages: the list from More, a jump to the message, a pinned thread reply opens its thread', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    const pinnedOne = await sendTestMessage(request, world.c1.lobbyId, 'the pinned rules of the lobby', world.owner.token);
+    const parent = await sendTestMessage(request, world.c1.lobbyId, 'a thread with a pinned reply', world.owner.token);
+    const reply = await request.post(`${API_BASE}/threads/${parent.id}/replies`, {
+      data: { spans: [{ type: 'PLAINTEXT', text: 'the pinned reply' }], attachments: [] },
+      headers: { Authorization: `Bearer ${world.owner.token}` },
+    });
+    expect(reply.ok()).toBe(true);
+    const replyId = ((await reply.json()) as { id: string }).id;
+    for (const id of [pinnedOne.id, replyId]) {
+      const pinned = await request.post(`${API_BASE}/moderation/pin/${id}`, { data: {}, headers: { Authorization: `Bearer ${world.owner.token}` } });
+      expect(pinned.ok()).toBe(true);
+    }
+    for (let i = 0; i < 30; i++) await sendTestMessage(request, world.c1.lobbyId, `filler ${i}`, world.owner.token);
+    const { context, page } = await openSession(browser, world.member, PHONE);
+    try {
+      await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await page.getByRole('button', { name: 'More' }).click();
+      await page.getByRole('menuitem', { name: 'Pinned messages (2)' }).click();
+      const sheet = page.getByRole('dialog', { name: 'Pinned messages (2)' });
+      await expect(sheet).toBeVisible(EVENTUAL);
+      // A plain member: no Unpin.
+      await expect(sheet.getByRole('button', { name: /Unpin/ })).toHaveCount(0);
+      await sheet.getByRole('button', { name: /the pinned rules of the lobby/ }).click();
+      await expect(sheet).toHaveCount(0, EVENTUAL);
+      await expect(row(page, 'the pinned rules of the lobby')).toBeInViewport(EVENTUAL);
+
+      await page.getByRole('button', { name: 'More' }).click();
+      await page.getByRole('menuitem', { name: /Pinned messages/ }).click();
+      await page.getByRole('dialog').getByRole('button', { name: /the pinned reply/ }).click();
+      await expect(threadHeading(page)).toBeFocused(EVENTUAL);
+      await expect(page.getByText('the pinned reply')).toBeVisible(EVENTUAL);
+      // Back closes the thread (it was opened into its own entry), the channel kept underneath.
+      await page.getByRole('button', { name: 'Back to # lobby' }).click();
+      await expect(threadHeading(page)).toHaveCount(0, EVENTUAL);
+      await expect(row(page, 'a thread with a pinned reply')).toBeInViewport(EVENTUAL);
+    } finally {
+      await context.close();
+    }
+  });
+});
