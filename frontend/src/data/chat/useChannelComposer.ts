@@ -101,10 +101,19 @@ export interface MentionListView {
 export interface UseChannelComposerOptions {
   communityId: string;
   channelId: string;
+  /**
+   * A reply in this message's thread instead of a channel message: its own draft, the thread's posting permission,
+   * no typing line (threads have none), and the words and files stay until the server has the reply (`send`
+   * resolves true), since a thread shows no pending row.
+   */
+  thread?: { parentMessageId: string };
   /** The text field (the kit Composer's `ref`). */
   inputRef: RefObject<HTMLTextAreaElement | null>;
-  /** Sends the message (the shared upload-aware send), with the reply's id when replying. */
-  send: (content: string, spans: Span[], files: File[]) => Promise<void> | void;
+  /**
+   * Sends the message (the shared upload-aware send), with the reply's id when replying. In a thread it resolves
+   * true once the server has the reply (the composer clears then).
+   */
+  send: (content: string, spans: Span[], files: File[]) => Promise<void | boolean> | void;
   /** Tells the reader something failed or was refused (a toast). */
   onError: (message: string) => void;
   /** Touch first: Enter is a new line, never a send. */
@@ -115,13 +124,21 @@ export interface UseChannelComposerOptions {
 
 const NO_DM_MENTIONS: SimpleMentionState = { isOpen: false, suggestions: [], selectedIndex: 0, query: '', type: null, isLoading: false };
 
-export function useChannelComposer({ communityId, channelId, inputRef, send, onError, touch, onCancelReply }: UseChannelComposerOptions) {
-  const [text, setText, clearDraft] = useComposerDraft(`channel:${channelId}`);
+export function useChannelComposer({ communityId, channelId, thread, inputRef, send, onError, touch, onCancelReply }: UseChannelComposerOptions) {
+  const [text, setText, clearDraft] = useComposerDraft(thread ? `thread:${thread.parentMessageId}` : `channel:${channelId}`);
   const [sending, setSending] = useState(false);
-  const availability = useComposerAvailability({ contextType: VoiceSessionType.Channel, contextId: channelId, communityId });
+  const availability = useComposerAvailability({
+    contextType: VoiceSessionType.Channel,
+    contextId: channelId,
+    communityId,
+    thread: thread !== undefined,
+  });
   const canCompose = availability.state === 'ok';
   const canAttach = availability.canAttach ?? true;
-  const { handleKeyPress: emitTyping, sendTypingStop } = useTypingEmitter({ channelId });
+  const { handleKeyPress: emitTyping, sendTypingStop } = useTypingEmitter({ channelId: thread ? undefined : channelId });
+  const keepUntilSent = thread !== undefined;
+  const textRef = useRef(text);
+  textRef.current = text;
 
   // --- Files ---
   const files = useFileAttachments();
@@ -218,6 +235,17 @@ export function useChannelComposer({ communityId, channelId, inputRef, send, onE
       // clear now, as the old composer's do, and are never touched again by this send. What the reader types while
       // it waits for the server stays, whatever the answer.
       const sent = send(content, spans, selected);
+      if (keepUntilSent) {
+        // A thread shows no pending row: the words and files stay until the server has the reply, and only the
+        // words that were sent are cleared (anything typed meanwhile stays).
+        mentionHook.close();
+        const done = await sent;
+        if (done === true) {
+          if (textRef.current.trim() === content) clearDraft();
+          files.clearFiles();
+        }
+        return;
+      }
       clearDraft();
       files.clearFiles();
       mentionHook.close();
@@ -232,7 +260,7 @@ export function useChannelComposer({ communityId, channelId, inputRef, send, onE
       sendingRef.current = false;
       setSending(false);
     }
-  }, [files, text, userMentions, channelMentions, aliasMentions, emojiMentions, send, sendTypingStop, clearDraft, mentionHook, onError]);
+  }, [files, text, userMentions, channelMentions, aliasMentions, emojiMentions, send, sendTypingStop, clearDraft, mentionHook, onError, keepUntilSent]);
 
   const { handleKeyPress } = useComposerKeys({
     inputRef: inputRef as RefObject<HTMLInputElement | null>,

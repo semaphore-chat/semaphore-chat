@@ -35,6 +35,7 @@ vi.mock('../../api-client/sdk.gen', () => ({
 
 import {
   sendMessageWithAttachments,
+  sendUnlistedWithAttachments,
   retryAttachment,
   removeAttachment,
   startAttachmentUploads,
@@ -399,5 +400,26 @@ describe('failures, retry, remove and cancel', () => {
       expect(addAttachment).not.toHaveBeenCalled();
       expect(listPendingUploads()).toEqual([]);
     });
+  });
+});
+
+describe('sendUnlistedWithAttachments (a thread reply)', () => {
+  it('sends with the pending count, writes no row, and uploads to the reply found by its server id', async () => {
+    const send = vi.fn(async (_pending: number) => 'reply-1');
+    const id = await sendUnlistedWithAttachments({ runtime: runtime(), files: files(), hasText: true, send });
+    expect(id).toBe('reply-1');
+    expect(send).toHaveBeenCalledWith(2);
+    expect(cacheMessages()).toEqual([]);
+    const entry = getPendingUpload('reply-1');
+    expect(entry?.messageId).toBe('reply-1');
+    expect(entry?.files.map((f) => f.status)).toEqual(['uploading', 'uploading']);
+    expect(uploads.map((u) => u.resourceId)).toEqual(['reply-1', 'reply-1']);
+  });
+
+  it('a reply that was not sent forgets its files', async () => {
+    const id = await sendUnlistedWithAttachments({ runtime: runtime(), files: files(), hasText: true, send: async () => null });
+    expect(id).toBeNull();
+    expect(listPendingUploads()).toEqual([]);
+    expect(uploads).toEqual([]);
   });
 });
