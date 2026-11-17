@@ -30,8 +30,9 @@ function focusable(element: Element | null): element is HTMLElement {
 function screenTarget(root: HTMLElement): HTMLElement | null {
   const main = [...root.querySelectorAll('main, [role="main"]')].find(shown) ?? null;
   if (main === null) return null;
-  const heading = main.querySelector('h1');
-  if (heading instanceof HTMLElement && shown(heading)) {
+  // The first shown one: a covered conversation (a thread over its channel) keeps its own heading, inert.
+  const heading = [...main.querySelectorAll('h1')].find(shown);
+  if (heading instanceof HTMLElement) {
     if (!heading.hasAttribute('tabindex')) {
       heading.setAttribute('tabindex', '-1');
       // A heading is not a control: focus lands on it only by script, to move the reading position.
