@@ -20,6 +20,8 @@ export interface UseFileAttachmentsReturn {
   handleRemoveFile: (index: number) => void;
   handleFileButtonClick: () => void;
   clearFiles: () => void;
+  /** Takes these files (by identity) out of the queue, leaving any added since. */
+  removeFiles: (files: readonly File[]) => void;
   validationError: string | null;
   clearValidationError: () => void;
 }
@@ -137,6 +139,22 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
     setPreviews(new Map());
   }, [setPreviews, setSelected]);
 
+  const removeFiles = useCallback((files: readonly File[]) => {
+    const gone = new Set(files);
+    const rest = selectedRef.current.filter((file) => !gone.has(file));
+    fileCountRef.current = rest.length;
+    setSelected(rest);
+    const next = new Map(previewsRef.current);
+    for (const file of gone) {
+      const url = next.get(file);
+      if (url !== undefined && !rest.includes(file)) {
+        URL.revokeObjectURL(url);
+        next.delete(file);
+      }
+    }
+    setPreviews(next);
+  }, [setPreviews, setSelected]);
+
   const filePreviews = useMemo(() => {
     const byIndex = new Map<number, string>();
     selectedFiles.forEach((file, i) => {
@@ -155,6 +173,7 @@ export function useFileAttachments(): UseFileAttachmentsReturn {
     handleRemoveFile,
     handleFileButtonClick,
     clearFiles,
+    removeFiles,
     validationError,
     clearValidationError,
   };

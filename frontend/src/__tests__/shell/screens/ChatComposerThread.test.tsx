@@ -75,6 +75,8 @@ function setup(onSent = vi.fn()) {
 
 describe('ChatComposer in a thread', () => {
   beforeEach(() => {
+    URL.createObjectURL = vi.fn(() => 'blob:preview');
+    URL.revokeObjectURL = vi.fn();
     sendReply.mockClear();
     channelSend.mockClear();
     replies.waiting.length = 0;
@@ -126,5 +128,22 @@ describe('ChatComposer in a thread', () => {
     await user.type(field(), 'half typed');
     await waitFor(() => expect(sessionStorage.getItem(composerDraftStorageKey('thread:p-1'))).toBe('half typed'));
     expect(sessionStorage.getItem(composerDraftStorageKey('channel:ch-1'))).toBeNull();
+  });
+
+  it('words typed while the reply waits stay (only the sent words go); files added meanwhile stay; nothing is sent twice', async () => {
+    const { user, field } = setup();
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(input, new File(['a'], 'sent.png', { type: 'image/png' }));
+    await user.type(field(), 'first part{Enter}');
+    await waitFor(() => expect(sendReply).toHaveBeenCalledTimes(1));
+    // While it waits: more words, another file, and a second Enter (ignored: one send at a time).
+    await user.type(field(), ' and more');
+    await user.upload(input, new File(['b'], 'later.png', { type: 'image/png' }));
+    await user.keyboard('{Enter}');
+    expect(sendReply).toHaveBeenCalledTimes(1);
+    await act(async () => replies.answer({ clear: true, messageId: 'r-1' }));
+    await waitFor(() => expect(field().value).toBe('and more'));
+    expect(screen.queryByText('sent.png')).toBeNull();
+    expect(screen.getByText('later.png')).toBeInTheDocument();
   });
 });

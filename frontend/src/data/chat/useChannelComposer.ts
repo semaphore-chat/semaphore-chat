@@ -236,13 +236,17 @@ export function useChannelComposer({ communityId, channelId, thread, inputRef, s
       // it waits for the server stays, whatever the answer.
       const sent = send(content, spans, selected);
       if (keepUntilSent) {
-        // A thread shows no pending row: the words and files stay until the server has the reply, and only the
-        // words that were sent are cleared (anything typed meanwhile stays).
+        // A thread shows no pending row: the words and files stay until the server has the reply. Then only what
+        // was sent goes: the sent words (what was typed after them stays, so it is never sent twice) and the sent
+        // files (files added meanwhile stay queued).
         mentionHook.close();
         const done = await sent;
         if (done === true) {
-          if (textRef.current.trim() === content) clearDraft();
-          files.clearFiles();
+          const now = textRef.current;
+          const lead = now.length - now.trimStart().length;
+          if (now.trim() === content) clearDraft();
+          else if (now.slice(lead).startsWith(content)) setText(now.slice(lead + content.length).trimStart());
+          files.removeFiles(selected);
         }
         return;
       }
@@ -260,7 +264,7 @@ export function useChannelComposer({ communityId, channelId, thread, inputRef, s
       sendingRef.current = false;
       setSending(false);
     }
-  }, [files, text, userMentions, channelMentions, aliasMentions, emojiMentions, send, sendTypingStop, clearDraft, mentionHook, onError, keepUntilSent]);
+  }, [files, text, userMentions, channelMentions, aliasMentions, emojiMentions, send, sendTypingStop, clearDraft, setText, mentionHook, onError, keepUntilSent]);
 
   const { handleKeyPress } = useComposerKeys({
     inputRef: inputRef as RefObject<HTMLInputElement | null>,
