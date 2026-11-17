@@ -15,13 +15,13 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Forty-nine components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Fifty-one components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
-Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, Island,
+Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, MediaViewer, Island,
 Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, and the chat pieces
 MessageRow, MessageText, ListSeparator, ReactionChip, Composer, JumpToLatest,
-ChatPane, MessageQuote, AttachmentTile, TypingLine and SuggestionList.
+ChatPane, MessageQuote, AttachmentTile, LinkCard, TypingLine and SuggestionList.
 
 ## Rules every component follows
 
@@ -1258,6 +1258,7 @@ count. Pill was not made a toggle: it is a static tag and has no pressed state.
 |`onToggle`|function|none (required)|Adds or removes the reader's reaction.|
 |`aria-disabled`|true, false|false|The reader may not react: focusable, named, a press does not toggle.|
 |`onUnavailablePress`|function|none|An unavailable chip was pressed: say why (`useAnnounce`).|
+|`onShowPeople`|function|none|Shows who reacted (the screen's list): a touch long press, a right-click, or the context-menu key or Shift+F10 on the chip. A plain press still toggles; the row's actions do not open. Works on an unavailable or busy chip.|
 |`busy`|true, false|false|The toggle is on its way: `aria-busy` and `aria-disabled`, presses ignored.|
 
 Stories: `kit-reaction-chip--states`, `kit-reaction-chip--states-light`,
@@ -1397,9 +1398,16 @@ Stories: `kit-message-quote--states`, `kit-message-quote--states-light`,
 A file sent with a message (MessageRow's `attachments`). An `image` is drawn in
 a box sized from its known width and height, shrunk to fit 320 by 240 (240 by
 160 when the size is unknown), so a picture that arrives late never moves the
-list; the picture loads lazily and pressing it opens the image. Any other
-`file` (video and audio too, until they have players) is a row with its name
-and size; pressing it downloads the file. While `busy` presses are ignored.
+list; the picture loads lazily and pressing it opens the image (the screen's
+MediaViewer). A `video` gets the same box with its still (`poster`) and Play
+("Play video clip.mp4, 12 MB"); an `audio` file is a row with Play ("Play audio
+voice-note.ogg, 420 KB"). Nothing plays, and nothing is fetched, until it is
+pressed: `onOpen` asks the screen for the address, and once the screen gives it
+as `src` the tile becomes the browser's own player in the same place and
+starts. Any other `file` is a row with its name and size; pressing it
+downloads the file. While `busy` presses are ignored (the control stays
+focusable). A picture from another site (a GIF someone linked) is `remote`: it
+loads without a Referer, though the site still sees the reader's address.
 
 A file on its way uses the same tile. Queued in the composer's tray it has no
 `onOpen` (nothing to press: a group named "notes.txt, 2 KB"), a thumbnail in
@@ -1411,10 +1419,13 @@ notes.txt").
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
-|`kind`|`image`, `file`|none (required)|A picture, or a file row.|
+|`kind`|`image`, `video`, `audio`, `file`|none (required)|A picture, a video, an audio file, or a file row.|
 |`name`|text|none (required)|The file's name.|
 |`detail`|text|none|Its size, written for people ("2.4 MB").|
-|`src`|image|none|The picture (a preview); a quiet fill until it is known.|
+|`src`|image or media address|none|The picture (a preview); a quiet fill until it is known. On a `video` or `audio`, the address to play: given, the tile is the player.|
+|`poster`|image|none|A video's still, under Play.|
+|`remote`|true, false|false|The picture comes from another site: no Referer.|
+|`onLoadError`|function|none|The picture could not be drawn: the screen may draw something else (a GIF falls back to its link).|
 |`width`, `height`|pixels|none|The image's own size: the box is sized from them.|
 |`onOpen`|function|none|Opens the image or downloads the file. Without it the tile is not pressable (a queued file).|
 |`busy`|true, false|false|The open or download is on its way.|
@@ -1425,7 +1436,42 @@ notes.txt").
 
 Stories: `kit-attachment-tile--states`, `kit-attachment-tile--states-light`,
 `kit-attachment-tile--states-tinted`, `kit-attachment-tile--queued`,
-`kit-attachment-tile--queued-light`.
+`kit-attachment-tile--queued-light`, `kit-attachment-tile--media-states`,
+`kit-attachment-tile--media-states-light`.
+
+### LinkCard
+
+A link's preview under a message (MessageRow's `attachments`): the site with
+its icon, the page's title and summary (two lines each at most), and its
+picture.
+
+**Use it when** the server has a preview of a link in a message.
+
+**Do not use it when** you show a file (AttachmentTile) or a reply's original
+(MessageQuote). Do not use Card for it: Card is a surface for controls, not one
+link with a picture.
+
+The whole card is one link that opens in a new tab ("The ridge loop, Trailheads,
+opens in a new tab"), with no opener and no Referer. Only an http or https
+address without a user name is a link (the same check as MessageText); anything
+else is drawn as a plain group. The picture sits in a box of fixed shape
+(1.91:1, the shape preview pictures are made for), so it never changes the
+card's height when it arrives; one that fails leaves the box empty. Both
+pictures come from other sites: they load without a Referer, the banner lazily.
+A card that arrives after the message (the server fetches previews later) grows
+its row; the message list follows the growth when the reader is at the bottom.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`href`|address|none (required)|The page.|
+|`site`|text|none (required)|The site's name or host, with the author when known.|
+|`title`|text|none|The page's title.|
+|`description`|text|none|The page's summary.|
+|`imageSrc`|image address|none|The page's picture.|
+|`iconSrc`|image address|none|The site's icon; the link icon without it.|
+
+Stories: `kit-link-card--states`, `kit-link-card--states-light`,
+`kit-link-card--states-tinted`.
 
 ### TypingLine
 
@@ -1471,7 +1517,7 @@ Stories: `kit-composer--mention-list`, `kit-composer--mention-list-light`,
 
 ## Which overlay
 
-Five components float above the page. Choose by what the thing holds and by
+Six components float above the page. Choose by what the thing holds and by
 how much it should stop the user. For a message about something that happened,
 use Toast or Alert instead.
 
@@ -1482,6 +1528,7 @@ use Toast or Alert instead.
 |Popover|A small piece of interface: a short form, a picker, a few controls|No|Escape or a press outside.|
 |Dialog|A decision that needs an answer|Yes|A button in it, Escape, or a press on the dimmed page.|
 |Sheet|Browsing many things, or a longer task|Yes|Its Close button, a button in it, Escape, or a press on the dimmed page.|
+|MediaViewer|Pictures, one at a time, filling the screen|Yes|Its Close button, Escape, or a press beside the picture.|
 
 Overlays stack in the order they were opened, and a tooltip sits above all of
 them. A Menu, a select list or a Popover that opens from inside a Dialog is on
@@ -1688,6 +1735,47 @@ Stories: `kit-confirm-dialog--confirming`, `kit-confirm-dialog--confirming-light
 `kit-confirm-dialog--timed-out`, `kit-confirm-dialog--failed-long-text`,
 `kit-confirm-dialog--from-menu`,
 `kit-confirm-dialog--from-menu-never-ends`, `kit-confirm-dialog--parent-closes-then-fails`.
+
+## MediaViewer
+
+A message's pictures, one at a time, filling the screen.
+
+**Use it when** the reader opens a picture from a message to see it full size.
+
+**Do not use it when** you ask a question (Dialog) or show a list (Sheet). It
+is not a gallery of a whole channel.
+
+The name of the picture is the heading, with "2 of 5" beside it when there are
+several, and Download (when the screen gives `onDownload`) and Close at the top.
+The picture is as large as fits, never enlarged past the screen. Previous and
+Next sit at its sides when there are several; at either end the button stays,
+unavailable, so focus on it is never dropped. ← and → step too (reversed in a
+right-to-left page), and so does a sideways swipe; pinch zoom stays the
+browser's. Until the picture is known a spinner shows ("Loading sunset.png");
+one that fails says "Couldn't load the picture". It is a modal layer like
+Dialog: the page behind is inert, focus starts on Close and is held inside,
+Escape, Close and a press beside the picture call `onClose` (`'escape'`,
+`'button'`, `'scrim'`), and focus returns to what opened it. The background is
+the ground colour of the palette, in light and dark.
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`open`|true, false|none (required)|Whether it shows.|
+|`onClose`|function, given `'escape'`, `'scrim'`, `'button'` or `'parentClosed'`|none (required)|Asked to close.|
+|`items`|list of `{ src?, name, alt?, failed? }`|none (required)|The pictures, in order.|
+|`index`|number|none (required)|The one showing.|
+|`onIndexChange`|function|none (required)|Another one was asked for.|
+|`onDownload`|function|none|A Download button for the one showing.|
+|`downloading`|true, false|false|The download is on its way.|
+
+Stories: `kit-media-viewer--single`, `kit-media-viewer--single-light`,
+`kit-media-viewer--several`, `kit-media-viewer--several-light`,
+`kit-media-viewer--several-tinted`, `kit-media-viewer--tall`,
+`kit-media-viewer--loading`, `kit-media-viewer--long-name`,
+`kit-media-viewer--failed`.
+
+Web kit only so far; the native kit has not caught up (see
+[Extending the system](extending.md#the-native-kit-is-catching-up)).
 
 ## Island
 

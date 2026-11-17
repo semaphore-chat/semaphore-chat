@@ -126,3 +126,63 @@ export const StatesTinted = () => (
     <Body />
   </OnPalette>
 );
+
+/** Video and audio before they play, while their address comes, and playing; a GIF from another site. */
+const Media = () => (
+  <ChatColumn width={390}>
+    <MessageRow
+      author="gracie"
+      avatarColour="#FFA366"
+      time="8:24 PM"
+      body={<MessageText segments={text('a video with its still, one without, and one asking for its address')} />}
+      attachments={
+        <Stack gap="sm" align="start">
+          <AttachmentTile kind="video" name="clip.mp4" detail="12 MB" poster={picture(1920, 1080, '#6FB1F5')} width={1920} height={1080} onOpen={noop} />
+          <Stack direction="row" gap="sm">
+            <AttachmentTile kind="video" name="phone.mov" detail="30 MB" width={1080} height={1920} onOpen={noop} />
+            <AttachmentTile kind="video" name="loading.mp4" detail="30 MB" poster={picture(1080, 1920, '#5FD49A')} width={1080} height={1920} onOpen={noop} busy />
+          </Stack>
+        </Stack>
+      }
+    />
+    <MessageRow
+      author="gracie"
+      avatarColour="#FFA366"
+      time="8:25 PM"
+      continued
+      body={<MessageText segments={text('audio: ready, asking, and playing (a long name gives way)')} />}
+      attachments={
+        <Stack gap="sm">
+          <AttachmentTile kind="audio" name="voice-note.ogg" detail="420 KB" onOpen={noop} />
+          <AttachmentTile kind="audio" name="loading.mp3" detail="4 MB" onOpen={noop} busy />
+          <AttachmentTile kind="audio" name="a-very-long-recording-name-from-last-night-that-will-not-fit.mp3" detail="38.4 MB" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" onOpen={noop} />
+        </Stack>
+      }
+    />
+    <MessageRow
+      author="dropbear"
+      avatarColour="#5FD49A"
+      time="8:26 PM"
+      body={<MessageText segments={text('a video playing in its box')} />}
+      attachments={<AttachmentTile kind="video" name="playing.mp4" detail="1 MB" src="data:video/mp4;base64," poster={picture(1280, 720, '#FF8FB8')} width={1280} height={720} onOpen={noop} />}
+    />
+    <MessageRow
+      author="kwam3"
+      avatarColour="#6FB1F5"
+      time="8:27 PM"
+      attachments={<AttachmentTile kind="image" name="GIF" src={picture(480, 270, '#FFA366')} remote onOpen={noop} />}
+    />
+  </ChatColumn>
+);
+
+export const MediaStates = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <Media />
+  </OnPalette>
+);
+
+export const MediaStatesLight = () => (
+  <OnPalette palette={PALETTES[1]}>
+    <Media />
+  </OnPalette>
+);
