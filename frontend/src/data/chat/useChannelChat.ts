@@ -7,6 +7,7 @@ import {
 } from "../../api-client/@tanstack/react-query.gen";
 import { useAllCommunityMembers } from "../../hooks/useAllCommunityMembers";
 import { useJumpToMessage } from "../../hooks/useJumpToMessage";
+import { pinnedJumpTarget } from "./usePinnedList";
 import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 
 export interface UseChannelChatOptions {
@@ -84,13 +85,10 @@ export function useChannelChat(
    */
   const jumpToPinnedMessage = (messageId: string, navOptions: { replace: boolean }) => {
     const pinnedMsg = pinnedMessages.find(m => m.id === messageId);
-    if (pinnedMsg?.parentMessageId) {
-      // Thread reply: jump to parent message and open the thread panel
-      onPinnedThreadReply?.(pinnedMsg.parentMessageId);
-      navigate(`${chatPath}?highlight=${pinnedMsg.parentMessageId}`, navOptions);
-    } else {
-      navigate(`${chatPath}?highlight=${messageId}`, navOptions);
-    }
+    const target = pinnedJumpTarget(pinnedMsg ?? { id: messageId, parentMessageId: null });
+    // Thread reply: jump to parent message and open the thread panel
+    if (target.thread) onPinnedThreadReply?.(target.thread);
+    navigate(`${chatPath}?highlight=${target.highlight}`, navOptions);
   };
 
   return { pinnedMessages, userMentions, channelMentions, messagesHookResult, jumpToPinnedMessage };

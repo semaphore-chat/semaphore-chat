@@ -21,18 +21,11 @@ import {
 import PushPinIcon from "@mui/icons-material/PushPin";
 import CloseIcon from "@mui/icons-material/Close";
 import { useTheme } from "@mui/material/styles";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  moderationControllerGetPinnedMessagesOptions,
-  moderationControllerUnpinMessageMutation,
-} from "../../api-client/@tanstack/react-query.gen";
 import type { PinnedMessageDto as PinnedMessage } from "../../api-client/types.gen";
-import { useCanPerformAction } from "../../features/roles/useUserPermissions";
-import { RBAC_ACTIONS } from "../../constants/rbacActions";
+import { pinnedText, usePinnedList } from "../../data/chat/usePinnedList";
 import UserAvatar from "../Common/UserAvatar";
 import { AttachmentPreview } from "../Message/AttachmentPreview";
 import { formatDistanceToNow } from "date-fns";
-import { logger } from "../../utils/logger";
 import { useResponsive } from "../../hooks/useResponsive";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 
@@ -60,21 +53,11 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
   const touchTargetSx = shouldUseTouchUI
     ? { minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM }
     : undefined;
-  const queryClient = useQueryClient();
-  const { data: pinnedMessages, isLoading, error } = useQuery(moderationControllerGetPinnedMessagesOptions({ path: { channelId } }));
-  const { mutateAsync: unpinMessage } = useMutation({
-    ...moderationControllerUnpinMessageMutation(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [{ _id: 'moderationControllerGetPinnedMessages' }] }),
-  });
-
-  const canUnpin = useCanPerformAction("COMMUNITY", communityId, RBAC_ACTIONS.UNPIN_MESSAGE);
+  // The list, Unpin and who may unpin: the shared pinned-list model (data/chat/usePinnedList).
+  const { pins: pinnedMessages, isLoading, error, canUnpin, unpin } = usePinnedList(channelId, communityId);
 
   const handleUnpin = async (messageId: string) => {
-    try {
-      await unpinMessage({ path: { messageId }, body: {} });
-    } catch (err) {
-      logger.error("Failed to unpin message:", err);
-    }
+    await unpin(messageId);
   };
 
   const handleMessageClick = (messageId: string) => {
@@ -99,13 +82,8 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
     );
   }
 
-  // Helper to extract text from spans
-  const getMessageContent = (message: PinnedMessage): string => {
-    return message.spans
-      .filter((span) => span.text)
-      .map((span) => span.text)
-      .join(" ");
-  };
+  // The pin's words on one line (shared with the new shell's list).
+  const getMessageContent = (message: PinnedMessage): string => pinnedText(message);
 
   if (error) {
     return (
