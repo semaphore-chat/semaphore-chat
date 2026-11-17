@@ -2,7 +2,7 @@ use crate::lounge_icons::LoungeIcon;
 use std::collections::HashSet;
 
 /// The number of names in `design/icons/icons.json`; `ALL` must hold each once.
-const COUNT: usize = 56;
+const COUNT: usize = 59;
 
 /// The markup after the leading XML comment: the generator writes the
 /// `@license` comment first, then the canonical `<svg>` element.

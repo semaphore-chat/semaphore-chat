@@ -64,6 +64,7 @@ import { isOptimisticMessageId } from '../../../../utils/messageCacheUpdaters';
 import type { PendingFile } from '../../../../utils/pendingUploadStore';
 import type { Message } from '../../../../types/message.type';
 import { formatDaySeparator } from '../../../../utils/messageTime';
+import { createBoundedSet } from './boundedSet';
 
 /** What every row of one list shares. */
 export interface ChatRowShared {
@@ -286,7 +287,7 @@ function AudioAttachment({ file }: { file: AttachmentView }): JSX.Element {
 }
 
 /** GIF addresses that failed to draw this session: their rows show the words and the card instead. */
-const failedGifs = new Set<string>();
+const failedGifs = createBoundedSet<string>(200);
 
 /** A lone GIF link, drawn as the GIF (the old row's embed). Pressing it opens the GIF in a new tab, as there. */
 function GifAttachment({ url, onFailed }: { url: string; onFailed: () => void }): JSX.Element {
