@@ -428,3 +428,68 @@ test.describe('The Lounge chat (390 px)', () => {
     }
   });
 });
+
+test.describe('The Lounge chat: rich rows (390 px, real route)', () => {
+  // A 2×1 PNG: an image the server accepts and records the size of.
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8DwHwQZYAwAZOsJ93W0OVsAAAAASUVORK5CYII=', 'base64');
+  const GIF_URL = 'https://media.giphy.com/media/e2e-lounge/giphy.gif';
+  // A 1×1 GIF, served for the GIF's address so the test needs no network.
+  const GIF = Buffer.from('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64');
+
+  test('a picture opens the full-size viewer and Escape returns to it; a GIF link is drawn as the GIF; who reacted', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    await sendTestMessage(request, world.c1.lobbyId, GIF_URL, world.owner.token);
+    const { context, page } = await openSession(browser, world.member, PHONE);
+    let gifReferer: string | undefined = 'not asked';
+    await page.route(GIF_URL, async (route) => {
+      gifReferer = route.request().headers()['referer'];
+      await route.fulfill({ status: 200, contentType: 'image/gif', body: GIF });
+    });
+    try {
+      await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+
+      // The GIF: drawn (no link text), asked for without a Referer.
+      const gif = messages(page).getByRole('button', { name: 'Open image GIF' });
+      await expect(gif).toBeVisible(EVENTUAL);
+      await expect(gif.locator('img')).toHaveAttribute('src', GIF_URL);
+      await expect.poll(() => gifReferer, EVENTUAL).toBeUndefined();
+      await expect(messages(page).getByText(GIF_URL)).toHaveCount(0);
+
+      // Send a picture from the composer; it shows as a picture, and opens the viewer.
+      const field = page.getByRole('textbox', { name: 'Message #lobby' });
+      await page.locator('input[type="file"]').first().setInputFiles({ name: 'e2e-picture.png', mimeType: 'image/png', buffer: PNG });
+      await field.fill('a picture for the viewer');
+      await page.getByRole('button', { name: 'Send message' }).click();
+      const picture = row(page, 'a picture for the viewer').getByRole('button', { name: 'Open image e2e-picture.png' });
+      await expect(picture).toBeVisible(EVENTUAL);
+      await picture.click();
+      const viewer = page.getByRole('dialog', { name: 'e2e-picture.png' });
+      await expect(viewer).toBeVisible(EVENTUAL);
+      await expect(viewer.getByRole('img', { name: 'e2e-picture.png' })).toBeVisible(EVENTUAL);
+      await expect(viewer.getByRole('button', { name: 'Close' })).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(viewer).toHaveCount(0, EVENTUAL);
+      await expect(picture).toBeFocused();
+
+      // React through the actions, then a right-click on the chip says who reacted.
+      const target = row(page, 'a picture for the viewer');
+      await target.focus();
+      await page.keyboard.press('Enter');
+      await page.getByRole('dialog').getByRole('button', { name: 'React with party' }).click();
+      const chip = target.getByRole('button', { name: /reaction, 1$/ });
+      await expect(chip).toBeVisible(EVENTUAL);
+      await chip.click({ button: 'right' });
+      const people = page.getByRole('dialog', { name: 'Reactions' });
+      await expect(people).toBeVisible(EVENTUAL);
+      await expect(people.getByText(world.member.username)).toBeVisible(EVENTUAL);
+      // A right-click shows the people; it does not take the reaction back.
+      await page.keyboard.press('Escape');
+      await expect(people).toHaveCount(0, EVENTUAL);
+      await expect(chip).toHaveAttribute('aria-pressed', 'true');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
+});

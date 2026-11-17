@@ -423,8 +423,7 @@ const BANNER_SVG =
 const GIF_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 27"><rect width="48" height="27" fill="#FFA366"/><circle cx="24" cy="13.5" r="7" fill="#121214"/></svg>';
 
-const RICH = [
-  ...MESSAGES,
+const LINK_AND_GIF = [
   message('u-aiko', at(0, 22), [text('the route for saturday https://trailheads.example/routes/ridge-loop')], {
     linkPreviews: [
       {
@@ -438,6 +437,9 @@ const RICH = [
     ],
   }),
   message('u-dropbear', at(0, 23), [text(GIF_URL)]),
+];
+
+const MEDIA = [
   message('u-gracie', at(0, 24), [text('clip and the voice note')], {
     attachments: [
       { id: 'f-clip', filename: 'last-night.mp4', fileType: 'VIDEO', mimeType: 'video/mp4', size: 12_400_000, width: 1920, height: 1080, hasThumbnail: true },
@@ -456,47 +458,76 @@ const RICH = [
   }),
 ];
 
+/** The new rows last (the list opens at its newest): media, then the link card and the GIF. */
+const RICH = [...MESSAGES, ...MEDIA, ...LINK_AND_GIF];
+/** The same rows with the media last. */
+const RICH_MEDIA_LAST = [...MESSAGES, ...LINK_AND_GIF, ...MEDIA];
+
 const richHandlers: HttpHandler[] = [
   http.get(messagesPath, () => HttpResponse.json({ messages: [...RICH].reverse(), continuationToken: undefined })),
+  ...remoteHandlers(),
+];
+
+const richMediaHandlers: HttpHandler[] = [
+  http.get(messagesPath, () => HttpResponse.json({ messages: [...RICH_MEDIA_LAST].reverse(), continuationToken: undefined })),
+  ...remoteHandlers(),
+];
+
+function remoteHandlers(): HttpHandler[] {
+  return [
   // Pictures from other sites, served here so the story needs no network.
   http.get(BANNER_URL, () => new HttpResponse(BANNER_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
   http.get(ICON_URL, () => new HttpResponse(GIF_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
   http.get(GIF_URL, () => new HttpResponse(GIF_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
   http.get('/api/file/:id', () => new HttpResponse(PICTURE_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
-];
+  ];
+}
 
 /** Anything on the page with this name (a row's control, not only a sheet's). */
 const anyNamed = (name: string) => () =>
   [...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find((b) => (b.getAttribute('aria-label') ?? b.textContent) === name) ?? null;
-const scrollToEnd = {
-  find: anyNamed('Open image scoreboard.png'),
-  run: (el: HTMLElement) => el.scrollIntoView({ block: 'end' }),
-};
 
-/** A link preview card, a GIF link drawn as the GIF, a video with its still and an audio file (both with Play), two pictures, reactions. */
-export const RichRows = story({ handlers: richHandlers, steps: [scrollToEnd] });
+/** A link preview card and a GIF link drawn as the GIF (no words, no card). */
+export const RichRows = story({ handlers: richHandlers });
 
 /** The same, light. */
-export const RichRowsLight = story({ mode: 'light', handlers: richHandlers, steps: [scrollToEnd] });
+export const RichRowsLight = story({ mode: 'light', handlers: richHandlers });
+
+/** A video with its still and an audio file (both with Play: nothing loads before it), two pictures, reactions. */
+export const RichMedia = story({ handlers: richMediaHandlers });
+
+/** The same, light. */
+export const RichMediaLight = story({ mode: 'light', handlers: richMediaHandlers });
 
 /** A picture pressed: the viewer, full screen, "1 of 2" with Download and Close. */
-export const PictureViewer = story({ handlers: richHandlers, steps: [{ find: anyNamed('Open image lobby.png'), run: (el) => el.click() }] });
+export const PictureViewer = story({ handlers: richMediaHandlers, steps: [{ find: anyNamed('Open image lobby.png'), run: (el) => el.click() }] });
 
 /** The viewer, light. */
 export const PictureViewerLight = story({
   mode: 'light',
-  handlers: richHandlers,
+  handlers: richMediaHandlers,
   steps: [{ find: anyNamed('Open image lobby.png'), run: (el) => el.click() }],
 });
 
 /** Who reacted, from the message's actions ("See reactions"): one group per reaction, its people by name. */
-export const ReactionsSheet = story({ handlers: richHandlers, steps: [openActions('two more screens'), press('See reactions')] });
+export const ReactionsSheet = story({ handlers: richMediaHandlers, steps: [openActions('two more screens'), press('See reactions')] });
 
 /** Who reacted, light. */
-export const ReactionsSheetLight = story({ mode: 'light', handlers: richHandlers, steps: [openActions('two more screens'), press('See reactions')] });
+export const ReactionsSheetLight = story({ mode: 'light', handlers: richMediaHandlers, steps: [openActions('two more screens'), press('See reactions')] });
 
 /** A send refused while the reader is timed out: the row names the time-out, not the server's refusal. */
 export const FailedSendTimedOut = story({
+  handlers: [
+    ...capsHandlers(timedOutCaps(new Date(Date.now() + 4 * 60_000).toISOString())),
+    http.get(messagesPath, () =>
+      HttpResponse.json({ messages: [...MESSAGES, { ...FAILED, sendError: 'You do not have permission' }].reverse(), continuationToken: undefined }),
+    ),
+  ],
+});
+
+/** The same, light. */
+export const FailedSendTimedOutLight = story({
+  mode: 'light',
   handlers: [
     ...capsHandlers(timedOutCaps(new Date(Date.now() + 4 * 60_000).toISOString())),
     http.get(messagesPath, () =>
