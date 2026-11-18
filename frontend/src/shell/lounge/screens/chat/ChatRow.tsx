@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   AttachmentTile,
   Composer,
+  LinkCard,
   ListSeparator,
   MessageQuote,
   MessageRow,
@@ -30,6 +31,7 @@ import {
   Stack,
   Text,
   personColour,
+  safeHref,
   useAnnounce,
   type MentionSegment,
   type MessageRowFocus,
@@ -41,13 +43,19 @@ import { useMessagePermissions } from '../../../../hooks/useMessagePermissions';
 import { useMessageActions } from '../../../../data/chat/useMessageActions';
 import { toSegments, type ToSegmentsOptions } from '../../../../data/chat/toSegments';
 import {
+  sendFailureReason,
   toAttachmentViews,
+  toLinkCards,
   toQuoteView,
   toReactionViews,
   toRowView,
   type AttachmentView,
 } from '../../../../data/chat/messageRowModel';
-import { useAttachmentBusy, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
+import { getMessageLoneGifUrl } from '../../../../data/chat/messageUtils';
+import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
+import { useVideoUrl } from '../../../../hooks/useVideoUrl';
+import { useFileCache } from '../../../../contexts/AvatarCacheContext';
+import { attachmentAction, useAttachmentBusy, viewableImages, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import { useIsEditing, type EditingStore } from '../../../../data/chat/editingStore';
 import { usePendingUpload } from '../../../../hooks/usePendingUpload';
 import { removeAttachment, retryAttachment, startAttachmentUploads } from '../../../../utils/attachmentSend';
@@ -56,6 +64,7 @@ import { isOptimisticMessageId } from '../../../../utils/messageCacheUpdaters';
 import type { PendingFile } from '../../../../utils/pendingUploadStore';
 import type { Message } from '../../../../types/message.type';
 import { formatDaySeparator } from '../../../../utils/messageTime';
+import { createBoundedSet } from './boundedSet';
 
 /** What every row of one list shares. */
 export interface ChatRowShared {
@@ -73,6 +82,10 @@ export interface ChatRowShared {
   opener: AttachmentOpener;
   /** The row asked for its actions (the row has focus by then). */
   openActions(message: Message, via: OpenActionsVia): void;
+  /** A picture of the message was pressed: the full-size viewer, at that picture. */
+  openViewer(message: Message, fileId: string): void;
+  /** Who reacted to the message (a reaction's chip asked: that reaction first); focus returns to `returnTo`. */
+  showReactions(message: Message, reactionKey?: string, returnTo?: HTMLElement | null): void;
   /** Which message is being edited in place. */
   editing: EditingStore;
   /** Sends a failed message again (the same row); settles on the server's answer. */
@@ -163,26 +176,134 @@ function Quote({ replyTo }: { replyTo: NonNullable<Message['replyTo']> }): JSX.E
   );
 }
 
-function Attachment({ file }: { file: AttachmentView }): JSX.Element {
-  const { opener } = useShared();
+function Attachment({ file, message }: { file: AttachmentView; message: Message }): JSX.Element {
+  if (file.kind === 'video') return <VideoAttachment file={file} />;
+  if (file.kind === 'audio') return <AudioAttachment file={file} />;
+  return <FileAttachment file={file} message={message} />;
+}
+
+/** A picture (pressing it opens the viewer at it) or a file to download. */
+function FileAttachment({ file, message }: { file: AttachmentView; message?: Message }): JSX.Element {
+  const { opener, openViewer } = useShared();
   const busy = useAttachmentBusy(opener, file.id);
-  // Images show their preview (the thumbnail, falling back to the file); other files load only when opened.
-  const { blobUrl } = useAuthenticatedFile(file.kind === 'image' ? file.id : null, { fetchThumbnail: true });
+  // Only a raster picture the opener would show is drawn (its thumbnail, falling back to the file). Any other type,
+  // an SVG or a "picture" whose type says otherwise, is a file tile: nothing fetched until pressed, then downloaded.
+  const drawn = file.kind === 'image' && attachmentAction(file.mimeType) === 'open';
+  const { blobUrl } = useAuthenticatedFile(drawn ? file.id : null, { fetchThumbnail: true });
   return (
     <AttachmentTile
-      kind={file.kind}
+      kind={drawn ? 'image' : 'file'}
       name={file.name}
       detail={file.detail}
       src={blobUrl ?? undefined}
       width={file.width}
       height={file.height}
       busy={busy}
-      onOpen={() => opener.open({ id: file.id, name: file.name, mimeType: file.mimeType })}
+      onOpen={
+        // Only a raster picture the opener would show opens the viewer; every other type is downloaded, as before.
+        drawn && message !== undefined && viewableImages(message.attachments).some((a) => a.id === file.id)
+          ? () => openViewer(message, file.id)
+          : () => opener.open({ id: file.id, name: file.name, mimeType: file.mimeType })
+      }
     />
   );
 }
 
-function Reactions({ message }: { message: Message }): JSX.Element | null {
+/**
+ * A video: its still under Play; nothing is fetched until Play, then the address (the old row's `useVideoUrl`: the
+ * file's own address, the session cookie goes with it) and the browser's player in the same box.
+ */
+function VideoAttachment({ file }: { file: AttachmentView }): JSX.Element {
+  const [play, setPlay] = useState(false);
+  const { url } = useVideoUrl(play ? file.id : null);
+  const poster = useVideoPoster(file);
+  return (
+    <AttachmentTile
+      kind="video"
+      name={file.name}
+      detail={file.detail}
+      poster={poster}
+      src={play ? (url ?? undefined) : undefined}
+      width={file.width}
+      height={file.height}
+      busy={play && url === null}
+      onOpen={() => setPlay(true)}
+    />
+  );
+}
+
+/**
+ * A video's still: its thumbnail only, as the old `VideoPreview` (the file cache's `fetchThumbnail`, no fallback to
+ * the whole file): a missing still leaves the quiet fill and never pulls the video before Play.
+ */
+function useVideoPoster(file: AttachmentView): string | undefined {
+  const fileCache = useFileCache();
+  const [poster, setPoster] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!file.hasThumbnail) return;
+    let cancelled = false;
+    fileCache
+      .fetchThumbnail(file.id)
+      .then((url) => {
+        if (!cancelled) setPoster(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [file.id, file.hasThumbnail, fileCache]);
+  return poster;
+}
+
+/** An audio file: a row with Play; Play fetches it (as the old player, through the file cache) and plays it in place. */
+function AudioAttachment({ file }: { file: AttachmentView }): JSX.Element {
+  const { opener } = useShared();
+  const downloading = useAttachmentBusy(opener, file.id);
+  const [play, setPlay] = useState(false);
+  const { blobUrl, error } = useAuthenticatedFile(play ? file.id : null, { fetchBlob: true, fetchMetadata: false });
+  // It could not be fetched: the same tile turns into the download (the opener reports a failure there); the button
+  // stays the same element, so focus on it stays.
+  if (play && error) {
+    return (
+      <AttachmentTile
+        kind="file"
+        name={file.name}
+        detail={file.detail}
+        busy={downloading}
+        onOpen={() => opener.open({ id: file.id, name: file.name, mimeType: file.mimeType })}
+      />
+    );
+  }
+  return (
+    <AttachmentTile
+      kind="audio"
+      name={file.name}
+      detail={file.detail}
+      src={play ? (blobUrl ?? undefined) : undefined}
+      busy={play && !blobUrl}
+      onOpen={() => setPlay(true)}
+    />
+  );
+}
+
+/** GIF addresses that failed to draw this session: their rows show the words and the card instead. */
+const failedGifs = createBoundedSet<string>(200);
+
+/** A lone GIF link, drawn as the GIF (the old row's embed). Pressing it opens the GIF in a new tab, as there. */
+function GifAttachment({ url, onFailed }: { url: string; onFailed: () => void }): JSX.Element {
+  return (
+    <AttachmentTile
+      kind="image"
+      name="GIF"
+      src={url}
+      remote
+      onLoadError={onFailed}
+      onOpen={() => window.open(url, '_blank', 'noopener,noreferrer')}
+    />
+  );
+}
+
+function Reactions({ message, row }: { message: Message; row: { current: HTMLDivElement | null } }): JSX.Element | null {
   const shared = useShared();
   const announce = useAnnounce();
   const { canReact } = useMessagePermissions({ message, currentUserId: shared.me, communityId: shared.communityId });
@@ -202,6 +323,12 @@ function Reactions({ message }: { message: Message }): JSX.Element | null {
           aria-disabled={!canReact || !shared.writable}
           onUnavailablePress={() => announce("You can't react in this channel")}
           onToggle={() => void handleReactionClick(reaction.key)}
+          onShowPeople={() => {
+            // Focus comes back to the chip that asked when it had focus, else to the row (a touch long press focuses nothing).
+            const active = document.activeElement;
+            const returnTo = active instanceof HTMLElement && row.current?.contains(active) ? active : row.current;
+            shared.showReactions(message, reaction.key, returnTo);
+          }}
         />
       ))}
     </>
@@ -315,6 +442,16 @@ function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDi
   );
 }
 
+/**
+ * A failed send's reason: a time-out the reader is under, from the channel's capabilities (as the old row), else the
+ * server's words. Only a failed row asks for the capabilities.
+ */
+function useFailedReason(message: Message, communityId: string, serverReason: string | undefined): string | undefined {
+  const failed = message.sendStatus === 'failed';
+  const { timedOutUntil } = useChannelPermissions(failed && message.channelId ? communityId : undefined, message.channelId ?? undefined);
+  return failed ? sendFailureReason(serverReason, timedOutUntil) : serverReason;
+}
+
 function repliesText(count: number): string {
   return count === 1 ? '1 reply' : `${count} replies`;
 }
@@ -361,6 +498,19 @@ function ChatRowBody({
     [tabStop, onRovingKeyDown, onRovingFocus, index],
   );
   const files = toAttachmentViews(message.attachments);
+  // A lone GIF link is drawn as the GIF, without its words or a preview card; one that fails falls back to both.
+  // A failure is remembered by address for the session, so a row the list remounts does not retry it (and jump).
+  const [, setGifFailures] = useState(0);
+  const onGifFailed = useCallback((url: string) => {
+    failedGifs.add(url);
+    setGifFailures((n) => n + 1);
+  }, []);
+  const lone = isEditing ? null : getMessageLoneGifUrl(message);
+  // The kit's link check too (no user name or password in the address: its words are hidden, so nobody would see it).
+  const checkedGif = lone === null ? null : safeHref(lone);
+  const gifUrl = checkedGif === null || failedGifs.has(checkedGif) ? null : checkedGif;
+  const cards = gifUrl === null ? toLinkCards(message.linkPreviews) : [];
+  const failedReason = useFailedReason(message, shared.communityId, view.failedReason);
   const authorId = message.authorId;
   const { openActions } = shared;
   const onOpenActions = useCallback(
@@ -388,28 +538,32 @@ function ChatRowBody({
         mentioned={view.mentioned}
         highlighted={isHighlighted}
         state={failed?.retrying ? 'failed' : view.state}
-        failedReason={view.failedReason}
+        failedReason={failedReason}
         edited={view.edited}
         pinned={view.pinned}
         quote={message.replyTo ? <Quote replyTo={message.replyTo} /> : undefined}
         body={
           isEditing ? (
             <InlineEdit message={message} row={rowRef} />
-          ) : segments.length > 0 ? (
+          ) : gifUrl !== null ? undefined : segments.length > 0 ? (
             <MessageText segments={segments} onMention={onMention} />
           ) : undefined
         }
         attachments={
-          files.length > 0 || pendingUpload !== undefined ? (
+          files.length > 0 || pendingUpload !== undefined || gifUrl !== null || cards.length > 0 ? (
             <Stack gap="sm" align="start">
+              {gifUrl !== null && <GifAttachment url={gifUrl} onFailed={() => onGifFailed(gifUrl)} />}
               {files.map((file) => (
-                <Attachment key={file.id} file={file} />
+                <Attachment key={file.id} file={file} message={message} />
               ))}
               <Uploads message={message} />
+              {cards.map((card, i) => (
+                <LinkCard key={`${i}:${card.href}`} {...card} />
+              ))}
             </Stack>
           ) : undefined
         }
-        reactions={!view.optimistic && message.reactions.length > 0 ? <Reactions message={message} /> : undefined}
+        reactions={!view.optimistic && message.reactions.length > 0 ? <Reactions message={message} row={rowRef} /> : undefined}
         footer={
           message.replyCount > 0 ? (
             // Threads are not in the new shell yet (owner default): the count, as plain text.

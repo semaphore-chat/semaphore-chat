@@ -28,6 +28,11 @@ export interface SheetProps {
   /** Kit Buttons in a row pinned to the bottom. */
   actions?: ReactNode;
   size?: 'md' | 'lg';
+  /**
+   * Where focus returns when the sheet closes, whatever has focus as it opens: for a sheet opened from inside another
+   * layer that closes at the same moment (focus would otherwise return into the gone layer). Default: what had focus.
+   */
+  opener?: HTMLElement | null;
 }
 
 const WIDTH = { md: tokens.layout.dialogMd, lg: 2 * tokens.layout.dialogSm } as const;
@@ -98,7 +103,7 @@ function Head({ titleId, title, onClose, focusClose }: { titleId: string; title:
  * Above the phone breakpoint it is a centred panel; at or below it, a bottom sheet
  * that is full width, rounded on top, and slides up.
  */
-export function Sheet({ open, onClose, title, children, top, actions, size = 'md' }: SheetProps): JSX.Element {
+export function Sheet({ open, onClose, title, children, top, actions, size = 'md', opener }: SheetProps): JSX.Element {
   const titleId = `${useId()}-title`;
   return (
     <Modal
@@ -106,6 +111,7 @@ export function Sheet({ open, onClose, title, children, top, actions, size = 'md
       open={open}
       onClose={onClose}
       labelledBy={titleId}
+      opener={opener}
       container={{
         ...gutterContainer,
         [PHONE]: { padding: 0, alignItems: 'flex-end' },

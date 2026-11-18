@@ -57,6 +57,25 @@ describe('AttachmentPreview', () => {
     vi.clearAllMocks();
   });
 
+  describe('only raster pictures are fetched as a preview and drawn', () => {
+    it.each([
+      ['an SVG', { filename: 'x.svg', mimeType: 'image/svg+xml', fileType: 'IMAGE' as const }],
+      ['an unknown picture type', { filename: 'x.heic', mimeType: 'image/heic', fileType: 'IMAGE' as const }],
+    ])('%s is the download card: no preview fetched, no <img>', (_label, overrides) => {
+      const { container } = renderWithTheme(<AttachmentPreview metadata={makeMetadata(overrides)} />);
+      expect(screen.getByTestId('download-link')).toHaveTextContent(overrides.filename);
+      expect(container.querySelector('img')).toBeNull();
+      expect(useAuthenticatedFile).not.toHaveBeenCalled();
+    });
+
+    it('a png is still drawn from its preview', () => {
+      const { container } = renderWithTheme(
+        <AttachmentPreview metadata={makeMetadata({ filename: 'a.png', mimeType: 'image/png', fileType: 'IMAGE' })} />,
+      );
+      expect(container.querySelector('img')).toHaveAttribute('src', 'blob:mock-image-url');
+    });
+  });
+
   describe('MIME type detection and delegation', () => {
     it('should delegate video/mp4 to VideoPreview', () => {
       const metadata = makeMetadata({

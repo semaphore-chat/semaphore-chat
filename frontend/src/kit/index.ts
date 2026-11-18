@@ -93,6 +93,8 @@ export type { IslandProps } from './surfaces/Island';
 export { Card } from './surfaces/Card';
 export type { CardProps } from './surfaces/Card';
 export { Sheet } from './overlays/Sheet';
+export { MediaViewer } from './overlays/MediaViewer';
+export type { MediaViewerCloseReason, MediaViewerItem, MediaViewerProps } from './overlays/MediaViewer';
 export type { SheetProps } from './overlays/Sheet';
 export { Dock, DockDivider } from './dock/Dock';
 export type { DockProps } from './dock/Dock';
@@ -117,6 +119,7 @@ export { MessageRow } from './chat/MessageRow';
 export type { MessageRowFocus, MessageRowProps, MessageState, OpenActionsRequest, OpenActionsVia } from './chat/MessageRow';
 export { useRowTabIndex } from './chat/rowTabScope';
 export { MessageText } from './chat/MessageText';
+export { safeHref } from './chat/messageSegments';
 export type { MessageTextProps } from './chat/MessageText';
 export type {
   CodeBlockSegment,
@@ -140,6 +143,8 @@ export type { ChatPaneProps } from './chat/ChatPane';
 export { MessageQuote } from './chat/MessageQuote';
 export type { MessageQuoteProps } from './chat/MessageQuote';
 export { AttachmentTile } from './chat/AttachmentTile';
+export { LinkCard } from './chat/LinkCard';
+export type { LinkCardProps } from './chat/LinkCard';
 export type { AttachmentTileProps } from './chat/AttachmentTile';
 export { TypingLine } from './chat/TypingLine';
 export { SuggestionList } from './chat/SuggestionList';

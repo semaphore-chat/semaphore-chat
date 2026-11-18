@@ -4,6 +4,8 @@ import { AttachmentPreview } from "./AttachmentPreview";
 import { ImageLightbox } from "./ImageLightbox";
 import { useAuthenticatedFile } from "../../hooks/useAuthenticatedFile";
 import { FileMetadata } from "../../types/message.type";
+import { viewerImages } from "../../data/chat/messageRowModel";
+import { attachmentAction } from "../../data/chat/useAttachmentOpener";
 
 const AttachmentsGrid = styled(Box)(({ theme }) => ({
   display: "grid",
@@ -56,7 +58,8 @@ export const MessageAttachments: React.FC<MessageAttachmentsProps> = React.memo(
 
   // Filter image attachments for lightbox navigation (no API call needed!)
   const imageAttachments = React.useMemo(
-    () => attachments.filter((a) => a.mimeType?.startsWith("image/")),
+    // Only the pictures the preview draws (the raster types the attachment rule allows) are stepped through.
+    () => viewerImages(attachments).filter((a) => attachmentAction(a.mimeType) === "open"),
     [attachments]
   );
 

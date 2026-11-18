@@ -1,6 +1,6 @@
 /**
  * Opening a message's file from the new shell's chat. Files are fetched with the reader's token (the shared file
- * cache). Only a raster picture of a known type opens in a new tab (there is no lightbox yet, design §1.2); every
+ * cache). Only a raster picture of a known type opens (in the chat's viewer, `viewableImages`, or a new tab); every
  * other file, whatever its name says, is downloaded and never shown as a page. The decision is made from the type
  * the server reported for the file, and the tab gets a copy of the bytes labelled with exactly that type.
  *
@@ -15,6 +15,7 @@ import { useFileCache } from '../../contexts/AvatarCacheContext';
 import { useElectronAPI } from '../../contexts/ElectronContext';
 import { downloadBlob } from '../../utils/format';
 import { logger } from '../../utils/logger';
+import { viewerImages } from './messageRowModel';
 
 /** The picture types a tab may show. Anything else (SVG, HTML, PDF, unknown) is downloaded. */
 export const VIEWABLE_IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'];
@@ -23,6 +24,18 @@ export const VIEWABLE_IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg
 export function attachmentAction(mimeType: string | null | undefined): 'open' | 'download' {
   const type = (mimeType ?? '').split(';')[0].trim().toLowerCase();
   return VIEWABLE_IMAGE_TYPES.includes(type) ? 'open' : 'download';
+}
+
+/**
+ * The pictures a viewer may draw (the new shell): `viewerImages` narrowed to the raster types the attachment opener
+ * allows on screen (`VIEWABLE_IMAGE_TYPES`). Any other picture type is downloaded, never drawn as a whole file. The
+ * new shell's tile opens the viewer only for a file in this list, so tile and viewer agree.
+ */
+export function viewableImages<T extends { mimeType?: string | null; fileType?: string | null }>(
+  attachments: readonly T[] | null | undefined,
+): T[] {
+  // A picture by both counts (the server's kind, which draws the tile, and the type): tile and viewer agree.
+  return viewerImages(attachments).filter((a) => attachmentAction(a.mimeType) === 'open' && (a.fileType == null || a.fileType === 'IMAGE'));
 }
 
 export interface AttachmentFile {

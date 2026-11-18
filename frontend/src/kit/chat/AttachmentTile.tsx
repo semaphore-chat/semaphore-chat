@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { kitTheme } from '../theme/KitProvider';
@@ -15,23 +15,39 @@ import { useRowTabIndex } from './rowTabScope';
 import { IMAGE_MAX, IMAGE_MIN_SIDE, imageBox } from './attachmentBox';
 
 export interface AttachmentTileProps {
-  /** `image`: a picture, drawn in a box of its known size. `file`: a row with the file's name and size. */
-  kind: 'image' | 'file';
+  /**
+   * `image`: a picture, drawn in a box of its known size. `video`: the same box with its still and Play; it plays in
+   * place. `audio`: a row with Play; it plays in place. `file`: a row with the file's name and size.
+   */
+  kind: 'image' | 'video' | 'audio' | 'file';
   /** The file's name. Read, and shown on a file (and on an image that cannot be drawn). */
   name: string;
   /** The size, written for people ("2.4 MB"). */
   detail?: string;
   /**
    * The picture to draw (a preview of an image). Until it is known the box shows a quiet fill. On a `file` it is a
-   * small thumbnail in place of the paperclip (a queued picture in the composer's tray).
+   * small thumbnail in place of the paperclip (a queued picture in the composer's tray). On a `video` or `audio` it is
+   * the address to play: given (after `onOpen` asked for it), the tile becomes the player and starts.
    */
   src?: string;
+  /** A video's still, drawn under Play until it plays. */
+  poster?: string;
+  /**
+   * The picture comes from another site (a GIF someone linked): it loads without a Referer. The site still learns
+   * that the picture was loaded, and from where.
+   */
+  remote?: boolean;
+  /** The picture could not be drawn (the tile then shows the name): a screen may draw something else instead. */
+  onLoadError?: () => void;
   /** The image's own width and height in pixels: the box is sized from them before the picture arrives. */
   width?: number | null;
   height?: number | null;
-  /** Opens the image (a new tab), or downloads the file. Without it the tile is not pressable (a queued file). */
+  /**
+   * Opens the image (the screen's viewer), asks for a video's or audio's address to play (then give `src`), or
+   * downloads the file. Without it the tile is not pressable (a queued file).
+   */
   onOpen?: () => void;
-  /** The open or download is on its way: busy, presses ignored. */
+  /** The open, the download or the address to play is on its way: busy, presses ignored. */
   busy?: boolean;
   /** Shows a Remove button beside the tile ("Remove notes.txt"): a queued file, or an upload to cancel. */
   onRemove?: () => void;
@@ -99,6 +115,57 @@ const Centred = styled('span')(({ theme }) => {
     textAlign: 'center',
   };
 });
+
+/** Play, in a round badge over a video's still. */
+const PlayBadge = styled('span')(({ theme }) => {
+  const { palette } = kitTheme(theme);
+  return {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: `${tokens.control.lg}px`,
+    height: `${tokens.control.lg}px`,
+    borderRadius: `${tokens.radius.full}px`,
+    background: palette.accent,
+    color: palette.onAccent,
+  };
+});
+
+/** A video playing in its box: the browser's own controls. */
+const VideoBox = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface; $w: number; $h: number }>(
+  ({ theme, $on, $w, $h }) => ({
+    width: `${$w}px`,
+    maxWidth: '100%',
+    aspectRatio: `${$w} / ${$h}`,
+    minHeight: `${IMAGE_MIN_SIDE}px`,
+    overflow: 'hidden',
+    borderRadius: `${tokens.radius.md}px`,
+    background: standOutFill(kitTheme(theme).palette, $on),
+    '& video': { display: 'block', width: '100%', height: '100%', objectFit: 'contain' },
+  }),
+);
+
+/** An audio file playing: its name and size over the browser's own controls. */
+const AudioBox = styled('div', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: `${tokens.space.sm}px`,
+  width: '100%',
+  maxWidth: `${IMAGE_MAX.width}px`,
+  boxSizing: 'border-box',
+  padding: `${tokens.space.sm}px ${tokens.space.md}px`,
+  borderRadius: `${tokens.radius.md}px`,
+  background: standOutFill(kitTheme(theme).palette, $on),
+  color: kitTheme(theme).palette.text,
+  fontFamily: theme.typography.fontFamily,
+  '& audio': { display: 'block', width: '100%', height: `${tokens.control.md}px` },
+}));
+
+const AudioHead = styled('div')({ display: 'flex', alignItems: 'center', gap: `${tokens.space.md}px`, minWidth: 0 });
 
 const FileButton = styled('button', { shouldForwardProp: transientProps })<{ $on: Surface }>(({ theme, $on }) => {
   const { palette } = kitTheme(theme);
@@ -174,8 +241,9 @@ const FileDetail = styled('span')(({ theme }) => ({
  * A file sent with a message (`MessageRow`'s `attachments`), or one on its way: queued in the composer's tray
  * (`onRemove`, no `onOpen`) or uploading under a pending message (`progress`, `error` with `onRetry`). An image is drawn in a box sized from its known
  * width and height before the picture arrives, so a late picture never moves the list; pressing it opens the image.
- * Any other file (video and audio too, until they have players) is a row with its name and size; pressing it
- * downloads the file.
+ * A video gets the same box with its still and Play, and plays in it once the screen gives its address; an audio
+ * file is a row with Play, and plays in place the same way. Nothing plays before it is pressed. Any other file is a
+ * row with its name and size; pressing it downloads the file.
  */
 export function AttachmentTile({ onRemove, progress, error, onRetry, ...tile }: AttachmentTileProps): JSX.Element {
   if (onRemove === undefined && progress === undefined && error === undefined) return <Tile {...tile} />;
@@ -209,6 +277,9 @@ function Tile({
   name,
   detail,
   src,
+  poster,
+  remote = false,
+  onLoadError,
   width,
   height,
   onOpen,
@@ -217,7 +288,20 @@ function Tile({
   const on = useSurface();
   const tabIndex = useRowTabIndex();
   const [failed, setFailed] = useState(false);
-  const press = () => {
+  // Play was pressed with focus on it: when the player replaces the button, focus moves to the player (never the page).
+  const focusPlayer = useRef(false);
+  const player = useRef<HTMLMediaElement | null>(null);
+  const playing = (kind === 'video' || kind === 'audio') && src !== undefined;
+  useLayoutEffect(() => {
+    if (playing && focusPlayer.current) {
+      focusPlayer.current = false;
+      player.current?.focus({ preventScroll: true });
+    }
+  }, [playing]);
+  const press = (event?: { currentTarget: Element }) => {
+    if (kind === 'video' || kind === 'audio') {
+      focusPlayer.current = event !== undefined && event.currentTarget.contains(document.activeElement);
+    }
     if (!busy) onOpen?.();
   };
   const pressable = onOpen !== undefined;
@@ -231,6 +315,50 @@ function Tile({
           {detail !== undefined && <FileDetail>{detail}</FileDetail>}
         </FileText>
       </FileButton>
+    );
+  }
+  const sized = detail ? `${name}, ${detail}` : name;
+  if (kind === 'video') {
+    const box = imageBox(width, height);
+    if (src !== undefined) {
+      return (
+        <VideoBox $on={on} $w={box.width} $h={box.height}>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a file someone sent has no caption track to give */}
+          <video ref={(el) => void (player.current = el)} src={src} poster={poster} controls autoPlay playsInline preload="metadata" aria-label={name} tabIndex={tabIndex ?? 0} />
+        </VideoBox>
+      );
+    }
+    return (
+      <ImageButton
+        type="button"
+        tabIndex={tabIndex}
+        aria-label={`Play video ${sized}`}
+        aria-busy={busy || undefined}
+        onClick={press}
+        $on={on}
+        $w={box.width}
+        $h={box.height}
+      >
+        {poster !== undefined && !failed && (
+          <Picture src={poster} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+        )}
+        <PlayBadge aria-hidden="true">{busy ? <Spinner size="md" /> : <Icon name="Play" size="lg" />}</PlayBadge>
+      </ImageButton>
+    );
+  }
+  if (kind === 'audio' && src !== undefined) {
+    return (
+      <AudioBox $on={on} role="group" aria-label={sized}>
+        <AudioHead aria-hidden="true">
+          <Icon name="Music" size="md" tone="secondary" />
+          <FileText>
+            <FileName dir="auto">{name}</FileName>
+            {detail !== undefined && <FileDetail>{detail}</FileDetail>}
+          </FileText>
+        </AudioHead>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- a file someone sent has no caption track to give */}
+        <audio ref={(el) => void (player.current = el)} src={src} controls autoPlay preload="metadata" aria-label={name} tabIndex={tabIndex ?? 0} />
+      </AudioBox>
     );
   }
   if (kind === 'image') {
@@ -247,7 +375,17 @@ function Tile({
         $h={box.height}
       >
         {src !== undefined && !failed ? (
-          <Picture src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+          <Picture
+            src={src}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerPolicy={remote ? 'no-referrer' : undefined}
+            onError={() => {
+              setFailed(true);
+              onLoadError?.();
+            }}
+          />
         ) : failed ? (
           <Centred>
             <Icon name="Image" size="sm" />
@@ -262,21 +400,28 @@ function Tile({
       </ImageButton>
     );
   }
+  const audio = kind === 'audio';
   return (
     <FileButton
       type="button"
       tabIndex={tabIndex}
-      aria-label={`Download ${name}${detail ? `, ${detail}` : ''}`}
+      aria-label={`${audio ? 'Play audio' : 'Download'} ${sized}`}
       aria-busy={busy || undefined}
       onClick={press}
       $on={on}
     >
-      {src !== undefined ? <Thumb src={src} alt="" /> : <Icon name="Paperclip" size="md" tone="secondary" />}
+      {audio ? (
+        <Icon name="Music" size="md" tone="secondary" />
+      ) : src !== undefined ? (
+        <Thumb src={src} alt="" />
+      ) : (
+        <Icon name="Paperclip" size="md" tone="secondary" />
+      )}
       <FileText aria-hidden="true">
         <FileName dir="auto">{name}</FileName>
         {detail !== undefined && <FileDetail>{detail}</FileDetail>}
       </FileText>
-      {busy && <Spinner size="sm" />}
+      {busy ? <Spinner size="sm" /> : audio ? <Icon name="Play" size="md" tone="secondary" /> : null}
     </FileButton>
   );
 }

@@ -154,9 +154,21 @@ const theirs = () => createMessage({ id: 'm-theirs', authorId: 'u-aiko', spans: 
 /** The community's channel list as the screen finds it: the channel's type, missing from it, loading, or failed. */
 type ListState = 'TEXT' | 'VOICE' | 'missing' | 'pending' | 'error' | 'forbidden' | 'notFound';
 
+let activeClient: ReturnType<typeof createTestQueryClient> | undefined;
+// A request still in flight when the test ends would be aborted after MSW answered it (an unhandled InterceptorError).
+afterEach(async () => {
+  await activeClient?.cancelQueries();
+  activeClient?.clear();
+  activeClient = undefined;
+});
+
 function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false) {
   conversation.current = makeConversation(messages);
   const queryClient = createTestQueryClient();
+  activeClient = queryClient;
+  // The channel capabilities are not what these tests are about: serve them as an error (the screen fails open), so the
+  // request is answered by MSW and never reaches the network.
+  server.use(http.get('*/api/channels/community/c-1/permissions/me', () => HttpResponse.json({ statusCode: 500 }, { status: 500 })));
   if (list === 'TEXT' || list === 'VOICE' || list === 'missing') {
     queryClient.setQueryData(
       channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }),

@@ -48,6 +48,8 @@ import { ChatList } from './ChatList';
 import { ChatRowContext, type ChatRowShared } from './ChatRow';
 import { ChatComposer } from './ChatComposer';
 import { MessageActionsSheet } from './MessageActionsSheet';
+import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
+import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
 import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
 
@@ -144,12 +146,32 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   const [actionsFor, setActionsFor] = useState<Message | null>(null);
   const writableRef = useRef(writable);
   writableRef.current = writable;
+  // The row whose actions are open (it has focus as they open): where "See reactions" returns focus.
+  const actionsRow = useRef<HTMLElement | null>(null);
   const openActions = useCallback((message: Message, via: OpenActionsVia) => {
     if (!writableRef.current) return;
+    const active = document.activeElement;
+    actionsRow.current = active instanceof HTMLElement ? active : null;
     if (via === 'touch') hapticsRef.current.longPress();
     setActionsFor(message);
   }, []);
   const closeActions = useCallback(() => setActionsFor(null), []);
+  // The picture viewer and who reacted: one host each for the whole list.
+  const [viewer, setViewer] = useState<ViewerRequest | null>(null);
+  const openViewer = useCallback((message: Message, fileId: string) => setViewer({ message, fileId }), []);
+  const closeViewer = useCallback(() => setViewer(null), []);
+  const [reactionPeople, setReactionPeople] = useState<ReactionPeopleRequest | null>(null);
+  const showReactions = useCallback(
+    (message: Message, reactionKey?: string, returnTo?: HTMLElement | null) =>
+      setReactionPeople({ message, ...(reactionKey ? { reactionKey } : {}), returnTo: returnTo ?? null }),
+    [],
+  );
+  // From the actions sheet, which closes as this one opens: focus returns to the message's row.
+  const showReactionsFromActions = useCallback(
+    (message: Message) => showReactions(message, undefined, actionsRow.current),
+    [showReactions],
+  );
+  const closeReactions = useCallback(() => setReactionPeople(null), []);
   // Reply (the shared quote-reply state; it resets when the channel changes). Sending goes through the composer.
   const { replyToMessage, handleQuoteReply, handleCancelReply } = useReplyAndEdit({
     contextType: VoiceSessionType.Channel,
@@ -224,11 +246,29 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       openProfile: hasProfile ? openProfileStable : undefined,
       opener,
       openActions,
+      openViewer,
+      showReactions,
       editing,
       retrySend,
       removeFailed,
     }),
-    [conversation.me, communityId, writable, segments, showMessage, openPath, hasProfile, openProfileStable, opener, openActions, editing, retrySend, removeFailed],
+    [
+      conversation.me,
+      communityId,
+      writable,
+      segments,
+      showMessage,
+      openPath,
+      hasProfile,
+      openProfileStable,
+      opener,
+      openActions,
+      openViewer,
+      showReactions,
+      editing,
+      retrySend,
+      removeFailed,
+    ],
   );
 
   const { onBack } = useChatBack(communityId);
@@ -304,7 +344,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         onDone={closeActions}
         onReply={onReply}
         onEdit={onEdit}
+        onShowReactions={showReactionsFromActions}
       />
+      <MessageMediaViewer request={viewer} opener={opener} onDone={closeViewer} />
+      <ReactionPeopleSheet request={reactionPeople} me={conversation.me} emoji={segments} onDone={closeReactions} />
     </ChatRowContext>
   );
 }

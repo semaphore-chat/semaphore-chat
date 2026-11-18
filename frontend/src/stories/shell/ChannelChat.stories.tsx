@@ -412,3 +412,126 @@ export const FailedSendLight = story({
 
 /** Light: no permission to post. */
 export const ComposerNoPermissionLight = story({ mode: 'light', handlers: capsHandlers({ post: false, attach: false }) });
+
+// --- Rich rows (PR 10d-A) ---
+
+const GIF_URL = 'https://media.giphy.com/media/story/giphy.gif';
+const BANNER_URL = 'https://trailheads.example/banner.png';
+const ICON_URL = 'https://trailheads.example/favicon.ico';
+const BANNER_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 191 100"><rect width="191" height="100" fill="#5FD49A"/><path d="M0 100 L60 40 L100 80 L140 30 L191 100 Z" fill="#121214"/></svg>';
+const GIF_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 27"><rect width="48" height="27" fill="#FFA366"/><circle cx="24" cy="13.5" r="7" fill="#121214"/></svg>';
+
+const LINK_AND_GIF = [
+  message('u-aiko', at(0, 22), [text('the route for saturday https://trailheads.example/routes/ridge-loop')], {
+    linkPreviews: [
+      {
+        url: 'https://trailheads.example/routes/ridge-loop',
+        title: 'The ridge loop, in late autumn',
+        description: 'Eleven kilometres, one steep climb and the best view of the valley before the snow comes in.',
+        siteName: 'Trailheads',
+        imageUrl: BANNER_URL,
+        faviconUrl: ICON_URL,
+      },
+    ],
+  }),
+  message('u-dropbear', at(0, 23), [text(GIF_URL)]),
+];
+
+const MEDIA = [
+  message('u-gracie', at(0, 24), [text('clip and the voice note')], {
+    attachments: [
+      { id: 'f-clip', filename: 'last-night.mp4', fileType: 'VIDEO', mimeType: 'video/mp4', size: 12_400_000, width: 1920, height: 1080, hasThumbnail: true },
+      { id: 'f-note', filename: 'voice-note.ogg', fileType: 'AUDIO', mimeType: 'audio/ogg', size: 420_000 },
+    ],
+  }),
+  message('u-kwam3', at(0, 25), [text('two more screens')], {
+    attachments: [
+      { id: 'f-shot-2', filename: 'lobby.png', fileType: 'IMAGE', mimeType: 'image/png', size: 302_000, width: 1600, height: 900 },
+      { id: 'f-shot-3', filename: 'scoreboard.png', fileType: 'IMAGE', mimeType: 'image/png', size: 220_000, width: 900, height: 1600 },
+    ],
+    reactions: [
+      { emoji: '🔥', userIds: ['me', 'u-aiko', 'u-dropbear', 'u-gracie'] },
+      { emoji: '👍', userIds: ['u-kwam3'] },
+    ],
+  }),
+];
+
+/** The new rows last (the list opens at its newest): media, then the link card and the GIF. */
+const RICH = [...MESSAGES, ...MEDIA, ...LINK_AND_GIF];
+/** The same rows with the media last. */
+const RICH_MEDIA_LAST = [...MESSAGES, ...LINK_AND_GIF, ...MEDIA];
+
+const richHandlers: HttpHandler[] = [
+  http.get(messagesPath, () => HttpResponse.json({ messages: [...RICH].reverse(), continuationToken: undefined })),
+  ...remoteHandlers(),
+];
+
+const richMediaHandlers: HttpHandler[] = [
+  http.get(messagesPath, () => HttpResponse.json({ messages: [...RICH_MEDIA_LAST].reverse(), continuationToken: undefined })),
+  ...remoteHandlers(),
+];
+
+function remoteHandlers(): HttpHandler[] {
+  return [
+  // Pictures from other sites, served here so the story needs no network.
+  http.get(BANNER_URL, () => new HttpResponse(BANNER_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
+  http.get(ICON_URL, () => new HttpResponse(GIF_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
+  http.get(GIF_URL, () => new HttpResponse(GIF_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
+  http.get('/api/file/:id', () => new HttpResponse(PICTURE_SVG, { headers: { 'Content-Type': 'image/svg+xml' } })),
+  ];
+}
+
+/** Anything on the page with this name (a row's control, not only a sheet's). */
+const anyNamed = (name: string) => () =>
+  [...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find((b) => (b.getAttribute('aria-label') ?? b.textContent) === name) ?? null;
+
+/** A link preview card and a GIF link drawn as the GIF (no words, no card). */
+export const RichRows = story({ handlers: richHandlers });
+
+/** The same, light. */
+export const RichRowsLight = story({ mode: 'light', handlers: richHandlers });
+
+/** A video with its still and an audio file (both with Play: nothing loads before it), two pictures, reactions. */
+export const RichMedia = story({ handlers: richMediaHandlers });
+
+/** The same, light. */
+export const RichMediaLight = story({ mode: 'light', handlers: richMediaHandlers });
+
+/** A picture pressed: the viewer, full screen, "1 of 2" with Download and Close. */
+export const PictureViewer = story({ handlers: richMediaHandlers, steps: [{ find: anyNamed('Open image lobby.png'), run: (el) => el.click() }] });
+
+/** The viewer, light. */
+export const PictureViewerLight = story({
+  mode: 'light',
+  handlers: richMediaHandlers,
+  steps: [{ find: anyNamed('Open image lobby.png'), run: (el) => el.click() }],
+});
+
+/** Who reacted, from the message's actions ("See reactions"): one group per reaction, its people by name. */
+export const ReactionsSheet = story({ handlers: richMediaHandlers, steps: [openActions('two more screens'), press('See reactions')] });
+
+/** Who reacted, light. */
+export const ReactionsSheetLight = story({ mode: 'light', handlers: richMediaHandlers, steps: [openActions('two more screens'), press('See reactions')] });
+
+/** A send refused while the reader is timed out: the row names the time-out, not the server's refusal. */
+export const FailedSendTimedOut = story({
+  handlers: [
+    ...capsHandlers(timedOutCaps(new Date(Date.now() + 4 * 60_000).toISOString())),
+    http.get(messagesPath, () =>
+      HttpResponse.json({ messages: [...MESSAGES, { ...FAILED, sendError: 'You do not have permission' }].reverse(), continuationToken: undefined }),
+    ),
+  ],
+});
+
+/** The same, light. */
+export const FailedSendTimedOutLight = story({
+  mode: 'light',
+  handlers: [
+    ...capsHandlers(timedOutCaps(new Date(Date.now() + 4 * 60_000).toISOString())),
+    http.get(messagesPath, () =>
+      HttpResponse.json({ messages: [...MESSAGES, { ...FAILED, sendError: 'You do not have permission' }].reverse(), continuationToken: undefined }),
+    ),
+  ],
+});

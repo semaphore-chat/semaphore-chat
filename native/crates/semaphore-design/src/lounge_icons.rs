@@ -65,11 +65,14 @@ pub enum LoungeIcon {
     CircleCheck,
     LoaderCircle,
     Megaphone,
+    Play,
+    Download,
+    Music,
 }
 
 impl LoungeIcon {
     /// Every icon, in `design/icons/icons.json` order.
-    pub const ALL: [LoungeIcon; 56] = [
+    pub const ALL: [LoungeIcon; 59] = [
         LoungeIcon::Inbox,
         LoungeIcon::Hash,
         LoungeIcon::Volume2,
@@ -126,6 +129,9 @@ impl LoungeIcon {
         LoungeIcon::CircleCheck,
         LoungeIcon::LoaderCircle,
         LoungeIcon::Megaphone,
+        LoungeIcon::Play,
+        LoungeIcon::Download,
+        LoungeIcon::Music,
     ];
 
     /// The icon's name in `design/icons/icons.json` (`Mic`).
@@ -187,6 +193,9 @@ impl LoungeIcon {
             Self::CircleCheck => "CircleCheck",
             Self::LoaderCircle => "LoaderCircle",
             Self::Megaphone => "Megaphone",
+            Self::Play => "Play",
+            Self::Download => "Download",
+            Self::Music => "Music",
         }
     }
 
@@ -249,6 +258,9 @@ impl LoungeIcon {
             Self::CircleCheck => "lucide/circle-check.svg",
             Self::LoaderCircle => "lucide/loader-circle.svg",
             Self::Megaphone => "lucide/megaphone.svg",
+            Self::Play => "lucide/play.svg",
+            Self::Download => "lucide/download.svg",
+            Self::Music => "lucide/music.svg",
         }
     }
 
@@ -311,6 +323,9 @@ impl LoungeIcon {
             Self::CircleCheck => include_bytes!("../assets/lucide/circle-check.svg"),
             Self::LoaderCircle => include_bytes!("../assets/lucide/loader-circle.svg"),
             Self::Megaphone => include_bytes!("../assets/lucide/megaphone.svg"),
+            Self::Play => include_bytes!("../assets/lucide/play.svg"),
+            Self::Download => include_bytes!("../assets/lucide/download.svg"),
+            Self::Music => include_bytes!("../assets/lucide/music.svg"),
         }
     }
 }

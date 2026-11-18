@@ -1,7 +1,6 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Box, Typography, Tooltip } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
-import { userControllerGetUserByIdOptions } from '../../api-client/@tanstack/react-query.gen';
+import { useReactionPeople } from '../../data/chat/useReactionPeople';
 
 interface ReactionTooltipProps {
   /** Users who reacted; a missing list renders an empty tooltip. */
@@ -9,29 +8,15 @@ interface ReactionTooltipProps {
   children: React.ReactElement;
 }
 
-// Individual user name fetcher component
-const UserName: React.FC<{ userId: string }> = ({ userId }) => {
-  const { data: user, isLoading } = useQuery(userControllerGetUserByIdOptions({ path: { id: userId } }));
-  
-  if (isLoading) return <Typography variant="body2" sx={{ fontSize: 'scale.sm' }}>Loading...</Typography>;
-  
-  const displayName = user?.displayName || user?.username || `User ${userId.slice(-4)}`;
-  
+// The tooltip's content: MUI mounts it only while the tooltip shows, so the names load on hover, not per chip.
+const ReactionPeopleList: React.FC<{ userIds?: string[] | null }> = ({ userIds }) => {
+  const { people, more: remainingCount } = useReactionPeople(userIds);
   return (
-    <Typography variant="body2" sx={{ fontSize: 'scale.sm' }}>
-      {displayName}
-    </Typography>
-  );
-};
-
-export const ReactionTooltip: React.FC<ReactionTooltipProps> = ({ userIds, children }) => {
-  const displayUserIds = useMemo(() => (userIds ?? []).slice(0, 15), [userIds]);
-  const remainingCount = (userIds?.length ?? 0) - displayUserIds.length;
-  
-  const tooltipContent = (
     <Box sx={{ maxWidth: 200 }}>
-      {displayUserIds.map((userId) => (
-        <UserName key={userId} userId={userId} />
+      {people.map(({ id, name }) => (
+        <Typography key={id} variant="body2" sx={{ fontSize: 'scale.sm' }}>
+          {name ?? 'Loading...'}
+        </Typography>
       ))}
       {remainingCount > 0 && (
         <Typography variant="body2" sx={{ fontSize: 'scale.sm', fontStyle: 'italic', mt: 0.5 }}>
@@ -40,7 +25,11 @@ export const ReactionTooltip: React.FC<ReactionTooltipProps> = ({ userIds, child
       )}
     </Box>
   );
-  
+};
+
+export const ReactionTooltip: React.FC<ReactionTooltipProps> = ({ userIds, children }) => {
+  const tooltipContent = <ReactionPeopleList userIds={userIds} />;
+
   return (
     <Tooltip 
       title={tooltipContent} 

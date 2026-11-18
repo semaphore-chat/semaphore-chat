@@ -4,7 +4,7 @@
  * (`AttachmentTile`). The rules are the old row's (`components/Message/MessageComponent.tsx`), so both shells say
  * the same thing about the same message. No React, no data fetching: a native shell can mirror them.
  */
-import type { Message } from '../../types/message.type';
+import type { LinkPreview, Message } from '../../types/message.type';
 import { SpanType } from '../../types/message.type';
 import { formatClockTime, formatFullTimestamp, formatMessageTime } from '../../utils/messageTime';
 import { formatFileSize } from '../../utils/format';
@@ -73,6 +73,17 @@ export function toRowView(message: Message, { author, me, dayShownAbove, now }: 
   };
 }
 
+/**
+ * Why a failed send failed, in words (as the old row's Retry line). A send that raced a timeout comes back as a
+ * plain refusal, so a time-out the reader is under (from the channel's capabilities, the same the composer's
+ * countdown uses) wins over the server's message. `undefined` when there is nothing to say: the caller's default
+ * ("Failed to send", "Not sent").
+ */
+export function sendFailureReason(sendError: string | null | undefined, timedOutUntil: Date | undefined): string | undefined {
+  if (timedOutUntil) return `Timed out until ${formatClockTime(timedOutUntil)}`;
+  return sendError ?? undefined;
+}
+
 /** A reaction as a chip draws it. */
 export interface ReactionView {
   /** The stored reaction (`😂`, or `custom:<emoji id>`): what a toggle sends back. */
@@ -131,27 +142,89 @@ export function toQuoteView(replyTo: Message['replyTo']): QuoteView | null {
   return { id: replyTo.id, authorId: replyTo.authorId, line, deleted };
 }
 
+/** What a file is to the reader, from its type (as the old attachment preview): drawn, played, or downloaded. */
+export type MediaType = 'image' | 'video' | 'audio' | 'other';
+
+export function attachmentMediaType(mimeType?: string | null): MediaType {
+  if (!mimeType) return 'other';
+  const lower = mimeType.toLowerCase();
+  if (lower.startsWith('image/')) return 'image';
+  if (lower.startsWith('video/')) return 'video';
+  if (lower.startsWith('audio/')) return 'audio';
+  return 'other';
+}
+
+/** The pictures of a message the full-size viewer steps through, in their order (as the old lightbox). */
+export function viewerImages<T extends { mimeType?: string | null }>(attachments: readonly T[] | null | undefined): T[] {
+  return (attachments ?? []).filter((a) => attachmentMediaType(a.mimeType) === 'image');
+}
+
 /** A file of a message, as a tile draws it. */
 export interface AttachmentView {
   id: string;
-  /** Images are drawn; everything else (video and audio too, until they have players) is a file row. */
-  kind: 'image' | 'file';
+  /** Images are drawn, video and audio play in place (as the old row's players), everything else is a file row. */
+  kind: 'image' | 'video' | 'audio' | 'file';
   name: string;
   /** The type the server reported: decides whether pressing it opens or downloads it. */
   mimeType: string;
   detail: string;
   width: number | null;
   height: number | null;
+  /** The server made a still of it (a video's poster). */
+  hasThumbnail: boolean;
+}
+
+function attachmentKind(a: Message['attachments'][number]): AttachmentView['kind'] {
+  if (a.fileType === 'IMAGE') return 'image';
+  const media = attachmentMediaType(a.mimeType);
+  return media === 'video' || media === 'audio' ? media : 'file';
 }
 
 export function toAttachmentViews(attachments: Message['attachments']): AttachmentView[] {
   return (attachments ?? []).map((a) => ({
     id: a.id,
-    kind: a.fileType === 'IMAGE' ? 'image' : 'file',
+    kind: attachmentKind(a),
     name: a.filename,
     mimeType: a.mimeType ?? '',
     detail: formatFileSize(a.size),
     width: a.width ?? null,
     height: a.height ?? null,
+    hasThumbnail: !!a.hasThumbnail,
+  }));
+}
+
+/** A link preview as a card draws it. The addresses come from the server's preview of a link someone sent. */
+export interface LinkCardView {
+  href: string;
+  title?: string;
+  /** The site's name, else the link's host, with the author when known ("Example · Aiko"), as the old card. */
+  site: string;
+  description?: string;
+  /** The page's banner picture (a third-party address). */
+  imageSrc?: string;
+  /** The site's icon (a third-party address). */
+  iconSrc?: string;
+}
+
+/** The line a preview card names its site with (as the old card). */
+export function linkPreviewSite(preview: Pick<LinkPreview, 'url' | 'siteName' | 'authorName'>): string {
+  let host: string;
+  try {
+    host = new URL(preview.url).hostname;
+  } catch {
+    host = preview.url;
+  }
+  const site = preview.siteName || host;
+  return preview.authorName ? `${site} · ${preview.authorName}` : site;
+}
+
+export function toLinkCards(previews: readonly LinkPreview[] | null | undefined): LinkCardView[] {
+  return (previews ?? []).map((p) => ({
+    href: p.url,
+    site: linkPreviewSite(p),
+    ...(p.title ? { title: p.title } : {}),
+    ...(p.description ? { description: p.description } : {}),
+    ...(p.imageUrl ? { imageSrc: p.imageUrl } : {}),
+    ...(p.faviconUrl ? { iconSrc: p.faviconUrl } : {}),
   }));
 }

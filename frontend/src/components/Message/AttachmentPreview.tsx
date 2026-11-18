@@ -4,6 +4,8 @@ import { useAuthenticatedFile } from "../../hooks/useAuthenticatedFile";
 import { AudioPlayer } from "./AudioPlayer";
 import { DownloadLink } from "./DownloadLink";
 import { VideoPreview } from "./VideoPreview";
+import { attachmentMediaType } from "../../data/chat/messageRowModel";
+import { attachmentAction } from "../../data/chat/useAttachmentOpener";
 
 const AttachmentCard = styled(Card)(({ theme }) => ({
   position: "relative",
@@ -71,14 +73,6 @@ interface AttachmentPreviewProps {
   onImageClick?: () => void;
 }
 
-function getMediaType(mimeType?: string): "image" | "video" | "audio" | "other" {
-  if (!mimeType) return "other";
-  const lower = mimeType.toLowerCase();
-  if (lower.startsWith("image/")) return "image";
-  if (lower.startsWith("video/")) return "video";
-  if (lower.startsWith("audio/")) return "audio";
-  return "other";
-}
 
 export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   metadata,
@@ -86,7 +80,7 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
   onClick,
   onImageClick,
 }) => {
-  const mediaType = getMediaType(metadata?.mimeType);
+  const mediaType = attachmentMediaType(metadata?.mimeType);
 
   // Videos get their own component — no blob download needed
   if (mediaType === "video") {
@@ -98,8 +92,9 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
     return <AudioPlayer metadata={metadata} />;
   }
 
-  // Other file types get a download link
-  if (mediaType === "other") {
+  // Other file types get a download link, and so does a picture of a type that is not shown on screen (an SVG):
+  // only the raster types the attachment rule allows are fetched as a preview and drawn.
+  if (mediaType === "other" || (mediaType === "image" && attachmentAction(metadata?.mimeType) !== "open")) {
     return <DownloadLink metadata={metadata} />;
   }
 

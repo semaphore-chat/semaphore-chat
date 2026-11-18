@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   DELETED_USER,
+  attachmentMediaType,
+  linkPreviewSite,
+  toLinkCards,
+  sendFailureReason,
+  viewerImages,
   toAttachmentViews,
   toQuoteView,
   toReactionViews,
@@ -106,16 +111,71 @@ describe('toQuoteView', () => {
 });
 
 describe('toAttachmentViews', () => {
-  it('images are drawn with their size; video, audio and documents are file rows', () => {
+  it('images are drawn with their size; video and audio play (by their type, as the old row); documents are file rows', () => {
     const views = toAttachmentViews([
       { id: 'f-1', filename: 'a.png', fileType: 'IMAGE', mimeType: 'image/png', size: 2048, width: 1600, height: 900 },
-      { id: 'f-2', filename: 'b.mp4', fileType: 'VIDEO', mimeType: 'video/mp4', size: 1024 * 1024, width: 1920, height: 1080 },
+      { id: 'f-2', filename: 'b.mp4', fileType: 'VIDEO', mimeType: 'video/mp4', size: 1024 * 1024, width: 1920, height: 1080, hasThumbnail: true },
       { id: 'f-3', filename: 'c.txt', fileType: 'DOCUMENT', mimeType: 'text/plain', size: 12 },
+      { id: 'f-4', filename: 'd.ogg', fileType: 'AUDIO', mimeType: 'audio/ogg', size: 12 },
     ] as never);
     expect(views).toEqual([
-      { id: 'f-1', kind: 'image', name: 'a.png', mimeType: 'image/png', detail: '2 KB', width: 1600, height: 900 },
-      { id: 'f-2', kind: 'file', name: 'b.mp4', mimeType: 'video/mp4', detail: '1 MB', width: 1920, height: 1080 },
-      { id: 'f-3', kind: 'file', name: 'c.txt', mimeType: 'text/plain', detail: '12 Bytes', width: null, height: null },
+      { id: 'f-1', kind: 'image', name: 'a.png', mimeType: 'image/png', detail: '2 KB', width: 1600, height: 900, hasThumbnail: false },
+      { id: 'f-2', kind: 'video', name: 'b.mp4', mimeType: 'video/mp4', detail: '1 MB', width: 1920, height: 1080, hasThumbnail: true },
+      { id: 'f-3', kind: 'file', name: 'c.txt', mimeType: 'text/plain', detail: '12 Bytes', width: null, height: null, hasThumbnail: false },
+      { id: 'f-4', kind: 'audio', name: 'd.ogg', mimeType: 'audio/ogg', detail: '12 Bytes', width: null, height: null, hasThumbnail: false },
     ]);
+  });
+});
+
+describe('sendFailureReason', () => {
+  it('a time-out the reader is under wins over the server refusal; else the server text; else nothing', () => {
+    const until = new Date('2026-11-16T14:05:00');
+    expect(sendFailureReason('Forbidden', until)).toBe(`Timed out until ${formatClockTime(until)}`);
+    expect(sendFailureReason('Message too long', undefined)).toBe('Message too long');
+    expect(sendFailureReason(undefined, undefined)).toBeUndefined();
+    expect(sendFailureReason(null, undefined)).toBeUndefined();
+  });
+});
+
+describe('attachmentMediaType and viewerImages', () => {
+  it('reads the type as the old preview: image, video, audio, else other (any case, missing is other)', () => {
+    expect(attachmentMediaType('image/png')).toBe('image');
+    expect(attachmentMediaType('VIDEO/MP4')).toBe('video');
+    expect(attachmentMediaType('audio/ogg')).toBe('audio');
+    expect(attachmentMediaType('application/pdf')).toBe('other');
+    expect(attachmentMediaType(undefined)).toBe('other');
+    expect(attachmentMediaType('')).toBe('other');
+  });
+
+  it('the viewer steps through the pictures only, in order', () => {
+    const files = [
+      { id: 'a', mimeType: 'image/png' },
+      { id: 'b', mimeType: 'video/mp4' },
+      { id: 'c', mimeType: 'image/gif' },
+      { id: 'd', mimeType: null },
+    ];
+    expect(viewerImages(files).map((f) => f.id)).toEqual(['a', 'c']);
+    expect(viewerImages(null)).toEqual([]);
+  });
+});
+
+describe('toLinkCards and linkPreviewSite', () => {
+  it('names the site by its name, else the host, else the raw address; adds the author', () => {
+    expect(linkPreviewSite({ url: 'https://example.com/a', siteName: 'Example' })).toBe('Example');
+    expect(linkPreviewSite({ url: 'https://news.example.org/a' })).toBe('news.example.org');
+    expect(linkPreviewSite({ url: 'not a url', authorName: 'Aiko' })).toBe('not a url · Aiko');
+  });
+
+  it('maps each preview to a card, leaving out what the server did not find', () => {
+    expect(
+      toLinkCards([
+        { url: 'https://e.com/1', title: 'One', description: 'Words', imageUrl: 'https://e.com/b.jpg', faviconUrl: 'https://e.com/f.ico' },
+        { url: 'https://e.com/2', title: '' },
+      ]),
+    ).toEqual([
+      { href: 'https://e.com/1', site: 'e.com', title: 'One', description: 'Words', imageSrc: 'https://e.com/b.jpg', iconSrc: 'https://e.com/f.ico' },
+      { href: 'https://e.com/2', site: 'e.com' },
+    ]);
+    expect(toLinkCards(null)).toEqual([]);
   });
 });
