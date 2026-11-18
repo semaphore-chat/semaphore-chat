@@ -37,10 +37,7 @@ export function useSendThreadReply(parentMessageId: string) {
 
   const sendReply = useCallback(
     async ({ content, spans, pendingAttachments = 0 }: ThreadReplyRequest): Promise<ThreadReplyOutcome | null> => {
-      if (!socket?.connected) {
-        logger.error("Socket not connected");
-        return null;
-      }
+      if (!socket?.connected) return null;
       if (nonceRef.current?.content !== content) {
         nonceRef.current = { content, clientNonce: randomUuid() };
       }

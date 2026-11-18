@@ -283,7 +283,8 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   }, [threadId, conversation.listRef]);
   // --- Pinned messages: a sheet from More; a jump closes it and centres the message (a thread reply: its parent,
   // then its thread opens, in a new entry so Back closes it) ---
-  const { data: pins = [] } = useQuery(moderationControllerGetPinnedMessagesOptions({ path: { channelId } }));
+  // Only for a known text channel: an unknown, gone or forbidden one would only earn a refusal.
+  const { data: pins = [] } = useQuery({ ...moderationControllerGetPinnedMessagesOptions({ path: { channelId } }), enabled: writable });
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [pinnedOpener, setPinnedOpener] = useState<HTMLElement | null>(null);
   const showPinned = useCallback((opener: HTMLElement | null) => {
