@@ -94,7 +94,7 @@ const MESSAGES = [
   }),
   message('u-kwam3', at(0, 16), [text('screens from last night')], {
     attachments: [
-      { id: 'f-shot', filename: 'boss-fight.png', fileType: 'IMAGE', size: 482_000, width: 1600, height: 900 },
+      { id: 'f-shot', filename: 'boss-fight.png', fileType: 'IMAGE', mimeType: 'image/png', size: 482_000, width: 1600, height: 900 },
       { id: 'f-log', filename: 'combat-log-with-a-long-file-name.txt', fileType: 'DOCUMENT', size: 12_400 },
     ],
   }),
