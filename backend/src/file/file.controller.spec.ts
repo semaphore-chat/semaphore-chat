@@ -177,6 +177,8 @@ describe('FileController', () => {
       );
       expect(mockResponse.set).toHaveBeenCalledWith({
         'Content-Type': 'image/jpeg',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
         'Cache-Control': 'private, max-age=86400',
         'Cross-Origin-Resource-Policy': 'cross-origin',
       });
@@ -615,6 +617,56 @@ describe('FileController', () => {
         expect.objectContaining({
           'Content-Disposition': expect.stringMatching(/^inline;/),
         }),
+      );
+    });
+
+    const collectedHeaders = (): Record<string, unknown> =>
+      Object.assign(
+        {},
+        ...(mockResponse.set as jest.Mock).mock.calls.map((c) => c[0]),
+      );
+
+    it('should normalise a mixed-case declared type and force attachment with hardening headers', async () => {
+      service.findOne.mockResolvedValue({
+        id: 'file-svg2',
+        filename: 'x.svg',
+        mimeType: 'image/SVG+xml; charset=utf-8',
+        fileType: FileType.IMAGE,
+        size: 10,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/x.svg',
+      } as any);
+
+      await controller.getFile('file-svg2', mockRequest(), mockResponse);
+
+      const headers = collectedHeaders();
+      expect(headers['Content-Disposition']).toMatch(/^attachment;/);
+      expect(headers['Content-Type']).toBe('image/svg+xml');
+      expect(headers['X-Content-Type-Options']).toBe('nosniff');
+      expect(headers['Content-Security-Policy']).toBe(
+        "default-src 'none'; sandbox",
+      );
+    });
+
+    it('should serve a PNG inline with its normalised type and hardening headers', async () => {
+      service.findOne.mockResolvedValue({
+        id: 'file-png2',
+        filename: 'p.png',
+        mimeType: 'image/png',
+        fileType: FileType.IMAGE,
+        size: 10,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/p.png',
+      } as any);
+
+      await controller.getFile('file-png2', mockRequest(), mockResponse);
+
+      const headers = collectedHeaders();
+      expect(headers['Content-Disposition']).toMatch(/^inline;/);
+      expect(headers['Content-Type']).toBe('image/png');
+      expect(headers['X-Content-Type-Options']).toBe('nosniff');
+      expect(headers['Content-Security-Policy']).toBe(
+        "default-src 'none'; sandbox",
       );
     });
 
