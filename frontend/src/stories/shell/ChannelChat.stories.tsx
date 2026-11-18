@@ -14,8 +14,9 @@
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
+import { useNavigate } from 'react-router-dom';
 import { IncomingCallProvider } from '../../contexts/IncomingCallContext';
-import { LOUNGE_CHAT_FIXTURE_PATH, LOUNGE_ROUTES } from '../../shell/loungeRoutes';
+import { LOUNGE_CHAT_FIXTURE_PATH, LOUNGE_ROUTES, loungeChatFixturePath } from '../../shell/loungeRoutes';
 import { LoungeFrame } from '../../shell/lounge/frame/LoungeFrame';
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { defineComponent } from '../fixtures/componentStory';
@@ -93,7 +94,7 @@ const MESSAGES = [
   }),
   message('u-kwam3', at(0, 16), [text('screens from last night')], {
     attachments: [
-      { id: 'f-shot', filename: 'boss-fight.png', fileType: 'IMAGE', size: 482_000, width: 1600, height: 900 },
+      { id: 'f-shot', filename: 'boss-fight.png', fileType: 'IMAGE', mimeType: 'image/png', size: 482_000, width: 1600, height: 900 },
       { id: 'f-log', filename: 'combat-log-with-a-long-file-name.txt', fileType: 'DOCUMENT', size: 12_400 },
     ],
   }),
@@ -195,13 +196,34 @@ const caretToEnd = {
   },
 };
 
-function Frame({ mode, draft, steps = NO_STEPS }: { mode: ModeName; draft?: string; steps?: Parameters<typeof useSteps>[0] }): JSX.Element {
+function Frame({
+  mode,
+  draft,
+  draftKey = `channel:${CHANNEL}`,
+  search,
+  steps = NO_STEPS,
+}: {
+  mode: ModeName;
+  draft?: string;
+  draftKey?: string;
+  /** A query the chat opens with (a cold `?thread=` link). */
+  search?: string;
+  steps?: Parameters<typeof useSteps>[0];
+}): JSX.Element {
   // A draft in the composer's storage before it mounts (the sandbox clears drafts first).
   useState(() => {
-    if (draft !== undefined) sessionStorage.setItem(composerDraftStorageKey(`channel:${CHANNEL}`), draft);
+    if (draft !== undefined) sessionStorage.setItem(composerDraftStorageKey(draftKey), draft);
   });
+  // The chat's own path (where its in-chat links lead), with the story's query: a press that opens a thread then
+  // changes only the query, as in the app.
+  const navigate = useNavigate();
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    navigate(`${loungeChatFixturePath(LOUNGE_COMMUNITY_ID, CHANNEL)}${search ?? ''}`, { replace: true });
+    setReady(true);
+  }, [search, navigate]);
   useSteps(steps);
-  return <FrameOnly mode={mode} />;
+  return ready ? <FrameOnly mode={mode} /> : <></>;
 }
 
 const NO_STEPS: Parameters<typeof useSteps>[0] = [];
@@ -222,12 +244,25 @@ function FrameOnly({ mode }: { mode: ModeName }): JSX.Element {
   );
 }
 
-const story = (options: { mode?: ModeName; handlers?: HttpHandler[]; draft?: string; steps?: Parameters<typeof useSteps>[0] } = {}) =>
-  defineComponent(bigCommunityScenario, () => <Frame mode={options.mode ?? 'dark'} draft={options.draft} steps={options.steps} />, {
+const story = (
+  options: {
+    mode?: ModeName;
+    handlers?: HttpHandler[];
+    draft?: string;
+    draftKey?: string;
+    search?: string;
+    steps?: Parameters<typeof useSteps>[0];
+  } = {},
+) =>
+  defineComponent(
+    bigCommunityScenario,
+    () => <Frame mode={options.mode ?? 'dark'} draft={options.draft} draftKey={options.draftKey} search={options.search} steps={options.steps} />,
+    {
     maxWidth: false,
     // First match wins: the story's own, then the chat's, then the community's.
     extraHandlers: [...(options.handlers ?? []), ...chatHandlers, ...loungeCommunityHandlers],
-  });
+    },
+  );
 
 const failWith = (status: number) =>
   http.get(messagesPath, () => HttpResponse.json({ statusCode: status, message: 'nope' }, { status }));
@@ -534,4 +569,157 @@ export const FailedSendTimedOutLight = story({
       HttpResponse.json({ messages: [...MESSAGES, { ...FAILED, sendError: 'You do not have permission' }].reverse(), continuationToken: undefined }),
     ),
   ],
+});
+
+// --- Threads and pinned messages (PR 10d-B) ---
+
+/** The message with "3 replies" (the code block), its id. */
+const THREAD_PARENT = MESSAGES[5].id;
+const threadReply = (authorId: string, minutes: number, words: string, extra: Record<string, unknown> = {}) =>
+  message(authorId, at(0, minutes), [text(words)], { parentMessageId: THREAD_PARENT, ...extra });
+const REPLIES = [
+  threadReply('u-kwam3', 13, 'count me in, I will bring the snacks again'),
+  threadReply('u-dropbear', 14, 'can we do 9:15? I have a thing until 9'),
+  threadReply('me', 14, 'fine by me', { reactions: [{ emoji: '👍', userIds: ['u-aiko'] }] }),
+];
+const LONG_REPLIES = Array.from({ length: 40 }, (_, i) =>
+  threadReply(['u-kwam3', 'u-dropbear', 'me', 'u-gracie'][i % 4], 13 + Math.floor(i / 4), `reply ${i + 1}: ${i % 5 === 0 ? 'a longer thought that wraps over a couple of lines on a phone, as replies do' : 'ok'}`),
+);
+const repliesHandler = (replies: unknown[], continuationToken?: string) =>
+  http.get('/api/threads/:id/replies', () => HttpResponse.json({ replies, continuationToken }));
+const metadataHandler = (isSubscribed: boolean) =>
+  http.get('/api/threads/:id/metadata', ({ params }) =>
+    HttpResponse.json({ replyCount: 3, parentMessageId: params.id, lastReplyAt: null, isSubscribed }),
+  );
+const threadHandlers = (replies: unknown[] = REPLIES, isSubscribed = true): HttpHandler[] => [repliesHandler(replies), metadataHandler(isSubscribed)];
+const openRepliesButton = {
+  find: () => document.querySelector<HTMLElement>('button[aria-label="3 replies, open the thread"]'),
+  run: (el: HTMLElement) => el.click(),
+};
+
+/** A thread open over its channel: the parent, "3 replies", the replies, Follow on, the reply composer. */
+export const ThreadOpen = story({ handlers: threadHandlers(), steps: [openRepliesButton] });
+
+/** The same, light. */
+export const ThreadOpenLight = story({ mode: 'light', handlers: threadHandlers(), steps: [openRepliesButton] });
+
+/** A long thread (40 replies), opened at the top as the old phone thread; not followed. */
+export const ThreadLong = story({ handlers: threadHandlers(LONG_REPLIES, false), steps: [openRepliesButton] });
+
+/** Replies still loading. */
+export const ThreadLoading = story({
+  handlers: [
+    http.get('/api/threads/:id/replies', async () => {
+      await delay('infinite');
+      return HttpResponse.json({ replies: [] });
+    }),
+    metadataHandler(false),
+  ],
+  steps: [openRepliesButton],
+});
+
+/** Replies failed to load: Try again. */
+export const ThreadError = story({
+  handlers: [http.get('/api/threads/:id/replies', () => HttpResponse.json({ statusCode: 500, message: 'nope' }, { status: 500 })), metadataHandler(false)],
+  steps: [openRepliesButton],
+});
+
+/** "Reply in thread" on your own message: a thread with no replies yet. */
+export const ThreadEmpty = story({
+  handlers: threadHandlers([], false),
+  steps: [openActions('bringing the headset'), press('Reply in thread')],
+});
+
+/** A thread on a message with a picture and a file: the parent's attachments at the top. */
+export const ThreadParentWithAttachments = story({
+  handlers: threadHandlers(REPLIES.slice(0, 1)),
+  steps: [openActions('screens from last night'), press('Reply in thread')],
+});
+
+/** A cold link to a thread whose message was deleted: "This thread is gone" with Back. */
+export const ThreadParentDeleted = story({
+  search: '?thread=m-deleted',
+  handlers: [
+    http.get('/api/messages/m-deleted', () => HttpResponse.json({ statusCode: 404, message: 'Message not found' }, { status: 404 })),
+    ...threadHandlers([]),
+  ],
+});
+
+/** A half-typed reply in the thread's own draft. */
+export const ThreadComposerDraft = story({
+  handlers: threadHandlers(),
+  draft: 'I can do 9:15 too',
+  draftKey: `thread:${THREAD_PARENT}`,
+  steps: [openRepliesButton],
+});
+
+/** No right to reply in threads: the notice in the composer's place. */
+export const ThreadComposerNoPermission = story({
+  handlers: [...threadHandlers(), ...capsHandlers({ threadReply: false, post: false, attach: false })],
+  steps: [openRepliesButton],
+});
+
+const pinOf = (m: (typeof MESSAGES)[number], extra: Record<string, unknown> = {}) => ({
+  ...m,
+  pinned: true,
+  pinnedAt: at(0, 30),
+  pinnedBy: 'u-aiko',
+  author: { id: m.authorId, ...PEOPLE[m.authorId as string], avatarUrl: null },
+  ...extra,
+});
+const PINS = [pinOf(MESSAGES[5]), pinOf(MESSAGES[7]), pinOf(MESSAGES[0]), pinOf(REPLIES[1])];
+/** The reader's community roles: a plain member (none), or a moderator who may unpin. */
+const communityRoles = (actions: string[]): HttpHandler =>
+  http.get(`/api/roles/my/community/${LOUNGE_COMMUNITY_ID}`, () =>
+    HttpResponse.json({
+      resourceType: 'COMMUNITY',
+      userId: 'me',
+      resourceId: LOUNGE_COMMUNITY_ID,
+      roles: actions.length === 0 ? [] : [{ id: 'r-mod', name: 'Moderator', actions }],
+    }),
+  );
+const member = communityRoles([]);
+const moderator = communityRoles(['PIN_MESSAGE', 'UNPIN_MESSAGE', 'DELETE_MESSAGE']);
+const pinsHandler = (pins: unknown[]) => http.get(`/api/moderation/pins/${CHANNEL}`, () => HttpResponse.json(pins));
+const openPinned = [
+  { find: () => document.querySelector<HTMLElement>('button[aria-label="More"]'), run: (el: HTMLElement) => el.click() },
+  {
+    find: () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.startsWith('Pinned messages')) ?? null,
+    run: (el: HTMLElement) => el.click(),
+  },
+];
+
+/** Pinned messages, as a member: who, when, the words or files; a pinned thread reply among them. */
+export const PinnedList = story({ handlers: [pinsHandler(PINS), member], steps: openPinned });
+
+/** The same, light. */
+export const PinnedListLight = story({ mode: 'light', handlers: [pinsHandler(PINS), member], steps: openPinned });
+
+/** As a moderator: Unpin on every pin. */
+export const PinnedListModerator = story({ handlers: [pinsHandler(PINS), moderator, ...moderatorHandlers], steps: openPinned });
+
+/** Thirty pins: the sheet scrolls. */
+export const PinnedListMany = story({
+  handlers: [pinsHandler(Array.from({ length: 30 }, (_, i) => pinOf(MESSAGES[i % MESSAGES.length], { id: `pin-${i}` }))), member],
+  steps: openPinned,
+});
+
+/** Nothing pinned yet. */
+export const PinnedListEmpty = story({ handlers: [pinsHandler([])], steps: openPinned });
+
+/** Still loading. */
+export const PinnedListLoading = story({
+  handlers: [
+    http.get(`/api/moderation/pins/${CHANNEL}`, async () => {
+      await delay('infinite');
+      return HttpResponse.json([]);
+    }),
+  ],
+  steps: openPinned,
+});
+
+/** Failed to load: Try again. */
+export const PinnedListError = story({
+  handlers: [http.get(`/api/moderation/pins/${CHANNEL}`, () => HttpResponse.json({ statusCode: 500, message: 'nope' }, { status: 500 }))],
+  steps: openPinned,
 });

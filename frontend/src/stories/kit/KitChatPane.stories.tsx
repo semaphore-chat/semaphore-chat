@@ -86,6 +86,57 @@ export const WithComposer = () => (
   </OnPalette>
 );
 
+/** A thread over its channel: the channel stays mounted, hidden and inert, under the cover. */
+const CoveredPane = () => {
+  const [open, setOpen] = useState(true);
+  return (
+    <Frame>
+      <ChatPane
+        header={<Header />}
+        list={<Rows />}
+        typing={<TypingLine names={[]} />}
+        announcement=""
+        composer={<Composer label="Message #lobby" value="draft kept underneath" onChange={noop} onSubmit={noop} cap="phone" />}
+        cover={
+          open ? (
+            <ChatPane
+              header={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8 }}>
+                  <IconButton icon="ArrowLeft" label="Back to #lobby" onClick={() => setOpen(false)} />
+                  <Text variant="title" as="h1" truncate>
+                    Thread
+                  </Text>
+                </div>
+              }
+              list={
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                  <MessageRow author="aiko" avatarColour="#FF8FB8" time="8:10 PM" body={<MessageText segments={text('the message the thread is about')} />} />
+                  <ListSeparator variant="day" label="2 replies" />
+                  <MessageRow author="dropbear" avatarColour="#5FD49A" time="8:12 PM" body={<MessageText segments={text('a reply')} />} />
+                  <MessageRow author="gracie" avatarColour="#FFA366" time="8:14 PM" body={<MessageText segments={text('another reply')} />} />
+                </div>
+              }
+              composer={<Composer label="Reply in thread" value="" onChange={noop} onSubmit={noop} cap="phone" />}
+            />
+          ) : undefined
+        }
+      />
+    </Frame>
+  );
+};
+
+export const Covered = () => (
+  <OnPalette palette={PALETTES[0]}>
+    <CoveredPane />
+  </OnPalette>
+);
+
+export const CoveredLight = () => (
+  <OnPalette palette={PALETTES[1]}>
+    <CoveredPane />
+  </OnPalette>
+);
+
 const COUNT = 2000;
 const START = Date.UTC(2026, 10, 1, 12, 0, 0);
 const AUTHORS = ['aiko', 'dropbear', 'gracie', 'kwam3'];

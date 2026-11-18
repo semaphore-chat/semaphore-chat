@@ -72,6 +72,12 @@ const SOCKET_EMITTERS: Record<string, { targets: readonly string[]; why: string 
       'SEND_MESSAGE: sending a message and retrying a failed one (the composer through useMessageFileUpload and ' +
       'useOptimisticSendMessage, a failed row through useOptimisticMessageRetry; both shells)',
   },
+  'src/hooks/useSendThreadReply.ts': {
+    targets: ['src/utils/SocketContext.ts'],
+    why:
+      'SEND_THREAD_REPLY: sending a reply in a thread (the thread composer of both shells; its files then upload ' +
+      'over HTTP through utils/attachmentSend)',
+  },
   'src/hooks/useTypingEmitter.ts': {
     targets: ['src/hooks/useSocket.ts'],
     why: 'TYPING_START / TYPING_STOP: the composer saying the reader is typing (both shells)',

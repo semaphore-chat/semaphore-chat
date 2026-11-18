@@ -21,15 +21,39 @@ export interface ChatPaneProps {
   announcement?: string;
   /** The composer, under the list. */
   composer?: ReactNode;
+  /**
+   * A second conversation over this one, filling the pane (a thread over its channel): usually its own `ChatPane`.
+   * This one stays mounted underneath, so its scroll position, its list and its composer's draft are kept, but it is
+   * hidden and inert: nothing in it can be seen, focused, clicked or announced until the cover goes.
+   */
+  cover?: ReactNode;
 }
 
 const Root = styled('div')({
+  position: 'relative',
+  height: '100%',
+  minHeight: 0,
+  minWidth: 0,
+  overflow: 'hidden',
+});
+
+/** The conversation itself; under a cover it keeps its layout (and scroll) but is not seen. */
+const Base = styled('div')({
   display: 'flex',
   flexDirection: 'column',
   height: '100%',
   minHeight: 0,
   minWidth: 0,
-  overflow: 'hidden',
+  '&[inert]': { visibility: 'hidden' },
+});
+
+const Cover = styled('div')({
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
+  minWidth: 0,
 });
 
 const Fixed = styled('div')({ flex: '0 0 auto', minWidth: 0 });
@@ -69,21 +93,26 @@ const Live = styled('div')({ ...visuallyHidden });
 /**
  * A conversation inside the centre island: header, the message list with its floating typing line and Jump to
  * latest, the composer. It owns the placement of the floating parts, so a screen never positions anything itself.
- * The list region gets the room the header and the composer leave; only the list scrolls.
+ * The list region gets the room the header and the composer leave; only the list scrolls. A `cover` (a thread)
+ * fills the pane over the conversation, which stays mounted, hidden and inert underneath.
  */
-export function ChatPane({ header, list, state, typing, jump, announcement, composer }: ChatPaneProps): JSX.Element {
+export function ChatPane({ header, list, state, typing, jump, announcement, composer, cover }: ChatPaneProps): JSX.Element {
+  const covered = cover !== undefined;
   return (
     <Root>
-      {header !== undefined && <Head>{header}</Head>}
-      <ListRegion>
-        {state !== undefined ? <State>{state}</State> : list}
-        {typing !== undefined && <Typing>{typing}</Typing>}
-        {jump}
-        <Live role="status" aria-live="polite" aria-atomic="true">
-          {announcement ?? ''}
-        </Live>
-      </ListRegion>
-      {composer !== undefined && <Fixed>{composer}</Fixed>}
+      <Base inert={covered || undefined} data-chat-pane-covered={covered || undefined}>
+        {header !== undefined && <Head>{header}</Head>}
+        <ListRegion>
+          {state !== undefined ? <State>{state}</State> : list}
+          {typing !== undefined && <Typing>{typing}</Typing>}
+          {jump}
+          <Live role="status" aria-live="polite" aria-atomic="true">
+            {covered ? '' : (announcement ?? '')}
+          </Live>
+        </ListRegion>
+        {composer !== undefined && <Fixed>{composer}</Fixed>}
+      </Base>
+      {covered && <Cover>{cover}</Cover>}
     </Root>
   );
 }

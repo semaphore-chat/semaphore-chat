@@ -35,4 +35,22 @@ describe('ChatPane', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.getByText('only the list')).toBeInTheDocument();
   });
+
+  it('a cover fills the pane; the conversation stays mounted underneath, inert and silent, and comes back as it was', () => {
+    const list = <textarea aria-label="underneath" defaultValue="" />;
+    const { rerender } = renderWithKit(
+      <ChatPane list={list} announcement="2 new" cover={<ChatPane list={<div>the thread</div>} announcement="" />} />,
+    );
+    const field = screen.getByLabelText('underneath') as HTMLTextAreaElement;
+    expect(field.closest('[inert]')).not.toBeNull();
+    expect(screen.getByText('the thread').closest('[inert]')).toBeNull();
+    // Hidden live regions say nothing: the covered one is emptied too.
+    expect(screen.getAllByRole('status', { hidden: true }).map((live) => live.textContent)).toEqual(['', '']);
+    field.value = 'kept';
+    rerender(<ChatPane list={list} announcement="2 new" />);
+    expect(screen.getByLabelText('underneath')).toBe(field);
+    expect(field.value).toBe('kept');
+    expect(field.closest('[inert]')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('2 new');
+  });
 });

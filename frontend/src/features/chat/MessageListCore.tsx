@@ -103,6 +103,13 @@ export interface MessageListCoreProps {
   /** Changing this (channel/DM switch) re-homes the list at the bottom (or centers, in anchored mode). */
   resetKey?: string;
 
+  /**
+   * Where a normal-mode list opens: at the newest row (`'end'`, the default: a conversation) or at the first
+   * (`'start'`: a thread, its parent message first). Opened at the start, the list loads newer pages near its end
+   * (`onLoadNewer` / `hasNewer`, as anchored mode does) and does not follow the bottom while a newer page exists.
+   */
+  startAt?: 'end' | 'start';
+
   /** Reports whether the list is pinned to the visual bottom (drives FABs). */
   onAtBottomChange?: (atBottom: boolean) => void;
 
@@ -236,6 +243,7 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
       highlightMessageId,
       highlightSeq,
       resetKey,
+      startAt = 'end',
       onAtBottomChange,
       onVisibleRangeChange,
       onEscapeToInput,
@@ -317,8 +325,9 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
     const effectiveFocusedIndex = useMemo(() => {
       if (focusedIndex !== -1) return focusedIndex;
       if (len === 0) return -1;
-      return mode === 'anchored' ? Math.max(0, Math.floor((len - 1) / 2)) : len - 1;
-    }, [focusedIndex, len, mode]);
+      if (mode === 'anchored') return Math.max(0, Math.floor((len - 1) / 2));
+      return startAt === 'start' ? 0 : len - 1;
+    }, [focusedIndex, len, mode, startAt]);
 
     /** Moves the roving target to `rawIndex` (clamped), scrolls it into
      * virtua's real render window, and imperatively focuses it once it
@@ -376,7 +385,10 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
               );
               if (focusTarget) {
                 focusTarget.focus();
-                return;
+                // virtua mounts a far row hidden (visibility) until it is measured, and a hidden element takes no
+                // focus: try again next frame until it has it. (No row target hands focus on to a child today; one
+                // that did would be refocused for these few frames.)
+                if (document.activeElement === focusTarget) return;
               }
               break;
             }
@@ -684,6 +696,24 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         return;
       }
 
+      if (startAt === 'start') {
+        // Opened at the first row (a thread): pinned only when everything fits, so a reply arriving in a short
+        // thread still follows the bottom.
+        const fits = () => handle.scrollSize - handle.viewportSize < BOTTOM_PIN_THRESHOLD_PX;
+        const raf1 = requestAnimationFrame(() => {
+          handle.scrollToIndex(0, { align: "start" });
+          positioningRafsRef.current[1] = requestAnimationFrame(() => {
+            handle.scrollToIndex(0, { align: "start" });
+            pinnedRef.current = fits();
+            onAtBottomChange?.(pinnedRef.current);
+          });
+        });
+        positioningRafsRef.current = [raf1, 0];
+        pinnedRef.current = false;
+        initialPositionedRef.current = true;
+        return;
+      }
+
       // Positioning is deferred a frame (VList hasn't initialized/measured at
       // mount — an immediate scrollToIndex can be a no-op) and re-asserted a
       // second frame later, after the first measurement pass corrects the
@@ -702,7 +732,7 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
       // doesn't re-run on every highlight change — only at the start of a
       // positioning epoch. resetKey/mode are deps so a context/mode switch
       // re-positions even when the new context has the same message count.
-    }, [len, resetKey, mode, onAtBottomChange]);
+    }, [len, resetKey, mode, onAtBottomChange, startAt]);
 
     // Stick-to-bottom: a newer message appended while pinned (not a prepend).
     // Normal mode ONLY: in anchored mode a newest-id change means a newer page
@@ -716,6 +746,8 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
     useEffect(() => {
       if (
         mode === 'normal' &&
+        // Opened at the start with a newer page still to load: the loaded end is not the live edge.
+        !(startAt === 'start' && hasNewer) &&
         prevNewestIdRef.current !== undefined &&
         newestId !== prevNewestIdRef.current &&
         pinnedRef.current &&
@@ -727,7 +759,7 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
       prevNewestIdRef.current = newestId;
       // isPrepend is derived from the same inputs; intentionally not a dep.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [newestId, scrollToBottom, mode]);
+    }, [newestId, scrollToBottom, mode, startAt]);
 
     // Record prepend baselines AFTER the render that consumed them.
     useEffect(() => {
@@ -810,7 +842,7 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         // more to fetch. Mirrors the older-load trigger above.
         if (
           initialPositionedRef.current &&
-          mode === 'anchored' &&
+          (mode === 'anchored' || startAt === 'start') &&
           endIndex >= len - 1 - LOAD_NEWER_INDEX_PROXIMITY &&
           !isLoadingNewer &&
           !loadNewerInFlightRef.current &&
@@ -834,6 +866,7 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         hasNewer,
         onLoadNewer,
         len,
+        startAt,
       ],
     );
 

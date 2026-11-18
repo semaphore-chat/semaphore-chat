@@ -23,6 +23,7 @@ import { userControllerGetUserByIdOptions } from '../../../../api-client/@tansta
 import { ACCEPTED_FILE_TYPES } from '../../../../constants/messages';
 import { VoiceSessionType } from '../../../../contexts/VoiceContext';
 import { useChannelComposer, type ComposerNoticeKind } from '../../../../data/chat/useChannelComposer';
+import { useThreadReplySend } from '../../../../data/chat/useThreadReplySend';
 import { useTouchFirst } from '../../../../data/touchFirst';
 import { useMessageFileUpload } from '../../../../hooks/useMessageFileUpload';
 import type { MentionSuggestion } from '../../../../hooks/useMentionAutocomplete';
@@ -54,6 +55,11 @@ export interface ChatComposerProps {
   /** The message being replied to, or null. */
   replyTo: Message | null;
   onCancelReply: () => void;
+  /**
+   * A reply in this message's thread (the thread view's composer): the thread's draft and send, no quote reply.
+   * `onSent` runs once the server has the reply.
+   */
+  thread?: { parentMessageId: string; onSent?: () => void };
 }
 
 function useReplyBanner(replyTo: Message | null, onCancel: () => void): ComposerBanner | undefined {
@@ -67,7 +73,7 @@ function useReplyBanner(replyTo: Message | null, onCancel: () => void): Composer
   return { kind: 'reply', title: `Replying to ${name}`, detail: line || undefined, cancelLabel: 'Cancel reply', onCancel };
 }
 
-export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, onCancelReply }: ChatComposerProps): JSX.Element {
+export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, onCancelReply, thread }: ChatComposerProps): JSX.Element {
   const toasts = useToasts();
   const announce = useAnnounce();
   const onError = useCallback((message: string) => void toasts.show({ tone: 'danger', message }), [toasts]);
@@ -76,17 +82,26 @@ export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, on
   const touch = useTouchFirst(range);
   const keyboardUp = useKeyboardInset() > 0;
   const replyId = replyTo?.id;
+  const sendInThread = useThreadReplySend({ parentMessageId: thread?.parentMessageId ?? '', channelId, onError });
+  const threadId = thread?.parentMessageId;
+  const onSent = thread?.onSent;
   const send = useCallback(
     async (content: string, spans: Span[], files: File[]) => {
+      if (threadId !== undefined) {
+        const sent = await sendInThread(content, spans, files);
+        if (sent) onSent?.();
+        return sent;
+      }
       // The reply goes with this send; the banner closes at once (as the old composer).
       onCancelReply();
       await handleSendMessage(content, spans, files, replyId);
     },
-    [handleSendMessage, onCancelReply, replyId],
+    [handleSendMessage, onCancelReply, replyId, threadId, sendInThread, onSent],
   );
   const composer = useChannelComposer({
     communityId,
     channelId,
+    thread: threadId !== undefined ? { parentMessageId: threadId } : undefined,
     inputRef,
     send,
     onError,
@@ -100,7 +115,7 @@ export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, on
   const notice: ComposerNotice | undefined =
     composer.notice === null ? undefined : { text: composer.notice.text, icon: NOTICE_ICON[composer.notice.kind] };
   const { attach, mentions } = composer;
-  const label = composer.channelName ? `Message #${composer.channelName}` : 'Message';
+  const label = thread !== undefined ? 'Reply in thread' : composer.channelName ? `Message #${composer.channelName}` : 'Message';
 
   return (
     <>

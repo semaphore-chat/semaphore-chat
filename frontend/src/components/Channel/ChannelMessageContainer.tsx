@@ -13,7 +13,8 @@ import { MessageSearchPanel } from "../Message/MessageSearchPanel";
 import { DockedSidePanel, DOCKED_PANEL_ATTR, type DockedPanelKind } from "./DockedSidePanel";
 import { PinnedMessagesPanel } from "../Moderation";
 import { ThreadPanel } from "../Thread";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
+import { readThreadParam, THREAD_PARAM } from "../../data/chat/threadParam";
 import { useChannelChat } from "../../data/chat/useChannelChat";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
 import { useNotification } from "../../contexts/NotificationContext";
@@ -27,7 +28,7 @@ import { useVoice, VoiceSessionType } from "../../contexts/VoiceContext";
 import { VOICE_BAR_HEIGHT, CHAT_COLUMN_MIN_WIDTH } from "../../constants/layout";
 import { DEVICE_BREAKPOINTS } from "../../utils/breakpoints";
 import { useResponsive } from "../../hooks/useResponsive";
-import { useOverlayHistory } from "../../hooks/useOverlayHistory";
+import { navigateAfterOverlays, useOverlayHistory } from "../../hooks/useOverlayHistory";
 import type { Message } from "../../types/message.type";
 
 interface ChannelMessageContainerProps {
@@ -105,21 +106,75 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   const [threadParentMessage, setThreadParentMessage] = useState<Message | null>(null);
   const [pendingThreadParentId, setPendingThreadParentId] = useState<string | null>(null);
 
+  // `?thread=<id>` (the new shell's open thread, and links to one) opens that thread once its parent is in the
+  // loaded messages (the pinned-thread-reply path below); closing a thread drops the param again.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const threadParam = readThreadParam(searchParams);
+  const threadParamRef = useRef(threadParam);
+  threadParamRef.current = threadParam;
+  // Drops the param once any overlay entry (the touch layout's thread layer) has unwound: a replace before the
+  // overlay's own back() lands would rewrite the overlay entry, and the back() would then land on the entry that
+  // still names the thread, reopening it.
+  // Through a ref: `setSearchParams` changes with every search change, which must not re-render the message rows.
+  const setSearchParamsRef = useRef(setSearchParams);
+  setSearchParamsRef.current = setSearchParams;
+  const dropThreadParam = useCallback(() => {
+    navigateAfterOverlays(() =>
+      setSearchParamsRef.current((params) => {
+        const next = new URLSearchParams(params);
+        next.delete(THREAD_PARAM);
+        return next;
+      }, { replace: true }),
+    );
+  }, []);
+  // The thread the URL named that was just closed: not opened again until the param changes.
+  const closedThreadRef = useRef<string | null>(null);
+
   // One side panel at a time: opening one swaps out the others.
   const handleOpenThread = useCallback((message: Message) => {
     rememberPanelTrigger();
+    // Another thread than the one the URL names: the URL no longer names the open thread.
+    if (threadParamRef.current && threadParamRef.current !== message.id) dropThreadParam();
     setPendingThreadParentId(null);
     setPinnedPanelOpen(false);
     setSearchPanelOpen(false);
     setThreadParentMessage(message);
     threadParentIdRef.current = message.id;
     openThread(message.id);
-  }, [openThread, rememberPanelTrigger]);
+  }, [openThread, rememberPanelTrigger, dropThreadParam]);
+
+  // The pending parent came from the URL (not a pinned reply's click): given up once the loaded window lacks it.
+  const pendingFromUrlRef = useRef(false);
+  useEffect(() => {
+    if (threadParam !== closedThreadRef.current) closedThreadRef.current = null;
+    if (threadParam && threadParam !== closedThreadRef.current) {
+      pendingFromUrlRef.current = true;
+      setPendingThreadParentId(threadParam);
+    }
+  }, [threadParam]);
 
   const handleCloseThread = useCallback(() => {
     closeThread();
     setThreadParentMessage(null);
   }, [closeThread]);
+
+  // A thread that was open closed (its own Back or Close, the channel's Esc): the URL no longer names it.
+  const threadWasOpenRef = useRef(false);
+  const lastOpenThreadIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (openThreadId) {
+      threadWasOpenRef.current = true;
+      lastOpenThreadIdRef.current = openThreadId;
+      return;
+    }
+    if (!threadWasOpenRef.current) return;
+    threadWasOpenRef.current = false;
+    // Only the thread that was open: a link to another thread followed meanwhile keeps its param.
+    if (threadParam && threadParam === lastOpenThreadIdRef.current) {
+      closedThreadRef.current = threadParam;
+      dropThreadParam();
+    }
+  }, [openThreadId, threadParam, dropThreadParam]);
 
   const threadOpen = !!openThreadId && !!threadParentMessage;
   // Back closes a modal layer on touch layouts; the docked panel isn't a layer.
@@ -248,11 +303,25 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   useEffect(() => {
     if (!pendingThreadParentId) return;
     const parentMsg = messagesHookResult.messages.find((m: Message) => m.id === pendingThreadParentId);
-    if (parentMsg) {
+    // A message that is itself a thread reply is no thread: treated like a link that cannot be loaded.
+    if (parentMsg && parentMsg.parentMessageId == null) {
+      pendingFromUrlRef.current = false;
       handleOpenThread(parentMsg);
       setPendingThreadParentId(null);
+      return;
     }
-  }, [pendingThreadParentId, messagesHookResult.messages, handleOpenThread]);
+    // A link to a thread whose parent is not in the loaded window (no jump to it pending): the old chat cannot open
+    // it, so stop waiting instead of opening it out of the blue later.
+    if (
+      pendingFromUrlRef.current &&
+      (parentMsg || (!messagesHookResult.isLoading &&
+      !messagesHookResult.isJumpPending &&
+      !searchParams.has("highlight")))
+    ) {
+      pendingFromUrlRef.current = false;
+      setPendingThreadParentId(null);
+    }
+  }, [pendingThreadParentId, messagesHookResult.messages, messagesHookResult.isLoading, messagesHookResult.isJumpPending, searchParams, handleOpenThread]);
 
   // A pinned message was clicked: jump to it. The drawer closes; the docked
   // panel stays open so you can go through several pins. A pinned thread

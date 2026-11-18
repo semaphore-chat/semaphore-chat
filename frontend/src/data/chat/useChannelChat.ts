@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   channelsControllerGetMentionableChannelsOptions,
@@ -7,6 +7,8 @@ import {
 } from "../../api-client/@tanstack/react-query.gen";
 import { useAllCommunityMembers } from "../../hooks/useAllCommunityMembers";
 import { useJumpToMessage } from "../../hooks/useJumpToMessage";
+import { pinnedJumpTarget } from "./usePinnedList";
+import { searchWith } from "./threadParam";
 import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 
 export interface UseChannelChatOptions {
@@ -34,6 +36,9 @@ export function useChannelChat(
   // Get highlight message ID from URL params
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationStateRef = useRef(location.state);
+  locationStateRef.current = location.state;
   const highlightMessageId = searchParams.get("highlight");
 
   const { data: pinnedMessages = [] } = useQuery(moderationControllerGetPinnedMessagesOptions({ path: { channelId } }));
@@ -69,13 +74,16 @@ export function useChannelChat(
   // loaded, in the normal or anchored window). useJumpToMessage keeps the id
   // locally for scroll/flash, and clearing lets the same pinned message be
   // re-clicked. Clearing earlier would drop a cold deep link on the floor.
+  // Only `highlight` goes: the rest of the query (an open `?thread=`) and the entry's state stay.
+  const searchWithoutHighlight = searchWith(searchParams, "highlight", null);
   useEffect(() => {
     if (highlightMessageId && !isJumpPending) {
-      navigate(chatPath, {
+      navigate(`${chatPath}${searchWithoutHighlight}`, {
         replace: true,
+        state: locationStateRef.current,
       });
     }
-  }, [highlightMessageId, isJumpPending, chatPath, navigate]);
+  }, [highlightMessageId, isJumpPending, chatPath, navigate, searchWithoutHighlight]);
 
   /**
    * Jump to a pinned message (`?highlight=`). A pinned thread reply jumps to
@@ -84,13 +92,10 @@ export function useChannelChat(
    */
   const jumpToPinnedMessage = (messageId: string, navOptions: { replace: boolean }) => {
     const pinnedMsg = pinnedMessages.find(m => m.id === messageId);
-    if (pinnedMsg?.parentMessageId) {
-      // Thread reply: jump to parent message and open the thread panel
-      onPinnedThreadReply?.(pinnedMsg.parentMessageId);
-      navigate(`${chatPath}?highlight=${pinnedMsg.parentMessageId}`, navOptions);
-    } else {
-      navigate(`${chatPath}?highlight=${messageId}`, navOptions);
-    }
+    const target = pinnedJumpTarget(pinnedMsg ?? { id: messageId, parentMessageId: null });
+    // Thread reply: jump to parent message and open the thread panel
+    if (target.thread) onPinnedThreadReply?.(target.thread);
+    navigate(`${chatPath}?highlight=${target.highlight}`, navOptions);
   };
 
   return { pinnedMessages, userMentions, channelMentions, messagesHookResult, jumpToPinnedMessage };

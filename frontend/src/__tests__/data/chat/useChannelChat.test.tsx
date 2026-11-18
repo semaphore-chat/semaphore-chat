@@ -97,6 +97,14 @@ describe('useChannelChat', () => {
     expect(vi.mocked(useJumpToMessage).mock.lastCall).toEqual(['channel', 'ch-1', undefined]);
   });
 
+  it('clearing ?highlight= keeps an open ?thread= (the two never fight)', () => {
+    vi.mocked(useJumpToMessage).mockReturnValue(jumpResult(true) as never);
+    const { result, rerender } = setup('/community/c-1/channel/ch-1?highlight=m-7&thread=p-1');
+    vi.mocked(useJumpToMessage).mockReturnValue(jumpResult(false) as never);
+    rerender();
+    expect(result.current.url).toBe('/community/c-1/channel/ch-1?thread=p-1');
+  });
+
   it('builds the mention lists from the members and mentionable channels', () => {
     const { result } = setup('/community/c-1/channel/ch-1');
     expect(result.current.chat.userMentions).toEqual([

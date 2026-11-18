@@ -9,8 +9,11 @@
  * what rows share (`ChatRowContext`) holds only stable values.
  */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { moderationControllerGetPinnedMessagesOptions } from '../../../../api-client/@tanstack/react-query.gen';
+import type { PinnedMessageDto } from '../../../../api-client/types.gen';
+import { pinnedJumpTarget } from '../../../../data/chat/usePinnedList';
 import {
   Button,
   ChatPane,
@@ -24,6 +27,7 @@ import {
 } from '../../../../kit';
 import { useConversation, type Conversation } from '../../../../data/chat/useConversation';
 import { createEditingStore } from '../../../../data/chat/editingStore';
+import { readThreadParam, searchWith, THREAD_PARAM } from '../../../../data/chat/threadParam';
 import { useReplyAndEdit } from '../../../../data/chat/useReplyAndEdit';
 import { VoiceSessionType } from '../../../../contexts/VoiceContext';
 import { useHapticFeedback } from '../../../../hooks/useHapticFeedback';
@@ -50,6 +54,8 @@ import { ChatComposer } from './ChatComposer';
 import { MessageActionsSheet } from './MessageActionsSheet';
 import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
 import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
+import { ThreadView } from './ThreadView';
+import { PinnedSheet } from './PinnedSheet';
 import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
 
@@ -120,8 +126,47 @@ function useChatBack(communityId: string): { onBack: () => void; goHome: () => v
   return { onBack, goHome };
 }
 
+/** The history entry a thread was opened into from this chat (Back then closes it with a step back). */
+interface ThreadEntryState {
+  threadFrom?: string;
+}
+
+/**
+ * Where focus goes when the thread closes: what opened it (the "3 replies" button, or the row "Reply in thread" came
+ * from), else the parent's row, else the composer's field. Tried over a few frames: the channel underneath stops
+ * being inert, and a row the list had recycled comes back after scrolling to it.
+ */
+function focusAfterThread(opener: HTMLElement | null, parentId: string | null, scrollTo: (id: string) => void, field: HTMLElement | null) {
+  const usable = (element: Element | null | undefined): element is HTMLElement =>
+    element instanceof HTMLElement && element.isConnected && element.closest('[inert]') === null;
+  if (parentId !== null && !usable(opener)) scrollTo(parentId);
+  let frames = 0;
+  const attempt = () => {
+    const active = document.activeElement;
+    // Something else took focus meanwhile (a sheet, the reader): leave it.
+    if (active !== null && active !== document.body && usable(active)) return;
+    if (usable(opener)) return opener.focus({ preventScroll: true });
+    const row =
+      parentId === null
+        ? null
+        : [...document.querySelectorAll<HTMLElement>('[data-message-id]')]
+            .find((element) => element.dataset.messageId === parentId && element.closest('[inert]') === null)
+            ?.querySelector<HTMLElement>('[data-row-focus-target]');
+    if (usable(row)) return row.focus({ preventScroll: true });
+    frames += 1;
+    if (frames < 10) {
+      requestAnimationFrame(attempt);
+      return;
+    }
+    if (usable(field)) field.focus({ preventScroll: true });
+  };
+  requestAnimationFrame(attempt);
+}
+
 function ChannelChatBody({ communityId, channelId }: { communityId: string; channelId: string }): JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const links = useLoungeLinks();
   const chatPath = pathOf(links.channel(communityId, channelId));
@@ -129,7 +174,9 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   // Only a channel the list confirms is a text channel may be written to (I1): a channel missing from the list
   // (no access, deleted) reads without a composer, reactions or actions.
   const writable = channel?.type === ChannelType.TEXT;
-  const conversation = useConversation({ communityId, channelId, chatPath });
+  // The open thread (`?thread=`): it covers the channel, which then marks nothing read and announces nothing.
+  const threadId = readThreadParam(searchParams);
+  const conversation = useConversation({ communityId, channelId, chatPath, covered: threadId !== null });
   const range = useWidthRange();
   const { rightOpen, setRightOpen } = useScreenChrome();
   const openProfile = useContext(UserProfileContext)?.openProfile;
@@ -138,7 +185,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   const opener = useAttachmentOpener(reportOpenError);
   const { byId: emojiById } = useCommunityCustomEmojis(communityId);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const threadInputRef = useRef<HTMLTextAreaElement>(null);
   const [editing] = useState(createEditingStore);
+  // The thread's own edit state: its parent is also a row of the channel underneath, which must not edit too.
+  const [threadEditing] = useState(createEditingStore);
   const haptics = useHapticFeedback();
   const hapticsRef = useRef(haptics);
   hapticsRef.current = haptics;
@@ -191,7 +241,74 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     },
     [handleQuoteReply, focusComposer],
   );
-  const onEdit = useCallback((message: Message) => editing.start(message.id), [editing]);
+  const threadOpen = threadId !== null;
+  const onEdit = useCallback(
+    (message: Message) => (threadOpen ? threadEditing : editing).start(message.id),
+    [editing, threadEditing, threadOpen],
+  );
+
+  // --- The thread: opened into a new history entry (Back closes it), on the channel's own path ---
+  const searchRef = useRef(searchParams);
+  searchRef.current = searchParams;
+  const threadOpener = useRef<HTMLElement | null>(null);
+  // Through a ref, so the rows' shared context does not change with the navigate function.
+  const threadNavigate = useRef(navigate);
+  threadNavigate.current = navigate;
+  const openThread = useCallback(
+    (message: Message, opener: HTMLElement | null) => {
+      const active = document.activeElement;
+      threadOpener.current = opener ?? (active instanceof HTMLElement && active !== document.body ? active : null);
+      const state: ThreadEntryState = { threadFrom: chatPath };
+      // A jump still settling stays with the channel's entry: the thread's entry has no `?highlight=` (Back would
+      // run the jump again).
+      const withoutJump = new URLSearchParams(searchWith(searchRef.current, 'highlight', null));
+      threadNavigate.current(`${chatPath}${searchWith(withoutJump, THREAD_PARAM, message.id)}`, { state });
+    },
+    [chatPath],
+  );
+  const openThreadFromActions = useCallback((message: Message) => openThread(message, actionsRow.current), [openThread]);
+  const closeThread = useCallback(() => {
+    if ((location.state as ThreadEntryState | null)?.threadFrom === chatPath) navigate(-1);
+    else navigate(`${chatPath}${searchWith(searchRef.current, THREAD_PARAM, null)}`, { replace: true });
+  }, [location.state, chatPath, navigate]);
+  // Closed (Back, its button, the browser's Back): focus back where it came from.
+  const lastThread = useRef<string | null>(threadId);
+  useEffect(() => {
+    const was = lastThread.current;
+    lastThread.current = threadId;
+    if (was === null || threadId !== null) return;
+    const opener = threadOpener.current;
+    threadOpener.current = null;
+    focusAfterThread(opener, was, (id) => conversation.listRef.current?.scrollToMessage(id), inputRef.current);
+  }, [threadId, conversation.listRef]);
+  // --- Pinned messages: a sheet from More; a jump closes it and centres the message (a thread reply: its parent,
+  // then its thread opens, in a new entry so Back closes it) ---
+  // Only for a known text channel: an unknown, gone or forbidden one would only earn a refusal.
+  const { data: pins = [] } = useQuery({ ...moderationControllerGetPinnedMessagesOptions({ path: { channelId } }), enabled: writable });
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [pinnedOpener, setPinnedOpener] = useState<HTMLElement | null>(null);
+  const showPinned = useCallback((opener: HTMLElement | null) => {
+    setPinnedOpener(opener);
+    setPinnedOpen(true);
+  }, []);
+  const closePinned = useCallback(() => setPinnedOpen(false), []);
+  const jumpToPin = useCallback(
+    (pin: PinnedMessageDto) => {
+      const target = pinnedJumpTarget(pin);
+      if (target.thread !== undefined) {
+        threadOpener.current = null;
+        const state: ThreadEntryState = { threadFrom: chatPath };
+        navigate(`${chatPath}?highlight=${target.highlight}&${THREAD_PARAM}=${target.thread}`, { state });
+      } else {
+        navigate(`${chatPath}?highlight=${target.highlight}`, { replace: true });
+      }
+    },
+    [chatPath, navigate],
+  );
+  const threadParent = useMemo(
+    () => (threadId === null ? null : (conversation.orderedMessages.find((m) => m.id === threadId) ?? null)),
+    [threadId, conversation.orderedMessages],
+  );
   // One sender for the whole list's Retry (not one socket hook per row), read through a ref so the rows' shared
   // context stays the same when the connection changes.
   const { sendMessage: rawSend } = useSendMessage(VoiceSessionType.Channel);
@@ -251,8 +368,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       editing,
       retrySend,
       removeFailed,
+      openThread,
     }),
     [
+      openThread,
       conversation.me,
       communityId,
       writable,
@@ -313,6 +432,8 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
                 : () => setRightOpen(true)
             }
             onSearch={() => navigate(`/community/${communityId}/channel/${channelId}/search`)}
+            onShowPinned={face === 'gone' || face === 'noAccess' ? undefined : showPinned}
+            pinnedCount={pins.length}
           />
         }
         state={state}
@@ -324,6 +445,23 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
           ) : undefined
         }
         announcement={conversation.announcement}
+        cover={
+          threadId !== null ? (
+            <ThreadView
+              key={threadId}
+              communityId={communityId}
+              channelId={channelId}
+              channelTitle={channel === null ? null : channelTitle(channel)}
+              parentMessageId={threadId}
+              parent={threadParent}
+              writable={writable}
+              shared={shared}
+              editing={threadEditing}
+              inputRef={threadInputRef}
+              onClose={closeThread}
+            />
+          ) : undefined
+        }
         composer={
           writable && (face === 'list' || face === 'empty') ? (
             <ChatComposer
@@ -342,10 +480,22 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         me={conversation.me}
         communityId={communityId}
         onDone={closeActions}
-        onReply={onReply}
+        // Inside a thread: no quote reply and no thread of a thread (as the old thread panel).
+        onReply={threadOpen ? undefined : onReply}
+        onReplyInThread={threadOpen ? undefined : openThreadFromActions}
         onEdit={onEdit}
         onShowReactions={showReactionsFromActions}
       />
+      {pinnedOpen && (
+        <PinnedSheet
+          communityId={communityId}
+          channelId={channelId}
+          writable={writable}
+          opener={pinnedOpener}
+          onDone={closePinned}
+          onJump={jumpToPin}
+        />
+      )}
       <MessageMediaViewer request={viewer} opener={opener} onDone={closeViewer} />
       <ReactionPeopleSheet request={reactionPeople} me={conversation.me} emoji={segments} onDone={closeReactions} />
     </ChatRowContext>

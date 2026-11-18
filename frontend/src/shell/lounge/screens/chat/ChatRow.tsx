@@ -21,7 +21,9 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   AttachmentTile,
+  Button,
   Composer,
+  Icon,
   LinkCard,
   ListSeparator,
   MessageQuote,
@@ -29,7 +31,6 @@ import {
   MessageText,
   ReactionChip,
   Stack,
-  Text,
   personColour,
   safeHref,
   useAnnounce,
@@ -92,6 +93,11 @@ export interface ChatRowShared {
   retrySend(message: Message): Promise<void>;
   /** Drops a failed message (it was never sent). */
   removeFailed(message: Message): void;
+  /**
+   * Opens the message's thread; `opener` is where focus goes back when it closes. Undefined inside a thread (its
+   * parent's count is the separator under it, not a button).
+   */
+  openThread?: (message: Message, opener: HTMLElement | null) => void;
 }
 
 export const ChatRowContext = createContext<ChatRowShared | null>(null);
@@ -452,8 +458,25 @@ function useFailedReason(message: Message, communityId: string, serverReason: st
   return failed ? sendFailureReason(serverReason, timedOutUntil) : serverReason;
 }
 
-function repliesText(count: number): string {
+export function repliesText(count: number): string {
   return count === 1 ? '1 reply' : `${count} replies`;
+}
+
+/** The row's "3 replies": a button that opens the thread (focus comes back to it when the thread closes). */
+function RepliesButton({ message, open }: { message: Message; open: (message: Message, opener: HTMLElement | null) => void }): JSX.Element {
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <Button
+      ref={button}
+      variant="text"
+      size="sm"
+      startIcon={<Icon name="MessageSquare" size="sm" />}
+      aria-label={`${repliesText(message.replyCount)}, open the thread`}
+      onClick={() => open(message, button.current)}
+    >
+      {repliesText(message.replyCount)}
+    </Button>
+  );
 }
 
 function ChatRowBody({
@@ -565,11 +588,9 @@ function ChatRowBody({
         }
         reactions={!view.optimistic && message.reactions.length > 0 ? <Reactions message={message} row={rowRef} /> : undefined}
         footer={
-          message.replyCount > 0 ? (
-            // Threads are not in the new shell yet (owner default): the count, as plain text.
-            <Text variant="small" tone="secondary">
-              {repliesText(message.replyCount)}
-            </Text>
+          // Inside a thread the parent's count is the separator under it; a pending or failed row has no thread.
+          message.replyCount > 0 && shared.openThread !== undefined && !view.optimistic ? (
+            <RepliesButton message={message} open={shared.openThread} />
           ) : undefined
         }
         onOpenAuthor={view.hasProfile && openProfile && authorId ? () => openProfile(authorId) : undefined}
