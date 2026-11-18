@@ -13,7 +13,7 @@ This release is a security fix for stored attachments and the first big step of 
 
 ### ⚠️ Breaking changes / upgrade checklist
 
-- **One database migration for appearance settings.** `20261115022623_appearance_base_color` adds three columns to `UserAppearanceSettings`: `baseColor` (text), `matchSystem` (true/false, default false) and `newDesign` (true/false, default false). It fills each existing row's `baseColor` from its accent, so existing users keep their look. A row with an accent that no client knows is set to `blue`. It changes the `accentColor` default to `purple`. An account that never loaded the app while the table existed is treated as new: its current design shows the new violet default rather than the old `blue` one. No other data changes. Back up your database before upgrading. (#782)
+- **One database migration for appearance settings.** `20261115022623_appearance_base_color` adds three columns to `UserAppearanceSettings`: `baseColor` (text), `matchSystem` (true/false, default false) and `newDesign` (true/false, default false). It fills each existing row's `baseColor` from its accent, so existing users keep their look. A row with an accent that no client knows is set to `blue`. It changes the `accentColor` default to `purple`. An account that never loaded the app while the table existed is treated as new: its current design shows the new purple default rather than the old `blue` one. No other data changes. Back up your database before upgrading. (#782)
 - **A file declared as `application/octet-stream` now downloads** instead of showing in the browser. (#840)
 - **A PDF opened from its direct file URL now downloads** instead of opening in the browser's viewer. The web app never opens files that way, so it is not affected. (#840)
 - **SVG, HEIC and BMP attachments show as a file card** with a Download button, not as a picture. (#841)
@@ -21,7 +21,7 @@ This release is a security fix for stored attachments and the first big step of 
 
 ### Security
 
-- **Stored attachment types** — Attachment types are whatever the uploader declared. They are now cleaned up (lower case, no parameters; a type that can't be read becomes `application/octet-stream`) when a file is stored and when it is served, so existing files are covered without a migration. The list of types that always download instead of showing in the browser is wider: the XML family, script types and unreadable types. Responses for stored files (file, thumbnail and replay download) now carry `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`. (#840)
+- **Stored attachment types** — Attachment types are whatever the uploader declared. They are now cleaned up (lowercase, no parameters; a type that can't be read becomes `application/octet-stream`) when a file is stored and when it is served, so existing files are covered without a migration. The list of types that always download instead of showing in the browser is wider: the XML family, script types and unreadable types. Responses for stored files (file, thumbnail and replay download) now carry `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`. (#840)
 - **Attachments drawn as pictures** — Attachments are drawn as pictures and opened in the picture viewer only when they are raster pictures. SVG, HEIC and BMP attachments now show as a file card with Download, in both the current and the new design. (#841)
 
 Upgrade soon. The behaviour changes are listed in the checklist above.
