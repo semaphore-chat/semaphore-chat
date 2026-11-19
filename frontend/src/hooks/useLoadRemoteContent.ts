@@ -9,13 +9,18 @@ import { appearanceSettingsControllerGetSettingsOptions } from '../api-client/@t
  * It reads the appearance settings the app shell already loads at start (`useThemeSync`): the same query, never a
  * request of its own (`staleTime: Infinity` keeps a mounting row from refetching it), and `select` makes a row
  * re-render only when the answer changes. Until the settings are known it answers false: a user who turned it off
- * never sends a request on the first paint.
+ * never sends a request on the first paint. Settings that arrived without the field (an older server: the desktop app
+ * ships its own frontend and meets older servers) mean on, as before the setting existed.
+ *
+ * The query is shared and owned by the shell: `retryOnMount: false` stops every row that mounts from refetching a
+ * failed request; the shell's own observer does the normal retry and backoff.
  */
 export function useLoadRemoteContent(): boolean {
   const { data } = useQuery({
     ...appearanceSettingsControllerGetSettingsOptions(),
     staleTime: Infinity,
-    select: (settings) => settings.loadRemoteContent === true,
+    retryOnMount: false,
+    select: (settings) => (settings.loadRemoteContent as boolean | undefined) !== false,
   });
   return data === true;
 }

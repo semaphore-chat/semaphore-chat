@@ -127,6 +127,45 @@ for (const shell of ['classic', 'lounge'] as const) {
       );
       await decorateMessages(page, ids);
       await openChannel(page, shell, world);
+      // Lazy pictures load once in view: bring the card into view and expect its banner too.
+      await page.getByText('The ridge loop, in late autumn').scrollIntoViewIfNeeded();
+      await expect
+        .poll(() => [...new Set(otherHosts)], EVENTUAL)
+        .toEqual(expect.arrayContaining([GIF, ICON, AVATAR, BANNER]));
+    } finally {
+      await context.close();
+    }
+  });
+
+  test(`not yet known: nothing leaves while the settings are still loading (${shell})`, async ({
+    browser,
+    request,
+    baseURL,
+  }) => {
+    const world = await loungeWorld(request);
+    const ids = await seed(request, world);
+    // The setting is ON: only the withheld "not known yet" state keeps the pictures back.
+    await setLoadRemoteContent(request, world.member.token, true);
+    const { context, page } = await openSession(browser, world.member, shell === 'lounge' ? PHONE : DESKTOP);
+    try {
+      const otherHosts = recordOtherHosts(page, new URL(baseURL!).origin);
+      await page.route(/remote-e2e\.test\/|media\.giphy\.com\//, (route) =>
+        route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL }),
+      );
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      await page.route(/\/api\/appearance-settings$/, async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        await held;
+        return route.fallback();
+      });
+      await decorateMessages(page, ids);
+      await openChannel(page, shell, world);
+      await page.getByText('The ridge loop, in late autumn').scrollIntoViewIfNeeded();
+      // The held request keeps the network from going idle: give any stray request a moment instead.
+      await page.waitForTimeout(1500);
+      expect(otherHosts).toEqual([]);
+      release();
       await expect.poll(() => [...new Set(otherHosts)], EVENTUAL).toEqual(expect.arrayContaining([GIF, ICON, AVATAR]));
     } finally {
       await context.close();

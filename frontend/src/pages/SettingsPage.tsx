@@ -67,7 +67,7 @@ export const PrivacySettings: React.FC = () => {
   const queryClient = useQueryClient();
   const queryKey = appearanceSettingsControllerGetSettingsQueryKey();
   const { data, isPending, isError } = useQuery(appearanceSettingsControllerGetSettingsOptions());
-  const { mutate, isError: saveFailed } = useMutation({
+  const { mutate, isError: saveFailed, isPending: saving } = useMutation({
     ...appearanceSettingsControllerUpdateSettingsMutation(),
     onMutate: async ({ body }) => {
       await queryClient.cancelQueries({ queryKey });
@@ -87,6 +87,8 @@ export const PrivacySettings: React.FC = () => {
   });
 
   if (isPending) return <SettingsCardSkeleton rows={1} label="Loading privacy settings" />;
+  // An older server does not know the setting: nothing to switch, and its pictures stay on.
+  if (!isError && data && typeof (data as { loadRemoteContent?: unknown }).loadRemoteContent !== 'boolean') return null;
 
   return (
     <Card sx={{ mb: 3 }}>
@@ -103,20 +105,25 @@ export const PrivacySettings: React.FC = () => {
               control={
                 <Switch
                   checked={data.loadRemoteContent}
+                  disabled={saving}
                   onChange={(event) => mutate({ body: { loadRemoteContent: event.target.checked } })}
+                  slotProps={{ input: { 'aria-describedby': 'load-remote-content-description' } }}
                 />
               }
-              label={
-                <Box>
-                  <Typography variant="body1">Load pictures and previews from other sites</Typography>
-                  <Typography variant="caption" color="text.secondary" component="p">
-                    Shows link pictures, site icons, GIFs and webhook avatars automatically. Turn this off to keep
-                    other sites from seeing your IP address: links then show their text only. GIFs you browse in
-                    the GIF picker always load.
-                  </Typography>
-                </Box>
-              }
+              label="Load pictures and previews from other sites"
             />
+            <Typography
+              id="load-remote-content-description"
+              variant="caption"
+              color="text.secondary"
+              component="p"
+              sx={{ ml: 6 }}
+            >
+              Shows link pictures, site icons, GIFs and webhook avatars automatically. Turn this off to keep other
+              sites from seeing your IP address: links then show their text only. GIFs you browse in the GIF picker
+              always load. It applies to this app in the browser and the current desktop app; older desktop builds and
+              other clients may still load pictures.
+            </Typography>
             {saveFailed && (
               <Alert severity="error" sx={{ mt: 2 }}>
                 Could not save the setting. Try again.

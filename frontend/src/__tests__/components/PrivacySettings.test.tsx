@@ -37,6 +37,43 @@ describe('PrivacySettings', () => {
     expect(await screen.findByRole('switch', SWITCH)).toBeChecked();
     expect(screen.getByText(/keep other sites from seeing your IP address/)).toBeInTheDocument();
     expect(screen.getByText(/GIF picker always load/)).toBeInTheDocument();
+    expect(screen.getByText(/older desktop builds and other clients may still load pictures/)).toBeInTheDocument();
+  });
+
+  it('names the switch by its short label and describes it with the caption', async () => {
+    serve(true, () => HttpResponse.json({}));
+    renderWithProviders(<PrivacySettings />);
+    const toggle = await screen.findByRole('switch', { name: 'Load pictures and previews from other sites' });
+    expect(toggle).toHaveAccessibleDescription(/keep other sites from seeing your IP address/);
+  });
+
+  it('is hidden when an older server sends no such setting', async () => {
+    server.use(
+      http.get(URL, () => {
+        const { loadRemoteContent: _omit, ...old } = createAppearanceSettings();
+        return HttpResponse.json(old);
+      }),
+    );
+    const { container } = renderWithProviders(<PrivacySettings />);
+    await waitFor(() => expect(screen.queryByLabelText('Loading privacy settings')).not.toBeInTheDocument());
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent('Privacy');
+  });
+
+  it('is disabled while saving, so quick toggles cannot cross', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    serve(true, async () => {
+      await held;
+      return HttpResponse.json(createAppearanceSettings({ loadRemoteContent: false }));
+    });
+    const { user } = renderWithProviders(<PrivacySettings />);
+    const toggle = await screen.findByRole('switch', SWITCH);
+    await user.click(toggle);
+    expect(toggle).toBeDisabled();
+    release();
+    await waitFor(() => expect(screen.getByRole('switch', SWITCH)).toBeEnabled());
+    expect(screen.getByRole('switch', SWITCH)).not.toBeChecked();
   });
 
   it('turning it off sends only loadRemoteContent and updates the shared settings at once', async () => {

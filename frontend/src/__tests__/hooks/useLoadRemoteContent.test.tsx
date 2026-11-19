@@ -46,6 +46,41 @@ describe('useLoadRemoteContent', () => {
     expect(result.current).toBe(false);
   });
 
+  it('answers true when an older server sends settings without the field', async () => {
+    server.use(
+      http.get(URL, () => {
+        const { loadRemoteContent: _omit, ...old } = createAppearanceSettings();
+        return HttpResponse.json(old);
+      }),
+    );
+    const { result } = setup();
+    expect(result.current).toBe(false);
+    await waitFor(() => expect(result.current).toBe(true));
+  });
+
+  it('stays false when the settings request failed, and a mounting row does not refetch it', async () => {
+    let requests = 0;
+    server.use(
+      http.get(URL, () => {
+        requests += 1;
+        return HttpResponse.json({ message: 'nope' }, { status: 500 });
+      }),
+    );
+    const { queryClient, result } = setup();
+    await waitFor(() => expect(requests).toBeGreaterThan(0));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    const before = requests;
+    const second = renderHook(() => useLoadRemoteContent(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      ),
+    });
+    await act(async () => {});
+    expect(result.current).toBe(false);
+    expect(second.result.current).toBe(false);
+    expect(requests).toBe(before);
+  });
+
   it('reads the settings already in the cache without a request of its own, even when they are old', async () => {
     let requests = 0;
     server.use(
