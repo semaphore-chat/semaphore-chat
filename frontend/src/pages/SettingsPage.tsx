@@ -63,6 +63,10 @@ interface HealthResponse {
  * GIF links drawn as the GIF, webhook avatars). Stored with the appearance settings (`loadRemoteContent`), the
  * query both shells already load at start; the switch moves at once and goes back if the save fails.
  */
+/** An older server does not know the setting: nothing to switch, so no Privacy card and no nav entry. */
+const privacyUnsupported = (data: unknown, isError: boolean): boolean =>
+  !isError && !!data && typeof (data as { loadRemoteContent?: unknown }).loadRemoteContent !== 'boolean';
+
 export const PrivacySettings: React.FC = () => {
   const queryClient = useQueryClient();
   const queryKey = appearanceSettingsControllerGetSettingsQueryKey();
@@ -88,7 +92,7 @@ export const PrivacySettings: React.FC = () => {
 
   if (isPending) return <SettingsCardSkeleton rows={1} label="Loading privacy settings" />;
   // An older server does not know the setting: nothing to switch, and its pictures stay on.
-  if (!isError && data && typeof (data as { loadRemoteContent?: unknown }).loadRemoteContent !== 'boolean') return null;
+  if (privacyUnsupported(data, isError)) return null;
 
   return (
     <Card sx={{ mb: 3 }}>
@@ -254,13 +258,16 @@ const SettingsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [isElectronApp, setIsElectronApp] = useState(false);
   const { isDesktop } = useResponsive();
+  // Same (shared) query as PrivacySettings, so the nav and the card agree.
+  const appearance = useQuery(appearanceSettingsControllerGetSettingsOptions());
+  const showPrivacy = !privacyUnsupported(appearance.data, appearance.isError);
 
   // Section nav for the desktop form shell; the Electron-only section only when present.
   const sections: FormPageSection[] = [
     { id: 'settings-notifications', label: 'Notifications' },
     { id: 'settings-voice', label: 'Voice & video' },
     { id: 'settings-appearance', label: 'Appearance' },
-    { id: 'settings-privacy', label: 'Privacy' },
+    ...(showPrivacy ? [{ id: 'settings-privacy', label: 'Privacy' }] : []),
     { id: 'settings-sessions', label: 'Sessions' },
     ...(isElectronApp ? [{ id: 'settings-desktop-app', label: 'Desktop app' }] : []),
   ];
