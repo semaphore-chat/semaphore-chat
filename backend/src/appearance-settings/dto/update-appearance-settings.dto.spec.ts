@@ -91,6 +91,7 @@ describe('UpdateAppearanceSettingsDto', () => {
       'baseColor',
       'matchSystem',
       'newDesign',
+      'loadRemoteContent',
     ] as const;
 
     for (const property of properties) {
@@ -103,14 +104,22 @@ describe('UpdateAppearanceSettingsDto', () => {
     }
   });
 
-  it('should accept boolean matchSystem and newDesign', async () => {
-    const dto = createDto({ matchSystem: true, newDesign: false });
+  it('should accept boolean matchSystem, newDesign and loadRemoteContent', async () => {
+    const dto = createDto({
+      matchSystem: true,
+      newDesign: false,
+      loadRemoteContent: false,
+    });
     const errors = await validate(dto);
     expect(errors).toHaveLength(0);
   });
 
   it('should reject non-boolean matchSystem and newDesign', async () => {
-    for (const property of ['matchSystem', 'newDesign'] as const) {
+    for (const property of [
+      'matchSystem',
+      'newDesign',
+      'loadRemoteContent',
+    ] as const) {
       for (const value of ['true', 1, 'yes']) {
         const dto = plainToInstance(UpdateAppearanceSettingsDto, {
           [property]: value,

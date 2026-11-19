@@ -16686,6 +16686,10 @@
           "newDesign": {
             "type": "boolean"
           },
+          "loadRemoteContent": {
+            "type": "boolean",
+            "description": "Load pictures, site icons, GIFs and webhook avatars from other sites automatically."
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -16704,6 +16708,7 @@
           "baseColor",
           "matchSystem",
           "newDesign",
+          "loadRemoteContent",
           "createdAt",
           "updatedAt"
         ]
@@ -16777,6 +16782,10 @@
           "newDesign": {
             "type": "boolean",
             "description": "Use the new design"
+          },
+          "loadRemoteContent": {
+            "type": "boolean",
+            "description": "Load pictures, site icons, GIFs and webhook avatars from other sites automatically (false: text only)"
           }
         }
       },

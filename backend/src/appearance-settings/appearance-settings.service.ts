@@ -24,6 +24,7 @@ export class AppearanceSettingsService {
         accentColor: nearestAccent(DEFAULT_BASE_COLOR),
         matchSystem: false,
         newDesign: false,
+        loadRemoteContent: true,
       },
       update: {},
     });

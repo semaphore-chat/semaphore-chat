@@ -88,4 +88,13 @@ export class UpdateAppearanceSettingsDto {
     description: 'Use the new design',
   })
   newDesign?: boolean;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsBoolean()
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Load pictures, site icons, GIFs and webhook avatars from other sites automatically (false: text only)',
+  })
+  loadRemoteContent?: boolean;
 }

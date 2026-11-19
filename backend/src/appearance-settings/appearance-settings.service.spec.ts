@@ -34,6 +34,7 @@ describe('AppearanceSettingsService', () => {
     baseColor: '#3b82f6',
     matchSystem: false,
     newDesign: false,
+    loadRemoteContent: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -44,6 +45,7 @@ describe('AppearanceSettingsService', () => {
     accentColor: 'purple',
     matchSystem: false,
     newDesign: false,
+    loadRemoteContent: true,
   };
 
   beforeEach(async () => {

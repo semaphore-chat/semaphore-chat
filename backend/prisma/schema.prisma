@@ -260,6 +260,7 @@ model UserAppearanceSettings {
   baseColor   String   @default("#8e75ff") // lowercase #rrggbb
   matchSystem Boolean  @default(false) // follow the OS light/dark
   newDesign   Boolean  @default(false) // "Try the new design"
+  loadRemoteContent Boolean @default(true) // pictures, site icons, GIFs and webhook avatars from other sites; false = text only
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
