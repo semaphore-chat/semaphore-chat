@@ -10,6 +10,7 @@ import { ElectronProvider } from '../../contexts/ElectronProvider';
 import type { ElectronAPI } from '../../types/electron-api';
 import { generateTheme } from '../../theme/themeConfig';
 import { createTestQueryClient } from './queryClient';
+import { seedAppearanceSettings } from './appearanceSettings';
 import type { MockSocket } from './mockSocket';
 
 const defaultTheme = generateTheme('dark', 'blue', 'balanced');
@@ -29,6 +30,12 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
    * with `setElectronAPIOverride()`.
    */
   electronAPI?: ElectronAPI | null;
+  /**
+   * Seeds the appearance settings with this "Load pictures and previews from other sites" value, as the app shell
+   * has them once started (`seedAppearanceSettings`). Omit to leave them unloaded (pictures withheld until a
+   * request for them is answered).
+   */
+  loadRemoteContent?: boolean;
 }
 
 export function renderWithProviders(
@@ -43,8 +50,11 @@ export function renderWithProviders(
     withRouter = true,
     withTheme = true,
     electronAPI,
+    loadRemoteContent,
     ...renderOptions
   } = options;
+
+  if (loadRemoteContent !== undefined) seedAppearanceSettings(queryClient, { loadRemoteContent });
 
   const user = userEvent.setup();
 

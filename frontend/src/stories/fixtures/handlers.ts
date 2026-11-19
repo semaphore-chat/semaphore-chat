@@ -525,6 +525,7 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
         baseColor: '#3b82f6',
         matchSystem: false,
         newDesign: false,
+        loadRemoteContent: scenario.loadRemoteContent ?? true,
         createdAt: '2025-01-01T00:00:00Z',
         updatedAt: '2025-01-01T00:00:00Z',
       } satisfies AppearanceSettingsResponseDto)),

@@ -158,4 +158,12 @@ describe('LinkPreviewCard', () => {
     fireEvent.error(favicon);
     expect(favicon.style.display).toBe('none');
   });
+
+  it('showPictures false: the words and the generic link icon, no picture box, nothing fetched', () => {
+    const { container } = renderWithTheme(<LinkPreviewCard preview={makePreview()} showPictures={false} />);
+
+    expect(screen.getByText('Example Article')).toBeDefined();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('[data-testid="LinkIcon"]')).not.toBeNull();
+  });
 });

@@ -172,7 +172,7 @@ function makeConversation(orderedMessages: Message[]): Conversation {
   };
 }
 
-function setup(messages: Message[]) {
+function setup(messages: Message[], { loadRemoteContent = true }: { loadRemoteContent?: boolean } = {}) {
   conversation.current = makeConversation(messages);
   const queryClient = createTestQueryClient();
   // What the test seeds stays fresh: no refetch races the test's end (an aborted request MSW already answered).
@@ -200,7 +200,7 @@ function setup(messages: Message[]) {
         </LoungeLinksContext>
       </KitProvider>
     </FileCacheProvider>,
-    { queryClient, routerProps: { initialEntries: ['/__lounge/community/c-1/channel/ch-1'] } },
+    { queryClient, loadRemoteContent, routerProps: { initialEntries: ['/__lounge/community/c-1/channel/ch-1'] } },
   );
 }
 
@@ -258,6 +258,36 @@ describe('ChannelChat rich rows', () => {
     expect(within(row).queryByRole('button', { name: 'Open image GIF' })).toBeNull();
     expect(within(row).getByRole('link', { name: /A GIF page/ })).toBeInTheDocument();
     expect(row.textContent).toContain('giphy.gif');
+  });
+
+  it('with pictures from other sites off: cards keep their words, a GIF stays its link, a webhook its initial; nothing is fetched', () => {
+    const gif = 'https://media.giphy.com/media/off/giphy.gif';
+    const { container } = setup(
+      [
+        createMessage({
+          id: 'm-card',
+          authorId: 'u-aiko',
+          spans: words('look https://example.com/a'),
+          linkPreviews: [
+            { url: 'https://example.com/a', title: 'An article', siteName: 'Example', imageUrl: 'https://cdn.example.com/b.jpg', faviconUrl: 'https://example.com/f.ico' },
+          ],
+        }),
+        createMessage({ id: 'm-gif', authorId: 'u-bo', spans: words(gif), linkPreviews: [{ url: gif, title: 'A GIF page', siteName: 'GIPHY' }] }),
+        createMessage({
+          id: 'm-hook',
+          authorId: null,
+          webhook: { id: 'wh-1', name: 'Deploy bot', avatarUrl: 'https://bots.example/deploy.png' },
+          spans: words('deployed'),
+        }),
+      ],
+      { loadRemoteContent: false },
+    );
+    const card = within(rowOf('look')).getByRole('link', { name: 'An article, Example, opens in a new tab' });
+    expect(card.querySelector('img')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open image GIF' })).toBeNull();
+    expect(within(rowOf('giphy.gif')).getByRole('link', { name: /A GIF page/ })).toBeInTheDocument();
+    const remote = [...container.querySelectorAll('img')].map((img) => img.getAttribute('src')).filter((src) => /^https?:/.test(src ?? ''));
+    expect(remote).toEqual([]);
   });
 
   it('a GIF address with a user name is not drawn as the GIF (its words show)', () => {

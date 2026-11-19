@@ -26,6 +26,7 @@ import { useMessageActions } from "../../data/chat/useMessageActions";
 import { useEditRequest } from "../../contexts/EditRequestContext";
 import { focusComposer } from "../../utils/shortcuts";
 import { isUserMentioned, getMessageLoneGifUrl } from "../../data/chat/messageUtils";
+import { useLoadRemoteContent } from "../../hooks/useLoadRemoteContent";
 import { GifEmbed } from "./GifEmbed";
 import UserAvatar from "../Common/UserAvatar";
 import ConfirmDialog from "../Common/ConfirmDialog";
@@ -175,8 +176,11 @@ function MessageComponentInner({
   // an inline <img> instead of raw link text + a link-preview card. If the
   // image fails to load, fall back to the original rendering rather than
   // showing nothing.
+  // With "Load pictures and previews from other sites" off, the GIF stays a
+  // plain link and a webhook keeps its initial: neither picture is fetched.
+  const loadRemoteContent = useLoadRemoteContent();
   const [gifEmbedFailed, setGifEmbedFailed] = useState(false);
-  const gifUrl = gifEmbedFailed ? null : getMessageLoneGifUrl(message);
+  const gifUrl = gifEmbedFailed || !loadRemoteContent ? null : getMessageLoneGifUrl(message);
 
   // Use extracted hook for cleaner permission logic
   const messagePermissions = useMessagePermissions({
@@ -405,7 +409,7 @@ function MessageComponentInner({
         <div style={{ width: 32, marginRight: 12, marginTop: 4, flexShrink: 0 }}>
           {isWebhookMessage ? (
             <Avatar
-              src={message.webhook?.avatarUrl ?? undefined}
+              src={loadRemoteContent ? message.webhook?.avatarUrl ?? undefined : undefined}
               slotProps={{ img: { referrerPolicy: 'no-referrer' } }}
               sx={{ width: 32, height: 32 }}
             >

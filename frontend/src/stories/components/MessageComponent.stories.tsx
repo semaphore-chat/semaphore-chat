@@ -148,3 +148,58 @@ export const WithChannelMentions = defineComponent(bigCommunityScenario, () => (
     />
   </WithChannelList>
 ));
+
+/** The reader turned "Load pictures and previews from other sites" off. */
+const remoteOffScenario = { ...bigCommunityScenario, loadRemoteContent: false };
+
+/**
+ * "Load pictures and previews from other sites" off: the link card keeps its words with the generic link icon and
+ * no picture box, the GIF link stays a link (with its card), and the webhook shows its initial. Nothing is fetched
+ * from those sites.
+ */
+export const RemoteContentOff = defineComponent(remoteOffScenario, () => (
+  <>
+    <MessageComponent
+      message={createMessage({
+        ...common,
+        spans: [createSpan({ text: 'the route for saturday https://trailheads.example/routes/ridge-loop' })],
+        linkPreviews: [
+          {
+            url: 'https://trailheads.example/routes/ridge-loop',
+            title: 'The ridge loop, in late autumn',
+            description: 'Eleven kilometres, one steep climb and the best view of the valley before the snow comes in.',
+            siteName: 'Trailheads',
+            imageUrl: 'https://trailheads.example/banner.png',
+            faviconUrl: 'https://trailheads.example/favicon.ico',
+          },
+        ],
+      })}
+      {...contextProps}
+    />
+    <MessageComponent
+      message={createMessage({
+        ...common,
+        authorId: bigCommunityScenario.users[1].id,
+        spans: [createSpan({ text: 'https://media.giphy.com/media/story/giphy.gif' })],
+        linkPreviews: [
+          {
+            url: 'https://media.giphy.com/media/story/giphy.gif',
+            title: 'Celebrate GIF',
+            siteName: 'GIPHY',
+            imageUrl: 'https://media.giphy.com/media/story/giphy.gif',
+          },
+        ],
+      })}
+      {...contextProps}
+    />
+    <MessageComponent
+      message={createMessage({
+        ...common,
+        authorId: null,
+        webhook: { id: 'wh-story', name: 'Deploy bot', avatarUrl: 'https://bots.example/deploy.png' },
+        spans: [createSpan({ text: 'Deployed v0.11.1 to staging.' })],
+      })}
+      {...contextProps}
+    />
+  </>
+));

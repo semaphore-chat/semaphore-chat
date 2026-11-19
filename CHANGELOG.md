@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes / upgrade checklist
+
+- **One database migration for appearance settings.** `20261119014603_add_load_remote_content` adds `loadRemoteContent` (true/false, default true) to `UserAppearanceSettings`. Every existing user keeps today's behaviour (pictures load). No other data changes.
+
+### Added
+
+- **Settings > Privacy: "Load pictures and previews from other sites".** On by default. Turn it off and the app stops loading pictures from other sites on its own: link previews show their title, site and description with a plain link icon, a GIF link stays a link, and webhooks show their initial instead of their avatar. Other sites then never see your IP address because of a message. GIFs you browse in the GIF picker still load. Both the current and the new design honour it. The setting is `loadRemoteContent` on `GET`/`PATCH /appearance-settings`; older app versions ignore it and keep loading pictures.
+
 ## [0.11.0] - 2026-11-18
 
 This release is a security fix for stored attachments and the first big step of a new design. The new design is hidden: nobody sees it unless they turn on a per-user setting that the app does not offer yet. Self-hosters should upgrade, because of the two attachment fixes under Security.
