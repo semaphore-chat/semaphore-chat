@@ -41,6 +41,7 @@ import type { WebhookDto } from "../../api-client/types.gen";
 import { useUserPermissions } from "../../features/roles/useUserPermissions";
 import { copyToClipboard } from "../../utils/clipboard";
 import ConfirmDialog from "../Common/ConfirmDialog";
+import { useLoadRemoteContent } from "../../hooks/useLoadRemoteContent";
 
 interface WebhookManagementProps {
   channelId: string;
@@ -48,6 +49,8 @@ interface WebhookManagementProps {
 
 const WebhookManagement: React.FC<WebhookManagementProps> = ({ channelId }) => {
   const queryClient = useQueryClient();
+  // An avatar address points at another site: off, the list shows the initial only.
+  const loadRemoteContent = useLoadRemoteContent();
 
   const [name, setName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -246,7 +249,7 @@ const WebhookManagement: React.FC<WebhookManagementProps> = ({ channelId }) => {
                     <TableRow key={webhook.id}>
                       <TableCell>
                         <Stack direction="row" spacing={1.5} alignItems="center">
-                          <Avatar src={webhook.avatarUrl ?? undefined} sx={{ width: 28, height: 28 }}>
+                          <Avatar src={loadRemoteContent ? webhook.avatarUrl ?? undefined : undefined} sx={{ width: 28, height: 28 }}>
                             {webhook.name.charAt(0).toUpperCase()}
                           </Avatar>
                           <Typography variant="body2">{webhook.name}</Typography>

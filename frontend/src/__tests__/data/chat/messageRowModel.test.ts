@@ -178,4 +178,13 @@ describe('toLinkCards and linkPreviewSite', () => {
     ]);
     expect(toLinkCards(null)).toEqual([]);
   });
+
+  it('pictures: false keeps the words and leaves out the picture and the site icon', () => {
+    expect(
+      toLinkCards(
+        [{ url: 'https://e.com/1', title: 'One', description: 'Words', imageUrl: 'https://e.com/b.jpg', faviconUrl: 'https://e.com/f.ico' }],
+        { pictures: false },
+      ),
+    ).toEqual([{ href: 'https://e.com/1', site: 'e.com', title: 'One', description: 'Words' }]);
+  });
 });

@@ -12,6 +12,7 @@ vi.mock('../../components/Settings/NotificationSettings', () => ({ default: () =
 vi.mock('../../components/Settings/InstallAppSettings', () => ({ default: () => null }));
 vi.mock('../../components/Settings/VoiceSettings', () => ({ default: () => <div>voice settings</div> }));
 vi.mock('../../components/Settings/SessionsSettings', () => ({ default: () => <div>sessions settings</div> }));
+
 vi.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({
     settings: { mode: 'dark', accentColor: 'teal', intensity: 'minimal' },
@@ -35,7 +36,7 @@ describe('SettingsPage layout', () => {
 
   it('desktop (web): the form shell with a section nav, Notifications first and active', () => {
     renderWithProviders(<SettingsPage />);
-    expect(navItems()).toEqual(['Notifications', 'Voice & video', 'Appearance', 'Sessions']);
+    expect(navItems()).toEqual(['Notifications', 'Voice & video', 'Appearance', 'Privacy', 'Sessions']);
     expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-current', 'true');
     for (const id of ['settings-notifications', 'settings-voice', 'settings-appearance', 'settings-sessions']) {
       expect(document.getElementById(id)).not.toBeNull();

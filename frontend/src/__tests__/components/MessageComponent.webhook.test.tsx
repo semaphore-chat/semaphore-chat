@@ -97,11 +97,24 @@ describe('MessageComponent webhook rendering', () => {
       spans: [{ type: SpanType.PLAINTEXT, text: 'build passed' }],
     });
 
-    const { container } = renderWithProviders(<MessageComponent message={message} />);
+    const { container } = renderWithProviders(<MessageComponent message={message} />, { loadRemoteContent: true });
 
     const avatar = container.querySelector('img[src="https://example.com/bot.png"]');
     expect(avatar).not.toBeNull();
     expect(avatar).toHaveAttribute('referrerpolicy', 'no-referrer');
+  });
+
+  it('with pictures from other sites off, the webhook keeps its initial and its avatar is not fetched', () => {
+    const message = createMessage({
+      authorId: null,
+      webhook: { id: 'wh-1', name: 'CI Bot', avatarUrl: 'https://example.com/bot.png' },
+      spans: [{ type: SpanType.PLAINTEXT, text: 'build passed' }],
+    });
+
+    const { container } = renderWithProviders(<MessageComponent message={message} />, { loadRemoteContent: false });
+
+    expect(container.querySelector('img[src="https://example.com/bot.png"]')).toBeNull();
+    expect(screen.getByText('C')).toBeInTheDocument();
   });
 
   it('does not fetch the author or render UserAvatar for webhook messages', () => {

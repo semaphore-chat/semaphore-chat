@@ -51,6 +51,7 @@ function serverAppearance(overrides: Partial<AppearanceSettingsResponseDto> = {}
     baseColor: ACCENT_PRIMARY.teal,
     matchSystem: false,
     newDesign: false,
+    loadRemoteContent: true,
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
     ...overrides,

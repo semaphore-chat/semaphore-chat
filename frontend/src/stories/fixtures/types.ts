@@ -68,6 +68,8 @@ export interface Scenario {
   membershipsByCommunity: Record<string, MembershipResponseDto[]>;
   rolesByCommunity: Record<string, RoleDto[]>;
   instanceName: string;
+  /** The reader's "Load pictures and previews from other sites" setting (appearance settings); default on. */
+  loadRemoteContent?: boolean;
 }
 
 /** Every user, `me` included — convenient for id-based lookups. */

@@ -24,18 +24,26 @@ import {
   CheckCircle,
   Error as ErrorIcon,
   Palette,
+  PrivacyTip,
 } from '@mui/icons-material';
 import axios from 'axios';
 import NotificationSettings from '../components/Settings/NotificationSettings';
 import InstallAppSettings from '../components/Settings/InstallAppSettings';
 import VoiceSettings from '../components/Settings/VoiceSettings';
 import SessionsSettings from '../components/Settings/SessionsSettings';
+import SettingsCardSkeleton from '../components/Settings/SettingsCardSkeleton';
 import { useTheme, type ThemeIntensity } from '../contexts/ThemeContext';
 import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
 import { clearTokens } from '../utils/tokenService';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  appearanceSettingsControllerGetSettingsOptions,
+  appearanceSettingsControllerGetSettingsQueryKey,
+  appearanceSettingsControllerUpdateSettingsMutation,
+} from '../api-client/@tanstack/react-query.gen';
+import type { AppearanceSettingsResponseDto } from '../api-client/types.gen';
 import { clearShellSessionState } from '../shell/sessionState';
 import { normalizeUrlForComparison } from '../config/env';
 import { FormPageShell, type FormPageSection } from '../components/Common/PageShell';
@@ -50,6 +58,77 @@ interface HealthResponse {
 }
 
 // Appearance Settings Component
+/**
+ * Settings > Privacy: whether pictures from other sites load on their own (link-preview pictures and site icons,
+ * GIF links drawn as the GIF, webhook avatars). Stored with the appearance settings (`loadRemoteContent`), the
+ * query both shells already load at start; the switch moves at once and goes back if the save fails.
+ */
+export const PrivacySettings: React.FC = () => {
+  const queryClient = useQueryClient();
+  const queryKey = appearanceSettingsControllerGetSettingsQueryKey();
+  const { data, isPending, isError } = useQuery(appearanceSettingsControllerGetSettingsOptions());
+  const { mutate, isError: saveFailed } = useMutation({
+    ...appearanceSettingsControllerUpdateSettingsMutation(),
+    onMutate: async ({ body }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<AppearanceSettingsResponseDto>(queryKey);
+      if (previous && body?.loadRemoteContent !== undefined) {
+        queryClient.setQueryData<AppearanceSettingsResponseDto>(queryKey, {
+          ...previous,
+          loadRemoteContent: body.loadRemoteContent,
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+  });
+
+  if (isPending) return <SettingsCardSkeleton rows={1} label="Loading privacy settings" />;
+
+  return (
+    <Card sx={{ mb: 3 }}>
+      <CardContent>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PrivacyTip /> Privacy
+        </Typography>
+        <Divider sx={{ mb: 3 }} />
+        {isError || !data ? (
+          <Alert severity="error">Failed to load privacy settings</Alert>
+        ) : (
+          <>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={data.loadRemoteContent}
+                  onChange={(event) => mutate({ body: { loadRemoteContent: event.target.checked } })}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body1">Load pictures and previews from other sites</Typography>
+                  <Typography variant="caption" color="text.secondary" component="p">
+                    Shows link pictures, site icons, GIFs and webhook avatars automatically. Turn this off to keep
+                    other sites from seeing your IP address: links then show their text only. GIFs you browse in
+                    the GIF picker always load.
+                  </Typography>
+                </Box>
+              }
+            />
+            {saveFailed && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                Could not save the setting. Try again.
+              </Alert>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 const AppearanceSettings: React.FC = () => {
   const { settings, setAccentColor, setIntensity, toggleMode } = useTheme();
 
@@ -174,6 +253,7 @@ const SettingsPage: React.FC = () => {
     { id: 'settings-notifications', label: 'Notifications' },
     { id: 'settings-voice', label: 'Voice & video' },
     { id: 'settings-appearance', label: 'Appearance' },
+    { id: 'settings-privacy', label: 'Privacy' },
     { id: 'settings-sessions', label: 'Sessions' },
     ...(isElectronApp ? [{ id: 'settings-desktop-app', label: 'Desktop app' }] : []),
   ];
@@ -351,6 +431,11 @@ const SettingsPage: React.FC = () => {
       {/* Appearance Settings Section */}
       <Box id="settings-appearance" sx={{ scrollMarginTop: 24 }}>
         <AppearanceSettings />
+      </Box>
+
+      {/* Privacy Settings Section */}
+      <Box id="settings-privacy" sx={{ scrollMarginTop: 24 }}>
+        <PrivacySettings />
       </Box>
 
       {/* Sessions Settings Section */}

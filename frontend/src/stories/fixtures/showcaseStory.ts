@@ -344,6 +344,7 @@ function appearanceHandler(scenario: Scenario, theme: StoryTheme): HttpHandler {
       baseColor: ACCENT_PRIMARY[theme.accentColor],
       matchSystem: false,
       newDesign: false,
+      loadRemoteContent: true,
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
     } satisfies AppearanceSettingsResponseDto),

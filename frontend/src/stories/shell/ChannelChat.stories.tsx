@@ -528,6 +528,44 @@ export const RichRows = story({ handlers: richHandlers });
 /** The same, light. */
 export const RichRowsLight = story({ mode: 'light', handlers: richHandlers });
 
+/** A webhook's message with an avatar from another site. */
+const WEBHOOK_ROW = message('', at(0, 26), [text('Deployed v0.11.1 to staging.')], {
+  authorId: null,
+  webhook: { id: 'wh-story', name: 'Deploy bot', avatarUrl: 'https://bots.example/deploy.png' },
+});
+
+/** The reader turned "Load pictures and previews from other sites" off (the appearance settings say so). */
+const remoteOffHandler = http.get('/api/appearance-settings', () =>
+  HttpResponse.json({
+    id: 'appearance-1',
+    userId: 'me',
+    themeMode: 'dark',
+    accentColor: 'purple',
+    intensity: 'minimal',
+    baseColor: '#8e75ff',
+    matchSystem: false,
+    newDesign: false,
+    loadRemoteContent: false,
+    createdAt: '2025-01-01T00:00:00Z',
+    updatedAt: '2025-01-01T00:00:00Z',
+  }),
+);
+
+const remoteOffHandlers: HttpHandler[] = [
+  remoteOffHandler,
+  http.get(messagesPath, () => HttpResponse.json({ messages: [...RICH, WEBHOOK_ROW].reverse(), continuationToken: undefined })),
+  ...remoteHandlers(),
+];
+
+/**
+ * "Load pictures and previews from other sites" off: the link card keeps its words with the generic link icon and
+ * no picture box, the GIF link stays its words and card, and the webhook keeps its initial.
+ */
+export const RichRowsRemoteOff = story({ handlers: remoteOffHandlers });
+
+/** The same, light. */
+export const RichRowsRemoteOffLight = story({ mode: 'light', handlers: remoteOffHandlers });
+
 /** A video with its still and an audio file (both with Play: nothing loads before it), two pictures, reactions. */
 export const RichMedia = story({ handlers: richMediaHandlers });
 

@@ -218,13 +218,20 @@ export function linkPreviewSite(preview: Pick<LinkPreview, 'url' | 'siteName' | 
   return preview.authorName ? `${site} · ${preview.authorName}` : site;
 }
 
-export function toLinkCards(previews: readonly LinkPreview[] | null | undefined): LinkCardView[] {
+/**
+ * The message's link cards. `pictures: false` ("Load pictures and previews from other sites" off) leaves out the
+ * page's picture and site icon, both from another site: the card keeps its words and shows the generic link icon.
+ */
+export function toLinkCards(
+  previews: readonly LinkPreview[] | null | undefined,
+  { pictures = true }: { pictures?: boolean } = {},
+): LinkCardView[] {
   return (previews ?? []).map((p) => ({
     href: p.url,
     site: linkPreviewSite(p),
     ...(p.title ? { title: p.title } : {}),
     ...(p.description ? { description: p.description } : {}),
-    ...(p.imageUrl ? { imageSrc: p.imageUrl } : {}),
-    ...(p.faviconUrl ? { iconSrc: p.faviconUrl } : {}),
+    ...(pictures && p.imageUrl ? { imageSrc: p.imageUrl } : {}),
+    ...(pictures && p.faviconUrl ? { iconSrc: p.faviconUrl } : {}),
   }));
 }

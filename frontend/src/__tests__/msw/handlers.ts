@@ -122,6 +122,23 @@ const userHandlers = [
       avatarUrl: null,
     });
   }),
+
+  // The appearance settings every screen reads (theme, new design, loading pictures from other sites).
+  http.get(`${BASE_URL}/api/appearance-settings`, () => {
+    return HttpResponse.json({
+      id: 'appearance-msw',
+      userId: 'current-user-1',
+      themeMode: 'dark',
+      accentColor: 'purple',
+      intensity: 'minimal',
+      baseColor: '#8e75ff',
+      matchSystem: false,
+      newDesign: false,
+      loadRemoteContent: true,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+    });
+  }),
 ];
 
 /** Membership handlers */

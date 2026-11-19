@@ -53,6 +53,7 @@ import {
   type AttachmentView,
 } from '../../../../data/chat/messageRowModel';
 import { getMessageLoneGifUrl } from '../../../../data/chat/messageUtils';
+import { useLoadRemoteContent } from '../../../../hooks/useLoadRemoteContent';
 import { useChannelPermissions } from '../../../../hooks/useChannelPermissions';
 import { useVideoUrl } from '../../../../hooks/useVideoUrl';
 import { useFileCache } from '../../../../contexts/AvatarCacheContext';
@@ -528,11 +529,14 @@ function ChatRowBody({
     failedGifs.add(url);
     setGifFailures((n) => n + 1);
   }, []);
-  const lone = isEditing ? null : getMessageLoneGifUrl(message);
+  // "Load pictures and previews from other sites" off: the GIF stays its link, the cards keep only their words and a
+  // webhook keeps its initial (none of those pictures is fetched).
+  const loadRemote = useLoadRemoteContent();
+  const lone = isEditing || !loadRemote ? null : getMessageLoneGifUrl(message);
   // The kit's link check too (no user name or password in the address: its words are hidden, so nobody would see it).
   const checkedGif = lone === null ? null : safeHref(lone);
   const gifUrl = checkedGif === null || failedGifs.has(checkedGif) ? null : checkedGif;
-  const cards = gifUrl === null ? toLinkCards(message.linkPreviews) : [];
+  const cards = gifUrl === null ? toLinkCards(message.linkPreviews, { pictures: loadRemote }) : [];
   const failedReason = useFailedReason(message, shared.communityId, view.failedReason);
   const authorId = message.authorId;
   const { openActions } = shared;
@@ -551,7 +555,7 @@ function ChatRowBody({
       {showUnreadDivider && <ListSeparator variant="unread" label={UNREAD_LABEL} />}
       <MessageRow
         author={view.author}
-        avatarSrc={view.webhookAvatar ?? avatar ?? undefined}
+        avatarSrc={(loadRemote ? view.webhookAvatar : undefined) ?? avatar ?? undefined}
         // A person's colour from their id; a webhook keeps the neutral fill.
         avatarColour={isWebhook ? undefined : personColour(authorId)}
         time={view.time}
