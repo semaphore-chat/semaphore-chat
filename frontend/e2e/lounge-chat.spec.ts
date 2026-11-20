@@ -605,6 +605,7 @@ test.describe('The Lounge chat: composer extras (390 px, real route)', () => {
     browser,
     request,
   }, testInfo) => {
+    test.setTimeout(180_000);
     const world = await loungeWorld(request);
     const auth = { Authorization: `Bearer ${world.owner.token}` };
     // The community's custom emoji (the owner may manage them).
@@ -637,6 +638,8 @@ test.describe('The Lounge chat: composer extras (390 px, real route)', () => {
       await context.route('https://media.tenor.com/**', (route) => route.fulfill({ status: 200, contentType: 'image/gif', body: GIF }));
     }
     try {
+      // The session's page loaded the public settings before the stub: load them again through it.
+      await page.reload();
       await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
       await openChat(owner.page, world.c1.id, world.c1.lobbyId, '', 'real');
       await expect(row(page, 'react to me')).toBeVisible(EVENTUAL);

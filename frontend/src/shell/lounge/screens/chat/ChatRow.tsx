@@ -34,7 +34,6 @@ import {
   personColour,
   safeHref,
   useAnnounce,
-  useWidthRange,
   type MentionSegment,
   type MessageRowFocus,
   type OpenActionsVia,
@@ -60,7 +59,6 @@ import { useVideoUrl } from '../../../../hooks/useVideoUrl';
 import { useFileCache } from '../../../../contexts/AvatarCacheContext';
 import { attachmentAction, useAttachmentBusy, viewableImages, type AttachmentOpener } from '../../../../data/chat/useAttachmentOpener';
 import { useIsEditing, type EditingStore } from '../../../../data/chat/editingStore';
-import { useTouchFirst } from '../../../../data/touchFirst';
 import { usePendingUpload } from '../../../../hooks/usePendingUpload';
 import { removeAttachment, retryAttachment, startAttachmentUploads } from '../../../../utils/attachmentSend';
 import { formatFileSize } from '../../../../utils/format';
@@ -391,10 +389,10 @@ function Uploads({ message }: { message: Message }): JSX.Element | null {
 
 /**
  * The message's words, edited in place (the old chat's phone behaviour): the kit composer inline, in save mode,
- * on the shared edit state. With a keyboard Enter saves, Shift+Enter starts a line, Escape leaves it unchanged; on
- * touch Enter starts a line. A small line under the field says so and its words are the buttons ("escape to cancel •
- * enter to save", Discord's; "Cancel • Save" on touch), in place of a Save button. When the edit ends, focus goes
- * back to the row.
+ * on the shared edit state. Enter saves (also on touch, as the old chat's phone edit), Shift+Enter starts a line,
+ * Escape leaves it unchanged. A small line under the field says so, Discord's "escape to cancel • enter to save",
+ * and its words "cancel" and "save" are the buttons, in place of a Save button. When the edit ends, focus goes back
+ * to the row.
  */
 function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDivElement | null } }): JSX.Element {
   const shared = useShared();
@@ -403,7 +401,6 @@ function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDi
   const [started, setStarted] = useState(false);
   const [saving, setSaving] = useState(false);
   const { editing } = shared;
-  const touch = useTouchFirst(useWidthRange());
   useEffect(() => {
     handleEditClick();
     // The row came back into the list mid-edit: what the reader had typed, not the original.
@@ -438,7 +435,6 @@ function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDi
         editing.setDraft(message.id, text);
       }}
       sending={saving}
-      submitOnEnter={!touch}
       onCancel={handleEditCancel}
       canSend={editText.trim() !== '' || message.attachments.length > 0}
       onSubmit={() => {

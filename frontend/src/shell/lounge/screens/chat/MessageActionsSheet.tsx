@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
-import { Button, Icon, ListRow, Sheet, Stack, useAnnounce, useConfirmDestructive, useToasts, type IconName } from '../../../../kit';
+import { Button, Icon, IconButton, ListRow, Sheet, Stack, useAnnounce, useConfirmDestructive, useToasts, type IconName } from '../../../../kit';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { spansToText } from '../../../../utils/mentionParser';
 import { getMessageActionModel, type MessageActionId } from '../../../../data/chat/messageActionModel';
@@ -167,22 +167,21 @@ function ActionsFor({
               {QUICK_REACTIONS.map(({ emoji, name }) => {
                 const mine = message.reactions.some((r) => r.emoji === emoji && r.userIds.includes(me));
                 return (
-                  <Button key={emoji} variant="ghost" aria-label={`React with ${name}`} aria-pressed={mine} onClick={() => react(emoji)}>
+                  <Button key={emoji} variant="ghost" size="sm" aria-label={`React with ${name}`} aria-pressed={mine} onClick={() => react(emoji)}>
                     {emoji}
                   </Button>
                 );
               })}
               {onMoreReactions !== undefined && (
-                <Button
+                <IconButton
+                  icon="SmilePlus"
                   variant="ghost"
-                  aria-label="More reactions"
+                  label="More reactions"
                   onClick={() => {
                     setThen(() => () => onMoreReactions(message));
                     close();
                   }}
-                >
-                  <Icon name="SmilePlus" size="lg" tone="secondary" />
-                </Button>
+                />
               )}
             </Stack>
           )}
