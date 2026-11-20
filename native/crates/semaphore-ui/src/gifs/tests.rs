@@ -18,6 +18,7 @@ fn gif(id: &str) -> GifView {
         id: id.to_owned(),
         title: format!("GIF {id}"),
         url: format!("https://media.giphy.com/media/{id}/giphy.gif"),
+        medium_url: None,
         preview_url: format!("https://media.giphy.com/media/{id}/preview.gif"),
         width: 480,
         height: 270,

@@ -12,7 +12,7 @@
 
 use super::{ConversationPane, PaneEvent, Which};
 use gpui_kit::*;
-use semaphore_core::model::{Conversation, GifResultsView, MessageDraft, ViewKey};
+use semaphore_core::model::{Conversation, GifResultsView, GifView, MessageDraft, ViewKey};
 use semaphore_ui::composer::{Composer, ComposerMode};
 use semaphore_ui::gifs::{GifPicker, GifPickerEvent};
 use semaphore_ui::theme::SemTheme as _;
@@ -51,10 +51,11 @@ pub(crate) fn feeds_picker(view: &ViewKey, query: &str) -> bool {
     matches!(view, ViewKey::Gifs { query: changed } if changed == query.trim())
 }
 
-/// A pick is the GIF's URL as the whole message, as the web sends it.
-pub(crate) fn pick_draft(url: &str) -> MessageDraft {
+/// A pick is the GIF's URL as the whole message, as the web sends it: the medium rendition when
+/// the server names one, else the full-size one (an older server).
+pub(crate) fn pick_draft(gif: &GifView) -> MessageDraft {
     MessageDraft {
-        text: url.to_owned(),
+        text: gif.medium_url.clone().unwrap_or_else(|| gif.url.clone()),
         ..MessageDraft::default()
     }
 }
@@ -165,7 +166,7 @@ impl ConversationPane {
             GifPickerEvent::Pick(gif) => {
                 let conversation = host.conversation.clone();
                 let core = self.core.clone();
-                let draft = pick_draft(&gif.url);
+                let draft = pick_draft(&gif);
                 self.media_close_gifs(true, window, cx);
                 self.command("sending the GIF", window, cx, async move {
                     core.send_message(conversation, draft).await.map(|_| ())
@@ -358,11 +359,32 @@ mod tests {
         assert!(!feeds_picker(&ViewKey::Session, ""));
     }
 
+    fn picked(url: &str, medium_url: Option<&str>) -> GifView {
+        GifView {
+            id: "g".into(),
+            title: "GIF".into(),
+            url: url.into(),
+            medium_url: medium_url.map(str::to_owned),
+            preview_url: "https://media.giphy.com/media/x/preview.gif".into(),
+            width: 480,
+            height: 270,
+        }
+    }
+
     #[test]
-    fn a_pick_sends_the_url_alone() {
-        let draft = pick_draft("https://media.giphy.com/media/x/giphy.gif");
-        assert_eq!(draft.text, "https://media.giphy.com/media/x/giphy.gif");
+    fn a_pick_sends_the_medium_url_alone() {
+        let draft = pick_draft(&picked(
+            "https://media.giphy.com/media/x/giphy.gif",
+            Some("https://media.giphy.com/media/x/200w.gif"),
+        ));
+        assert_eq!(draft.text, "https://media.giphy.com/media/x/200w.gif");
         assert!(draft.mentions.is_empty() && draft.files.is_empty());
         assert_eq!(draft.reply_to_message_id, None);
+    }
+
+    #[test]
+    fn a_pick_falls_back_to_the_full_url_on_an_older_server() {
+        let draft = pick_draft(&picked("https://media.giphy.com/media/x/giphy.gif", None));
+        assert_eq!(draft.text, "https://media.giphy.com/media/x/giphy.gif");
     }
 }

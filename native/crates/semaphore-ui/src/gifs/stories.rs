@@ -110,6 +110,7 @@ fn gif_view(gif: &Gif) -> GifView {
         id: gif.id.to_owned(),
         title: gif.title.to_owned(),
         url: url(gif, false),
+        medium_url: None,
         preview_url: url(gif, true),
         width: gif.width,
         height: gif.height,

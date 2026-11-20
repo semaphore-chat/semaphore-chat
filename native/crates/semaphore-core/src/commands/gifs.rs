@@ -77,6 +77,7 @@ fn gif_view(gif: &wire::GifResultDto) -> GifView {
         id: gif.id.clone(),
         title: gif.title.clone(),
         url: gif.url.clone(),
+        medium_url: gif.medium_url.clone(),
         preview_url: gif.preview_url.clone(),
         width: extent(gif.width),
         height: extent(gif.height),

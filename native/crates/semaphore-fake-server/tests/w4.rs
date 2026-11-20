@@ -1471,6 +1471,80 @@ async fn deafening_tells_the_channel_only_while_in_the_call() {
 }
 
 #[tokio::test]
+async fn dm_deafening_is_member_only_and_tells_nobody() {
+    // `VoicePresenceService.updateDmDeafenState`: `assertDmMember` (403), then the caller's deafen
+    // state in the call. DM presence has no per-user update event, so nothing is sent to anyone.
+    let (server, client, base) = showcase().await;
+    let dm = id("dm-launch");
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut samira = connect_as(&base, &id("u-samira")).await;
+    post(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{dm}/voice-presence/refresh"),
+        json!({}),
+    )
+    .await;
+    settle(&server, &mut [&mut me, &mut samira]).await;
+
+    let deafen = format!("/api/dm-groups/{dm}/voice-presence/deafen");
+    let (status, body) = post(&client, &base, &deafen, json!({ "isDeafened": true })).await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "success": true,
+            "message": "Deafen state updated to true",
+            "dmGroupId": dm,
+        })
+    );
+    let heard = settle(&server, &mut [&mut me, &mut samira]).await;
+    assert!(
+        heard.iter().all(Vec::is_empty),
+        "no event at all: {heard:?}"
+    );
+    let (_, presence) = get(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{dm}/voice-presence"),
+    )
+    .await;
+    let mine = presence["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["id"] == id("me").as_str())
+        .expect("in the call");
+    assert_eq!(mine["isDeafened"], true);
+
+    let (status, _) = post(&client, &base, &deafen, json!({ "isDeafened": false })).await;
+    assert_eq!(status, 201);
+    let (_, presence) = get(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{dm}/voice-presence"),
+    )
+    .await;
+    let mine = presence["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["id"] == id("me").as_str())
+        .expect("in the call");
+    assert_eq!(mine["isDeafened"], false);
+
+    // Not a member (and no such group): `assertDmMember` refuses before anything changes.
+    let (status, body) = post(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{}/voice-presence/deafen", id("dm-nowhere")),
+        json!({ "isDeafened": true }),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+}
+
+#[tokio::test]
 async fn download_only_streams_the_last_minutes_as_an_mp4_and_keeps_nothing() {
     // As `GET replay/stream`: the duration is required and one of the four; the active session
     // (or the heal's 404) and a segment are needed, as for a capture.

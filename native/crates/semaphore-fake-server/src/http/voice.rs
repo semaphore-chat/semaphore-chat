@@ -60,6 +60,10 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
             post(dm_decline),
         )
         .route(
+            "/api/dm-groups/{dmGroupId}/voice-presence/deafen",
+            post(dm_deafen),
+        )
+        .route(
             "/api/voice/diagnostics/join-failure",
             post(report_join_failure),
         )
@@ -96,6 +100,9 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
         }
         ("POST", "/api/dm-groups/{dmGroupId}/voice-presence/decline") => {
             "DmVoicePresenceController_declineDmVoiceCall"
+        }
+        ("POST", "/api/dm-groups/{dmGroupId}/voice-presence/deafen") => {
+            "DmVoicePresenceController_updateDmDeafenState"
         }
         ("POST", "/api/voice/diagnostics/join-failure") => {
             "VoiceDiagnosticsController_reportJoinFailure"
@@ -301,6 +308,32 @@ async fn dm_decline(
                 success: true,
             })
             .expect("a decline serializes"),
+        ),
+        Err(refusal) => refused(&inner, refusal),
+    }
+}
+
+/// `POST /dm-groups/{id}/voice-presence/deafen`: the member's deafen state in the call. `403`
+/// when the caller isn't a member (`assertDmMember`); otherwise `201` with the controller's
+/// answer. DM presence has no per-user update event, so nobody is told.
+async fn dm_deafen(
+    State(inner): State<Arc<Inner>>,
+    Path(group_id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Ok(dto) = typed::<semaphore_wire::types::UpdateDeafenStateDto>(&body) else {
+        return invalid("isDeafened is required");
+    };
+    let me = inner.scenario.me.id.clone();
+    match calls::dm_deafen(&inner, &group_id, &me, dto.is_deafened) {
+        Ok(()) => json_response(
+            StatusCode::CREATED,
+            serde_json::to_value(RefreshDmPresenceResponseDto {
+                dm_group_id: group_id,
+                message: format!("Deafen state updated to {}", dto.is_deafened),
+                success: true,
+            })
+            .expect("a deafen answer serializes"),
         ),
         Err(refusal) => refused(&inner, refusal),
     }

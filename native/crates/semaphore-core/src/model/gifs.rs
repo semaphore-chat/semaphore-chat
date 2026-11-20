@@ -12,8 +12,11 @@ use super::LoadState;
 pub struct GifView {
     pub id: String,
     pub title: String,
-    /// The full animated GIF: what a pick sends as the message's whole text.
+    /// The full animated GIF. A pick sends the medium rendition when the server names one.
     pub url: String,
+    /// The rendition a message should carry, when the server names it: Giphy's `downsized_medium`,
+    /// else `downsized`, else the original. `None` on an older server, which has only `url`.
+    pub medium_url: Option<String>,
     /// A small animated preview for the picker grid.
     pub preview_url: String,
     pub width: u32,
