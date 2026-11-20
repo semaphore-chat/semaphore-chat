@@ -376,47 +376,52 @@ pub fn instance_action_groups() -> Vec<InstanceActionGroup> {
 impl SemaphoreCore {
     // W6-A
     pub fn admin_dashboard(&self) -> AdminDashboardView {
-        self.core.admin_dashboard()
+        self.sync(move |core| core.admin_dashboard())
     }
 
     pub fn instance_settings(&self) -> InstanceSettingsView {
-        self.core.instance_settings()
+        self.sync(move |core| core.instance_settings())
     }
 
     pub async fn update_instance_settings(
         &self,
         patch: InstanceSettingsPatch,
     ) -> Result<(), CoreError> {
-        self.core.update_instance_settings(patch).await
+        self.run(move |core| async move { core.update_instance_settings(patch).await })
+            .await
     }
 
     // W6-B
     pub fn admin_users(&self, query: AdminUserQuery) -> AdminUsersView {
-        self.core.admin_users(query)
+        self.sync(move |core| core.admin_users(query))
     }
 
     pub async fn load_more_admin_users(&self, query: AdminUserQuery) -> Result<(), CoreError> {
-        self.core.load_more_admin_users(query).await
+        self.run(move |core| async move { core.load_more_admin_users(query).await })
+            .await
     }
 
     pub fn admin_user(&self, user_id: String) -> AdminUserView {
-        self.core.admin_user(user_id)
+        self.sync(move |core| core.admin_user(user_id))
     }
 
     pub fn admin_user_roles(&self, user_id: String) -> AdminUserRolesView {
-        self.core.admin_user_roles(user_id)
+        self.sync(move |core| core.admin_user_roles(user_id))
     }
 
     pub async fn set_user_owner(&self, user_id: String, owner: bool) -> Result<(), CoreError> {
-        self.core.set_user_owner(user_id, owner).await
+        self.run(move |core| async move { core.set_user_owner(user_id, owner).await })
+            .await
     }
 
     pub async fn ban_user(&self, user_id: String) -> Result<(), CoreError> {
-        self.core.ban_user(user_id).await
+        self.run(move |core| async move { core.ban_user(user_id).await })
+            .await
     }
 
     pub async fn unban_user(&self, user_id: String) -> Result<(), CoreError> {
-        self.core.unban_user(user_id).await
+        self.run(move |core| async move { core.unban_user(user_id).await })
+            .await
     }
 
     pub async fn reset_user_password(
@@ -424,11 +429,13 @@ impl SemaphoreCore {
         user_id: String,
         password: String,
     ) -> Result<(), CoreError> {
-        self.core.reset_user_password(user_id, password).await
+        self.run(move |core| async move { core.reset_user_password(user_id, password).await })
+            .await
     }
 
     pub async fn delete_user(&self, user_id: String) -> Result<(), CoreError> {
-        self.core.delete_user(user_id).await
+        self.run(move |core| async move { core.delete_user(user_id).await })
+            .await
     }
 
     pub async fn assign_instance_role(
@@ -436,7 +443,8 @@ impl SemaphoreCore {
         user_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
-        self.core.assign_instance_role(user_id, role_id).await
+        self.run(move |core| async move { core.assign_instance_role(user_id, role_id).await })
+            .await
     }
 
     pub async fn unassign_instance_role(
@@ -444,68 +452,77 @@ impl SemaphoreCore {
         user_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
-        self.core.unassign_instance_role(user_id, role_id).await
+        self.run(move |core| async move { core.unassign_instance_role(user_id, role_id).await })
+            .await
     }
 
     // W6-C
     pub fn admin_storage(&self, min_percent: u32) -> AdminStorageView {
-        self.core.admin_storage(min_percent)
+        self.sync(move |core| core.admin_storage(min_percent))
     }
 
     pub async fn load_more_storage(&self, min_percent: u32) -> Result<(), CoreError> {
-        self.core.load_more_storage(min_percent).await
+        self.run(move |core| async move { core.load_more_storage(min_percent).await })
+            .await
     }
 
     pub async fn set_user_quota(&self, user_id: String, quota_bytes: u64) -> Result<(), CoreError> {
-        self.core.set_user_quota(user_id, quota_bytes).await
+        self.run(move |core| async move { core.set_user_quota(user_id, quota_bytes).await })
+            .await
     }
 
     pub async fn recalculate_storage(&self, user_id: String) -> Result<(), CoreError> {
-        self.core.recalculate_storage(user_id).await
+        self.run(move |core| async move { core.recalculate_storage(user_id).await })
+            .await
     }
 
     // W6-D
     pub fn admin_communities(&self, search: String) -> AdminCommunitiesView {
-        self.core.admin_communities(search)
+        self.sync(move |core| core.admin_communities(search))
     }
 
     pub async fn load_more_admin_communities(&self, search: String) -> Result<(), CoreError> {
-        self.core.load_more_admin_communities(search).await
+        self.run(move |core| async move { core.load_more_admin_communities(search).await })
+            .await
     }
 
     pub fn admin_community(&self, community_id: String) -> AdminCommunityView {
-        self.core.admin_community(community_id)
+        self.sync(move |core| core.admin_community(community_id))
     }
 
     pub async fn force_delete_community(&self, community_id: String) -> Result<(), CoreError> {
-        self.core.force_delete_community(community_id).await
+        self.run(move |core| async move { core.force_delete_community(community_id).await })
+            .await
     }
 
     pub fn admin_invites(&self) -> AdminInvitesView {
-        self.core.admin_invites()
+        self.sync(move |core| core.admin_invites())
     }
 
     pub async fn create_instance_invite(
         &self,
         draft: InstanceInviteDraft,
     ) -> Result<String, CoreError> {
-        self.core.create_instance_invite(draft).await
+        self.run(move |core| async move { core.create_instance_invite(draft).await })
+            .await
     }
 
     pub async fn delete_instance_invite(&self, code: String) -> Result<(), CoreError> {
-        self.core.delete_instance_invite(code).await
+        self.run(move |core| async move { core.delete_instance_invite(code).await })
+            .await
     }
 
     // W6-E
     pub fn instance_roles(&self) -> InstanceRolesView {
-        self.core.instance_roles()
+        self.sync(move |core| core.instance_roles())
     }
 
     pub async fn create_instance_role(
         &self,
         draft: InstanceRoleDraft,
     ) -> Result<String, CoreError> {
-        self.core.create_instance_role(draft).await
+        self.run(move |core| async move { core.create_instance_role(draft).await })
+            .await
     }
 
     pub async fn update_instance_role(
@@ -513,14 +530,16 @@ impl SemaphoreCore {
         role_id: String,
         draft: InstanceRoleDraft,
     ) -> Result<(), CoreError> {
-        self.core.update_instance_role(role_id, draft).await
+        self.run(move |core| async move { core.update_instance_role(role_id, draft).await })
+            .await
     }
 
     pub async fn delete_instance_role(&self, role_id: String) -> Result<(), CoreError> {
-        self.core.delete_instance_role(role_id).await
+        self.run(move |core| async move { core.delete_instance_role(role_id).await })
+            .await
     }
 
     pub fn instance_role_users(&self, role_id: String) -> InstanceRoleUsersView {
-        self.core.instance_role_users(role_id)
+        self.sync(move |core| core.instance_role_users(role_id))
     }
 }

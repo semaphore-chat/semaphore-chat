@@ -1,4 +1,4 @@
-// Semaphore Chat's Android client (D1). SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
+// Semaphore Chat's Android client. SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ValueSource
 import org.gradle.api.provider.ValueSourceParameters
@@ -42,9 +42,27 @@ android {
     sourceSets.getByName("main") {
         // Both are written by native/scripts/android.sh before Gradle starts, and both live under
         // app/build/ so nothing generated is source: the uniffi Kotlin bindings, and the cargo-ndk
-        // libraries (libsemaphore_ffi.so and JNA's) in jniLibs/<abi>/.
+        // library (libsemaphore_mobile.so) in jniLibs/<abi>/.
         java.srcDir(layout.buildDirectory.dir("generated/uniffi"))
         jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+    }
+}
+
+// The JVM test (src/test): the generated bindings over a host build of libsemaphore_mobile.so,
+// against semaphore-fake-server. native/scripts/android.sh passes where both are; without them the
+// test is skipped, and android.sh fails a run that skipped it.
+android.testOptions.unitTests.all { test ->
+    for (name in listOf("hostLibDir", "fakeServer", "channelId", "authorId")) {
+        providers.gradleProperty("semaphore.$name").orNull?.let {
+            test.systemProperty("semaphore.$name", it)
+        }
+    }
+    providers.gradleProperty("semaphore.hostLibDir").orNull?.let {
+        test.systemProperty("jna.library.path", it)
+    }
+    test.testLogging {
+        events("passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
 
@@ -95,7 +113,12 @@ dependencies {
     // are written against kotlinx.coroutines. Compose brings it in transitively; declared here
     // because the bindings need it.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // The JVM half of rustls-platform-verifier: SemaphoreApp hands it to the Rust TLS verifier
-    // through libsemaphore_ffi.so's initSemaphoreNative. Version from Cargo.lock, as above.
+    // The JVM half of rustls-platform-verifier: SemaphoreApp (through NativeLib) hands it to the Rust TLS verifier
+    // through libsemaphore_mobile.so's nativeInit. Version from Cargo.lock, as above.
     implementation("org.rustls:rustls-platform-verifier:${rustlsAndroidVersion.get()}")
+
+    // The JVM test: JUnit, and JNA's plain jar, which carries the desktop libjnidispatch the @aar
+    // above leaves out.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("net.java.dev.jna:jna:5.15.0")
 }

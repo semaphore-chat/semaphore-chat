@@ -59,14 +59,15 @@ pub struct ProfileEditView {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn profile(&self, user_id: String) -> ProfileView {
-        self.core.profile(user_id)
+        self.sync(move |core| core.profile(user_id))
     }
 
     pub fn profile_edit(&self) -> ProfileEditView {
-        self.core.profile_edit()
+        self.sync(move |core| core.profile_edit())
     }
 
     pub async fn update_profile(&self, patch: ProfilePatch) -> Result<(), CoreError> {
-        self.core.update_profile(patch).await
+        self.run(move |core| async move { core.update_profile(patch).await })
+            .await
     }
 }

@@ -11,11 +11,13 @@ impl SemaphoreCore {
         message_id: String,
         emoji: String,
     ) -> Result<(), CoreError> {
-        self.core.toggle_reaction(message_id, emoji).await
+        self.run(move |core| async move { core.toggle_reaction(message_id, emoji).await })
+            .await
     }
 
     pub async fn add_reaction(&self, message_id: String, emoji: String) -> Result<(), CoreError> {
-        self.core.add_reaction(message_id, emoji).await
+        self.run(move |core| async move { core.add_reaction(message_id, emoji).await })
+            .await
     }
 
     pub async fn remove_reaction(
@@ -23,15 +25,16 @@ impl SemaphoreCore {
         message_id: String,
         emoji: String,
     ) -> Result<(), CoreError> {
-        self.core.remove_reaction(message_id, emoji).await
+        self.run(move |core| async move { core.remove_reaction(message_id, emoji).await })
+            .await
     }
 
     pub fn reaction_users(&self, message_id: String, emoji: String) -> ReactionUsers {
-        self.core.reaction_users(message_id, emoji)
+        self.sync(move |core| core.reaction_users(message_id, emoji))
     }
 
     pub fn edit_draft(&self, message_id: String) -> Option<MessageDraft> {
-        self.core.edit_draft(message_id)
+        self.sync(move |core| core.edit_draft(message_id))
     }
 
     pub async fn edit_message(
@@ -40,9 +43,11 @@ impl SemaphoreCore {
         draft: MessageDraft,
         keep_attachment_ids: Option<Vec<String>>,
     ) -> Result<(), CoreError> {
-        self.core
-            .edit_message(message_id, draft, keep_attachment_ids)
-            .await
+        self.run(move |core| async move {
+            core.edit_message(message_id, draft, keep_attachment_ids)
+                .await
+        })
+        .await
     }
 
     pub async fn delete_message(
@@ -50,7 +55,8 @@ impl SemaphoreCore {
         message_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        self.core.delete_message(message_id, reason).await
+        self.run(move |core| async move { core.delete_message(message_id, reason).await })
+            .await
     }
 
     pub async fn pin_message(
@@ -58,7 +64,8 @@ impl SemaphoreCore {
         message_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        self.core.pin_message(message_id, reason).await
+        self.run(move |core| async move { core.pin_message(message_id, reason).await })
+            .await
     }
 
     pub async fn unpin_message(
@@ -66,19 +73,20 @@ impl SemaphoreCore {
         message_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        self.core.unpin_message(message_id, reason).await
+        self.run(move |core| async move { core.unpin_message(message_id, reason).await })
+            .await
     }
 
     pub fn pinned_messages(&self, channel_id: String) -> PinnedList {
-        self.core.pinned_messages(channel_id)
+        self.sync(move |core| core.pinned_messages(channel_id))
     }
 
     pub fn channel_moderation(&self, channel_id: String) -> ChannelModerationView {
-        self.core.channel_moderation(channel_id)
+        self.sync(move |core| core.channel_moderation(channel_id))
     }
 
     /// Reads again whatever failed: a `Failed` moderation view or pins list, among others.
     pub fn retry_failed(&self) {
-        self.core.retry_failed()
+        self.sync(move |core| core.retry_failed())
     }
 }

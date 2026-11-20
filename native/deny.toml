@@ -33,6 +33,7 @@ exceptions = [
     { crate = "semaphore-design", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-fake-server", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-ffi", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-mobile", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-wire", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-net", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-media-livekit", allow = ["AGPL-3.0-only"] },

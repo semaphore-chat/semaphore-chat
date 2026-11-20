@@ -8330,9 +8330,8 @@ dependencies = [
 name = "semaphore-ffi"
 version = "0.0.0"
 dependencies = [
- "jni 0.22.4",
  "semaphore-core",
- "semaphore-net",
+ "tokio",
  "uniffi",
 ]
 
@@ -8357,6 +8356,23 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+]
+
+[[package]]
+name = "semaphore-mobile"
+version = "0.0.0"
+dependencies = [
+ "jni 0.22.4",
+ "log",
+ "reqwest 0.13.5",
+ "semaphore-core",
+ "semaphore-fake-server",
+ "semaphore-ffi",
+ "semaphore-net",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "uniffi",
 ]
 
 [[package]]

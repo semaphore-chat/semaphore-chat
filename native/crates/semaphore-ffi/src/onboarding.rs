@@ -126,45 +126,52 @@ pub fn browser_sign_in_timeout_ms() -> u64 {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn register_requirements(&self) -> RegisterRequirements {
-        self.core.register_requirements()
+        self.sync(move |core| core.register_requirements())
     }
 
     pub fn server_info(&self) -> Option<ServerInfo> {
-        self.core.server_info()
+        self.sync(move |core| core.server_info())
     }
 
     pub async fn register(&self, form: RegisterForm) -> Result<(), CoreError> {
-        self.core.register(form).await
+        self.run(move |core| async move { core.register(form).await })
+            .await
     }
 
     pub async fn accept_invite(&self, code: String) -> Result<InviteJoin, CoreError> {
-        self.core.accept_invite(code).await
+        self.run(move |core| async move { core.accept_invite(code).await })
+            .await
     }
 
     pub async fn forgot_password(&self, email: String) -> Result<(), CoreError> {
-        self.core.forgot_password(email).await
+        self.run(move |core| async move { core.forgot_password(email).await })
+            .await
     }
 
     pub fn invite_preview(&self, code: String) -> InvitePreviewView {
-        self.core.invite_preview(code)
+        self.sync(move |core| core.invite_preview(code))
     }
 
     pub async fn create_community(
         &self,
         community: NewCommunity,
     ) -> Result<CreatedCommunity, CoreError> {
-        self.core.create_community(community).await
+        self.run(move |core| async move { core.create_community(community).await })
+            .await
     }
 
     pub async fn start_browser_sign_in(&self) -> Result<String, CoreError> {
-        self.core.start_browser_sign_in().await
+        self.run(move |core| async move { core.start_browser_sign_in().await })
+            .await
     }
 
     pub fn cancel_browser_sign_in(&self) {
-        self.core.cancel_browser_sign_in();
+        self.sync(move |core| {
+            core.cancel_browser_sign_in();
+        })
     }
 
     pub fn browser_sign_in(&self) -> BrowserSignInView {
-        self.core.browser_sign_in()
+        self.sync(move |core| core.browser_sign_in())
     }
 }

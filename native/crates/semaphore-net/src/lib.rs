@@ -50,8 +50,8 @@ fn ensure_tls_ready(is_android: bool, initialised: bool) -> Result<(), CoreError
 /// of the process, and calling it again does nothing. Until it has succeeded,
 /// [`tls_client_config`] (and so every REST client and socket) returns an error.
 ///
-/// `semaphore-ffi`'s `Java_app_semaphorechat_android_SemaphoreApp_initSemaphoreNative` is the JNI
-/// entry point the app's `Application` calls; a host that links this crate itself can call this directly.
+/// `semaphore-mobile`'s `Java_app_semaphorechat_android_NativeLib_nativeInit` is the JNI entry
+/// point the app calls; a host that links this crate itself can call this directly.
 #[cfg(target_os = "android")]
 pub fn init_android(
     env: &mut jni::Env<'_>,

@@ -1,9 +1,10 @@
 name: Native Android
 
-# D1's debug APK: native/scripts/android.sh builds the Android image (JDK, SDK, NDK, Gradle,
-# cargo-ndk and uniffi-bindgen), builds semaphore-ffi for aarch64-linux-android, generates the
-# Kotlin bindings and runs ./gradlew assembleDebug. Artifact only: this workflow creates no
-# release, pushes no tag and publishes nothing.
+# The debug APK: native/scripts/android.sh builds the Android image (JDK, SDK, NDK, Gradle,
+# cargo-ndk and uniffi-bindgen), builds semaphore-mobile for aarch64-linux-android, generates the
+# Kotlin bindings, checks the library exports what they call, runs the JVM test of the bindings
+# against semaphore-fake-server and runs ./gradlew assembleDebug. Artifact only: this workflow
+# creates no release, pushes no tag and publishes nothing.
 #
 # Like the other native-*.yml workflows there is no actions/cache step: the pinned image and the
 # Gradle and cargo caches are Docker volumes inside the run, and only the APK leaves it.
