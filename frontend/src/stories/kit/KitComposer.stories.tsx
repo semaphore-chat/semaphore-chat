@@ -65,7 +65,15 @@ const STATES: { label: string; props: Shown }[] = [
     },
   },
   { label: 'Save mode with nothing changed yet: unavailable', props: { initial: '', mode: 'save', onSendUnavailablePress: noop } },
-  { label: 'Inline (inside a message row: no padding, no toast clearance)', props: { initial: 'edited in place', inline: true, mode: 'save' } },
+  {
+    label: 'Inline edit (inside a message row): no Save button, the hint "escape to cancel • enter to save" instead',
+    props: { initial: 'edited in place', inline: true, mode: 'save', onCancel: noop, onAttach: undefined, emoji: undefined },
+  },
+  {
+    label: 'Inline edit on touch (Enter is a new line): the hint is "Cancel • Save"',
+    props: { initial: 'edited in place', inline: true, mode: 'save', submitOnEnter: false, onCancel: noop, onAttach: undefined, emoji: undefined },
+  },
+  { label: 'Files dragged over the conversation: the drop look', props: { initial: 'half typed', dropTarget: { active: true, label: 'Drop files to attach them' } } },
   {
     label: 'Attachments tray',
     props: {

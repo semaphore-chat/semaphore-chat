@@ -25,6 +25,8 @@ import { bigCommunityScenario } from '../fixtures/scenarios';
 import { LOUNGE_COMMUNITY_ID, loungeCommunityHandlers } from '../fixtures/loungeCommunityHandlers';
 import { ALL_CAPS, timedOutCaps, type Caps } from '../fixtures/channelPermissions';
 import { composerDraftStorageKey } from '../../hooks/useComposerDraft';
+import { RECENT_EMOJI_STORAGE_KEY } from '../../data/chat/useEmojiPicker';
+import { showcaseGifHandlers } from '../fixtures/showcaseGifs';
 
 const chat = LOUNGE_ROUTES.find((route) => route.path === LOUNGE_CHAT_FIXTURE_PATH)!;
 const CHANNEL = 'ch-general';
@@ -202,8 +204,11 @@ function Frame({
   draftKey = `channel:${CHANNEL}`,
   search,
   steps = NO_STEPS,
+  recent,
 }: {
   mode: ModeName;
+  /** The emoji picker's recently used list (cleared when not given, so stories do not share it). */
+  recent?: string[];
   draft?: string;
   draftKey?: string;
   /** A query the chat opens with (a cold `?thread=` link). */
@@ -213,6 +218,8 @@ function Frame({
   // A draft in the composer's storage before it mounts (the sandbox clears drafts first).
   useState(() => {
     if (draft !== undefined) sessionStorage.setItem(composerDraftStorageKey(draftKey), draft);
+    if (recent !== undefined) localStorage.setItem(RECENT_EMOJI_STORAGE_KEY, JSON.stringify(recent));
+    else localStorage.removeItem(RECENT_EMOJI_STORAGE_KEY);
   });
   // The chat's own path (where its in-chat links lead), with the story's query: a press that opens a thread then
   // changes only the query, as in the app.
@@ -252,11 +259,12 @@ const story = (
     draftKey?: string;
     search?: string;
     steps?: Parameters<typeof useSteps>[0];
+    recent?: string[];
   } = {},
 ) =>
   defineComponent(
     bigCommunityScenario,
-    () => <Frame mode={options.mode ?? 'dark'} draft={options.draft} draftKey={options.draftKey} search={options.search} steps={options.steps} />,
+    () => <Frame mode={options.mode ?? 'dark'} draft={options.draft} draftKey={options.draftKey} search={options.search} steps={options.steps} recent={options.recent} />,
     {
     maxWidth: false,
     // First match wins: the story's own, then the chat's, then the community's.
@@ -274,8 +282,7 @@ export const Phone = story();
 export const PhoneLight = story({ mode: 'light' });
 
 /** A private channel: the lock in the header (its members are the channel's own, in the Members Sheet). */
-export const PrivateChannel = story({
-  handlers: [
+const privateHandlers: HttpHandler[] = [
     http.get(channelsPath, () =>
       HttpResponse.json([
         {
@@ -302,8 +309,9 @@ export const PrivateChannel = story({
         })),
       ),
     ),
-  ],
-});
+  ];
+
+export const PrivateChannel = story({ handlers: privateHandlers });
 
 /** No messages yet. */
 export const Empty = story({ handlers: [http.get(messagesPath, () => HttpResponse.json({ messages: [], continuationToken: undefined }))] });
@@ -760,4 +768,122 @@ export const PinnedListLoading = story({
 export const PinnedListError = story({
   handlers: [http.get(`/api/moderation/pins/${CHANNEL}`, () => HttpResponse.json({ statusCode: 500, message: 'nope' }, { status: 500 }))],
   steps: openPinned,
+});
+
+// --- Composer extras (PR 10d-C): the emoji and GIF pickers, More reactions, the drop look, the edit hint ---
+
+/** Types `value` into the open sheet's search field (as typing does: React reads the input event). */
+const searchFor = (value: string) => ({
+  find: () => document.querySelector<HTMLInputElement>('[role="dialog"] input[type="search"]'),
+  run: (el: HTMLElement) => {
+    const input = el as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+});
+const pressAny = (name: string) => ({ find: anyNamed(name), run: (el: HTMLElement) => el.click() });
+const openEmoji = pressAny('Add emoji');
+const openGifs = pressAny('Send a GIF');
+
+/** The community's custom emoji (their pictures are the sandbox's placeholder files). */
+const customEmojiHandler = http.get(`/api/custom-emoji/community/${LOUNGE_COMMUNITY_ID}`, () =>
+  HttpResponse.json(
+    ['party_parrot', 'blobwave', 'catjam', 'this_is_fine', 'sus'].map((name, i) => ({
+      id: `ce-${i}`,
+      name,
+      fileId: `emoji-${name}`,
+      communityId: LOUNGE_COMMUNITY_ID,
+      uploadedById: 'u-aiko',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })),
+  ),
+);
+const gifSearchOn = http.get('/api/instance/settings/public', () =>
+  HttpResponse.json({
+    name: 'Semaphore',
+    registrationMode: 'INVITE_ONLY',
+    maxFileSizeBytes: 25 * 1024 * 1024,
+    gifSearchEnabled: true,
+    passwordResetEnabled: true,
+    desktopBrowserLogin: true,
+  }),
+);
+
+/** The composer with GIF search on: the GIF and emoji buttons in the field. */
+export const ComposerPickerButtons = story({ handlers: [gifSearchOn, ...showcaseGifHandlers()] });
+
+/** The emoji picker from the composer: recently used, the community's custom emoji, then the built-in set. */
+export const EmojiPicker = story({ handlers: [customEmojiHandler], recent: ['🔥', '👍', 'custom:ce-0', '🎉'], steps: [openEmoji] });
+
+/** The same, light. */
+export const EmojiPickerLight = story({ mode: 'light', handlers: [customEmojiHandler], recent: ['🔥', '👍', 'custom:ce-0', '🎉'], steps: [openEmoji] });
+
+/** A first-time reader: no recently used row, no custom emoji. */
+export const EmojiPickerFirstTime = story({ steps: [openEmoji] });
+
+/** Searching "cat": matching custom and built-in emoji, by section. */
+export const EmojiPickerSearch = story({ handlers: [customEmojiHandler], steps: [openEmoji, searchFor('cat')] });
+
+/** A search that matches nothing. */
+export const EmojiPickerNoResults = story({ handlers: [customEmojiHandler], steps: [openEmoji, searchFor('qqqq')] });
+
+/** More reactions, from a message's actions: the same picker, reacting to the message. */
+export const ReactionPicker = story({ handlers: [customEmojiHandler], steps: [openActions('you in?'), press('More reactions')] });
+
+/** The GIF picker: the provider's featured GIFs. */
+export const GifPicker = story({ handlers: [gifSearchOn, ...showcaseGifHandlers()], steps: [openGifs] });
+
+/** The same, light. */
+export const GifPickerLight = story({ mode: 'light', handlers: [gifSearchOn, ...showcaseGifHandlers()], steps: [openGifs] });
+
+/** Still loading. */
+export const GifPickerLoading = story({
+  handlers: [
+    gifSearchOn,
+    http.get('/api/gifs/featured', async () => {
+      await delay('infinite');
+      return HttpResponse.json({ results: [] });
+    }),
+  ],
+  steps: [openGifs],
+});
+
+/** GIF search fails (no provider key on the server answers 503): why, with Try again. */
+export const GifPickerError = story({
+  handlers: [gifSearchOn, http.get('/api/gifs/featured', () => HttpResponse.json({ statusCode: 503, message: 'GIF search is not configured' }, { status: 503 }))],
+  steps: [openGifs],
+});
+
+/** A search with no results. */
+export const GifPickerNoResults = story({
+  handlers: [gifSearchOn, http.get('/api/gifs/featured', () => HttpResponse.json({ results: [] }))],
+  steps: [openGifs],
+});
+
+/** Files dragged over the conversation: the composer shows where they go. */
+export const ComposerDropActive = story({
+  steps: [
+    {
+      find: () => document.querySelector<HTMLElement>('[data-chat-pane-drop]'),
+      run: (el: HTMLElement) => {
+        const data = new DataTransfer();
+        data.items.add(new File(['x'], 'notes.txt', { type: 'text/plain' }));
+        el.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: data }));
+      },
+    },
+  ],
+});
+
+/** The mention list in a private channel offers only the people in it (alexk and aiko here). */
+export const ComposerMentionListPrivate = story({ handlers: privateHandlers, draft: 'hey @', steps: [caretToEnd] });
+
+/** Your own pinned message's actions: Unpin with its own icon. */
+export const ActionsUnpin = story({
+  handlers: [
+    ...moderatorHandlers,
+    http.get(messagesPath, () =>
+      HttpResponse.json({ messages: [...MESSAGES].reverse().map((m) => (m.spans[0] as { text?: string }).text?.includes('bringing the headset') ? { ...m, pinned: true } : m), continuationToken: undefined }),
+    ),
+  ],
+  steps: [openActions('bringing the headset')],
 });

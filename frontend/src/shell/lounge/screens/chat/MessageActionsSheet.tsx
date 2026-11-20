@@ -3,7 +3,8 @@
  * context-menu key or Enter on the focused row. Six quick reactions on top, then the shared action model
  * (`data/chat/messageActionModel`, the old chat's menu and sheet): Reply, Edit, Pin or Unpin, Copy message content
  * and Delete, which asks first (the kit's destructive confirmation), See reactions when there are any (who
- * reacted, `ReactionPeopleSheet`), and Reply in thread in a channel (it opens once this sheet has closed, focus back
+ * reacted, `ReactionPeopleSheet`), More reactions after the quick ones (the emoji picker, `ReactionPickerSheet`, once
+ * this sheet has closed), and Reply in thread in a channel (it opens once this sheet has closed, focus back
  * on the row). Inside a thread there is no Reply and no Reply in thread (as the old thread panel). Who may do what is
  * the old chat's (`useMessagePermissions`; nothing on a message still sending or not sent).
  *
@@ -64,6 +65,8 @@ export interface MessageActionsSheetProps {
   onEdit: (message: Message) => void;
   /** Who reacted: offered when the message has reactions. */
   onShowReactions: (message: Message) => void;
+  /** The full emoji picker to react with: after the quick reactions. */
+  onMoreReactions?: (message: Message) => void;
 }
 
 export function MessageActionsSheet({ message, ...rest }: MessageActionsSheetProps): JSX.Element | null {
@@ -80,6 +83,7 @@ function ActionsFor({
   onReplyInThread,
   onEdit,
   onShowReactions,
+  onMoreReactions,
 }: MessageActionsSheetProps & { message: Message }): JSX.Element {
   const queryClient = useQueryClient();
   const announce = useAnnounce();
@@ -168,6 +172,18 @@ function ActionsFor({
                   </Button>
                 );
               })}
+              {onMoreReactions !== undefined && (
+                <Button
+                  variant="ghost"
+                  aria-label="More reactions"
+                  onClick={() => {
+                    setThen(() => () => onMoreReactions(message));
+                    close();
+                  }}
+                >
+                  <Icon name="SmilePlus" size="lg" tone="secondary" />
+                </Button>
+              )}
             </Stack>
           )}
           <Stack gap="xs">
@@ -175,7 +191,13 @@ function ActionsFor({
               <ListRow
                 key={action.key}
                 primary={action.key === 'pin' ? (isPinned ? 'Unpin message' : 'Pin message') : (LABEL[action.key] ?? action.label)}
-                leading={<Icon name={ICON[action.key] ?? 'Pin'} size="md" tone={action.destructive ? 'danger' : 'secondary'} />}
+                leading={
+                  <Icon
+                    name={action.key === 'pin' && isPinned ? 'PinOff' : (ICON[action.key] ?? 'Pin')}
+                    size="md"
+                    tone={action.destructive ? 'danger' : 'secondary'}
+                  />
+                }
                 onClick={() => {
                   if (action.key === 'reply-in-thread') {
                     // The thread opens once this sheet has closed and focus is back on the row (its opener).

@@ -73,6 +73,7 @@ import { VoiceSessionType } from "../../contexts/VoiceContext";
 import { useComposerAvailability } from "../../hooks/useComposerAvailability";
 import type { ComposerAvailability } from "../../hooks/useComposerAvailability";
 import { useComposerDraft } from "../../hooks/useComposerDraft";
+import { clipboardFiles } from "../../data/chat/clipboardFiles";
 
 export interface MessageInputProps {
   contextType: VoiceSessionType;
@@ -269,16 +270,7 @@ export default function MessageInput({
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      const files: File[] = [];
-      for (const item of items) {
-        if (item.kind === "file") {
-          const file = item.getAsFile();
-          if (file) files.push(file);
-        }
-      }
+      const files = clipboardFiles(e.clipboardData);
       if (files.length > 0) {
         handleFilesAdded(files);
       }

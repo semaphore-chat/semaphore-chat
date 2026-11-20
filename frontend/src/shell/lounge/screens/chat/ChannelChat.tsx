@@ -56,6 +56,10 @@ import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
 import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
 import { ThreadView } from './ThreadView';
 import { PinnedSheet } from './PinnedSheet';
+import { ReactionPickerSheet, type ReactionPickerRequest } from './ReactionPickerSheet';
+import { useComposerDrop } from './composerDrop';
+import { findLastEditableMessage } from '../../../../data/chat/lastEditable';
+import { useTouchFirst } from '../../../../data/touchFirst';
 import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
 
@@ -222,6 +226,13 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     [showReactions],
   );
   const closeReactions = useCallback(() => setReactionPeople(null), []);
+  // "More reactions": the emoji picker, reacting to the message; focus returns to its row.
+  const [reactionPicker, setReactionPicker] = useState<ReactionPickerRequest | null>(null);
+  const moreReactions = useCallback((message: Message) => setReactionPicker({ message, returnTo: actionsRow.current }), []);
+  const closeReactionPicker = useCallback(() => setReactionPicker(null), []);
+  const touch = useTouchFirst(range);
+  // Files dropped on the conversation go to the composer.
+  const drop = useComposerDrop();
   // Reply (the shared quote-reply state; it resets when the channel changes). Sending goes through the composer.
   const { replyToMessage, handleQuoteReply, handleCancelReply } = useReplyAndEdit({
     contextType: VoiceSessionType.Channel,
@@ -246,6 +257,18 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     (message: Message) => (threadOpen ? threadEditing : editing).start(message.id),
     [editing, threadEditing, threadOpen],
   );
+  // ↑ in the empty composer: the reader's newest message that can be edited opens in place, scrolled into view.
+  const orderedRef = useRef(conversation.orderedMessages);
+  orderedRef.current = conversation.orderedMessages;
+  const listRef = conversation.listRef;
+  const me = conversation.me;
+  const editLastMessage = useCallback((): boolean => {
+    const last = findLastEditableMessage([...orderedRef.current].reverse(), me);
+    if (last === null) return false;
+    editing.start(last.id);
+    listRef.current?.scrollToMessage(last.id);
+    return true;
+  }, [editing, listRef, me]);
 
   // --- The thread: opened into a new history entry (Back closes it), on the channel's own path ---
   const searchRef = useRef(searchParams);
@@ -445,6 +468,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
           ) : undefined
         }
         announcement={conversation.announcement}
+        dropZone={drop.dropZone}
         cover={
           threadId !== null ? (
             <ThreadView
@@ -471,6 +495,9 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
               inputRef={inputRef}
               replyTo={replyToMessage}
               onCancelReply={handleCancelReply}
+              dropActive={drop.active}
+              dropInto={drop.into}
+              onEditLastMessage={editLastMessage}
             />
           ) : undefined
         }
@@ -485,6 +512,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         onReplyInThread={threadOpen ? undefined : openThreadFromActions}
         onEdit={onEdit}
         onShowReactions={showReactionsFromActions}
+        onMoreReactions={moreReactions}
       />
       {pinnedOpen && (
         <PinnedSheet
@@ -496,6 +524,13 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
           onJump={jumpToPin}
         />
       )}
+      <ReactionPickerSheet
+        request={reactionPicker}
+        me={conversation.me}
+        communityId={communityId}
+        touch={touch}
+        onDone={closeReactionPicker}
+      />
       <MessageMediaViewer request={viewer} opener={opener} onDone={closeViewer} />
       <ReactionPeopleSheet request={reactionPeople} me={conversation.me} emoji={segments} onDone={closeReactions} />
     </ChatRowContext>

@@ -7,8 +7,11 @@
  * (`useFileAttachments`), the keys (`useComposerKeys`: the input-method guard first, then the mention list, Escape
  * cancels a reply, Enter sends on a keyboard) and building the message's spans (`parseMessageWithMentions`).
  *
- * Who the mention list offers is the old composer's: every member of the community, also in a private channel
- * (`useMentionAutocomplete` reads the community's members).
+ * Who the mention list offers: every member of the community in a public channel (`useMentionAutocomplete` reads
+ * the community's members); in a private channel only the people in it, who can see it (as Discord; the old composer
+ * offers everyone). The extras (PR 10d-C): text inserted at the caret (an emoji from the picker), a GIF sent at
+ * once as its own message, pasted and dropped files into the tray, and ↑ in the empty field editing the reader's
+ * last message (`onEditLastMessage`).
  *
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
@@ -30,7 +33,9 @@ import { formatFileSize } from '../../utils/format';
 import { formatRoleList } from '../../utils/formatRoleList';
 import { insertMention, parseMessageWithMentions, type UserMention, type ChannelMention } from '../../utils/mentionParser';
 import { logger } from '../../utils/logger';
+import { useCommunityChannels } from '../channels';
 import { useComposerKeys, type SimpleMentionState } from './useComposerKeys';
+import { useMentionableUserIds } from './useMentionableUserIds';
 import { useFileAttachments } from './useFileAttachments';
 import { useMentionHandling } from './useMentionHandling';
 
@@ -120,11 +125,26 @@ export interface UseChannelComposerOptions {
   touch: boolean;
   /** Set while replying: Escape in the field cancels the reply. */
   onCancelReply?: () => void;
+  /**
+   * ↑ in the empty field with a hardware keyboard (no list open): edit the reader's last message. False when there
+   * is none (the key then does nothing).
+   */
+  onEditLastMessage?: () => boolean;
 }
 
 const NO_DM_MENTIONS: SimpleMentionState = { isOpen: false, suggestions: [], selectedIndex: 0, query: '', type: null, isLoading: false };
 
-export function useChannelComposer({ communityId, channelId, thread, inputRef, send, onError, touch, onCancelReply }: UseChannelComposerOptions) {
+export function useChannelComposer({
+  communityId,
+  channelId,
+  thread,
+  inputRef,
+  send,
+  onError,
+  touch,
+  onCancelReply,
+  onEditLastMessage,
+}: UseChannelComposerOptions) {
   const [text, setText, clearDraft] = useComposerDraft(thread ? `thread:${thread.parentMessageId}` : `channel:${channelId}`);
   const [sending, setSending] = useState(false);
   const availability = useComposerAvailability({
@@ -165,7 +185,17 @@ export function useChannelComposer({ communityId, channelId, thread, inputRef, s
   useEffect(() => {
     setupCursorTracking(inputRef as RefObject<HTMLInputElement | null>);
   }, [setupCursorTracking, inputRef, canCompose]);
-  const mentionHook = useMentionAutocomplete({ communityId, text, cursorPosition });
+  // A private channel's list offers only its members (who can see it).
+  const channels = useCommunityChannels(communityId);
+  const listed = channels.all?.find((c) => c.id === channelId);
+  const mentionable = useMentionableUserIds(listed ? { id: listed.id, isPrivate: listed.isPrivate === true } : null);
+  const mentionHook = useMentionAutocomplete({
+    communityId,
+    text,
+    cursorPosition,
+    allowedUserIds: mentionable.ids,
+    allowedLoading: mentionable.loading,
+  });
   const { data: members = [] } = useAllCommunityMembers(communityId, { enabled: !!communityId });
   const { data: mentionableChannels = [] } = useQuery({
     ...channelsControllerGetMentionableChannelsOptions({ path: { communityId } }),
@@ -281,6 +311,7 @@ export function useChannelComposer({ communityId, channelId, thread, inputRef, s
     handleMentionSelect,
     handleSend,
     onCancelReply,
+    onEditLastMessage,
   });
 
   const onChange = useCallback(
@@ -301,6 +332,43 @@ export function useChannelComposer({ communityId, channelId, thread, inputRef, s
       files.handleFileDrop(picked);
     },
     [canAttach, attachUnavailableText, files, onError],
+  );
+
+  // An emoji from the picker goes where the caret was (the field keeps its selection while the picker is open),
+  // replacing a selection; the caret goes after it. On a keyboard the field takes focus back (as the old composer;
+  // on touch that would bring the on-screen keyboard back over the chat).
+  const insertText = useCallback(
+    (insert: string) => {
+      const field = inputRef.current;
+      const now = textRef.current;
+      const start = Math.min(field?.selectionStart ?? now.length, now.length);
+      const end = Math.min(field?.selectionEnd ?? now.length, now.length);
+      pendingCaret.current = start + insert.length;
+      setText(now.slice(0, start) + insert + now.slice(end));
+      emitTyping();
+      if (!touch) requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+    },
+    [inputRef, setText, emitTyping, touch],
+  );
+
+  // A GIF from the picker is sent at once as its own message, its link alone (as the old composer); the draft and
+  // the queued files stay.
+  const sendLink = useCallback(
+    async (url: string) => {
+      if (!canCompose || sendingRef.current) return;
+      sendingRef.current = true;
+      setSending(true);
+      try {
+        await send(url, [{ type: SpanType.PLAINTEXT, text: url }], []);
+      } catch (error) {
+        logger.error('Failed to send GIF:', error);
+        onError('Failed to send message. Please try again.');
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
+      }
+    },
+    [canCompose, send, onError],
   );
 
   const mentions: MentionListView | null =
@@ -324,6 +392,10 @@ export function useChannelComposer({ communityId, channelId, thread, inputRef, s
       if (event.nativeEvent.defaultPrevented && !event.defaultPrevented) event.preventDefault();
     },
     send: handleSend,
+    insertText,
+    sendLink,
+    /** Whether the reader can write here (no notice): the pickers are offered only then. */
+    canCompose,
     sending,
     canSend: text.trim() !== '' || files.selectedFiles.length > 0,
     notice: composerNotice(availability),

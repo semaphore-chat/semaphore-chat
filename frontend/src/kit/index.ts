@@ -55,6 +55,8 @@ export { ListRow } from './lists/ListRow';
 export type { ListRowProps } from './lists/ListRow';
 export { ListSeparator } from './lists/ListSeparator';
 export type { ListSeparatorProps, ListSeparatorVariant } from './lists/ListSeparator';
+export { PickerGrid } from './lists/PickerGrid';
+export type { PickerGridItem, PickerGridProps, PickerGridSection, PickerGridVariant } from './lists/PickerGrid';
 export { Table } from './lists/Table';
 export type { TableColumn, TableProps, TableRow } from './lists/Table';
 export { Menu } from './overlays/Menu';
@@ -135,11 +137,19 @@ export type {
 export { ReactionChip } from './chat/ReactionChip';
 export type { ReactionChipProps } from './chat/ReactionChip';
 export { Composer } from './chat/Composer';
-export type { ComposerBanner, ComposerCap, ComposerMode, ComposerNotice, ComposerPopup, ComposerProps } from './chat/Composer';
+export type {
+  ComposerBanner,
+  ComposerCap,
+  ComposerDropTarget,
+  ComposerMode,
+  ComposerNotice,
+  ComposerPopup,
+  ComposerProps,
+} from './chat/Composer';
 export { JumpToLatest } from './chat/JumpToLatest';
 export type { JumpToLatestProps } from './chat/JumpToLatest';
 export { ChatPane } from './chat/ChatPane';
-export type { ChatPaneProps } from './chat/ChatPane';
+export type { ChatPaneDropZone, ChatPaneProps } from './chat/ChatPane';
 export { MessageQuote } from './chat/MessageQuote';
 export type { MessageQuoteProps } from './chat/MessageQuote';
 export { AttachmentTile } from './chat/AttachmentTile';

@@ -19,6 +19,7 @@ describe('attachmentAction (from the server-reported type)', () => {
     ['image/gif', 'open'],
     ['image/webp', 'open'],
     ['image/avif', 'open'],
+    ['image/bmp', 'open'],
     ['IMAGE/PNG; charset=binary', 'open'],
     ['image/svg+xml', 'download'],
     ['text/html', 'download'],

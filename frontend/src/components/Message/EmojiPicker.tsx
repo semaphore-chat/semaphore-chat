@@ -12,7 +12,7 @@ import {
   type EmojiGridPosition,
   type EmojiGridSection,
 } from '../../utils/emojiGridNavigation';
-import { EMOJI_CATEGORIES, EMOJI_NAMES } from './emojiData';
+import { emojiName, filterCustomEmojis, searchEmojiCategories } from '../../data/chat/emojiCatalogue';
 
 /** Section key for the "Custom" emoji group in the roving-tabindex grid. */
 const CUSTOM_SECTION_KEY = '__custom__';
@@ -34,41 +34,11 @@ const EmojiPickerContent: React.FC<{
 
   const filteredCustomEmojis = useMemo(() => {
     if (!onCustomEmojiClick || customEmojis.length === 0) return [];
-    const query = searchQuery.toLowerCase().trim();
-    if (!query) return customEmojis;
-    return customEmojis.filter((e) => e.name.toLowerCase().includes(query));
+    return filterCustomEmojis(customEmojis, searchQuery);
   }, [customEmojis, onCustomEmojiClick, searchQuery]);
 
   // Filter emojis based on search query
-  const filteredCategories = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return EMOJI_CATEGORIES;
-    }
-
-    const query = searchQuery.toLowerCase().trim();
-    const results: Record<string, string[]> = {};
-
-    // Search through all categories
-    Object.entries(EMOJI_CATEGORIES).forEach(([category, emojis]) => {
-      const matchedEmojis = emojis.filter((emoji) => {
-        // Check if emoji itself contains the query (for searching by emoji)
-        if (emoji.includes(query)) return true;
-
-        // Check if any of the emoji's names match the query
-        const names = EMOJI_NAMES[emoji];
-        if (names) {
-          return names.some((name) => name.toLowerCase().includes(query));
-        }
-        return false;
-      });
-
-      if (matchedEmojis.length > 0) {
-        results[category] = matchedEmojis;
-      }
-    });
-
-    return results;
-  }, [searchQuery]);
+  const filteredCategories = useMemo(() => searchEmojiCategories(searchQuery), [searchQuery]);
 
   const hasResults =
     Object.keys(filteredCategories).length > 0 ||
@@ -338,7 +308,7 @@ const EmojiPickerContent: React.FC<{
                     tabIndex={isActiveCell(categoryName, cellIndex) ? 0 : -1}
                     onFocus={handleCellFocus(categoryName, cellIndex)}
                     size="small"
-                    aria-label={EMOJI_NAMES[emoji]?.[0] ?? emoji}
+                    aria-label={emojiName(emoji)}
                     onClick={() => onEmojiClick(emoji)}
                     sx={{
                       fontSize: touch ? 'icon.2xl' : 'icon.md',
