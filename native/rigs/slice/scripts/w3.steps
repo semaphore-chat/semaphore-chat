@@ -148,11 +148,11 @@ expect opened-url "app-data/logs"
 # 7. Appearance: light, at once, everywhere: the settings, the shell and a conversation, a dialog.
 click settings-tab-appearance
 wait core route settings/appearance
-wait core theme dark-teal-minimal
+wait core theme dark-purple-minimal
 click appearance-dark
-wait core theme light-teal-minimal
+wait core theme light-purple-minimal
 wait core requests AppearanceSettingsController_updateSettings >= 1
-expect settings /theme light-teal-minimal
+expect settings /theme light-purple-minimal
 wait idle
 shot 12-appearance-light-settings
 link "semaphore://community/$ID(c-couch)/channel/$ID(cc-general)"
@@ -169,7 +169,7 @@ click account-cancel
 # in the tab.
 restart
 wait core session signed-in
-expect core theme light-teal-minimal
+expect core theme light-purple-minimal
 wait core channel $ID(cc-general)
 expect core engine ptt on
 click rail-account
