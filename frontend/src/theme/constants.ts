@@ -5,6 +5,8 @@
  * to comply with React Fast Refresh requirements.
  */
 
+import { ACCENT_NAMES, ACCENT_PRIMARY } from '@semaphore-chat/shared';
+
 export type ThemeMode = 'dark' | 'light';
 export type AccentColor =
   | 'teal'
@@ -25,6 +27,31 @@ export interface ThemeSettings {
   mode: ThemeMode;
   accentColor: AccentColor;
   intensity: ThemeIntensity;
+  /** Any `#rrggbb`; the old shell shows the nearest named accent. */
+  baseColor: string;
+  /** Follow the operating system's light/dark preference. */
+  matchSystem: boolean;
+  /** Use the new design. */
+  newDesign: boolean;
+}
+
+const BASE_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+/** `value` as a lower-case `#rrggbb`, or `null` when it isn't a six-digit hex colour. */
+export function normalizeBaseColor(value: unknown): string | null {
+  return typeof value === 'string' && BASE_COLOR_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
+export function isThemeMode(value: unknown): value is ThemeMode {
+  return value === 'dark' || value === 'light';
+}
+
+export function isAccentColor(value: unknown): value is AccentColor {
+  return typeof value === 'string' && (ACCENT_NAMES as readonly string[]).includes(value);
+}
+
+export function isThemeIntensity(value: unknown): value is ThemeIntensity {
+  return value === 'minimal' || value === 'balanced' || value === 'vibrant';
 }
 
 export interface AccentColorInfo {
@@ -35,18 +62,18 @@ export interface AccentColorInfo {
 
 // Export accent color info for the settings UI
 export const accentColors: AccentColorInfo[] = [
-  { id: 'teal', name: 'Ocean Teal', primary: '#0d9488' },
-  { id: 'blue', name: 'Sky Blue', primary: '#3b82f6' },
-  { id: 'indigo', name: 'Deep Indigo', primary: '#6366f1' },
-  { id: 'purple', name: 'Soft Purple', primary: '#8b5cf6' },
-  { id: 'rose', name: 'Rose Pink', primary: '#f43f5e' },
-  { id: 'red', name: 'Crimson Red', primary: '#ef4444' },
-  { id: 'orange', name: 'Coral Orange', primary: '#f97316' },
-  { id: 'amber', name: 'Golden Amber', primary: '#f59e0b' },
-  { id: 'lime', name: 'Lime Green', primary: '#84cc16' },
-  { id: 'emerald', name: 'Emerald Green', primary: '#10b981' },
-  { id: 'cyan', name: 'Electric Cyan', primary: '#06b6d4' },
-  { id: 'slate', name: 'Slate Gray', primary: '#64748b' },
+  { id: 'teal', name: 'Ocean Teal', primary: ACCENT_PRIMARY.teal },
+  { id: 'blue', name: 'Sky Blue', primary: ACCENT_PRIMARY.blue },
+  { id: 'indigo', name: 'Deep Indigo', primary: ACCENT_PRIMARY.indigo },
+  { id: 'purple', name: 'Soft Purple', primary: ACCENT_PRIMARY.purple },
+  { id: 'rose', name: 'Rose Pink', primary: ACCENT_PRIMARY.rose },
+  { id: 'red', name: 'Crimson Red', primary: ACCENT_PRIMARY.red },
+  { id: 'orange', name: 'Coral Orange', primary: ACCENT_PRIMARY.orange },
+  { id: 'amber', name: 'Golden Amber', primary: ACCENT_PRIMARY.amber },
+  { id: 'lime', name: 'Lime Green', primary: ACCENT_PRIMARY.lime },
+  { id: 'emerald', name: 'Emerald Green', primary: ACCENT_PRIMARY.emerald },
+  { id: 'cyan', name: 'Electric Cyan', primary: ACCENT_PRIMARY.cyan },
+  { id: 'slate', name: 'Slate Gray', primary: ACCENT_PRIMARY.slate },
 ];
 
 export const STORAGE_KEY = 'semaphore-theme';
@@ -55,4 +82,7 @@ export const defaultSettings: ThemeSettings = {
   mode: 'dark',
   accentColor: 'teal',
   intensity: 'minimal',
+  baseColor: ACCENT_PRIMARY.teal,
+  matchSystem: false,
+  newDesign: false,
 };

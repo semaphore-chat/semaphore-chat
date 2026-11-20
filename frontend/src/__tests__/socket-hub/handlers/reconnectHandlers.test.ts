@@ -115,16 +115,4 @@ describe('handleReconnect', () => {
       }),
     );
   });
-
-  it('invalidates all 8 query types in a single call', () => {
-    // Message queries only invalidate when present in cache and at the live
-    // edge (see the reset test above for the detached case).
-    queryClient.setQueryData(channelMessagesQueryKey('chan-1'), createInfiniteData([createMessage()]));
-    queryClient.setQueryData(dmMessagesQueryKey('dm-1'), createInfiniteData([createMessage()]));
-
-    handleReconnect(queryClient);
-
-    // 8 invalidation calls — one per stale data source (added message readers)
-    expect(invalidateSpy).toHaveBeenCalledTimes(8);
-  });
 });

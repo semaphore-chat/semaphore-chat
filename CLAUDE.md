@@ -292,6 +292,7 @@ scripts/test-stack.sh ls                                           # every ticke
 | Prisma client | `docker compose run --rm backend pnpm run prisma:generate` | automatic: `run`/`run-backend` regenerate it when the schema differs from the image |
 | OpenAPI spec + client | see OpenAPI SDK Client Regeneration | `run-backend pnpm run generate:openapi`, then `run-frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'` |
 | README/docs media | `docker compose --profile tools run --rm media` | `scripts/test-stack.sh <ticket> media` |
+| Kit real-browser tests (Playwright on Ladle stories) | `scripts/test-stack.sh <ticket> browser [playwright args]` | the same |
 | Playwright / voice E2E, UI review | `scripts/run-e2e.sh`, `scripts/run-voice-e2e.sh`, `frontend/scripts/ui-review/ui-review.sh` | the same scripts: they already use `semaphore-test` |
 
 - Services address each other by the ticket-prefixed container name (`<ticket>-pg`), never by generic names like `postgres`/`redis`: several tickets share the network.
@@ -513,6 +514,8 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 
 **UI changes**: before opening or updating a PR that changes frontend UI, follow the ui-pr-review skill (`.claude/skills/ui-pr-review`) — render affected stories on base vs head at phone/tablet/desktop, review every screenshot, and include the generated before/after section in the PR description.
 
+**Native UI changes**: a PR that changes what the GPUI client renders runs `native/scripts/ui-review.sh` (every story rendered on the base ref and on the working tree, pixel-diffed) and includes the generated block between `<!-- native-ui-review:start -->` and `<!-- native-ui-review:end -->` in the description, after looking at every changed composite. Unstable stories are reported separately, not as changes. Builds and renders run in `native/scripts/in-image.sh`; never run cargo on the host. How to read the report: `docs-site/docs/contributing/native-ui-review.md`.
+
 ### Patched Dependencies
 
 - We carry one pnpm patch, `livekit-client@2.22.3` (see `patches/README.md`): without it a full voice reconnect loses `TrackSubscribed`, so users stay connected but hear nobody. `frontend/src/__tests__/features/livekitClientPatch.test.ts` fails without it; on a livekit-client bump, port or drop it as the README says. The electron-updater patch added in 0.4.2 misread the .deb `pkexec exited with code 127` error and itself broke .deb/.rpm auto-update in 0.4.2 and 0.4.3, so it was removed. `frontend/src/__tests__/electron/linuxUpdaterInstall.node.test.ts` runs electron-updater's real Linux install path and must keep passing.
@@ -560,6 +563,14 @@ Semaphore Chat uses three patterns for WebSocket events. Choosing the right one 
 Frontend server state is managed entirely through TanStack Query (React Query). There is no Redux store — all API data flows through `useQuery` / `useMutation` hooks with the generated API client.
 
 - Remove orphan containers when using docker to run commands
+
+## Design system
+
+The design guide is in `design/guide/` (published on the docs site as "Design guide"). Any UI work follows the `design-system` skill (`.claude/skills/design-system`). Three rules:
+
+- Nothing off-system on a screen: no raw colour, no pixel number, no one-off component. Use the kit, the tokens and the palette roles.
+- MUI is imported only inside `frontend/src/kit`.
+- A missing token, component, variant, behaviour or layout goes through `design/guide/extending.md`: add it to the system first, in both clients.
 
 ## Cutting a release
 

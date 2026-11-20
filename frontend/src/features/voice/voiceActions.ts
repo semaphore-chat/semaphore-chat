@@ -24,7 +24,7 @@ import { publishScreenShare } from "./screenSharePublish";
 import { logger } from "../../utils/logger";
 import { isElectron } from "../../utils/platform";
 import { getCachedItem, setCachedItem, removeCachedItem } from "../../utils/storage";
-import { getAccessToken } from "../../utils/tokenService";
+import { getAccessToken, getAccessTokenUserId } from "../../utils/tokenService";
 import { getApiUrl } from "../../config/env";
 import { playSound, Sounds } from "../../hooks/useSound";
 import { setUpdateDeferred } from "../../utils/swUpdate";
@@ -160,6 +160,11 @@ interface VoiceSettings {
 
 // Exported for use by useVoiceRecovery hook
 export interface SavedVoiceConnection {
+  /**
+   * The signed-in user who was connected. Recovery ignores a record of
+   * another user, or one without this field (saved before it existed).
+   */
+  userId?: string;
   contextType: VoiceSessionType;
   channelId?: string;
   channelName?: string;
@@ -177,9 +182,10 @@ export interface SavedVoiceConnection {
   timestamp: number;
 }
 
-function saveConnectionState(connection: Omit<SavedVoiceConnection, 'timestamp'>) {
+function saveConnectionState(connection: Omit<SavedVoiceConnection, 'timestamp' | 'userId'>) {
   const savedConnection: SavedVoiceConnection = {
     ...connection,
+    userId: getAccessTokenUserId() ?? undefined,
     timestamp: Date.now(),
   };
   setCachedItem(VOICE_CONNECTION_KEY, savedConnection);

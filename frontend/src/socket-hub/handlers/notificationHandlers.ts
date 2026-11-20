@@ -130,6 +130,18 @@ export const handleNewNotification: SocketEventHandler<typeof ServerEvents.NEW_N
           ];
         },
       );
+      // The increment above is only for an instant badge: the server counts
+      // mentions from notification rows, and this event is sent once the row
+      // is written, so a fetch started now is exact. Always refetch (#817):
+      // a fetch already in flight (e.g. the one NEW_MESSAGE starts when it
+      // inserts the channel's first entry) may have read the server before
+      // the row and would overwrite the increment, or after it and land
+      // first, so the increment counts the mention twice. Invalidating
+      // cancels that fetch and starts one that sees the row; it also fills
+      // in the communityId of an entry synthesized here. That is one small
+      // request per unread mention-type notification (mentions and direct
+      // messages); a newer one cancels an older one still in flight.
+      void queryClient.invalidateQueries({ queryKey: unreadCountsQueryKey });
     }
   }
 };

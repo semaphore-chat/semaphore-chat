@@ -8,6 +8,10 @@
  *      for an OWNER — so the 403 is authorization, not a broken endpoint.
  *   2. RAPID LOCAL MUTE/UNMUTE TOGGLES don't desync: the final state wins — a
  *      burst ending "unmuted" → peer receives; ending "muted" → peer stops.
+ *   3. A MODERATOR MUTE RIGHT AFTER JOINING (#815): muted as soon as
+ *      the target's audio flows, while its soundboard warm-up may still be
+ *      publishing, the target is heard again once the mute is lifted and it
+ *      unmutes.
  *
  * The member never joins voice (a USER-role account isn't driven through the
  * voice-join UI here); it calls the mute REST endpoint directly via
@@ -25,6 +29,7 @@ import {
   expectNoAudioGrowth,
   setMicEnabled,
   moderatorMute,
+  waitForRemoteAudioElements,
   tryModeratorMuteAs,
   MEMBER_USER,
   TEST_USER,
@@ -53,6 +58,12 @@ test.describe('Mute permissions & rapid toggles', () => {
     await joinVoiceChannel(owner, CH);
     await joinVoiceChannel(target, CH);
     await waitForAudioFlow(owner, target);
+    // The target's soundboard track is published about a second after joining, after its mic already
+    // flows. A moderator mute that lands while that publish is in flight takes the soundboard source
+    // away mid-publish (the muted grant has no UNKNOWN source), and the target's later mic republish
+    // never reaches the owner (on a slow runner: CI run 43792103516; #815, test 3 below). This test is
+    // about authorization, so it mutes a settled participant.
+    await waitForRemoteAudioElements(owner, target);
 
     // A non-privileged member (REST-only, never joined) is FORBIDDEN to mute.
     const memberStatus = await tryModeratorMuteAs(
@@ -96,6 +107,27 @@ test.describe('Mute permissions & rapid toggles', () => {
 
     // Clean recovery.
     await setMicEnabled(target, true);
+    await waitForAudioFlow(owner, target, { timeout: 30_000 });
+  });
+
+  // #815 reproduction: no waitForRemoteAudioElements first, so the mute can land while the target's soundboard
+  // warm-up is being published (LiveKit then refuses that publish). Measured under 1 CPU for the browsers and
+  // LiveKit, 10 runs each (2026-11-16): main 6/10 heard again (4 x the issue's symptom); this branch's final code
+  // 10/10. Run it that way with `--grep=#815` and the CPU limits (pr-9a report).
+  test('a moderator mute within a second of joining: after the unmute the owner hears the target again (#815)', async () => {
+    owner = await launchParticipant(TEST_USER, 'sample-a.wav');
+    target = await launchParticipant(TEST_USER_2, 'sample-b.wav');
+    await joinVoiceChannel(owner, CH);
+    await joinVoiceChannel(target, CH);
+    await waitForAudioFlow(owner, target);
+    // No waitForRemoteAudioElements: the mute lands as early as test 1's did before that wait, when the
+    // target's soundboard warm-up can still be publishing.
+    await moderatorMute(owner, target.identity, true, owner.channelId);
+    await expectNoAudioGrowth(owner, target);
+
+    await moderatorMute(owner, target.identity, false, owner.channelId);
+    await setMicEnabled(target, true);
+    // #815: after the lift and the unmute the owner hears the target again.
     await waitForAudioFlow(owner, target, { timeout: 30_000 });
   });
 });

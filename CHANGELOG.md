@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes / upgrade checklist
+
+- **One database migration for appearance settings.** `20261119014603_add_load_remote_content` adds `loadRemoteContent` (true/false, default true) to `UserAppearanceSettings`. Every existing user keeps today's behaviour (pictures load). No other data changes.
+
+### Added
+
+- **Settings > Privacy: "Load pictures and previews from other sites".** On by default. Turn it off and the app stops loading pictures from other sites on its own: link previews show their title, site and description with a plain link icon, a GIF link stays a link, and webhooks show their initial instead of their avatar. Other sites then never see your IP address because of a message. GIFs you browse in the GIF picker still load. Both the current and the new design honour it. The setting is `loadRemoteContent` on `GET`/`PATCH /appearance-settings`; older app versions ignore it and keep loading pictures.
+
+## [0.11.0] - 2026-11-18
+
+This release is a security fix for stored attachments and the first big step of a new design. The new design is hidden: nobody sees it unless they turn on a per-user setting that the app does not offer yet. Self-hosters should upgrade, because of the two attachment fixes under Security.
+
+### ⚠️ Breaking changes / upgrade checklist
+
+- **One database migration for appearance settings.** `20261115022623_appearance_base_color` adds three columns to `UserAppearanceSettings`: `baseColor` (text), `matchSystem` (true/false, default false) and `newDesign` (true/false, default false). It fills each existing row's `baseColor` from its accent, so existing users keep their look. A row with an accent that no client knows is set to `blue`. It changes the `accentColor` default to `purple`. An account that never loaded the app while the table existed is treated as new: its current design shows the new purple default rather than the old `blue` one. No other data changes. Back up your database before upgrading. (#782)
+- **A file declared as `application/octet-stream` now downloads** instead of showing in the browser. (#840)
+- **A PDF opened from its direct file URL now downloads** instead of opening in the browser's viewer. The web app never opens files that way, so it is not affected. (#840)
+- **SVG, HEIC and BMP attachments show as a file card** with a Download button, not as a picture. (#841)
+- No new environment variables, and no new required versions.
+
+### Security
+
+- **Stored attachment types** — Attachment types are whatever the uploader declared. They are now cleaned up (lowercase, no parameters; a type that can't be read becomes `application/octet-stream`) when a file is stored and when it is served, so existing files are covered without a migration. The list of types that always download instead of showing in the browser is wider: the XML family, script types and unreadable types. Responses for stored files (file, thumbnail and replay download) now carry `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`. (#840)
+- **Attachments drawn as pictures** — Attachments are drawn as pictures and opened in the picture viewer only when they are raster pictures. SVG, HEIC and BMP attachments now show as a file card with Download, in both the current and the new design. (#841)
+
+Upgrade soon. The behaviour changes are listed in the checklist above.
+
+### Added
+
+- **A new design, hidden for now ("Lounge").** Most of this release is the groundwork for a redesign of the app. It only shows for a user whose `newDesign` setting is on, only on a phone-width web window, and the app does not offer that setting yet. Everyone else sees no new design, and desktop, tablet and the desktop app are unchanged. It comes in these parts:
+  - **Design kit and tokens.** One set of colours, type, spacing and icons shared by the web and native apps, with a palette made from a single base colour (#775, #776, #778). A web component kit: buttons, form fields, lists, menus, dialogs, avatars, badges, toasts, the Lounge pieces (islands, cards, dock, sheets), layouts, and behaviour pieces such as the toast and overlay hosts (#777, #779, #780, #783, #784, #791, #796, #797, #799, #800, #804). Ready-made chat pieces for the chat screen (#826). Written design guidance and a Playwright check against the kit's stories (#785, #793). The shared rules for how these pieces behave are in a common form for TypeScript and Rust (#787). The settings for this are in the appearance entry below (#786, #782).
+  - **The new shell on a phone.** A switch between the current shell and the new one (#798), the Lounge frame and notices (#808), the community dock and "All communities" sheet (#811), the community and members panels (#813), the call bar, voice notice and call surface (#814), sign out (#816), and the community home as the first real screen (#821). Shared data and chat logic now sit under both shells, with no change for current users (#806, #823, #825, #794). Chat screens were built first on a hidden test page (#830, #834).
+  - **Chat in the new shell.** The real channel route opens the new chat on a phone for users with the setting on (#836). It has a composer with replies, mentions, attachments and drafts, a message actions sheet, edit in place, and retry or delete for failed sends (#834). Rich rows show link cards, GIFs, a full-screen picture viewer, video and audio that play in place, who reacted, and the reason a send failed (#841). A full-screen thread view and a pinned messages sheet (#844). Voice channels stay in the current design.
+  - **Avatar colours.** A person's avatar colour now comes from their user id, so it is the same everywhere (#835).
+- Appearance settings gained a `baseColor` (any lowercase `#rrggbb` colour), `matchSystem` (follow the operating system's light/dark setting) and `newDesign` ("try the new design"). `PATCH /appearance-settings` keeps `accentColor` equal to the accent nearest `baseColor`, so clients that only know the named accents keep working; changing `accentColor` to a different accent sets `baseColor` to that accent's primary. Older app versions keep working and do not reset a custom colour: they repeat the accent they already had when the user only changes the mode or intensity, and the server leaves `baseColor` untouched unless the accent actually changes. `GET /appearance-settings` returns all three fields. The web client stores them and the look does not change (#782, #786).
+- **Where an unread count belongs.** `GET /read-receipts/unread-counts` entries now say which community a channel belongs to (`communityId`, null for direct messages). Older apps ignore it. (#801)
+- **Who is online in one community.** `GET /presence/community/:communityId` returns the online user ids and counts for one community. It needs the same permission as listing the members. (#809)
+- The native app reads the new appearance settings, and keeps working with older servers (#790).
+
+### Changed
+
+- Attachments that are not raster pictures are file cards that download (see Security) (#841).
+- Tests, CI and tooling only, no change for users: before/after review for native stories (#810), voice and Lounge end-to-end tests (#802, #818), clean-up of test communities (#838), native test fixes (#762, #774), and a `cargo-deny` notice for a dependency that is no longer maintained (#843).
+
+### Fixed
+
+- A chat no longer stays empty when a message arrives while the channel first loads (#836).
+- Reading a channel and leaving it within about a second now counts as read; the unread badge no longer comes back (#822).
+- A first message that mentions you keeps its mention count instead of showing as plain "new messages" (#822).
+- Pressing Enter to confirm an input-method candidate (Chinese, Japanese, Korean typing) no longer sends the half-typed message (#824, #828).
+- Removing an attachment that is not the last one no longer takes the next file's preview, and pasted pictures show at once (#827, #834).
+- A link with `?thread=<id>` opens that thread once its parent message has loaded; paging a thread of more than 50 replies no longer shows a live reply twice; End and Home keep focus in a long thread (#844).
+- Signing out leaves nothing behind for the next account on the same tab: cached data, saved voice connection, drafts and tokens are cleared. A slow or unreachable server can no longer hang sign out, and repeated taps no longer start more than one (#807).
+- A call joined from the new design no longer starts the soundboard late or publishes its track twice, so peers don't hear an extra audio element (#819).
+- "Match system" now picks the right light or dark mode on the first render (#792).
+
+### Upgrade notes
+
+- Back up your database, then upgrade. The migration (`20261115022623_appearance_base_color`) runs on its own with `prisma migrate deploy`. It adds columns and updates one row per account's appearance settings; no rows are removed.
+- If you serve or link to files directly, expect `application/octet-stream` files and PDFs to download rather than open in the browser, and SVG, HEIC and BMP attachments to show as file cards.
+- Nothing to do for the new design: it stays off until a later release offers the setting.
+
 ## [0.10.0] - 2026-11-13
 
 A security release, from a second audit that also covered the web and desktop apps, deployment files and CI. Several fixes change how an instance is deployed and set up, so read the checklist before upgrading.

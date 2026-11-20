@@ -37,24 +37,43 @@ export const useMessageVisibility = ({
   const queryClient = useQueryClient();
   const isFocused = useWindowFocus();
   const lastMarkedMessageIdRef = useRef<string | null>(null);
-  const pendingMessageIdRef = useRef<string | null>(null);
+  // The read waiting on the debounce, with the socket and context it was
+  // made in, so a flush after a channel switch still sends it for the
+  // channel it belongs to.
+  const pendingReadRef = useRef<{ socket: NonNullable<typeof socket>; payload: MarkAsReadPayload } | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Holds the latest message id seen while the tab was blurred/hidden —
   // MessageContainer keeps calling markAsRead with the newest visible id
   // even while backgrounded, so this always ends up holding the freshest one.
   const pendingWhileUnfocusedRef = useRef<string | null>(null);
 
-  // Clean up debounce timer when deps change or on unmount,
-  // preventing stale closures from emitting to the wrong channel/socket.
+  // Send the pending read now (the debounce firing, or the conversation
+  // going away) and cancel its timer.
+  const flushPendingRead = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    const pending = pendingReadRef.current;
+    pendingReadRef.current = null;
+    if (!pending || lastMarkedMessageIdRef.current === pending.payload.lastReadMessageId) return;
+    pending.socket.emit(ClientEvents.MARK_AS_READ, pending.payload);
+    lastMarkedMessageIdRef.current = pending.payload.lastReadMessageId;
+  }, []);
+
+  // When the conversation changes or unmounts, send the read waiting on the
+  // debounce instead of dropping it: markAsRead already cleared the badge in
+  // the cache, so a dropped read leaves the server's count unread and the
+  // next refetch of the counts brings the badge back (reading a channel and
+  // leaving it within the second never counted). The pending read carries
+  // its own channel, so it is never sent for the next one. A background-tab
+  // id is not a read yet, so it is dropped.
   useEffect(() => {
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
+      flushPendingRead();
       pendingWhileUnfocusedRef.current = null;
     };
-  }, [socket, channelId, directMessageGroupId, enabled]);
+  }, [socket, channelId, directMessageGroupId, enabled, flushPendingRead]);
 
   // Stable callback to mark messages as read
   // Optimistic cache update runs immediately; socket emit is debounced (1s trailing)
@@ -115,26 +134,19 @@ export const useMessageVisibility = ({
       }
 
       // Debounced socket emit — only fires after scrolling settles
-      pendingMessageIdRef.current = messageId;
+      pendingReadRef.current = {
+        socket,
+        payload: {
+          lastReadMessageId: messageId,
+          ...(channelId ? { channelId } : { directMessageGroupId }),
+        },
+      };
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-      debounceTimerRef.current = setTimeout(() => {
-        debounceTimerRef.current = null;
-        const pendingId = pendingMessageIdRef.current;
-        if (!pendingId || lastMarkedMessageIdRef.current === pendingId) return;
-
-        const payload: MarkAsReadPayload = {
-          lastReadMessageId: pendingId,
-          ...(channelId ? { channelId } : { directMessageGroupId }),
-        };
-
-        socket.emit(ClientEvents.MARK_AS_READ, payload);
-        lastMarkedMessageIdRef.current = pendingId;
-        debounceTimerRef.current = null;
-      }, 1000);
+      debounceTimerRef.current = setTimeout(flushPendingRead, 1000);
     },
-    [socket, channelId, directMessageGroupId, enabled, queryClient]
+    [socket, channelId, directMessageGroupId, enabled, queryClient, flushPendingRead]
   );
 
   // Replay the most recent visible message once the tab regains focus.

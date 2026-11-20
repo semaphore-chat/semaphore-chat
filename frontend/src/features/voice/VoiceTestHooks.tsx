@@ -12,6 +12,7 @@ import {
   setRemoteScreenShareQuality,
 } from './voiceDiagnostics';
 import { publishScreenShare } from './screenSharePublish';
+import { TRACK_SOURCE } from './livekitEvents';
 import { DEFAULT_SCREEN_SHARE_SETTINGS } from '../../utils/screenShareState';
 import { isVoiceTestHookEnabled, type VoiceTestHookWindow } from './voiceTestHooks.types';
 import { getScreenShareAudioConfig } from '../../utils/screenShareResolution';
@@ -107,7 +108,9 @@ export const VoiceTestHooks: FC = () => {
     w.__lkGetLocalMicDeviceId = () => {
       if (!room) return null;
       for (const [, pub] of room.localParticipant.trackPublications) {
-        if (pub.kind === 'audio' && pub.track) {
+        // The mic only: the soundboard's silent track is audio too, and can be published first
+        // (a user who joins muted and unmutes later), so "the first audio track" is not the mic.
+        if (pub.kind === 'audio' && pub.source === TRACK_SOURCE.Microphone && pub.track) {
           return pub.track.mediaStreamTrack?.getSettings().deviceId ?? null;
         }
       }

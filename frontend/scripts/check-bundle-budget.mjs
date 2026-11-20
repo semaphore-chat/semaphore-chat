@@ -55,6 +55,25 @@
  *       useLocalMediaState.ts all statically reachable from always-mounted
  *       providers/mobile screens despite the entry chunk itself being clean).
  *
+ *   (d) The new design's shell stays out of the first page load. With the
+ *       "new design" setting off (every user today), shell/lounge/LoungeRoot
+ *       and the kit's fonts must never be requested. So none of: the marker
+ *       string LoungeRoot exports ("semaphore-lounge-root"), the kit font
+ *       names ("Bricolage Grotesque", "Figtree") may appear in the entry
+ *       chunk, in a modulepreloaded chunk or in a stylesheet index.html links,
+ *       and index.html must not reference a kit font file. Positively checked
+ *       too: the marker must be found in some lazy chunk and the font names in
+ *       some lazy stylesheet, or the check proves nothing.
+ *
+ *   (e) The new shell's call surface (shell/lounge/call/surface) is its own lazy
+ *       chunk: found by the marker "lounge-call-surface", in exactly one asset
+ *       that is not eager and is not the LoungeRoot chunk. And the new shell's
+ *       chunk does not load the livekit-client chunk statically, directly or
+ *       through any chunk it statically imports (the whole static import graph
+ *       from LoungeRoot is walked; dynamic import() is a lazy boundary). Entering
+ *       the Lounge must not fetch LiveKit; only the call surface or the classic
+ *       call code may. Prints the sizes of the lounge chunks it found.
+ *
  * Usage: pnpm run check:bundle-budget   (after pnpm run build)
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -229,8 +248,146 @@ if (existsSync(ASSETS_DIR)) {
   }
 }
 
+// --- (d) the new design's shell and the kit fonts are not in the first load ---
+{
+  const LOUNGE_MARKER = "semaphore-lounge-root";
+  const KIT_FONT_NAMES = ["Bricolage Grotesque", "Figtree"];
+  const KIT_FONT_FILE = /(bricolage-grotesque|figtree)[^"']*\.woff2?/i;
+
+  const strip = (ref) => ref.replace(/^\.?\//, "");
+  const eagerScripts = new Set([
+    ...scriptSrcs,
+    ...[...indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]),
+  ].map(strip));
+  const eagerStyles = new Set(
+    [...indexHtml.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="([^"]+)"/g)].map((m) => strip(m[1])),
+  );
+
+  let hadLoungeFailure = false;
+  const report = (message) => {
+    console.error(`[check-bundle-budget] ${message}`);
+    hadLoungeFailure = true;
+    hadFailure = true;
+  };
+
+  for (const ref of eagerScripts) {
+    const path = join(DIST_DIR, ref);
+    if (!existsSync(path)) continue;
+    const contents = readFileSync(path, "utf-8");
+    if (contents.includes(LOUNGE_MARKER)) {
+      report(
+        `${ref} (loaded on every page) contains "${LOUNGE_MARKER}": shell/lounge/LoungeRoot is in the first ` +
+          `load. Only shell/loungeRootChunk.ts may import it, through import().`
+      );
+    }
+    for (const font of KIT_FONT_NAMES) {
+      if (contents.includes(font)) {
+        report(
+          `${ref} (loaded on every page) names the kit font "${font}": something eager imports the kit ` +
+            `(src/kit or theme/generated/tokens). Only shell/lounge/** may import the kit.`
+        );
+      }
+    }
+  }
+  for (const ref of eagerStyles) {
+    const path = join(DIST_DIR, ref);
+    if (!existsSync(path)) continue;
+    const contents = readFileSync(path, "utf-8");
+    for (const font of KIT_FONT_NAMES) {
+      if (contents.includes(font)) {
+        report(`${ref} (linked from index.html) declares the kit font "${font}": the kit fonts load on every page.`);
+      }
+    }
+  }
+  if (KIT_FONT_FILE.test(indexHtml)) {
+    report(`dist/index.html references a kit font file (${indexHtml.match(KIT_FONT_FILE)[0]}).`);
+  }
+
+  // Positive checks: without these the scans above could pass on a build that has no new shell at all.
+  const assetFiles = existsSync(ASSETS_DIR) ? readdirSync(ASSETS_DIR) : [];
+  const loungeChunks = assetFiles
+    .filter((f) => f.endsWith(".js"))
+    .filter((f) => readFileSync(join(ASSETS_DIR, f), "utf-8").includes(LOUNGE_MARKER));
+  const fontStyles = assetFiles
+    .filter((f) => f.endsWith(".css"))
+    .filter((f) => KIT_FONT_NAMES.every((font) => readFileSync(join(ASSETS_DIR, f), "utf-8").includes(font)));
+  if (loungeChunks.length === 0) {
+    report(`No asset contains "${LOUNGE_MARKER}": the new shell's chunk was not found, so (d) cannot be checked.`);
+  }
+  if (fontStyles.length === 0) {
+    report(`No stylesheet declares the kit fonts: the new shell's font CSS was not found, so (d) cannot be checked.`);
+  }
+
+  if (!hadLoungeFailure) {
+    console.log(
+      `[check-bundle-budget] New design shell (assets/${loungeChunks.join(", ")}) and kit fonts ` +
+        `(assets/${fontStyles.join(", ")}) are lazy: not in the entry, a preloaded chunk or an index.html stylesheet — good.`
+    );
+  }
+}
+
+// --- (e) the call surface is its own lazy chunk; the new shell does not pull LiveKit in statically ---
+{
+  const LOUNGE_MARKER = "semaphore-lounge-root";
+  const SURFACE_MARKER = "lounge-call-surface";
+  const strip = (ref) => ref.replace(/^\.?\//, "");
+  const eager = new Set([
+    ...scriptSrcs,
+    ...[...indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]),
+  ].map((ref) => strip(ref).replace(/^assets\//, "")));
+  const js = (existsSync(ASSETS_DIR) ? readdirSync(ASSETS_DIR) : []).filter((f) => f.endsWith(".js"));
+  const read = (f) => readFileSync(join(ASSETS_DIR, f), "utf-8");
+  const surface = js.filter((f) => read(f).includes(SURFACE_MARKER));
+  const root = js.filter((f) => read(f).includes(LOUNGE_MARKER));
+  const livekit = js.filter((f) => read(f).includes(LIVEKIT_CHUNK_MARKER));
+  const kb = (f) => `${(read(f).length / 1024).toFixed(1)} KB`;
+  let ok = true;
+  const report = (message) => {
+    console.error(`[check-bundle-budget] ${message}`);
+    ok = false;
+    hadFailure = true;
+  };
+  if (surface.length !== 1) {
+    report(`Expected the call surface ("${SURFACE_MARKER}") in exactly one chunk, found ${surface.length}: ${surface.join(", ")}.`);
+  } else {
+    if (eager.has(surface[0])) report(`The call surface chunk assets/${surface[0]} is loaded on every page.`);
+    if (root.includes(surface[0])) report(`The call surface is inside the new shell's chunk (assets/${surface[0]}): it must be its own lazy chunk.`);
+  }
+  // Every chunk the new shell's chunk loads with it: its static imports, theirs, and so on (a dynamic
+  // `import("./x.js")` is a lazy boundary and is not followed). LiveKit must not be among them, directly or
+  // through a shared chunk.
+  const STATIC_IMPORT = /(?:\bfrom|\bimport)\s*["']\.\/([^"']+\.js)["']/g;
+  for (const f of root) {
+    const via = new Map([[f, null]]);
+    const queue = [f];
+    while (queue.length > 0) {
+      const at = queue.shift();
+      for (const [, next] of read(at).matchAll(STATIC_IMPORT)) {
+        if (via.has(next) || !js.includes(next)) continue;
+        via.set(next, at);
+        queue.push(next);
+      }
+    }
+    for (const lk of livekit) {
+      if (!via.has(lk)) continue;
+      const path = [];
+      for (let at = lk; at !== null; at = via.get(at)) path.unshift(`assets/${at}`);
+      report(`The new shell's chunk loads the livekit-client chunk statically: ${path.join(" → ")}.`);
+    }
+    if (ok) {
+      console.log(`[check-bundle-budget] assets/${f} loads ${via.size - 1} chunks statically; none is livekit-client.`);
+    }
+  }
+  if (ok) {
+    console.log(
+      `[check-bundle-budget] Call surface is its own lazy chunk (assets/${surface[0]}, ${kb(surface[0])}); ` +
+        `new shell ${root.map((f) => `assets/${f} (${kb(f)})`).join(", ")} does not import LiveKit statically — good.`
+    );
+  }
+}
+
 if (hadFailure) {
   fail("Bundle budget check failed — see errors above.");
 }
 
-console.log("[check-bundle-budget] PASS — entry chunk and eager total are within budget and free of livekit/hls code, and livekit is not eagerly fetched.");
+console.log("[check-bundle-budget] PASS — entry chunk and eager total are within budget and free of livekit/hls code, livekit is not eagerly fetched, and the new design shell and kit fonts stay lazy.");

@@ -1,13 +1,12 @@
 import React, { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { channelsControllerFindAllForCommunityOptions } from "../../api-client/@tanstack/react-query.gen";
 import { Channel as ChannelComponent } from "./Channel";
 import { List, Typography, Box, alpha, useTheme, Skeleton } from "@mui/material";
 import { Tag as TextIcon, VolumeUp as VoiceIcon } from "@mui/icons-material";
-import { ChannelType, Channel } from "../../types/channel.type";
+import type { Channel } from "../../types/channel.type";
 import { ErrorState } from "../Common/ListState";
 import { useNavigate, useParams } from "react-router-dom";
-import { useReadReceipts } from "../../hooks/useReadReceipts";
+import { useUnreadSummary } from "../../data/unread";
+import { useCommunityChannels } from "../../data/channels";
 import { useRegisterSidebarNav, type SidebarNav } from "../../contexts/ShortcutsContext";
 import { ariaKeyShortcuts } from "../../utils/shortcuts";
 
@@ -71,48 +70,33 @@ const LoadingSkeleton: React.FC = () => (
 );
 
 const ChannelList: React.FC<ChannelListProps> = ({ communityId }) => {
+  // Text and voice channels, each in position order
   const {
-    data: channels,
+    all: channels,
+    text: textChannels,
+    voice: voiceChannels,
     isLoading,
     error,
     refetch,
-  } = useQuery(channelsControllerFindAllForCommunityOptions({ path: { communityId } }));
-
-  // Separate and sort channels by type
-  const { textChannels, voiceChannels } = useMemo(() => {
-    if (!channels) return { textChannels: [], voiceChannels: [] };
-
-    const text = channels
-      .filter((c: Channel) => c.type === ChannelType.TEXT)
-      .sort((a: Channel, b: Channel) => (a.position ?? 0) - (b.position ?? 0));
-
-    const voice = channels
-      .filter((c: Channel) => c.type === ChannelType.VOICE)
-      .sort((a: Channel, b: Channel) => (a.position ?? 0) - (b.position ?? 0));
-
-    return { textChannels: text, voiceChannels: voice };
-  }, [channels]);
+  } = useCommunityChannels(communityId);
 
   // Alt+↑/↓ walk the text channels in sidebar order (voice channels would
   // join the call, so they're skipped).
   const navigate = useNavigate();
   const { channelId: currentChannelId } = useParams<{ channelId: string }>();
-  const { allUnreadCounts } = useReadReceipts();
+  const unreadSummary = useUnreadSummary();
   const sidebarNav = useMemo<SidebarNav>(() => {
-    const unread = new Set(
-      (allUnreadCounts ?? []).filter((c) => c.channelId && c.unreadCount > 0).map((c) => c.channelId),
-    );
     return {
       kind: "channel",
       items: textChannels.map((c: Channel) => ({
         id: c.id,
         label: `#${c.name}`,
-        unread: c.id !== currentChannelId && unread.has(c.id),
+        unread: c.id !== currentChannelId && unreadSummary.channel(c.id).unread > 0,
       })),
       currentId: currentChannelId,
       select: (id: string) => navigate(`/community/${communityId}/channel/${id}`),
     };
-  }, [textChannels, currentChannelId, communityId, navigate, allUnreadCounts]);
+  }, [textChannels, currentChannelId, communityId, navigate, unreadSummary]);
   useRegisterSidebarNav(sidebarNav);
 
   if (isLoading) return <LoadingSkeleton />;

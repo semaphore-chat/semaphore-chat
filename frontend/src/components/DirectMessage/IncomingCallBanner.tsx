@@ -1,10 +1,8 @@
 import React from "react";
 import { Box, Paper, Avatar, Typography, IconButton, Tooltip } from "@mui/material";
 import { Phone, CallEnd } from "@mui/icons-material";
-import { useIncomingCall } from "../../contexts/IncomingCallContext";
-import { useVoiceConnection } from "../../hooks/useVoiceConnection";
-import { logger } from "../../utils/logger";
-import { playSound, Sounds } from "../../hooks/useSound";
+import { useIncomingCallPrompt } from "../../data/incomingCall";
+import { useShownShellKind } from "../../shell/shownShellKind";
 import { AuthenticatedImage } from "../Common/AuthenticatedImage";
 import {
   TOP_CHROME_ORDER,
@@ -13,7 +11,6 @@ import {
   useTopChromeOffset,
 } from "../../contexts/BottomChromeContext";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
-import { dmVoicePresenceControllerDeclineDmVoiceCall } from "../../api-client/sdk.gen";
 
 const pulseKeyframes = {
   "@keyframes incomingCallPulse": {
@@ -31,10 +28,13 @@ const pulseKeyframes = {
  * Electron, which have no app bar, it's the page header and the rail, whose
  * controls (e.g. a DM's "Start voice call") must stay clickable while it rings.
  * Touch-sized buttons only on the phone/tablet layouts.
+ *
+ * Renders nothing while the new design's shell is shown: that shell rings in its own banner.
  */
 export const IncomingCallBanner: React.FC = () => {
-  const { incomingCall, dismissCall } = useIncomingCall();
-  const { actions } = useVoiceConnection();
+  const prompt = useIncomingCallPrompt();
+  const shown = useShownShellKind() === "classic";
+  const incomingCall = shown ? prompt : null;
   const touchLayout = useHasTopChromeHost();
   const top = useTopChromeOffset(TOP_CHROME_ORDER.INCOMING_CALL);
   const measureRef = useMeasuredChromeItem({
@@ -50,27 +50,8 @@ export const IncomingCallBanner: React.FC = () => {
     return null;
   }
 
-  const handleAccept = async () => {
-    try {
-      await actions.joinDmVoice(incomingCall.dmGroupId, incomingCall.dmGroupName);
-      dismissCall();
-    } catch (error) {
-      logger.error("Failed to accept incoming DM voice call:", error);
-    }
-  };
-
-  const handleDecline = () => {
-    playSound(Sounds.callEnded);
-    // Stop ringing here whatever the server answers: the request only tells
-    // the caller and this account's other devices.
-    dismissCall();
-    dmVoicePresenceControllerDeclineDmVoiceCall({
-      path: { dmGroupId: incomingCall.dmGroupId },
-      throwOnError: true,
-    }).catch((error: unknown) => {
-      logger.warn("Failed to decline the incoming DM voice call:", error);
-    });
-  };
+  const handleAccept = incomingCall.accept;
+  const handleDecline = incomingCall.decline;
 
   return (
     <Paper
@@ -97,7 +78,7 @@ export const IncomingCallBanner: React.FC = () => {
     >
       {/* callerAvatar is a file id — resolve it through the authenticated file cache */}
       <AuthenticatedImage
-        fileId={incomingCall.callerAvatar}
+        fileId={incomingCall.callerAvatarFileId}
         alt={incomingCall.callerName}
         component="avatar"
         sx={{ width: 40, height: 40, flexShrink: 0 }}

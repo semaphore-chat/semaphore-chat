@@ -8,7 +8,22 @@ fn lounge_shape_and_layout_values() {
     );
     assert_eq!(SPACE_2XS, 2.0);
     assert_eq!(LAYOUT_LEFT_COLUMN, 288.0);
+    assert_eq!((LAYOUT_DIALOG_SM, LAYOUT_DIALOG_MD), (400.0, 560.0));
     assert_eq!(MOTION_FAST_MS, 120);
+    assert_eq!(
+        (MOTION_TYPEAHEAD_MS, MOTION_TOAST_MS, MOTION_TOAST_ACTION_MS),
+        (1000, 4000, 8000)
+    );
+}
+
+#[test]
+fn lounge_kit_tokens() {
+    assert_eq!(RADIUS_SM, 6.0);
+    assert_eq!(ICON_MD, 18.0);
+    assert_eq!((AVATAR_XS, AVATAR_MD, AVATAR_XL), (20.0, 36.0, 64.0));
+    assert_eq!(BORDER_FOCUS_OFFSET, 2.0);
+    assert_eq!(STATE_HOVER, 0.04);
+    assert_eq!(STATE_PRESSED_ON_FILL, 0.24);
 }
 
 #[test]
@@ -29,7 +44,9 @@ fn lounge_text_and_shadow() {
             x: 0.0,
             y: 24.0,
             blur: 64.0,
-            alpha: 0.6
+            alpha: 0.6,
+            alpha_light: 0.18
         }
     );
+    assert_eq!(SHADOW_ISLAND.alpha_light, 0.08);
 }

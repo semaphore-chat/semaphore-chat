@@ -65,6 +65,8 @@
     "check:bundle-budget": "node scripts/check-bundle-budget.mjs"
   },
   "dependencies": {
+    "@fontsource/bricolage-grotesque": "5.3.0",
+    "@fontsource/figtree": "5.3.0",
     "electron-audio-loopback": "^1.0.6",
     "electron-log": "5.4.4",
     "electron-updater": "^6.8.9"

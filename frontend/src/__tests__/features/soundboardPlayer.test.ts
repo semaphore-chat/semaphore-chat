@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Track } from 'livekit-client';
 import {
+  PLAY_PUBLISH_WAIT_MS,
   soundboardPlayer,
   SOUNDBOARD_TRACK_NAME,
 } from '../../features/voice/soundboardPlayer';
@@ -19,7 +20,7 @@ function createMockSource() {
 }
 
 let lastSource: ReturnType<typeof createMockSource>;
-let mockDestinationTrack: { id: string };
+let destinations = 0;
 const closeSpy = vi.fn();
 const resumeSpy = vi.fn().mockResolvedValue(undefined);
 const decodeSpy = vi.fn().mockResolvedValue(decodedBuffer);
@@ -28,8 +29,8 @@ class MockAudioContext {
   state = 'running';
   destination = { name: 'ctx-destination' };
   createMediaStreamDestination() {
-    mockDestinationTrack = { id: 'sb-track' };
-    return { stream: { getAudioTracks: () => [mockDestinationTrack] } };
+    const track = { id: `sb-track-${++destinations}`, readyState: 'live' };
+    return { stream: { getAudioTracks: () => [track] } };
   }
   createBufferSource() {
     lastSource = createMockSource();
@@ -148,6 +149,183 @@ describe('soundboardPlayer', () => {
 
     expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(1);
     expect(lastSource.start).toHaveBeenCalled();
+  });
+
+  it('two overlapping warm-ups publish the track once (#803)', async () => {
+    const room = createMockRoom();
+    let release: () => void = () => undefined;
+    const original = room.localParticipant.publishTrack.getMockImplementation()!;
+    room.localParticipant.publishTrack.mockImplementationOnce(
+      (track: unknown, opts: unknown) =>
+        new Promise((resolve) => {
+          release = () => resolve(original(track, opts));
+        }),
+    );
+
+    const first = soundboardPlayer.warmup(room as never);
+    const second = soundboardPlayer.warmup(room as never);
+    await Promise.resolve();
+    release();
+    await Promise.all([first, second]);
+
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it('a warm-up racing the first play publishes once', async () => {
+    const room = createMockRoom();
+    let release: () => void = () => undefined;
+    const original = room.localParticipant.publishTrack.getMockImplementation()!;
+    room.localParticipant.publishTrack.mockImplementationOnce(
+      (track: unknown, opts: unknown) =>
+        new Promise((resolve) => {
+          release = () => resolve(original(track, opts));
+        }),
+    );
+
+    const warm = soundboardPlayer.warmup(room as never);
+    const play = soundboardPlayer.play(room as never, 'file-1', new ArrayBuffer(8));
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    release();
+    await Promise.all([warm, play]);
+
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(1);
+    expect(lastSource.start).toHaveBeenCalled();
+  });
+
+  it('a refused publish leaves no publication, so the next warm-up publishes again', async () => {
+    const room = createMockRoom();
+    room.localParticipant.publishTrack.mockRejectedValueOnce(
+      new Error('no permission to publish mediaTrack source UNKNOWN'),
+    );
+
+    await soundboardPlayer.warmup(room as never);
+    await soundboardPlayer.warmup(room as never);
+
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+    expect(room.localParticipant.trackPublications.size).toBe(1);
+  });
+
+  it('reuses a soundboard publication republished under a new sid (full reconnect)', async () => {
+    const room = createMockRoom();
+    await soundboardPlayer.warmup(room as never);
+    // LiveKit's republish publishes the same MediaStreamTrack again: a new publication object, a new sid.
+    const publications = room.localParticipant.trackPublications as Map<string, object>;
+    const [publication] = publications.values();
+    publications.clear();
+    publications.set('pub-sid-after-reconnect', { ...publication, trackSid: 'pub-sid-after-reconnect' });
+
+    await soundboardPlayer.warmup(room as never);
+    await soundboardPlayer.play(room as never, 'file-1', new ArrayBuffer(8));
+
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(1);
+  });
+
+  it('a publish that finishes after dispose is unpublished, not kept', async () => {
+    const room = createMockRoom();
+    let release: () => void = () => undefined;
+    const original = room.localParticipant.publishTrack.getMockImplementation()!;
+    room.localParticipant.publishTrack.mockImplementationOnce(
+      (track: unknown, opts: unknown) =>
+        new Promise((resolve) => {
+          release = () => resolve(original(track, opts));
+        }),
+    );
+
+    const warm = soundboardPlayer.warmup(room as never);
+    await Promise.resolve();
+    await soundboardPlayer.dispose(room as never);
+    release();
+    await warm;
+
+    expect(room.localParticipant.unpublishTrack).toHaveBeenCalledTimes(1);
+    // A new session starts clean: the next warm-up publishes rather than reusing the dead publication.
+    room.localParticipant.trackPublications.clear();
+    await soundboardPlayer.warmup(room as never);
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+  });
+
+  it('a caller that joined a publish which then fails publishes again (refused mid-flight, the grant back since)', async () => {
+    const room = createMockRoom();
+    let refuse: (error: Error) => void = () => undefined;
+    room.localParticipant.publishTrack.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+
+    const first = soundboardPlayer.warmup(room as never); // the warm-up a moderator mute refuses mid-flight
+    await Promise.resolve();
+    const second = soundboardPlayer.warmup(room as never); // the warm-up after the mute is lifted
+    await Promise.resolve();
+    refuse(new Error('publication of local track timed out, no response from server'));
+    await Promise.all([first, second]);
+
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+    expect(room.localParticipant.trackPublications.size).toBe(1);
+  });
+
+  it('republishes on a new destination track when LiveKit stopped the old one (unpublished by a server mute)', async () => {
+    const room = createMockRoom();
+    await soundboardPlayer.warmup(room as never);
+    const first = room.localParticipant.publishTrack.mock.calls[0][0] as { readyState: string };
+    // LiveKit's handleLocalTrackUnpublished → unpublishTrack(track) stops it (stopLocalTrackOnUnpublish).
+    first.readyState = 'ended';
+    room.localParticipant.trackPublications.clear();
+
+    await soundboardPlayer.warmup(room as never);
+
+    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+    const second = room.localParticipant.publishTrack.mock.calls[1][0] as { readyState: string };
+    expect(second).not.toBe(first);
+    expect(second.readyState).toBe('live');
+    // A clip now goes into the live track's destination.
+    await soundboardPlayer.play(room as never, 'file-1', new ArrayBuffer(8));
+    expect(lastSource.connect.mock.calls[0][0].stream.getAudioTracks()[0]).toBe(second);
+  });
+
+  it('play() drops the clip, unplayed, when the track is not published within PLAY_PUBLISH_WAIT_MS', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const room = createMockRoom();
+      // A publish the server refused mid-flight: LiveKit has not given up on it yet.
+      room.localParticipant.publishTrack.mockImplementationOnce(() => new Promise(() => undefined));
+      void soundboardPlayer.warmup(room as never);
+      let settled: 'played' | Error | null = null;
+      const play = soundboardPlayer.play(room as never, 'file-1', new ArrayBuffer(8)).then(
+        () => (settled = 'played'),
+        (error: Error) => (settled = error),
+      );
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(PLAY_PUBLISH_WAIT_MS - 1);
+      expect(settled).toBeNull();
+      await vi.advanceTimersByTimeAsync(1);
+      await play;
+      expect(settled).toBeInstanceOf(Error);
+      expect(decodeSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a running publish for another room is not shared', async () => {
+    const roomA = createMockRoom();
+    const roomB = createMockRoom();
+    let release: () => void = () => undefined;
+    const original = roomA.localParticipant.publishTrack.getMockImplementation()!;
+    roomA.localParticipant.publishTrack.mockImplementationOnce(
+      (track: unknown, opts: unknown) =>
+        new Promise((resolve) => {
+          release = () => resolve(original(track, opts));
+        }),
+    );
+
+    const warmA = soundboardPlayer.warmup(roomA as never);
+    await soundboardPlayer.warmup(roomB as never);
+    release();
+    await warmA;
+
+    expect(roomB.localParticipant.publishTrack).toHaveBeenCalledTimes(1);
   });
 
   it('warmup swallows publish errors (play retries later)', async () => {

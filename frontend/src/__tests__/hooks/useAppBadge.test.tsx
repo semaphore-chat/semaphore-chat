@@ -49,6 +49,17 @@ describe('useAppBadge', () => {
     expect(document.title).toBe('(5) Semaphore Chat');
   });
 
+  it("takes the count off the badge and the title on unmount (sign-out), so the login page doesn't show it", () => {
+    const { unmount } = renderWithUnreadCount(3);
+    expect(document.title).toBe('(3) Semaphore Chat');
+    mockClearAppBadge.mockClear();
+
+    unmount();
+
+    expect(document.title).toBe('Semaphore Chat');
+    expect(mockClearAppBadge).toHaveBeenCalled();
+  });
+
   it('clears the badge and prefix when unread count is zero', () => {
     renderWithUnreadCount(0);
 

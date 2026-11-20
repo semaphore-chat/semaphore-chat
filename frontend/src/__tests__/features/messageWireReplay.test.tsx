@@ -40,7 +40,7 @@ vi.mock('../../hooks/useMessagePermissions', () => ({
     isOwnMessage: false,
   }),
 }));
-vi.mock('../../components/Message/useMessageActions', () => ({
+vi.mock('../../data/chat/useMessageActions', () => ({
   useMessageActions: () => ({
     isEditing: false,
     editText: '',

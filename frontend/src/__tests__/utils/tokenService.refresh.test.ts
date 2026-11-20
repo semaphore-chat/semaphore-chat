@@ -21,6 +21,9 @@ import {
   refreshToken,
   clearTokens,
   getAccessToken,
+  setAccessToken,
+  markServerSignOutOwed,
+  isServerSignOutOwed,
 } from '../../utils/tokenService';
 
 /** An axios error with an HTTP response of `status`. */
@@ -38,7 +41,29 @@ describe('tokenService refresh outcome', () => {
   beforeEach(() => {
     setElectronAPIOverride(null);
     clearTokens();
+    localStorage.clear();
     mockPost.mockReset();
+  });
+
+  describe('while a server sign-out is owed (the logout call failed)', () => {
+    it('sends no refresh and reports the session as refused', async () => {
+      mockPost.mockResolvedValue({ data: { accessToken: 'old-session' } });
+      markServerSignOutOwed();
+
+      await expect(refreshSession()).resolves.toEqual({ status: 'rejected' });
+      expect(mockPost).not.toHaveBeenCalled();
+      expect(getAccessToken()).toBeNull();
+      expect(isServerSignOutOwed()).toBe(true);
+    });
+
+    it('a deliberate sign-in (a new access token) clears the flag, and refreshes work again', async () => {
+      markServerSignOutOwed();
+      setAccessToken('from-login');
+      expect(isServerSignOutOwed()).toBe(false);
+
+      mockPost.mockResolvedValue({ data: { accessToken: 'fresh' } });
+      await expect(refreshSession()).resolves.toEqual({ status: 'refreshed', token: 'fresh' });
+    });
   });
 
   it('returns the new token', async () => {

@@ -7,6 +7,7 @@ import {
   useHasTopChromeHost,
   useTopChromeOffset,
 } from '../../contexts/BottomChromeContext';
+import { useShownShellKind } from '../../shell/shownShellKind';
 
 /** Height of the slim offline strip on touch layouts. */
 const OFFLINE_STRIP_HEIGHT = 28;
@@ -23,6 +24,8 @@ const OFFLINE_STRIP_HEIGHT = 28;
  * BottomChromeContext) it's a slim strip at the top of the screen that
  * pushes the app bar and content down instead of covering them. Elsewhere
  * (desktop, Electron, public pages) it keeps the top-centre snackbar.
+ *
+ * Renders nothing while the new design's shell is shown: its banner row says it.
  */
 export const OfflineBanner: React.FC = () => {
   const [isOffline, setIsOffline] = useState(
@@ -30,13 +33,14 @@ export const OfflineBanner: React.FC = () => {
   );
   const asStrip = useHasTopChromeHost();
   const top = useTopChromeOffset(TOP_CHROME_ORDER.OFFLINE);
+  const classic = useShownShellKind() === 'classic';
 
   useChromeItem({
     id: 'offline-strip',
     edge: 'top',
     order: TOP_CHROME_ORDER.OFFLINE,
     height: OFFLINE_STRIP_HEIGHT,
-    enabled: asStrip && isOffline,
+    enabled: asStrip && isOffline && classic,
   });
 
   useEffect(() => {
@@ -51,6 +55,8 @@ export const OfflineBanner: React.FC = () => {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  if (!classic) return null;
 
   if (asStrip) {
     if (!isOffline) return null;

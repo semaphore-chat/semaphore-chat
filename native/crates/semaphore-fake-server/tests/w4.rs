@@ -515,13 +515,20 @@ async fn a_kick_tells_the_member_ends_their_call_and_unlists_them() {
     let heard = settle(&server, &mut [&mut me, &mut kwame]).await;
     assert_eq!(names(&heard[0]), ["voiceChannelUserLeft", "userKicked"]);
     assert_eq!(heard[0][0].1["channelId"], id("vc-afk").as_str());
+    // The community hears that they are gone; who kicked them and why stay with the target (the
+    // moderation log keeps the rest).
     assert_eq!(
         heard[0][1].1,
-        json!({ "communityId": couch, "userId": id("u-kwame"), "moderatorId": id("me"), "reason": "spam" })
+        json!({ "communityId": couch, "userId": id("u-kwame") })
     );
     // The kicked user is out of the channel's room before its presence is cleared, so only the
-    // remaining viewers hear `voiceChannelUserLeft`; the kicked user hears `userKicked` alone.
+    // remaining viewers hear `voiceChannelUserLeft`; the kicked user hears `userKicked` alone,
+    // from their own room, with the moderator and the reason.
     assert_eq!(names(&heard[1]), ["userKicked"]);
+    assert_eq!(
+        heard[1][0].1,
+        json!({ "communityId": couch, "userId": id("u-kwame"), "moderatorId": id("me"), "reason": "spam" })
+    );
 
     let (_, presence) = get(
         &client,

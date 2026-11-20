@@ -72,6 +72,50 @@ and Ladle's URL (`?story=<id>`) all use these ids. Name exports after the
 state they show (`ChannelList500`, `DmHeader`), and give each one a short doc
 comment saying what it shows and why it matters.
 
+## Kit stories
+
+Stories for the component kit (`src/kit`) live in `src/stories/kit/Kit<Component>.stories.tsx`.
+Ladle ids come from the file name (the directory is not part of the id), so the `Kit` prefix
+keeps them unique: `KitButton.stories.tsx` exports `Variants` as `kit-button--variants`. They
+render inside `KitStage` and `Row` from `src/stories/fixtures/kitStory.tsx`, which paint the
+Lounge ground and lay states out in rows that wrap at phone width. `KitStage` does not follow
+Ladle's theme toggle: every story sets `mode` explicitly.
+
+Each file exports a default dark story, a `...Light` story (`<KitStage mode="light">`, because
+the UI review shoots only the default state) and one `...Tinted` story
+(`<KitStage base="#0d9488" intensity="vibrant">`). A kit story imports only from `src/kit`,
+React and the fixtures, never `@mui/*` or `@emotion/*`: the lint rule applies to stories.
+
+## Real-browser tests for the kit
+
+jsdom does not lay out, evaluate media queries, honour `inert` or trap focus the
+way a browser does, so a few kit behaviours are tested with Playwright against
+the stories themselves. The specs live in `frontend/browser-tests/`
+(config `frontend/playwright.kit.config.ts`); each opens a story with
+`openStory(page, '<story-id>', { width, height })` from `browser-tests/story.ts`
+and measures it. Today they cover the chat layout's bounds and columns at each
+breakpoint, the hidden phone pane (Tab order and the accessibility tree), the
+right content as a Sheet (focus in, Tab trapped, Escape returns focus) and
+Menu/Select row heights.
+
+```bash
+scripts/test-stack.sh <ticket> browser                          # every spec, Chromium (+ Firefox for @keyboard)
+scripts/test-stack.sh <ticket> browser sheet --project=firefox  # Playwright arguments pass through
+```
+
+It serves the checkout's Ladle in `<ticket>-ladle` (reused by the next run; the
+watcher polls, so edits are picked up) and runs Playwright in a one-off
+container in its network namespace. Traces of failures go to
+`frontend/test-results/kit/` (drop a `trace.zip` on <https://trace.playwright.dev>). `scripts/test-stack.sh <ticket> down` removes the
+containers. CI runs the same config against a `ladle build` (the
+`Kit Real-Browser Tests` job) on pull requests that touch `frontend/`, `design/`
+or `shared/`.
+
+Add a spec when a kit change depends on something only a browser can show. Tag
+it `@keyboard` (`test.describe('...', { tag: '@keyboard' }, ...)`) when it is
+about focus or keys, so it also runs in Firefox. Before relying on it, break
+the component locally and watch the spec fail.
+
 ## Preview a story
 
 In the main checkout, run Ladle from the dev stack and open

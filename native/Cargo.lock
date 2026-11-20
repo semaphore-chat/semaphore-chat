@@ -8317,6 +8317,7 @@ dependencies = [
  "jsonschema",
  "reqwest 0.13.5",
  "rustls",
+ "semaphore-core",
  "semaphore-wire",
  "serde",
  "serde_json",

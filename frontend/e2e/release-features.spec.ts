@@ -3,7 +3,7 @@
  * message-authorization regression.
  */
 
-import { test, expect, TEST_USER, API_BASE } from './fixtures';
+import { test, expect, TEST_USER, API_BASE, deleteWorlds } from './fixtures';
 import {
   MEMBER_USER,
   createWorld,
@@ -38,6 +38,9 @@ async function savePreset(page: Page, preset: RegExp) {
   await page.getByRole('button', { name: 'Save permissions' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('Release smoke: channel permission presets', () => {
   test('Announcement preset: icon, read-only member, admin posts, back to Normal @smoke', async ({

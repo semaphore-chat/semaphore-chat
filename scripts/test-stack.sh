@@ -45,6 +45,17 @@
 #                       container in its network namespace captures, then
 #                       ffmpeg encodes into frontend/.media-out/. MEDIA_STEPS
 #                       and MEDIA_FILTER are passed on from the environment.
+#   browser [playwright args...]
+#                       Real-browser tests of the kit: the Playwright specs in
+#                       frontend/browser-tests/ (playwright.kit.config.ts)
+#                       against this checkout's Ladle stories. Starts (or
+#                       reuses) <ticket>-ladle like `media`, then runs
+#                       `playwright test -c playwright.kit.config.ts <args>`
+#                       in a one-off Playwright container in its network
+#                       namespace; exits with Playwright's status. Traces of
+#                       failures land in frontend/test-results/kit/, e.g.
+#                         browser
+#                         browser layout-bounds --project=chromium
 #   down                Remove this ticket's containers (the services, Ladle
 #                       and any run container left behind, e.g. by a SIGKILL)
 #                       and their anonymous volumes. Never touches a network.
@@ -115,7 +126,7 @@ esac
 
 TICKET="$1"
 CMD="${2:-}"
-shift 2 || die "usage: scripts/test-stack.sh <ticket> <up|run|run-backend|run-frontend|media|down|ps|env> [args...] (see --help)"
+shift 2 || die "usage: scripts/test-stack.sh <ticket> <up|run|run-backend|run-frontend|media|browser|down|ps|env> [args...] (see --help)"
 
 [[ "$TICKET" =~ ^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$ ]] ||
   die "invalid ticket '$TICKET': use 1-32 chars of [a-z0-9-], starting and ending with a letter or digit"
@@ -341,7 +352,8 @@ hand_back() {
     >/dev/null 2>&1 || log "warning: could not hand root-owned files in $* back to $(id -un)"
 }
 
-# The one-off container running now (run, run-backend, run-frontend, media)
+# The one-off container running now (run, run-backend, run-frontend, media,
+# browser)
 # and what to hand back afterwards (hand_back's arguments).
 ONE_OFF=""
 ONE_OFF_PID=""
@@ -452,37 +464,58 @@ MEDIA_CAPTURE='mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent 
 npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
 cd /app/frontend && bash scripts/media/capture.sh'
 
+# Bump when ensure_ladle's container changes, so an existing one is replaced.
+# 2: /app/node_modules is a volume (for `browser`), the watcher polls.
+LADLE_VERSION=2
+
+# ensure_ladle: start (or reuse) <ticket>-ladle serving this checkout's Ladle
+# on 127.0.0.1:61000 and wait until it answers. Sets IMAGE to the frontend
+# image.
+ensure_ladle() {
+  local ladle="$TICKET-ladle" have
+  frontend_image
+  check_ours "$ladle"
+  if have="$(docker inspect -f "{{.Config.Image}} {{range .Mounts}}{{if eq .Destination \"/app/frontend\"}}{{.Source}}{{end}}{{end}} {{index .Config.Labels \"$LABEL.ladle\"}}" "$ladle" 2>/dev/null)"; then
+    local image="${have%% *}" rest="${have#* }"
+    local source="${rest%% *}" version="${rest#* }"
+    # The same ticket used from another checkout: that Ladle is not ours.
+    [[ "$source" == "$ROOT/frontend" ]] ||
+      die "$ladle serves another checkout ($source); use a ticket name of this checkout's own"
+    # Left by a run on other dependencies, or made by an older version of
+    # this script (LADLE_VERSION): replace it.
+    if [[ "$image" != "$IMAGE" || "$version" != "$LADLE_VERSION" ]]; then
+      log "replacing $ladle ($image -> $IMAGE)"
+      docker rm -f -v "$ladle" >/dev/null
+    fi
+  fi
+  # docker-compose.yml's ladle service without the host port (so it never
+  # clashes with the dev ladle on :61000): the capture and the browser tests
+  # share its network namespace and open it as localhost, a secure context,
+  # the way ui-review.sh does. /app/node_modules (the image's hoisted
+  # dependencies) is an anonymous volume, as in docker-compose.e2e.yml's
+  # frontend-test, so a Playwright container can take it with
+  # --volumes-from. It stays up for the next run; `down` removes it.
+  # LADLE_WATCH_POLL: the file watcher polls (see frontend/.ladle/vite.config.ts),
+  # so the tests never run against code the watcher missed.
+  ensure_service ladle "$IMAGE" \
+    --label "$LABEL.ladle=$LADLE_VERSION" -e LADLE_WATCH_POLL=1 \
+    -v "$ROOT/frontend:/app/frontend" -v "$ROOT/shared:/app/shared" \
+    -v /app/node_modules -v /app/frontend/node_modules -v /app/shared/node_modules -v "$ROOT/backend:/spec:ro" \
+    -w /app/frontend \
+    -- pnpm exec ladle serve --host 127.0.0.1 --port 61000
+  log "waiting for Ladle in $ladle (a first start compiles for ~30 s) ..."
+  wait_ready "$ladle" 300 node -e \
+    "fetch('http://127.0.0.1:61000').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+}
+
 # docker-compose.yml's `ladle` -> `media-capture` -> `media` pipeline for this
 # checkout, on semaphore-test instead of the dev project's network.
 media() {
-  local steps="${MEDIA_STEPS:-shots,record,encode}" ladle="$TICKET-ladle" have
+  local steps="${MEDIA_STEPS:-shots,record,encode}" ladle="$TICKET-ladle"
   "$ROOT/scripts/test-net.sh"
   case ",$steps," in
     *,shots,* | *,record,*)
-      frontend_image
-      check_ours "$ladle"
-      if have="$(docker inspect -f '{{.Config.Image}} {{range .Mounts}}{{if eq .Destination "/app/frontend"}}{{.Source}}{{end}}{{end}}' "$ladle" 2>/dev/null)"; then
-        # The same ticket used from another checkout: that Ladle is not ours.
-        [[ "${have#* }" == "$ROOT/frontend" ]] ||
-          die "$ladle serves another checkout (${have#* }); use a ticket name of this checkout's own"
-        # Left by a run on other dependencies: replace it.
-        if [[ "${have%% *}" != "$IMAGE" ]]; then
-          log "replacing $ladle (${have%% *} -> $IMAGE)"
-          docker rm -f "$ladle" >/dev/null
-        fi
-      fi
-      # docker-compose.yml's ladle service without the host port (so it never
-      # clashes with the dev ladle on :61000): the capture shares its network
-      # namespace and opens it as localhost, a secure context, the way
-      # ui-review.sh does. It stays up for the next run; `down` removes it.
-      ensure_service ladle "$IMAGE" \
-        -v "$ROOT/frontend:/app/frontend" -v "$ROOT/shared:/app/shared" \
-        -v /app/frontend/node_modules -v /app/shared/node_modules -v "$ROOT/backend:/spec:ro" \
-        -w /app/frontend \
-        -- pnpm exec ladle serve --host 127.0.0.1 --port 61000
-      log "waiting for Ladle in $ladle (a first start compiles for ~30 s) ..."
-      wait_ready "$ladle" 300 node -e \
-        "fetch('http://127.0.0.1:61000').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      ensure_ladle
       HAND_BACK=("$PLAYWRIGHT_IMAGE" frontend)
       one_off "$TICKET-media-capture-$$-$RANDOM" --network "container:$ladle" \
         --label "$LABEL.ticket=$TICKET" --label "$LABEL.role=media-capture" \
@@ -506,6 +539,26 @@ media() {
   return "$RC"
 }
 
+# ---------------------------------------------------------------- browser
+
+# Real-browser kit tests: frontend/playwright.kit.config.ts against
+# <ticket>-ladle. The Playwright container shares Ladle's network namespace
+# (the stories are at http://localhost:61000) and its mounts (this checkout's
+# frontend/ and the image's node_modules, whose @playwright/test matches the
+# image's browsers: scripts/check-playwright-images.sh keeps them in step).
+browser() {
+  "$ROOT/scripts/test-net.sh"
+  ensure_ladle
+  HAND_BACK=("$PLAYWRIGHT_IMAGE" frontend)
+  one_off "$TICKET-browser-$$-$RANDOM" --network "container:$TICKET-ladle" --volumes-from "$TICKET-ladle" \
+    --label "$LABEL.ticket=$TICKET" --label "$LABEL.role=browser" \
+    -w /app/frontend -e KIT_BASE_URL=http://localhost:61000 \
+    "$PLAYWRIGHT_IMAGE" /app/node_modules/.bin/playwright test -c playwright.kit.config.ts "$@"
+  hand_back "${HAND_BACK[@]}"
+  HAND_BACK=()
+  return "$RC"
+}
+
 # ---------------------------------------------------------------- main
 
 case "$CMD" in
@@ -517,6 +570,7 @@ case "$CMD" in
     [[ $# -eq 0 ]] || die "media takes no arguments (set MEDIA_STEPS / MEDIA_FILTER in the environment)"
     media
     ;;
+  browser) browser "$@" ;;
   down) down ;;
   ps)
     docker ps -a --filter "label=$LABEL.ticket=$TICKET" --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'

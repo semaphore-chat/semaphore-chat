@@ -1,0 +1,392 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Layout DOM, no call, desktop (1440px) > / 1`] = `
+<DocumentFragment>
+  <div
+    data-open="false"
+    data-testid="notification-center"
+  />
+  <div
+    data-expanded="false"
+    data-testid="rail"
+    data-voice="false"
+  />
+  <div
+    class="MuiBox-root css-1m1cnia"
+  >
+    <div
+      class="MuiBox-root css-zi7u66"
+    />
+  </div>
+  <div
+    aria-atomic="true"
+    aria-live="polite"
+    class="MuiBox-root css-ty8jgw"
+    data-testid="shortcut-announcer"
+    role="status"
+  />
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, desktop (1440px) > /admin 1`] = `
+<DocumentFragment>
+  <div
+    data-open="false"
+    data-testid="notification-center"
+  />
+  <div
+    data-expanded="false"
+    data-testid="rail"
+    data-voice="false"
+  />
+  <div
+    class="MuiBox-root css-1m1cnia"
+  >
+    <div
+      class="MuiBox-root css-zi7u66"
+    />
+  </div>
+  <div
+    aria-atomic="true"
+    aria-live="polite"
+    class="MuiBox-root css-ty8jgw"
+    data-testid="shortcut-announcer"
+    role="status"
+  />
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, desktop (1440px) > /community/c-1/channel/ch-1 1`] = `
+<DocumentFragment>
+  <div
+    data-open="false"
+    data-testid="notification-center"
+  />
+  <div
+    data-expanded="false"
+    data-testid="rail"
+    data-voice="false"
+  />
+  <div
+    class="MuiBox-root css-1m1cnia"
+  >
+    <div
+      class="MuiBox-root css-zi7u66"
+    />
+  </div>
+  <div
+    aria-atomic="true"
+    aria-live="polite"
+    class="MuiBox-root css-ty8jgw"
+    data-testid="shortcut-announcer"
+    role="status"
+  />
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, desktop (1440px) > /direct-messages 1`] = `
+<DocumentFragment>
+  <div
+    data-open="false"
+    data-testid="notification-center"
+  />
+  <div
+    data-expanded="false"
+    data-testid="rail"
+    data-voice="false"
+  />
+  <div
+    class="MuiBox-root css-1m1cnia"
+  >
+    <div
+      class="MuiBox-root css-zi7u66"
+    />
+  </div>
+  <div
+    aria-atomic="true"
+    aria-live="polite"
+    class="MuiBox-root css-ty8jgw"
+    data-testid="shortcut-announcer"
+    role="status"
+  />
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, desktop (1440px) > /settings 1`] = `
+<DocumentFragment>
+  <div
+    data-open="false"
+    data-testid="notification-center"
+  />
+  <div
+    data-expanded="false"
+    data-testid="rail"
+    data-voice="false"
+  />
+  <div
+    class="MuiBox-root css-1m1cnia"
+  >
+    <div
+      class="MuiBox-root css-zi7u66"
+    />
+  </div>
+  <div
+    aria-atomic="true"
+    aria-live="polite"
+    class="MuiBox-root css-ty8jgw"
+    data-testid="shortcut-announcer"
+    role="status"
+  />
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, phone (390px) > / 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-17dkz5h"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-132yzc5"
+    >
+      <div
+        data-testid="mobile-screen"
+      />
+    </div>
+    <div
+      class="MuiBox-root css-14wvfj0"
+      data-testid="mobile-voice-bar-slot"
+    />
+    <div
+      data-hide-on-detail="true"
+      data-testid="bottom-nav"
+    />
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, phone (390px) > /admin 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-17dkz5h"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-132yzc5"
+    >
+      <div
+        data-testid="mobile-screen"
+      />
+    </div>
+    <div
+      class="MuiBox-root css-14wvfj0"
+      data-testid="mobile-voice-bar-slot"
+    />
+    <div
+      data-hide-on-detail="true"
+      data-testid="bottom-nav"
+    />
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, phone (390px) > /community/c-1/channel/ch-1 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-tj6lm1"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-132yzc5"
+    >
+      <div
+        data-testid="mobile-screen"
+      />
+    </div>
+    <div
+      class="MuiBox-root css-14wvfj0"
+      data-testid="mobile-voice-bar-slot"
+    />
+    <div
+      data-hide-on-detail="true"
+      data-testid="bottom-nav"
+    />
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, phone (390px) > /direct-messages 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-17dkz5h"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-132yzc5"
+    >
+      <div
+        data-testid="mobile-screen"
+      />
+    </div>
+    <div
+      class="MuiBox-root css-14wvfj0"
+      data-testid="mobile-voice-bar-slot"
+    />
+    <div
+      data-hide-on-detail="true"
+      data-testid="bottom-nav"
+    />
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, phone (390px) > /settings 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-17dkz5h"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-132yzc5"
+    >
+      <div
+        data-testid="mobile-screen"
+      />
+    </div>
+    <div
+      class="MuiBox-root css-14wvfj0"
+      data-testid="mobile-voice-bar-slot"
+    />
+    <div
+      data-hide-on-detail="true"
+      data-testid="bottom-nav"
+    />
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, tablet (820px) > / 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-tj6lm1"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-vjzfn5"
+    >
+      <div
+        data-community="c-1"
+        data-testid="tablet-sidebar"
+      />
+      <div
+        data-show-sidebar="true"
+        data-testid="tablet-content"
+      />
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, tablet (820px) > /admin 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-tj6lm1"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-vjzfn5"
+    >
+      <div
+        data-show-sidebar="false"
+        data-testid="tablet-content"
+      />
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, tablet (820px) > /community/c-1/channel/ch-1 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-tj6lm1"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-vjzfn5"
+    >
+      <div
+        data-community="c-1"
+        data-testid="tablet-sidebar"
+      />
+      <div
+        data-show-sidebar="true"
+        data-testid="tablet-content"
+      />
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, tablet (820px) > /direct-messages 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-tj6lm1"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-vjzfn5"
+    >
+      <div
+        data-community="c-1"
+        data-testid="tablet-sidebar"
+      />
+      <div
+        data-show-sidebar="true"
+        data-testid="tablet-content"
+      />
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Layout DOM, no call, tablet (820px) > /settings 1`] = `
+<DocumentFragment>
+  <div
+    class="MuiBox-root css-tj6lm1"
+  >
+    <div
+      data-testid="drawer"
+    />
+    <div
+      class="MuiBox-root css-vjzfn5"
+    >
+      <div
+        data-community="c-1"
+        data-testid="tablet-sidebar"
+      />
+      <div
+        data-show-sidebar="true"
+        data-testid="tablet-content"
+      />
+    </div>
+  </div>
+</DocumentFragment>
+`;

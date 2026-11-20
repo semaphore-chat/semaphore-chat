@@ -1,4 +1,6 @@
 import type {
+  Participant,
+  ParticipantEvent,
   RoomEvent,
   Track,
   ConnectionQuality,
@@ -101,6 +103,30 @@ export const ROOM_EVENT = {
   ConnectionQualityChanged:
     'connectionQualityChanged' satisfies `${RoomEvent.ConnectionQualityChanged}`,
 } as const;
+
+// ---- ParticipantEvent ----
+
+export const PARTICIPANT_EVENT = {
+  ParticipantPermissionsChanged:
+    'participantPermissionsChanged' satisfies `${ParticipantEvent.ParticipantPermissionsChanged}`,
+  LocalTrackPublished: 'localTrackPublished' satisfies `${ParticipantEvent.LocalTrackPublished}`,
+  LocalTrackUnpublished: 'localTrackUnpublished' satisfies `${ParticipantEvent.LocalTrackUnpublished}`,
+} as const;
+
+// ---- Publish permissions (protobuf `TrackSource`, numeric) ----
+
+/** What the server lets a participant publish (`participant.permissions`; protobuf `ParticipantPermission`). */
+export type ParticipantPermission = NonNullable<Participant['permissions']>;
+
+/** A source in `ParticipantPermission.canPublishSources`: the protobuf `TrackSource` enum, not `Track.Source`. */
+export type ProtoTrackSource = ParticipantPermission['canPublishSources'][number];
+
+/**
+ * The protobuf `TrackSource.UNKNOWN` (0, in @livekit/protocol's generated enum): the soundboard's
+ * source in a publish grant. A numeric enum cannot be checked with `satisfies` (any number fits the
+ * enum type), so the value is pinned by a unit test against @livekit/protocol's enum.
+ */
+export const PROTO_TRACK_SOURCE_UNKNOWN = 0 as ProtoTrackSource;
 
 // ---- Track.Source ----
 

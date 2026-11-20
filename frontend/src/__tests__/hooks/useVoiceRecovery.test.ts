@@ -18,14 +18,16 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
 }));
 
 let mockSaved: SavedVoiceConnection | null = null;
+const mockClearSaved = vi.fn();
 vi.mock('../../features/voice/voiceActions', () => ({
   getSavedConnection: () => mockSaved,
-  clearSavedConnection: vi.fn(),
+  clearSavedConnection: () => mockClearSaved(),
 }));
 
 vi.mock('../../utils/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const base: SavedVoiceConnection = {
+  userId: 'me',
   contextType: VoiceSessionType.Channel,
   channelId: 'ch-1',
   channelName: 'Hangout',
@@ -59,5 +61,31 @@ describe('useVoiceRecovery — mic state', () => {
     renderHook(() => useVoiceRecovery());
     await waitFor(() => expect(mockJoin).toHaveBeenCalled());
     expect(mockJoin.mock.calls[0][5]).toEqual({ startMuted: false });
+  });
+});
+
+describe('useVoiceRecovery — whose connection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("never rejoins another user's saved connection (someone signed in after them), and forgets it", async () => {
+    mockSaved = { ...base, userId: 'previous-user' };
+    renderHook(() => useVoiceRecovery());
+    await waitFor(() => expect(mockClearSaved).toHaveBeenCalled());
+    expect(mockJoin).not.toHaveBeenCalled();
+  });
+
+  it('never rejoins a saved connection that does not say whose it is', async () => {
+    mockSaved = { ...base, userId: undefined };
+    renderHook(() => useVoiceRecovery());
+    await waitFor(() => expect(mockClearSaved).toHaveBeenCalled());
+    expect(mockJoin).not.toHaveBeenCalled();
+  });
+
+  it("rejoins the signed-in user's own saved connection", async () => {
+    mockSaved = { ...base };
+    renderHook(() => useVoiceRecovery());
+    await waitFor(() => expect(mockJoin).toHaveBeenCalled());
   });
 });

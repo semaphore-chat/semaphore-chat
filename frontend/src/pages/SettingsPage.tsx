@@ -24,17 +24,27 @@ import {
   CheckCircle,
   Error as ErrorIcon,
   Palette,
+  PrivacyTip,
 } from '@mui/icons-material';
 import axios from 'axios';
 import NotificationSettings from '../components/Settings/NotificationSettings';
 import InstallAppSettings from '../components/Settings/InstallAppSettings';
 import VoiceSettings from '../components/Settings/VoiceSettings';
 import SessionsSettings from '../components/Settings/SessionsSettings';
+import SettingsCardSkeleton from '../components/Settings/SettingsCardSkeleton';
 import { useTheme, type ThemeIntensity } from '../contexts/ThemeContext';
 import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
 import { clearTokens } from '../utils/tokenService';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  appearanceSettingsControllerGetSettingsOptions,
+  appearanceSettingsControllerGetSettingsQueryKey,
+  appearanceSettingsControllerUpdateSettingsMutation,
+} from '../api-client/@tanstack/react-query.gen';
+import type { AppearanceSettingsResponseDto } from '../api-client/types.gen';
+import { clearShellSessionState } from '../shell/sessionState';
 import { normalizeUrlForComparison } from '../config/env';
 import { FormPageShell, type FormPageSection } from '../components/Common/PageShell';
 import { useScrollSpy } from '../hooks/useScrollSpy';
@@ -48,6 +58,88 @@ interface HealthResponse {
 }
 
 // Appearance Settings Component
+/**
+ * Settings > Privacy: whether pictures from other sites load on their own (link-preview pictures and site icons,
+ * GIF links drawn as the GIF, webhook avatars). Stored with the appearance settings (`loadRemoteContent`), the
+ * query both shells already load at start; the switch moves at once and goes back if the save fails.
+ */
+/** An older server does not know the setting: nothing to switch, so no Privacy card and no nav entry. */
+const privacyUnsupported = (data: unknown, isError: boolean): boolean =>
+  !isError && !!data && typeof (data as { loadRemoteContent?: unknown }).loadRemoteContent !== 'boolean';
+
+export const PrivacySettings: React.FC = () => {
+  const queryClient = useQueryClient();
+  const queryKey = appearanceSettingsControllerGetSettingsQueryKey();
+  const { data, isPending, isError } = useQuery(appearanceSettingsControllerGetSettingsOptions());
+  const { mutate, isError: saveFailed, isPending: saving } = useMutation({
+    ...appearanceSettingsControllerUpdateSettingsMutation(),
+    onMutate: async ({ body }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<AppearanceSettingsResponseDto>(queryKey);
+      if (previous && body?.loadRemoteContent !== undefined) {
+        queryClient.setQueryData<AppearanceSettingsResponseDto>(queryKey, {
+          ...previous,
+          loadRemoteContent: body.loadRemoteContent,
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+  });
+
+  if (isPending) return <SettingsCardSkeleton rows={1} label="Loading privacy settings" />;
+  // An older server does not know the setting: nothing to switch, and its pictures stay on.
+  if (privacyUnsupported(data, isError)) return null;
+
+  return (
+    <Card sx={{ mb: 3 }}>
+      <CardContent>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PrivacyTip /> Privacy
+        </Typography>
+        <Divider sx={{ mb: 3 }} />
+        {isError || !data ? (
+          <Alert severity="error">Failed to load privacy settings</Alert>
+        ) : (
+          <>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={data.loadRemoteContent}
+                  disabled={saving}
+                  onChange={(event) => mutate({ body: { loadRemoteContent: event.target.checked } })}
+                  slotProps={{ input: { 'aria-describedby': 'load-remote-content-description' } }}
+                />
+              }
+              label="Load pictures and previews from other sites"
+            />
+            <Typography
+              id="load-remote-content-description"
+              variant="caption"
+              color="text.secondary"
+              component="p"
+              sx={{ ml: 6 }}
+            >
+              Shows link pictures, site icons, GIFs and webhook avatars automatically. Turn this off to keep other
+              sites from seeing your IP address: links then show their text only. GIFs you browse in the GIF picker
+              always load. It applies to this app in the browser and the current desktop app; older desktop builds and
+              other clients may still load pictures.
+            </Typography>
+            {saveFailed && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                Could not save the setting. Try again.
+              </Alert>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 const AppearanceSettings: React.FC = () => {
   const { settings, setAccentColor, setIntensity, toggleMode } = useTheme();
 
@@ -163,14 +255,19 @@ const AppearanceSettings: React.FC = () => {
 };
 
 const SettingsPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const [isElectronApp, setIsElectronApp] = useState(false);
   const { isDesktop } = useResponsive();
+  // Same (shared) query as PrivacySettings, so the nav and the card agree.
+  const appearance = useQuery(appearanceSettingsControllerGetSettingsOptions());
+  const showPrivacy = !privacyUnsupported(appearance.data, appearance.isError);
 
   // Section nav for the desktop form shell; the Electron-only section only when present.
   const sections: FormPageSection[] = [
     { id: 'settings-notifications', label: 'Notifications' },
     { id: 'settings-voice', label: 'Voice & video' },
     { id: 'settings-appearance', label: 'Appearance' },
+    ...(showPrivacy ? [{ id: 'settings-privacy', label: 'Privacy' }] : []),
     { id: 'settings-sessions', label: 'Sessions' },
     ...(isElectronApp ? [{ id: 'settings-desktop-app', label: 'Desktop app' }] : []),
   ];
@@ -308,6 +405,8 @@ const SettingsPage: React.FC = () => {
         normalizeUrlForComparison(currentBackendUrl ?? '')
       ) {
         clearTokens();
+        // The new design's state of this server's session goes with it (I5).
+        clearShellSessionState(queryClient);
         try {
           await getElectronAPI()?.deleteRefreshToken?.();
         } catch {
@@ -346,6 +445,11 @@ const SettingsPage: React.FC = () => {
       {/* Appearance Settings Section */}
       <Box id="settings-appearance" sx={{ scrollMarginTop: 24 }}>
         <AppearanceSettings />
+      </Box>
+
+      {/* Privacy Settings Section */}
+      <Box id="settings-privacy" sx={{ scrollMarginTop: 24 }}>
+        <PrivacySettings />
       </Box>
 
       {/* Sessions Settings Section */}

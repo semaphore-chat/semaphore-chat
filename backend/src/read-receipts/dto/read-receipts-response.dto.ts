@@ -1,4 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ChannelType } from '@prisma/client';
+import { ChannelTypeValues } from '@/common/enums/swagger-enums';
 
 export class ReadReceiptDto {
   id: string;
@@ -12,6 +14,16 @@ export class ReadReceiptDto {
 export class UnreadCountDto {
   channelId?: string;
   directMessageGroupId?: string;
+  /** The community the channel belongs to; null for direct-message entries. */
+  @ApiProperty({ type: 'string', nullable: true, required: false })
+  communityId?: string | null;
+  /** The channel's type; absent for direct-message entries. Badges count TEXT channels only (as the classic sidebar shows them). */
+  @ApiProperty({
+    enum: ChannelTypeValues,
+    enumName: 'ChannelType',
+    required: false,
+  })
+  channelType?: ChannelType;
   @ApiProperty({ type: 'integer' })
   unreadCount: number;
   @ApiProperty({ type: 'integer' })

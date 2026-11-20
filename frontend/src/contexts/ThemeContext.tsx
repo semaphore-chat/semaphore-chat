@@ -5,11 +5,23 @@
  * Types and constants are in ../theme/constants.ts to comply with React Fast Refresh.
  */
 
-import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  useSyncExternalStore,
+  ReactNode,
+} from 'react';
+import { ACCENT_PRIMARY, nearestAccent } from '@semaphore-chat/shared';
 import { logger } from '../utils/logger';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import { generateTheme } from '../theme/themeConfig';
 import { useThemeColorMeta } from '../hooks/useThemeColorMeta';
+import { onForgetNewDesignSetting } from './newDesignCache';
 import {
   type ThemeMode,
   type AccentColor,
@@ -17,6 +29,10 @@ import {
   type ThemeSettings,
   STORAGE_KEY,
   defaultSettings,
+  isAccentColor,
+  isThemeIntensity,
+  isThemeMode,
+  normalizeBaseColor,
 } from '../theme/constants';
 
 // Re-export types for backward compatibility (constants such as
@@ -26,29 +42,71 @@ export type { ThemeMode, AccentColor, ThemeIntensity, ThemeSettings };
 // Callback type for server sync
 type OnSettingsChangeCallback = (settings: ThemeSettings) => void;
 
-interface ThemeContextType {
+export interface ThemeContextValue {
   settings: ThemeSettings;
+  /** The base colour the new design derives its palette from. */
+  baseColor: string;
+  /** Whether the mode follows the operating system. */
+  matchSystem: boolean;
+  /** Whether the new design is on. */
+  newDesign: boolean;
+  /** `mode`, unless `matchSystem` is on, in which case the OS preference wins. */
+  effectiveMode: ThemeMode;
   setMode: (mode: ThemeMode) => void;
   setAccentColor: (color: AccentColor) => void;
   setIntensity: (intensity: ThemeIntensity) => void;
+  /** Sets the base colour; false (and no change) when `hex` isn't `#rrggbb`. */
+  setBaseColor: (hex: string) => boolean;
+  setMatchSystem: (matchSystem: boolean) => void;
+  setNewDesign: (newDesign: boolean) => void;
   toggleMode: () => void;
   // Server sync methods
   applyServerSettings: (settings: ThemeSettings) => void;
   registerOnChange: (callback: OnSettingsChangeCallback) => () => void;
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
+
+/**
+ * Stored JSON into current settings. An object written before `baseColor`
+ * existed gets the primary of its stored accent, so the first paint matches.
+ * Unknown or malformed values fall back to the defaults one field at a time
+ * (a bad colour to the stored accent's primary). Never throws.
+ */
+function migrateSettings(stored: Record<string, unknown>): ThemeSettings {
+  const accentColor = isAccentColor(stored.accentColor) ? stored.accentColor : defaultSettings.accentColor;
+  return {
+    mode: isThemeMode(stored.mode) ? stored.mode : defaultSettings.mode,
+    accentColor,
+    intensity: isThemeIntensity(stored.intensity) ? stored.intensity : defaultSettings.intensity,
+    baseColor: normalizeBaseColor(stored.baseColor) ?? ACCENT_PRIMARY[accentColor],
+    matchSystem: typeof stored.matchSystem === 'boolean' ? stored.matchSystem : defaultSettings.matchSystem,
+    newDesign: typeof stored.newDesign === 'boolean' ? stored.newDesign : defaultSettings.newDesign,
+  };
+}
+
+/**
+ * `candidate` with every field it got wrong taken from `fallback`, so a server
+ * reply (or any caller) can never put an invalid colour into the theme.
+ */
+function sanitizeSettings(candidate: ThemeSettings, fallback: ThemeSettings): ThemeSettings {
+  const baseColor = normalizeBaseColor(candidate.baseColor) ?? fallback.baseColor;
+  return {
+    mode: isThemeMode(candidate.mode) ? candidate.mode : fallback.mode,
+    accentColor: isAccentColor(candidate.accentColor) ? candidate.accentColor : nearestAccent(baseColor),
+    intensity: isThemeIntensity(candidate.intensity) ? candidate.intensity : fallback.intensity,
+    baseColor,
+    matchSystem: typeof candidate.matchSystem === 'boolean' ? candidate.matchSystem : fallback.matchSystem,
+    newDesign: typeof candidate.newDesign === 'boolean' ? candidate.newDesign : fallback.newDesign,
+  };
+}
 
 function loadSettings(): ThemeSettings {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored);
-      return {
-        mode: parsed.mode || defaultSettings.mode,
-        accentColor: parsed.accentColor || defaultSettings.accentColor,
-        intensity: parsed.intensity || defaultSettings.intensity,
-      };
+      const parsed: unknown = JSON.parse(stored);
+      if (parsed && typeof parsed === 'object') return migrateSettings(parsed as Record<string, unknown>);
     }
   } catch (e) {
     logger.warn('Failed to load theme settings:', e);
@@ -64,6 +122,42 @@ function saveSettings(settings: ThemeSettings): void {
   }
 }
 
+const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
+
+/** The OS preference right now; `false` (light) where `matchMedia` is missing. */
+function systemPrefersDark(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia(DARK_SCHEME_QUERY).matches;
+}
+
+/**
+ * The OS light/dark preference, followed only while `enabled`: the listener
+ * exists exactly as long as "match system" is on, and updates live.
+ *
+ * Read with `useSyncExternalStore` so the answer is right in the same render
+ * in which "match system" turns on (for example when the server's settings
+ * arrive): a state updated from an effect would paint one frame in the wrong
+ * mode first.
+ */
+function useSystemPrefersDark(enabled: boolean): boolean {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (!enabled || typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+      const query = window.matchMedia(DARK_SCHEME_QUERY);
+      // Safari before 14 has no `addEventListener` on a MediaQueryList.
+      if (typeof query.addEventListener === 'function') {
+        query.addEventListener('change', onChange);
+        return () => query.removeEventListener('change', onChange);
+      }
+      query.addListener(onChange);
+      return () => query.removeListener(onChange);
+    },
+    [enabled]
+  );
+  const getSnapshot = useCallback(() => enabled && systemPrefersDark(), [enabled]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+}
+
 interface ThemeProviderProps {
   children: ReactNode;
 }
@@ -72,46 +166,82 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [settings, setSettings] = useState<ThemeSettings>(loadSettings);
   const onChangeCallbacksRef = useRef<Set<OnSettingsChangeCallback>>(new Set());
   const isApplyingServerSettingsRef = useRef(false);
+  const unsyncedSettingsRef = useRef<ThemeSettings | null>(null);
 
   // Save to localStorage whenever settings change
   useEffect(() => {
     saveSettings(settings);
   }, [settings]);
 
-  // Notify callbacks when settings change (but not when applying server settings)
+  // Notify callbacks when settings change (but not when applying server settings,
+  // nor for the settings forgetNewDesignSetting() made: those are local only)
   useEffect(() => {
-    if (!isApplyingServerSettingsRef.current) {
+    if (!isApplyingServerSettingsRef.current && settings !== unsyncedSettingsRef.current) {
       onChangeCallbacksRef.current.forEach((callback) => callback(settings));
     }
   }, [settings]);
 
   const setMode = useCallback((mode: ThemeMode) => {
-    setSettings((prev) => ({ ...prev, mode }));
+    // Choosing a mode is explicit: it overrides "follow the system".
+    setSettings((prev) => ({ ...prev, mode, matchSystem: false }));
   }, []);
 
   const setAccentColor = useCallback((accentColor: AccentColor) => {
-    setSettings((prev) => ({ ...prev, accentColor }));
+    // The base colour follows the picker, so the two never disagree locally.
+    setSettings((prev) => ({ ...prev, accentColor, baseColor: ACCENT_PRIMARY[accentColor] }));
   }, []);
 
   const setIntensity = useCallback((intensity: ThemeIntensity) => {
     setSettings((prev) => ({ ...prev, intensity }));
   }, []);
 
+  const setBaseColor = useCallback((hex: string): boolean => {
+    const baseColor = normalizeBaseColor(hex);
+    if (!baseColor) return false;
+    setSettings((prev) => ({ ...prev, baseColor, accentColor: nearestAccent(baseColor) }));
+    return true;
+  }, []);
+
+  const setMatchSystem = useCallback((matchSystem: boolean) => {
+    setSettings((prev) => ({ ...prev, matchSystem }));
+  }, []);
+
+  const setNewDesign = useCallback((newDesign: boolean) => {
+    setSettings((prev) => ({ ...prev, newDesign }));
+  }, []);
+
   const toggleMode = useCallback(() => {
+    // The sun/moon switch picks a mode explicitly too, so it stops following the OS.
     setSettings((prev) => ({
       ...prev,
       mode: prev.mode === 'dark' ? 'light' : 'dark',
+      matchSystem: false,
     }));
   }, []);
 
   // Apply settings from server (doesn't trigger onChange callbacks)
   const applyServerSettings = useCallback((serverSettings: ThemeSettings) => {
     isApplyingServerSettingsRef.current = true;
-    setSettings(serverSettings);
+    setSettings((previous) => sanitizeSettings(serverSettings, previous));
     // Reset flag after state update
     setTimeout(() => {
       isApplyingServerSettingsRef.current = false;
     }, 0);
+  }, []);
+
+  // forgetNewDesignSetting(): local only. The settings object it makes is marked, and the
+  // notify effect above skips exactly that object, so nothing reaches the server.
+  const latestSettingsRef = useRef(settings);
+  latestSettingsRef.current = settings;
+  useEffect(() => {
+    const forget = () => {
+      const current = latestSettingsRef.current;
+      if (!current.newDesign) return;
+      const next = { ...current, newDesign: false };
+      unsyncedSettingsRef.current = next;
+      setSettings(next);
+    };
+    return onForgetNewDesignSetting(forget);
   }, []);
 
   // Register a callback to be called when settings change
@@ -122,10 +252,15 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     };
   }, []);
 
-  // Generate MUI theme based on current settings
+  const prefersDark = useSystemPrefersDark(settings.matchSystem);
+  const effectiveMode: ThemeMode = settings.matchSystem ? (prefersDark ? 'dark' : 'light') : settings.mode;
+
+  // Generate MUI theme based on current settings. The old shell shows the
+  // named accent nearest the base colour; for each accent's own primary that
+  // is the accent itself, so every existing theme is unchanged.
   const theme = useMemo(
-    () => generateTheme(settings.mode, settings.accentColor, settings.intensity),
-    [settings.mode, settings.accentColor, settings.intensity]
+    () => generateTheme(effectiveMode, nearestAccent(settings.baseColor), settings.intensity),
+    [effectiveMode, settings.baseColor, settings.intensity]
   );
 
   // Browser/OS chrome colour follows the app bar surface (always a solid colour).
@@ -134,14 +269,33 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const contextValue = useMemo(
     () => ({
       settings,
+      baseColor: settings.baseColor,
+      matchSystem: settings.matchSystem,
+      newDesign: settings.newDesign,
+      effectiveMode,
       setMode,
       setAccentColor,
       setIntensity,
+      setBaseColor,
+      setMatchSystem,
+      setNewDesign,
       toggleMode,
       applyServerSettings,
       registerOnChange,
     }),
-    [settings, setMode, setAccentColor, setIntensity, toggleMode, applyServerSettings, registerOnChange]
+    [
+      settings,
+      effectiveMode,
+      setMode,
+      setAccentColor,
+      setIntensity,
+      setBaseColor,
+      setMatchSystem,
+      setNewDesign,
+      toggleMode,
+      applyServerSettings,
+      registerOnChange,
+    ]
   );
 
   return (
@@ -152,10 +306,20 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useTheme(): ThemeContextType {
+export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
   if (!context) {
     throw new Error('useTheme must be used within a ThemeProvider');
   }
   return context;
+}
+
+/**
+ * The "new design" setting, or false outside a ThemeProvider. For the shell
+ * switch (shell/useShellChoice.ts), which must never be the thing that breaks a
+ * tree rendered without the app's theme: without one, the old shell shows.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useNewDesignSetting(): boolean {
+  return useContext(ThemeContext)?.newDesign ?? false;
 }

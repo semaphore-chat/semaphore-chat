@@ -1,18 +1,17 @@
 import React from "react";
 import MemberList, { type MemberData } from "./MemberList";
-import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
-  presenceControllerGetMultipleUserPresenceOptions,
   directMessagesControllerFindDmGroupOptions,
   channelMembershipControllerFindAllForChannelOptions,
   channelsControllerFindOneOptions,
 } from "../../api-client/@tanstack/react-query.gen";
-import { membershipControllerFindAllForCommunity } from "../../api-client/sdk.gen";
-import type { RoleDto, MembershipResponseDto } from "../../api-client/types.gen";
 import {
-  communityMembersQueryKey,
-  MEMBER_LIST_PAGE_SIZE,
-} from "../../utils/membershipQueryKeys";
+  computeDisplayRole,
+  sameDisplayRole,
+  useBulkPresence,
+  useCommunityMemberPages,
+} from "../../data/members";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 
 interface MemberListContainerProps {
@@ -22,49 +21,6 @@ interface MemberListContainerProps {
   isPrivate?: boolean;
   /** Fill the parent's width (e.g. the phone member drawer) instead of the 240px side column. */
   fullWidth?: boolean;
-}
-
-/**
- * Compare two `displayRole` values by content rather than reference, since
- * `computeDisplayRole` builds a fresh object every time `baseMembers`
- * recomputes even when the underlying role hasn't changed.
- */
-function sameDisplayRole(
-  a?: MemberData["displayRole"],
-  b?: MemberData["displayRole"],
-): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return a.id === b.id && a.name === b.name && a.position === b.position;
-}
-
-/**
- * Compute a member's "display role" from their roles list.
- * The display role is the role with the lowest position (highest priority),
- * excluding the default "Member" role (position 100, isDefault=true).
- */
-function computeDisplayRole(
-  roles?: RoleDto[],
-): MemberData["displayRole"] | undefined {
-  if (!roles || roles.length === 0) return undefined;
-
-  // Filter out the default Member role (catch-all)
-  const nonMemberRoles = roles.filter(
-    (r) => !(r.isDefault && r.name === "Member"),
-  );
-
-  if (nonMemberRoles.length === 0) return undefined;
-
-  // Find the role with the lowest position (highest priority)
-  const bestRole = nonMemberRoles.reduce((best, role) =>
-    role.position < best.position ? role : best,
-  );
-
-  return {
-    id: bestRole.id,
-    name: bestRole.name,
-    position: bestRole.position,
-  };
 }
 
 const MemberListContainer: React.FC<MemberListContainerProps> = ({
@@ -107,56 +63,17 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
   // For public channels, fetch community members — paginated (cursor
   // envelope), loading more progressively via the "Show more" affordance.
   const {
-    data: communityMembersData,
+    memberships: communityMembers,
     isLoading: isCommunityLoading,
     error: communityError,
     refetch: refetchCommunityMembers,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: communityMembersQueryKey(communityId || ""),
-    queryFn: async ({ pageParam, signal }) => {
-      const { data } = await membershipControllerFindAllForCommunity({
-        path: { communityId: communityId! },
-        query: { limit: MEMBER_LIST_PAGE_SIZE, continuationToken: pageParam },
-        throwOnError: true,
-        signal,
-      });
-      return data;
-    },
-    initialPageParam: "",
-    getNextPageParam: (lastPage) => lastPage.continuationToken || undefined,
-    // No `maxPages` here on purpose: it's a sliding-window CACHE bound in
-    // TanStack v5 (fetching page N+1 evicts page 1), which would silently
-    // drop already-rendered members from the flatMap'd list past the
-    // window — defeating the "Show more" pagination UX. Memory growth is
-    // bounded instead by the 100/page size and user-driven "Show more"
-    // pacing (each click is one explicit fetch).
-    enabled: contextType === VoiceSessionType.Channel && !!communityId && isPrivate === false,
-  });
-
-  const communityMembers = React.useMemo(
-    () =>
-      communityMembersData?.pages.flatMap((page) => {
-        // Version-skew tolerance: pre-0.4.0 backends return a plain
-        // membership array instead of the { members, continuationToken }
-        // envelope (auto-updated desktop clients can race ahead of
-        // self-hosted servers). Treat the array as a single full page, and
-        // fall back to an empty page for any other unrecognized shape
-        // rather than letting `undefined` entries reach the filter/map
-        // below and crash the whole community screen.
-        if (Array.isArray(page)) return page as MembershipResponseDto[];
-        return page?.members ?? [];
-      }),
-    [communityMembersData],
+    hasMore: hasNextPage,
+    loadingMore: isFetchingNextPage,
+    loadMore: handleLoadMoreMembers,
+  } = useCommunityMemberPages(
+    communityId,
+    contextType === VoiceSessionType.Channel && isPrivate === false,
   );
-
-  const handleLoadMoreMembers = React.useCallback(() => {
-    if (!isFetchingNextPage && hasNextPage) {
-      void fetchNextPage();
-    }
-  }, [isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   // For DM context, fetch DM group members
   const {
@@ -211,23 +128,14 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
     }
   }, [contextType, isPrivate, channelMembers, communityMembers, dmGroup]);
 
-  // Extract user IDs for presence lookup
-  const userIds = React.useMemo(() =>
-    baseMembers.map(member => member.id),
-    [baseMembers]
-  );
-
-  // Fetch presence data for all members
+  // Presence for all members: every visible online user (bulk), so members
+  // past the 200th are not shown offline (the per-ids endpoint reads 200).
   const {
     data: presenceData,
     isLoading: isPresenceLoading,
     error: presenceError,
     refetch: refetchPresence,
-  } = useQuery({
-    ...presenceControllerGetMultipleUserPresenceOptions({ path: { userIds: userIds.join(',') } }),
-    enabled: userIds.length > 0,
-    staleTime: 60_000,
-  });
+  } = useBulkPresence(baseMembers.length > 0);
 
   // Identity cache: preserves referential equality for member objects whose
   // row-relevant fields haven't changed, so React.memo(MemberRow) can skip

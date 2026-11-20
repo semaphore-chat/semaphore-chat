@@ -109,6 +109,9 @@ const TEST_COMMUNITIES = [
       { name: 'general', type: 'TEXT' },
       { name: 'random', type: 'TEXT' },
       { name: 'voice-chat', type: 'VOICE' },
+      // The Lounge (new shell) specs' own rooms: frontend/e2e/voice/lounge-pieces.spec.ts
+      { name: 'voice-lounge', type: 'VOICE' },
+      { name: 'voice-lounge-2', type: 'VOICE' },
       // Dedicated VOICE channels so each voice E2E spec gets its OWN LiveKit
       // room — heavy multi-participant specs (reconnect, mute, screenshare)
       // would otherwise contaminate each other's server-side room state.

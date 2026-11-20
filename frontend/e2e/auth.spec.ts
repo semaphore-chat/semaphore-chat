@@ -5,7 +5,21 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { TEST_USER, setAuthToken, clearAuthToken, isAuthenticated, loginViaApi } from './fixtures';
+import {
+  TEST_USER,
+  MEMBER_USER,
+  setAuthToken,
+  clearAuthToken,
+  isAuthenticated,
+  loginViaApi,
+  createTestCommunity,
+  createWorld,
+  generateTestName,
+  deleteWorlds,
+} from './fixtures';
+
+// Drop the communities this test's worlds created so the shared `testuser` does not pile them up
+test.afterEach(async ({ request }) => deleteWorlds(request));
 
 test.describe('Authentication', () => {
   test.describe('Login Page', () => {
@@ -143,6 +157,68 @@ test.describe('Authentication', () => {
 
       const hasToken = await isAuthenticated(page);
       expect(hasToken).toBe(false);
+    });
+
+    test("signing in as another user on the same page never shows the first user's community", async ({
+      page,
+      request,
+    }) => {
+      const { accessToken } = await loginViaApi(request, TEST_USER);
+      const communityName = generateTestName('signout');
+      const community = await createTestCommunity(request, { name: communityName }, accessToken);
+      // A community B is in too: its entry in B's rail shows B's list has rendered
+      const shared = await createWorld(request);
+
+      const signIn = async (credentials: { username: string; password: string }) => {
+        await page.locator('#username').fill(credentials.username);
+        await page.locator('#password').fill(credentials.password);
+        await page.getByRole('button', { name: 'Login' }).click();
+        await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible({
+          timeout: 15000,
+        });
+      };
+
+      // User A signs in and opens a community only A is in.
+      await page.goto('/login');
+      await signIn(TEST_USER);
+      await page.goto(`/#/community/${community.id}`);
+      await expect(page.locator('body')).toContainText(communityName, { timeout: 15000 });
+
+      // A signs out (same page, no reload).
+      await page.getByRole('button', { name: 'Account menu' }).click();
+      await page.getByRole('menuitem', { name: /log out/i }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Log out' }).click();
+      await expect(page.locator('#username')).toBeVisible({ timeout: 10000 });
+
+      // From here on, record whether A's community name ever appears in the DOM.
+      await page.evaluate((name) => {
+        const w = window as unknown as { __leaked: boolean };
+        w.__leaked = false;
+        const check = () => {
+          const html = document.documentElement.outerHTML;
+          if (html.includes(name)) w.__leaked = true;
+        };
+        new MutationObserver(check).observe(document.documentElement, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+          attributes: true,
+        });
+        check();
+      }, communityName);
+
+      // User B signs in on the same page.
+      await signIn(MEMBER_USER);
+      await expect(page.locator('body')).not.toContainText(communityName);
+
+      // And again once B's community list has rendered (B's own community is in the rail).
+      await expect(page.getByRole('button', { name: shared.communityName }).first()).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(page.locator('body')).not.toContainText(communityName);
+      expect(await page.evaluate(() => (window as unknown as { __leaked: boolean }).__leaked)).toBe(
+        false,
+      );
     });
   });
 });

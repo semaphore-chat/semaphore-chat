@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'docs-site/**'
+      - 'design/guide/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
@@ -33,6 +34,11 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r docs-site/requirements.txt
+
+      # The design guide is written in design/guide (next to the tokens it
+      # describes) and published as part of this site. The copy is gitignored.
+      - name: Copy the design guide into the site
+        run: cp -r design/guide docs-site/docs/design-guide
 
       - name: Build and deploy
         run: cd docs-site && mkdocs gh-deploy --force

@@ -34,9 +34,9 @@ import { createElement as h, Fragment, type ReactNode } from 'react';
 import CssBaseline from '@mui/material/CssBaseline';
 import GlobalStyles from '@mui/material/GlobalStyles';
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
+import { ACCENT_PRIMARY } from '@semaphore-chat/shared';
 import type { AppearanceSettingsResponseDto } from '../../../api-client/types.gen';
 import { ThemeProvider } from '../../../contexts/ThemeContext';
-import type { ThemeSettings } from '../../../theme/constants';
 import { VoiceSessionType, type VoiceState } from '../../../contexts/VoiceContext';
 import { ConnectionStatusBanner } from '../../../components/ConnectionStatusBanner';
 import { AppChrome } from '../../../components/PWA/AppChrome';
@@ -47,7 +47,7 @@ import { makeHandlers } from '../handlers';
 import { createFakeVoiceRoom } from '../fakeRoom';
 import { FakeRoomProvider } from '../FakeRoomProvider';
 import type { LadleStoryComponent } from '../screenStory';
-import type { Scenario } from '../types';
+import type { Scenario, StoryTheme } from '../types';
 
 // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ export const NOT_FOUND_BODY = { message: 'Not Found', error: 'Not Found', status
 /** NestJS's default 500 body for an unhandled exception. */
 export const INTERNAL_ERROR_BODY = { statusCode: 500, message: 'Internal server error' };
 
-function appearanceHandler(scenario: Scenario, theme: ThemeSettings): HttpHandler {
+function appearanceHandler(scenario: Scenario, theme: StoryTheme): HttpHandler {
   return http.get('/api/appearance-settings', () =>
     HttpResponse.json({
       id: 'appearance-1',
@@ -95,6 +95,10 @@ function appearanceHandler(scenario: Scenario, theme: ThemeSettings): HttpHandle
       themeMode: theme.mode,
       accentColor: theme.accentColor,
       intensity: theme.intensity,
+      baseColor: ACCENT_PRIMARY[theme.accentColor],
+      matchSystem: false,
+      newDesign: false,
+      loadRemoteContent: scenario.loadRemoteContent ?? true,
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
     } satisfies AppearanceSettingsResponseDto),
@@ -175,7 +179,7 @@ export interface EdgeScreenOptions {
   /** Connect "me" to the first community's first voice channel (voice bar showing). */
   voice?: boolean;
   /** Serve these appearance settings and apply them via the app's own sync path. */
-  theme?: ThemeSettings;
+  theme?: StoryTheme;
   offline?: boolean;
   updateAvailable?: boolean;
   installPrompt?: boolean;

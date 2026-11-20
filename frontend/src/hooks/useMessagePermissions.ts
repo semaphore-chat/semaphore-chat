@@ -10,6 +10,12 @@ interface UseMessagePermissionsParams {
   message: Message;
   /** The current user's ID */
   currentUserId?: string;
+  /**
+   * The message's community. Optional: without it the route's `:communityId` param is used (the old shell, where
+   * the chat is inside a `<Route>`). The new shell matches its routes itself, so `useParams()` is empty there and
+   * it passes the id.
+   */
+  communityId?: string;
 }
 
 interface UseMessagePermissionsResult {
@@ -53,6 +59,7 @@ interface UseMessagePermissionsResult {
 export function useMessagePermissions({
   message,
   currentUserId,
+  communityId: communityIdArg,
 }: UseMessagePermissionsParams): UseMessagePermissionsResult {
   const isOwnMessage = currentUserId === message.authorId;
   const isDm = !message.channelId && !!message.directMessageGroupId;
@@ -88,7 +95,8 @@ export function useMessagePermissions({
 
   // Reacting is a channel capability (a read-only channel or a timeout can
   // take it away): useChannelPermissions, never roles. DMs: anyone in it.
-  const { communityId } = useParams<{ communityId?: string }>();
+  const { communityId: routeCommunityId } = useParams<{ communityId?: string }>();
+  const communityId = communityIdArg ?? routeCommunityId;
   const { can } = useChannelPermissions(
     isDm ? undefined : communityId,
     isDm ? undefined : (message.channelId ?? undefined),

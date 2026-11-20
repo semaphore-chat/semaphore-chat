@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 import { DatabaseService } from '@/database/database.service';
 import { RoomName } from '@/common/utils/room-name.util';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import type { CommunityPresenceResponseDto } from './dto/presence-response.dto';
 
 const ONLINE_USERS_SET = 'presence:online-users';
 const USER_PRESENCE_KEY_PREFIX = 'presence:user:';
@@ -311,6 +312,37 @@ export class PresenceService {
    */
   async getOnlineUsers(): Promise<string[]> {
     return this.redis.smembers(ONLINE_USERS_SET);
+  }
+
+  /**
+   * Who of one community is online now, plus the community's size. Two
+   * fixed-cost round trips regardless of member count: one ids-only query for
+   * the membership rows, one batched MGET over their presence keys (the same
+   * "online" test areOnline uses, so no second definition).
+   *
+   * Authorization is the controller's job (READ_MEMBER on the community): the
+   * caller shares the community with every id returned, which is exactly the
+   * visibility visibleUserIds would grant.
+   */
+  async getCommunityPresence(
+    communityId: string,
+  ): Promise<CommunityPresenceResponseDto> {
+    const members = await this.databaseService.membership.findMany({
+      where: { communityId },
+      select: { userId: true },
+    });
+    if (members.length === 0) {
+      return { onlineUserIds: [], onlineCount: 0, memberCount: 0 };
+    }
+
+    const memberIds = members.map((m) => m.userId);
+    const online = await this.areOnline(memberIds);
+    const onlineUserIds = memberIds.filter((id) => online[id]);
+    return {
+      onlineUserIds,
+      onlineCount: onlineUserIds.length,
+      memberCount: memberIds.length,
+    };
   }
 
   /**

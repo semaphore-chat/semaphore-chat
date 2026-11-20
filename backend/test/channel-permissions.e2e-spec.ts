@@ -779,6 +779,48 @@ describe('Channel permissions (e2e)', () => {
       expect(JSON.stringify(res.body)).not.toContain(secretId);
     });
 
+    it('unread counts name the community of each channel entry', async () => {
+      const anchor = await db.message.create({
+        data: {
+          channelId: generalId,
+          authorId: id.owner,
+          sentAt: new Date(),
+        },
+      });
+      await db.readReceipt.upsert({
+        where: {
+          userId_channelId: { userId: id.member, channelId: generalId },
+        },
+        create: {
+          userId: id.member,
+          channelId: generalId,
+          lastReadMessageId: anchor.id,
+          lastReadAt: new Date(),
+        },
+        update: {
+          lastReadMessageId: anchor.id,
+          lastReadAt: new Date(),
+        },
+      });
+
+      const res = await as('member')
+        .get('/api/read-receipts/unread-counts')
+        .expect(200);
+
+      const entries = res.body as {
+        channelId?: string;
+        communityId?: string | null;
+      }[];
+      expect(entries.find((e) => e.channelId === generalId)).toMatchObject({
+        communityId,
+      });
+      expect(
+        entries
+          .filter((e) => e.channelId)
+          .every((e) => e.communityId === communityId),
+      ).toBe(true);
+    });
+
     it('READ_MESSAGE overwrites are rejected until phase 3', async () => {
       await as('manager')
         .put(`/api/channels/${generalId}/overwrites`, {

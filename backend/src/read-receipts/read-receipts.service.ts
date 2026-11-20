@@ -13,6 +13,7 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { RoomName } from '@/common/utils/room-name.util';
 import { ServerEvents } from '@semaphore-chat/shared';
 import type { UserEntity } from '@/user/dto/user-response.dto';
+import type { ChannelType } from '@prisma/client';
 
 type ReadReceiptAuthor = Pick<
   UserEntity,
@@ -22,6 +23,10 @@ type ReadReceiptAuthor = Pick<
 export interface UnreadCount {
   channelId?: string;
   directMessageGroupId?: string;
+  /** Community of `channelId`; null for DM entries. */
+  communityId?: string | null;
+  /** The channel's type (TEXT or VOICE); absent for DM entries. */
+  channelType?: ChannelType;
   unreadCount: number;
   mentionCount: number;
   lastReadMessageId?: string;
@@ -332,6 +337,19 @@ export class ReadReceiptsService {
       memberships.map((m) => m.communityId),
     );
 
+    // Channel -> community for the entries below: one lookup for every channel
+    const channels =
+      channelIds.length > 0
+        ? await this.databaseService.channel.findMany({
+            where: { id: { in: channelIds } },
+            select: { id: true, communityId: true, type: true },
+          })
+        : [];
+    const channelCommunities = new Map(
+      channels.map((c) => [c.id, c.communityId]),
+    );
+    const channelTypes = new Map(channels.map((c) => [c.id, c.type]));
+
     // Get all DM groups the user is a member of
     const dmGroupMemberships =
       await this.databaseService.directMessageGroupMember.findMany({
@@ -440,6 +458,8 @@ export class ReadReceiptsService {
     for (const count of channelCounts) {
       unreadCounts.push({
         channelId: count.channelId!,
+        communityId: channelCommunities.get(count.channelId!) ?? null,
+        channelType: channelTypes.get(count.channelId!),
         unreadCount: count._count.channelId,
         mentionCount: channelMentionMap.get(count.channelId!) ?? 0,
       });
@@ -447,6 +467,7 @@ export class ReadReceiptsService {
     for (const count of dmGroupCounts) {
       unreadCounts.push({
         directMessageGroupId: count.directMessageGroupId!,
+        communityId: null,
         unreadCount: count._count.directMessageGroupId,
         mentionCount: dmMentionMap.get(count.directMessageGroupId!) ?? 0,
       });
@@ -496,6 +517,8 @@ export class ReadReceiptsService {
       for (const channelId of channelReceiptsWithoutTimestamp) {
         unreadCounts.push({
           channelId,
+          communityId: channelCommunities.get(channelId) ?? null,
+          channelType: channelTypes.get(channelId),
           unreadCount: countMap.get(channelId) ?? 0,
           mentionCount: channelMentionMap.get(channelId) ?? 0,
         });
@@ -515,6 +538,8 @@ export class ReadReceiptsService {
           });
           return {
             channelId: receipt.channelId,
+            communityId: channelCommunities.get(receipt.channelId) ?? null,
+            channelType: channelTypes.get(receipt.channelId),
             unreadCount: count,
             mentionCount: channelMentionMap.get(receipt.channelId) ?? 0,
             lastReadMessageId: receipt.lastReadMessageId,
@@ -573,6 +598,7 @@ export class ReadReceiptsService {
       for (const dmGroupId of dmReceiptsWithoutTimestamp) {
         unreadCounts.push({
           directMessageGroupId: dmGroupId,
+          communityId: null,
           unreadCount: countMap.get(dmGroupId) ?? 0,
           mentionCount: dmMentionMap.get(dmGroupId) ?? 0,
         });
@@ -592,6 +618,7 @@ export class ReadReceiptsService {
           });
           return {
             directMessageGroupId: receipt.directMessageGroupId,
+            communityId: null,
             unreadCount: count,
             mentionCount: dmMentionMap.get(receipt.directMessageGroupId) ?? 0,
             lastReadMessageId: receipt.lastReadMessageId,

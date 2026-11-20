@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders, createTestQueryClient } from '../test-utils';
 import { AuthGate } from '../../components/AuthGate';
 import {
   notifyAuthFailure,
@@ -10,13 +10,19 @@ import {
   getAccessToken,
   clearTokens,
   endRefreshCooldown,
+  markServerSignOutOwed,
+  isServerSignOutOwed,
 } from '../../utils/tokenService';
+import { useQuery } from '@tanstack/react-query';
 import {
   MAX_SESSION_REFRESH_ATTEMPTS,
   PAGE_LOAD_REFRESH_ROUNDS,
 } from '../../utils/sessionRefreshPolicy';
 import { stashDeepLinkRoute, takeStashedDeepLinkRoute } from '../../utils/deepLinkStash';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { STORAGE_KEY } from '../../theme/constants';
+import { readDesktopSignInNotice, showDesktopSignInNotice } from '../../data/signInNotice';
+import { appearanceSettingsControllerGetSettingsQueryKey } from '../../api-client/@tanstack/react-query.gen';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -25,6 +31,12 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
     client: createClient(createConfig({ baseUrl: 'http://localhost:3000' })),
   };
 });
+
+let mockSigningOut = false;
+vi.mock('../../utils/signOutSession', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isSigningOut: () => mockSigningOut,
+}));
 
 // Mock disconnectSocket so we can verify it's called on auth failure
 const mockDisconnectSocket = vi.fn();
@@ -111,7 +123,7 @@ function LoginProbe() {
   );
 }
 
-function renderAuthGate(initialRoute = '/') {
+function renderAuthGate(initialRoute = '/', queryClient = createTestQueryClient()) {
   return renderWithProviders(
     <Routes>
       <Route element={<AuthGate />}>
@@ -123,8 +135,22 @@ function renderAuthGate(initialRoute = '/') {
       <Route path="/login" element={<LoginProbe />} />
       <Route path="/onboarding" element={<div data-testid="onboarding">Onboarding Page</div>} />
     </Routes>,
-    { routerProps: { initialEntries: [initialRoute] } },
+    { routerProps: { initialEntries: [initialRoute] }, queryClient },
   );
+}
+
+/** The user data a signed-in session caches (not AuthGate's own onboarding query). */
+function seedAccountQueries(queryClient: ReturnType<typeof createTestQueryClient>) {
+  queryClient.setQueryData(['userControllerGetProfile'], { id: 'u1', username: 'alice' });
+  queryClient.setQueryData(['communities'], [{ id: 'c1' }]);
+}
+
+function accountQueryKeys(queryClient: ReturnType<typeof createTestQueryClient>) {
+  return queryClient
+    .getQueryCache()
+    .getAll()
+    .map((q) => JSON.stringify(q.queryKey))
+    .filter((k) => !k.includes('onboarding'));
 }
 
 describe('AuthGate', () => {
@@ -133,6 +159,8 @@ describe('AuthGate', () => {
     localStorage.clear();
     vi.clearAllMocks();
     socketProviderMounted = false;
+    mockSigningOut = false;
+    sessionStorage.clear();
     mockDisconnectSocket.mockReset();
     takeStashedDeepLinkRoute(); // discard any leftover stash from a prior test
     // tokenService is shared by every test: no pause left by a failed one
@@ -460,6 +488,8 @@ describe('AuthGate', () => {
     it('clears both access and refresh tokens on failed refresh', async () => {
       setAccessToken(expiredToken());
       localStorage.setItem('refreshToken', 'old-refresh-token');
+      localStorage.setItem('semaphore_voice_connection', JSON.stringify({ userId: 'user1', contextType: 'channel', channelId: 'ch-a', timestamp: Date.now() }));
+      sessionStorage.setItem('semaphore:composerDraft:channel:c1', 'draft');
 
       mockOnboardingOk();
       mockProfileUnauthorized();
@@ -476,6 +506,29 @@ describe('AuthGate', () => {
       });
       expect(getAccessToken()).toBeNull();
       expect(localStorage.getItem('refreshToken')).toBeNull();
+      // The rest of the per-user teardown runs on this path too
+      expect(localStorage.getItem('semaphore_voice_connection')).toBeNull();
+      expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
+    });
+
+    it('clears the query cache when the refresh is rejected', async () => {
+      setAccessToken(expiredToken());
+      mockOnboardingOk();
+      mockProfileUnauthorized();
+      server.use(
+        http.post(`${BASE_URL}/api/auth/refresh`, () =>
+          HttpResponse.json({ message: 'Expired' }, { status: 401 }),
+        ),
+      );
+      const queryClient = createTestQueryClient();
+      seedAccountQueries(queryClient);
+
+      renderAuthGate('/', queryClient);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(accountQueryKeys(queryClient)).toEqual([]);
     });
 
     it('calls disconnectSocket when refresh fails', async () => {
@@ -595,8 +648,8 @@ describe('AuthGate', () => {
       });
 
       /** Let the retries and pauses run until AuthGate gives up. */
-      async function renderUntilUnavailable() {
-        const result = renderAuthGate();
+      async function renderUntilUnavailable(queryClient = createTestQueryClient()) {
+        const result = renderAuthGate('/', queryClient);
         for (let i = 0; i < 40 && !screen.queryByText(unavailableText); i++) {
           await act(() => vi.advanceTimersByTimeAsync(2_000));
         }
@@ -655,13 +708,47 @@ describe('AuthGate', () => {
         localStorage.setItem('refreshToken', 'stored-refresh-token');
         await renderUntilUnavailable();
 
+        sessionStorage.setItem('semaphore-design-preview', 'lounge');
+        localStorage.setItem('semaphore_voice_connection', JSON.stringify({ userId: 'user1', contextType: 'channel', channelId: 'ch-a', timestamp: Date.now() }));
+        sessionStorage.setItem('semaphore:composerDraft:channel:c1', 'draft');
         fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
 
         await waitFor(() => {
           expect(screen.getByTestId('login')).toBeInTheDocument();
         });
+        expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+        expect(localStorage.getItem('semaphore_voice_connection')).toBeNull();
+        expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
         expect(localStorage.getItem('refreshToken')).toBeNull();
         expect(getAccessToken()).toBeNull();
+      }, 20_000);
+
+      it('"Sign in again" clears the query cache', async () => {
+        localStorage.setItem('refreshToken', 'stored-refresh-token');
+        const queryClient = createTestQueryClient();
+        await renderUntilUnavailable(queryClient);
+        seedAccountQueries(queryClient);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('login')).toBeInTheDocument();
+        });
+        expect(accountQueryKeys(queryClient)).toEqual([]);
+      }, 20_000);
+
+      it('"Sign in again" also forgets the new design state of the session (I5)', async () => {
+        await renderUntilUnavailable();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', newDesign: true }));
+        act(() => showDesktopSignInNotice());
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('login')).toBeInTheDocument();
+        });
+        expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toMatchObject({ newDesign: false });
+        expect(readDesktopSignInNotice()).toBe(false);
       }, 20_000);
     });
 
@@ -750,6 +837,9 @@ describe('AuthGate', () => {
         expect(screen.getByTestId('home')).toBeInTheDocument();
       });
 
+      localStorage.setItem('semaphore_voice_connection', JSON.stringify({ userId: 'user1', contextType: 'channel', channelId: 'ch-a', timestamp: Date.now() }));
+      sessionStorage.setItem('semaphore:composerDraft:channel:c1', 'draft');
+
       act(() => {
         notifyAuthFailure();
       });
@@ -759,6 +849,128 @@ describe('AuthGate', () => {
       });
       expect(mockDisconnectSocket).toHaveBeenCalled();
       expect(getAccessToken()).toBeNull();
+      // No rejoin into this voice call, no draft for whoever signs in next
+      expect(localStorage.getItem('semaphore_voice_connection')).toBeNull();
+      expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
+    });
+
+    it('clears the query cache when the server ends the session, after tokens and socket', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      renderAuthGate('/', queryClient);
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      seedAccountQueries(queryClient);
+      let tokenWhenCleared: string | null | undefined;
+      let socketDisconnectedWhenCleared = false;
+      const clear = queryClient.clear.bind(queryClient);
+      vi.spyOn(queryClient, 'clear').mockImplementation(() => {
+        tokenWhenCleared = getAccessToken();
+        socketDisconnectedWhenCleared = mockDisconnectSocket.mock.calls.length > 0;
+        clear();
+      });
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(accountQueryKeys(queryClient)).toEqual([]);
+      expect(queryClient.getQueryData(['userControllerGetProfile'])).toBeUndefined();
+      expect(queryClient.getQueryData(['communities'])).toBeUndefined();
+      expect(tokenWhenCleared).toBeNull();
+      expect(socketDisconnectedWhenCleared).toBe(true);
+    });
+
+    it('does not let an in-flight query repopulate the cache after the session ends', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      renderAuthGate('/', queryClient);
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      let resolveFetch!: (value: unknown) => void;
+      const inFlight = queryClient
+        .fetchQuery({
+          queryKey: ['userControllerGetProfile'],
+          queryFn: () => new Promise((resolve) => { resolveFetch = resolve; }),
+        })
+        .catch(() => undefined);
+
+      act(() => {
+        notifyAuthFailure();
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      resolveFetch({ id: 'u1' });
+      await inFlight;
+
+      expect(queryClient.getQueryData(['userControllerGetProfile'])).toBeUndefined();
+    });
+
+    it("clears this tab's design preview when the server ends the session", async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      renderAuthGate();
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      sessionStorage.setItem('semaphore-design-preview', 'lounge');
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+    });
+
+    it("forgets this browser's copy of the new design setting when the server ends the session (M4)", async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', newDesign: true }));
+      const { queryClient } = renderAuthGate();
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      queryClient.setQueryData(appearanceSettingsControllerGetSettingsQueryKey(), { newDesign: true } as never);
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toEqual({ mode: 'light', newDesign: false });
+      expect(queryClient.getQueryData(appearanceSettingsControllerGetSettingsQueryKey())).toBeUndefined();
+    });
+
+    it('dismisses a desktop sign-in notice still showing when the server ends the session (I5)', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      renderAuthGate();
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+      act(() => showDesktopSignInNotice());
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(readDesktopSignInNotice()).toBe(false);
     });
 
     it('passes the reason the server gave to the login page', async () => {
@@ -882,5 +1094,195 @@ describe('AuthGate', () => {
         channelId: 'chanA',
       });
     });
+  });
+
+  // ─── Re-entry and the window before unmount (I4) ───────────────
+
+  describe('while and after the session ends', () => {
+    it('a second auth failure (a request fired during the teardown) neither reruns it nor drops the reason', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      renderAuthGate('/', queryClient);
+      await screen.findByTestId('home');
+      const clear = vi.spyOn(queryClient, 'clear');
+
+      act(() => {
+        notifyAuthFailure('ACCOUNT_BANNED');
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveTextContent('Login Page (ACCOUNT_BANNED)');
+      });
+      expect(clear).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores auth failures while a manual sign-out runs (no "session ended" on the login page)', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      renderAuthGate();
+      await screen.findByTestId('home');
+      mockSigningOut = true;
+
+      act(() => {
+        notifyAuthFailure('LOGGED_OUT');
+      });
+
+      expect(screen.getByTestId('home')).toBeInTheDocument();
+      expect(getAccessToken()).not.toBeNull();
+    });
+
+    it('drops queries the signed-in screens rebuilt before they unmounted, keeps the login page\'s own', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+      const queryClient = createTestQueryClient();
+      function LoginWithSettings() {
+        const { data } = useQuery({ queryKey: ['publicSettings'], queryFn: async () => ({ ok: true }) });
+        return <div data-testid="login">{data ? 'settings loaded' : 'loading'}</div>;
+      }
+      renderWithProviders(
+        <Routes>
+          <Route element={<AuthGate />}>
+            <Route path="/" element={<div data-testid="home">Home</div>} />
+          </Route>
+          <Route path="/login" element={<LoginWithSettings />} />
+        </Routes>,
+        { routerProps: { initialEntries: ['/'] }, queryClient },
+      );
+      await screen.findByTestId('home');
+      // A still-mounted signed-in screen re-renders right after the clear
+      // and rebuilds its query (getOptimisticResult) before it unmounts
+      const clear = queryClient.clear.bind(queryClient);
+      vi.spyOn(queryClient, 'clear').mockImplementation(() => {
+        clear();
+        queryClient.setQueryData(['communities'], [{ id: 'c1' }]);
+      });
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveTextContent('settings loaded');
+      });
+      await waitFor(() => {
+        expect(queryClient.getQueryData(['communities'])).toBeUndefined();
+      });
+      expect(queryClient.getQueryData(['publicSettings'])).toEqual({ ok: true });
+    });
+  });
+
+  // ─── A web sign-out the server never confirmed (I3) ─────────────
+
+  describe('when a server sign-out is still owed', () => {
+    let refreshes = 0;
+    let logouts = 0;
+
+    beforeEach(() => {
+      refreshes = 0;
+      logouts = 0;
+      mockOnboardingOk();
+      // The refresh cookie still holds the signed-out session
+      server.use(
+        http.post(`${BASE_URL}/api/auth/refresh`, () => {
+          refreshes++;
+          return HttpResponse.json({ accessToken: validToken() });
+        }),
+      );
+      markServerSignOutOwed();
+    });
+
+    function logoutAnswers(status: number) {
+      server.use(
+        http.post(`${BASE_URL}/api/auth/logout`, () => {
+          logouts++;
+          return HttpResponse.json({ message: 'x' }, { status });
+        }),
+      );
+    }
+
+    it('a reload does not sign back in: it retries the logout, then shows the login page', async () => {
+      logoutAnswers(201);
+      renderAuthGate();
+
+      await screen.findByTestId('login');
+      expect(logouts).toBe(1);
+      expect(refreshes).toBe(0);
+      expect(getAccessToken()).toBeNull();
+      expect(socketProviderMounted).toBe(false);
+      // The server confirmed: nothing owed any more
+      expect(isServerSignOutOwed()).toBe(false);
+    });
+
+    it('still shows the login page (never the old session) when the retry fails, and keeps the flag', async () => {
+      logoutAnswers(503);
+      renderAuthGate();
+
+      await screen.findByTestId('login');
+      expect(logouts).toBe(1);
+      expect(refreshes).toBe(0);
+      expect(isServerSignOutOwed()).toBe(true);
+    });
+
+    it('signing in deliberately afterwards works', async () => {
+      logoutAnswers(503);
+      // The login page's sign-in sets the new session's token
+      setAccessToken(validToken());
+      expect(isServerSignOutOwed()).toBe(false);
+
+      renderAuthGate();
+
+      await screen.findByTestId('home');
+      expect(logouts).toBe(0);
+    });
+  });
+});
+
+describe('AuthGate: a page load that finds the session gone (I5)', () => {
+  beforeEach(() => {
+    clearTokens();
+    localStorage.clear();
+    sessionStorage.clear();
+    endRefreshCooldown();
+    mockOnboardingOk();
+    server.use(
+      http.post(`${BASE_URL}/api/auth/refresh`, () =>
+        HttpResponse.json({ message: 'Invalid' }, { status: 401 }),
+      ),
+    );
+  });
+
+  function arrangeShellState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: 'light', newDesign: true }));
+    sessionStorage.setItem('semaphore-design-preview', 'lounge');
+    act(() => showDesktopSignInNotice());
+  }
+
+  it('a token the server rejects, then a refused refresh: the shared teardown forgets it all, the preview too', async () => {
+    setAccessToken(expiredToken());
+    mockProfileUnauthorized();
+    arrangeShellState();
+
+    renderAuthGate();
+    await waitFor(() => {
+      expect(screen.getByTestId('login')).toBeInTheDocument();
+    });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toMatchObject({ newDesign: false });
+    expect(readDesktopSignInNotice()).toBe(false);
+    // A session was held on this page: endLocalSession drops its preview with the rest
+    expect(sessionStorage.getItem('semaphore-design-preview')).toBeNull();
+  });
+
+  it('no token in memory (the refresh is refused): forgets the new design state, keeps a preview link opened now', async () => {
+    arrangeShellState();
+
+    renderAuthGate();
+    await waitFor(() => {
+      expect(screen.getByTestId('login')).toBeInTheDocument();
+    });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')).toMatchObject({ newDesign: false });
+    expect(readDesktopSignInNotice()).toBe(false);
+    expect(sessionStorage.getItem('semaphore-design-preview')).toBe('lounge');
   });
 });

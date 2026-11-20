@@ -13,7 +13,7 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useOptimisticMessageRetry } from "../../hooks/useOptimisticSendMessage";
 import { useChannelPermissions } from "../../hooks/useChannelPermissions";
-import { formatClockTime } from "../../utils/messageTime";
+import { sendFailureReason } from "../../data/chat/messageRowModel";
 import type { Message } from "../../types/message.type";
 
 interface OptimisticMessageActionsProps {
@@ -29,9 +29,7 @@ export const OptimisticMessageActions: React.FC<OptimisticMessageActionsProps> =
     message.channelId ? communityId : undefined,
     message.channelId ?? undefined,
   );
-  const failure = timedOutUntil
-    ? `Timed out until ${formatClockTime(timedOutUntil)}`
-    : (message.sendError ?? "Failed to send");
+  const failure = sendFailureReason(message.sendError, timedOutUntil) ?? "Failed to send";
   const [isRetrying, setIsRetrying] = React.useState(false);
   // Guards the finally-block setState below: `retry` awaits a socket
   // round-trip (up to the 10s send timeout), and this row can unmount

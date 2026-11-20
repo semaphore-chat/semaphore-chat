@@ -1,0 +1,854 @@
+{
+  "pattern": "overlayStack",
+  "doc": "The layers floating above a screen (tooltips, menus, popovers, dialogs and sheets), in the order they opened. Escape, a press outside and Tab are decided here, once, so no screen handles them by hand.",
+  "params": {},
+  "state": {
+    "layers": "Layer[]: bottom first. Layer = {id: string, kind: tooltip | menu | popover | dialog | sheet, parent: string | null (the layer that owns it: it closes with that layer), opener: string | null (the element focus returns to), openerLayer: string | null (the layer the opener is in; null for the screen)}"
+  },
+  "events": {
+    "open": {
+      "layer": "Layer"
+    },
+    "closed": {
+      "id": "string: the owner has closed the layer",
+      "openerPresent": "bool: the layer's opener, as the stack holds it now, is still on the page",
+      "focus": "inside | lost | outside: where focus is as the layer closes: inside it (or in a layer it owns), lost (on the page body, or removed with the layer), or outside it (the user moved it)"
+    },
+    "escape": {
+      "composing": "bool: an input method is composing text",
+      "focusOwnsEscape": "bool: the focused control uses Escape itself (an open mention list or autocomplete, a message in edit mode)"
+    },
+    "pressOutside": {
+      "insideId": "string | null: the innermost layer the press landed in, or null for the screen. A press on a popover's anchor counts as inside the popover"
+    },
+    "tab": {}
+  },
+  "effects": {
+    "requestClose": {
+      "id": "string",
+      "reason": "escape | pressOutside | scrim | tab | parentClosed (a command: the owner must close it)"
+    },
+    "restoreFocus": {
+      "to": "string | null: an element or layer id; null is the screen's own focus target"
+    },
+    "passToScreen": {
+      "key": "Escape"
+    }
+  },
+  "rules": [
+    "Layers stack in the order they open. A tooltip always sits on top: a layer that opens while a tooltip is showing goes just below the tooltips.",
+    "Opening a layer whose id is already in the stack does nothing.",
+    "Escape asks the topmost layer to close: requestClose(topmost, 'escape'). Only one layer is asked per Escape, so nested layers close innermost first.",
+    "A tooltip takes the Escape: Escape with tooltips on top asks each of them to close, topmost first, and goes no further. No other layer is asked, and the screen does not get the key.",
+    "Escape with nothing open is passed to the screen: passToScreen('Escape'). The screen runs its own chain (close the docked panel, then mark as read).",
+    "A press counts as inside a layer when it lands in that layer or in any layer it owns, however deep.",
+    "A press outside a popover asks it to close (reason 'pressOutside') and carries on to the layers below.",
+    "A press outside a menu asks it to close (reason 'pressOutside') and goes no further: the menu's invisible layer swallows it.",
+    "A press outside a dialog or a sheet is a press on its scrim: requestClose(layer, 'scrim'), and it goes no further.",
+    "A press never closes a tooltip. A tooltip closes when the pointer or focus leaves its control, which its owner handles.",
+    "Tab while the topmost layer under the tooltips is a menu asks the menu to close (reason 'tab'). Otherwise Tab does nothing here, and focus moves as usual.",
+    "requestClose is only a request: the owner may refuse it (a form with unsaved changes). A layer leaves the stack only when its owner reports closed.",
+    "When a layer closes while layers it owns are still open, each of them gets requestClose with reason 'parentClosed', innermost first, and they leave the stack with it. parentClosed is a command, not a request: the owner must close the layer and may not refuse, and a later closed for it does nothing.",
+    "When a layer closes with focus inside it or lost, focus goes to its opener if the owner reports the opener still on the page; otherwise to the layer the opener was in, if that is still open; otherwise to the screen (restoreFocus to null). When focus is outside the layer, because the user moved it there, focus does not move.",
+    "Closing a tooltip moves no focus. closed for an id that is not in the stack does nothing.",
+    "Focus is never restored beneath an open dialog or sheet: when a layer closes below a dialog or sheet that is still open, no restoreFocus is emitted.",
+    "When a layer closes, every layer whose opener was inside it takes over the closed layer's opener and openerLayer. So a dialog opened from a menu item returns focus to the button that opened the menu.",
+    "Escape while an input method is composing text never reaches the stack: escape with composing does nothing. A focused control that uses Escape itself gets it first: escape with focusOwnsEscape does nothing here.",
+    "A layer opened with a parent or an openerLayer that is not in the stack is kept with that field set to null."
+  ],
+  "scenarios": [
+    {
+      "name": "escape closes the innermost first",
+      "covers": [
+        3,
+        12,
+        14
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "deleteButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "m",
+              "kind": "menu",
+              "parent": "d",
+              "opener": "moreButton",
+              "openerLayer": "d"
+            }
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        },
+        {
+          "closed": {
+            "id": "m",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        },
+        {
+          "closed": {
+            "id": "d",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        }
+      ]
+    },
+    {
+      "name": "empty stack hands Escape to the screen",
+      "covers": [
+        5
+      ],
+      "events": [
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a refused close keeps the layer",
+      "covers": [
+        12
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "edit",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "editButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a tooltip stays on top and takes the Escape",
+      "covers": [
+        1,
+        4,
+        15
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "settingsButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "tip",
+              "kind": "tooltip",
+              "parent": "d",
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": "d",
+              "opener": "colourButton",
+              "openerLayer": "d"
+            }
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        },
+        {
+          "closed": {
+            "id": "tip",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        },
+        {
+          "closed": {
+            "id": "tip",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a lone tooltip takes the Escape from the screen",
+      "covers": [
+        4
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "tip",
+              "kind": "tooltip",
+              "parent": null,
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        },
+        {
+          "closed": {
+            "id": "tip",
+            "openerPresent": true,
+            "focus": "outside"
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "opening an open layer again does nothing",
+      "covers": [
+        2
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": null,
+              "opener": "emojiButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": null,
+              "opener": "otherButton",
+              "openerLayer": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a press inside a child counts as inside its parents",
+      "covers": [
+        6,
+        7
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": null,
+              "opener": "statusButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "s",
+              "kind": "popover",
+              "parent": "p",
+              "opener": "statusSelect",
+              "openerLayer": "p"
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "q",
+              "kind": "popover",
+              "parent": null,
+              "opener": "filterButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": "s"
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": "p"
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a menu swallows a press outside it",
+      "covers": [
+        8
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": null,
+              "opener": "profileButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "m",
+              "kind": "menu",
+              "parent": "p",
+              "opener": "moreButton",
+              "openerLayer": "p"
+            }
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a press on the scrim",
+      "covers": [
+        9,
+        10,
+        6
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": null,
+              "opener": "inviteButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": "p",
+              "opener": "createButton",
+              "openerLayer": "p"
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "tip",
+              "kind": "tooltip",
+              "parent": "d",
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": "d"
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": "p"
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "sh",
+              "kind": "sheet",
+              "parent": null,
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "tab closes a menu only",
+      "covers": [
+        11
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "renameButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "tab": {}
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "m",
+              "kind": "menu",
+              "parent": "d",
+              "opener": "moreButton",
+              "openerLayer": "d"
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "tip",
+              "kind": "tooltip",
+              "parent": "m",
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "tab": {}
+        }
+      ]
+    },
+    {
+      "name": "closing a parent commands its children to close",
+      "covers": [
+        13,
+        14
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "callButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": "d",
+              "opener": "deviceButton",
+              "openerLayer": "d"
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "m",
+              "kind": "menu",
+              "parent": "p",
+              "opener": "deviceSelect",
+              "openerLayer": "p"
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "other",
+              "kind": "popover",
+              "parent": null,
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "closed": {
+            "id": "d",
+            "openerPresent": false,
+            "focus": "inside"
+          }
+        },
+        {
+          "closed": {
+            "id": "m",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        }
+      ]
+    },
+    {
+      "name": "focus falls back when the opener is gone",
+      "covers": [
+        14,
+        15
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "rowMenuButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "m",
+              "kind": "menu",
+              "parent": "d",
+              "opener": "moreButton",
+              "openerLayer": "d"
+            }
+          }
+        },
+        {
+          "closed": {
+            "id": "m",
+            "openerPresent": false,
+            "focus": "inside"
+          }
+        },
+        {
+          "closed": {
+            "id": "d",
+            "openerPresent": false,
+            "focus": "inside"
+          }
+        },
+        {
+          "closed": {
+            "id": "nothing",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a press outside a popover keeps the focus it gave",
+      "covers": [
+        14,
+        7
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": null,
+              "opener": "emojiButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "pressOutside": {
+            "insideId": null
+          }
+        },
+        {
+          "closed": {
+            "id": "p",
+            "openerPresent": true,
+            "focus": "outside"
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "q",
+              "kind": "popover",
+              "parent": null,
+              "opener": "gifButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "closed": {
+            "id": "q",
+            "openerPresent": true,
+            "focus": "lost"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a menu item opens a confirm dialog",
+      "covers": [
+        16,
+        17,
+        14
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "m",
+              "kind": "menu",
+              "parent": null,
+              "opener": "moreButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "deleteItem",
+              "openerLayer": "m"
+            }
+          }
+        },
+        {
+          "closed": {
+            "id": "m",
+            "openerPresent": false,
+            "focus": "outside"
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        },
+        {
+          "closed": {
+            "id": "d",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a layer under an open sheet restores no focus",
+      "covers": [
+        16
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": null,
+              "opener": "statusButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "sh",
+              "kind": "sheet",
+              "parent": null,
+              "opener": "moreButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "closed": {
+            "id": "p",
+            "openerPresent": true,
+            "focus": "lost"
+          }
+        },
+        {
+          "closed": {
+            "id": "sh",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        }
+      ]
+    },
+    {
+      "name": "escape while composing or owned by the focused control",
+      "covers": [
+        18
+      ],
+      "events": [
+        {
+          "escape": {
+            "composing": true,
+            "focusOwnsEscape": false
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "editButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": true
+          }
+        },
+        {
+          "escape": {
+            "composing": true,
+            "focusOwnsEscape": true
+          }
+        },
+        {
+          "escape": {
+            "composing": false,
+            "focusOwnsEscape": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unknown parent or opener layer is dropped",
+      "covers": [
+        19
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "p",
+              "kind": "popover",
+              "parent": "gone",
+              "opener": "pickerButton",
+              "openerLayer": "gone"
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "closed": {
+            "id": "d",
+            "openerPresent": true,
+            "focus": "outside"
+          }
+        }
+      ]
+    }
+  ]
+}

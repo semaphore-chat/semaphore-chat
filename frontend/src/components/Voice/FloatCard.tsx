@@ -22,7 +22,7 @@ import { useNavigate } from 'react-router-dom';
 import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useLocalMediaState } from '../../hooks/useLocalMediaState';
 import { useFloatTileSelection } from '../../hooks/useFloatTileSelection';
-import { usePushToTalk } from '../../hooks/usePushToTalk';
+import { usePushToTalkStatus } from '../../hooks/usePushToTalk';
 import { useVoicePublishPermissions } from '../../hooks/useVoicePublishPermissions';
 import { useReplayBufferState } from '../../contexts/ReplayBufferContext';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
@@ -129,7 +129,7 @@ export const FloatCard: React.FC = () => {
   // PTT owns the mic state via hold-to-talk, and a stray unmute here would
   // persist outside the PTT gesture.
   const publish = useVoicePublishPermissions();
-  const { isActive: isPTTActive } = usePushToTalk({ canSpeak: publish.canSpeak });
+  const { isActive: isPTTActive } = usePushToTalkStatus();
   const micGuarded = isPTTActive || state.isServerMuted;
   // Channel voice permissions (SPEAK / VIDEO, a timeout removes both): a
   // control is disabled only when it would turn something ON

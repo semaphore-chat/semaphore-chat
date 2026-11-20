@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Card, Typography, styled } from "@mui/material";
 import LinkIcon from "@mui/icons-material/Link";
 import type { LinkPreview } from "../../types/message.type";
+import { linkPreviewSite } from "../../data/chat/messageRowModel";
 
 const PreviewCard = styled(Card)(({ theme }) => ({
   display: "flex",
@@ -56,10 +57,15 @@ const FallbackDot = styled(Box)(({ theme }) => ({
 
 interface LinkPreviewCardProps {
   preview: LinkPreview;
+  /**
+   * Load the page's picture and site icon (both from another site). False: the words only, with the generic link
+   * icon and no picture box ("Load pictures and previews from other sites" is off).
+   */
+  showPictures?: boolean;
 }
 
 export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
-  ({ preview }) => {
+  ({ preview, showPictures = true }) => {
     const [imageError, setImageError] = useState(false);
 
     const handleClick = () => {
@@ -73,14 +79,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
       }
     };
 
-    let hostname: string;
-    try {
-      hostname = new URL(preview.url).hostname;
-    } catch {
-      hostname = preview.url;
-    }
-
-    const showBannerImage = preview.imageUrl && !imageError;
+    const showBannerImage = showPictures && preview.imageUrl && !imageError;
 
     return (
       <PreviewCard
@@ -94,7 +93,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
         <Box sx={{ p: 1.25, pb: showBannerImage ? 0.75 : 1.25 }}>
           {/* Site name + favicon */}
           <Box sx={{ display: "flex", alignItems: "center", mb: 0.5 }}>
-            {preview.faviconUrl ? (
+            {showPictures && preview.faviconUrl ? (
               <Favicon
                 src={preview.faviconUrl}
                 alt=""
@@ -109,8 +108,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
               </FallbackDot>
             )}
             <Typography variant="caption" color="text.secondary" noWrap>
-              {preview.siteName || hostname}
-              {preview.authorName && ` · ${preview.authorName}`}
+              {linkPreviewSite(preview)}
             </Typography>
           </Box>
 

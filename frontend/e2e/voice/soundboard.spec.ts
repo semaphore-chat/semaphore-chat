@@ -14,7 +14,11 @@
  *      is silent, so energy growth == the clip was audible);
  *   3. a second clip also plays (stop-and-restart path);
  *   4. B's mic path still works afterwards (no regression from the extra
- *      audio publication).
+ *      audio publication);
+ *   5. after a moderator mute of B is lifted and B unmutes, a clip B plays is
+ *      audible on A again: the mute unpublished (and LiveKit stopped) B's
+ *      soundboard track, and the warm-up must republish a live one, not the
+ *      ended track (peers would get an element that carries nothing).
  *
  * Seeding: the community's sound is created at test time via the real APIs
  * (multipart /file-upload with a synthesized 1.6s sine-tone WAV, then
@@ -31,6 +35,9 @@ import {
   waitForAudioFlow,
   getSoundboardTrackState,
   getSoundboardInbound,
+  moderatorMute,
+  expectNoAudioGrowth,
+  setMicEnabled,
   TEST_USER,
   TEST_USER_2,
   type Participant,
@@ -207,5 +214,53 @@ test.describe('Soundboard — clip is audible to remote participants', () => {
   test("B's mic still reaches A after soundboard use (no regression)", async () => {
     await waitForAudioFlow(a, b, { timeout: 30_000 });
     await waitForAudioFlow(b, a, { timeout: 30_000 });
+  });
+
+  test("after a moderator mute of B is lifted, a clip B plays is audible on A", async () => {
+    // A (an OWNER) mutes B: the grant loses the mic and the soundboard, the server unpublishes both.
+    await moderatorMute(a, b.identity, true, a.channelId);
+    await expectNoAudioGrowth(a, b);
+    await expect
+      .poll(async () => (await getSoundboardTrackState(a, b.identity)).published, {
+        timeout: 15_000,
+        message: "the mute never took B's soundboard track down",
+      })
+      .toBe(false);
+
+    // Lifted, and B unmutes: the mic first, then B's warm-up republishes the soundboard (a new, live track).
+    await moderatorMute(a, b.identity, false, a.channelId);
+    await setMicEnabled(b, true);
+    await waitForAudioFlow(a, b, { timeout: 30_000 });
+    await expect
+      .poll(
+        async () => {
+          const st = await getSoundboardTrackState(a, b.identity);
+          return st.published && st.subscribed && st.hasTrack;
+        },
+        { timeout: 20_000, message: "B's soundboard track never came back on A after the lift" },
+      )
+      .toBe(true);
+
+    const before = await getSoundboardInbound(a, b.identity);
+    const beforeEnergy = before?.totalAudioEnergy ?? 0;
+    const beforeBytes = before?.bytesReceived ?? 0;
+    const soundButton = b.page.getByRole('button', { name: soundName });
+    if (!(await soundButton.isVisible().catch(() => false))) {
+      await b.page.getByRole('button', { name: 'Open soundboard' }).click();
+      await expect(soundButton).toBeVisible({ timeout: 10_000 });
+    }
+    await soundButton.click();
+
+    // Audio, not an element count: A's inbound audio on B's soundboard track carries the clip's energy.
+    await expect
+      .poll(
+        async () => {
+          const st = await getSoundboardInbound(a, b.identity);
+          if (!st) return false;
+          return st.totalAudioEnergy - beforeEnergy > 0.05 && st.bytesReceived - beforeBytes > 1_000;
+        },
+        { timeout: 15_000, message: `a clip ${b.name} played after the lifted mute carried no signal to ${a.name}` },
+      )
+      .toBe(true);
   });
 });

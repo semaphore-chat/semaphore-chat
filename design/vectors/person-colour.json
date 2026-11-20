@@ -1,0 +1,182 @@
+[
+  {
+    "id": "",
+    "fnv1a32": "0x811c9dc5",
+    "index": null,
+    "colour": null
+  },
+  {
+    "id": "a",
+    "fnv1a32": "0xe40c292c",
+    "index": 7,
+    "colour": "#9AA0FF"
+  },
+  {
+    "id": "A",
+    "fnv1a32": "0xc40bf6cc",
+    "index": 3,
+    "colour": "#A6D36A"
+  },
+  {
+    "id": "foobar",
+    "fnv1a32": "0xbf9cf968",
+    "index": 7,
+    "colour": "#9AA0FF"
+  },
+  {
+    "id": "alexk",
+    "fnv1a32": "0xb0b4436a",
+    "index": 1,
+    "colour": "#FFA366"
+  },
+  {
+    "id": "3f2b8c1e-9d4a-4e6b-8f1c-2a7d5e9b0c13",
+    "fnv1a32": "0xa5890eb2",
+    "index": 8,
+    "colour": "#C792F0"
+  },
+  {
+    "id": "3F2B8C1E-9D4A-4E6B-8F1C-2A7D5E9B0C13",
+    "fnv1a32": "0x76e2f792",
+    "index": 8,
+    "colour": "#C792F0"
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "fnv1a32": "0xbe478ed1",
+    "index": 6,
+    "colour": "#6FB1F5"
+  },
+  {
+    "id": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "fnv1a32": "0x2708ab91",
+    "index": 6,
+    "colour": "#6FB1F5"
+  },
+  {
+    "id": "a8098c1a-f86e-11da-bd1a-00112444be1e",
+    "fnv1a32": "0x1a75afb7",
+    "index": 0,
+    "colour": "#FF8FB8"
+  },
+  {
+    "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "fnv1a32": "0xf108e530",
+    "index": 1,
+    "colour": "#FFA366"
+  },
+  {
+    "id": "0b1c2d3e-4f50-4617-8899-aabbccddeeff",
+    "fnv1a32": "0x2831339e",
+    "index": 7,
+    "colour": "#9AA0FF"
+  },
+  {
+    "id": "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+    "fnv1a32": "0x2e4736bd",
+    "index": 3,
+    "colour": "#A6D36A"
+  },
+  {
+    "id": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+    "fnv1a32": "0xacdf5cb3",
+    "index": 3,
+    "colour": "#A6D36A"
+  },
+  {
+    "id": "e7f3a9b2-1c4d-4f8e-9a6b-3d2c1b0a9f8e",
+    "fnv1a32": "0xf2ed6daf",
+    "index": 1,
+    "colour": "#FFA366"
+  },
+  {
+    "id": "1d5e7f9a-3b2c-4d6e-8f0a-1b3c5d7e9f2a",
+    "fnv1a32": "0xb6c66367",
+    "index": 6,
+    "colour": "#6FB1F5"
+  },
+  {
+    "id": "9b8a7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d",
+    "fnv1a32": "0x7bd370c9",
+    "index": 8,
+    "colour": "#C792F0"
+  },
+  {
+    "id": "4a6c8e0f-2b4d-4f6a-8c0e-2a4c6e8f0b1d",
+    "fnv1a32": "0xec1fe74d",
+    "index": 5,
+    "colour": "#5ED1D1"
+  },
+  {
+    "id": "clx1q2w3e0000abcd1234efgh",
+    "fnv1a32": "0x451ced83",
+    "index": 3,
+    "colour": "#A6D36A"
+  },
+  {
+    "id": "ckz9y8x7w0001mnop5678qrst",
+    "fnv1a32": "0x1693b514",
+    "index": 4,
+    "colour": "#5FD49A"
+  },
+  {
+    "id": "cm3k5l7j90002uvwx9012yzab",
+    "fnv1a32": "0x028ff47a",
+    "index": 4,
+    "colour": "#5FD49A"
+  },
+  {
+    "id": "cl0a1b2c30003cdef3456ghij",
+    "fnv1a32": "0x2c684f37",
+    "index": 0,
+    "colour": "#FF8FB8"
+  },
+  {
+    "id": "zoë",
+    "fnv1a32": "0x4314427c",
+    "index": 1,
+    "colour": "#FFA366"
+  },
+  {
+    "id": "José",
+    "fnv1a32": "0xbac14587",
+    "index": 4,
+    "colour": "#5FD49A"
+  },
+  {
+    "id": "Ångström",
+    "fnv1a32": "0x15fc62a3",
+    "index": 0,
+    "colour": "#FF8FB8"
+  },
+  {
+    "id": "名前",
+    "fnv1a32": "0x0073e150",
+    "index": 3,
+    "colour": "#A6D36A"
+  },
+  {
+    "id": "😀",
+    "fnv1a32": "0x33a29608",
+    "index": 2,
+    "colour": "#E0C060"
+  },
+  {
+    "id": "dropbear 🎮",
+    "fnv1a32": "0x3adaa1cf",
+    "index": 5,
+    "colour": "#5ED1D1"
+  },
+  {
+    "id": "user_with_underscore",
+    "fnv1a32": "0xe1779ed4",
+    "index": 3,
+    "colour": "#A6D36A"
+  },
+  {
+    "id": "a much longer id with spaces, punctuation; and more words in it",
+    "fnv1a32": "0x723f3b00",
+    "index": 8,
+    "colour": "#C792F0"
+  }
+]

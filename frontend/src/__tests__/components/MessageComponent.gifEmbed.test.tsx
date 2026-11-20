@@ -50,7 +50,7 @@ const mockActions = {
   handlePin: vi.fn(),
   handleUnpin: vi.fn(),
 };
-vi.mock('../../components/Message/useMessageActions', () => ({
+vi.mock('../../data/chat/useMessageActions', () => ({
   useMessageActions: () => mockActions,
 }));
 
@@ -65,7 +65,7 @@ describe('MessageComponent GIF embed rendering', () => {
       ],
     });
 
-    renderWithProviders(<MessageComponent message={message} />);
+    renderWithProviders(<MessageComponent message={message} />, { loadRemoteContent: true });
 
     const img = screen.getByRole('img', { name: 'GIF' }) as HTMLImageElement;
     expect(img).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe('MessageComponent GIF embed rendering', () => {
       linkPreviews: [{ url: gifUrl, imageUrl: gifUrl }],
     });
 
-    renderWithProviders(<MessageComponent message={message} />);
+    renderWithProviders(<MessageComponent message={message} />, { loadRemoteContent: true });
 
     expect(screen.queryByRole('img', { name: 'GIF' })).not.toBeInTheDocument();
     expect(screen.getByText(/check this out/)).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe('MessageComponent GIF embed rendering', () => {
       linkPreviews: [{ url: gifUrl, imageUrl: gifUrl, title: 'A cat GIF' }],
     });
 
-    renderWithProviders(<MessageComponent message={message} />);
+    renderWithProviders(<MessageComponent message={message} />, { loadRemoteContent: true });
 
     const img = screen.getByRole('img', { name: 'GIF' });
     fireEvent.error(img);
@@ -115,12 +115,34 @@ describe('MessageComponent GIF embed rendering', () => {
     expect(screen.getByText('A cat GIF')).toBeInTheDocument();
   });
 
+  it('with pictures from other sites off, a lone GIF link stays its link and a text-only card (nothing fetched)', () => {
+    const message = createMessage({
+      spans: [{ type: SpanType.PLAINTEXT, text: gifUrl }],
+      linkPreviews: [{ url: gifUrl, imageUrl: gifUrl, faviconUrl: 'https://giphy.com/favicon.ico', title: 'A cat GIF' }],
+    });
+
+    const { container } = renderWithProviders(<MessageComponent message={message} />, { loadRemoteContent: false });
+
+    expect(screen.queryByRole('img', { name: 'GIF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: gifUrl })).toBeInTheDocument();
+    expect(screen.getByText('A cat GIF')).toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('withholds the GIF while the setting is not known yet', () => {
+    const message = createMessage({ spans: [{ type: SpanType.PLAINTEXT, text: gifUrl }] });
+
+    const { container } = renderWithProviders(<MessageComponent message={message} />);
+
+    expect(container.querySelector(`img[src="${gifUrl}"]`)).toBeNull();
+  });
+
   it('renders normally for a plain-text message with no URL at all', () => {
     const message = createMessage({
       spans: [{ type: SpanType.PLAINTEXT, text: 'hello world' }],
     });
 
-    renderWithProviders(<MessageComponent message={message} />);
+    renderWithProviders(<MessageComponent message={message} />, { loadRemoteContent: true });
 
     expect(screen.queryByRole('img', { name: 'GIF' })).not.toBeInTheDocument();
     expect(screen.getByText('hello world')).toBeInTheDocument();

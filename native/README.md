@@ -78,7 +78,7 @@ PNGs without a display, which is how UI changes are reviewed.
 | `semaphore-design` | Generated tokens and icons | Nothing |
 | `semaphore-ui` | GPUI views, one directory per feature, plus the kit | core, design, gpui-kit |
 | `semaphore-app` | The desktop binary: wires everything together | all of the above |
-| `semaphore-fake-server` | Dev only: a fake backend for tests. The app never links it | wire |
+| `semaphore-fake-server` | Dev only: a fake backend for tests. The app never links it | wire, core (the appearance rules it shares with the client) |
 | `semaphore-ffi` | Dev only: keeps core usable from Kotlin and Swift | core |
 
 Screens hold no business logic. Core decides (who may do what, what a call's state is, when a

@@ -1,6 +1,6 @@
 import React from "react";
 import { Routes, Route } from "react-router-dom";
-import Layout from "./Layout";
+import AppShell from "./shell/AppShell";
 import { AuthGate } from "./components/AuthGate";
 import { PublicRoute } from "./components/PublicRoute";
 import { ProfileRedirect } from "./components/ProfileRedirect";
@@ -28,6 +28,7 @@ const AdminStoragePage = React.lazy(() => import("./pages/admin").then(m => ({ d
 const AdminDebugPage = React.lazy(() => import("./pages/admin").then(m => ({ default: m.AdminDebugPage })));
 const NotificationDebugPage = React.lazy(() => import("./pages/debug/NotificationDebugPage"));
 const PWADebugPage = React.lazy(() => import("./pages/debug/PWADebugPage"));
+const DesignPreviewPage = React.lazy(() => import("./pages/debug/PWADebugPage").then(m => ({ default: m.DesignPreviewPage })));
 const DirectMessagesPage = React.lazy(() => import("./pages/DirectMessagesPage"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
@@ -55,7 +56,7 @@ export const AppRoutes: React.FC = () => (
       {/* Sign in with browser for the desktop app: full-page, outside Layout */}
       <Route path="desktop-login" element={<DesktopLoginPage />} />
 
-      <Route path="/" element={<Layout />}>
+      <Route path="/" element={<AppShell />}>
         <Route index element={<HomePage />} />
         <Route path="direct-messages" element={<DirectMessagesPage />} />
         <Route path="direct-messages/:dmGroupId" element={<DirectMessagesPage />} />
@@ -77,6 +78,9 @@ export const AppRoutes: React.FC = () => (
 
         {/* Debug routes (admin only - access check in component) */}
         <Route path="debug/notifications" element={<NotificationDebugPage />} />
+        {/* The design preview switch: inside the shell, so using it mid-call
+            keeps the call's audio and behaviour mounted (debug/pwa is outside). */}
+        <Route path="debug/design" element={<DesignPreviewPage />} />
         <Route path="profile" element={<ProfileRedirect />} />
         <Route path="profile/edit" element={<ProfileEditPage />} />
         <Route path="profile/:userId" element={<ProfilePage />} />

@@ -21,6 +21,13 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  /* *.node.test.ts: Vitest files that run in Node and need its types, which tsconfig.app.json leaves out */
-  "include": ["scripts/ui-review/**/*.ts", "scripts/electron-smoke/**/*.ts", "src/**/*.node.test.ts"]
+  /* *.node.test.ts: Vitest files that run in Node and need its types, which tsconfig.app.json leaves out.
+     browser-tests/ and its config: the Playwright kit specs (scripts/test-stack.sh <ticket> browser). */
+  "include": [
+    "scripts/ui-review/**/*.ts",
+    "scripts/electron-smoke/**/*.ts",
+    "src/**/*.node.test.ts",
+    "browser-tests/**/*.ts",
+    "playwright.kit.config.ts"
+  ]
 }

@@ -410,9 +410,15 @@ pub(crate) fn kick(
     if let Some(reason) = reason {
         payload["reason"] = Value::from(reason);
     }
-    inner.emit_to_user(user_id, "userKicked", payload.clone());
+    inner.emit_to_user(user_id, "userKicked", payload);
     remove_from_community(inner, community_id, user_id);
-    inner.emit_to_others(user_id, "userKicked", payload);
+    // Who kicked them and why stay with them and the moderation log: the community only hears
+    // that they are gone.
+    inner.emit_to_others(
+        user_id,
+        "userKicked",
+        json!({ "communityId": community_id, "userId": user_id }),
+    );
     Ok(())
 }
 

@@ -133,7 +133,7 @@ vi.mock('../../hooks/useVoicePublishPermissions', () => ({
 }));
 
 vi.mock('../../hooks/usePushToTalk', () => ({
-  usePushToTalk: vi.fn(() => ({
+  usePushToTalkStatus: vi.fn(() => ({
     isActive: false,
     isKeyHeld: false,
     currentKeyDisplay: 'Space',
@@ -199,6 +199,13 @@ vi.mock('../../components/Voice/CaptureReplayModal', () => ({
   CaptureReplayModal: () => null,
 }));
 
+// The bar must not warm the soundboard up itself (useSoundboardWarmup owns it).
+const soundboard = vi.hoisted(() => ({ warmup: vi.fn(() => Promise.resolve()) }));
+vi.mock('../../features/voice/soundboardPlayer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../features/voice/soundboardPlayer')>();
+  return { ...actual, soundboardPlayer: { ...actual.soundboardPlayer, warmup: soundboard.warmup } };
+});
+
 vi.mock('../../components/Voice/SoundboardButton', () => ({
   SoundboardButton: () => <button aria-label="Open soundboard">sb</button>,
 }));
@@ -217,7 +224,7 @@ const { useLocalMediaState } = await import('../../hooks/useLocalMediaState');
 const { useResponsive } = await import('../../hooks/useResponsive');
 const { useReplayBufferState } = await import('../../contexts/ReplayBufferContext');
 const { useScreenShare } = await import('../../hooks/useScreenShare');
-const { usePushToTalk } = await import('../../hooks/usePushToTalk');
+const { usePushToTalkStatus } = await import('../../hooks/usePushToTalk');
 const { useVoicePublishPermissions } = await import('../../hooks/useVoicePublishPermissions');
 
 describe('VoiceBottomBarContent', () => {
@@ -253,7 +260,7 @@ describe('VoiceBottomBarContent', () => {
       deviceType: 'desktop',
       shouldUseTouchUI: false,
     } as never);
-    vi.mocked(usePushToTalk).mockReturnValue({
+    vi.mocked(usePushToTalkStatus).mockReturnValue({
       isActive: false,
       isKeyHeld: false,
       currentKeyDisplay: 'Space',
@@ -928,7 +935,7 @@ describe('VoiceBottomBarContent', () => {
     const mockPttRelease = vi.fn();
 
     function enableHoldToTalk() {
-      vi.mocked(usePushToTalk).mockReturnValue({
+      vi.mocked(usePushToTalkStatus).mockReturnValue({
         isActive: true,
         isKeyHeld: false,
         currentKeyDisplay: 'Space',
@@ -984,7 +991,7 @@ describe('VoiceBottomBarContent', () => {
     it('does NOT attach hold-to-talk for desktop PTT (no touch UI regression)', () => {
       // PTT active but desktop (keyboard) — mic button stays a keyboard-only
       // control with no onClick and no pointer transmit.
-      vi.mocked(usePushToTalk).mockReturnValue({
+      vi.mocked(usePushToTalkStatus).mockReturnValue({
         isActive: true,
         isKeyHeld: false,
         currentKeyDisplay: 'Space',
@@ -1050,6 +1057,18 @@ describe('VoiceBottomBarContent', () => {
         state: voiceState,
         actions: { ...mockActions, playSoundboard: vi.fn() },
       } as never);
+    });
+
+    it('publishes no soundboard track on mount, in a community call with a Room (the effects layer does)', () => {
+      phone();
+      vi.mocked(useVoiceConnection).mockReturnValue({
+        state: { ...voiceState, room: { localParticipant: {} } },
+        actions: { ...mockActions, playSoundboard: vi.fn() },
+      } as never);
+      renderWithProviders(<VoiceBottomBar />);
+
+      expect(screen.getByRole('button', { name: /more voice options/i })).toBeInTheDocument();
+      expect(soundboard.warmup).not.toHaveBeenCalled();
     });
 
     it('renders exactly mic, deafen, camera, hang-up and "more" in the bar', () => {
@@ -1234,12 +1253,6 @@ describe('VoiceBottomBarContent', () => {
       expect(camera).toBeEnabled();
       fireEvent.click(camera);
       expect(mockActions.toggleVideo).toHaveBeenCalled();
-    });
-
-    it('passes canSpeak to push-to-talk so PTT presses are ignored', () => {
-      vi.mocked(useVoicePublishPermissions).mockReturnValue(listenOnly);
-      renderWithProviders(<VoiceBottomBar />);
-      expect(usePushToTalk).toHaveBeenCalledWith({ canSpeak: false });
     });
   });
 });

@@ -22,6 +22,8 @@ pub struct Shadow {
     pub y: f32,
     pub blur: f32,
     pub alpha: f32,
+    /// The alpha in light mode, where the same shadow is far less opaque.
+    pub alpha_light: f32,
 }
 
 /// `space.none`, px.
@@ -50,6 +52,12 @@ pub const SPACE_2XL: f32 = 32.0;
 
 /// `space.3xl`, px.
 pub const SPACE_3XL: f32 = 48.0;
+
+/// `radius.sm`, px.
+pub const RADIUS_SM: f32 = 6.0;
+
+/// `radius.md`, px.
+pub const RADIUS_MD: f32 = 10.0;
 
 /// `radius.field`, px.
 pub const RADIUS_FIELD: f32 = 14.0;
@@ -148,6 +156,7 @@ pub const SHADOW_ISLAND: Shadow = Shadow {
     y: 6.0,
     blur: 24.0,
     alpha: 0.35,
+    alpha_light: 0.08,
 };
 
 /// `shadow.overlay`, px offsets and blur, alpha of black.
@@ -156,6 +165,7 @@ pub const SHADOW_OVERLAY: Shadow = Shadow {
     y: 24.0,
     blur: 64.0,
     alpha: 0.6,
+    alpha_light: 0.18,
 };
 
 /// `motion.fast`, ms.
@@ -166,6 +176,15 @@ pub const MOTION_BASE_MS: u32 = 200;
 
 /// `motion.slow`, ms.
 pub const MOTION_SLOW_MS: u32 = 320;
+
+/// `motion.typeahead`, ms.
+pub const MOTION_TYPEAHEAD_MS: u32 = 1000;
+
+/// `motion.toast`, ms.
+pub const MOTION_TOAST_MS: u32 = 4000;
+
+/// `motion.toastAction`, ms.
+pub const MOTION_TOAST_ACTION_MS: u32 = 8000;
 
 /// `breakpoint.phone`, px.
 pub const BREAKPOINT_PHONE: f32 = 600.0;
@@ -187,3 +206,66 @@ pub const LAYOUT_RIGHT_COLUMN: f32 = 264.0;
 
 /// `layout.dock`, px.
 pub const LAYOUT_DOCK: f32 = 60.0;
+
+/// `layout.dialogSm`, px.
+pub const LAYOUT_DIALOG_SM: f32 = 400.0;
+
+/// `layout.dialogMd`, px.
+pub const LAYOUT_DIALOG_MD: f32 = 560.0;
+
+/// `icon.xs`, px.
+pub const ICON_XS: f32 = 14.0;
+
+/// `icon.sm`, px.
+pub const ICON_SM: f32 = 16.0;
+
+/// `icon.md`, px.
+pub const ICON_MD: f32 = 18.0;
+
+/// `icon.lg`, px.
+pub const ICON_LG: f32 = 20.0;
+
+/// `icon.xl`, px.
+pub const ICON_XL: f32 = 24.0;
+
+/// `avatar.xs`, px.
+pub const AVATAR_XS: f32 = 20.0;
+
+/// `avatar.sm`, px.
+pub const AVATAR_SM: f32 = 28.0;
+
+/// `avatar.md`, px.
+pub const AVATAR_MD: f32 = 36.0;
+
+/// `avatar.lg`, px.
+pub const AVATAR_LG: f32 = 44.0;
+
+/// `avatar.xl`, px.
+pub const AVATAR_XL: f32 = 64.0;
+
+/// `border.hairline`, px.
+pub const BORDER_HAIRLINE: f32 = 1.0;
+
+/// `border.selected`, px.
+pub const BORDER_SELECTED: f32 = 2.0;
+
+/// `border.focus`, px.
+pub const BORDER_FOCUS: f32 = 2.0;
+
+/// `border.focusOffset`, px.
+pub const BORDER_FOCUS_OFFSET: f32 = 2.0;
+
+/// `state.hover`, alpha, 0 to 1.
+pub const STATE_HOVER: f32 = 0.04;
+
+/// `state.pressed`, alpha, 0 to 1.
+pub const STATE_PRESSED: f32 = 0.08;
+
+/// `state.hoverOnFill`, alpha, 0 to 1.
+pub const STATE_HOVER_ON_FILL: f32 = 0.16;
+
+/// `state.pressedOnFill`, alpha, 0 to 1.
+pub const STATE_PRESSED_ON_FILL: f32 = 0.24;
+
+/// `state.disabled`, alpha, 0 to 1.
+pub const STATE_DISABLED: f32 = 0.5;

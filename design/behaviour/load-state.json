@@ -1,0 +1,427 @@
+{
+  "pattern": "loadState",
+  "doc": "What a screen shows while it loads from the server: loading, empty, error, ready or refreshing. An error only replaces the screen when there is nothing to show.",
+  "params": {
+    "notifyId": "load"
+  },
+  "state": {
+    "status": "loading | empty | error | ready | refreshing: refreshing still shows the old content",
+    "error": "string | null: the message the error screen shows",
+    "token": "int: the token of the latest fetch; only its result counts",
+    "fetching": "bool: a fetch is in flight",
+    "refreshByUser": "bool: a refresh the user started is in flight; the host shows busy on the control that started it"
+  },
+  "events": {
+    "start": {},
+    "refresh": {
+      "byUser": "bool: the user started it (a refresh button, pull to refresh); false for a background refresh (refetch on focus or reconnect)"
+    },
+    "retry": {},
+    "succeeded": {
+      "token": "int",
+      "empty": "bool: the answer has nothing in it"
+    },
+    "failed": {
+      "token": "int",
+      "message": "string"
+    }
+  },
+  "effects": {
+    "fetch": {
+      "token": "int: fetch, and report the result with this token"
+    },
+    "notify": {
+      "id": "string: the toast id, notifyId, so repeated failures replace one toast",
+      "message": "string: a toast, for an error the screen does not show"
+    }
+  },
+  "rules": [
+    "A screen starts as loading, before any fetch.",
+    "start (the screen opens, or what it shows changes, such as another channel) discards what is shown, from any state: loading, the error cleared, a new token and fetch{token}.",
+    "refresh while ready keeps the content on screen: refreshing, a new token, refreshByUser set from the event's byUser, and fetch{token}.",
+    "refresh while empty keeps the empty screen: still empty, a new token, refreshByUser set from byUser, and fetch{token}.",
+    "refresh while error is a retry.",
+    "refresh while a fetch is in flight starts no new fetch. A refresh the user started marks the fetch in flight as user-started (refreshByUser), unless the screen is loading.",
+    "retry while error loads again: loading, the error cleared, a new token and fetch{token}. retry in any other state does nothing.",
+    "succeeded for the current fetch shows the empty screen when the answer is empty, and the content otherwise.",
+    "failed for the current fetch while loading, when there is nothing to show, replaces the skeleton with the error screen and its message.",
+    "failed for the current fetch during a refresh keeps what is shown (the old content, or the empty screen) and raises notify{id, message} instead, with id the notifyId parameter, so repeated failures replace one toast rather than stacking.",
+    "A result with any other token, or one that arrives when no fetch is in flight, does nothing.",
+    "refreshByUser is true only while a refresh the user started is in flight, so the host can show busy on the control that started it; a background refresh shows nothing. start, retry and any result clear it."
+  ],
+  "scenarios": [
+    {
+      "name": "first load shows the content",
+      "covers": [
+        1,
+        2,
+        8
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "first load is empty",
+      "covers": [
+        1,
+        8
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "error then retry",
+      "covers": [
+        9,
+        7
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "failed": {
+            "token": 1,
+            "message": "Couldn't load messages"
+          }
+        },
+        {
+          "retry": {}
+        },
+        {
+          "succeeded": {
+            "token": 2,
+            "empty": false
+          }
+        },
+        {
+          "retry": {}
+        }
+      ]
+    },
+    {
+      "name": "refresh keeps the content",
+      "covers": [
+        3,
+        6,
+        8
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "succeeded": {
+            "token": 2,
+            "empty": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "an error during a refresh keeps the content",
+      "covers": [
+        3,
+        10
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "failed": {
+            "token": 2,
+            "message": "You are offline"
+          }
+        }
+      ]
+    },
+    {
+      "name": "refreshing an empty screen",
+      "covers": [
+        4,
+        10,
+        6
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": true
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "failed": {
+            "token": 2,
+            "message": "You are offline"
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "succeeded": {
+            "token": 3,
+            "empty": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "refresh while error is a retry",
+      "covers": [
+        5,
+        6
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "failed": {
+            "token": 1,
+            "message": "Couldn't load members"
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "start discards a fetch in flight",
+      "covers": [
+        2,
+        11
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 2,
+            "empty": false
+          }
+        },
+        {
+          "failed": {
+            "token": 2,
+            "message": "Late"
+          }
+        },
+        {
+          "succeeded": {
+            "token": 3,
+            "empty": true
+          }
+        },
+        {
+          "succeeded": {
+            "token": 3,
+            "empty": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a user refresh shows busy on its control",
+      "covers": [
+        12,
+        3,
+        4,
+        6
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": true
+          }
+        },
+        {
+          "refresh": {
+            "byUser": true
+          }
+        },
+        {
+          "succeeded": {
+            "token": 2,
+            "empty": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": true
+          }
+        },
+        {
+          "failed": {
+            "token": 3,
+            "message": "You are offline"
+          }
+        }
+      ]
+    },
+    {
+      "name": "repeated refresh failures share one toast id",
+      "covers": [
+        10
+      ],
+      "params": {
+        "notifyId": "members-load"
+      },
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "succeeded": {
+            "token": 1,
+            "empty": false
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "failed": {
+            "token": 2,
+            "message": "You are offline"
+          }
+        },
+        {
+          "refresh": {
+            "byUser": false
+          }
+        },
+        {
+          "failed": {
+            "token": 3,
+            "message": "You are offline"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a user refresh while loading stays a load",
+      "covers": [
+        6,
+        12
+      ],
+      "events": [
+        {
+          "start": {}
+        },
+        {
+          "refresh": {
+            "byUser": true
+          }
+        },
+        {
+          "start": {}
+        },
+        {
+          "failed": {
+            "token": 2,
+            "message": "Couldn't load"
+          }
+        },
+        {
+          "retry": {}
+        }
+      ]
+    }
+  ]
+}

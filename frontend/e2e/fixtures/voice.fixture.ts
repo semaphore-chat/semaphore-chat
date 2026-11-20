@@ -264,13 +264,18 @@ export async function joinVoiceChannel(
   // default text channel (`/channel/<general>`), and on a slow runner the URL
   // can still show that channel after the Room is connected, so moderator
   // actions went to the wrong room (500) and presence reads came back empty.
+  // Keep the name the poll saw: a second read could race a room being cleared and come back empty.
+  let roomName = '';
   await expect
-    .poll(() => page.evaluate(() => window.__lkRoom?.name ?? ''), {
-      timeout: 10_000,
-      message: `${p.name} channelId never resolved after join`,
-    })
+    .poll(
+      async () => {
+        roomName = await page.evaluate(() => window.__lkRoom?.name ?? '');
+        return roomName;
+      },
+      { timeout: 10_000, message: `${p.name} channelId never resolved after join` },
+    )
     .toBeTruthy();
-  p.channelId = await page.evaluate(() => window.__lkRoom!.name);
+  p.channelId = roomName;
 }
 
 /**
@@ -317,6 +322,58 @@ export async function waitForAudioFlow(
       },
     )
     .toBe(true);
+}
+
+/**
+ * Wait until `listener` has its full, final set of `<audio>` elements for
+ * `remote`, the only other participant in the call: one element for the mic
+ * and one for the soundboard track.
+ *
+ * In a community voice channel every participant who may speak publishes a
+ * silent `soundboard` track about a second after joining, whichever shell or
+ * layout shows the call (VoiceSessionEffects → useSoundboardWarmup →
+ * soundboardPlayer.warmup; a classic bar and a Lounge room card join alike),
+ * and AudioRenderer gives it its own `<audio>` element. A server-muted
+ * participant publishes it only once the mute is lifted. That track can land after
+ * audio already flows both ways (it did on CI), so a spec that tags the
+ * `<audio>` elements to prove they are never re-created must tag them after
+ * this: otherwise the late, correct second element looks like a re-created one.
+ */
+export async function waitForRemoteAudioElements(listener: Participant, remote: Participant): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        remote.page.evaluate(() => {
+          const lp = (window.__lkRoom as unknown as {
+            localParticipant: { trackPublications: Map<string, { trackName?: string }> };
+          } | null)?.localParticipant;
+          return !!lp && [...lp.trackPublications.values()].some((pub) => pub.trackName === 'soundboard');
+        }),
+      { timeout: 15_000, message: `${remote.name} never published its soundboard track` },
+    )
+    .toBe(true);
+  await expect
+    .poll(
+      () =>
+        listener.page.evaluate((id) => {
+          type Pub = { source: string; trackName?: string; track?: { attachedElements: HTMLMediaElement[] } };
+          const room = window.__lkRoom as unknown as {
+            remoteParticipants: Map<string, { identity: string; audioTrackPublications: Map<string, Pub> }>;
+          } | null;
+          const out = { mic: -1, soundboard: -1, audioElements: document.querySelectorAll('audio').length };
+          room?.remoteParticipants.forEach((participant) => {
+            if (participant.identity !== id) return;
+            participant.audioTrackPublications.forEach((pub) => {
+              const attached = pub.track ? pub.track.attachedElements.filter((el) => el.isConnected).length : 0;
+              if (pub.trackName === 'soundboard') out.soundboard = attached;
+              else if (pub.source === 'microphone') out.mic = attached;
+            });
+          });
+          return out;
+        }, remote.identity),
+      { timeout: 15_000, message: `${listener.name} never rendered one <audio> each for ${remote.name}'s mic and soundboard` },
+    )
+    .toEqual({ mic: 1, soundboard: 1, audioElements: 2 });
 }
 
 /**

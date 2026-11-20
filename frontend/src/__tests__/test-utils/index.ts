@@ -17,6 +17,7 @@ export {
   createFriendship,
 } from './factories';
 export { createTestQueryClient } from './queryClient';
+export { createAppearanceSettings, seedAppearanceSettings } from './appearanceSettings';
 export { createMockSocket } from './mockSocket';
 export type { MockSocket } from './mockSocket';
 export { createTestWrapper, createElectronWrapper } from './wrappers';

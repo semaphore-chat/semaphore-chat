@@ -54,6 +54,7 @@ import {
 } from "./optimisticSend";
 import {
   createPreviewUrl,
+  clearPendingUploads,
   deletePendingUpload,
   getPendingUpload,
   removePendingFile,
@@ -289,6 +290,43 @@ export async function sendMessageWithAttachments({
   return result;
 }
 
+export interface SendUnlistedWithAttachmentsOptions {
+  /** Its context is the channel (or DM) the message is under; nothing is written into that list. */
+  runtime: AttachmentSendRuntime;
+  files: File[];
+  hasText: boolean;
+  /**
+   * Sends the message itself with `pendingAttachments` slots (a thread reply over SEND_THREAD_REPLY): its id once
+   * the server has it, or null when it was not sent.
+   */
+  send: (pendingAttachments: number) => Promise<string | null>;
+}
+
+/**
+ * Sends a message that is in no message list of this cache (a thread reply: it arrives over the socket), then
+ * uploads its files in the background, as `sendMessageWithAttachments` does. No optimistic row: the files are
+ * registered under a fresh client id and found by the message's server id once it is known, so the reply's row
+ * shows their progress, Retry and Remove (`usePendingUpload`). Resolves with the message id (or null) as soon as
+ * the server answered, not when the uploads finish; a message that was not sent forgets its files.
+ */
+export async function sendUnlistedWithAttachments({
+  runtime,
+  files,
+  hasText,
+  send,
+}: SendUnlistedWithAttachmentsOptions): Promise<string | null> {
+  const { clientId } = newSendIdentity(OPTIMISTIC_ID_PREFIX);
+  register(runtime, clientId, files, hasText);
+  let messageId: string | null = null;
+  try {
+    messageId = await send(files.length);
+  } finally {
+    if (messageId === null) forget(clientId);
+  }
+  if (messageId !== null) startAttachmentUploads(clientId, messageId);
+  return messageId;
+}
+
 /**
  * Binds the entry to the server's message id and starts uploading its
  * waiting files. Idempotent: called on the send's ack, on a successful
@@ -392,6 +430,20 @@ async function discardEmptyMessage(
 /** Forget a message's uploads (its failed optimistic row was deleted). */
 export function discardAttachmentSend(clientId: string): void {
   forget(clientId);
+}
+
+/**
+ * Sign-out: abort every upload and forget every run and pending entry, so a
+ * previous account's upload neither continues nor shows up under the next one.
+ */
+export function abortAllAttachmentSends(): void {
+  const controllers = [...abortControllers.values()];
+  abortControllers.clear();
+  attachQueues.clear();
+  runtimes.clear();
+  clearPendingUploads();
+  // After the entries are gone, so the aborted uploads find nothing to mark failed.
+  controllers.forEach((c) => c.abort());
 }
 
 /** Test helper: forget every run. */

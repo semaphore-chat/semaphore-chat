@@ -54,6 +54,8 @@ describe('ReadReceiptsService', () => {
     });
     // Default: the caller can see the channel / is in the DM group
     channelAccessService.canViewChannel.mockResolvedValue(true);
+    // Channel -> community lookup; tests with channel entries override this
+    mockDatabase.channel.findMany.mockResolvedValue([]);
     mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
       id: 'dm-member-1',
     });
@@ -667,6 +669,10 @@ describe('ReadReceiptsService', () => {
 
       mockDatabase.readReceipt.findMany.mockResolvedValue([readReceipt1]);
       mockDatabase.membership.findMany.mockResolvedValue([membership]);
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: channelId1, communityId },
+        { id: channelId2, communityId },
+      ]);
       mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
         { userId, groupId: dmGroupId1, group: dmGroup } as any,
       ]);
@@ -702,16 +708,72 @@ describe('ReadReceiptsService', () => {
       );
       expect(result).toHaveLength(3);
       expect(result).toContainEqual({
+        channelId: channelId1,
+        communityId,
+        unreadCount: 2,
+        mentionCount: 1,
+        lastReadMessageId: 'msg-1',
+        lastReadAt: readReceipt1.lastReadAt,
+      });
+      expect(result).toContainEqual({
         channelId: channelId2,
+        communityId,
         unreadCount: 5,
         mentionCount: 0,
       });
       expect(result).toContainEqual({
         directMessageGroupId: dmGroupId1,
+        communityId: null,
         unreadCount: 3,
         mentionCount: 2,
       });
       expect(mockDatabase.message.groupBy).toHaveBeenCalledTimes(2);
+    });
+
+    it('tags each channel entry with its type, so badges can count TEXT channels only', async () => {
+      const communityId = 'community-123';
+      const membership = {
+        ...MembershipFactory.build({ userId, communityId }),
+      } as any;
+      mockDatabase.readReceipt.findMany.mockResolvedValue([]);
+      mockDatabase.membership.findMany.mockResolvedValue([membership]);
+      channelAccessService.visibleChannelIds.mockResolvedValue([
+        'ch-text',
+        'ch-voice',
+      ]);
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: 'ch-text', communityId, type: 'TEXT' },
+        { id: 'ch-voice', communityId, type: 'VOICE' },
+      ]);
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
+      mockDatabase.notification.groupBy.mockResolvedValueOnce([]);
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.groupBy.mockResolvedValueOnce([
+        { channelId: 'ch-text', _count: { channelId: 2 } },
+        { channelId: 'ch-voice', _count: { channelId: 1 } },
+      ]);
+
+      const result = await service.getUnreadCounts(userId);
+
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: { id: true, communityId: true, type: true },
+        }),
+      );
+      expect(result).toContainEqual({
+        channelId: 'ch-text',
+        communityId,
+        channelType: 'TEXT',
+        unreadCount: 2,
+        mentionCount: 0,
+      });
+      expect(result).toContainEqual({
+        channelId: 'ch-voice',
+        communityId,
+        channelType: 'VOICE',
+        unreadCount: 1,
+        mentionCount: 0,
+      });
     });
 
     it('should handle channels without read receipts', async () => {
@@ -731,6 +793,9 @@ describe('ReadReceiptsService', () => {
 
       mockDatabase.readReceipt.findMany.mockResolvedValue([]);
       mockDatabase.membership.findMany.mockResolvedValue([membership]);
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: channelId, communityId },
+      ]);
       mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
       mockDatabase.notification.groupBy.mockResolvedValueOnce([
         { channelId, _count: { channelId: 1 } },
@@ -744,6 +809,7 @@ describe('ReadReceiptsService', () => {
 
       expect(result).toContainEqual({
         channelId,
+        communityId,
         unreadCount: 10,
         mentionCount: 1,
       });
@@ -778,6 +844,7 @@ describe('ReadReceiptsService', () => {
 
       expect(result).toContainEqual({
         directMessageGroupId: dmGroupId,
+        communityId: null,
         unreadCount: 7,
         mentionCount: 4,
       });
@@ -805,6 +872,9 @@ describe('ReadReceiptsService', () => {
 
       mockDatabase.readReceipt.findMany.mockResolvedValue([readReceipt]);
       mockDatabase.membership.findMany.mockResolvedValue([membership]);
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: channelId, communityId },
+      ]);
       mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
       mockDatabase.notification.groupBy.mockResolvedValueOnce([
         { channelId, _count: { channelId: 2 } },
@@ -821,6 +891,7 @@ describe('ReadReceiptsService', () => {
 
       expect(result).toContainEqual({
         channelId,
+        communityId,
         unreadCount: 20,
         mentionCount: 2,
       });
@@ -843,6 +914,9 @@ describe('ReadReceiptsService', () => {
 
       mockDatabase.readReceipt.findMany.mockResolvedValue([]);
       mockDatabase.membership.findMany.mockResolvedValue([membership]);
+      mockDatabase.channel.findMany.mockResolvedValue(
+        channelIds.map((id) => ({ id, communityId })),
+      );
       mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
       mockDatabase.notification.groupBy.mockResolvedValueOnce([]);
       mockDatabase.message.findMany.mockResolvedValue([]);
@@ -865,6 +939,94 @@ describe('ReadReceiptsService', () => {
       });
       // Should NOT call count for each channel individually
       expect(mockDatabase.message.count).not.toHaveBeenCalled();
+    });
+
+    it('marks DM entries without a community, even when they have a read receipt', async () => {
+      const dmGroupId = 'dm-with-receipt';
+      const dmGroup = DirectMessageGroupFactory.build({ id: dmGroupId });
+      const readReceipt = ReadReceiptFactory.buildForDirectMessageGroup({
+        userId,
+        directMessageGroupId: dmGroupId,
+        lastReadMessageId: 'dm-msg-1',
+      });
+
+      mockDatabase.readReceipt.findMany.mockResolvedValue([readReceipt]);
+      mockDatabase.membership.findMany.mockResolvedValue([]);
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
+        { userId, groupId: dmGroupId, group: dmGroup },
+      ]);
+      mockDatabase.notification.groupBy.mockResolvedValue([]);
+      mockDatabase.message.findMany.mockResolvedValue([
+        MessageFactory.build({
+          id: 'dm-msg-1',
+          channelId: null,
+          sentAt: new Date('2024-01-01'),
+        }),
+      ]);
+      mockDatabase.message.count.mockResolvedValue(4);
+
+      const result = await service.getUnreadCounts(userId);
+
+      expect(result).toContainEqual({
+        directMessageGroupId: dmGroupId,
+        communityId: null,
+        unreadCount: 4,
+        mentionCount: 0,
+        lastReadMessageId: 'dm-msg-1',
+        lastReadAt: readReceipt.lastReadAt,
+      });
+      expect(mockDatabase.channel.findMany).not.toHaveBeenCalled();
+    });
+
+    it('looks up channel communities in one query, so database calls do not grow with the channel count', async () => {
+      const communityId = 'community-123';
+
+      const totalDbCalls = () =>
+        Object.values(mockDatabase).reduce<number>((total, model) => {
+          if (!model || typeof model !== 'object') return total;
+          return (
+            total +
+            Object.values(model as Record<string, unknown>)
+              .filter((fn) => jest.isMockFunction(fn))
+              .reduce<number>((n, fn) => n + fn.mock.calls.length, 0)
+          );
+        }, 0);
+
+      const callsFor = async (channelIds: string[]) => {
+        jest.clearAllMocks();
+        mockDatabase.readReceipt.findMany.mockResolvedValue([]);
+        mockDatabase.membership.findMany.mockResolvedValue([
+          {
+            ...MembershipFactory.build({ userId, communityId }),
+            community: {
+              id: communityId,
+              channels: channelIds.map((id) => ChannelFactory.build({ id })),
+            },
+          },
+        ]);
+        mockDatabase.channel.findMany.mockResolvedValue(
+          channelIds.map((id) => ({ id, communityId })),
+        );
+        mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
+        mockDatabase.notification.groupBy.mockResolvedValue([]);
+        mockDatabase.message.findMany.mockResolvedValue([]);
+        mockDatabase.message.groupBy.mockResolvedValue(
+          channelIds.map((id) => ({ channelId: id, _count: { channelId: 1 } })),
+        );
+
+        await service.getUnreadCounts(userId);
+        return totalDbCalls();
+      };
+
+      const oneChannel = await callsFor(['ch-1']);
+      const threeChannels = await callsFor(['ch-1', 'ch-2', 'ch-3']);
+
+      expect(threeChannels).toBe(oneChannel);
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledTimes(1);
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['ch-1', 'ch-2', 'ch-3'] } },
+        select: { id: true, communityId: true, type: true },
+      });
     });
   });
 

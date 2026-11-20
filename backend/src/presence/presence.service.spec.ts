@@ -587,4 +587,85 @@ describe('PresenceService', () => {
       expect(mockDb.membership.findMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('getCommunityPresence', () => {
+    const communityId = 'community-1';
+
+    it('returns the community’s online members and its size', async () => {
+      mockDb.membership.findMany.mockResolvedValue([
+        { userId: 'online-1' },
+        { userId: 'offline-1' },
+        { userId: 'online-2' },
+      ]);
+      mockRedis.mget.mockResolvedValue(['1', null, '1']);
+
+      const result = await service.getCommunityPresence(communityId);
+
+      expect(result).toEqual({
+        onlineUserIds: ['online-1', 'online-2'],
+        onlineCount: 2,
+        memberCount: 3,
+      });
+      expect(mockDb.membership.findMany).toHaveBeenCalledWith({
+        where: { communityId },
+        select: { userId: true },
+      });
+      expect(mockRedis.mget).toHaveBeenCalledWith(
+        'presence:user:online-1',
+        'presence:user:offline-1',
+        'presence:user:online-2',
+      );
+    });
+
+    it('never includes someone online who is not a member', async () => {
+      mockDb.membership.findMany.mockResolvedValue([{ userId: 'member-1' }]);
+      mockRedis.mget.mockResolvedValue(['1']);
+
+      const result = await service.getCommunityPresence(communityId);
+
+      expect(result.onlineUserIds).toEqual(['member-1']);
+      // Only member ids are asked about; an online outsider is never read.
+      expect(mockRedis.mget).toHaveBeenCalledWith('presence:user:member-1');
+      expect(mockRedis.smembers).not.toHaveBeenCalled();
+    });
+
+    it('does no Redis round trip for a community with no members', async () => {
+      mockDb.membership.findMany.mockResolvedValue([]);
+
+      const result = await service.getCommunityPresence(communityId);
+
+      expect(result).toEqual({
+        onlineUserIds: [],
+        onlineCount: 0,
+        memberCount: 0,
+      });
+      expect(mockRedis.mget).not.toHaveBeenCalled();
+    });
+
+    it('costs one query and one Redis round trip however many members there are', async () => {
+      mockDb.membership.findMany.mockResolvedValue([
+        { userId: 'a' },
+        { userId: 'b' },
+      ]);
+      mockRedis.mget.mockResolvedValue(['1', null]);
+      await service.getCommunityPresence(communityId);
+      expect(mockDb.membership.findMany).toHaveBeenCalledTimes(1);
+      expect(mockRedis.mget).toHaveBeenCalledTimes(1);
+
+      jest.clearAllMocks();
+      const ids = Array.from({ length: 2000 }, (_, i) => `user-${i}`);
+      mockDb.membership.findMany.mockResolvedValue(
+        ids.map((userId) => ({ userId })),
+      );
+      mockRedis.mget.mockResolvedValue(ids.map(() => '1'));
+
+      const result = await service.getCommunityPresence(communityId);
+
+      expect(result.onlineCount).toBe(2000);
+      expect(result.memberCount).toBe(2000);
+      expect(mockDb.membership.findMany).toHaveBeenCalledTimes(1);
+      expect(mockRedis.mget).toHaveBeenCalledTimes(1);
+      expect(mockRedis.mget.mock.calls[0]).toHaveLength(2000);
+    });
+  });
 });

@@ -44,6 +44,16 @@ impl Gifs {
                 preview_url: format!("{base}/__fixtures/gif-{number}-preview.gif"),
                 width: 200,
                 height: 150,
+                // The fake serves one rendition, as a provider that offers no others: a client
+                // falls back to `url`.
+                medium_height: None,
+                medium_size_bytes: None,
+                medium_url: None,
+                medium_width: None,
+                original_size_bytes: None,
+                preview_height: None,
+                preview_size_bytes: None,
+                preview_width: None,
             })
             .collect();
     }

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Generate the design token outputs from `design/tokens.json`.
+"""Generate the design token outputs from `design/tokens.json`, `design/colour.json`
+and the behaviour patterns in `design/behaviour/`.
 
 `design/tokens.json` is the single source of truth for spacing, radii,
-control sizes, fonts, text styles, shadows, motion, breakpoints and layout.
-This program validates it and renders every registered output. Generated
-files are never edited by hand: fix the source or the renderer and re-run
+control sizes, fonts, text styles, shadows, motion, breakpoints, layout, icon, avatar
+sizes, border widths and state alphas; `design/colour.json` holds the
+parameters of the palette derivation. This program validates both and renders
+every registered output. Generated files are never edited by hand: fix the
+source or the renderer and re-run
 
     python3 design/gen/gen_tokens.py
 
@@ -19,11 +22,43 @@ import math
 import re
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Callable, NoReturn
+
+# `colour_ref` lives beside this script, and the tests import from that folder too.
+# It is imported inside `colour_vectors`, not here: importing it parses
+# `design/colour.json`, so a broken parameter file has to reach `main` as one
+# `error:` line instead of a traceback at module load.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# `gen_error` lives beside this script too; `gen_icons` raises the same class.
+from gen_error import TokenError  # noqa: E402  (after the path fix above)
+
+# The role names and the order every renderer emits them in. A copy of
+# `colour_ref.ROLES`, which cannot be imported above; the tests pin them equal.
+ROLES = [
+    "ground",
+    "surface",
+    "fill",
+    "hairline",
+    "text",
+    "textSecondary",
+    "textDim",
+    "accent",
+    "onAccent",
+    "accentText",
+    "focus",
+    "positive",
+    "warning",
+    "danger",
+    "onDanger",
+    "scrim",
+]
 
 ROOT = Path(__file__).resolve().parents[2]
 # Relative to the repo root, so `run` can read it below any checkout.
 SOURCE = Path("design") / "tokens.json"
+COLOUR_SOURCE = Path("design") / "colour.json"
 
 # Source order is the order the renderers emit.
 GROUPS = (
@@ -36,24 +71,88 @@ GROUPS = (
     "motion",
     "breakpoint",
     "layout",
+    "icon",
+    "avatar",
+    "border",
+    "state",
 )
-SCALAR_GROUPS = ("space", "radius", "control", "motion", "breakpoint", "layout")
+SCALAR_GROUPS = (
+    "space",
+    "radius",
+    "control",
+    "motion",
+    "breakpoint",
+    "layout",
+    "icon",
+    "avatar",
+    "border",
+    "state",
+)
 TEXT_FIELDS = ("font", "size", "line", "weight")
-SHADOW_FIELDS = ("x", "y", "blur", "alpha")
+SHADOW_FIELDS = ("x", "y", "blur", "alpha", "alphaLight")
 WEIGHTS = (400, 500, 600, 700)
 # Motion is written to Rust as `u32` milliseconds.
 MOTION_MAX = 2**32 - 1
 KEY = re.compile(r"[a-z0-9][A-Za-z0-9]*")
 
+# `design/colour.json`: the derivation parameters. `ROLES` order is the order
+# every renderer emits the palette in.
+COLOUR_FIELDS = (
+    "chromaReference",
+    "intensity",
+    "accentTextContrast",
+    "ink",
+    "paper",
+    "status",
+    "people",
+    "modes",
+)
+COLOUR_INTENSITIES = ("minimal", "balanced", "vibrant")
+COLOUR_STATUS = ("positive", "warning", "danger")
+COLOUR_MODES = ("dark", "light")
+COLOUR_MODE_ROLES = (
+    "ground",
+    "surface",
+    "fill",
+    "hairline",
+    "text",
+    "textSecondary",
+    "textDim",
+)
+COLOUR_MODE_FIELDS = COLOUR_MODE_ROLES + ("accentL", "scrim")
+COLOUR_HEX = re.compile(r"#[0-9a-fA-F]{6}")
+# `colour.people`: the avatar colours of people. Frozen: a person's colour is picked by
+# `fnv1a32(id) mod len`, so any change to this list re-colours everyone in both clients.
+PEOPLE_FIELDS = ("frozen", "colours")
+FROZEN_PEOPLE = (
+    "#FF8FB8",
+    "#FFA366",
+    "#E0C060",
+    "#A6D36A",
+    "#5FD49A",
+    "#5ED1D1",
+    "#6FB1F5",
+    "#9AA0FF",
+    "#C792F0",
+)
+# OKLab lightness and chroma bounds for a `[L, C]` pair.
+LIGHTNESS_MAX = 1
+CHROMA_MAX = 0.4
+
 USAGE = "usage: gen_tokens.py [--check]"
 
-# Output path relative to the repo root -> renderer taking the loaded tokens.
-# The TypeScript and Rust renderers register themselves here.
+# Output path relative to the repo root -> renderer taking the loaded source
+# documents (`{"tokens": ..., "colour": ..., "icons": ...}`).
+# The TypeScript and Rust renderers register themselves here; `run` merges in
+# the icon set's outputs, whose paths depend on the loaded icons.
 OUTPUTS: dict[Path, Callable[[dict], str]] = {}
 
 
-class TokenError(ValueError):
-    """`design/tokens.json` does not match the schema; the message starts with the dotted path."""
+def _icons_module() -> ModuleType:
+    """The icon renderer, imported when `run` needs it rather than at module load."""
+    import gen_icons
+
+    return gen_icons
 
 
 def _fail(path: str, message: str) -> NoReturn:
@@ -92,6 +191,81 @@ def _number(
         _fail(path, f"expected a number from 0 to {fmt_num(maximum)}, got {value!r}")
 
 
+def _positive(path: str, value: object) -> None:
+    _number(path, value)
+    if value == 0:
+        _fail(path, f"expected a positive number, got {value!r}")
+
+
+def _hex_colour(path: str, value: object) -> None:
+    if not isinstance(value, str) or not COLOUR_HEX.fullmatch(value):
+        _fail(path, f"expected #rrggbb, got {value!r}")
+
+
+def _numbers(path: str, value: object, maxima: tuple[float, ...]) -> None:
+    """A fixed-length list of numbers, each from 0 to its maximum."""
+    if not isinstance(value, list) or len(value) != len(maxima):
+        _fail(path, f"expected a list of {len(maxima)} numbers, got {value!r}")
+    for index, (item, maximum) in enumerate(zip(value, maxima)):
+        _number(f"{path}[{index}]", item, maximum=maximum)
+
+
+def _exact(path: str, value: object, expected: tuple[str, ...]) -> dict:
+    """A mapping with exactly `expected` as its keys; name the key that is wrong."""
+    value = _mapping(path, value)
+    for key in value:
+        if key not in expected:
+            _fail(f"{path}.{key}", "unknown entry")
+    for key in expected:
+        if key not in value:
+            _fail(f"{path}.{key}", "missing")
+    return value
+
+
+def _colour_mode(path: str, mode: object) -> None:
+    mode = _exact(path, mode, COLOUR_MODE_FIELDS)
+    for role in COLOUR_MODE_ROLES:
+        _numbers(f"{path}.{role}", mode[role], (LIGHTNESS_MAX, CHROMA_MAX))
+    accent = mode["accentL"]
+    _numbers(f"{path}.accentL", accent, (LIGHTNESS_MAX, LIGHTNESS_MAX))
+    if accent[0] >= accent[1]:
+        _fail(f"{path}.accentL", f"expected lo < hi, got {accent!r}")
+    _numbers(f"{path}.scrim", mode["scrim"], (LIGHTNESS_MAX, CHROMA_MAX, 1))
+
+
+def validate_colour(data: object) -> dict:
+    """Check the parsed colour parameters against the schema and return them unchanged."""
+    data = _exact("colour", data, COLOUR_FIELDS)
+    _positive("colour.chromaReference", data["chromaReference"])
+    _positive("colour.accentTextContrast", data["accentTextContrast"])
+    _numbers("colour.ink", data["ink"], (LIGHTNESS_MAX, CHROMA_MAX))
+    _numbers("colour.paper", data["paper"], (LIGHTNESS_MAX, CHROMA_MAX))
+    intensity = _exact("colour.intensity", data["intensity"], COLOUR_INTENSITIES)
+    for name in COLOUR_INTENSITIES:
+        _positive(f"colour.intensity.{name}", intensity[name])
+    status = _exact("colour.status", data["status"], COLOUR_STATUS)
+    for name in COLOUR_STATUS:
+        _hex_colour(f"colour.status.{name}", status[name])
+    people = _exact("colour.people", data["people"], PEOPLE_FIELDS)
+    if not isinstance(people["frozen"], str) or not people["frozen"].strip():
+        _fail("colour.people.frozen", "expected the note that the list is frozen")
+    colours = people["colours"]
+    if not isinstance(colours, list):
+        _fail("colour.people.colours", f"expected a list, got {colours!r}")
+    for index, value in enumerate(colours):
+        _hex_colour(f"colour.people.colours[{index}]", value)
+    if tuple(colours) != FROZEN_PEOPLE:
+        _fail(
+            "colour.people.colours",
+            "the list is frozen: changing, adding, removing or reordering a colour re-colours "
+            "every person (see design/guide/tokens-and-colour.md)",
+        )
+    modes = _exact("colour.modes", data["modes"], COLOUR_MODES)
+    for name in COLOUR_MODES:
+        _colour_mode(f"colour.modes.{name}", modes[name])
+    return data
+
+
 def _fields(path: str, value: object, expected: tuple[str, ...]) -> dict:
     value = _mapping(path, value)
     if set(value) != set(expected):
@@ -106,6 +280,9 @@ def _scalar_group(name: str, group: object) -> None:
         _key(path, key)
         if name == "motion":
             _number(path, value, maximum=MOTION_MAX, integer=True)
+        elif name == "state":
+            # A state layer is an alpha, from clear to solid.
+            _number(path, value, maximum=1)
         else:
             _number(path, value)
 
@@ -153,6 +330,7 @@ def _shadow_group(group: object) -> None:
             _number(f"{path}.{field}", shadow[field], signed=True)
         _number(f"{path}.blur", shadow["blur"])
         _number(f"{path}.alpha", shadow["alpha"], maximum=1)
+        _number(f"{path}.alphaLight", shadow["alphaLight"], maximum=1)
 
 
 def validate(data: object) -> dict:
@@ -204,8 +382,8 @@ def _reject_duplicates(value: object, path: str = "") -> None:
         _reject_duplicates(child, f"{path}{key}.")
 
 
-def load(path: Path) -> dict:
-    """Parse and validate `design/tokens.json`; raise `TokenError` when it is wrong."""
+def _read_json(path: Path) -> object:
+    """Read and parse one JSON document; a repeated key is an error."""
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError as error:
@@ -217,7 +395,17 @@ def load(path: Path) -> dict:
             f"{path}:{error.lineno}:{error.colno}: invalid JSON: {error.msg}"
         ) from error
     _reject_duplicates(data)
-    return validate(data)
+    return data
+
+
+def load(path: Path) -> dict:
+    """Parse and validate `design/tokens.json`; raise `TokenError` when it is wrong."""
+    return validate(_read_json(path))
+
+
+def load_colour(path: Path) -> dict:
+    """Parse and validate `design/colour.json`; raise `TokenError` when it is wrong."""
+    return validate_colour(_read_json(path))
 
 
 def fmt_num(value: int | float) -> str:
@@ -259,13 +447,13 @@ def _ts_text_style(style: dict, fonts: dict) -> str:
     return "{ " + ", ".join(fields) + " }"
 
 
-def _ts_shadow_css(shadow: dict) -> str:
+def _ts_shadow_css(shadow: dict, alpha_field: str = "alpha") -> str:
     """The equivalent CSS `box-shadow` value (zero lengths carry no unit)."""
     lengths = " ".join(
         "0" if shadow[field] == 0 else f"{fmt_num(shadow[field])}px"
         for field in ("x", "y", "blur")
     )
-    return f"{lengths} rgba(0, 0, 0, {fmt_num(shadow['alpha'])})"
+    return f"{lengths} rgba(0, 0, 0, {fmt_num(shadow[alpha_field])})"
 
 
 def _ts_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
@@ -277,6 +465,7 @@ def _ts_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
             for field in SHADOW_FIELDS:
                 lines.append(f"      {field}: {fmt_num(shadow[field])},")
             lines.append(f"      css: {_ts_string(_ts_shadow_css(shadow))},")
+            lines.append(f"      cssLight: {_ts_string(_ts_shadow_css(shadow, 'alphaLight'))},")
             lines.append("    },")
         return lines
     lines = []
@@ -307,7 +496,7 @@ def render_ts(tokens: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-OUTPUTS[TS_OUTPUT] = render_ts
+OUTPUTS[TS_OUTPUT] = lambda sources: render_ts(sources["tokens"])
 
 RS_OUTPUT = Path("native/crates/semaphore-design/src/lounge.rs")
 RS_HEADER = (
@@ -325,6 +514,10 @@ RS_UNITS = {
     "motion": "ms",
     "breakpoint": "px",
     "layout": "px",
+    "icon": "px",
+    "avatar": "px",
+    "border": "px",
+    "state": "alpha, 0 to 1",
 }
 RS_STRUCTS = """\
 /// A text style: the resolved font family, px size and line height, and weight.
@@ -343,6 +536,8 @@ pub struct Shadow {
     pub y: f32,
     pub blur: f32,
     pub alpha: f32,
+    /// The alpha in light mode, where the same shadow is far less opaque.
+    pub alpha_light: f32,
 }"""
 
 
@@ -378,7 +573,10 @@ def _rs_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
             ]
         elif name == "shadow":
             lines += [doc, f"pub const {ident}: Shadow = Shadow {{"]
-            lines += [f"    {field}: {_rs_float(value[field])}," for field in SHADOW_FIELDS]
+            lines += [
+                f"    {'alpha_light' if field == 'alphaLight' else field}: {_rs_float(value[field])},"
+                for field in SHADOW_FIELDS
+            ]
             lines += ["};"]
         elif name == "motion":
             lines += [doc, f"pub const {ident}: u32 = {fmt_num(value)};"]
@@ -406,7 +604,358 @@ def render_rs(tokens: dict) -> str:
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
-OUTPUTS[RS_OUTPUT] = render_rs
+OUTPUTS[RS_OUTPUT] = lambda sources: render_rs(sources["tokens"])
+
+
+COLOUR_VECTORS_OUTPUT = Path("design") / "vectors" / "colour.json"
+COLOUR_TS_OUTPUT = Path("frontend/src/theme/generated/colourVectors.ts")
+COLOUR_PARAMS_OUTPUT = Path("frontend/src/theme/generated/colourParams.ts")
+COLOUR_HEADER = (
+    "// @generated by design/gen/gen_tokens.py from design/colour.json.\n"
+    "// Do not edit by hand: change the source or the generator and re-run it."
+)
+# The vectors keep the base as written; the ports accept either hex case.
+VECTOR_BASES = [
+    "#8E75FF",
+    "#0d9488",
+    "#3b82f6",
+    "#ef4444",
+    "#f59e0b",
+    "#22c55e",
+    "#ec4899",
+    "#8a5ce6",
+    "#0a6638",
+    "#000000",
+    "#ffffff",
+    "#808080",
+    "#ff0000",
+    "#ffff00",
+    "#00ff00",
+    "#0000ff",
+]
+
+
+def colour_vectors(sources: dict) -> list[dict]:
+    """Every base x mode x intensity, in that nesting order, with its derived palette.
+
+    The palette comes from `colour_ref.derive`, the definition of the algorithm;
+    `run` validates the same `design/colour.json` the reference reads.
+    """
+    # Imported here, not at module load: `colour_ref` parses `design/colour.json`
+    # on import, and `run` has validated that file before any renderer runs.
+    import colour_ref
+
+    vectors = []
+    for base in VECTOR_BASES:
+        for mode in COLOUR_MODES:
+            for intensity in COLOUR_INTENSITIES:
+                palette = colour_ref.derive(base, mode, intensity)
+                vectors.append(
+                    {
+                        "base": base,
+                        "mode": mode,
+                        "intensity": intensity,
+                        "roles": {role: palette[role] for role in ROLES},
+                    }
+                )
+    return vectors
+
+
+def render_colour_vectors(sources: dict) -> str:
+    """Render the shared vectors as JSON: two-space indent, `roles` in ROLES order."""
+    return json.dumps(colour_vectors(sources), indent=2) + "\n"
+
+
+def render_colour_vectors_ts(sources: dict) -> str:
+    """Render the same vectors for the web client: single quotes, `as const`."""
+    lines = [COLOUR_HEADER, "", "export const colourVectors = ["]
+    for vector in colour_vectors(sources):
+        lines.append("  {")
+        lines.append(f"    base: {_ts_string(vector['base'])},")
+        lines.append(f"    mode: {_ts_string(vector['mode'])},")
+        lines.append(f"    intensity: {_ts_string(vector['intensity'])},")
+        lines.append("    roles: {")
+        for role, value in vector["roles"].items():
+            lines.append(f"      {role}: {_ts_string(value)},")
+        lines.append("    },")
+        lines.append("  },")
+    lines.append("] as const;")
+    return "\n".join(lines) + "\n"
+
+
+OUTPUTS[COLOUR_VECTORS_OUTPUT] = render_colour_vectors
+OUTPUTS[COLOUR_TS_OUTPUT] = render_colour_vectors_ts
+
+
+def _number_list(values: list[int | float]) -> str:
+    """A tuple literal: `[0.183, 0.004]`."""
+    return "[" + ", ".join(fmt_num(value) for value in values) + "]"
+
+
+def _rs_number_list(values: list[int | float]) -> str:
+    """An `[f64; N]` literal: every element a float, `[0.2, 0.0]`."""
+    return "[" + ", ".join(_rs_float(value) for value in values) + "]"
+
+
+def render_colour_params_ts(sources: dict) -> str:
+    """Render the derivation parameters for the web client: tuples, `as const`."""
+    colour = sources["colour"]
+    lines = [COLOUR_HEADER, "", "export const colourRoles = ["]
+    lines.extend(f"  {_ts_string(role)}," for role in ROLES)
+    lines.extend(["] as const;", ""])
+    lines.append(
+        "export const colourModes = [" + ", ".join(_ts_string(m) for m in COLOUR_MODES) + "] as const;"
+    )
+    lines.append(
+        "export const colourIntensities = ["
+        + ", ".join(_ts_string(i) for i in COLOUR_INTENSITIES)
+        + "] as const;"
+    )
+    lines.extend(["", "export const colourParams = {"])
+    lines.append(f"  chromaReference: {fmt_num(colour['chromaReference'])},")
+    lines.append("  intensity: {")
+    lines.extend(
+        f"    {name}: {fmt_num(colour['intensity'][name])}," for name in COLOUR_INTENSITIES
+    )
+    lines.append("  },")
+    lines.append(f"  accentTextContrast: {fmt_num(colour['accentTextContrast'])},")
+    for name in ("ink", "paper"):
+        lines.append(f"  {name}: {_number_list(colour[name])},")
+    lines.append("  status: {")
+    lines.extend(
+        f"    {name}: {_ts_string(colour['status'][name])}," for name in COLOUR_STATUS
+    )
+    lines.append("  },")
+    lines.append(
+        "  people: [" + ", ".join(_ts_string(c) for c in colour["people"]["colours"]) + "],"
+    )
+    lines.append("  modes: {")
+    for mode in COLOUR_MODES:
+        lines.append(f"    {mode}: {{")
+        lines.extend(
+            f"      {field}: {_number_list(colour['modes'][mode][field])},"
+            for field in COLOUR_MODE_FIELDS
+        )
+        lines.append("    },")
+    lines.append("  },")
+    lines.append("} as const;")
+    return "\n".join(lines) + "\n"
+
+
+OUTPUTS[COLOUR_PARAMS_OUTPUT] = render_colour_params_ts
+
+COLOUR_RS_PARAMS_OUTPUT = Path("native/crates/semaphore-design/src/colour_params.rs")
+COLOUR_RS_VECTORS_OUTPUT = Path("native/crates/semaphore-design/src/colour_vectors.rs")
+RS_MODE_VARIANTS = {"dark": "Dark", "light": "Light"}
+RS_INTENSITY_VARIANTS = {"minimal": "Minimal", "balanced": "Balanced", "vibrant": "Vibrant"}
+# Rust field -> source field, with the doc comment the struct carries.
+RS_MODE_PARAMS = (
+    ("ground", "ground", "The window background: OKLab lightness and chroma."),
+    ("surface", "surface", "Islands and panels."),
+    ("fill", "fill", "Cards, fields and hover."),
+    ("hairline", "hairline", "Borders and dividers."),
+    ("text", "text", "Primary text."),
+    ("text_secondary", "textSecondary", "Secondary text."),
+    ("text_dim", "textDim", "Dim text."),
+    ("accent_l", "accentL", "The accent's allowed lightness range, low to high."),
+    ("scrim", "scrim", "Scrim OKLab lightness and chroma, and its alpha."),
+)
+
+
+def _rs_rgb(value: str) -> str:
+    """`#RRGGBB` -> `0xrrggbb`, the `STATUS` form."""
+    return f"0x{int(value[1:], 16):06x}"
+
+
+def _rs_rgba(value: str) -> str:
+    """`#rrggbb` -> `0xrrggbbff`; `#rrggbbaa` -> `0xrrggbbaa`, the vector form."""
+    digits = value[1:]
+    if len(digits) == 6:
+        digits += "ff"
+    return "0x" + digits.lower()
+
+
+def render_colour_params_rs(sources: dict) -> str:
+    """Render the derivation parameters for the Rust client: `f64`, `u32` hex."""
+    colour = sources["colour"]
+    ink = _rs_number_list(colour["ink"])
+    paper = _rs_number_list(colour["paper"])
+    status = ", ".join(_rs_rgb(colour["status"][name]) for name in COLOUR_STATUS)
+    lines = [
+        COLOUR_HEADER,
+        "",
+        "//! The palette derivation parameters, generated for the Rust client.",
+        "//!",
+        "//! `design/gen/colour_ref.py` holds the same numbers; `derive` reads these.",
+        "",
+        "/// `colour.chromaReference`: the chroma a fully saturated base is scaled to.",
+        f"pub const CHROMA_REFERENCE: f64 = {_rs_float(colour['chromaReference'])};",
+        "",
+        "/// `colour.intensity`: minimal, balanced, vibrant.",
+        "pub const INTENSITY: [f64; 3] = ["
+        + ", ".join(_rs_float(colour["intensity"][name]) for name in COLOUR_INTENSITIES)
+        + "];",
+        "",
+        "/// `colour.accentTextContrast`: the contrast accent text must reach on every surface.",
+        f"pub const ACCENT_TEXT_CONTRAST: f64 = {_rs_float(colour['accentTextContrast'])};",
+        "",
+        "/// `colour.ink`: the OKLab lightness and chroma of the dark ink.",
+        f"pub const INK: [f64; 2] = {ink};",
+        "/// `colour.paper`: the OKLab lightness and chroma of the light paper.",
+        f"pub const PAPER: [f64; 2] = {paper};",
+        "",
+        "/// `colour.status`: positive, warning and danger as `0xRRGGBB`.",
+        f"pub const STATUS: [u32; 3] = [{status}];",
+        "",
+        "/// `colour.people.colours`: people's avatar colours as `0xRRGGBB`, frozen. A person's",
+        "/// colour is `PEOPLE[fnv1a32(utf8(id)) % 9]` (see `design/vectors/person-colour.json`).",
+        # rustfmt's layout for an array of short literals: one indented line, trailing comma.
+        f"pub const PEOPLE: [u32; {len(colour['people']['colours'])}] = [",
+        "    " + " ".join(_rs_rgb(c) + "," for c in colour["people"]["colours"]),
+        "];",
+        "",
+        "/// One mode's derivation parameters.",
+        "#[derive(Debug, Clone, Copy, PartialEq)]",
+        "pub struct ModeParams {",
+    ]
+    for field, source, doc in RS_MODE_PARAMS:
+        lines.append(f"    /// `{source}`: {doc}")
+        length = 3 if source == "scrim" else 2
+        lines.append(f"    pub {field}: [f64; {length}],")
+    lines.append("}")
+    for name, constant in (("dark", "DARK"), ("light", "LIGHT")):
+        mode = colour["modes"][name]
+        lines.extend(
+            [
+                "",
+                f"/// The {name} mode's parameters.",
+                f"pub const {constant}: ModeParams = ModeParams {{",
+            ]
+        )
+        lines.extend(
+            f"    {field}: {_rs_number_list(mode[source])}," for field, source, _ in RS_MODE_PARAMS
+        )
+        lines.append("};")
+    return "\n".join(lines) + "\n"
+
+
+OUTPUTS[COLOUR_RS_PARAMS_OUTPUT] = render_colour_params_rs
+
+
+def render_colour_vectors_rs(sources: dict) -> str:
+    """Render the shared vectors for the Rust client: one `0xRRGGBBAA` row each.
+
+    `#[rustfmt::skip]` keeps the base, mode and intensity on one line with the
+    role array they belong to; rustfmt would otherwise split every row.
+    """
+    lines = [
+        COLOUR_HEADER,
+        "",
+        "//! The shared palette vectors, generated from `design/colour.json`.",
+        "//!",
+        "//! Each row is a base, a mode, an intensity and its 16 roles in `ROLES` order.",
+        "",
+        "/// Every base x mode x intensity, in `design/vectors/colour.json` order.",
+        "#[rustfmt::skip]",
+        "pub(crate) const VECTORS: "
+        "&[(&str, crate::Mode, crate::Intensity, [u32; 16])] = &[",
+    ]
+    for vector in colour_vectors(sources):
+        lines.append(
+            f'    ("{vector["base"]}", crate::Mode::{RS_MODE_VARIANTS[vector["mode"]]}, '
+            f'crate::Intensity::{RS_INTENSITY_VARIANTS[vector["intensity"]]}, ['
+        )
+        values = [_rs_rgba(vector["roles"][role]) + "," for role in ROLES]
+        for start in range(0, len(values), 8):
+            lines.append("        " + " ".join(values[start : start + 8]))
+        lines.append("    ]),")
+    lines.append("];")
+    return "\n".join(lines) + "\n"
+
+
+OUTPUTS[COLOUR_RS_VECTORS_OUTPUT] = render_colour_vectors_rs
+
+PERSON_VECTORS_OUTPUT = Path("design") / "vectors" / "person-colour.json"
+PERSON_TS_OUTPUT = Path("frontend/src/theme/generated/personColourVectors.ts")
+# Ids for the person-colour vectors: empty, short ASCII, case, UUIDs and cuids as the API sends them,
+# and non-ASCII (the hash runs over UTF-8 bytes, not UTF-16 code units).
+PERSON_VECTOR_IDS = [
+    "",
+    "a",
+    "A",
+    "foobar",
+    "alexk",
+    "3f2b8c1e-9d4a-4e6b-8f1c-2a7d5e9b0c13",
+    "3F2B8C1E-9D4A-4E6B-8F1C-2A7D5E9B0C13",
+    "00000000-0000-0000-0000-000000000000",
+    "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "a8098c1a-f86e-11da-bd1a-00112444be1e",
+    "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "0b1c2d3e-4f50-4617-8899-aabbccddeeff",
+    "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+    "c56a4180-65aa-42ec-a945-5fd21dec0538",
+    "e7f3a9b2-1c4d-4f8e-9a6b-3d2c1b0a9f8e",
+    "1d5e7f9a-3b2c-4d6e-8f0a-1b3c5d7e9f2a",
+    "9b8a7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d",
+    "4a6c8e0f-2b4d-4f6a-8c0e-2a4c6e8f0b1d",
+    "clx1q2w3e0000abcd1234efgh",
+    "ckz9y8x7w0001mnop5678qrst",
+    "cm3k5l7j90002uvwx9012yzab",
+    "cl0a1b2c30003cdef3456ghij",
+    "zoë",
+    "José",
+    "Ångström",
+    "名前",
+    "😀",
+    "dropbear 🎮",
+    "user_with_underscore",
+    "a much longer id with spaces, punctuation; and more words in it",
+]
+
+
+def person_vectors() -> list[dict]:
+    """Each id with its FNV-1a hash, list index and colour, from `colour_ref`, the definition."""
+    import colour_ref
+
+    vectors = []
+    colours = colour_ref.PARAMS["people"]["colours"]
+    for user_id in PERSON_VECTOR_IDS:
+        h = colour_ref.fnv1a32(user_id.encode("utf-8"))
+        colour = colour_ref.person_colour(user_id)
+        vectors.append(
+            {
+                "id": user_id,
+                "fnv1a32": f"0x{h:08x}",
+                "index": None if colour is None else h % len(colours),
+                "colour": colour,
+            }
+        )
+    return vectors
+
+
+def render_person_vectors(sources: dict) -> str:
+    """The shared person-colour vectors as JSON (UTF-8, not escaped)."""
+    return json.dumps(person_vectors(), indent=2, ensure_ascii=False) + "\n"
+
+
+def render_person_vectors_ts(sources: dict) -> str:
+    """The same vectors for the web client (its test container mounts only frontend/)."""
+    lines = [
+        COLOUR_HEADER,
+        "// A copy of design/vectors/person-colour.json; `gen_tokens.py --check` keeps them equal.",
+        "",
+        "export const personColourVectors: readonly {",
+        "  id: string;",
+        "  fnv1a32: string;",
+        "  index: number | null;",
+        "  colour: string | null;",
+        "}[] = " + json.dumps(person_vectors(), indent=2, ensure_ascii=False) + ";",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+OUTPUTS[PERSON_VECTORS_OUTPUT] = render_person_vectors
+OUTPUTS[PERSON_TS_OUTPUT] = render_person_vectors_ts
 
 
 def _encoded(text: str) -> bytes:
@@ -414,13 +963,34 @@ def _encoded(text: str) -> bytes:
     return text.replace("\r\n", "\n").encode("utf-8").rstrip(b"\r\n") + b"\n"
 
 
+def _behaviour_module() -> ModuleType:
+    """The behaviour renderer, imported when `run` needs it rather than at module load."""
+    import gen_behaviour
+
+    return gen_behaviour
+
+
 def run(root: Path, check: bool) -> int:
     """Render every output below `root`; with `check`, only report drift."""
     root = Path(root)
-    tokens = load(root / SOURCE)
+    sources = {
+        "tokens": load(root / SOURCE),
+        "colour": load_colour(root / COLOUR_SOURCE),
+    }
+    # Imported after the token and colour sources: a broken one must reach `main`
+    # as one `error:` line, whatever state the icon module is in.
+    icons = _icons_module()
+    sources["icons"] = icons.load_icons(root)
+    # The behaviour patterns resolve their durations against the loaded motion
+    # tokens, and their vectors come from running `behaviour_ref` over each scenario.
+    behaviour = _behaviour_module()
+    sources["behaviour"] = behaviour.load_patterns(root, sources["tokens"])
+    outputs = dict(OUTPUTS)
+    outputs.update(icons.renderers(sources["icons"]))
+    outputs.update(behaviour.renderers(sources["behaviour"]))
     # Render everything first so a failing renderer leaves no half-written output.
     rendered = [
-        (Path(path), _encoded(render(tokens))) for path, render in sorted(OUTPUTS.items())
+        (Path(path), _encoded(render(sources))) for path, render in sorted(outputs.items())
     ]
     problems = 0
     for path, content in rendered:
@@ -438,6 +1008,17 @@ def run(root: Path, check: bool) -> int:
         if current != content:
             print(f"stale: {path.as_posix()}", file=sys.stderr)
             problems += 1
+    # One asset per icon: a file left below the asset directory that is no longer
+    # an output belongs to a removed icon, so it is stale too.
+    for target in sorted(path for path in (root / icons.ASSET_ROOT).rglob("*") if path.is_file()):
+        path = target.relative_to(root)
+        if path in outputs:
+            continue
+        if check:
+            print(f"stale: {path.as_posix()}", file=sys.stderr)
+            problems += 1
+        else:
+            target.unlink()
     return 1 if problems else 0
 
 

@@ -52,6 +52,18 @@ describe('MessageEditForm', () => {
     expect(onSave).toHaveBeenCalledOnce();
   });
 
+  it('does not save or cancel while an input method is composing', () => {
+    const onSave = vi.fn();
+    const onCancel = vi.fn();
+    renderWithProviders(<MessageEditForm {...defaultProps({ editText: 'Some text', onSave, onCancel })} />);
+    const textbox = screen.getByRole('textbox');
+    fireEvent.keyDown(textbox, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(textbox, { key: 'Enter', keyCode: 229 });
+    fireEvent.keyDown(textbox, { key: 'Escape', isComposing: true });
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   it('does not call onSave when Shift+Enter is pressed', async () => {
     const onSave = vi.fn();
     const props = defaultProps({ editText: 'Some text', onSave });

@@ -1,13 +1,28 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
 import { isUUID } from 'class-validator';
+import { RbacActions } from '@prisma/client';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
+import { RequiredActions } from '@/auth/rbac-action.decorator';
+import {
+  RbacResource,
+  RbacResourceType,
+  ResourceIdSource,
+} from '@/auth/rbac-resource.decorator';
 import { AuthenticatedRequest } from '@/types';
 import { PresenceService } from './presence.service';
 import {
   UserPresenceResponseDto,
   BulkPresenceResponseDto,
+  CommunityPresenceResponseDto,
 } from './dto/presence-response.dto';
 
 @Controller('presence')
@@ -75,5 +90,21 @@ export class PresenceController {
     const presence: Record<string, boolean> = {};
     for (const id of userIdArray) presence[id] = online[id] ?? false;
     return { presence };
+  }
+
+  // The same permission the member list needs (READ_MEMBER), so a non-member
+  // gets the guard's 403 for a community they can't list — never a count.
+  @Get('community/:communityId')
+  @ApiOkResponse({ type: CommunityPresenceResponseDto })
+  @RequiredActions(RbacActions.READ_MEMBER)
+  @RbacResource({
+    type: RbacResourceType.COMMUNITY,
+    idKey: 'communityId',
+    source: ResourceIdSource.PARAM,
+  })
+  getCommunityPresence(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+  ): Promise<CommunityPresenceResponseDto> {
+    return this.presenceService.getCommunityPresence(communityId);
   }
 }
