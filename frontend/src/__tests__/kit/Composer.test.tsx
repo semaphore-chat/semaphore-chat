@@ -72,6 +72,13 @@ describe('Composer', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('inline save hint without onCancel offers only save, never a cancel that does nothing', () => {
+    renderWithKit(<Live initial="edited" mode="save" inline />);
+    expect(screen.queryByRole('button', { name: 'Cancel editing' })).toBeNull();
+    expect(screen.queryByText('escape to')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
+  });
+
   it('hands pasted files to onPasteFiles and lets text paste as usual', () => {
     const onPasteFiles = vi.fn();
     renderWithKit(<Live onPasteFiles={onPasteFiles} />);

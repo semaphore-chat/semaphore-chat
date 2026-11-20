@@ -93,7 +93,10 @@ export interface ComposerProps {
    * enter to save" (with `submitOnEnter`; plain "Cancel • Save" without), whose words are the buttons.
    */
   mode?: ComposerMode;
-  /** Leaves the edit unchanged: the hint's "cancel" (inline save mode). Escape is the screen's (`onKeyDown`). */
+  /**
+   * Leaves the edit unchanged: the hint's "cancel" (inline save mode; without it the hint offers only "save").
+   * Escape is the screen's (`onKeyDown`).
+   */
   onCancel?: () => void;
   /**
    * Drawn inside a message row (editing in place): no outer padding, and it does not keep toasts clear of itself
@@ -462,11 +465,15 @@ export function Composer({
       )}
       {hinted && notice === undefined && (
         <Hint>
-          {submitOnEnter && <span>escape to</span>}
-          <Button variant="text" size="sm" aria-label="Cancel editing" onClick={onCancel}>
-            {submitOnEnter ? 'cancel' : 'Cancel'}
-          </Button>
-          <span aria-hidden>•</span>
+          {onCancel !== undefined && (
+            <>
+              {submitOnEnter && <span>escape to</span>}
+              <Button variant="text" size="sm" aria-label="Cancel editing" onClick={onCancel}>
+                {submitOnEnter ? 'cancel' : 'Cancel'}
+              </Button>
+              <span aria-hidden>•</span>
+            </>
+          )}
           {submitOnEnter && <span>enter to</span>}
           <Button
             variant="text"
