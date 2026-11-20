@@ -593,3 +593,111 @@ test.describe('The Lounge chat: threads and pinned messages (390 px, real route)
     }
   });
 });
+
+test.describe('The Lounge chat: composer extras (390 px, real route)', () => {
+  // A 2×1 PNG (an image the server accepts: a custom emoji, a pasted picture).
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8DwHwQZYAwAZOsJ93W0OVsAAAAASUVORK5CYII=', 'base64');
+  const GIF = Buffer.from('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64');
+  const GIF_SENT = 'https://media.tenor.com/e2e-lounge-medium.gif';
+  const GIF_PREVIEW = 'https://media.tenor.com/e2e-lounge-preview.gif';
+
+  test('emoji and custom emoji from the picker, a reaction no quick one has, a GIF and a pasted picture; the other user sees them', async ({
+    browser,
+    request,
+  }, testInfo) => {
+    const world = await loungeWorld(request);
+    const auth = { Authorization: `Bearer ${world.owner.token}` };
+    // The community's custom emoji (the owner may manage them).
+    const upload = await request.post(`${API_BASE}/file-upload`, {
+      headers: auth,
+      multipart: { file: { name: 'e2e_blob.png', mimeType: 'image/png', buffer: PNG }, resourceType: 'CUSTOM_EMOJI', resourceId: world.c1.id },
+    });
+    expect(upload.ok(), await upload.text()).toBe(true);
+    const created = await request.post(`${API_BASE}/custom-emoji/community/${world.c1.id}`, {
+      headers: auth,
+      data: { name: 'e2e_blob', fileId: ((await upload.json()) as { id: string }).id },
+    });
+    expect(created.ok(), await created.text()).toBe(true);
+    await sendTestMessage(request, world.c1.lobbyId, 'react to me', world.owner.token);
+
+    const n = await openSession(browser, world.member, PHONE);
+    const owner = await openSession(browser, TEST_USER, PHONE);
+    const page = n.page;
+    // GIF search on, against a stubbed provider (no network to Tenor or Giphy in CI).
+    await page.route('**/api/instance/settings/public', async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), gifSearchEnabled: true } });
+    });
+    await page.route('**/api/gifs/featured**', (route) =>
+      route.fulfill({
+        json: { results: [{ id: 'e2e-gif', title: 'e2e dance', url: GIF_SENT, previewUrl: GIF_PREVIEW, mediumUrl: GIF_SENT, width: 1, height: 1 }], next: '' },
+      }),
+    );
+    for (const context of [n.context, owner.context]) {
+      await context.route('https://media.tenor.com/**', (route) => route.fulfill({ status: 200, contentType: 'image/gif', body: GIF }));
+    }
+    try {
+      await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
+      await openChat(owner.page, world.c1.id, world.c1.lobbyId, '', 'real');
+      await expect(row(page, 'react to me')).toBeVisible(EVENTUAL);
+      const field = page.getByRole('textbox', { name: 'Message #lobby' });
+      const send = page.getByRole('button', { name: 'Send message' });
+
+      // An emoji and a custom emoji from the picker, inserted where the caret is.
+      await field.fill('hello there');
+      await field.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(5, 5));
+      await page.getByRole('button', { name: 'Add emoji' }).click();
+      let picker = page.getByRole('dialog', { name: 'Add emoji' });
+      await expect(picker).toBeVisible(EVENTUAL);
+      await picker.getByRole('searchbox', { name: 'Search emoji' }).fill('fire');
+      await picker.getByRole('button', { name: 'fire' }).first().click();
+      await expect(picker).toHaveCount(0, EVENTUAL);
+      await expect(field).toHaveValue('hello🔥 there');
+      await field.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(el.value.length, el.value.length));
+      await page.getByRole('button', { name: 'Add emoji' }).click();
+      picker = page.getByRole('dialog', { name: 'Add emoji' });
+      await picker.getByRole('button', { name: ':e2e_blob:' }).click();
+      await expect(field).toHaveValue('hello🔥 there:e2e_blob:');
+      await send.click();
+      await expect(row(owner.page, 'hello🔥 there')).toBeVisible(EVENTUAL);
+      await expect(row(owner.page, 'hello🔥 there').getByRole('img', { name: ':e2e_blob:' })).toBeVisible(EVENTUAL);
+
+      // A reaction no quick reaction has, through More reactions; the other user sees it.
+      await row(page, 'react to me').focus();
+      await page.keyboard.press('Enter');
+      await page.getByRole('dialog').getByRole('button', { name: 'More reactions' }).click();
+      const reactions = page.getByRole('dialog', { name: 'Add reaction' });
+      await expect(reactions).toBeVisible(EVENTUAL);
+      await reactions.getByRole('searchbox', { name: 'Search emoji' }).fill('pizza');
+      await reactions.getByRole('button', { name: 'pizza' }).first().click();
+      await expect(reactions).toHaveCount(0, EVENTUAL);
+      await expect(row(page, 'react to me').getByRole('button', { name: /reaction, 1$/ })).toBeVisible(EVENTUAL);
+      await expect(row(owner.page, 'react to me').getByRole('button', { name: /reaction, 1$/ })).toContainText('🍕', EVENTUAL);
+
+      // A GIF from the picker is sent at once.
+      await page.getByRole('button', { name: 'Send a GIF' }).click();
+      const gifs = page.getByRole('dialog', { name: 'GIFs' });
+      await gifs.getByRole('button', { name: 'e2e dance' }).click();
+      await expect(gifs).toHaveCount(0, EVENTUAL);
+      await expect(owner.page.getByRole('list', { name: 'Messages' }).locator(`img[src="${GIF_SENT}"]`)).toBeVisible(EVENTUAL);
+
+      // A picture pasted into the field goes to the tray and is sent.
+      await field.focus();
+      await field.evaluate((el, base64) => {
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        const data = new DataTransfer();
+        data.items.add(new File([bytes], 'pasted.png', { type: 'image/png' }));
+        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+      }, PNG.toString('base64'));
+      await expect(page.getByRole('group', { name: /^pasted\.png/ })).toBeVisible(EVENTUAL);
+      await field.fill('a pasted picture');
+      await send.click();
+      await expect(row(owner.page, 'a pasted picture').getByRole('button', { name: 'Open image pasted.png' })).toBeVisible(EVENTUAL);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+      await shot(page, testInfo, 'c5-composer-extras');
+    } finally {
+      await n.context.close();
+      await owner.context.close();
+    }
+  });
+});

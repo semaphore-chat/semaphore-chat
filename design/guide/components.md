@@ -15,10 +15,10 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Fifty-one components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Fifty-two components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
-Toast, ListRow, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, MediaViewer, Island,
+Toast, ListRow, PickerGrid, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, MediaViewer, Island,
 Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, and the chat pieces
 MessageRow, MessageText, ListSeparator, ReactionChip, Composer, JumpToLatest,
 ChatPane, MessageQuote, AttachmentTile, LinkCard, TypingLine and SuggestionList.
@@ -979,6 +979,42 @@ Stories: `kit-list-row--states`, `kit-list-row--channels`,
 `kit-list-row--selected-with-trailing-light`, `kit-list-row--labelled`,
 `kit-list-row--labelled-light`.
 
+## PickerGrid
+
+A grid of choices to pick one from: emoji, custom emoji, GIFs.
+
+**Use it when** the reader picks one item out of many that are recognised by
+sight (the emoji picker, the GIF picker), usually in a Sheet with a search
+field in its `top`.
+
+**Do not use it when** the items have names to read or a second line: use
+ListRow. For a few actions, use Buttons.
+
+Sections of cells in rows that fill the width (as many columns as fit, each at
+least a control wide for `glyph`, so a cell stays a touch target on a phone).
+A section's `title` shows above it and names its group. The grid is one Tab
+stop (the last cell focused, else the first); the arrow keys move between cells
+in two dimensions and across sections, keeping the column; Home and End go to
+the first and last cell; Enter or Space picks. Every cell is a button named by
+its `label`. Pictures load lazily without a referrer. Each section is drawn only
+near the view (`content-visibility: auto`). With `loadMore`, the end of the
+grid coming into view (or focus reaching the last row) asks for more; `footer`
+shows under it (a spinner).
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`label`|text|none (required)|Names the grid: "Emoji", "GIFs".|
+|`sections`|`id`, `title`, `items` (`id`, `label`, `glyph` or `src`)|none (required)|The cells, by section.|
+|`variant`|`glyph`, `media`|`glyph`|Square cells for emoji, or wide cells for GIF previews, cropped to fit.|
+|`onPick`|function|none (required)|A cell was picked (its item and section id).|
+|`loadMore`|function|none|Load more at the end.|
+|`footer`|kit pieces|none|Under the last section.|
+|`activeCellRef`|ref|none|The cell in the Tab order.|
+
+Stories: `kit-picker-grid--grids`, `kit-picker-grid--grids-light`,
+`kit-picker-grid--grids-tinted`, `kit-picker-grid--narrow320`; in the chat:
+`channel-chat--emoji-picker`, `channel-chat--gif-picker`.
+
 ## Table
 
 Records laid out in rows, with one column for each kind of fact.
@@ -1290,7 +1326,16 @@ reader cannot write. It keeps toasts clear of itself.
 `mode="save"` is for editing a message: the button is "Save changes" with a
 check. `inline` draws it inside a message row (the row's `body`): no outer
 padding, and it does not keep toasts clear of itself, so an editor mid-list or
-scrolled out of view does not move the toasts.
+scrolled out of view does not move the toasts. Inline in save mode there is no
+Save button: a small line under the field says "escape to cancel • enter to
+save" (Discord's), and its words "cancel" and "save" are text buttons
+("Cancel editing", "Save changes"); without `submitOnEnter` (touch) it reads
+"Cancel • Save". `onCancel` is its cancel.
+
+`onPasteFiles` gets the files among what was pasted into the field (a picture, a
+copied file); plain text pastes as usual. `dropTarget` draws the composer as
+where dragged files go (a dashed accent outline over it with the label); the
+drag events belong to the conversation (ChatPane's `dropZone`).
 
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
@@ -1310,7 +1355,10 @@ scrolled out of view does not move the toasts.
 |`onAttach`|function|none|Shows the attach button.|
 |`attachUnavailable`|true, false|false|The attach button is `aria-disabled` and does not call `onAttach`.|
 |`onAttachUnavailablePress`|function|none|The unavailable attach button was pressed: say why.|
-|`emoji`|an IconButton|none|The emoji button.|
+|`emoji`|IconButtons|none|The emoji (and GIF) buttons.|
+|`onCancel`|function|none|Inline save mode: the hint's "cancel".|
+|`onPasteFiles`|function|none|Files pasted into the field.|
+|`dropTarget`|`active`, `label`|none|Files are dragged over the conversation: the drop look.|
 |`banner`|`kind` (`reply`, `editing`), `title`, `detail`, `cancelLabel`, `onCancel`|none|The reply or editing strip.|
 |`notice`|`text`, `icon`|none|Replaces the field.|
 |`attachments`|kit pieces|none|The tray of queued files.|
@@ -1372,6 +1420,7 @@ for a list that is not messages.
 |`announcement`|text|none|Said politely, never shown ("2 new messages from aiko").|
 |`composer`|a Composer|none|Under the list.|
 |`cover`|a ChatPane|none|A second conversation over this one, filling the pane (a thread over its channel). This one stays mounted underneath (its scroll and draft kept) but hidden and inert, and says nothing, until the cover goes.|
+|`dropZone`|`onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop`|none|Files dropped anywhere on the conversation (the shared drop zone's handlers); not while covered.|
 
 Stories: `kit-chat-pane--conversation`, `kit-chat-pane--conversation-light`,
 `kit-chat-pane--conversation-tinted`, `kit-chat-pane--with-composer`,
