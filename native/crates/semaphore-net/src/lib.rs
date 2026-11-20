@@ -5,7 +5,7 @@ pub mod ed25519;
 pub mod realtime;
 pub mod socket;
 
-pub use backend::HttpBackend;
+pub use backend::{ClientInfo, ClientKind, HttpBackend};
 pub use realtime::SocketRealtime;
 
 use std::sync::{Arc, Once, OnceLock};
@@ -26,6 +26,21 @@ pub fn install_crypto_provider() {
         // Already installed by someone else is not an error: the point is that one exists.
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
+}
+
+/// On Android, hands rustls-platform-verifier the JVM and the application `Context` it reads the
+/// system trust store through. Call it once, before the first [`tls_client_config`] (so before any
+/// backend makes a request or opens the socket): from then on the verifier is valid for the life
+/// of the process, and calling it again does nothing.
+///
+/// `semaphore-ffi`'s `Java_app_semaphorechat_android_MainActivity_initSemaphoreNative` is the JNI
+/// entry point the app calls; a host that links this crate itself can call this directly.
+#[cfg(target_os = "android")]
+pub fn init_android(
+    env: &mut jni::Env<'_>,
+    context: jni::objects::JObject<'_>,
+) -> Result<(), jni::errors::Error> {
+    rustls_platform_verifier::android::init_with_env(env, context)
 }
 
 /// How long the network and the keyring may keep a caller waiting.

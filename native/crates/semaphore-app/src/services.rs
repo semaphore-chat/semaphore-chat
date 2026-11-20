@@ -12,7 +12,7 @@ use semaphore_core::{Core, CoreEvent, EventSink, Services as CoreServices};
 use semaphore_media_livekit::audio::AudioIo;
 use semaphore_media_livekit::{DesktopScreenCapture, EngineOptions, LiveKitEngine, VideoSources};
 use semaphore_net::socket::SocketConfig;
-use semaphore_net::{HttpBackend, SocketRealtime};
+use semaphore_net::{ClientInfo, HttpBackend, SocketRealtime};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -153,7 +153,8 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
             let runtime = net_runtime();
             let last_server = read_last_server(&data_dir);
             // Reads the device id and the last server's refresh token in one wait on the store.
-            let backend = HttpBackend::restoring(secrets, last_server.clone());
+            let backend =
+                HttpBackend::restoring(secrets, last_server.clone(), ClientInfo::desktop());
             let realtime = SocketRealtime::new(SocketConfig::new("unused"), backend.clone());
             // Its own runtime: the SDK spawns on whatever runtime it was entered from.
             let mut engine_options = EngineOptions::default();

@@ -6,8 +6,9 @@
 //!
 //! What isn't here: `Backend` and `Realtime`. Their signatures use wire types, and a mobile app has
 //! still to choose between implementing them natively and linking `semaphore-net`, which needs a C
-//! toolchain per target. So `SemaphoreCore::new` builds a core with no services: state and lifecycle
-//! work, and commands fail with `CoreError::Unavailable`.
+//! toolchain per target. (`semaphore-net` is linked on Android, but only for the TLS initialiser
+//! below.) So `SemaphoreCore::new` builds a core with no services: state and lifecycle work, and
+//! commands fail with `CoreError::Unavailable`.
 
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
@@ -28,6 +29,36 @@ use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, 
 use std::sync::Arc;
 
 uniffi::setup_scaffolding!("semaphore");
+
+/// The Android app's entry point into rustls-platform-verifier.
+///
+/// `libsemaphore_ffi.so` is the one native library the app loads, so the JNI method the app calls
+/// at startup lives here. It does nothing on other targets: a desktop build of this crate stays
+/// core-only.
+#[cfg(target_os = "android")]
+mod android {
+    use jni::EnvUnowned;
+    use jni::errors::ThrowRuntimeExAndDefault;
+    use jni::objects::JObject;
+
+    /// `MainActivity.initSemaphoreNative(applicationContext)`: gives rustls-platform-verifier the
+    /// JVM and the application `Context` it needs to read the system trust store. Call it before
+    /// anything builds a TLS client; calling it again does nothing.
+    ///
+    /// A JNI failure throws a `RuntimeException` into Kotlin rather than aborting.
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_app_semaphorechat_android_MainActivity_initSemaphoreNative<
+        'caller,
+    >(
+        mut unowned_env: EnvUnowned<'caller>,
+        _this: JObject<'caller>,
+        context: JObject<'caller>,
+    ) {
+        unowned_env
+            .with_env(|env| semaphore_net::init_android(env, context))
+            .resolve::<ThrowRuntimeExAndDefault>();
+    }
+}
 
 // W1: each part exports its commands in an `#[uniffi::export] impl SemaphoreCore` block of its own
 // file. UniFFI takes any number of such blocks for one object.

@@ -54,9 +54,9 @@ impl SessionBackend for HttpBackend {
         let device_id = self.inner.device_id;
         let response = match client
             .auth_controller_login(
-                Some(wire::AuthControllerLoginXClientType::DesktopNative),
+                self.inner.client_type(),
                 Some(&device_id),
-                super::device_name().as_ref(),
+                self.inner.device_name().as_ref(),
                 &body,
             )
             .await
@@ -75,9 +75,9 @@ impl SessionBackend for HttpBackend {
         let device_id = self.inner.device_id;
         let response = match client
             .auth_controller_redeem_desktop_login(
-                Some(wire::AuthControllerRedeemDesktopLoginXClientType::DesktopNative),
+                self.inner.client_type(),
                 Some(&device_id),
-                super::device_name().as_ref(),
+                self.inner.device_name().as_ref(),
                 &body,
             )
             .await

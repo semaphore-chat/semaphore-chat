@@ -1,4 +1,8 @@
 // Semaphore Chat's Android client (D1). SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -50,6 +54,35 @@ kotlin {
     }
 }
 
+/**
+ * The Kotlin component of rustls-platform-verifier ships as an AAR versioned by its
+ * `rustls-platform-verifier-android` crate, not by the Rust crate. Read that version from the
+ * workspace's Cargo.lock so the two can never disagree: the crate's README warns that a
+ * mismatch can crash at run time.
+ */
+abstract class RustlsAndroidVersion : ValueSource<String, RustlsAndroidVersion.Params> {
+    interface Params : ValueSourceParameters {
+        val lockFile: RegularFileProperty
+    }
+
+    override fun obtain(): String {
+        val lines = parameters.lockFile.get().asFile.readLines()
+        val name = lines.indexOfFirst { it.trim() == "name = \"rustls-platform-verifier-android\"" }
+        check(name >= 0) { "rustls-platform-verifier-android is not in Cargo.lock" }
+        return lines.drop(name + 1)
+            .firstOrNull { it.trimStart().startsWith("version = ") }
+            ?.substringAfter('"', "")
+            ?.substringBefore('"', "")
+            ?.takeIf { it.isNotEmpty() }
+            ?: error("rustls-platform-verifier-android has no version in Cargo.lock")
+    }
+}
+
+// This is the app module, so ../../ is native/.
+val rustlsAndroidVersion = providers.of(RustlsAndroidVersion::class.java) {
+    parameters.lockFile.set(layout.projectDirectory.file("../../Cargo.lock"))
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
@@ -62,4 +95,7 @@ dependencies {
     // are written against kotlinx.coroutines. Compose brings it in transitively; declared here
     // because the bindings need it.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // The JVM half of rustls-platform-verifier: MainActivity hands it to the Rust TLS verifier
+    // through libsemaphore_ffi.so's initSemaphoreNative. Version from Cargo.lock, as above.
+    implementation("org.rustls:rustls-platform-verifier:${rustlsAndroidVersion.get()}")
 }

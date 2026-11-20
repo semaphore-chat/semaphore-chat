@@ -18,7 +18,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use semaphore_core::backend::SessionBackend;
 use semaphore_fake_server::{FakeServer, ScenarioSource};
 use semaphore_net::socket::{Refresh, SocketClient, SocketConfig, SocketEvent, TokenSource};
-use semaphore_net::{HttpBackend, open_websocket};
+use semaphore_net::{ClientInfo, HttpBackend, open_websocket};
 use semaphore_wire::types as wire;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
@@ -113,7 +113,7 @@ impl semaphore_core::platform::SecretStore for NoSecrets {
 }
 
 async fn login(base: &str) -> Result<wire::LoginResponseDto, String> {
-    let backend = HttpBackend::new(Arc::new(NoSecrets));
+    let backend = HttpBackend::new(Arc::new(NoSecrets), ClientInfo::desktop());
     backend.set_server_url(base.to_owned());
     backend
         .auth_controller_login(wire::LoginRequestDto {

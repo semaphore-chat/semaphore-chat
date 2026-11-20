@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use semaphore_core::backend::{CommunitiesBackend, FilesBackend, SessionBackend};
-use semaphore_net::{HttpBackend, Timeouts};
+use semaphore_net::{ClientInfo, HttpBackend, Timeouts};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
@@ -26,7 +26,7 @@ fn limits(read: Duration, refresh_total: Duration) -> Timeouts {
 fn backend(timeouts: Timeouts) -> (HttpBackend, Arc<Secrets>) {
     let secrets = Arc::new(Secrets::default());
     (
-        HttpBackend::with_timeouts(secrets.clone(), timeouts),
+        HttpBackend::with_timeouts(secrets.clone(), timeouts, ClientInfo::desktop()),
         secrets,
     )
 }
@@ -163,6 +163,7 @@ async fn a_stuck_store_delays_callers_only_up_to_a_limit() {
             store_wait: Duration::from_millis(100),
             ..limits(Duration::from_secs(5), Duration::from_secs(5))
         },
+        ClientInfo::desktop(),
     );
     let _unblock = Unblock(secrets.clone());
     backend.set_server_url(stub.url.clone());

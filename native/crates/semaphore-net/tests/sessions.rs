@@ -10,11 +10,14 @@ use std::time::Duration;
 
 use common::*;
 use semaphore_core::backend::{CommunitiesBackend, SessionBackend};
-use semaphore_net::HttpBackend;
+use semaphore_net::{ClientInfo, HttpBackend};
 
 fn backend() -> (HttpBackend, Arc<Secrets>) {
     let secrets = Arc::new(Secrets::default());
-    (HttpBackend::new(secrets.clone()), secrets)
+    (
+        HttpBackend::new(secrets.clone(), ClientInfo::desktop()),
+        secrets,
+    )
 }
 
 /// Finding 1. The rotated token is the one the server must revoke, so sign-out waits for it, then
@@ -517,7 +520,7 @@ async fn a_stored_session_resumes_at_the_next_start() {
     let store = secrets.clone();
     let url = stub.url.clone();
     let next = within("constructing", move || {
-        HttpBackend::restoring(store, Some(format!("{url}/")))
+        HttpBackend::restoring(store, Some(format!("{url}/")), ClientInfo::desktop())
     });
     assert!(
         !next.has_stored_session(),
@@ -549,7 +552,7 @@ async fn a_stored_session_is_only_for_its_own_server() {
     let store = secrets.clone();
     let url = stub.url.clone();
     let next = within("constructing", move || {
-        HttpBackend::restoring(store, Some(url))
+        HttpBackend::restoring(store, Some(url), ClientInfo::desktop())
     });
     next.set_server_url(other.url.clone());
     assert!(!next.has_stored_session());

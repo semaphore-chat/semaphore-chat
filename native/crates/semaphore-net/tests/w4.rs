@@ -23,7 +23,7 @@ use semaphore_core::platform::{
 use semaphore_core::{Core, Services};
 use semaphore_fake_server::{FakeServer, Record, ScenarioSource, entity_uuid};
 use semaphore_net::socket::SocketConfig;
-use semaphore_net::{HttpBackend, SocketRealtime};
+use semaphore_net::{ClientInfo, HttpBackend, SocketRealtime};
 
 fn id(readable: &str) -> String {
     entity_uuid(readable)
@@ -145,7 +145,7 @@ async fn signed_in(server: &FakeServer) -> Client {
 
 /// Signed in as `username`, which `FakeServer::sign_in_as` maps to a scenario user.
 async fn signed_in_as(server: &FakeServer, username: &str) -> Client {
-    let backend = HttpBackend::new(Arc::new(MemSecrets::default()));
+    let backend = HttpBackend::new(Arc::new(MemSecrets::default()), ClientInfo::desktop());
     let mut config = SocketConfig::new("unused");
     config.reconnect_delay = Duration::from_millis(50);
     let realtime = SocketRealtime::new(config, backend.clone());

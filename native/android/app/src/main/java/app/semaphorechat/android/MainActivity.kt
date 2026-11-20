@@ -7,6 +7,7 @@
 
 package app.semaphorechat.android
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,8 +36,22 @@ import uniffi.semaphore.WallClock
  * what `SemaphoreCore::new` gives: state and lifecycle work, commands report Unavailable.
  */
 class MainActivity : ComponentActivity() {
+    companion object {
+        init {
+            // The app's one native library: UniFFI's exports, and the TLS initialiser below.
+            // UniFFI's bindings load it through JNA on first use; loading it here means the
+            // native method is there when onCreate calls it.
+            System.loadLibrary("semaphore_ffi")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // rustls-platform-verifier reads Android's trust store through the JVM, and needs an
+        // application Context to do it. It has to be initialised before anything builds a TLS
+        // client (the verifier panics otherwise); a JNI failure throws here, which is better
+        // than every connection failing later with no explanation.
+        initSemaphoreNative(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(
@@ -48,6 +63,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /**
+     * `semaphore_net::init_android` in libsemaphore_ffi.so (semaphore-ffi's
+     * `Java_app_semaphorechat_android_MainActivity_initSemaphoreNative`): hands
+     * rustls-platform-verifier this process's JVM and application Context. Idempotent.
+     */
+    private external fun initSemaphoreNative(context: Context)
 }
 
 @Composable

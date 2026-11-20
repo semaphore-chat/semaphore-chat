@@ -9,7 +9,7 @@ use semaphore_core::player::{
 };
 use semaphore_fake_server::{FakeServer, Record, ScenarioSource};
 use semaphore_media_livekit::audio::virtual_io::VirtualIo;
-use semaphore_net::HttpBackend;
+use semaphore_net::{ClientInfo, HttpBackend};
 use semaphore_player::range::{
     BLOCK, BlockCache, FetchError, FetchFuture, Fetched, HttpFile, RangeFetch, RangeSource,
     http_opener,
@@ -330,7 +330,7 @@ async fn served(file: &str) -> (FakeServer, HttpBackend, String, u64) {
     let server = FakeServer::start(ScenarioSource::Named("big-community"))
         .await
         .expect("the scenario loads");
-    let backend = HttpBackend::new(Arc::new(MemSecrets::default()));
+    let backend = HttpBackend::new(Arc::new(MemSecrets::default()), ClientInfo::desktop());
     backend.set_server_url(server.base_url());
     backend
         .auth_controller_login(semaphore_wire::types::LoginRequestDto {

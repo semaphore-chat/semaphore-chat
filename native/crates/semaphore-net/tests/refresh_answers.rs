@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use common::*;
 use semaphore_core::backend::{CommunitiesBackend, SessionBackend};
-use semaphore_net::HttpBackend;
+use semaphore_net::{ClientInfo, HttpBackend};
 
 /// A server that logs in as `auth_responder("a")` does and answers every refresh with `refresh`.
 async fn stub_answering_refresh(refresh: (u16, &'static str)) -> Stub {
@@ -25,7 +25,7 @@ async fn stub_answering_refresh(refresh: (u16, &'static str)) -> Stub {
 
 async fn signed_in_against(stub: &Stub) -> (HttpBackend, Arc<Secrets>) {
     let secrets = Arc::new(Secrets::default());
-    let backend = HttpBackend::new(secrets.clone());
+    let backend = HttpBackend::new(secrets.clone(), ClientInfo::desktop());
     signed_in(&backend, stub).await;
     assert_eq!(backend.access_token().as_deref(), Some("a-access-l1"));
     (backend, secrets)

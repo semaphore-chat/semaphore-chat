@@ -16,7 +16,7 @@ use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, SecretSto
 use semaphore_core::{Core, Services};
 use semaphore_fake_server::{FakeServer, Record, ScenarioSource};
 use semaphore_net::socket::SocketConfig;
-use semaphore_net::{HttpBackend, SocketRealtime};
+use semaphore_net::{ClientInfo, HttpBackend, SocketRealtime};
 
 const CHANNEL: &str = "channel-13";
 const MINE: &str = "00000000-0000-4000-8000-000000000202";
@@ -131,7 +131,7 @@ async fn edit_react_pin_remove_and_delete_over_the_wire() {
     // Reactions type the message id as a UUID.
     assert!(server.rename_message("msg-202", MINE));
     assert!(server.rename_message("msg-53", THEIRS));
-    let backend = HttpBackend::new(Arc::new(MemSecrets::default()));
+    let backend = HttpBackend::new(Arc::new(MemSecrets::default()), ClientInfo::desktop());
     let mut config = SocketConfig::new("unused");
     config.reconnect_delay = Duration::from_millis(50);
     let realtime = SocketRealtime::new(config, backend.clone());
