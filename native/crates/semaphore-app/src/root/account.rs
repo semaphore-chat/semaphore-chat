@@ -826,7 +826,7 @@ impl AppRoot {
 
     /// The appearance tab, and the whole app drawn in it: as soon as core has it, and on every
     /// change (core shows a change at once).
-    fn refresh_appearance(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn refresh_appearance(&mut self, cx: &mut Context<Self>) {
         let Some(core) = self.core() else {
             return;
         };
@@ -841,10 +841,11 @@ impl AppRoot {
         if view.state != LoadState::Ready {
             return;
         }
-        let choice = semaphore_ui::settings::theme_choice(view.appearance);
+        let system = semaphore_ui::theme::system_mode(cx);
+        let choice = semaphore_ui::settings::theme_input(view.appearance, system);
         let current = cx
             .try_global::<semaphore_ui::theme::Sem>()
-            .map(|sem| sem.choice);
+            .map(|sem| sem.input);
         if current != Some(choice) {
             semaphore_ui::theme::apply(choice, cx);
         }

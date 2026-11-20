@@ -522,11 +522,51 @@ impl Render for Cjk {
     }
 }
 
+/// Every icon of the design system's set, named, at the four icon sizes: each must draw, in the
+/// text colour.
+struct LoungeIcons;
+
+impl Render for LoungeIcons {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use semaphore_design::LoungeIcon;
+        use semaphore_design::lounge::{ICON_LG, ICON_MD, ICON_SM, ICON_XS};
+        let sem = cx.sem().clone();
+        div()
+            .id("kit-lounge-icons")
+            .size_full()
+            .overflow_y_scroll()
+            .bg(sem.role.surface)
+            .text_color(sem.role.text)
+            .font_family(FONT_FAMILY)
+            .p(px(16.))
+            .flex()
+            .flex_wrap()
+            .gap(px(8.))
+            .children(LoungeIcon::ALL.into_iter().map(|icon| {
+                div()
+                    .w(px(112.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(
+                        div().flex().items_end().gap(px(6.)).children(
+                            [ICON_XS, ICON_SM, ICON_MD, ICON_LG]
+                                .map(|size| Icon::lounge(icon).size(size)),
+                        ),
+                    )
+                    .child(text(Variant::Xs, icon.name()).text_color(sem.role.text_secondary))
+            }))
+    }
+}
+
 pub fn stories() -> Vec<Story> {
     vec![
         Story::new("kit-gallery", |_, window, cx| {
             cx.new(|cx| Gallery::new(window, cx)).into()
         }),
         Story::new("kit-cjk", |_, _, cx| cx.new(|_| Cjk).into()),
+        Story::new("kit-lounge-icons", |_, _, cx| {
+            cx.new(|_| LoungeIcons).into()
+        }),
     ]
 }

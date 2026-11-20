@@ -469,6 +469,30 @@ pub fn stories() -> Vec<Story> {
                 cx,
             )
         }),
+        // A new account: the design default, #8e75ff.
+        Story::new("settings-appearance-default", |_, _, cx| {
+            appearance_story(
+                AppearanceView {
+                    state: LoadState::Ready,
+                    appearance: Appearance::default(),
+                },
+                cx,
+            )
+        }),
+        // Following the system's mode: the third mode button is picked.
+        Story::new("settings-appearance-match-system", |_, _, cx| {
+            let mut view =
+                appearance_view(ThemeMode::Dark, AccentColor::Cyan, ThemeIntensity::Balanced);
+            view.appearance.match_system = true;
+            appearance_story(view, cx)
+        }),
+        // A base no preset has (set on another client): no swatch is picked, the caption has the hex.
+        Story::new("settings-appearance-custom-base", |_, _, cx| {
+            let mut view =
+                appearance_view(ThemeMode::Dark, AccentColor::Rose, ThemeIntensity::Vibrant);
+            view.appearance.base = semaphore_core::model::Rgb::parse("#e0457b").expect("a colour");
+            appearance_story(view, cx)
+        }),
         Story::new("settings-appearance-loading", |_, _, cx| {
             appearance_story(AppearanceView::default(), cx)
         }),

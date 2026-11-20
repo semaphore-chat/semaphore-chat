@@ -1,8 +1,5 @@
-//! The colours and fonts the list draws with: the web client's dark theme, default accent, as
-//! `generateTheme('dark', 'teal', 'minimal')`, the web's defaults, and MUI's dark palette resolve them.
-//!
-//! Local to this module until U2's generated tokens and U8's theme land. Replacing `Palette::dark`
-//! with a read from the theme is the only change the list needs.
+//! The colours and fonts the list draws with: the theme's ([`crate::theme::Sem`]), under the names
+//! the list was written against.
 
 use gpui_kit::*;
 
@@ -81,65 +78,35 @@ pub struct Palette {
     pub selection: Hsla,
 }
 
-fn alpha(color: u32, a: f32) -> Hsla {
-    let mut color: Hsla = rgb(color).into();
-    color.a = a;
-    color
-}
-
 impl Palette {
+    /// The default theme's colours, for a list drawn before it reads the theme.
     pub fn dark() -> Self {
-        let white = |a| alpha(0xffffff, a);
-        let primary = 0x0d9488;
-        Self {
-            background: rgb(0x111318).into(),
-            paper: rgb(0x1a1d24).into(),
-            text: rgb(0xffffff).into(),
-            text_secondary: white(0.7),
-            text_disabled: white(0.5),
-            divider: white(0.12),
-            hover: white(0.08),
-            overlay_medium: white(0.08),
-            overlay_heavy: white(0.12),
-            primary: rgb(primary).into(),
-            primary_light: rgb(0x14b8a6).into(),
-            positive: rgb(0x22c55e).into(),
-            warning: rgb(0xffa726).into(),
-            error: rgb(0xf44336).into(),
-            avatar_bg: rgb(0x757575).into(),
-            skeleton: white(0.11),
-            selection: alpha(primary, 0.35),
-        }
+        Self::from_sem(&crate::theme::Sem::default())
     }
 
-    /// The palette for a theme: `dark()` exactly for the web's default, the theme's tokens for
-    /// any other.
-    pub fn for_theme(choice: crate::theme::ThemeChoice) -> Self {
-        if choice == crate::theme::ThemeChoice::default() {
-            return Self::dark();
-        }
-        let t = semaphore_design::tokens(choice.mode, choice.accent, choice.intensity);
-        let color = |token: semaphore_design::Rgba| -> Hsla { rgba(token.0).into() };
-        let primary = color(t.primary_main);
-        let text = color(t.text_primary);
+    /// The theme's colours, under the names the list was written against.
+    pub fn from_sem(sem: &crate::theme::Sem) -> Self {
         Self {
-            background: color(t.background_default),
-            paper: color(t.background_paper),
-            text,
-            text_secondary: color(t.text_secondary),
-            text_disabled: color(t.text_disabled),
-            divider: color(t.divider),
-            hover: color(t.action_hover),
-            overlay_medium: color(t.semantic_overlay_medium),
-            overlay_heavy: color(t.semantic_overlay_heavy),
-            primary,
-            primary_light: color(t.primary_light),
-            positive: color(t.semantic_status_positive),
-            warning: color(t.warning_main),
-            error: color(t.error_main),
-            avatar_bg: color(t.grey_600),
-            skeleton: Hsla { a: 0.11, ..text },
-            selection: Hsla { a: 0.35, ..primary },
+            background: sem.background_default,
+            paper: sem.paper,
+            text: sem.text_primary,
+            text_secondary: sem.text_secondary,
+            text_disabled: sem.text_disabled,
+            divider: sem.divider,
+            hover: sem.action_hover,
+            overlay_medium: sem.overlay_medium,
+            overlay_heavy: sem.overlay_heavy,
+            primary: sem.primary,
+            primary_light: sem.link,
+            positive: sem.positive,
+            warning: sem.warning,
+            error: sem.error,
+            avatar_bg: crate::theme::color::hsla_of(sem.palette.grey_600),
+            skeleton: sem.overlay_heavy,
+            selection: Hsla {
+                a: 0.35,
+                ..sem.primary
+            },
         }
     }
 
@@ -147,7 +114,8 @@ impl Palette {
         Hsla { a, ..color }
     }
 
-    /// MUI's tooltip: grey 700 at 92%, in both modes.
+    /// MUI's tooltip: grey 700 at 92%, in both modes. White text sits on it in every theme, so it
+    /// stays fixed until the list's tooltips move to the kit's (epic #848, B4).
     pub fn tooltip_bg(&self) -> Hsla {
         let mut color: Hsla = rgb(0x616161).into();
         color.a = 0.92;

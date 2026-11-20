@@ -211,6 +211,10 @@ impl AppRoot {
                 this.ptt_release(cx);
             }
         });
+        // "Match system": the OS switching light and dark redraws the app in the other mode.
+        let appearance = cx.observe_window_appearance(window, |this, _, cx| {
+            this.refresh_appearance(cx);
+        });
         let settings = config.settings.clone();
         cx.set_global(crate::Seams {
             pick_files: config
@@ -242,7 +246,7 @@ impl AppRoot {
             .get()
             .theme
             .as_deref()
-            .and_then(semaphore_ui::theme::ThemeChoice::parse)
+            .and_then(semaphore_ui::theme::ThemeInput::parse)
         {
             semaphore_ui::theme::apply(choice, cx);
         }
@@ -312,7 +316,7 @@ impl AppRoot {
             root_focus,
             server_info: None,
             window: window.window_handle(),
-            _subscriptions: vec![activation, keys, focus_out],
+            _subscriptions: vec![activation, appearance, keys, focus_out],
         }
     }
 

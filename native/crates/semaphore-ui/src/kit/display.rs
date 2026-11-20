@@ -1,7 +1,7 @@
 //! What only shows something: Icon, Avatar, Badge, Chip, Progress, Skeleton, Alert, Snackbar.
 
 use super::live::LiveElement;
-use super::{Variant, icon_path, text};
+use super::{Variant, icon_path, lounge_icon_path, text};
 use crate::theme::SemTheme;
 use crate::theme::color::{darken, hsla_of, lighten};
 use gpui_kit::accesskit::Live;
@@ -9,7 +9,7 @@ use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::progress::{Progress as KitProgress, ProgressCircle};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_design::{Icon as IconName, Rgba as Token};
+use semaphore_design::{Icon as IconName, LoungeIcon, Rgba as Token};
 use std::time::Duration;
 
 /// Whether anything may animate. `rig-shot` turns motion off so a screenshot can't catch a frame
@@ -30,10 +30,11 @@ pub fn reduced_motion(cx: &App) -> bool {
         .is_some_and(|motion| motion.reduced)
 }
 
-/// A web icon, tinted. It inherits the text colour unless given one.
+/// An icon, tinted: one of the design system's ([`Icon::lounge`]), or one of the old screens' MUI
+/// set ([`Icon::new`]). It inherits the text colour unless given one.
 #[derive(IntoElement)]
 pub struct Icon {
-    icon: IconName,
+    path: SharedString,
     size: f32,
     color: Option<Hsla>,
 }
@@ -41,8 +42,17 @@ pub struct Icon {
 impl Icon {
     pub fn new(icon: IconName) -> Self {
         Self {
-            icon,
+            path: icon_path(icon),
             size: 24.,
+            color: None,
+        }
+    }
+
+    /// One of the design system's icons, at the medium icon size (`icon.md`).
+    pub fn lounge(icon: LoungeIcon) -> Self {
+        Self {
+            path: lounge_icon_path(icon),
+            size: semaphore_design::lounge::ICON_MD,
             color: None,
         }
     }
@@ -62,7 +72,7 @@ impl RenderOnce for Icon {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
         let color = self.color.unwrap_or_else(|| window.text_style().color);
         svg()
-            .path(icon_path(self.icon))
+            .path(self.path)
             .size(px(self.size))
             .flex_shrink_0()
             .text_color(color)

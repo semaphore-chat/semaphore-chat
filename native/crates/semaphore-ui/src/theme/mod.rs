@@ -1,21 +1,28 @@
-//! The web client's theme on GPUI.
+//! The design system's theme on GPUI.
 //!
-//! `semaphore-design` holds the 72 resolved MUI palettes. They don't hold what `generateTheme` puts
-//! in its `components` overrides (`frontend/src/theme/themeConfig.ts`), so [`Sem`] computes those
-//! here from the same formulas: every value keeps its web name and intensity rule. [`apply`] installs
-//! a theme at runtime, onto gpui-kit's `Theme` for the kit's own components, and as the [`Sem`] global
-//! for ours.
+//! A theme is a base colour, a mode and an intensity ([`ThemeInput`]). `semaphore_design::derive`
+//! turns them into the 16 colour roles (`design/guide/tokens-and-colour.md`), and [`Sem`] holds
+//! them, as [`Sem::roles`] and [`Sem::role`]. [`apply`] installs a theme at runtime, onto
+//! gpui-kit's `Theme` for the kit's own components, and as the [`Sem`] global for ours, so a
+//! switch shows at once.
 //!
-//! gpui gradients have two stops, so the vibrant button's three-stop gradient keeps its outer two.
-//! Box shadows and glows are approximated where a surface has them, and left out on text-only parts.
+//! The screens not yet converted to the design system still read the MUI-shaped names they were
+//! written against (`text_primary`, `paper`, `list_selected`, ...). Those are kept, flat, and each
+//! is now one of the roles or a state tint over one, as the web's `createLoungeTheme` maps MUI's
+//! palette onto the roles. The table is in `native/docs/theme.md`. They go when their last screen
+//! is converted (epic #848, B19).
 
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
-use semaphore_design::{Accent, Intensity, Mode, Rgba as Token, Tokens, tokens};
+use semaphore_core::model::AccentColor;
+use semaphore_design::lounge::{
+    STATE_HOVER, STATE_HOVER_ON_FILL, STATE_PRESSED, STATE_PRESSED_ON_FILL,
+};
+use semaphore_design::{Intensity, Mode, Palette, Rgba as Token, derive_palette, parse_base};
 use std::borrow::Cow;
 
 pub mod color;
-use color::{alpha, blend, contrast_ratio, hsla_of, parse_hex, readable_text_color};
+use color::{alpha, blend, hsla_of};
 
 /// The one font the web client ships, so widths and metrics match it.
 pub const FONT_FAMILY: &str = "Roboto";
@@ -27,214 +34,260 @@ const ROBOTO: [&[u8]; 4] = [
     include_bytes!("../../assets/fonts/Roboto-700.ttf"),
 ];
 
-/// One of the 72 themes.
+/// The design system's default base colour, `#8e75ff` (the server's default `baseColor`).
+pub const DEFAULT_BASE: Token = Token(0x8e75ffff);
+
+/// What a theme is derived from: a base colour, a mode and an intensity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ThemeChoice {
+pub struct ThemeInput {
+    /// Opaque `0xRRGGBBff`.
+    pub base: Token,
     pub mode: Mode,
-    pub accent: Accent,
     pub intensity: Intensity,
 }
 
-impl Default for ThemeChoice {
-    /// `defaultSettings` in `frontend/src/theme/constants.ts`.
+impl Default for ThemeInput {
+    /// The design default: `#8e75ff`, dark, minimal.
     fn default() -> Self {
-        Self::new(Mode::Dark, Accent::Teal, Intensity::Minimal)
+        Self::new(DEFAULT_BASE, Mode::Dark, Intensity::Minimal)
     }
 }
 
-pub const ALL_MODES: [Mode; 2] = [Mode::Light, Mode::Dark];
-pub const ALL_ACCENTS: [Accent; 12] = [
-    Accent::Teal,
-    Accent::Blue,
-    Accent::Indigo,
-    Accent::Purple,
-    Accent::Rose,
-    Accent::Red,
-    Accent::Orange,
-    Accent::Amber,
-    Accent::Lime,
-    Accent::Emerald,
-    Accent::Cyan,
-    Accent::Slate,
-];
-pub const ALL_INTENSITIES: [Intensity; 3] =
-    [Intensity::Minimal, Intensity::Balanced, Intensity::Vibrant];
-
-fn accent_name(accent: Accent) -> &'static str {
-    match accent {
-        Accent::Teal => "teal",
-        Accent::Blue => "blue",
-        Accent::Indigo => "indigo",
-        Accent::Purple => "purple",
-        Accent::Rose => "rose",
-        Accent::Red => "red",
-        Accent::Orange => "orange",
-        Accent::Amber => "amber",
-        Accent::Lime => "lime",
-        Accent::Emerald => "emerald",
-        Accent::Cyan => "cyan",
-        Accent::Slate => "slate",
+fn mode_name(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Light => "light",
+        Mode::Dark => "dark",
     }
 }
 
-impl ThemeChoice {
-    pub const fn new(mode: Mode, accent: Accent, intensity: Intensity) -> Self {
+fn intensity_name(intensity: Intensity) -> &'static str {
+    match intensity {
+        Intensity::Minimal => "minimal",
+        Intensity::Balanced => "balanced",
+        Intensity::Vibrant => "vibrant",
+    }
+}
+
+impl ThemeInput {
+    /// `base`'s alpha byte is ignored: a base is always opaque.
+    pub const fn new(base: Token, mode: Mode, intensity: Intensity) -> Self {
         Self {
+            base: Token(base.0 | 0xff),
             mode,
-            accent,
             intensity,
         }
     }
 
-    /// Every theme, in the web's own order.
-    pub fn all() -> Vec<Self> {
-        let mut themes = Vec::with_capacity(72);
-        for mode in ALL_MODES {
-            for accent in ALL_ACCENTS {
-                for intensity in ALL_INTENSITIES {
-                    themes.push(Self::new(mode, accent, intensity));
-                }
-            }
-        }
-        themes
-    }
-
-    /// `<mode>-<accent>-<intensity>`, the key `data/tokens.json` uses.
+    /// `<mode>-<intensity>-<rrggbb>`, e.g. `dark-minimal-8e75ff`: how the app remembers the last
+    /// theme it showed, and how the screenshot rig names one.
     pub fn name(self) -> String {
-        let mode = match self.mode {
-            Mode::Light => "light",
-            Mode::Dark => "dark",
-        };
-        let intensity = match self.intensity {
-            Intensity::Minimal => "minimal",
-            Intensity::Balanced => "balanced",
-            Intensity::Vibrant => "vibrant",
-        };
-        format!("{mode}-{}-{intensity}", accent_name(self.accent))
+        format!(
+            "{}-{}-{:06x}",
+            mode_name(self.mode),
+            intensity_name(self.intensity),
+            self.base.0 >> 8
+        )
     }
 
+    /// [`ThemeInput::name`]'s form, or the old `<mode>-<accent>-<intensity>` one (`dark-teal-minimal`),
+    /// read as that accent's primary as the base, as the server migrated accents to base colours.
     pub fn parse(name: &str) -> Option<Self> {
-        Self::all().into_iter().find(|theme| theme.name() == name)
+        let parts: Vec<&str> = name.split('-').collect();
+        let [mode, second, third] = parts[..] else {
+            return None;
+        };
+        let mode = Mode::ALL.into_iter().find(|m| mode_name(*m) == mode)?;
+        let intensity_of = |text: &str| {
+            Intensity::ALL
+                .into_iter()
+                .find(|i| intensity_name(*i) == text)
+        };
+        if let Some(intensity) = intensity_of(second) {
+            if third.len() != 6 || third.bytes().any(|b| b.is_ascii_uppercase()) {
+                return None;
+            }
+            let base = parse_base(&format!("#{third}"))?;
+            return Some(Self::new(base, mode, intensity));
+        }
+        let accent = AccentColor::parse(second)?;
+        let intensity = intensity_of(third)?;
+        let base = parse_base(&accent.primary().to_hex())?;
+        Some(Self::new(base, mode, intensity))
     }
 }
 
-/// A CSS `background`: a colour, or a two-stop gradient.
+/// A CSS `background`. The design system is flat, so only a colour.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Paint {
     Solid(Hsla),
-    /// CSS angle, in degrees.
-    Linear(f32, Hsla, Hsla),
 }
 
 impl Paint {
     pub fn background(self) -> Background {
         match self {
             Paint::Solid(color) => color.into(),
-            Paint::Linear(angle, from, to) => linear_gradient(
-                angle,
-                linear_color_stop(from, 0.),
-                linear_color_stop(to, 1.),
-            ),
+        }
+    }
+
+    pub fn color(self) -> Hsla {
+        match self {
+            Paint::Solid(color) => color,
         }
     }
 }
 
-/// `accentPalettes` in `themeConfig.ts`. `lighter` and `subtle` never reach `theme.palette`, so
-/// they aren't in `semaphore-design`.
-#[derive(Debug, Clone, Copy)]
-pub struct AccentColors {
-    pub primary: Token,
-    pub light: Token,
-    pub dark: Token,
-    pub lighter: Token,
-    pub subtle: Token,
+/// The 16 roles as GPUI colours, named as `design/guide/tokens-and-colour.md` names them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Roles {
+    pub ground: Hsla,
+    pub surface: Hsla,
+    pub fill: Hsla,
+    pub hairline: Hsla,
+    pub text: Hsla,
+    pub text_secondary: Hsla,
+    pub text_dim: Hsla,
+    pub accent: Hsla,
+    pub on_accent: Hsla,
+    pub accent_text: Hsla,
+    pub focus: Hsla,
+    pub positive: Hsla,
+    pub warning: Hsla,
+    pub danger: Hsla,
+    pub on_danger: Hsla,
+    pub scrim: Hsla,
 }
 
-fn accent_colors(accent: Accent) -> AccentColors {
-    let (primary, light, dark, lighter, subtle) = match accent {
-        Accent::Teal => ("#0d9488", "#14b8a6", "#0f766e", "#5eead4", "#2dd4bf"),
-        Accent::Blue => ("#3b82f6", "#60a5fa", "#2563eb", "#93c5fd", "#60a5fa"),
-        Accent::Indigo => ("#6366f1", "#818cf8", "#4f46e5", "#a5b4fc", "#818cf8"),
-        Accent::Purple => ("#8b5cf6", "#a78bfa", "#7c3aed", "#c4b5fd", "#a78bfa"),
-        Accent::Rose => ("#f43f5e", "#fb7185", "#e11d48", "#fda4af", "#fb7185"),
-        Accent::Red => ("#ef4444", "#f87171", "#dc2626", "#fca5a5", "#f87171"),
-        Accent::Orange => ("#f97316", "#fb923c", "#ea580c", "#fdba74", "#fb923c"),
-        Accent::Amber => ("#f59e0b", "#fbbf24", "#d97706", "#fcd34d", "#fbbf24"),
-        Accent::Lime => ("#84cc16", "#a3e635", "#65a30d", "#bef264", "#a3e635"),
-        Accent::Emerald => ("#10b981", "#34d399", "#059669", "#6ee7b7", "#34d399"),
-        Accent::Cyan => ("#06b6d4", "#22d3ee", "#0891b2", "#67e8f9", "#22d3ee"),
-        Accent::Slate => ("#64748b", "#94a3b8", "#475569", "#cbd5e1", "#94a3b8"),
-    };
-    AccentColors {
-        primary: parse_hex(primary),
-        light: parse_hex(light),
-        dark: parse_hex(dark),
-        lighter: parse_hex(lighter),
-        subtle: parse_hex(subtle),
+impl Roles {
+    fn of(palette: &Palette) -> Self {
+        Self {
+            ground: hsla_of(palette.ground),
+            surface: hsla_of(palette.surface),
+            fill: hsla_of(palette.fill),
+            hairline: hsla_of(palette.hairline),
+            text: hsla_of(palette.text),
+            text_secondary: hsla_of(palette.text_secondary),
+            text_dim: hsla_of(palette.text_dim),
+            accent: hsla_of(palette.accent),
+            on_accent: hsla_of(palette.on_accent),
+            accent_text: hsla_of(palette.accent_text),
+            focus: hsla_of(palette.focus),
+            positive: hsla_of(palette.positive),
+            warning: hsla_of(palette.warning),
+            danger: hsla_of(palette.danger),
+            on_danger: hsla_of(palette.on_danger),
+            scrim: hsla_of(palette.scrim),
+        }
     }
 }
 
-/// A resolved theme: the palette plus what the 21 `components` overrides compute from it. (The web's
-/// `components` object has 21 entries; the brief's "22" counts one more than `themeConfig.ts` has.)
+/// The few MUI palette entries the old screens read directly, each now a role (see the module
+/// docs). Packed colours, as `semaphore-design` has them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyPalette {
+    pub background_paper: Token,
+    pub common_white: Token,
+    pub primary_light: Token,
+    pub secondary_main: Token,
+    pub secondary_contrast_text: Token,
+    pub error_main: Token,
+    pub error_light: Token,
+    pub error_contrast_text: Token,
+    pub warning_main: Token,
+    pub warning_light: Token,
+    pub warning_contrast_text: Token,
+    pub success_main: Token,
+    pub success_light: Token,
+    pub success_contrast_text: Token,
+    pub info_main: Token,
+    pub info_light: Token,
+    pub info_contrast_text: Token,
+    pub grey_400: Token,
+    pub grey_500: Token,
+    pub grey_600: Token,
+}
+
+impl LegacyPalette {
+    fn of(p: &Palette, mode: Mode) -> Self {
+        // `createLoungeTheme`: positive and warning have no on-colour among the roles, so they
+        // take the page colour opposite the mode.
+        let on_status = if mode == Mode::Dark {
+            p.ground
+        } else {
+            p.surface
+        };
+        Self {
+            background_paper: p.surface,
+            common_white: Token(0xffffffff),
+            primary_light: p.accent_text,
+            secondary_main: p.accent,
+            secondary_contrast_text: p.on_accent,
+            error_main: p.danger,
+            error_light: p.danger,
+            error_contrast_text: p.on_danger,
+            warning_main: p.warning,
+            warning_light: p.warning,
+            warning_contrast_text: on_status,
+            success_main: p.positive,
+            success_light: p.positive,
+            success_contrast_text: on_status,
+            info_main: p.accent,
+            info_light: p.accent,
+            info_contrast_text: p.on_accent,
+            grey_400: p.text_dim,
+            grey_500: p.text_dim,
+            grey_600: p.text_dim,
+        }
+    }
+}
+
+/// The theme in use: its input, the derived roles, and the old screens' names for them.
 #[derive(Debug, Clone)]
 pub struct Sem {
-    pub choice: ThemeChoice,
+    pub input: ThemeInput,
     pub is_dark: bool,
-    pub palette: &'static Tokens,
-    pub accent: AccentColors,
+    /// The derived palette, packed.
+    pub roles: Palette,
+    /// The same roles as GPUI colours.
+    pub role: Roles,
+    pub palette: LegacyPalette,
 
-    // MuiPaper and MuiCard
+    // The old screens' names, each a role or a state tint over one.
     pub paper: Hsla,
     pub paper_border: Hsla,
     pub card_border: Hsla,
-    // MuiButton
     pub contained: Paint,
     pub contained_hover: Paint,
     pub outlined_border: Hsla,
     pub outlined_text: Hsla,
     pub outlined_hover_border: Hsla,
     pub outlined_hover_bg: Hsla,
-    // MuiListItemButton
     pub list_hover: Hsla,
     pub list_selected: Hsla,
     pub list_selected_hover: Hsla,
     pub list_selected_border: Pixels,
-    // MuiChip
     pub chip_bg: Hsla,
     pub chip_hover: Hsla,
     pub chip_text: Hsla,
     pub chip_border: Option<Hsla>,
-    // MuiDrawer
     pub drawer: Paint,
-    // MuiAppBar
     pub app_bar: Paint,
     pub app_bar_text: Hsla,
-    // MuiLink, MuiTypography colorPrimary
     pub link: Hsla,
     pub link_hover: Hsla,
-    // MuiOutlinedInput
     pub input_border: Hsla,
     pub input_border_focused: Hsla,
-    // MuiIconButton
     pub icon_button_hover: Hsla,
-    // MuiTab
     pub tab_selected: Hsla,
-    // MuiSwitch, MuiCheckbox, MuiRadio, MuiSlider, MuiCircularProgress
     pub control_on: Hsla,
-    // MuiLinearProgress
     pub progress_track: Hsla,
     pub progress_bar: Hsla,
-    // MuiSnackbarContent
     pub snackbar_bg: Hsla,
     pub snackbar_text: Hsla,
     pub snackbar_border: Hsla,
-    // MuiTooltip
     pub tooltip_bg: Hsla,
-    // MuiCssBaseline. The band fades to `background_default` over `body_band`.
     pub body: Paint,
     pub body_band: Pixels,
 
-    // Palette values views use everywhere.
     pub text_primary: Hsla,
     pub text_secondary: Hsla,
     pub text_disabled: Hsla,
@@ -260,225 +313,103 @@ pub struct Sem {
 
 impl Global for Sem {}
 
-const BASE_DARK_PAPER: &str = "#1a1d24";
-const BASE_LIGHT_PAPER: &str = "#ffffff";
-const BASE_DARK_DEFAULT: &str = "#111318";
-const BASE_LIGHT_DEFAULT: &str = "#f5f5f5";
-const BAR_DARK: &str = "#151820";
-const BAR_LIGHT: &str = "#ffffff";
+impl Default for Sem {
+    fn default() -> Self {
+        Self::new(ThemeInput::default())
+    }
+}
 
 impl Sem {
-    pub fn new(choice: ThemeChoice) -> Self {
-        let palette = tokens(choice.mode, choice.accent, choice.intensity);
-        let accent = accent_colors(choice.accent);
-        let is_dark = matches!(choice.mode, Mode::Dark);
-        let balanced = !matches!(choice.intensity, Intensity::Minimal);
-        let vibrant = matches!(choice.intensity, Intensity::Vibrant);
-        let primary = accent.primary;
-        // minimal, balanced, vibrant: the shape of nearly every override.
-        let by = |minimal: f32, balanced_value: f32, vibrant_value: f32| {
-            if vibrant {
-                vibrant_value
-            } else if balanced {
-                balanced_value
-            } else {
-                minimal
-            }
-        };
-
-        let base_paper = parse_hex(if is_dark {
-            BASE_DARK_PAPER
-        } else {
-            BASE_LIGHT_PAPER
-        });
-        let base_default = parse_hex(if is_dark {
-            BASE_DARK_DEFAULT
-        } else {
-            BASE_LIGHT_DEFAULT
-        });
-        let bar = parse_hex(if is_dark { BAR_DARK } else { BAR_LIGHT });
-        let paper = palette.background_paper;
-
-        // The chip text rule, from `generateTheme`.
-        let chip_tint = by(0.1, 0.18, 0.3);
-        let chip_hover_tint = chip_tint + 0.1;
-        let backdrops: Vec<Token> = [paper, base_default]
-            .into_iter()
-            .flat_map(|surface| {
-                [
-                    blend(primary, surface, chip_tint),
-                    blend(primary, surface, chip_hover_tint),
-                ]
-            })
-            .collect();
-        let chip_text = readable_text_color(
-            if is_dark { accent.lighter } else { accent.dark },
-            &backdrops,
-            parse_hex(if is_dark { "#ffffff" } else { "#000000" }),
-        );
-
-        let contained = if vibrant {
-            Paint::Linear(135., hsla_of(accent.light), hsla_of(accent.dark))
-        } else if balanced {
-            Paint::Linear(135., hsla_of(accent.primary), hsla_of(accent.light))
-        } else {
-            Paint::Solid(hsla_of(accent.primary))
-        };
-        let contained_hover = if vibrant {
-            Paint::Linear(
-                135.,
-                hsla_of(accent.primary),
-                hsla_of(blend(accent.dark, parse_hex("#000000"), 0.5)),
-            )
-        } else if balanced {
-            Paint::Linear(135., hsla_of(accent.dark), hsla_of(accent.primary))
-        } else {
-            Paint::Solid(hsla_of(accent.dark))
-        };
-
-        let drawer = if vibrant {
-            let weight = if is_dark { 0.5 } else { 0.35 };
-            Paint::Linear(
-                180.,
-                hsla_of(blend(primary, base_paper, weight)),
-                hsla_of(base_paper),
-            )
-        } else if balanced {
-            let from = if is_dark {
-                blend(accent.dark, base_paper, 0.3)
-            } else {
-                blend(primary, base_paper, 0.2)
-            };
-            Paint::Linear(180., hsla_of(from), hsla_of(base_paper))
-        } else {
-            Paint::Solid(hsla_of(base_paper))
-        };
-
-        let app_bar = if vibrant {
-            let (from, to) = if is_dark {
-                (blend(accent.dark, bar, 0.4), blend(primary, bar, 0.55))
-            } else {
-                (blend(primary, bar, 0.3), blend(accent.light, bar, 0.35))
-            };
-            Paint::Linear(90., hsla_of(from), hsla_of(to))
-        } else if balanced {
-            let to = if is_dark {
-                blend(accent.dark, bar, 0.35)
-            } else {
-                blend(primary, bar, 0.2)
-            };
-            Paint::Linear(90., hsla_of(bar), hsla_of(to))
-        } else {
-            Paint::Solid(hsla_of(bar))
-        };
-
-        let (body, body_band) = if vibrant {
-            let weight = if is_dark { 0.35 } else { 0.25 };
-            (
-                Paint::Linear(
-                    180.,
-                    hsla_of(blend(primary, base_default, weight)),
-                    hsla_of(base_default),
-                ),
-                px(600.),
-            )
-        } else if balanced {
-            let from = if is_dark {
-                blend(accent.dark, base_default, 0.15)
-            } else {
-                blend(primary, base_default, 0.1)
-            };
-            (
-                Paint::Linear(180., hsla_of(from), hsla_of(base_default)),
-                px(400.),
-            )
-        } else {
-            (Paint::Solid(hsla_of(base_default)), px(0.))
-        };
-
-        // getContrastText's rule, contrastThreshold 3.
-        let snackbar_text = if contrast_ratio(paper, parse_hex("#ffffff")) >= 3. {
-            hsla_of(parse_hex("#ffffff"))
-        } else {
-            hsla_of(Token(0x000000de))
-        };
+    pub fn new(input: ThemeInput) -> Self {
+        let p = derive_palette(input.base, input.mode, input.intensity);
+        let r = Roles::of(&p);
+        let is_dark = input.mode == Mode::Dark;
+        // A state tint of `color` at `amount`, translucent, so it works over whatever is under it.
+        let tint = |color: Token, amount: f32| hsla_of(alpha(color, amount));
+        // The kit's opaque state: `amount` of `over` mixed into `under`.
+        let mix = |over: Token, under: Token, amount: f32| hsla_of(blend(over, under, amount));
 
         Self {
-            choice,
+            input,
             is_dark,
-            palette,
-            accent,
-            paper: hsla_of(paper),
-            paper_border: hsla_of(alpha(primary, by(0.08, 0.2, 0.4))),
-            card_border: hsla_of(alpha(primary, by(0.08, 0.25, 0.5))),
-            contained,
-            contained_hover,
-            outlined_border: hsla_of(alpha(primary, by(0.3, 0.5, 0.7))),
-            outlined_text: hsla_of(accent.light),
-            outlined_hover_border: hsla_of(primary),
-            outlined_hover_bg: hsla_of(alpha(primary, by(0.08, 0.08, 0.15))),
-            list_hover: hsla_of(alpha(primary, by(0.06, 0.12, 0.18))),
-            list_selected: hsla_of(alpha(primary, by(0.1, 0.18, 0.28))),
-            list_selected_hover: hsla_of(alpha(primary, by(0.14, 0.22, 0.35))),
-            list_selected_border: px(by(3., 3., 4.)),
-            chip_bg: hsla_of(alpha(primary, chip_tint)),
-            chip_hover: hsla_of(alpha(primary, chip_hover_tint)),
-            chip_text: hsla_of(chip_text),
-            chip_border: if vibrant {
-                Some(hsla_of(alpha(primary, 0.5)))
-            } else if balanced {
-                Some(hsla_of(alpha(primary, 0.25)))
-            } else {
-                None
-            },
-            drawer,
-            app_bar,
-            app_bar_text: hsla_of(palette.text_primary),
-            link: hsla_of(accent.subtle),
-            link_hover: hsla_of(accent.light),
-            input_border: hsla_of(alpha(primary, 0.3)),
-            input_border_focused: hsla_of(primary),
-            icon_button_hover: hsla_of(alpha(primary, 0.1)),
-            tab_selected: hsla_of(accent.light),
-            control_on: hsla_of(primary),
-            progress_track: hsla_of(alpha(primary, 0.2)),
-            progress_bar: hsla_of(primary),
-            snackbar_bg: hsla_of(paper),
-            snackbar_text,
-            snackbar_border: hsla_of(if is_dark {
-                Token(0xffffff1f)
-            } else {
-                Token(0x0000001f)
-            }),
-            tooltip_bg: hsla_of(parse_hex(if is_dark { "#2a2d35" } else { "#333333" })),
-            body,
-            body_band,
-            text_primary: hsla_of(palette.text_primary),
-            text_secondary: hsla_of(palette.text_secondary),
-            text_disabled: hsla_of(palette.text_disabled),
-            divider: hsla_of(palette.divider),
-            background_default: hsla_of(palette.background_default),
-            primary: hsla_of(palette.primary_main),
-            primary_contrast: hsla_of(palette.primary_contrast_text),
-            error: hsla_of(palette.error_main),
-            warning: hsla_of(palette.warning_main),
-            info: hsla_of(palette.info_main),
-            success: hsla_of(palette.success_main),
-            positive: hsla_of(palette.semantic_status_positive),
-            negative: hsla_of(palette.semantic_status_negative),
-            overlay_light: hsla_of(palette.semantic_overlay_light),
-            overlay_medium: hsla_of(palette.semantic_overlay_medium),
-            overlay_heavy: hsla_of(palette.semantic_overlay_heavy),
-            action_hover: hsla_of(palette.action_hover),
-            action_selected: hsla_of(palette.action_selected),
-            action_active: hsla_of(palette.action_active),
-            action_disabled: hsla_of(palette.action_disabled),
-            action_disabled_bg: hsla_of(palette.action_disabled_background),
+            roles: p,
+            role: r,
+            palette: LegacyPalette::of(&p, input.mode),
+
+            paper: r.surface,
+            paper_border: r.hairline,
+            card_border: r.hairline,
+            contained: Paint::Solid(r.accent),
+            contained_hover: Paint::Solid(mix(p.text, p.accent, STATE_HOVER_ON_FILL)),
+            outlined_border: r.hairline,
+            outlined_text: r.accent_text,
+            outlined_hover_border: r.accent,
+            outlined_hover_bg: tint(p.text, STATE_HOVER),
+            list_hover: tint(p.text, STATE_HOVER),
+            list_selected: tint(p.accent, STATE_HOVER_ON_FILL),
+            list_selected_hover: tint(p.accent, STATE_PRESSED_ON_FILL),
+            list_selected_border: px(semaphore_design::lounge::BORDER_SELECTED),
+            chip_bg: r.fill,
+            chip_hover: mix(p.text, p.fill, STATE_HOVER_ON_FILL),
+            chip_text: r.text,
+            chip_border: None,
+            drawer: Paint::Solid(r.surface),
+            app_bar: Paint::Solid(r.surface),
+            app_bar_text: r.text,
+            link: r.accent_text,
+            link_hover: r.accent_text,
+            input_border: r.hairline,
+            input_border_focused: r.focus,
+            icon_button_hover: tint(p.text, STATE_PRESSED),
+            tab_selected: r.accent_text,
+            control_on: r.accent,
+            progress_track: r.hairline,
+            progress_bar: r.accent,
+            snackbar_bg: r.fill,
+            snackbar_text: r.text,
+            snackbar_border: r.hairline,
+            tooltip_bg: r.fill,
+            body: Paint::Solid(r.ground),
+            body_band: px(0.),
+
+            text_primary: r.text,
+            text_secondary: r.text_secondary,
+            text_disabled: r.text_dim,
+            divider: r.hairline,
+            background_default: r.ground,
+            primary: r.accent,
+            primary_contrast: r.on_accent,
+            error: r.danger,
+            warning: r.warning,
+            info: r.accent,
+            success: r.positive,
+            positive: r.positive,
+            negative: r.danger,
+            overlay_light: tint(p.text, STATE_HOVER),
+            overlay_medium: tint(p.text, STATE_PRESSED),
+            overlay_heavy: tint(p.text, STATE_HOVER_ON_FILL),
+            action_hover: tint(p.text, STATE_HOVER),
+            action_selected: tint(p.text, STATE_PRESSED),
+            action_active: r.text_secondary,
+            action_disabled: r.text_dim,
+            action_disabled_bg: r.fill,
         }
     }
 }
 
-/// Read the active theme: `cx.sem()`.
+/// The operating system's light or dark setting, for `matchSystem`.
+pub fn system_mode(cx: &App) -> Mode {
+    mode_of(cx.window_appearance())
+}
+
+/// A window's appearance as a theme mode.
+pub fn mode_of(appearance: WindowAppearance) -> Mode {
+    match appearance {
+        WindowAppearance::Dark | WindowAppearance::VibrantDark => Mode::Dark,
+        WindowAppearance::Light | WindowAppearance::VibrantLight => Mode::Light,
+    }
+}
+
 pub trait SemTheme {
     fn sem(&self) -> &Sem;
 }
@@ -489,19 +420,17 @@ impl SemTheme for App {
     }
 }
 
-/// Registers the fonts and installs the default theme. Call once, after `gpui_kit::init`.
 pub fn init(cx: &mut App) {
     let fonts = ROBOTO.iter().map(|font| Cow::Borrowed(*font)).collect();
     if let Err(error) = cx.text_system().add_fonts(fonts) {
         // Text still draws, in a fallback font, so a bad font must not stop the app.
         eprintln!("semaphore-ui: registering Roboto failed: {error}");
     }
-    apply(ThemeChoice::default(), cx);
+    apply(ThemeInput::default(), cx);
 }
 
-/// Switches every window to this theme.
-pub fn apply(choice: ThemeChoice, cx: &mut App) {
-    let sem = Sem::new(choice);
+pub fn apply(input: ThemeInput, cx: &mut App) {
+    let sem = Sem::new(input);
     let mode = if sem.is_dark {
         ThemeMode::Dark
     } else {
@@ -513,80 +442,97 @@ pub fn apply(choice: ThemeChoice, cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// gpui-kit's own components (Select, Dialog, Input, Slider and so on) read these.
 fn map_onto_kit(sem: &Sem, theme: &mut Theme) {
-    let solid = |paint: Paint| match paint {
-        Paint::Solid(color) | Paint::Linear(_, color, _) => color,
-    };
+    let r = &sem.role;
     theme.font_family = FONT_FAMILY.into();
     theme.font_size = px(16.);
     theme.radius = px(4.);
     theme.radius_lg = px(12.);
 
     let c = &mut theme.colors;
-    c.background = sem.background_default;
-    c.foreground = sem.text_primary;
-    c.muted = sem.overlay_medium;
-    c.muted_foreground = sem.text_secondary;
-    c.border = sem.divider;
-    c.input = sem.input_border;
-    c.ring = sem.primary;
-    c.caret = sem.text_primary;
-    c.selection = sem.primary.opacity(0.3);
+    c.background = r.ground;
+    c.foreground = r.text;
+    c.muted = r.fill;
+    c.muted_foreground = r.text_secondary;
+    c.border = r.hairline;
+    c.input = r.hairline;
+    c.ring = r.focus;
+    c.caret = r.text;
+    c.selection = r.accent.opacity(0.3);
     c.accent = sem.list_hover;
-    c.accent_foreground = sem.text_primary;
-    c.primary = sem.primary;
-    c.primary_foreground = sem.primary_contrast;
-    c.primary_hover = solid(sem.contained_hover);
-    c.primary_active = solid(sem.contained_hover);
+    c.accent_foreground = r.text;
+    c.primary = r.accent;
+    c.primary_foreground = r.on_accent;
+    c.primary_hover = sem.contained_hover.color();
+    c.primary_active = sem.contained_hover.color();
     c.secondary = sem.action_hover;
-    c.secondary_foreground = sem.text_primary;
+    c.secondary_foreground = r.text;
     c.secondary_hover = sem.action_selected;
     c.secondary_active = sem.action_selected;
-    c.danger = sem.error;
-    c.danger_foreground = hsla_of(sem.palette.error_contrast_text);
-    c.warning = sem.warning;
+    c.danger = r.danger;
+    c.danger_foreground = r.on_danger;
+    c.warning = r.warning;
     c.warning_foreground = hsla_of(sem.palette.warning_contrast_text);
-    c.success = sem.success;
+    c.success = r.positive;
     c.success_foreground = hsla_of(sem.palette.success_contrast_text);
-    c.info = sem.info;
-    c.info_foreground = hsla_of(sem.palette.info_contrast_text);
-    c.popover = sem.paper;
-    c.popover_foreground = sem.text_primary;
-    c.list = sem.paper;
+    c.info = r.accent;
+    c.info_foreground = r.on_accent;
+    c.popover = r.surface;
+    c.popover_foreground = r.text;
+    c.list = r.surface;
     c.list_hover = sem.list_hover;
     c.list_active = sem.list_selected;
-    c.list_active_border = sem.primary;
-    c.link = sem.link;
-    c.link_hover = sem.link_hover;
-    c.link_active = sem.link_hover;
-    c.progress_bar = sem.progress_bar;
+    c.list_active_border = r.accent;
+    c.link = r.accent_text;
+    c.link_hover = r.accent_text;
+    c.link_active = r.accent_text;
+    c.progress_bar = r.accent;
     c.skeleton = sem.overlay_heavy;
-    c.slider_bar = sem.control_on;
-    c.slider_thumb = sem.control_on;
-    c.switch = sem.text_disabled;
-    c.switch_thumb = sem.paper;
-    c.sidebar = sem.paper;
-    c.sidebar_foreground = sem.text_primary;
-    c.sidebar_border = sem.divider;
+    c.slider_bar = r.accent;
+    c.slider_thumb = r.accent;
+    c.switch = r.text_dim;
+    c.switch_thumb = r.surface;
+    c.sidebar = r.surface;
+    c.sidebar_foreground = r.text;
+    c.sidebar_border = r.hairline;
     c.sidebar_accent = sem.list_selected;
-    c.sidebar_accent_foreground = sem.primary;
-    c.tab = sem.paper;
-    c.tab_active = sem.paper;
-    c.tab_active_foreground = sem.tab_selected;
-    c.tab_foreground = sem.text_secondary;
-    c.tab_bar = sem.paper;
-    c.table = sem.paper;
+    c.sidebar_accent_foreground = r.accent_text;
+    c.tab = r.surface;
+    c.tab_active = r.surface;
+    c.tab_active_foreground = r.accent_text;
+    c.tab_foreground = r.text_secondary;
+    c.tab_bar = r.surface;
+    c.table = r.surface;
     c.table_hover = sem.action_hover;
-    c.table_head = sem.paper;
-    c.table_head_foreground = sem.text_primary;
-    c.table_row_border = sem.divider;
-    c.title_bar = solid(sem.app_bar);
-    c.title_bar_border = sem.divider;
-    c.overlay = Hsla::from(rgba(0x00000080));
+    c.table_head = r.surface;
+    c.table_head_foreground = r.text;
+    c.table_row_border = r.hairline;
+    c.title_bar = r.surface;
+    c.title_bar_border = r.hairline;
+    c.overlay = r.scrim;
     c.scrollbar_thumb = sem.overlay_heavy;
     c.scrollbar_thumb_hover = sem.overlay_heavy;
 }
+
+/// The role names in `design/gen/colour_ref.py`'s `ROLES` order, for the roles story and tests.
+pub const ROLE_NAMES: [&str; 16] = [
+    "ground",
+    "surface",
+    "fill",
+    "hairline",
+    "text",
+    "textSecondary",
+    "textDim",
+    "accent",
+    "onAccent",
+    "accentText",
+    "focus",
+    "positive",
+    "warning",
+    "danger",
+    "onDanger",
+    "scrim",
+];
 
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
@@ -594,159 +540,73 @@ pub fn stories() -> Vec<crate::stories::Story> {
     use crate::kit::text;
     use crate::stories::Story;
 
-    /// All 72 themes at once, each tile painted from its own [`Sem`], not the global one.
-    struct Swatches;
+    /// The bases the roles story derives: the default, the old accents' teal, and the edges of the
+    /// hue circle and the grey axis.
+    const BASES: [u32; 4] = [0x8e75ff, 0x0d9488, 0xff0000, 0x808080];
 
-    impl Render for Swatches {
+    struct Roles;
+
+    impl Render for Roles {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let sem = cx.sem().clone();
+            let column =
+                |input: ThemeInput| {
+                    let tile = Sem::new(input);
+                    let rows = tile.roles.roles().into_iter().zip(ROLE_NAMES).map(
+                        move |(colour, name)| {
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .size(px(12.))
+                                        .rounded(px(2.))
+                                        .border_1()
+                                        .border_color(tile.role.hairline)
+                                        .bg(hsla_of(colour)),
+                                )
+                                .child(text(Variant::Xs, format!("{name} {:08x}", colour.0)))
+                        },
+                    );
+                    div()
+                        .w(px(150.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(1.))
+                        .p_1()
+                        .rounded(px(4.))
+                        .bg(tile.role.ground)
+                        .text_color(tile.role.text)
+                        .border_1()
+                        .border_color(tile.role.hairline)
+                        .child(text(Variant::Xs, input.name()).text_color(tile.role.accent_text))
+                        .children(rows)
+                };
             div()
+                .id("theme-roles")
                 .size_full()
-                .p_4()
+                .overflow_y_scroll()
+                .p_2()
                 .bg(sem.background_default)
                 .flex()
                 .flex_wrap()
                 .gap_1()
                 .font_family(FONT_FAMILY)
-                .children(ThemeChoice::all().into_iter().map(|choice| {
-                    let tile = Sem::new(choice);
-                    div()
-                        .w(px(150.))
-                        .h(px(90.))
-                        .flex()
-                        .flex_col()
-                        .rounded(px(4.))
-                        .overflow_hidden()
-                        .border_1()
-                        .border_color(tile.paper_border)
-                        .bg(tile.body.background())
-                        .child(
-                            div()
-                                .h(px(20.))
-                                .bg(tile.app_bar.background())
-                                .px_1()
-                                .text_color(tile.app_bar_text)
-                                .child(text(Variant::Xs, choice.name())),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .flex()
-                                .gap_1()
-                                .p_1()
-                                .child(div().w(px(40.)).h_full().bg(tile.drawer.background()))
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_1()
-                                        .child(
-                                            div()
-                                                .h(px(20.))
-                                                .rounded(px(4.))
-                                                .bg(tile.contained.background()),
-                                        )
-                                        .child(
-                                            div()
-                                                .h(px(16.))
-                                                .rounded(px(8.))
-                                                .bg(tile.chip_bg)
-                                                .text_color(tile.chip_text)
-                                                .px_1()
-                                                .child(text(Variant::Xs, "chip")),
-                                        ),
-                                ),
-                        )
+                .children(BASES.into_iter().flat_map(|base| {
+                    Mode::ALL.into_iter().flat_map(move |mode| {
+                        Intensity::ALL.into_iter().map(move |intensity| {
+                            column(ThemeInput::new(Token(base << 8 | 0xff), mode, intensity))
+                        })
+                    })
                 }))
         }
     }
 
-    vec![Story::new("theme-swatches", |_, _, cx| {
-        cx.new(|_| Swatches).into()
+    vec![Story::new("theme-roles", |_, _, cx| {
+        cx.new(|_| Roles).into()
     })]
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    // `gpui_kit::*` brings GPUI's `test` attribute in too, and it would win.
-    use core::prelude::v1::test;
-
-    #[test]
-    fn all_72_themes_have_distinct_names_and_round_trip() {
-        let all = ThemeChoice::all();
-        assert_eq!(all.len(), 72);
-        for theme in all {
-            assert_eq!(ThemeChoice::parse(&theme.name()), Some(theme));
-        }
-        assert_eq!(ThemeChoice::parse("dark-mauve-balanced"), None);
-    }
-
-    #[test]
-    fn paper_matches_the_web_in_every_theme() {
-        for choice in ThemeChoice::all() {
-            let sem = Sem::new(choice);
-            assert_eq!(sem.paper, hsla_of(sem.palette.background_paper));
-        }
-    }
-
-    /// `themeConfig.ts` promises chip text reaches WCAG AA on its tint in every theme.
-    #[test]
-    fn chip_text_reaches_aa_in_every_theme() {
-        for choice in ThemeChoice::all() {
-            let palette = tokens(choice.mode, choice.accent, choice.intensity);
-            let sem = Sem::new(choice);
-            let accent = accent_colors(choice.accent);
-            let tint = match choice.intensity {
-                Intensity::Minimal => 0.1,
-                Intensity::Balanced => 0.18,
-                Intensity::Vibrant => 0.3,
-            };
-            let backdrop = blend(accent.primary, palette.background_paper, tint);
-            let text = color::token_of(sem.chip_text);
-            assert!(
-                contrast_ratio(text, backdrop) >= 4.4,
-                "{}: {}",
-                choice.name(),
-                contrast_ratio(text, backdrop)
-            );
-        }
-    }
-
-    /// Values read off `generateTheme` for one theme of each intensity.
-    #[test]
-    fn overrides_match_the_formulas() {
-        let sem = Sem::new(ThemeChoice::new(
-            Mode::Dark,
-            Accent::Blue,
-            Intensity::Balanced,
-        ));
-        assert_eq!(
-            sem.list_selected,
-            hsla_of(alpha(parse_hex("#3b82f6"), 0.18))
-        );
-        assert_eq!(
-            sem.contained,
-            Paint::Linear(
-                135.,
-                hsla_of(parse_hex("#3b82f6")),
-                hsla_of(parse_hex("#60a5fa"))
-            )
-        );
-        let sem = Sem::new(ThemeChoice::new(
-            Mode::Light,
-            Accent::Teal,
-            Intensity::Minimal,
-        ));
-        assert_eq!(sem.input_border, hsla_of(alpha(parse_hex("#0d9488"), 0.3)));
-        assert_eq!(sem.contained, Paint::Solid(hsla_of(parse_hex("#0d9488"))));
-        let sem = Sem::new(ThemeChoice::new(
-            Mode::Dark,
-            Accent::Rose,
-            Intensity::Vibrant,
-        ));
-        assert_eq!(sem.list_selected_border, px(4.));
-        assert_eq!(sem.paper_border, hsla_of(alpha(parse_hex("#f43f5e"), 0.4)));
-    }
-}
+mod tests;

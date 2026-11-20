@@ -16,7 +16,7 @@ mod overlays;
 mod stories;
 mod typography;
 
-pub use assets::{UiAssets, icon_path};
+pub use assets::{UiAssets, icon_path, lounge_icon_path};
 pub use bus::{emit_core_event, on_core_event};
 pub use controls::{
     Button, ButtonSize, ButtonTone, ButtonVariant, CheckState, Checkbox, IconButton, Radio, Slider,

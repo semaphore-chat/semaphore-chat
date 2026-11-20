@@ -1,9 +1,10 @@
-//! The web client's design tokens and icons, generated for the native UI.
+//! The design system's tokens, palette derivation and icons, for the native UI.
 //!
-//! Everything here comes from the web client at the commit in `native/contract/PIN`, through
-//! `tools/web-export/{theme.test.ts,icons.test.tsx}` and `tools/gen-design`. Regenerate it with
-//! `native/scripts/gen-design.sh`; never edit `src/generated.rs`, `src/type_scale.rs`, `data/` or
-//! `assets/` by hand.
+//! `generated` (the MUI icon set) and `type_scale` come from the web client at the commit in
+//! `native/contract/PIN`, through `tools/web-export/{theme.test.ts,icons.test.tsx}` and
+//! `tools/gen-design`; the old screens use them until they are converted. Regenerate them with
+//! `native/scripts/gen-design.sh`; never edit `src/generated.rs`, `src/type_scale.rs` or
+//! `assets/icons/` by hand.
 //!
 //! `lounge` is generated from `design/tokens.json`, not from the web client at the pin.
 //! `colour_params` and the test-only `colour_vectors` are generated from `design/` by
@@ -39,8 +40,8 @@ mod lounge_tests;
 mod tests;
 pub mod type_scale;
 
-pub use derive::{Palette, derive_palette};
-pub use generated::{Accent, Icon, Intensity, Mode, Tokens, tokens};
+pub use derive::{Intensity, Mode, Palette, derive_palette, parse_base};
+pub use generated::Icon;
 pub use lounge_icons::LoungeIcon;
 
 /// A colour as the web resolves it, packed `0xRRGGBBAA`.

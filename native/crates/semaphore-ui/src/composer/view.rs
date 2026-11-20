@@ -1594,7 +1594,7 @@ impl Render for Composer {
         if self.follow_theme
             && let Some(sem) = cx.try_global::<crate::theme::Sem>()
         {
-            self.palette = Palette::for_theme(sem.choice);
+            self.palette = Palette::from_sem(sem);
         }
         let p = self.palette;
         let viewport = window.viewport_size();

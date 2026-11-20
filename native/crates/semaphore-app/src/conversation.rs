@@ -935,7 +935,7 @@ impl Render for ConversationPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = cx
             .try_global::<semaphore_ui::theme::Sem>()
-            .map(|sem| semaphore_ui::messages::palette::Palette::for_theme(sem.choice))
+            .map(semaphore_ui::messages::palette::Palette::from_sem)
             .unwrap_or_else(semaphore_ui::messages::palette::Palette::dark);
         let typing = self.typing_line();
         let notice = self.notice_element(cx);

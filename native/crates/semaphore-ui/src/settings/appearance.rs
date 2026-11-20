@@ -1,62 +1,63 @@
-//! The appearance tab, after the appearance card in `pages/SettingsPage.tsx`: dark or light (no
-//! "follow the system"), the 12 accents, the 3 intensities and a live preview. Core shows a pick
-//! at once, so each one goes out as it's made.
+//! The appearance tab: a mode (light, dark or the system's), a base colour the theme is derived
+//! from, an intensity, and a live preview. Laid out as the web's appearance card
+//! (`pages/SettingsPage.tsx`) until the settings screens are converted (epic #848, B16); the colour
+//! row is the base colour's, as the design system has it. Core shows a pick at once, so each one
+//! goes out as it's made.
 
-use super::shell::{caption, section, segmented, switch_row, tab_page};
+use super::shell::{caption, section, segmented, tab_page};
 use super::{AppearanceEvent, AppearanceSettings};
-use crate::kit::{Skeleton, Switch, Variant, spacing, text};
+use crate::kit::{Skeleton, Variant, spacing, text};
 use crate::panel::common::{design_icon, error_block};
-use crate::theme::{Sem, SemTheme, ThemeChoice};
+use crate::theme::{Sem, SemTheme, ThemeInput, system_mode};
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    AccentColor, Appearance, AppearancePatch, LoadState, ThemeIntensity, ThemeMode,
+    AccentColor, Appearance, AppearancePatch, DEFAULT_BASE, LoadState, Rgb, ThemeIntensity,
+    ThemeMode,
 };
-use semaphore_design::{Accent, Icon as DesignIcon, Intensity, Mode};
+use semaphore_design::{Icon as DesignIcon, Intensity, Mode, Rgba};
 
-pub const ACCENTS: [AccentColor; 12] = [
-    AccentColor::Teal,
-    AccentColor::Blue,
-    AccentColor::Indigo,
-    AccentColor::Purple,
-    AccentColor::Rose,
-    AccentColor::Red,
-    AccentColor::Orange,
-    AccentColor::Amber,
-    AccentColor::Lime,
-    AccentColor::Emerald,
-    AccentColor::Cyan,
-    AccentColor::Slate,
-];
+/// The base colours offered: the design default, then the old accents' primaries, so a colour
+/// picked on an older client shows as picked here.
+pub fn base_presets() -> Vec<(Rgb, &'static str)> {
+    let mut presets = vec![(DEFAULT_BASE, "Lounge Violet")];
+    presets.extend(
+        AccentColor::ALL
+            .into_iter()
+            .map(|accent| (accent.primary(), accent_name(accent))),
+    );
+    presets
+}
 
-/// The theme the server's appearance settings stand for.
-pub fn theme_choice(appearance: Appearance) -> ThemeChoice {
-    let mode = match appearance.mode {
-        ThemeMode::Dark => Mode::Dark,
-        ThemeMode::Light => Mode::Light,
-    };
-    let accent = match appearance.accent {
-        AccentColor::Teal => Accent::Teal,
-        AccentColor::Blue => Accent::Blue,
-        AccentColor::Indigo => Accent::Indigo,
-        AccentColor::Purple => Accent::Purple,
-        AccentColor::Rose => Accent::Rose,
-        AccentColor::Red => Accent::Red,
-        AccentColor::Orange => Accent::Orange,
-        AccentColor::Amber => Accent::Amber,
-        AccentColor::Lime => Accent::Lime,
-        AccentColor::Emerald => Accent::Emerald,
-        AccentColor::Cyan => Accent::Cyan,
-        AccentColor::Slate => Accent::Slate,
+/// The three modes the tab offers: `matchSystem` is the third.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModeChoice {
+    Light,
+    Dark,
+    System,
+}
+
+/// The theme the appearance settings stand for, with `system` the operating system's mode (used
+/// when `matchSystem` is on).
+pub fn theme_input(appearance: Appearance, system: Mode) -> ThemeInput {
+    let mode = if appearance.match_system {
+        system
+    } else {
+        match appearance.mode {
+            ThemeMode::Dark => Mode::Dark,
+            ThemeMode::Light => Mode::Light,
+        }
     };
     let intensity = match appearance.intensity {
         ThemeIntensity::Minimal => Intensity::Minimal,
         ThemeIntensity::Balanced => Intensity::Balanced,
         ThemeIntensity::Vibrant => Intensity::Vibrant,
     };
-    ThemeChoice::new(mode, accent, intensity)
+    let Rgb { r, g, b } = appearance.base;
+    let base = Rgba(u32::from(r) << 24 | u32::from(g) << 16 | u32::from(b) << 8 | 0xff);
+    ThemeInput::new(base, mode, intensity)
 }
 
 /// `accentColors[].name` in `theme/constants.ts`.
@@ -77,28 +78,11 @@ pub fn accent_name(accent: AccentColor) -> &'static str {
     }
 }
 
-fn accent_key(accent: AccentColor) -> &'static str {
-    match accent {
-        AccentColor::Teal => "teal",
-        AccentColor::Blue => "blue",
-        AccentColor::Indigo => "indigo",
-        AccentColor::Purple => "purple",
-        AccentColor::Rose => "rose",
-        AccentColor::Red => "red",
-        AccentColor::Orange => "orange",
-        AccentColor::Amber => "amber",
-        AccentColor::Lime => "lime",
-        AccentColor::Emerald => "emerald",
-        AccentColor::Cyan => "cyan",
-        AccentColor::Slate => "slate",
-    }
-}
-
 fn intensity_hint(intensity: ThemeIntensity) -> &'static str {
     match intensity {
-        ThemeIntensity::Minimal => "Clean, neutral look with minimal accent color",
-        ThemeIntensity::Balanced => "Soft gradients and accent color highlights",
-        ThemeIntensity::Vibrant => "Bold, eye-catching accent colors throughout",
+        ThemeIntensity::Minimal => "Neutral backgrounds, with your colour on accents",
+        ThemeIntensity::Balanced => "A tint of your colour in the backgrounds",
+        ThemeIntensity::Vibrant => "Backgrounds full of your colour",
     }
 }
 
@@ -148,47 +132,60 @@ impl AppearanceSettings {
     fn form(&self, cx: &mut Context<Self>) -> Div {
         let sem = cx.sem().clone();
         let appearance = self.view.appearance;
+        let system = system_mode(cx);
         let view = cx.weak_entity();
-        let dark = appearance.mode == ThemeMode::Dark;
-        let mode_view = view.clone();
-        let mode = section("Theme Mode", cx).child(switch_row(
-            Switch::new("appearance-dark", "Dark Mode", dark).on_change(move |on, _, cx| {
-                let mode = if on {
-                    ThemeMode::Dark
-                } else {
-                    ThemeMode::Light
+        let send = move |patch: AppearancePatch, cx: &mut App| {
+            view.update(cx, |this, cx| this.update(patch, cx)).ok();
+        };
+
+        let chosen_mode = if appearance.match_system {
+            ModeChoice::System
+        } else if appearance.mode == ThemeMode::Dark {
+            ModeChoice::Dark
+        } else {
+            ModeChoice::Light
+        };
+        let mode_send = send.clone();
+        let mode = section("Theme Mode", cx).child(segmented(
+            "appearance-mode",
+            &[
+                (ModeChoice::Light, "Light"),
+                (ModeChoice::Dark, "Dark"),
+                (ModeChoice::System, "Match system"),
+            ],
+            chosen_mode,
+            move |choice, _, cx| {
+                let patch = match choice {
+                    ModeChoice::System => AppearancePatch {
+                        match_system: Some(true),
+                        ..AppearancePatch::default()
+                    },
+                    ModeChoice::Dark | ModeChoice::Light => AppearancePatch {
+                        mode: Some(if choice == ModeChoice::Dark {
+                            ThemeMode::Dark
+                        } else {
+                            ThemeMode::Light
+                        }),
+                        match_system: Some(false),
+                        ..AppearancePatch::default()
+                    },
                 };
-                mode_view
-                    .update(cx, |this, cx| {
-                        this.update(
-                            AppearancePatch {
-                                mode: Some(mode),
-                                ..AppearancePatch::default()
-                            },
-                            cx,
-                        )
-                    })
-                    .ok();
-            }),
-            if dark { "Dark Mode" } else { "Light Mode" },
-            None,
-            cx,
+                mode_send(patch, cx);
+            },
         ));
-        let swatches = ACCENTS.iter().map(|&accent| {
-            let view = view.clone();
-            let colors = Sem::new(theme_choice(Appearance {
-                accent,
-                ..appearance
-            }))
-            .accent;
-            let primary = crate::theme::color::hsla_of(colors.primary);
-            let selected = appearance.accent == accent;
-            let ring = sem.text_primary;
+
+        let effective = theme_input(appearance, system);
+        let ring = sem.text_primary;
+        let swatches = base_presets().into_iter().map(|(base, name)| {
+            let send = send.clone();
+            // The accent the base gives in the current mode and intensity: what the user gets.
+            let tile = Sem::new(theme_input(Appearance { base, ..appearance }, system));
+            let selected = appearance.base == base;
             base::Button::new(SharedString::from(format!(
-                "appearance-accent-{}",
-                accent_key(accent)
+                "appearance-base-{}",
+                &base.to_hex()[1..]
             )))
-            .accessibility_label(accent_name(accent))
+            .accessibility_label(name)
             .selected(selected)
             .size(px(48.))
             .flex()
@@ -196,26 +193,32 @@ impl AppearanceSettings {
             .justify_center()
             .rounded(px(8.))
             .cursor_pointer()
-            .bg(primary)
+            .bg(tile.role.accent)
             .border_3()
             .border_color(if selected { ring } else { transparent_black() })
             .when(selected, |swatch| {
-                swatch.child(design_icon(DesignIcon::CheckCircle, 28., white()))
+                swatch.child(design_icon(
+                    DesignIcon::CheckCircle,
+                    28.,
+                    tile.role.on_accent,
+                ))
             })
             .on_click(move |_, _, cx| {
-                view.update(cx, |this, cx| {
-                    this.update(
-                        AppearancePatch {
-                            accent: Some(accent),
-                            ..AppearancePatch::default()
-                        },
-                        cx,
-                    )
-                })
-                .ok();
+                send(
+                    AppearancePatch {
+                        base: Some(base),
+                        ..AppearancePatch::default()
+                    },
+                    cx,
+                )
             })
         });
-        let accent = section("Accent Color", cx)
+        let chosen_name = base_presets()
+            .into_iter()
+            .find(|(base, _)| *base == appearance.base)
+            .map(|(_, name)| format!("{name} ({})", appearance.base.to_hex()))
+            .unwrap_or_else(|| appearance.base.to_hex());
+        let colour = section("Colour", cx)
             .child(
                 div()
                     .flex()
@@ -223,8 +226,9 @@ impl AppearanceSettings {
                     .gap(spacing(1.5))
                     .children(swatches),
             )
-            .child(caption(accent_name(appearance.accent), cx));
-        let intensity_view = view.clone();
+            .child(caption(chosen_name, cx));
+
+        let intensity_send = send.clone();
         let intensity = section("Theme Intensity", cx)
             .child(segmented(
                 "appearance-intensity",
@@ -235,17 +239,13 @@ impl AppearanceSettings {
                 ],
                 appearance.intensity,
                 move |intensity, _, cx| {
-                    intensity_view
-                        .update(cx, |this, cx| {
-                            this.update(
-                                AppearancePatch {
-                                    intensity: Some(intensity),
-                                    ..AppearancePatch::default()
-                                },
-                                cx,
-                            )
-                        })
-                        .ok();
+                    intensity_send(
+                        AppearancePatch {
+                            intensity: Some(intensity),
+                            ..AppearancePatch::default()
+                        },
+                        cx,
+                    )
                 },
             ))
             .child(caption(intensity_hint(appearance.intensity), cx));
@@ -254,15 +254,14 @@ impl AppearanceSettings {
             .flex_col()
             .gap(spacing(3.))
             .child(mode)
-            .child(accent)
+            .child(colour)
             .child(intensity)
-            .child(section("Preview", cx).child(preview(appearance)))
+            .child(section("Preview", cx).child(preview(effective)))
     }
 }
 
-/// A small mock of the app, painted from the chosen theme's own `Sem` rather than the window's.
-fn preview(appearance: Appearance) -> AnyElement {
-    let tile = Sem::new(theme_choice(appearance));
+fn preview(input: ThemeInput) -> AnyElement {
+    let tile = Sem::new(input);
     let line =
         |width: f32, color: Hsla| div().h(px(8.)).w(relative(width)).rounded(px(4.)).bg(color);
     let message = |name: &'static str, width: f32| {
