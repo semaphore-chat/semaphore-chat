@@ -1,0 +1,45 @@
+name: Native Android
+
+# D1's debug APK: native/scripts/android.sh builds the Android image (JDK, SDK, NDK, Gradle,
+# cargo-ndk and uniffi-bindgen), builds semaphore-ffi for aarch64-linux-android, generates the
+# Kotlin bindings and runs ./gradlew assembleDebug. Artifact only: this workflow creates no
+# release, pushes no tag and publishes nothing.
+#
+# Like the other native-*.yml workflows there is no actions/cache step: the pinned image and the
+# Gradle and cargo caches are Docker volumes inside the run, and only the APK leaves it.
+on:
+  pull_request:
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-android.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: native-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  debug-apk:
+    name: Build the debug APK (arm64-v8a)
+    runs-on: ubuntu-latest
+    # The image build (SDK, NDK, a Gradle distribution) dominates the first run.
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the APK
+        run: scripts/android.sh
+      # The APK, plus the .so files and dex class list android.sh prints, in the run log.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: semaphore-android-debug
+          path: native/android/out/semaphore-android-debug.apk
+          if-no-files-found: error
+          retention-days: 14

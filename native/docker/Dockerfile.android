@@ -1,0 +1,88 @@
+# D1: the pinned build image plus the Android toolchain, for native/scripts/android.sh.
+#
+# Dockerfile.build stays unchanged so its tag, and everything layered on it, doesn't move. The
+# JDK, the SDK and Gradle come from the same pinned sources as the rest of native/, and every
+# download that isn't a package archive is checked against a sha256 above.
+#
+# Built by native/scripts/android.sh, which passes BASE (the build image's tag). The build
+# context is native/, so Cargo.lock is here: the uniffi-bindgen binary is installed at exactly
+# the uniffi version the workspace resolves, and cargo checks each crate against the registry's
+# sha256 as it unpacks it. Nothing here runs on the host.
+ARG BASE
+FROM ${BASE}
+
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+
+# JDK 17: what Android Gradle Plugin 8.7 and Gradle 8.11 are built for.
+ARG CMDLINE_TOOLS_VERSION=13114758
+ARG CMDLINE_TOOLS_SHA256=7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee
+ARG GRADLE_VERSION=8.11.1
+ARG GRADLE_SHA256=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6
+# The SDK packages themselves are fetched by sdkmanager, which verifies each one against the
+# checksums in Google's repository XML; only the zip we fetch with curl needs a hash here.
+ARG SDK_PLATFORM=android-35
+ARG SDK_BUILD_TOOLS=35.0.0
+ARG NDK_VERSION=28.2.13676358
+ARG CARGO_NDK_VERSION=4.1.2
+
+RUN pacman -S --noconfirm --needed jdk17-openjdk unzip \
+ && rm -rf /var/cache/pacman/pkg/*
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk
+RUN curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
+      -o /tmp/cmdline-tools.zip \
+ && echo "${CMDLINE_TOOLS_SHA256}  /tmp/cmdline-tools.zip" | sha256sum -c - \
+ && mkdir -p "$ANDROID_HOME/cmdline-tools" \
+ && unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools" \
+ && mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest" \
+ && rm /tmp/cmdline-tools.zip
+ENV PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+
+# The licences are accepted in the image: the SDK is baked in, and a build must not stop at a
+# y/n prompt. platform-tools (adb) is not needed to assemble an APK, but AGP checks for it and
+# tries to install it into the read-only SDK when it is missing.
+RUN yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses >/dev/null \
+ && sdkmanager --sdk_root="$ANDROID_HOME" \
+      "platform-tools" "platforms;${SDK_PLATFORM}" "build-tools;${SDK_BUILD_TOOLS}" \
+      "ndk;${NDK_VERSION}" \
+ && rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/.downloadIntermediates"
+ENV ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}
+
+# The Gradle the wrapper's distributionUrl names, so `gradle wrapper` and a first build need no
+# download from services.gradle.org to bootstrap (the wrapper still fetches its distribution into
+# the Gradle cache volume, as it does in CI).
+RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" \
+      -o /tmp/gradle.zip \
+ && echo "${GRADLE_SHA256}  /tmp/gradle.zip" | sha256sum -c - \
+ && unzip -q /tmp/gradle.zip -d /opt \
+ && rm /tmp/gradle.zip
+ENV PATH=/opt/gradle-${GRADLE_VERSION}/bin:$PATH
+
+# cargo-ndk drives cargo for the Android targets, and uniffi-bindgen turns the built library into
+# Kotlin. Both are installed at fixed versions; uniffi's is read from the workspace lockfile so
+# the generator can never be a different version from the library it reads.
+COPY Cargo.lock /tmp/Cargo.lock
+RUN set -eux; \
+    uniffi_version="$(sed -n '/^name = "uniffi"$/{n;s/^version = "\(.*\)"$/\1/p;q}' /tmp/Cargo.lock)"; \
+    test -n "$uniffi_version"; \
+    export CARGO_HOME=/tmp/cargo-install CARGO_TARGET_DIR=/tmp/cargo-target; \
+    cargo install --root /opt/cargo-tools \
+      --version "=${uniffi_version}" uniffi --features cli; \
+    cargo install --root /opt/cargo-tools \
+      --version "=${CARGO_NDK_VERSION}" cargo-ndk; \
+    rm -rf /tmp/cargo-install /tmp/cargo-target /tmp/Cargo.lock /opt/cargo-tools/.crates* \
+      /cache/cargo/.package-cache /cache/target/*
+ENV PATH=/opt/cargo-tools/bin:$PATH
+
+# The caches are named volumes at run time; creating them here gives first mount host ownership.
+RUN mkdir -p /cache/gradle /cache/home \
+ && chown -R "$HOST_UID:$HOST_GID" /cache/gradle /cache/home
+# Gradle's caches and the debug keystore both live under these, so a rebuild reuses dependencies
+# and signs with the same key (a debug keystore regenerated per build makes sideloaded updates
+# fail the signature check).
+ENV GRADLE_USER_HOME=/cache/gradle \
+    ANDROID_USER_HOME=/cache/home/.android \
+    ANDROID_SDK_HOME=/cache/home

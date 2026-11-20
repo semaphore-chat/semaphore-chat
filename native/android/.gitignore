@@ -1,0 +1,9 @@
+# Gradle's project state and the app's build outputs. native/scripts/android.sh writes the
+# generated Kotlin bindings, the cargo-ndk libraries and the APK under app/build/, and copies the
+# APK to out/: none of it is source.
+/.gradle/
+/.kotlin/
+/build/
+/app/build/
+/out/
+local.properties
