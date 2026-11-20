@@ -27,6 +27,7 @@
       "handlebars": "^4.7.10",
       "shell-quote": "^1.11.0",
       "deepmerge-ts": "^8.0.0",
+      "effect": "^3.22.1",
       "builder-util-runtime": "^9.7.0",
       "engine.io": "^6.6.10",
       "js-yaml@4": "^4.3.2",
