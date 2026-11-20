@@ -84,7 +84,7 @@
     "@nestjs/testing": "^12.1.2",
     "@suites/di.nestjs": "^3.1.0",
     "@suites/doubles.jest": "^3.1.0",
-    "@suites/unit": "^3.1.1",
+    "@suites/unit": "^4.1.2",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.16.13",
     "@types/bcrypt": "^6.0.0",
