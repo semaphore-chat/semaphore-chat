@@ -53,6 +53,7 @@ mod actions;
 mod admin_w5a;
 mod admin_w5b;
 mod admin_w6;
+mod design;
 mod dms;
 mod gifs_w7;
 mod notify;
@@ -1231,6 +1232,7 @@ mod tests {
             ("admin_w5a.rs", include_str!("admin_w5a.rs")),
             ("admin_w5b.rs", include_str!("admin_w5b.rs")),
             ("admin_w6.rs", include_str!("admin_w6.rs")),
+            ("design.rs", include_str!("design.rs")),
             ("dms.rs", include_str!("dms.rs")),
             ("gifs_w7.rs", include_str!("gifs_w7.rs")),
             ("notify.rs", include_str!("notify.rs")),

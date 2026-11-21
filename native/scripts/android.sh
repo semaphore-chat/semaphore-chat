@@ -12,8 +12,8 @@
 #   cargo ndk -t <each ABI> --platform 26 build -p semaphore-mobile --release
 #   uniffi-bindgen generate --library --language kotlin <libsemaphore_mobile.so>
 #   ./gradlew assembleDebug  (native/android)
-#   the JVM test: the same Kotlin bindings over a host build of libsemaphore_mobile.so, against
-#   semaphore-fake-server on loopback (./gradlew testDebugUnitTest)
+#   the JVM tests: the same Kotlin bindings over a host build of libsemaphore_mobile.so, against
+#   semaphore-fake-server on loopback, and the kit's tests and stories (./gradlew testDebugUnitTest)
 #
 # - On the shared semaphore-test network only. It creates and removes no network.
 # - The image tag hashes the base tag, the Dockerfile and the uid, so a change rebuilds it and an
@@ -178,6 +178,9 @@ entity() {
 }
 
 cd "$ANDROID_DIR"
+echo "=== fonts"
+"$ROOT/design/fonts/fetch.sh" --check
+
 echo "=== gradle assembleDebug testDebugUnitTest"
 ./gradlew --no-daemon --console=plain assembleDebug testDebugUnitTest \
   -Psemaphore.abis="$ANDROID_ABIS" \
@@ -186,11 +189,12 @@ echo "=== gradle assembleDebug testDebugUnitTest"
   -Psemaphore.channelId="$(entity cc-general)" \
   -Psemaphore.authorId="$(entity u-priya)"
 
-results="$APP/build/test-results/testDebugUnitTest"
-python3 - "$results" <<'PY'
+# The app's JVM tests (the bindings, the palette through the FFI) and the kit's (its unit tests and
+# every screenshot story, rendered under Robolectric).
+python3 - "$APP/build/test-results/testDebugUnitTest" "$ANDROID_DIR/kit/build/test-results/testDebugUnitTest" <<'PY'
 import glob, sys, xml.etree.ElementTree as ET
 tests = failures = skipped = 0
-for path in glob.glob(sys.argv[1] + "/*.xml"):
+for path in [p for d in sys.argv[1:] for p in glob.glob(d + "/*.xml")]:
     suite = ET.parse(path).getroot()
     tests += int(suite.get("tests")); skipped += int(suite.get("skipped"))
     failures += int(suite.get("failures")) + int(suite.get("errors"))
@@ -214,6 +218,12 @@ ls -l "$apk"
 # One listing: grepping it twice from a pipe would end in SIGPIPE under pipefail.
 listing="$(unzip -l "$apk")"
 printf '%s\n' "$listing" | grep -E 'lib/.*\.so|classes'
+# The design system's fonts, and the notices they and the icons must ship with.
+for shipped in res/font/figtree_wght.ttf res/font/figtree_italic_wght.ttf \
+  res/font/bricolage_grotesque_wght.ttf assets/open_source_licences.txt; do
+  grep -q " $shipped\$" <<<"$listing" || { echo "android.sh: $shipped is not in $apk" >&2; exit 1; }
+  echo "$shipped: present"
+done
 for abi in "${abis[@]}"; do
   printf '%s\n' "$listing" | grep -q "lib/$abi/libsemaphore_mobile\.so" \
     || { echo "android.sh: lib/$abi/libsemaphore_mobile.so is not in $apk" >&2; exit 1; }

@@ -120,11 +120,28 @@ README asks for, or the verifier's Kotlin classes are stripped:
 
 ## Design tokens and icons
 
-`app/src/main/java/app/semaphorechat/android/design/Tokens.kt` and `Icons.kt` are generated for
+`kit/src/main/java/app/semaphorechat/android/design/Tokens.kt` and `Icons.kt` are generated for
 this client the same way as the web and desktop clients' files: `python3
 design/gen/gen_tokens.py` renders them from `design/tokens.json`, `design/colour.json` and
 `design/icons/`. Do not edit them by hand; change the source or the generator and re-run it. CI
 runs the generator's `--check` and fails when a copy is stale.
+
+## The Compose kit
+
+`kit/` is a library module with the design system for Compose: `SemaphoreTheme`, the touch
+density, the fonts and the components (Text, Button, IconButton, TextField, ListRow, Avatar,
+Spinner, Alert, Island, Card, Icon), with the web kit's names and options. It never sees the Rust
+core: the app derives the palette through the FFI (`derivePalette`, `CoreTheme.kt`) and hands the
+kit a `KitPalette`.
+
+- **Fonts:** Figtree and Bricolage Grotesque from `design/fonts/` (pinned and hash-checked there),
+  copied into the kit's font resources at build time. Their licence and the icons' ship in the
+  APK as `assets/open_source_licences.txt`.
+- **Stories:** `kit/src/test/.../stories/KitStories.kt`. `KitStoryShotsTest` renders every story
+  under Robolectric (native graphics, SDK 34) at two phone sizes in four themes (light and dark,
+  violet and amber, palettes from `design/vectors/colour.json`). `native/scripts/android.sh` runs
+  them with the other JVM tests; `native/scripts/android-ui-review.sh` renders them on a base and
+  on the working tree and reports what changed.
 
 ## Where the APK lands
 

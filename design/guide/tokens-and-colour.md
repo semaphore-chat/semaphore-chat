@@ -177,6 +177,32 @@ Disabled is the opacity of a disabled control.
 |pressedOnFill|0.24|A control filled with accent or danger, being pressed|
 |disabled|0.5|A disabled control|
 
+### Touch density
+
+A density is a second set of values for some of the names above, for one kind
+of input. `density.touch` is for clients you use with a finger. It makes
+controls and rows bigger, so every press lands on something at least 48
+wide and high, which is Android's minimum. Spacing, radii and text sizes stay
+the same in every density, so a touch screen has the same rhythm, only with
+taller controls.
+
+The Android app uses it everywhere. The web keeps the pointer values above
+and reaches the touch minimum another way: on a coarse pointer, a small
+button keeps its look and gets a bigger hit area (see Button in
+[Components](components.md)).
+
+|Token|Touch value|Pointer value|Use it for|
+|---|---|---|---|
+|control.sm|40|32|Small buttons and controls|
+|control.md|48|40|Default buttons and controls|
+|control.lg|56|48|Large buttons, and text fields|
+|listRow.md|56|40 (`control.md`)|The least height of a list row|
+|listRow.lg|72|48 (`control.lg`)|The least height of a large list row, such as a person with a second line|
+|hitArea|48|—|The smallest area a press counts in, whatever the control draws|
+
+`density.touch.control` must have exactly the keys of `control`; the
+generator checks this.
+
 ## Colour
 
 ### The three inputs

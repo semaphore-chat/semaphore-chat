@@ -11,6 +11,12 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
 semaphore-core.workspace = true
+# The palette derivation, exported for the apps (src/design.rs). Pure Rust, no dependencies.
+semaphore-design.workspace = true
 # The host's runtime handle only: no runtime of its own and no C (`rt` and `time` are pure Rust).
 tokio = { workspace = true, features = ["rt", "time"] }
 uniffi = "0.32"
+
+[dev-dependencies]
+# src/design.rs reads the shared vectors, design/vectors/colour.json.
+serde_json.workspace = true

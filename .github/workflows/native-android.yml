@@ -16,6 +16,10 @@ on:
   pull_request:
     paths:
       - 'native/**'
+      # The kit's fonts and the palette vectors its stories render with.
+      - 'design/fonts/**'
+      - 'design/vectors/**'
+      - 'design/tokens.json'
       - '.github/workflows/native-android.yml'
   workflow_dispatch:
 

@@ -31,3 +31,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "SemaphoreChatAndroid"
 include(":app")
+// The Compose kit: theme, density, fonts and components. Core-free, so its screenshot stories
+// render on the JVM without the Rust library (native/scripts/android-ui-review.sh).
+include(":kit")

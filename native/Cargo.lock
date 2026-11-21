@@ -8357,6 +8357,8 @@ name = "semaphore-ffi"
 version = "0.0.0"
 dependencies = [
  "semaphore-core",
+ "semaphore-design",
+ "serde_json",
  "tokio",
  "uniffi",
 ]

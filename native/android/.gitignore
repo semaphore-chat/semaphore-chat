@@ -5,5 +5,8 @@
 /.kotlin/
 /build/
 /app/build/
+/kit/build/
+# native/scripts/android-ui-review.sh: the renders, the comparison and the report.
+/.ui-review/
 /out/
 local.properties
