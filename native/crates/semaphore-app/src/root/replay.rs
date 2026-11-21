@@ -13,6 +13,8 @@
 //!   successfully"): one at a time at the window's foot, gone after [`TOAST_FOR`].
 //! - **The audio wait**: while `VoiceView::replay_audio_wait_until_ms` is set, a timer calls
 //!   `Core::expire_replay_audio_wait` at it.
+//! - **The start retry**: while `VoiceView::replay_retry_at_ms` is set (the server refused the
+//!   buffer's start), a timer calls `Core::retry_replay` at it.
 //! - **Sessions**: everything here is the session's. Results that land after a sign-out find their
 //!   session's token gone ([`Replay::session`]) and are dropped.
 
@@ -54,6 +56,8 @@ pub(super) struct Replay {
     toast: Option<Toast>,
     /// The audio wait the timer is for, and the timer.
     audio_wait: Option<(u64, Task<()>)>,
+    /// The start retry the timer is for, and the timer.
+    retry: Option<(u64, Task<()>)>,
 }
 
 struct Capture {
@@ -150,6 +154,7 @@ impl AppRoot {
         match view {
             ViewKey::Voice => {
                 self.schedule_audio_wait(&core, cx);
+                self.schedule_replay_retry(&core, cx);
                 self.refresh_capture(&core, cx);
             }
             ViewKey::ReplaySession => self.refresh_capture(&core, cx),
@@ -772,6 +777,35 @@ impl AppRoot {
             }
         });
         self.replay.audio_wait = Some((until, timer));
+    }
+
+    /// While a refused replay start waits, `Core::retry_replay` at its time.
+    fn schedule_replay_retry(&mut self, core: &Arc<Core>, cx: &mut Context<Self>) {
+        let at = core.voice().replay_retry_at_ms;
+        let scheduled = self.replay.retry.as_ref().map(|(at, _)| *at);
+        if at == scheduled {
+            return;
+        }
+        let Some(at) = at else {
+            self.replay.retry = None;
+            return;
+        };
+        let delay = Duration::from_millis(at.saturating_sub(self.config.clock.now_ms()));
+        let core = Arc::downgrade(core);
+        let timer = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(delay).await;
+            let Some(core) = core.upgrade() else { return };
+            core.retry_replay();
+            // The core said "too early" (the wall clock stepped back): schedule again.
+            this.update(cx, |root, cx| {
+                if core.voice().replay_retry_at_ms == Some(at) {
+                    root.replay.retry = None;
+                    root.schedule_replay_retry(&core, cx);
+                }
+            })
+            .ok();
+        });
+        self.replay.retry = Some((at, timer));
     }
 
     /// Runs `update` with the window, after the event being handled (core events come without
