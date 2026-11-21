@@ -9,13 +9,10 @@
 //! instance-only invite.
 
 use super::{HomeEvent, HomeScreen};
-use crate::kit::{
-    Button, ButtonSize, IconButton, LiveElement, Paper, Snackbar, Variant, spacing, text,
-};
+use crate::kit::{Button, ButtonSize, IconButton, Paper, Variant, spacing, text};
 use crate::messages::palette::Fonts;
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
-use gpui_kit::accesskit::Live;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -38,7 +35,8 @@ pub struct InviteCommunity {
     pub name: String,
 }
 
-/// What the card says under its buttons for a moment, as the web's Snackbar does.
+/// What the card's actions say for a moment, as the web's snackbar does: the app shows it as a
+/// toast (`kit::Toasts`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InviteNotice {
     pub text: String,
@@ -75,7 +73,6 @@ pub struct InviteCardModel {
     pub creating: bool,
     /// The newest invite's code, for the copy button.
     pub code: Option<String>,
-    pub notice: Option<InviteNotice>,
 }
 
 /// The buttons the card offers.
@@ -241,20 +238,6 @@ impl HomeScreen {
                                 }),
                         )
                         .child(controls)
-                        .children(model.notice.clone().map(|notice| {
-                            // A toast on the web (`showNotification`): its `Alert` is
-                            // `role="alert"`, assertive.
-                            div()
-                                .id("home-invite-notice")
-                                .test_support()
-                                .role(Role::Status)
-                                .aria_label(notice.text.clone())
-                                .aria_live(Live::Assertive)
-                                .w_full()
-                                .flex()
-                                .justify_center()
-                                .child(Snackbar::new(notice.text))
-                        })),
                 )
                 .into_any_element(),
         )

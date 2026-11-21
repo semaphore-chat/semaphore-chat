@@ -16,12 +16,14 @@
 
 use super::announce::Announcer;
 use super::overlay::{self, OverlayHost};
+use super::toasts::ToastHost;
 use gpui_kit::*;
 use std::collections::HashMap;
 
-/// What a window's host holds: the overlay stack and the announcer.
+/// What a window's host holds: the overlay stack, the toast queue and the announcer.
 pub struct BehaviourHost {
     pub(crate) overlay: OverlayHost,
+    pub(crate) toasts: ToastHost,
     pub(crate) announcer: Announcer,
     /// Where focus sits when nothing else has it (the app root's own handle): focus found there
     /// as a layer closes counts as lost, and it is the last fallback of a focus return.
@@ -33,6 +35,8 @@ pub struct BehaviourHost {
     pub(crate) last_focus: Option<WeakFocusHandle>,
     /// An Escape is down: its key repeats do nothing (one layer per press).
     pub(crate) escape_down: bool,
+    /// Follows the window's activation for the toast queue's "hidden" reason, frame or not.
+    _activation: Option<Subscription>,
 }
 
 #[derive(Default)]
@@ -46,12 +50,20 @@ impl BehaviourHost {
     fn new(cx: &mut App) -> Self {
         Self {
             overlay: OverlayHost::new(),
+            toasts: ToastHost::new(),
             announcer: Announcer::default(),
             focus_sink: None,
             root: cx.focus_handle(),
             last_focus: None,
             escape_down: false,
+            _activation: None,
         }
+    }
+
+    /// Where focus goes when the place it would return to has gone: the screen's focus target,
+    /// else the window's focus sink.
+    pub(crate) fn screen_focus(&self, cx: &App) -> Option<FocusHandle> {
+        overlay::screen_target(&self.overlay, cx).or_else(|| self.sink())
     }
 
     /// Whether `handle`'s element was in the last frame drawn.
@@ -61,10 +73,12 @@ impl BehaviourHost {
 
     /// The host of `window`, or `None` when the window has no [`BehaviourRoot`].
     pub fn of(window: &Window, cx: &App) -> Option<Entity<BehaviourHost>> {
-        cx.try_global::<Hosts>()?
-            .by_window
-            .get(&window.window_handle().window_id())?
-            .upgrade()
+        Self::for_window(window.window_handle().window_id(), cx)
+    }
+
+    /// The host of the window `id` names, from anywhere (a task, another view).
+    pub fn for_window(id: WindowId, cx: &App) -> Option<Entity<BehaviourHost>> {
+        cx.try_global::<Hosts>()?.by_window.get(&id)?.upgrade()
     }
 
     pub(crate) fn sink(&self) -> Option<FocusHandle> {
@@ -122,7 +136,16 @@ impl Element for BehaviourRoot {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let host = window.use_keyed_state("kit-behaviour-host", cx, |_, cx| BehaviourHost::new(cx));
+        let host = window.use_keyed_state("kit-behaviour-host", cx, |window, cx| {
+            let mut host = BehaviourHost::new(cx);
+            host._activation = Some(cx.observe_window_activation(window, |_, window, cx| {
+                let host = cx.entity();
+                window.defer(cx, move |window, cx| {
+                    super::toasts::sync_pause(&host, window, cx)
+                });
+            }));
+            host
+        });
         let id = window.window_handle().window_id();
         let hosts = &mut cx.default_global::<Hosts>().by_window;
         // Windows that closed leave a dead entry: drop them as a host is recorded.
