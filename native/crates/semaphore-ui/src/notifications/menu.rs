@@ -167,7 +167,6 @@ impl ChannelNotifyMenu {
 
 impl Render for ChannelNotifyMenu {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let sem = cx.sem().clone();
         let loading = matches!(self.view.state, LoadState::Loading);
         let tooltip = level_tooltip(self.view.level, self.default_level);
         let button: AnyElement = if loading {
@@ -190,8 +189,7 @@ impl Render for ChannelNotifyMenu {
                         level_icon(self.effective()),
                         tooltip.clone(),
                     )
-                    .small_with_large_icon()
-                    .color(sem.action_active)
+                    .small()
                     .selected(self.open)
                     .disabled(self.busy)
                     .on_click(cx.listener(|menu, _, _, cx| {

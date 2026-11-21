@@ -1062,7 +1062,8 @@ fn desktop_with(
     cx: &mut TestAppContext,
     state: DesktopAppState,
 ) -> Rig<DesktopAppSettings, DesktopAppEvent> {
-    rig(cx, 900., move |_, cx| {
+    // The controls' design-system sizes make the page taller than the default 800.
+    crate::dms::rig::rig_sized(cx, 900., 1100., move |_, cx| {
         let mut settings = DesktopAppSettings::new(cx);
         settings.set_state(state, cx);
         settings

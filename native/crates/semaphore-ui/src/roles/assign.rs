@@ -207,9 +207,8 @@ impl RoleAssignmentDialog {
                     role.name.clone(),
                     on,
                 )
-                .caption(summary)
+                .description(summary)
                 .disabled(disabled)
-                .dense()
                 .on_toggle(move |_, _, cx| {
                     entity.update(cx, |dialog, cx| dialog.toggle(&id, cx)).ok();
                 })
@@ -330,6 +329,7 @@ impl Render for RoleAssignmentDialog {
                 )
                 .action(
                     Button::new("role-assign-cancel", "Cancel")
+                        .ghost()
                         .disabled(busy)
                         .on_click(move |_, _, cx| {
                             cancel
@@ -339,7 +339,7 @@ impl Render for RoleAssignmentDialog {
                 )
                 .action(
                     Button::new("role-assign-save", "Save Changes")
-                        .contained()
+                        .primary()
                         .loading(busy)
                         .disabled(!changed || busy)
                         .on_click(move |_, _, cx| {

@@ -414,7 +414,7 @@ impl NotificationsPage {
                         ))
                         .child(
                             Button::new("notifications-refresh", "Refresh")
-                                .outlined()
+                                .soft()
                                 .on_click(cx.listener(|_, _, _, cx| {
                                     cx.emit(NotificationsPageEvent::Notification(
                                         NotificationEvent::Retry,
@@ -435,7 +435,7 @@ impl NotificationsPage {
                             .p(spacing(2.))
                             .child(
                                 Button::new("notifications-more", "Load more")
-                                    .outlined()
+                                    .soft()
                                     .on_click(cx.listener(|_, _, _, cx| {
                                         cx.emit(NotificationsPageEvent::Notification(
                                             NotificationEvent::LoadMore,
@@ -506,7 +506,8 @@ impl Render for NotificationsPage {
                 .py(spacing(0.5))
                 .child(
                     Button::new("notifications-mark-all", "Mark all as read")
-                        .size(ButtonSize::Small)
+                        .text()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::CheckCircle)
                         .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(NotificationsPageEvent::Notification(

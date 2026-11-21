@@ -307,7 +307,7 @@ pub(crate) fn volume_slider(state: &Entity<SliderState>) -> impl IntoElement {
         .flex_none()
         .w(px(64.))
         .mx(px(6.))
-        .child(Slider::new(state, "Volume"))
+        .child(Slider::new(state, "Volume").label_hidden())
 }
 
 /// The slider's state for a volume of 0.0 to 1.0, shown as 0 to 100.

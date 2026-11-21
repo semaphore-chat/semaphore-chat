@@ -442,13 +442,9 @@ impl SearchPanel {
                                 .py(spacing(1.))
                                 .flex()
                                 .justify_center()
-                                .child(
-                                    Button::new("search-more", "More results")
-                                        .outlined()
-                                        .on_click(cx.listener(|_, _, _, cx| {
-                                            cx.emit(SearchPanelEvent::More)
-                                        })),
-                                )
+                                .child(Button::new("search-more", "More results").soft().on_click(
+                                    cx.listener(|_, _, _, cx| cx.emit(SearchPanelEvent::More)),
+                                ))
                                 .into_any_element(),
                         );
                     }

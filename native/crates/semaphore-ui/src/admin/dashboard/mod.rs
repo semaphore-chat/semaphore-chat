@@ -318,7 +318,7 @@ impl DashboardPage {
             AttentionTarget::Url { url } => (DashboardEvent::OpenUrl(url.clone()), None),
             AttentionTarget::Retry => (DashboardEvent::Retry, None),
         };
-        let mut button = Button::new(action_id, item.action_label.clone()).color(color);
+        let mut button = Button::new(action_id, item.action_label.clone()).ghost();
         if matches!(item.target, AttentionTarget::Url { .. }) {
             button = button.start_icon(DesignIcon::OpenInNew);
         }

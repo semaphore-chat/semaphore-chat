@@ -129,7 +129,7 @@ impl InviteScreen {
 
     fn back_button(cx: &mut Context<Self>) -> impl IntoElement + use<> {
         Button::new("invite-sign-in", "Back to sign in")
-            .contained()
+            .primary()
             .full_width()
             .on_click(cx.listener(|_, _, _, cx| cx.emit(InviteEvent::SignIn)))
     }
@@ -138,7 +138,7 @@ impl InviteScreen {
     fn leave_button(&self, cx: &mut Context<Self>) -> AnyElement {
         if self.signed_in {
             Button::new("invite-close", "Close")
-                .contained()
+                .primary()
                 .full_width()
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(InviteEvent::Close)))
                 .into_any_element()
@@ -166,7 +166,7 @@ impl InviteScreen {
                 area.child(
                     div().w_full().mb(spacing(2.)).child(
                         Button::new("invite-join", "Join with your account")
-                            .contained()
+                            .primary()
                             .full_width()
                             .loading(joining)
                             .on_click(cx.listener(move |_, _, _, cx| {
@@ -185,7 +185,7 @@ impl InviteScreen {
             }))
             .child(
                 Button::new("invite-close", "Close")
-                    .outlined()
+                    .soft()
                     .full_width()
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(InviteEvent::Close))),
             )
@@ -276,7 +276,7 @@ impl InviteScreen {
         body.child(
             div().w_full().mb(spacing(2.)).child(
                 Button::new("invite-accept", "Join")
-                    .contained()
+                    .primary()
                     .full_width()
                     .on_click(cx.listener(move |_, _, _, cx| {
                         cx.emit(InviteEvent::Accept { code: code.clone() })

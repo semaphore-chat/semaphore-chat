@@ -3,9 +3,10 @@
 
 use crate::dms::face::user_face;
 use crate::dms::names::user_name;
+use crate::kit::IconButtonVariant;
 use crate::kit::{
-    Alert, Button, ButtonTone, Dialog, IconButton, LinearProgress, Severity, Skeleton, Variant,
-    spacing, text, with_tip,
+    Alert, Button, Dialog, IconButton, LinearProgress, Severity, Skeleton, Variant, spacing, text,
+    with_tip,
 };
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
@@ -179,7 +180,7 @@ pub(crate) fn action_icon(
     label: impl Into<SharedString>,
     locked: Option<String>,
     busy: bool,
-    color: Option<Hsla>,
+    variant: Option<IconButtonVariant>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
     let id = id.into();
@@ -188,8 +189,8 @@ pub(crate) fn action_icon(
     let mut button = IconButton::new(id.clone(), icon, label)
         .small()
         .disabled(disabled);
-    if let Some(color) = color {
-        button = button.color(color);
+    if let Some(variant) = variant {
+        button = button.variant(variant);
     }
     if !disabled {
         button = button.on_click(on_click);
@@ -353,6 +354,7 @@ impl Confirm {
             .body(text(Variant::Body2, self.message))
             .action(
                 Button::new(SharedString::from(format!("{}-cancel", self.id)), "Cancel")
+                    .ghost()
                     .disabled(self.busy)
                     .on_click(move |_, window, cx| on_cancel(window, cx)),
             )
@@ -361,8 +363,7 @@ impl Confirm {
                     SharedString::from(format!("{}-confirm", self.id)),
                     self.confirm,
                 )
-                .contained()
-                .tone(ButtonTone::Danger)
+                .danger()
                 .loading(self.busy)
                 .on_click(move |_, window, cx| on_confirm(window, cx)),
             )

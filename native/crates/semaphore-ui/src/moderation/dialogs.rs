@@ -21,7 +21,7 @@ use super::format::{
 };
 use crate::community_settings::rules::{Outcome, Pending, failure, running};
 use crate::dms::names::user_name;
-use crate::kit::{Alert, Button, ButtonTone, Dialog, Radio, Severity, Variant, spacing, text};
+use crate::kit::{Alert, Button, ButtonVariant, Dialog, Radio, Severity, Variant, spacing, text};
 use crate::messages::TimeFormat;
 use crate::theme::SemTheme;
 use gpui_kit::component::input::TextareaState;
@@ -524,10 +524,10 @@ impl Render for ModerationDialog {
         let name = user_name(&open.user);
         let words = words(kind, &name, self.ban.permanent);
         let over = reason_error(&self.reason.read(cx).value()).is_some();
+        // Lounge has no warning button: kicking and timing out are destructive too.
         let tone = match kind {
-            DialogKind::Ban => ButtonTone::Danger,
-            DialogKind::Kick | DialogKind::Timeout => ButtonTone::Warning,
-            DialogKind::Unban | DialogKind::RemoveTimeout => ButtonTone::Default,
+            DialogKind::Ban | DialogKind::Kick | DialogKind::Timeout => ButtonVariant::Danger,
+            DialogKind::Unban | DialogKind::RemoveTimeout => ButtonVariant::Primary,
         };
         let id = match kind {
             DialogKind::Ban => "ban",
@@ -563,6 +563,7 @@ impl Render for ModerationDialog {
             )
             .action(
                 Button::new(SharedString::from(format!("{id}-cancel")), "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(cancel),
             )
@@ -571,8 +572,7 @@ impl Render for ModerationDialog {
                     SharedString::from(format!("{id}-confirm")),
                     if busy { words.busy } else { words.confirm },
                 )
-                .contained()
-                .tone(tone)
+                .variant(tone)
                 .disabled(over)
                 .loading(busy)
                 .on_click(confirm),

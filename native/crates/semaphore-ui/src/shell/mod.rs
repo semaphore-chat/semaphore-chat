@@ -498,7 +498,6 @@ impl Shell {
         let pinned = self.pinned_count;
         let (secondary, primary_badge, on_primary_badge) =
             (sem.text_secondary, sem.primary, sem.primary_contrast);
-        let icon_color = sem.action_active;
         Some(
             Paper::new()
                 .w_full()
@@ -551,8 +550,7 @@ impl Shell {
                                         IconName::PushPin,
                                         format!("Pinned messages ({pinned})"),
                                     )
-                                    .tiny()
-                                    .color(icon_color)
+                                    .small()
                                     .on_click(
                                         cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenPins)),
                                     ),
@@ -577,8 +575,7 @@ impl Shell {
                         )
                         .child(
                             IconButton::new("header-search", IconName::Search, "Search messages")
-                                .tiny()
-                                .color(icon_color)
+                                .small()
                                 .on_click(
                                     cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenSearch)),
                                 ),
@@ -590,16 +587,14 @@ impl Shell {
                                 IconName::AlternateEmail,
                                 "Channel notifications",
                             )
-                            .small_with_large_icon()
-                            .color(icon_color)
+                            .small()
                             .into_any_element(),
                         })
                         .when(narrow, |row| {
                             let view = cx.entity().downgrade();
                             row.child(
                                 IconButton::new("members-toggle", IconName::People, "Members")
-                                    .small_with_large_icon()
-                                    .color(icon_color)
+                                    .small()
                                     .selected(self.members_open)
                                     .on_click(move |_, _, cx| {
                                         view.update(cx, |shell, cx| {
@@ -889,7 +884,7 @@ pub(crate) fn error_state(
         )
         .child(
             Button::new(id, "Try again")
-                .outlined()
+                .soft()
                 .on_click(move |_, _, cx| {
                     view.update(cx, |_, cx| cx.emit(ShellEvent::Retry)).ok();
                 }),

@@ -1501,33 +1501,39 @@ impl AppRoot {
             ))
             // Cancel first: focus starts on the first action, so a stray Enter is safe.
             .action(
-                Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
-                    cancel
-                        .update(cx, |this, cx| {
-                            this.account_open = false;
-                            cx.notify();
-                        })
-                        .ok();
-                }),
+                Button::new("account-cancel", "Cancel")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        cancel
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
             )
             .action(
-                Button::new("account-profile", "Profile").on_click(move |_, _, cx| {
-                    profile
-                        .update(cx, |this, cx| {
-                            this.account_open = false;
-                            if let Some(me) = this.core().and_then(|core| match core.session() {
-                                SessionState::SignedIn { me } => Some(me.id),
-                                _ => None,
-                            }) {
-                                this.shell_navigate(Route::Profile { user_id: me }, cx);
-                            }
-                            cx.notify();
-                        })
-                        .ok();
-                }),
+                Button::new("account-profile", "Profile")
+                    .text()
+                    .on_click(move |_, _, cx| {
+                        profile
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                if let Some(me) =
+                                    this.core().and_then(|core| match core.session() {
+                                        SessionState::SignedIn { me } => Some(me.id),
+                                        _ => None,
+                                    })
+                                {
+                                    this.shell_navigate(Route::Profile { user_id: me }, cx);
+                                }
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
             )
-            .action(
-                Button::new("account-settings", "Settings").on_click(move |_, _, cx| {
+            .action(Button::new("account-settings", "Settings").text().on_click(
+                move |_, _, cx| {
                     settings
                         .update(cx, |this, cx| {
                             this.account_open = false;
@@ -1535,8 +1541,8 @@ impl AppRoot {
                             cx.notify();
                         })
                         .ok();
-                }),
-            );
+                },
+            ));
         // UI freeze: WA's "Admin" entry (`InstanceAdminCaps::show_admin`).
         let dialog = match self.admin_account_action(cx) {
             Some(admin) => dialog.action(admin),
@@ -1544,8 +1550,9 @@ impl AppRoot {
         };
         dialog
             .action(
-                Button::new("account-about", "About Semaphore Chat").on_click(
-                    move |_, window, cx| {
+                Button::new("account-about", "About Semaphore Chat")
+                    .text()
+                    .on_click(move |_, window, cx| {
                         about
                             .update(cx, |this, cx| {
                                 this.account_open = false;
@@ -1553,12 +1560,11 @@ impl AppRoot {
                                 cx.notify();
                             })
                             .ok();
-                    },
-                ),
+                    }),
             )
             .action(
                 Button::new("account-sign-out", "Sign out")
-                    .contained()
+                    .primary()
                     .on_click(move |_, _, cx| {
                         sign_out.update(cx, |this, cx| this.sign_out(cx)).ok();
                     }),
@@ -1736,9 +1742,13 @@ impl AppRoot {
                     }
                 }),
             )
-            .action(Button::new("more-done", "Close").on_click(move |_, _, cx| {
-                done.update(cx, shut).ok();
-            }))
+            .action(
+                Button::new("more-done", "Close")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        done.update(cx, shut).ok();
+                    }),
+            )
             .on_close(move |_, cx| {
                 close.update(cx, shut).ok();
             })
@@ -1781,7 +1791,7 @@ impl AppRoot {
                     .flex()
                     .gap(px(8.))
                     .child(
-                        Button::new("restore-sign-in", "Sign in again").on_click(move |_, _, cx| {
+                        Button::new("restore-sign-in", "Sign in again").text().on_click(move |_, _, cx| {
                             elsewhere
                                 .update(cx, |this, cx| {
                                     this.restore = Restore::Idle;
@@ -1793,7 +1803,7 @@ impl AppRoot {
                     )
                     .child(
                         Button::new("restore-retry", "Try again")
-                            .contained()
+                            .primary()
                             .on_click(move |_, window, cx| {
                                 let url = retry_url.clone();
                                 retry
@@ -1897,15 +1907,13 @@ fn content(
                 .text_color(sem.text_secondary)
                 .child(text(Variant::H5, channel.name.clone()))
                 .child(text(Variant::Body1, "You're not in this call."))
-                .child(
-                    Button::new("voice-join", "Join voice")
-                        .contained()
-                        .on_click(move |_, _, cx| {
-                            let channel_id = channel_id.clone();
-                            join.update(cx, |root, cx| root.join_voice(channel_id, cx))
-                                .ok();
-                        }),
-                )
+                .child(Button::new("voice-join", "Join voice").primary().on_click(
+                    move |_, _, cx| {
+                        let channel_id = channel_id.clone();
+                        join.update(cx, |root, cx| root.join_voice(channel_id, cx))
+                            .ok();
+                    },
+                ))
                 .into_any_element()
         }
         (Route::DirectMessage { dm_group_id }, _) => root

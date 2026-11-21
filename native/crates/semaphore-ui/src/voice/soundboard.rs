@@ -133,6 +133,7 @@ pub fn soundboard_popover(
                 .child(
                     div().flex().justify_end().child(
                         Button::new("soundboard-retry", "Retry")
+                            .text()
                             .on_click(move |_, window, cx| retry(window, cx)),
                     ),
                 )

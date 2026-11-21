@@ -152,7 +152,7 @@ impl AddFriendForm {
         let picked = !self.picker.read(cx).picked().is_empty();
         let view = cx.weak_entity();
         Button::new("add-friend-send", "Send Friend Request")
-            .contained()
+            .primary()
             .when(full_width, |button| button.full_width())
             .disabled(!picked)
             .loading(matches!(self.outcome, AddOutcome::Sending))
@@ -245,11 +245,11 @@ impl Render for AddFriendDialog {
                 }
             })
             .body(div().id("add-friend").pt(px(8.)).child(fields))
-            .action(
-                Button::new("add-friend-cancel", "Cancel").on_click(move |_, window, cx| {
+            .action(Button::new("add-friend-cancel", "Cancel").ghost().on_click(
+                move |_, window, cx| {
                     view.update(cx, |dialog, cx| dialog.close(window, cx)).ok();
-                }),
-            )
+                },
+            ))
             .action(send)
     }
 }

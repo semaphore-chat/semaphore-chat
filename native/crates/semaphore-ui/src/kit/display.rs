@@ -1737,19 +1737,21 @@ type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 /// A text button in an alert or a toast.
 fn action_button(id: SharedString, label: SharedString, handler: Handler) -> Button {
     Button::new(ElementId::Name(id), label)
-        .size(ButtonSize::Small)
+        .text()
+        .size(ButtonSize::Sm)
         .on_click(move |_, window, cx| handler(window, cx))
 }
 
 fn dismiss_button(id: SharedString, handler: Handler) -> IconButton {
     IconButton::new(ElementId::Name(id), IconName::Close, "Dismiss")
-        .tiny()
+        .small()
         .on_click(move |_, window, cx| handler(window, cx))
 }
 
-/// The side padding of a small text button: Alert pulls its actions back by it, so the label lines
-/// up with the text above.
-const BUTTON_PADDING_SM: f32 = SPACE_SM;
+/// The side padding of a small text button (`ControlSize::Sm.padding()`, the web's
+/// `BUTTON_PADDING.sm`): Alert pulls its actions back by it, so the label lines up with the text
+/// above.
+const BUTTON_PADDING_SM: f32 = SPACE_MD;
 /// What a small icon button has around its icon.
 const CLOSE_INSET: f32 = (CONTROL_SM - ICON_SM) / 2.;
 

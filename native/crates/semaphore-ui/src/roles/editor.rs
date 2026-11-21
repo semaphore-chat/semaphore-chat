@@ -244,8 +244,7 @@ impl RolesPanel {
                     Tri::All => CheckState::Checked,
                 })
                 .disabled(busy || !any_grantable)
-                .hide_label()
-                .dense()
+                .label_hidden()
                 .on_toggle({
                     let entity = cx.weak_entity();
                     move |_, _, cx| {
@@ -313,7 +312,6 @@ impl RolesPanel {
                         checked,
                     )
                     .disabled(disabled)
-                    .dense()
                     .on_toggle(move |_, _, cx| {
                         if !disabled {
                             entity
@@ -322,7 +320,7 @@ impl RolesPanel {
                         }
                     });
                     if super::rules::action_label(action).is_some() {
-                        checkbox = checkbox.caption(action.clone());
+                        checkbox = checkbox.description(action.clone());
                     }
                     let checkbox: AnyElement = match &reason {
                         Some(reason) if editor.read_only.is_none() => with_tip(
@@ -414,7 +412,7 @@ impl RolesPanel {
                             "Cancel"
                         },
                     )
-                    .outlined()
+                    .soft()
                     .disabled(busy)
                     .on_click(cx.listener(|panel, _, _, cx| panel.close_editor(cx))),
                 )
@@ -424,7 +422,7 @@ impl RolesPanel {
                             SharedString::from(format!("role-editor-save{suffix}")),
                             save_label,
                         )
-                        .contained()
+                        .primary()
                         .start_icon(DesignIcon::Save)
                         .loading(busy)
                         .disabled(!can_save)

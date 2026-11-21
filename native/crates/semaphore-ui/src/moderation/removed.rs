@@ -112,7 +112,7 @@ impl Render for RemovedNotice {
                             .child(text(Variant::Body2, reason).text_color(sem.text_primary))
                     })),
             )
-            .action(Button::new("removed-ok", "OK").contained().on_click(ok))
+            .action(Button::new("removed-ok", "OK").primary().on_click(ok))
             .on_close(move |_, cx| {
                 close.update(cx, |notice, cx| notice.acknowledge(cx)).ok();
             });

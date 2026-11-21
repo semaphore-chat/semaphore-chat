@@ -685,7 +685,6 @@ impl MessageList {
     fn render_remove_dialog(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
         let (seq, reason) = self.remove.clone()?;
         let confirm_reason = reason.clone();
-        let error = crate::theme::SemTheme::sem(&**cx).error;
         Some(
             Dialog::new("Remove message")
                 .width(400.)
@@ -706,7 +705,7 @@ impl MessageList {
                                 .placeholder("Shown to moderators"),
                         ),
                 )
-                .action(KitButton::new("remove-cancel", "Cancel").on_click({
+                .action(KitButton::new("remove-cancel", "Cancel").ghost().on_click({
                     let view = cx.weak_entity();
                     move |_, _, cx| {
                         view.update(cx, |list, cx| list.cancel_delete(cx)).ok();
@@ -714,7 +713,7 @@ impl MessageList {
                 }))
                 .action(
                     KitButton::new("remove-confirm", "Remove")
-                        .color(error)
+                        .danger()
                         .on_click({
                             let view = cx.weak_entity();
                             move |_, _, cx| {

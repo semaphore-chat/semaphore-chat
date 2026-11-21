@@ -171,8 +171,8 @@ fn home_card(props: &ContentProps, sem: &crate::theme::Sem) -> impl IntoElement 
                             .child(
                                 div().pt(spacing(1.5)).child(
                                     KitButton::new("home-message-someone", "Message someone")
-                                        .outlined()
-                                        .size(ButtonSize::Large)
+                                        .soft()
+                                        .size(ButtonSize::Lg)
                                         .start_icon(IconName::ChatBubbleOutline),
                                 ),
                             ),

@@ -1,17 +1,24 @@
-//! TextField and Select, outlined with a floating label: gpui-kit's editor inside MUI's frame.
+//! TextField and SelectField in the design system's look (`frontend/src/kit/fields/`): the label
+//! above, never floating; a fill box that stands out from its layer, with a focus ring; the helper
+//! or the error under it. gpui-kit's editor and select supply the behaviour.
 //!
-//! GPUI has no CSS outline notch, so a floated label sits on a patch of the surface colour.
-//! GPUI paints a div's border after its children, so that patch must not be a child of the
-//! bordered frame (the border would strike through the label): [`notched`] stacks the label
-//! over the frame as a later sibling.
+//! [`notched`] and [`floating_label`] are the old outlined frame, for the hand-built multiline
+//! fields of screens not yet on the design system (epic #848).
 
-use super::{Variant, text};
+use super::controls::field_label;
+use super::look::{Surface, c, focus_ring, stand_out_fill, styled_text};
+use super::{Icon, Variant, text};
 use crate::theme::SemTheme;
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::select::{Select, SelectState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use semaphore_design::lounge::{
+    BORDER_FOCUS_OFFSET, BORDER_SELECTED, CONTROL_LG, ICON_MD, ICON_XS, RADIUS_FIELD, RADIUS_FULL,
+    SPACE_LG, SPACE_SM, SPACE_XS, STATE_DISABLED, TEXT_BODY, TEXT_META,
+};
+use semaphore_design::{LoungeIcon, Palette};
 
 /// A text state for [`TextField`]. Hold it in your view: it is the field's value and focus.
 pub fn text_state(window: &mut Window, cx: &mut App, masked: bool) -> Entity<InputState> {
@@ -27,19 +34,6 @@ pub fn select_state(
 ) -> Entity<SelectState<Vec<SharedString>>> {
     let selected = selected.map(|index| IndexPath::default().row(index));
     cx.new(|cx| SelectState::new(items, selected, window, cx))
-}
-
-fn frame_color(focused: bool, error: bool, disabled: bool, cx: &App) -> Hsla {
-    let sem = cx.sem();
-    if disabled {
-        sem.action_disabled_bg
-    } else if error {
-        sem.error
-    } else if focused {
-        sem.input_border_focused
-    } else {
-        sem.input_border
-    }
 }
 
 /// A bordered `frame` with its `label` (from [`floating_label`]) painted over the border.
@@ -80,18 +74,135 @@ pub(crate) fn floating_label(
     }
 }
 
-/// MuiTextField, outlined.
+/// A field's shape: the standard rounded box, or fully round (a search).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FieldShape {
+    #[default]
+    Field,
+    Round,
+}
+
+impl FieldShape {
+    pub fn radius(self) -> f32 {
+        match self {
+            FieldShape::Field => RADIUS_FIELD,
+            FieldShape::Round => RADIUS_FULL,
+        }
+    }
+}
+
+/// The field box's paint (`FieldBox`): the fill that stands out from `on`, and a border that is
+/// clear at rest (it holds the room an error takes) and danger when invalid.
+pub fn field_box_paint(
+    p: &Palette,
+    on: Surface,
+    error: bool,
+) -> (semaphore_design::Rgba, Option<semaphore_design::Rgba>) {
+    (stand_out_fill(p, on), error.then_some(p.danger))
+}
+
+/// The label above a field, with "required" beside it when it is.
+fn label_row(label: SharedString, required: bool, p: &Palette) -> Div {
+    div()
+        .flex()
+        .items_baseline()
+        .gap(px(SPACE_SM))
+        .min_w_0()
+        .child(field_label(label, p))
+        .when(required, |row| {
+            row.child(styled_text(TEXT_META, "required").text_color(c(p.text_dim)))
+        })
+}
+
+/// The helper, or the error in its place in danger with a warning icon.
+fn message(helper: Option<SharedString>, error: bool, p: &Palette) -> Option<Div> {
+    let helper = helper.filter(|helper| !helper.is_empty())?;
+    let tone = if error { p.danger } else { p.text_secondary };
+    Some(
+        div()
+            .flex()
+            .items_start()
+            .gap(px(SPACE_XS))
+            .min_w_0()
+            .text_color(c(tone))
+            .when(error, |row| {
+                row.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .h(px(TEXT_META.line_height))
+                        .child(
+                            Icon::lounge(LoungeIcon::TriangleAlert)
+                                .size(ICON_XS)
+                                .color(c(p.danger)),
+                        ),
+                )
+            })
+            .child(styled_text(TEXT_META, helper).min_w_0()),
+    )
+}
+
+/// The label, the box and the message around a field (`FieldShell`), dimmed as a whole when
+/// disabled.
+fn shell(
+    id: ElementId,
+    label: Option<Div>,
+    field: impl IntoElement,
+    message: Option<Div>,
+    disabled: bool,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .w_full()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .gap(px(SPACE_XS))
+        .when(disabled, |root| root.opacity(STATE_DISABLED))
+        .children(label)
+        .child(field)
+        .children(message)
+}
+
+/// The box itself: fill, clear or danger border, the ring while focused (on any focus, as a
+/// browser field shows it).
+fn field_box(p: &Palette, on: Surface, error: bool, shape: FieldShape, focused: bool) -> Div {
+    let (fill, border) = field_box_paint(p, on, error);
+    div()
+        .relative()
+        .w_full()
+        .min_w_0()
+        .min_h(px(CONTROL_LG))
+        .flex()
+        .items_center()
+        .gap(px(SPACE_SM))
+        .px(px(SPACE_LG - BORDER_SELECTED))
+        .rounded(px(shape.radius()))
+        .border(px(BORDER_SELECTED))
+        .border_color(border.map(c).unwrap_or(transparent_black()))
+        .bg(c(fill))
+        .text_color(c(p.text))
+        .when(focused, |frame| {
+            frame.child(focus_ring(p, shape.radius(), BORDER_FOCUS_OFFSET))
+        })
+}
+
+/// A field where the user types text (`TextField`), on one line. The label sits above it unless
+/// hidden; `error` marks it invalid and shows the helper as the error in its place.
 #[derive(IntoElement)]
 pub struct TextField {
     id: ElementId,
     state: Entity<InputState>,
     label: SharedString,
+    label_hidden: bool,
     placeholder: Option<SharedString>,
     helper: Option<SharedString>,
     error: bool,
     required: bool,
     disabled: bool,
-    surface: Option<Hsla>,
+    shape: FieldShape,
+    start_icon: Option<LoungeIcon>,
+    on: Surface,
 }
 
 impl TextField {
@@ -104,26 +215,31 @@ impl TextField {
             id: id.into(),
             state: state.clone(),
             label: label.into(),
+            label_hidden: false,
             placeholder: None,
             helper: None,
             error: false,
             required: false,
             disabled: false,
-            surface: None,
+            shape: FieldShape::default(),
+            start_icon: None,
+            on: Surface::default(),
         }
     }
 
-    /// Shows only while focused and empty, as MUI's does under a label.
+    /// A hint inside the empty field. It does not replace the label.
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.placeholder = Some(placeholder.into());
         self
     }
 
+    /// A line of help under the field; with [`TextField::error`], the error message.
     pub fn helper(mut self, helper: impl Into<SharedString>) -> Self {
         self.helper = Some(helper.into());
         self
     }
 
+    /// Marks the field invalid: a danger border, and the helper drawn as the error.
     pub fn error(mut self, error: bool) -> Self {
         self.error = error;
         self
@@ -139,9 +255,25 @@ impl TextField {
         self
     }
 
-    /// The colour behind the field, for the label's notch. Defaults to paper.
-    pub fn surface(mut self, surface: Hsla) -> Self {
-        self.surface = Some(surface);
+    /// Hides the label from the eye. It still names the field.
+    pub fn label_hidden(mut self) -> Self {
+        self.label_hidden = true;
+        self
+    }
+
+    pub fn shape(mut self, shape: FieldShape) -> Self {
+        self.shape = shape;
+        self
+    }
+
+    /// An icon at the start of the field.
+    pub fn start_icon(mut self, icon: LoungeIcon) -> Self {
+        self.start_icon = Some(icon);
+        self
+    }
+
+    pub fn on_surface(mut self, on: Surface) -> Self {
+        self.on = on;
         self
     }
 }
@@ -155,90 +287,61 @@ impl RenderOnce for TextField {
                 state.value().is_empty(),
             )
         };
-        let sem = cx.sem();
-        let color = frame_color(focused, self.error, self.disabled, cx);
-        let label_color = if self.error {
-            sem.error
-        } else if focused {
-            sem.primary
-        } else if self.disabled {
-            sem.text_disabled
-        } else {
-            sem.text_secondary
-        };
-        let surface = self.surface.unwrap_or(sem.paper);
-        let helper_color = if self.error {
-            sem.error
-        } else {
-            sem.text_secondary
-        };
-        let placeholder_color = sem.text_secondary.opacity(0.75);
-        let hover_border = sem.text_primary;
-        let (error, disabled) = (self.error, self.disabled);
-        div()
-            .id(self.id.clone())
-            .w_full()
-            .flex()
-            .flex_col()
-            .child(notched(
+        let p = cx.sem().roles;
+        let field = field_box(&p, self.on, self.error, self.shape, focused)
+            .children(
+                self.start_icon
+                    .map(|icon| Icon::lounge(icon).size(ICON_MD).color(c(p.text_secondary))),
+            )
+            .child(
                 div()
-                    .id("frame")
                     .relative()
-                    .h(px(56.))
-                    .w_full()
-                    .rounded(px(4.))
-                    .border_1()
-                    .when(focused || error, |frame| frame.border_2())
-                    .border_color(color)
-                    .when(!focused && !error && !disabled, |frame| {
-                        frame.hover(move |style| style.border_color(hover_border))
-                    })
-                    .flex()
-                    .items_center()
-                    .px(px(if focused || error { 13. } else { 14. }))
+                    .flex_1()
+                    .min_w_0()
                     .child(
                         Input::new(&self.state)
-                            .id(self.id)
+                            .id(self.id.clone())
                             .aria_label(self.label.clone())
                             .appearance(false)
                             .disabled(self.disabled)
                             .px_0()
-                            .text_size(px(16.)),
+                            .text_size(px(TEXT_BODY.size)),
                     )
-                    .children(self.placeholder.filter(|_| focused && empty).map(|shown| {
+                    .children(self.placeholder.filter(|_| empty).map(|shown| {
                         div()
                             .absolute()
-                            .left(px(13.))
-                            .top(px(15.))
-                            .text_color(placeholder_color)
-                            .child(text(Variant::Body1, shown))
+                            .left_0()
+                            .top_0()
+                            .bottom_0()
+                            .flex()
+                            .items_center()
+                            .text_color(c(p.text_dim))
+                            .child(styled_text(TEXT_BODY, shown))
                     })),
-                floating_label(
-                    self.label,
-                    self.required,
-                    focused || !empty,
-                    label_color,
-                    surface,
-                ),
-            ))
-            .children(self.helper.map(|helper| {
-                div()
-                    .px(px(14.))
-                    .pt(px(3.))
-                    .text_color(helper_color)
-                    .child(text(Variant::Caption, helper))
-            }))
+            );
+        shell(
+            ElementId::NamedChild(std::sync::Arc::new(self.id), "shell".into()),
+            (!self.label_hidden).then(|| label_row(self.label, self.required, &p)),
+            field,
+            message(self.helper, self.error, &p),
+            self.disabled,
+        )
     }
 }
 
-/// MuiSelect, outlined: gpui-kit's list and keyboard handling in our frame.
+/// A field where the user picks one option from a list that opens on demand (`SelectField`):
+/// gpui-kit's list and keyboard handling in the field box.
 #[derive(IntoElement)]
 pub struct SelectField {
     id: ElementId,
     state: Entity<SelectState<Vec<SharedString>>>,
     label: SharedString,
+    label_hidden: bool,
+    placeholder: Option<SharedString>,
+    helper: Option<SharedString>,
+    error: bool,
     disabled: bool,
-    surface: Option<Hsla>,
+    on: Surface,
 }
 
 impl SelectField {
@@ -251,9 +354,29 @@ impl SelectField {
             id: id.into(),
             state: state.clone(),
             label: label.into(),
+            label_hidden: false,
+            placeholder: None,
+            helper: None,
+            error: false,
             disabled: false,
-            surface: None,
+            on: Surface::default(),
         }
+    }
+
+    /// Shown while nothing is chosen.
+    pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
+        self.placeholder = Some(placeholder.into());
+        self
+    }
+
+    pub fn helper(mut self, helper: impl Into<SharedString>) -> Self {
+        self.helper = Some(helper.into());
+        self
+    }
+
+    pub fn error(mut self, error: bool) -> Self {
+        self.error = error;
+        self
     }
 
     pub fn disabled(mut self, disabled: bool) -> Self {
@@ -261,47 +384,121 @@ impl SelectField {
         self
     }
 
-    pub fn surface(mut self, surface: Hsla) -> Self {
-        self.surface = Some(surface);
+    pub fn label_hidden(mut self) -> Self {
+        self.label_hidden = true;
         self
     }
 }
 
 impl RenderOnce for SelectField {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let chosen = self.state.read(cx).selected_value().is_some();
-        let sem = cx.sem();
-        let surface = self.surface.unwrap_or(sem.paper);
-        let label_color = if self.disabled {
-            sem.text_disabled
-        } else {
-            sem.text_secondary
-        };
-        let border = frame_color(false, false, self.disabled, cx);
-        notched(
-            div()
-                .h(px(56.))
-                .w_full()
-                .rounded(px(4.))
-                .border_1()
-                .border_color(border)
-                .child(
-                    div().size_full().flex().items_center().child(
-                        Select::new(&self.state)
-                            .id(self.id)
-                            .accessibility_label(self.label.clone())
-                            // The floating label says what to pick: the select's own "Please
-                            // select" would draw over it while nothing is picked.
-                            .placeholder("")
-                            .appearance(false)
-                            .disabled(self.disabled)
-                            .h_full()
-                            .pl(px(14.))
-                            .pr(px(10.))
-                            .text_size(px(16.)),
-                    ),
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let focused = self
+            .state
+            .read(cx)
+            .focus_handle(cx)
+            .contains_focused(window, cx);
+        let p = cx.sem().roles;
+        let field = field_box(&p, self.on, self.error, FieldShape::Field, focused)
+            .px_0()
+            .child(
+                div().size_full().flex().items_center().child(
+                    Select::new(&self.state)
+                        .id(self.id.clone())
+                        .accessibility_label(self.label.clone())
+                        .placeholder(self.placeholder.unwrap_or_default())
+                        .appearance(false)
+                        .disabled(self.disabled)
+                        .h(px(CONTROL_LG - 2. * BORDER_SELECTED))
+                        .pl(px(SPACE_LG - BORDER_SELECTED))
+                        .pr(px(SPACE_SM))
+                        .text_size(px(TEXT_BODY.size)),
                 ),
-            floating_label(self.label, false, chosen, label_color, surface),
+            );
+        shell(
+            ElementId::NamedChild(std::sync::Arc::new(self.id), "shell".into()),
+            (!self.label_hidden).then(|| label_row(self.label, false, &p)),
+            field,
+            message(self.helper, self.error, &p),
+            self.disabled,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kit::look::tests::inputs;
+    use crate::theme::Sem;
+    use crate::theme::color::contrast_ratio;
+    use core::prelude::v1::test;
+
+    #[test]
+    fn the_box_stands_out_and_an_error_draws_the_border() {
+        let p = Sem::default().roles;
+        assert_eq!(field_box_paint(&p, Surface::Surface, false), (p.fill, None));
+        assert_eq!(
+            field_box_paint(&p, Surface::Fill, true),
+            (p.surface, Some(p.danger))
+        );
+        assert_eq!(FieldShape::Field.radius(), RADIUS_FIELD);
+        assert_eq!(FieldShape::Round.radius(), RADIUS_FULL);
+    }
+
+    /// The lowest placeholder contrast the palette gives today: `text_dim` on a field's fill is
+    /// under the 4.5:1 text target (about 4.2 to 4.4 on the default base, in both clients). The
+    /// palette promises `text_dim` only on the ground and the surface; the placeholder question is
+    /// issue #873. Until it is settled this holds the level where it is, so it can only go up.
+    const PLACEHOLDER_FLOOR: f32 = 4.1;
+
+    #[test]
+    fn text_dim_pairings_on_every_theme() {
+        for input in inputs() {
+            let p = Sem::new(input).roles;
+            let name = input.name();
+            for on in [Surface::Ground, Surface::Surface] {
+                let (fill, _) = field_box_paint(&p, on, false);
+                let ratio = contrast_ratio(p.text_dim, fill);
+                assert!(
+                    ratio >= PLACEHOLDER_FLOOR,
+                    "{name} on {on:?}: placeholder {ratio:.2}:1"
+                );
+                // "required", the off switch track and the unchecked checkbox and radio borders
+                // all draw `text_dim` on the layer itself.
+                let under = crate::kit::look::tint_base(&p, on);
+                let ratio = contrast_ratio(p.text_dim, under);
+                assert!(
+                    ratio >= 4.5,
+                    "{name} on {on:?}: text_dim on the layer {ratio:.2}:1"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn field_text_reads_on_every_theme() {
+        for input in inputs() {
+            let p = Sem::new(input).roles;
+            for on in [Surface::Ground, Surface::Surface] {
+                let (fill, _) = field_box_paint(&p, on, false);
+                let name = input.name();
+                let check = |what: &str, ink, target: f32| {
+                    let ratio = contrast_ratio(ink, fill);
+                    assert!(ratio >= target, "{name} on {on:?}: {what} {ratio:.2}:1");
+                };
+                check("value", p.text, 4.5);
+                check("start icon", p.text_secondary, 3.);
+                // The danger border is a non-text mark beside the fill.
+                check("error border", p.danger, 3.);
+                let under = crate::kit::look::tint_base(&p, on);
+                for (what, ink) in [
+                    ("helper", p.text_secondary),
+                    ("error", p.danger),
+                    ("label", p.text_secondary),
+                ] {
+                    let ratio = contrast_ratio(ink, under);
+                    assert!(ratio >= 4.5, "{name} on {on:?}: {what} {ratio:.2}:1");
+                }
+            }
+        }
     }
 }
