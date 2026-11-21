@@ -1533,6 +1533,31 @@ async fn dm_deafening_is_member_only_and_tells_nobody() {
         .expect("in the call");
     assert_eq!(mine["isDeafened"], false);
 
+    // The caller is the bearer token's user: Samira deafening never deafens me.
+    server.sign_in_as("samira", &id("u-samira"));
+    let token = sign_in_as(&client, &base, "samira").await;
+    let response = client
+        .post(format!("{base}{deafen}"))
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&json!({ "isDeafened": true }))
+        .send()
+        .await
+        .expect("the fake answers");
+    assert_eq!(response.status().as_u16(), 201);
+    let (_, presence) = get(
+        &client,
+        &base,
+        &format!("/api/dm-groups/{dm}/voice-presence"),
+    )
+    .await;
+    let mine = presence["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["id"] == id("me").as_str())
+        .expect("in the call");
+    assert_eq!(mine["isDeafened"], false, "Samira's deafen is hers: {presence}");
+
     // Not a member (and no such group): `assertDmMember` refuses before anything changes.
     let (status, body) = post(
         &client,

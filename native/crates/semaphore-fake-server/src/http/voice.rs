@@ -318,13 +318,15 @@ async fn dm_decline(
 /// answer. DM presence has no per-user update event, so nobody is told.
 async fn dm_deafen(
     State(inner): State<Arc<Inner>>,
+    headers: axum::http::HeaderMap,
     Path(group_id): Path<String>,
     body: Bytes,
 ) -> Response {
     let Ok(dto) = typed::<semaphore_wire::types::UpdateDeafenStateDto>(&body) else {
         return invalid("isDeafened is required");
     };
-    let me = inner.scenario.me.id.clone();
+    // The caller, as `dm_decline` reads it: the bearer token's session, or `me` without one.
+    let me = inner.user_of(super::bearer_token(&headers));
     match calls::dm_deafen(&inner, &group_id, &me, dto.is_deafened) {
         Ok(()) => json_response(
             StatusCode::CREATED,
