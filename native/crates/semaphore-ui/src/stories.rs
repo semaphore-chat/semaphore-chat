@@ -74,13 +74,14 @@ pub fn find(name: &str) -> Option<Story> {
     all().into_iter().find(|story| story.name == name)
 }
 
-/// The window's root: draws whatever the story built.
+/// The window's root: draws whatever the story built, under the window's behaviour host (as
+/// the app's windows), so a story's overlays are layers of the stack.
 pub struct StoryRoot {
     pub view: AnyView,
 }
 
 impl Render for StoryRoot {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        self.view.clone()
+        crate::kit::BehaviourRoot::new(self.view.clone())
     }
 }

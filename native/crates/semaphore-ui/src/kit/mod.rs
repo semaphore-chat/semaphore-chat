@@ -5,6 +5,7 @@
 //! control here looks like its MUI counterpart in any of the 72 themes.
 
 mod assets;
+mod behaviour;
 mod bus;
 mod controls;
 mod display;
@@ -39,6 +40,10 @@ mod tests_lounge;
 mod typography;
 
 pub use assets::{UiAssets, icon_path, lounge_icon_path};
+pub use behaviour::{
+    Announcer, BehaviourHost, BehaviourRoot, CloseReason, LayerKind, Politeness, announce,
+    screen_escape, screen_focus_target,
+};
 pub use bus::{emit_core_event, on_core_event};
 pub use controls::{
     Button, ButtonSize, CheckState, Checkbox, IconButton, IconButtonVariant, KeyCap, Orientation,
@@ -61,8 +66,8 @@ pub use lounge::{
 };
 pub use overlays::{
     ANCHOR_GAP, Dialog, DialogCloseReason, DialogSize, Menu, MenuCloseReason, MenuEntry, MenuItem,
-    MenuTone, Paper, Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel, SecondaryTone,
-    Tip, with_tip,
+    MenuTone, Paper, Placement, Popover, PopoverPadding, PopoverPanel, SecondaryTone, Tip,
+    with_tip,
 };
 pub use sheet::{Sheet, SheetCloseReason, SheetSize, sheet_is_bottom};
 pub use surface::{Surface, SurfaceScope};
@@ -86,5 +91,6 @@ pub fn stories() -> Vec<crate::stories::Story> {
     all.extend(stories_lists_overlays::stories());
     all.extend(stories_controls::stories());
     all.extend(stories_lounge::stories());
+    all.extend(behaviour::stories::stories());
     all
 }

@@ -6,6 +6,7 @@
 //! (or `Surface` on a fill), so the kit pieces inside draw to stand out from them
 //! ([`super::surface`]).
 
+use super::behaviour::list_focus::{ListFocusHost, ListKeys, ListOrientation, list_key};
 use super::overlays::{ShadowKind, shadow, state_over};
 use super::surface::stand_out_token;
 use super::{
@@ -762,52 +763,18 @@ pub fn dock_fades(scroll: f32, max: f32) -> (bool, bool) {
 
 /// The dock's keyboard list and its scroll.
 struct DockState {
-    list: list_focus::State,
-    handles: Vec<(String, FocusHandle)>,
+    focus: ListFocusHost,
     scroll: ScrollHandle,
-    /// Focus is on one of the dock's entries.
-    inside: bool,
     /// The current item last brought into view, and the bar's width then.
     revealed: Option<(String, Pixels)>,
 }
 
-impl DockState {
-    fn handle(&mut self, id: &str, cx: &mut App) -> FocusHandle {
-        if let Some((_, handle)) = self.handles.iter().find(|(known, _)| known == id) {
-            return handle.clone();
-        }
-        let handle = cx.focus_handle();
-        self.handles.push((id.to_owned(), handle.clone()));
-        handle
-    }
-
-    fn step(&mut self, event: list_focus::Event) {
-        self.list = list_focus::step(&self.list, &event, &DOCK_PARAMS).0;
-    }
+fn dock_focus(state: &mut DockState) -> &mut ListFocusHost {
+    &mut state.focus
 }
 
-/// The entry that holds the dock's one Tab stop, as the web host's `tabStopOf` (`list_focus`
-/// rule 6): while focus is in the bar, the focused entry; while it is outside, the selected
-/// (current) entry if enabled, else the focused one if enabled, else the first enabled.
-pub(crate) fn tab_stop_of(state: &list_focus::State, inside: bool) -> Option<String> {
-    let usable = |id: &Option<String>| {
-        id.as_ref()
-            .filter(|id| state.rows.iter().any(|row| &row.id == *id && !row.disabled))
-            .cloned()
-    };
-    if inside && let Some(focused) = usable(&state.focused) {
-        return Some(focused);
-    }
-    usable(&state.selected)
-        .or_else(|| usable(&state.focused))
-        .or_else(|| {
-            state
-                .rows
-                .iter()
-                .find(|row| !row.disabled)
-                .map(|row| row.id.clone())
-        })
-}
+#[cfg(test)]
+pub(crate) use super::behaviour::list_focus::tab_stop_of;
 
 const DOCK_PARAMS: list_focus::Params = list_focus::Params {
     wrap: false,
@@ -815,20 +782,13 @@ const DOCK_PARAMS: list_focus::Params = list_focus::Params {
     typeahead_ms: semaphore_design::lounge::MOTION_TYPEAHEAD_MS,
 };
 
-/// The dock's key map: Left and Right, Home and End, as a horizontal list.
-pub(crate) fn dock_key(keystroke: &Keystroke) -> Option<list_focus::Event> {
-    let m = &keystroke.modifiers;
-    if m.control || m.alt || m.platform || m.function || m.shift {
-        return None;
-    }
-    Some(match keystroke.key.as_str() {
-        "left" => list_focus::Event::Up,
-        "right" => list_focus::Event::Down,
-        "home" => list_focus::Event::Home,
-        "end" => list_focus::Event::End,
-        _ => return None,
-    })
-}
+/// The dock's keys: a horizontal list (Left and Right, Up and Down, Home and End), no typeahead,
+/// as the web's Dock on `useListFocus({ orientation: 'horizontal' })`.
+const DOCK_KEYS: ListKeys = ListKeys {
+    orientation: ListOrientation::Horizontal,
+    typeahead: false,
+    allow_shift: false,
+};
 
 /// Scrolls the dock so the middle child `index` is in view, from the last frame's layout.
 fn reveal_index(scroll: &ScrollHandle, index: usize) -> bool {
@@ -911,10 +871,8 @@ impl RenderOnce for Dock {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem().clone();
         let state = window.use_keyed_state(self.id.clone(), cx, |_, _| DockState {
-            list: list_focus::initial(&DOCK_PARAMS),
-            handles: Vec::new(),
+            focus: ListFocusHost::new(DOCK_PARAMS, DOCK_KEYS),
             scroll: ScrollHandle::new(),
-            inside: false,
             revealed: None,
         });
         let entries = || self.start.iter().chain(&self.items).chain(&self.end);
@@ -940,45 +898,16 @@ impl RenderOnce for Dock {
         // What the web host feeds the reducer: the rows (with their disabled state), the
         // selection (the current item), and where focus is. Focus moves (a click, Tab, an arrow)
         // re-render the window, so the focused entry is read here.
-        let (handles, scroll, entered) = state.update(cx, |state, cx| {
-            if state.list.rows != rows {
-                state.step(list_focus::Event::SetRows { rows: rows.clone() });
-            }
+        let (handles, scroll, entered, stop) = state.update(cx, |state, cx| {
             let selected = current.as_ref().map(|(_, key)| key.clone());
-            if state.list.selected != selected {
-                state.step(list_focus::Event::SetSelected { id: selected });
-            }
-            let handles: Vec<(String, FocusHandle)> = rows
-                .iter()
-                .map(|row| (row.id.clone(), state.handle(&row.id, cx)))
-                .collect();
-            let focused = handles
-                .iter()
-                .find(|(_, handle)| handle.is_focused(window))
-                .map(|(key, _)| key.clone());
-            let mut entered = None;
-            match focused {
-                Some(key) => {
-                    if !state.inside || state.list.focused.as_deref() != Some(key.as_str()) {
-                        entered = Some(key.clone());
-                    }
-                    if state.list.focused.as_deref() != Some(key.as_str()) {
-                        state.step(list_focus::Event::FocusRow { id: key });
-                    }
-                    state.inside = true;
-                }
-                None if state.inside => {
-                    state.step(list_focus::Event::FocusOut);
-                    state.inside = false;
-                }
-                None => {}
-            }
-            (handles, state.scroll.clone(), entered)
+            let synced = state.focus.sync(rows.clone(), Some(selected), window, cx);
+            (
+                synced.handles,
+                state.scroll.clone(),
+                synced.entered,
+                state.focus.tab_stop(),
+            )
         });
-        let stop = {
-            let state = state.read(cx);
-            tab_stop_of(&state.list, state.inside)
-        };
         let focus_of = |entry: &DockEntry| {
             entry.key().and_then(|key| {
                 handles
@@ -1052,7 +981,6 @@ impl RenderOnce for Dock {
             })
             .collect();
         let key_state = state.clone();
-        let key_handles = handles.clone();
         let fade = |left: bool| {
             let (from, to) = if left {
                 (surface, clear)
@@ -1108,27 +1036,12 @@ impl RenderOnce for Dock {
             .rounded(px(RADIUS_FULL))
             .shadow(shadow(&sem, ShadowKind::Island))
             .on_key_down(move |event, window, cx| {
-                let Some(event) = dock_key(&event.keystroke) else {
+                let Some(list_event) = key_state.read(cx).focus.event_for(&event.keystroke) else {
                     return;
                 };
-                let focused = key_handles
-                    .iter()
-                    .find(|(_, handle)| handle.is_focused(window))
-                    .map(|(id, _)| id.clone());
-                let Some(focused) = focused else {
-                    return;
-                };
-                cx.stop_propagation();
-                let target = key_state.update(cx, |state, _| {
-                    state.step(list_focus::Event::FocusRow { id: focused });
-                    state.step(event);
-                    state.list.focused.clone()
-                });
-                if let Some(target) = target
-                    && let Some((_, handle)) = key_handles.iter().find(|(id, _)| *id == target)
-                {
-                    // The next render sees the focus move and brings the entry into view.
-                    window.focus(handle, cx);
+                // The next render sees the focus move and brings the entry into view.
+                if list_key(&key_state, dock_focus, list_event, window, cx).is_some() {
+                    cx.stop_propagation();
                 }
             })
             .children(start)

@@ -2,7 +2,15 @@
 //! trap and backdrop, the kit's scrim, Escape in the bubble phase, a scrim press that counts only
 //! when it starts and ends on the scrim, and first focus placed once the frame exists. The panel
 //! is the caller's; the core resets the surface to `Surface` for everything in it.
+//!
+//! In a window with a behaviour host the modal is a layer of its overlay stack: Escape and the
+//! scrim press come from the stack (in its order: a menu above the dialog closes first), and so
+//! does `ParentClosed`; focus goes back to the opener once the modal is gone. Without a host the
+//! modal handles Escape and the scrim itself, as before.
 
+use super::behaviour::overlay::{
+    CloseReason, FocusLayer, LayerKind, LayerScope, LayerSpec, use_layer,
+};
 use super::{Surface, SurfaceScope};
 use crate::theme::SemTheme;
 use gpui_kit::base;
@@ -17,6 +25,8 @@ use std::rc::Rc;
 pub(crate) enum ModalReason {
     Escape,
     Scrim,
+    /// The layer the modal was opened in has closed: the owner must close it.
+    ParentClosed,
 }
 
 pub(crate) type ModalClose = Rc<dyn Fn(ModalReason, &mut Window, &mut App)>;
@@ -43,8 +53,10 @@ struct ModalFocus {
 /// first focusable control takes focus when the modal opens (unless something inside already took
 /// it). `place_focus` false leaves focus to the trap's host. State is kept under `id`, so two modals
 /// with the same title never share it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn modal(
     id: ElementId,
+    kind: LayerKind,
     align: ModalAlign,
     place_focus: bool,
     on_close: Option<ModalClose>,
@@ -53,7 +65,7 @@ pub(crate) fn modal(
     panel: impl FnOnce(&FocusHandle) -> AnyElement,
 ) -> impl IntoElement {
     let scrim_colour = cx.sem().role.scrim;
-    let focus = window.use_keyed_state(id, cx, |_, cx| ModalFocus {
+    let focus = window.use_keyed_state(id.clone(), cx, |_, cx| ModalFocus {
         host: cx.focus_handle(),
         first: cx.focus_handle(),
         placed: false,
@@ -63,6 +75,35 @@ pub(crate) fn modal(
         let focus = focus.read(cx);
         (focus.host.clone(), focus.first.clone(), focus.placed)
     };
+    // A layer of the window's stack, opened before focus moves in: what has focus now is its
+    // opener. The stack's reasons map onto the modal's; Tab never closes a modal.
+    let layer = on_close.clone().and_then(|close| {
+        let focus_first = first.clone();
+        use_layer(
+            ElementId::NamedChild(std::sync::Arc::new(id.clone()), "layer".into()),
+            LayerSpec {
+                kind,
+                roots: vec![host.clone()],
+                on_request_close: Rc::new(move |reason, window, cx| {
+                    let reason = match reason {
+                        CloseReason::Escape | CloseReason::Back => ModalReason::Escape,
+                        CloseReason::Scrim | CloseReason::PressOutside => ModalReason::Scrim,
+                        CloseReason::ParentClosed => ModalReason::ParentClosed,
+                        CloseReason::Tab => return,
+                    };
+                    close(reason, window, cx)
+                }),
+                focus_layer: Some(Rc::new(move |window: &mut Window, cx: &mut App| {
+                    focus_first_control(&focus_first, window, cx)
+                }) as FocusLayer),
+                opener: None,
+                fallback_opener: None,
+            },
+            window,
+            cx,
+        )
+    });
+    let hosted = layer.is_some();
     if !placed && place_focus {
         focus.update(cx, |focus, _| focus.placed = true);
         let (host, first) = (host.clone(), first.clone());
@@ -70,8 +111,7 @@ pub(crate) fn modal(
         window.defer(cx, move |window, cx| {
             // The trap focuses its own host; a control inside that took focus keeps it.
             if host.is_focused(window) || !host.contains_focused(window, cx) {
-                window.focus(&first, cx);
-                window.focus_next(cx);
+                focus_first_control(&first, window, cx);
             }
         });
     }
@@ -84,7 +124,7 @@ pub(crate) fn modal(
         // (a field's IME, an open select list) has it first. gpui-kit's dialog keys are off:
         // they would make Enter close the modal instead of pressing the focused button.
         .on_key_down(move |event, window, cx| {
-            if event.keystroke.key == "escape" && !event.keystroke.modifiers.modified() {
+            if !hosted && event.keystroke.key == "escape" && !event.keystroke.modifiers.modified() {
                 cx.stop_propagation();
                 if let Some(close) = &escape {
                     close(ModalReason::Escape, window, cx);
@@ -96,7 +136,17 @@ pub(crate) fn modal(
             ModalAlign::Centre => popup.items_center().justify_center().p(px(LAYOUT_GUTTER)),
             ModalAlign::Bottom => popup.items_end().justify_center(),
         })
-        .child(panel(&first));
+        .child(panel(&first))
+        // The panel's bounds: a press in them is inside the modal, anywhere else on its scrim.
+        .when_some(layer.clone(), |popup, layer| {
+            popup.on_children_prepainted(move |bounds, _, _| {
+                layer.set_panel(bounds.first().copied());
+            })
+        });
+    let popup = match &layer {
+        Some(layer) => LayerScope::new(layer.id.clone(), popup).into_any_element(),
+        None => popup.into_any_element(),
+    };
     base::Dialog::new(cx)
         .focus_handle(host)
         .close_on_escape(false)
@@ -135,7 +185,11 @@ pub(crate) fn modal(
                         let down = focus.update(cx, |focus, _| {
                             std::mem::replace(&mut focus.scrim_down, false)
                         });
-                        if down && let Some(close) = &scrim {
+                        // On the stack, the window's press listeners report the scrim press.
+                        if down
+                            && !hosted
+                            && let Some(close) = &scrim
+                        {
                             close(ModalReason::Scrim, window, cx);
                         }
                     }
@@ -143,4 +197,10 @@ pub(crate) fn modal(
         )
         // An overlay panel is the surface, whatever it was opened from (a card).
         .popup(SurfaceScope::new(Surface::Surface, popup))
+}
+
+/// Focuses the modal's first control that takes focus, from the start of `first`'s container.
+fn focus_first_control(first: &FocusHandle, window: &mut Window, cx: &mut App) {
+    window.focus(first, cx);
+    window.focus_next(cx);
 }
