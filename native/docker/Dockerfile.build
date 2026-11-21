@@ -11,14 +11,23 @@ FROM archlinux:base-devel-20261101.0.620205
 
 ARG HOST_UID=1000
 
+# archive.archlinux.org is a single host and drops or stalls downloads now and then, which
+# failed CI's from-scratch image builds. Up to four attempts with backoff; packages already
+# in the cache are not downloaded again, so each attempt resumes where the last stopped.
 RUN echo 'Server = https://archive.archlinux.org/repos/2026/11/01/$repo/os/$arch' > /etc/pacman.d/mirrorlist \
- && pacman -Syyuu --noconfirm \
- && pacman -S --noconfirm --needed \
-      rustup clang lld pkgconf cmake git jq python python-jsonschema cargo-deny \
-      libx11 libxcb libxkbcommon libxkbcommon-x11 wayland wayland-protocols \
-      libxrandr libxcomposite libxdamage libxfixes libxtst libdrm libva nss \
-      alsa-lib libpulse pipewire glib2 openssl fontconfig freetype2 ttf-dejavu noto-fonts-emoji noto-fonts-cjk \
-      vulkan-icd-loader vulkan-swrast mesa xorg-server-xvfb \
+ && for attempt in 1 2 3 4; do \
+      pacman -Syyuu --noconfirm \
+      && pacman -S --noconfirm --needed \
+           rustup clang lld pkgconf cmake git jq python python-jsonschema cargo-deny \
+           libx11 libxcb libxkbcommon libxkbcommon-x11 wayland wayland-protocols \
+           libxrandr libxcomposite libxdamage libxfixes libxtst libdrm libva nss \
+           alsa-lib libpulse pipewire glib2 openssl fontconfig freetype2 ttf-dejavu noto-fonts-emoji noto-fonts-cjk \
+           vulkan-icd-loader vulkan-swrast mesa xorg-server-xvfb \
+      && break; \
+      if [ "$attempt" = 4 ]; then echo "pacman failed 4 times" >&2; exit 1; fi; \
+      echo "pacman attempt $attempt failed; retrying" >&2; \
+      sleep $((attempt * 20)); \
+    done \
  && rm -rf /var/cache/pacman/pkg/*
 
 # Baked in so runs need no network for the toolchain. Keep in step with
