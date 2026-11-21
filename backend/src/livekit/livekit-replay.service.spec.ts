@@ -258,8 +258,14 @@ describe('LivekitReplayService', () => {
       { width: 1280, height: 720, expectedKbps: 4608 },
       { width: 1920, height: 1080, expectedKbps: 10368 },
       { width: 2560, height: 1440, expectedKbps: 18432 },
+      // clamped to the 3,000 kbps floor
+      { width: 640, height: 360, expectedKbps: 3000 },
+      // clamped to the 20,000 kbps ceiling
+      { width: 3840, height: 2160, expectedKbps: 20000 },
+      // 5245.44 rounds to an integer (the field is int32)
+      { width: 1366, height: 768, expectedKbps: 5245 },
     ])(
-      'sends the bitrate for $widthx$height to egress in kbps',
+      'sends $expectedKbps kbps to egress for $width x $height',
       async ({ width, height, expectedKbps }) => {
         mockRoomServiceClient.getParticipant.mockResolvedValue({
           tracks: [
