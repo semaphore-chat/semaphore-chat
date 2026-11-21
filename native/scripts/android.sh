@@ -27,8 +27,12 @@ HOST_GID="$(id -g)"
 
 if [ "${1:-}" != --inner ]; then
   base="$("$NATIVE_DIR/scripts/in-image.sh" --print-image)"
-  tag="$( { cat "$NATIVE_DIR/docker/Dockerfile.android"; echo "$base"; echo "$HOST_UID"; } \
-    | sha256sum | cut -c1-12)"
+  # Everything the image is built from: the Dockerfile, the base, the ids it chowns to, and the
+  # uniffi version it installs uniffi-bindgen at (read from Cargo.lock, as the Dockerfile does).
+  # The whole lockfile isn't hashed: any other dependency change would rebuild the image for nothing.
+  uniffi_version="$(sed -n '/^name = "uniffi"$/{n;s/^version = "\(.*\)"$/\1/p;q}' "$NATIVE_DIR/Cargo.lock")"
+  tag="$( { cat "$NATIVE_DIR/docker/Dockerfile.android"; echo "$base"; echo "$HOST_UID";
+            echo "$HOST_GID"; echo "uniffi=$uniffi_version"; } | sha256sum | cut -c1-12)"
   image="semaphore-native-android:$tag"
 
   if ! docker image inspect "$image" >/dev/null 2>&1; then
