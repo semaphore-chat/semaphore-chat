@@ -170,7 +170,7 @@ impl Button {
 
     /// The action is not available: out of the tab order, dimmed.
     /// Tracks focus with `handle`, so a view can focus the control.
-    pub(crate) fn track_focus(mut self, handle: &FocusHandle) -> Self {
+    pub fn track_focus(mut self, handle: &FocusHandle) -> Self {
         self.focus = Some(handle.clone());
         self
     }
@@ -454,7 +454,7 @@ impl IconButton {
     }
 
     /// Tracks focus with `handle`, so a view can focus the control.
-    pub(crate) fn track_focus(mut self, handle: &FocusHandle) -> Self {
+    pub fn track_focus(mut self, handle: &FocusHandle) -> Self {
         self.focus = Some(handle.clone());
         self
     }
@@ -666,7 +666,7 @@ impl Switch {
     }
 
     /// Tracks focus with `handle`, so a view can focus the control.
-    pub(crate) fn track_focus(mut self, handle: &FocusHandle) -> Self {
+    pub fn track_focus(mut self, handle: &FocusHandle) -> Self {
         self.focus = Some(handle.clone());
         self
     }
@@ -896,7 +896,7 @@ impl Checkbox {
     }
 
     /// Tracks focus with `handle`, so a view can focus the control.
-    pub(crate) fn track_focus(mut self, handle: &FocusHandle) -> Self {
+    pub fn track_focus(mut self, handle: &FocusHandle) -> Self {
         self.focus = Some(handle.clone());
         self
     }
@@ -1194,7 +1194,7 @@ impl RadioGroup {
     }
 
     /// Tracks the group's Tab stop with `handle`, so a view can focus the group.
-    pub(crate) fn track_focus(mut self, handle: &FocusHandle) -> Self {
+    pub fn track_focus(mut self, handle: &FocusHandle) -> Self {
         self.focus = Some(handle.clone());
         self
     }
