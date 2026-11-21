@@ -9,7 +9,7 @@
  */
 import type { Browser, Page } from '@playwright/test';
 import { test, expect, API_BASE, sendTestMessage, deleteWorlds } from './fixtures';
-import { chatPath, loungeWorld } from './fixtures/lounge';
+import { chatPath, loungePath, loungeWorld, openFixture } from './fixtures/lounge';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -162,6 +162,47 @@ test.describe('Android Back closes the top layer (412 px, touch)', () => {
       await expect(page).toHaveURL(onChat(path), EVENTUAL);
       await page.goBack();
       await expect(page).not.toHaveURL(onChat(path), EVENTUAL);
+      await expect(chatHeading(page, 'lobby')).toHaveCount(0, EVENTUAL);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('a plain pin (a replace from the closing sheet): one Back leaves the chat, and the header back arrow works on the first tap', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    const pinned = await sendTestMessage(request, world.c1.lobbyId, 'the pinned rules of the lobby', world.owner.token);
+    const pin = await request.post(`${API_BASE}/moderation/pin/${pinned.id}`, { data: {}, headers: { Authorization: `Bearer ${world.owner.token}` } });
+    expect(pin.ok()).toBe(true);
+    const { context, page } = await openTouchSession(browser, world.member);
+    const home = new RegExp(`#${escapeRe(loungePath('real', world.c1.id))}$`);
+    const lobby = page.getByRole('navigation', { name: 'Community', exact: true }).getByRole('link', { name: /^lobby/ });
+    const jump = async () => {
+      await page.getByRole('button', { name: 'More' }).tap();
+      await page.getByRole('menuitem', { name: 'Pinned messages (1)' }).tap();
+      const sheet = page.getByRole('dialog', { name: 'Pinned messages (1)' });
+      await sheet.getByRole('button', { name: /the pinned rules of the lobby/ }).tap();
+      await expect(sheet).toHaveCount(0, EVENTUAL);
+      await expect(row(page, 'the pinned rules of the lobby')).toBeInViewport(EVENTUAL);
+      // The jump's own clean-up (`?highlight=` dropped by a replace) has run.
+      await expect(page).toHaveURL(onChat(chatPath('real', world.c1.id, world.c1.lobbyId)), EVENTUAL);
+    };
+    try {
+      // From the community home, as a user gets there.
+      await openFixture(page, world.c1.id, { communityName: world.c1.name, where: 'real' });
+      await lobby.tap();
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await jump();
+      // Back once: the community home (no duplicate chat entry left under the sheet's).
+      await page.goBack();
+      await expect(page).toHaveURL(home, EVENTUAL);
+      await expect(chatHeading(page, 'lobby')).toHaveCount(0, EVENTUAL);
+
+      // Again, with the header's back arrow: one tap.
+      await lobby.tap();
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await jump();
+      await page.getByRole('button', { name: 'Back to the community' }).tap();
+      await expect(page).toHaveURL(home, EVENTUAL);
       await expect(chatHeading(page, 'lobby')).toHaveCount(0, EVENTUAL);
     } finally {
       await context.close();

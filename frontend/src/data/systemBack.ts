@@ -21,6 +21,24 @@ function readCoarse(): boolean {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(SYSTEM_BACK_QUERY).matches;
 }
 
+/**
+ * Where a navigation from inside a closing layer waits for that layer's history entry to be stepped back over
+ * (the kit's `useSystemBack` returns it; the Lounge registers it). Without that, a replace would rewrite the layer's
+ * entry and leave the screen's old entry under it. Kit-free on purpose: the classic shell shares the hooks that call
+ * `navigateAfterLayers`, and with nothing registered the navigation runs at once.
+ */
+let layerEntryRunner: ((run: () => void) => void) | null = null;
+
+export function setLayerEntryRunner(runner: ((run: () => void) => void) | null): void {
+  layerEntryRunner = runner;
+}
+
+/** Runs a route navigation once the entries of layers that just closed are gone (at once outside the Lounge). */
+export function navigateAfterLayers(run: () => void): void {
+  if (layerEntryRunner === null) run();
+  else layerEntryRunner(run);
+}
+
 export function useSystemBackEnabled(): boolean {
   const coarse = useSyncExternalStore(subscribe, readCoarse, () => false);
   return coarse && !isElectron();

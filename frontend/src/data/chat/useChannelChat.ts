@@ -9,6 +9,7 @@ import { useAllCommunityMembers } from "../../hooks/useAllCommunityMembers";
 import { useJumpToMessage } from "../../hooks/useJumpToMessage";
 import { pinnedJumpTarget } from "./usePinnedList";
 import { searchWith } from "./threadParam";
+import { navigateAfterLayers } from "../systemBack";
 import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 
 export interface UseChannelChatOptions {
@@ -78,10 +79,13 @@ export function useChannelChat(
   const searchWithoutHighlight = searchWith(searchParams, "highlight", null);
   useEffect(() => {
     if (highlightMessageId && !isJumpPending) {
-      navigate(`${chatPath}${searchWithoutHighlight}`, {
-        replace: true,
-        state: locationStateRef.current,
-      });
+      // In the Lounge, after any closing layer's history entry is gone (a replace on it would leave the old entry).
+      navigateAfterLayers(() =>
+        navigate(`${chatPath}${searchWithoutHighlight}`, {
+          replace: true,
+          state: locationStateRef.current,
+        }),
+      );
     }
   }, [highlightMessageId, isJumpPending, chatPath, navigate, searchWithoutHighlight]);
 

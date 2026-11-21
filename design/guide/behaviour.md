@@ -183,12 +183,20 @@ it does what the effect's description says to do instead.
   with the same URL, for each open layer a Back can close (not tooltips),
   and its state lists the layers open when it was pushed. Leaving an entry is
   the Back: each open layer the entry landed on does not list gets one `back`,
-  and its close is committed before the host goes on. A refused layer gets its
-  entry back. A layer closed any other way (Escape, a press outside, its own
+  and its close is committed before the host goes on. A refused layer goes
+  forward again onto the entry just left: the host never pushes an entry right
+  after a traversal, because Chrome's Back button skips entries pushed without a
+  user gesture. A layer closed any other way (Escape, a press outside, its own
   button) gives up its entry: the host steps back over it, and no route moves,
-  because the entry below has the same URL. Entries that list layers no longer
-  open (left under a route an action pushed before its layer closed, or from
-  before a reload) are stepped over, so a Back never lands on a dead entry. On
+  because the entry below has the same URL. When one layer closes as another
+  opens (a menu item that opens a sheet), the top entry is rewritten in place.
+  A navigation from inside a closing layer waits until the layer's entry is
+  gone (`navigateAfterLayers` in `frontend/src/data/systemBack.ts`), so a route
+  replace lands on the screen's own entry; a replace that rewrites a layer's
+  entry anyway is moved down onto the screen's entry. Entries that list layers
+  no longer open (left under a route an action pushed before its layer closed,
+  or from before a reload) are stepped over in the direction the user went, so
+  neither Back nor Forward lands on a dead entry. On
   the web it is on for a touch pointer only, never in Electron: with a mouse,
   the browser's Back keeps its plain meaning. The open thread is not a layer: it
   has its own route entry (`?thread=`), so Back already closes it.

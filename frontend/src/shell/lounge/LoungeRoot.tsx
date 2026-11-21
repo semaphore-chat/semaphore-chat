@@ -13,7 +13,7 @@
 import { useEffect, useRef, type JSX } from 'react';
 import { useLocation } from 'react-router-dom';
 import { KitProvider, useSystemBack } from '../../kit';
-import { useSystemBackEnabled } from '../../data/systemBack';
+import { setLayerEntryRunner, useSystemBackEnabled } from '../../data/systemBack';
 import { useAppearance } from '../../hooks/useAppearance';
 import type { LoungeChoice } from '../chooseShell';
 import { LoungeFrame } from './frame/LoungeFrame';
@@ -27,7 +27,12 @@ export interface LoungeRootProps {
 
 /** Android's Back (and a touch browser's Back) closes the top layer before it leaves the screen. */
 function SystemBack(): null {
-  useSystemBack(useSystemBackEnabled(), useLocation().key);
+  const afterEntries = useSystemBack(useSystemBackEnabled(), useLocation().key);
+  // Navigations from inside a closing layer (a pinned jump, the jump's `?highlight=` clean-up) wait for its entry.
+  useEffect(() => {
+    setLayerEntryRunner(afterEntries);
+    return () => setLayerEntryRunner(null);
+  }, [afterEntries]);
   return null;
 }
 

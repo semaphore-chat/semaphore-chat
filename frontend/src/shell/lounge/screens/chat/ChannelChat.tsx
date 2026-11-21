@@ -28,6 +28,7 @@ import {
 import { useConversation, type Conversation } from '../../../../data/chat/useConversation';
 import { createEditingStore } from '../../../../data/chat/editingStore';
 import { readThreadParam, searchWith, THREAD_PARAM } from '../../../../data/chat/threadParam';
+import { navigateAfterLayers } from '../../../../data/systemBack';
 import { useReplyAndEdit } from '../../../../data/chat/useReplyAndEdit';
 import { VoiceSessionType } from '../../../../contexts/VoiceContext';
 import { useHapticFeedback } from '../../../../hooks/useHapticFeedback';
@@ -318,13 +319,17 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   const jumpToPin = useCallback(
     (pin: PinnedMessageDto) => {
       const target = pinnedJumpTarget(pin);
-      if (target.thread !== undefined) {
-        threadOpener.current = null;
-        const state: ThreadEntryState = { threadFrom: chatPath };
-        navigate(`${chatPath}?highlight=${target.highlight}&${THREAD_PARAM}=${target.thread}`, { state });
-      } else {
-        navigate(`${chatPath}?highlight=${target.highlight}`, { replace: true });
-      }
+      // After the sheet's own history entry is gone: the jump lands on the chat's entry (Back and the header's back
+      // arrow then leave in one press).
+      navigateAfterLayers(() => {
+        if (target.thread !== undefined) {
+          threadOpener.current = null;
+          const state: ThreadEntryState = { threadFrom: chatPath };
+          navigate(`${chatPath}?highlight=${target.highlight}&${THREAD_PARAM}=${target.thread}`, { state });
+        } else {
+          navigate(`${chatPath}?highlight=${target.highlight}`, { replace: true });
+        }
+      });
     },
     [chatPath, navigate],
   );
