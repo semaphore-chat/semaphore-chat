@@ -14,6 +14,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -82,8 +86,9 @@ private fun initialsStyle(size: AvatarSize): TextStyle = when (size) {
 
 /**
  * Initials in a circle or a rounded square (the web kit's `Avatar`; pictures come with D6).
- * [colour] is the person's or community's own colour; the initials then take whichever of the
- * ground and text colours reads better on it. [decorative] hides it from accessibility when the
+ * [colour] is the person's or community's own colour, nudged in lightness until the ground or the
+ * text colour reads on it at 4.5:1 ([readableBackground]); the initials take that ink.
+ * [Presence.Speaking] wears the speaking ring instead of a dot. [decorative] hides it from accessibility when the
  * name is already beside it.
  */
 @Composable
@@ -98,17 +103,19 @@ fun Avatar(
 ) {
     val palette = Kit.palette
     val behind = palette.tintBase(Kit.surface)
-    val clip = when {
-        shape == AvatarShape.Circle -> CircleShape
-        size == AvatarSize.Xl -> RoundedCornerShape(Tokens.Radius.Card)
-        else -> RoundedCornerShape(Tokens.Radius.Md)
+    // null: a circle.
+    val corner = when {
+        shape == AvatarShape.Circle -> null
+        size == AvatarSize.Xl -> Tokens.Radius.Card
+        else -> Tokens.Radius.Md
     }
-    val background = colour ?: palette.standOutFill(Kit.surface)
-    val ink = when {
-        colour == null -> palette.textSecondary
-        contrast(palette.ground, colour) >= contrast(palette.text, colour) -> palette.ground
-        else -> palette.text
-    }
+    val clip = corner?.let { RoundedCornerShape(it) } ?: CircleShape
+    // The web's readableBackground: the colour nudged until the ground or the text reads on it
+    // at 4.5:1. A colour no lightness can fix falls back to the plain fill.
+    val own = colour?.let { readableBackground(it, palette.ground to palette.text) }
+    val background = own?.background ?: palette.standOutFill(Kit.surface)
+    val ink = own?.ink ?: palette.textSecondary
+    val speaking = presence == Presence.Speaking
     val semantics = if (decorative) {
         Modifier.clearAndSetSemantics { }
     } else {
@@ -119,12 +126,17 @@ fun Avatar(
     }
     Box(modifier = modifier.size(size.side).then(semantics)) {
         Box(
-            modifier = Modifier.size(size.side).clip(clip).background(background),
+            modifier = Modifier
+                .size(size.side)
+                .then(if (speaking) Modifier.speakingRing(corner, behind, palette.positive) else Modifier)
+                .clip(clip)
+                .background(background),
             contentAlignment = Alignment.Center,
         ) {
             BasicText(text = initialsOf(name), style = initialsStyle(size).copy(color = ink))
         }
-        if (presence != null) {
+        // Speaking wears the ring instead of a dot, as on the web.
+        if (presence != null && !speaking) {
             val diameter = if (size == AvatarSize.Xs) Tokens.Space.Sm else Tokens.Space.Md
             val offline = presence == Presence.Offline
             val dot = when (presence) {
@@ -157,4 +169,25 @@ fun Avatar(
             }
         }
     }
+}
+
+/**
+ * The speaking ring (the web kit's `speakingRing`): a gap in [behind], the colour of the layer
+ * under the avatar, then a ring in [ring], each `border.selected` wide. Drawn outside the
+ * avatar's bounds, as the web's box-shadow, so the avatar never grows; like a shadow's spread,
+ * each band's corners grow by its outset. [corner] null is a circle.
+ */
+internal fun Modifier.speakingRing(corner: Dp?, behind: Color, ring: Color): Modifier = drawBehind {
+    val gap = Tokens.Border.Selected.toPx()
+    fun band(outset: Float, colour: Color) {
+        val shape = corner?.let { RoundedCornerShape(it.toPx() + outset) } ?: CircleShape
+        val outline = shape.createOutline(
+            Size(size.width + outset * 2, size.height + outset * 2),
+            layoutDirection,
+            this,
+        )
+        translate(-outset, -outset) { drawOutline(outline, colour) }
+    }
+    band(gap * 2, ring)
+    band(gap, behind)
 }

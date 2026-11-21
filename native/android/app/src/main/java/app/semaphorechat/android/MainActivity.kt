@@ -7,11 +7,15 @@
 
 package app.semaphorechat.android
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -24,38 +28,28 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import app.semaphorechat.android.design.Tokens
 import app.semaphorechat.android.kit.Alert
 import app.semaphorechat.android.kit.AlertSeverity
-import app.semaphorechat.android.kit.Avatar
-import app.semaphorechat.android.kit.AvatarShape
-import app.semaphorechat.android.kit.Button
-import app.semaphorechat.android.kit.ButtonSize
-import app.semaphorechat.android.kit.ButtonVariant
-import app.semaphorechat.android.kit.Island
 import app.semaphorechat.android.kit.KitRoot
-import app.semaphorechat.android.kit.ListRow
-import app.semaphorechat.android.kit.Spinner
-import app.semaphorechat.android.kit.Text
-import app.semaphorechat.android.kit.TextField
-import app.semaphorechat.android.kit.TextFieldType
-import app.semaphorechat.android.kit.TextTone
-import app.semaphorechat.android.kit.TextVariant
-import kotlinx.coroutines.launch
+import app.semaphorechat.android.screens.ChannelScreen
+import app.semaphorechat.android.screens.CommunityHomeModel
+import app.semaphorechat.android.screens.ConnectScreen
+import app.semaphorechat.android.screens.Load
+import app.semaphorechat.android.screens.LoungeScreen
+import app.semaphorechat.android.screens.Route
+import app.semaphorechat.android.screens.SignInScreen
+import app.semaphorechat.android.screens.StartScreen
+import app.semaphorechat.android.screens.StartState
 import uniffi.semaphore.Appearance
-import uniffi.semaphore.ConnectionState
-import uniffi.semaphore.CoreException
-import uniffi.semaphore.SemaphoreCore
-import uniffi.semaphore.SessionState
-import uniffi.semaphore.ThemeMode
 
 /**
- * D3's one screen, drawn with the kit (D4b): sign in to a server and see the session, the
- * connection and the communities, read from the networked core, in the theme the account's
- * appearance derives. The real screens come with D5 and D6.
+ * The app's one activity. The screens come from the `screens` module, fed by [AppModel] over the
+ * networked core; which one shows is the navigator's top, and the session decides that.
  *
  * Lifecycle: going to the background suspends the core (the socket closes) and waits briefly for
  * its secrets to be written, since Android may end the process there without another word; coming
@@ -65,7 +59,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // TLS is initialised by SemaphoreApp.onCreate, before any component of this process starts.
-        setContent { CoreScreen() }
+        setContent { AppRoot() }
     }
 
     override fun onStart() {
@@ -88,7 +82,7 @@ class MainActivity : ComponentActivity() {
  * change theme when the core arrives.
  */
 private val DEFAULT_APPEARANCE = Appearance(
-    mode = ThemeMode.DARK,
+    mode = uniffi.semaphore.ThemeMode.DARK,
     accent = uniffi.semaphore.AccentColor.PURPLE,
     intensity = uniffi.semaphore.ThemeIntensity.MINIMAL,
     base = uniffi.semaphore.Rgb(0x8Eu, 0x75u, 0xFFu),
@@ -97,119 +91,125 @@ private val DEFAULT_APPEARANCE = Appearance(
     baseColourSettings = true,
 )
 
+/** Opens a server page in the browser: setup, registration and password reset live there. */
+private fun openWeb(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        // No browser on the device: nothing to open it in.
+    }
+}
+
 @Composable
-private fun CoreScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var core by remember { mutableStateOf<SemaphoreCore?>(null) }
+private fun AppRoot() {
+    val context = LocalContext.current
+    var session by remember { mutableStateOf(SemaphoreHost.current()) }
     var startError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        runCatching { SemaphoreHost.get(context).core() }
-            .onSuccess { core = it }
-            .onFailure { startError = it.message ?: it.javaClass.name }
+        if (session == null) {
+            runCatching { SemaphoreHost.get(context) }
+                .onSuccess { session = it }
+                .onFailure { startError = it.message ?: it.javaClass.name }
+        }
     }
-    // Re-read the views on every core event.
-    val tick by SemaphoreHost.changed.collectAsState()
-    val loaded = core
-    // Read so the composition depends on it: every event redraws this.
-    @Suppress("UNUSED_VARIABLE")
-    val seen = tick
-    val appearance = loaded?.appearance()?.appearance ?: DEFAULT_APPEARANCE
-
-    CoreTheme(appearance) {
-        KitRoot {
-            Column(
-                modifier = Modifier
-                    .safeDrawingPadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(Tokens.Space.Md),
-                verticalArrangement = Arrangement.spacedBy(Tokens.Space.Md),
-            ) {
-                Island(modifier = Modifier.fillMaxWidth()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.Md)) {
-                        Text("Semaphore Chat", variant = TextVariant.Title, heading = true)
-                        when {
-                            startError != null -> Alert(
-                                AlertSeverity.Danger,
-                                "The core did not start: $startError",
-                                announce = false,
-                            )
-                            loaded == null -> Spinner(label = "Starting")
-                            else -> {
-                                val session = loaded.session()
-                                Text("Session: ${sessionLabel(session)}", tone = TextTone.Secondary)
-                                Text("Connection: ${connectionLabel(loaded.connection())}", tone = TextTone.Secondary)
-                                if (session is SessionState.SignedIn) {
-                                    loaded.communities().forEach {
-                                        ListRow(
-                                            it.name,
-                                            leading = {
-                                                Avatar(it.name, shape = AvatarShape.Rounded, decorative = true)
-                                            },
-                                        )
-                                    }
-                                } else {
-                                    SignInForm(loaded, session)
-                                }
-                            }
-                        }
-                    }
-                }
+    val loaded = session
+    if (loaded == null) {
+        CoreTheme(DEFAULT_APPEARANCE) {
+            KitRoot {
+                StartScreen(
+                    startError?.let { StartState.StartFailed(it) } ?: StartState.Starting,
+                    onRetry = {},
+                    onOtherServer = {},
+                )
             }
         }
+        return
+    }
+    val model = loaded.model
+    val appearance by model.store.appearance.collectAsState()
+    CoreTheme(appearance) {
+        KitRoot { Screens(model) { openWeb(context, it) } }
     }
 }
 
 @Composable
-private fun SignInForm(core: SemaphoreCore, session: SessionState) {
-    var server by remember { mutableStateOf("https://") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-    TextField(server, { server = it }, label = "Server", type = TextFieldType.Url, imeAction = ImeAction.Next)
-    val signIn = {
-        error = null
-        scope.launch {
-            try {
-                core.signIn(server.trim(), username.trim(), password)
-            } catch (failure: CoreException) {
-                error = failure.message
+private fun Screens(model: AppModel, openWeb: (String) -> Unit) {
+    val stack by model.navigator.stack.collectAsState()
+    // Back with no overlay open goes one screen back; at the root, to the platform (the activity
+    // finishes). Registered before the screens', so an open sheet takes the Back first.
+    BackHandler(enabled = stack.size > 1) { model.back() }
+    var notice by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(model) {
+        model.store.notices.collect { if (it is CoreNotice.CommunityRemoved) notice = it.message }
+    }
+
+    Box {
+        when (val route = stack.last()) {
+            Route.Start -> {
+                val start by model.start.collectAsState()
+                StartScreen(start, onRetry = model::retryRestore, onOtherServer = model::useAnotherServer)
+            }
+            Route.Connect -> {
+                val state by model.connect.collectAsState()
+                ConnectScreen(
+                    state,
+                    onUrlChange = model::onUrlChange,
+                    onConnect = model::connect,
+                    onContinue = model::continueInsecure,
+                    onOpenWeb = openWeb,
+                )
+            }
+            Route.SignIn -> {
+                val state by model.signIn.collectAsState()
+                state?.let {
+                    SignInScreen(
+                        it,
+                        onUsernameChange = model::onUsernameChange,
+                        onPasswordChange = model::onPasswordChange,
+                        onSignIn = model::signIn,
+                        onChangeServer = model::changeServer,
+                        onOpenWeb = openWeb,
+                    )
+                }
+            }
+            is Route.Community -> {
+                val communities by model.store.communities.collectAsState()
+                val allOpen by model.allOpen.collectAsState()
+                val query by model.sheetQuery.collectAsState()
+                val community = route.id?.let { id -> (communities as? Load.Ready)?.value?.firstOrNull { it.id == id } }
+                val home = community?.let {
+                    val channels by remember(it.id) { model.store.watch(it.id) }.collectAsState()
+                    CommunityHomeModel(it, channels)
+                }
+                LoungeScreen(
+                    communities = communities,
+                    home = home,
+                    allOpen = allOpen,
+                    sheetQuery = query,
+                    onSheetQuery = model::onSheetQuery,
+                    onOpenCommunity = model::openCommunity,
+                    onOpenAll = model::openAll,
+                    onCloseAll = model::closeAll,
+                    onOpenChannel = model::openChannel,
+                    onRetry = model.store::retry,
+                    onOpenWeb = { model.server?.let(openWeb) },
+                )
+            }
+            is Route.Channel -> {
+                val communities by model.store.communities.collectAsState()
+                val channels by remember(route.communityId) { model.store.watch(route.communityId) }.collectAsState()
+                val name = (channels as? Load.Ready)?.value?.text?.firstOrNull { it.id == route.channelId }?.name.orEmpty()
+                val communityName = (communities as? Load.Ready)?.value
+                    ?.firstOrNull { it.id == route.communityId }?.name.orEmpty()
+                ChannelScreen(name, communityName, onBack = { model.back() })
             }
         }
-        Unit
+        notice?.let {
+            Box(
+                Modifier.fillMaxWidth().safeDrawingPadding().padding(Tokens.Space.Md).align(Alignment.TopCenter),
+            ) {
+                Alert(AlertSeverity.Warning, it, onClose = { notice = null })
+            }
+        }
     }
-    TextField(username, { username = it }, label = "Username", imeAction = ImeAction.Next)
-    TextField(
-        password,
-        { password = it },
-        label = "Password",
-        type = TextFieldType.Password,
-        imeAction = ImeAction.Done,
-        onImeAction = { if (session != SessionState.SigningIn) signIn() },
-    )
-    (error ?: (session as? SessionState.SignInFailed)?.error?.message)?.let {
-        Alert(AlertSeverity.Danger, it)
-    }
-    Button(
-        label = "Sign in",
-        variant = ButtonVariant.Primary,
-        size = ButtonSize.Lg,
-        fullWidth = true,
-        loading = session == SessionState.SigningIn,
-        onClick = signIn,
-    )
-}
-
-private fun sessionLabel(state: SessionState): String = when (state) {
-    SessionState.SignedOut -> "signed out"
-    SessionState.SigningIn -> "signing in"
-    is SessionState.SignedIn -> "signed in as ${state.me.username}"
-    is SessionState.SignInFailed -> "sign-in failed"
-}
-
-private fun connectionLabel(state: ConnectionState): String = when (state) {
-    ConnectionState.DISCONNECTED -> "disconnected"
-    ConnectionState.CONNECTED -> "connected"
-    ConnectionState.SUSPENDED -> "suspended"
-    ConnectionState.OFFLINE -> "offline"
 }
