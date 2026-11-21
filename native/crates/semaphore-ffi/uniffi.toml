@@ -1,0 +1,10 @@
+# Bindings configuration for the crates/semaphore-ffi UniFFI surface. Only the Kotlin bindings
+# need anything here.
+#
+# uniFFI 0.32.2's Kotlin generator renders each field of an error variant as `val <field>` next to
+# an `override val message`, so a field literally named `message` - CoreError::Failed's - declares
+# `message` twice and the generated file does not compile. Renaming it in the Kotlin bindings only
+# leaves the Rust surface (and the Swift, Python and Ruby bindings) untouched; Kotlin readers see
+# `failureMessage` and still get the exception's `message` from Throwable.
+[bindings.kotlin.rename]
+"CoreError.Failed.message" = "failureMessage"
