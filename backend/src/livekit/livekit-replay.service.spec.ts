@@ -305,6 +305,21 @@ describe('LivekitReplayService', () => {
           mockEgressClient.startTrackCompositeEgress,
         ).not.toHaveBeenCalled();
       });
+
+      it('start succeeds when the old row is closed between its lookup and the stop', async () => {
+        // The webhook or the reconcile cron closes the row after start sees it but
+        // before stopReplayBuffer looks it up again.
+        databaseService.egressSession.findFirst
+          .mockReset()
+          .mockResolvedValue(null)
+          .mockResolvedValueOnce(oldSession); // startReplayBuffer's check only
+
+        const result = await service.startReplayBuffer(startParams);
+
+        expect(result.sessionId).toBe('session-1');
+        expect(mockEgressClient.stopEgress).not.toHaveBeenCalled();
+        expect(mockEgressClient.startTrackCompositeEgress).toHaveBeenCalled();
+      });
     });
 
     it('should use AAC audio codec (not Opus) for HLS/MPEG-TS compatibility', async () => {

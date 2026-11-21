@@ -251,7 +251,15 @@ export class LivekitReplayService
       this.logger.warn(
         `User ${userId} already has active session ${existingSession.egressId}, stopping it first`,
       );
-      await this.stopReplayBuffer(userId);
+      try {
+        await this.stopReplayBuffer(userId);
+      } catch (error) {
+        // The egress_ended webhook or the reconcile cron closed the row between the lookup
+        // above and the stop's own lookup: there is nothing left to stop.
+        if (!(error instanceof NotFoundException)) {
+          throw error;
+        }
+      }
     }
 
     // Create unique session ID for directory isolation
