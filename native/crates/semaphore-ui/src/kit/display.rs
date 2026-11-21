@@ -603,8 +603,8 @@ impl RenderOnce for Avatar {
                             // The parent's clip is a rectangle: the image rounds itself.
                             .rounded(px(radius))
                             .object_fit(ObjectFit::Cover)
-                            .with_loading(move || loading())
-                            .with_fallback(move || failed()),
+                            .with_loading(loading)
+                            .with_fallback(failed),
                     )
                 }
                 None => face.child(letters()),
