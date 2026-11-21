@@ -22,8 +22,12 @@
 //! - **Presses.** Each layer writes its panel's bounds (and a popover its anchor's) in prepaint;
 //!   the root's capture-phase listeners find the innermost layer under a left press going down
 //!   and coming up, among the layers open at the mouse-down (one opened by the press itself is
-//!   left out), and send `pressOutside` when both are the same. A press outside a topmost menu
-//!   goes no further (rule 8): its down and up stop in the capture phase.
+//!   left out of the hit test), and send `pressOutside` when both are the same. A press outside a
+//!   topmost menu goes no further (rule 8): its down and up stop in the capture phase.
+//!   **A layer opens on click, never on mouse-down**: one opened by a press's own mouse-down is
+//!   above the layer the press started in, and that press's `pressOutside` closes it (the
+//!   reducer closes every layer above `insideId`). The kit's triggers (Button, the Popover's)
+//!   open on click.
 //! - **Escape** reaches the stack ahead of key bindings: every layer's element sets the
 //!   `KitLayer` key context, where Escape is bound to the host, so a binding of an ancestor
 //!   (a pane's `escape`) cannot take it while a layer has focus. A focused control that uses
@@ -325,7 +329,8 @@ pub(crate) fn bounds_probe(cell: Rc<Cell<Option<Bounds<Pixels>>>>) -> impl IntoE
 
 /// Makes a kit overlay a layer of the window's stack, keyed by `key` (the piece's own id). Call
 /// it in every render that draws the overlay, before anything in it takes focus: the first one
-/// opens the layer with the element that has focus as its opener. `None` without a host: the
+/// opens the layer with the element that has focus as its opener. Open it on a click, never on a
+/// mouse-down: a layer opened by a press's own mouse-down is closed by that press. `None` without a host: the
 /// piece keeps its own handling.
 pub(crate) fn use_layer(
     key: impl Into<ElementId>,
@@ -341,6 +346,14 @@ pub(crate) fn use_layer(
         let (id, layer) = host.update(cx, |host, _| {
             let id = host.overlay.next("layer");
             let sink = host.sink();
+            // An owner that focused a control of this layer before its first frame (a field of
+            // a new dialog): the opener is what had focus in the last frame drawn.
+            let focused = match focused {
+                Some(handle) if !host.drawn(&handle, window) => {
+                    host.last_focus.as_ref().and_then(WeakFocusHandle::upgrade)
+                }
+                other => other,
+            };
             // Focus parked on the sink or the root is no opener: focus then returns to the
             // layer's own fallback, else (none) to the screen's focus target.
             let lost = match &focused {
@@ -610,8 +623,20 @@ pub(crate) fn listen(host: &Entity<BehaviourHost>, window: &mut Window) {
         if phase != DispatchPhase::Bubble || !is_plain_escape(event) {
             return;
         }
+        // Its repeats then do nothing on the binding path either (focus may move into a layer).
+        keys.update(cx, |host, _| host.escape_down = true);
         if escape(&keys, window, cx) {
             cx.stop_propagation();
+        }
+    });
+    // The key-up reaches this node only while focus is on something drawn: after a layer closed
+    // and before focus is restored, GPUI sends it to the window's root node alone. A real key-up
+    // comes after the restore; the root also clears the flag while the window is inactive, so a
+    // missed key-up can swallow at most one Escape.
+    let released = host.clone();
+    window.on_key_event(move |event: &KeyUpEvent, phase, _, cx| {
+        if phase == DispatchPhase::Capture && event.keystroke.key == "escape" {
+            released.update(cx, |host, _| host.escape_down = false);
         }
     });
     let down = host.clone();
@@ -711,8 +736,16 @@ pub(crate) fn layer_keys<E: InteractiveElement>(element: E, cx: &mut App) -> E {
         cx.set_global(LayerKeysBound);
     }
     element.on_action(|_: &LayerEscape, window, cx| {
-        let used = BehaviourHost::of(window, cx).is_some_and(|host| escape(&host, window, cx));
-        if !used {
+        let Some(host) = BehaviourHost::of(window, cx) else {
+            cx.propagate();
+            return;
+        };
+        // Key repeats match bindings too: while this Escape is down, they do nothing, so a held
+        // Escape closes one layer, as on the listener path (`is_held`).
+        if host.update(cx, |host, _| std::mem::replace(&mut host.escape_down, true)) {
+            return;
+        }
+        if !escape(&host, window, cx) {
             cx.propagate();
         }
     })
@@ -745,7 +778,8 @@ pub(crate) fn escape(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut
 }
 
 /// For a screen's own Escape binding (a pane's `escape` in its key context): asks the stack
-/// first. True when a layer was open and the stack used the key; the screen then does nothing.
+/// first. True when a layer is open: the stack gets this Escape (after the caller's handler
+/// returns), and the screen does nothing.
 pub fn escape_open_layer(window: &mut Window, cx: &mut App) -> bool {
     let Some(host) = BehaviourHost::of(window, cx) else {
         return false;
@@ -753,7 +787,12 @@ pub fn escape_open_layer(window: &mut Window, cx: &mut App) -> bool {
     if host.read(cx).overlay.layers().is_empty() {
         return false;
     }
-    escape(&host, window, cx)
+    // After the caller's handler: an owner's close handler may update the view that called this,
+    // which is being updated now.
+    window.defer(cx, move |window, cx| {
+        escape(&host, window, cx);
+    });
+    true
 }
 
 /// Tab or Shift+Tab in a menu. True when the stack closed the menu: the key is then consumed.

@@ -31,6 +31,8 @@ struct Probe {
     pops: bool,
     controlled: bool,
     ctx: bool,
+    /// A dialog on its own (not in the sheet), holding the inner field and the nested menu.
+    dialog_alone: bool,
 }
 impl EventEmitter<()> for Probe {}
 
@@ -66,24 +68,44 @@ impl Render for Probe {
             .menu
             .then(|| mk_menu("nm", self.log.clone(), view.clone()));
         let (dlog, dview) = (self.log.clone(), view.clone());
-        let nested_dialog = self.dialog.then(|| {
+        let alone = self.dialog_alone;
+        let field = self.inner.clone();
+        let nested_dialog = (self.dialog || alone).then(|| {
             Dialog::new("nd", "Nested dialog")
-                .body(div().children(nested_menu))
+                .body(
+                    div()
+                        .when(alone, |body| {
+                            body.child(
+                                div()
+                                    .id("dialog-field")
+                                    .test_support()
+                                    .track_focus(&field)
+                                    .size(px(20.)),
+                            )
+                        })
+                        .children(nested_menu),
+                )
                 .action(Button::new("nd-ok", "OK"))
                 .on_request_close(move |reason, _, cx| {
                     push(&dlog, format!("dialog:{reason:?}"));
                     dview
                         .update(cx, |p, cx| {
                             p.dialog = false;
+                            p.dialog_alone = false;
                             cx.notify();
                         })
                         .ok();
                 })
         });
+        let (dialog_in_sheet, dialog_on_page) = if alone {
+            (None, nested_dialog)
+        } else {
+            (nested_dialog, None)
+        };
         let (slog, sview) = (self.log.clone(), view.clone());
         let sheet = self.sheet.then(|| {
             Sheet::new("ns", "Sheet")
-                .body(div().child("body").children(nested_dialog))
+                .body(div().child("body").children(dialog_in_sheet))
                 .on_request_close(move |reason, _, cx| {
                     push(&slog, format!("sheet:{reason:?}"));
                     sview
@@ -189,7 +211,8 @@ impl Render for Probe {
             .child(div().pl(px(100.)).children(controlled))
             .children(free_menu.map(|m| div().absolute().top(px(300.)).left(px(300.)).child(m)))
             .children(flat_dialog)
-            .children(sheet);
+            .children(sheet)
+            .children(dialog_on_page);
         if self.use_sink {
             BehaviourRoot::new(body)
                 .focus_sink(&self.sink)
@@ -218,6 +241,7 @@ fn probe(cx: &mut TestAppContext) -> (Rig<Probe, ()>, Log) {
         pops: false,
         controlled: false,
         ctx: false,
+        dialog_alone: false,
     });
     (rig, log)
 }
@@ -231,9 +255,12 @@ fn set(rig: &Rig<Probe, ()>, cx: &mut TestAppContext, f: impl FnOnce(&mut Probe)
     });
     rig.with(cx, |_, _, _| {});
 }
+/// Pressed, then released once the app has settled (see `tests::press`).
 fn key(rig: &Rig<Probe, ()>, cx: &mut TestAppContext, k: &str) {
     rig.with(cx, |_, window, _| window.activate_window());
-    rig.with(cx, |_, window, cx| window.press(k, cx));
+    rig.with(cx, |_, window, cx| window.key_down(k, false, cx));
+    rig.with(cx, |_, _, _| {});
+    rig.with(cx, |_, window, cx| window.key_up(k, cx));
     rig.with(cx, |_, _, _| {});
 }
 fn click_at(rig: &Rig<Probe, ()>, cx: &mut TestAppContext, at: Point<Pixels>) {
@@ -434,6 +461,10 @@ fn raw_key(rig: &Rig<Probe, ()>, cx: &mut TestAppContext, key: &'static str) {
             .to_platform_input(),
             cx,
         );
+    })
+    .unwrap();
+    cx.run_until_parked();
+    cx.update_window(rig.window, |_, window, cx| {
         window.dispatch_event(KeyUpEvent { keystroke }.to_platform_input(), cx);
     })
     .unwrap();
@@ -522,5 +553,74 @@ fn letters_typed_inside_the_time_make_one_prefix(cx: &mut TestAppContext) {
     assert!(
         item_focused(&rig, cx, "copy"),
         "\"co\": one prefix (\"o\" alone would match nothing)"
+    );
+}
+
+#[gpui_kit::test]
+fn a_held_escape_closes_one_layer(cx: &mut TestAppContext) {
+    let (rig, log) = probe(cx);
+    rig.with(cx, |_, window, _| window.activate_window());
+    focus_opener(&rig, cx);
+    set(&rig, cx, |p| p.dialog_alone = true);
+    set(&rig, cx, |p| p.menu = true);
+    let escape = Keystroke::parse("escape").unwrap();
+    for held in [false, true, true] {
+        let keystroke = escape.clone();
+        cx.update_window(rig.window, |_, window, cx| {
+            window.dispatch_event(
+                KeyDownEvent {
+                    keystroke,
+                    is_held: held,
+                    prefer_character_input: false,
+                }
+                .to_platform_input(),
+                cx,
+            );
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+    assert_eq!(
+        logs(&log),
+        ["nm:Escape"],
+        "one press, two repeats: the inner layer only"
+    );
+    cx.update_window(rig.window, |_, window, cx| {
+        window.dispatch_event(KeyUpEvent { keystroke: escape }.to_platform_input(), cx);
+    })
+    .unwrap();
+    cx.run_until_parked();
+    raw_key(&rig, cx, "escape");
+    assert_eq!(
+        logs(&log),
+        ["nm:Escape", "dialog:Escape"],
+        "after the key-up, the next press closes the next layer"
+    );
+}
+
+#[gpui_kit::test]
+fn a_dialog_whose_owner_focuses_its_field_first_returns_focus_to_the_real_opener(
+    cx: &mut TestAppContext,
+) {
+    let (rig, _) = probe(cx);
+    focus_opener(&rig, cx);
+    // The owner opens the dialog and focuses its field at once, before the dialog's first frame.
+    rig.with(cx, |view, window, cx| {
+        let field = view.update(cx, |p, cx| {
+            p.dialog_alone = true;
+            cx.notify();
+            p.inner.clone()
+        });
+        window.focus(&field, cx);
+    });
+    rig.with(cx, |_, _, _| {});
+    assert!(
+        rig.with(cx, |v, window, cx| v.read(cx).inner.is_focused(window)),
+        "the field has focus"
+    );
+    set(&rig, cx, |p| p.dialog_alone = false);
+    assert!(
+        opener_focused(&rig, cx),
+        "back on what had focus before the dialog"
     );
 }

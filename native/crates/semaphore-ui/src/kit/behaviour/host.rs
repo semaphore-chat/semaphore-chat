@@ -28,6 +28,11 @@ pub struct BehaviourHost {
     pub(crate) focus_sink: Option<WeakFocusHandle>,
     /// Tracked on the root's element: everything drawn in the window is inside it.
     pub(crate) root: FocusHandle,
+    /// What had focus when the last frame was painted: the opener of a layer whose owner moved
+    /// focus into it before its first frame.
+    pub(crate) last_focus: Option<WeakFocusHandle>,
+    /// An Escape is down: its key repeats do nothing (one layer per press).
+    pub(crate) escape_down: bool,
 }
 
 #[derive(Default)]
@@ -44,6 +49,8 @@ impl BehaviourHost {
             announcer: Announcer::default(),
             focus_sink: None,
             root: cx.focus_handle(),
+            last_focus: None,
+            escape_down: false,
         }
     }
 
@@ -176,6 +183,16 @@ impl Element for BehaviourRoot {
         self.child.paint(window, cx);
         if let Some(live) = &mut self.live {
             live.paint(window, cx);
+        }
+        if let Some(host) = host {
+            let focused = window.focused(cx).map(|handle| handle.downgrade());
+            let inactive = !window.is_window_active();
+            host.update(cx, |host, _| {
+                host.last_focus = focused;
+                if inactive {
+                    host.escape_down = false;
+                }
+            });
         }
     }
 }

@@ -202,9 +202,13 @@ fn set(rig: &Rig<Bench, ()>, cx: &mut TestAppContext, f: impl FnOnce(&mut Bench)
     rig.with(cx, |_, _, _| {});
 }
 
+/// A key pressed and released once the app has settled, as a person does: the release comes
+/// after any layer the press closed has gone and focus has been restored.
 fn press(rig: &Rig<Bench, ()>, cx: &mut TestAppContext, key: &str) {
     rig.with(cx, |_, window, _| window.activate_window());
-    rig.with(cx, |_, window, cx| window.press(key, cx));
+    rig.with(cx, |_, window, cx| window.key_down(key, false, cx));
+    rig.with(cx, |_, _, _| {});
+    rig.with(cx, |_, window, cx| window.key_up(key, cx));
     rig.with(cx, |_, _, _| {});
 }
 
