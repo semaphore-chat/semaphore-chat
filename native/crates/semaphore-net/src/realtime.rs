@@ -71,6 +71,17 @@ impl SocketRealtime {
         self.lock().core = Some(core);
     }
 
+    /// Forgets the core and ends the socket session, for a host that is done with both. The core
+    /// holds this as its realtime, so without it neither is ever freed: what a host that starts
+    /// more than one core in a process (a test, a restart) calls when it shuts one down.
+    pub fn detach(&self) {
+        let mut state = self.lock();
+        state.core = None;
+        if let Some(live) = state.live.take() {
+            live.client.disconnect();
+        }
+    }
+
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state
             .lock()

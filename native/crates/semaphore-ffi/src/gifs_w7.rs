@@ -41,19 +41,22 @@ pub fn lone_gif_url(text: String) -> Option<GifEmbed> {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn gifs(&self, query: String) -> GifResultsView {
-        self.core.gifs(query)
+        self.sync(move |core| core.gifs(query))
     }
 
     pub fn third_party_media(&self) -> bool {
-        self.core.third_party_media()
+        self.sync(move |core| core.third_party_media())
     }
 
     /// The host stores the choice (its settings file); core only remembers it for its views.
     pub fn set_third_party_media(&self, enabled: bool) {
-        self.core.set_third_party_media(enabled);
+        self.sync(move |core| {
+            core.set_third_party_media(enabled);
+        })
     }
 
     pub async fn load_more_gifs(&self, query: String) -> Result<(), CoreError> {
-        self.core.load_more_gifs(query).await
+        self.run(move |core| async move { core.load_more_gifs(query).await })
+            .await
     }
 }

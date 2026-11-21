@@ -1,0 +1,33 @@
+[package]
+name = "semaphore-mobile"
+description = "The mobile apps' native library: semaphore-ffi's core over the real transports in semaphore-net."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib for Android (libsemaphore_mobile.so, loaded through JNA), staticlib for a later iOS app,
+# lib for the tests.
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+semaphore-core.workspace = true
+semaphore-ffi = { path = "../semaphore-ffi" }
+semaphore-net.workspace = true
+log.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time"] }
+uniffi = "0.32"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# `NativeLib.init` below hands rustls-platform-verifier the JVM through semaphore-net.
+jni = { version = "0.22", default-features = false }
+# `log` records and panics to logcat, installed by `NativeLib.init` (Apache-2.0 OR MIT).
+android_logger = { version = "0.15", default-features = false }
+
+[dev-dependencies]
+semaphore-fake-server = { path = "../semaphore-fake-server" }
+reqwest.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }

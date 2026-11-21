@@ -103,8 +103,10 @@ async fn refresh(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
         }
     };
     let required = inner.required_access_token();
+    let rotates = inner.refresh_rotates();
     let now = inner.now();
     let mut accounts = lock(&inner.accounts);
+    let rotated = rotates.then(|| accounts.new_id("rotated-refresh"));
     if let Some(token) = presented.as_deref()
         && let Some(index) = accounts
             .sessions
@@ -124,12 +126,21 @@ async fn refresh(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
             session.tokens.push(required);
         }
         session.last_used_at = now;
-        return json_response(
-            StatusCode::OK,
-            tokens_body(&session.access, &session.refresh),
-        );
+        if let Some(rotated) = rotated {
+            session.refresh = rotated;
+        }
+        let body = tokens_body(&session.access, &session.refresh);
+        drop(accounts);
+        if rotates {
+            lock(&inner.faults).rotations += 1;
+        }
+        return json_response(StatusCode::OK, body);
     }
     drop(accounts);
+    if rotates {
+        // Never issued, or rotated away already: the real backend's reuse detection refuses it.
+        return inner.error(401, "UNAUTHENTICATED", "Invalid refresh token", false);
+    }
     json_response(
         StatusCode::OK,
         tokens_body(&inner.current_access_token(), "fake-refresh-token"),

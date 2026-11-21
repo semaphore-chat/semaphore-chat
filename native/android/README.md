@@ -1,9 +1,11 @@
 # Semaphore Chat for Android
 
-D1 of the Android epic (#848): the first piece of the native Android client. It is an empty
-Jetpack Compose app that links the client core in `native/crates/semaphore-core` through the
-UniFFI surface in `native/crates/semaphore-ffi`, and shows a value read back from the core. No
-networking, no sign-in, no other screens.
+The native Android client (epic #848): a Jetpack Compose app over the client core in
+`native/crates/semaphore-core`. The app loads one native library, `libsemaphore_mobile.so`
+(`native/crates/semaphore-mobile`), which carries the core's UniFFI surface
+(`native/crates/semaphore-ffi`) and the real transports behind it (`native/crates/semaphore-net`).
+So far it has one screen: sign in to a server, then see the session, the connection and the
+communities.
 
 The app is licensed AGPL-3.0-only, like the rest of the workspace: see `LICENSE.md` at the
 repository root.
@@ -18,11 +20,16 @@ Everything runs in Docker; nothing is installed on the host. The script builds (
 Android image from `native/docker/Dockerfile.android`, layered on the pinned native build image,
 and inside it:
 
-1. `cargo ndk -t arm64-v8a --platform 26 check --locked -p semaphore-net`, which proves the
-   transport (D2) compiles for Android
-2. `cargo ndk -t arm64-v8a --platform 26 build --locked -p semaphore-ffi --release`
-3. `uniffi-bindgen generate --language kotlin` over the resulting `libsemaphore_ffi.so`
-4. `./gradlew assembleDebug` in this directory
+1. `cargo ndk -t arm64-v8a --platform 26 build --locked -p semaphore-mobile --release`
+2. `uniffi-bindgen generate --language kotlin` over the resulting `libsemaphore_mobile.so`, in
+   library mode, which writes both crates' Kotlin: `uniffi.semaphore` (the core) and
+   `uniffi.semaphore_mobile` (`start`, `MobileHost`, `SecretStore`)
+3. a symbol check: both crates' exports, the JNI entry point and every `external fun` the
+   bindings declare are in the shipped library
+4. the JVM test (`app/src/test`): a host build of `libsemaphore_mobile.so` and the generated
+   bindings, against `semaphore-fake-server` on loopback, signing in, hearing a live message,
+   going through suspend, resume and a network loss, and restoring the session on a second start
+5. `./gradlew assembleDebug testDebugUnitTest` in this directory
 
 Both the generated Kotlin and the `.so` files are written under `app/build/`, which is not source:
 `app/build/generated/uniffi` and `app/build/rustJniLibs` are source directories of the `app`
@@ -53,13 +60,35 @@ system trust store through the JVM. That needs two pieces outside Rust, both in 
 - the crate's Kotlin component, `org.rustls:rustls-platform-verifier`, from the Maven
   repository named in its README (`settings.gradle.kts`); `app/build.gradle.kts` reads its
   version from `../Cargo.lock` so it can never disagree with the Rust crate;
-- an initialisation call carrying the JVM and an application `Context`. `SemaphoreApp` (the `Application`, so any process start) loads
-  `libsemaphore_ffi.so` and calls the JNI entry point in `semaphore-ffi`, which calls
-  `semaphore_net::init_android`, before building the core.
+- an initialisation call carrying the JVM and an application `Context`. `SemaphoreApp` (the
+  `Application`, so any process start) calls `NativeLib.init` (idempotent), which loads `libsemaphore_mobile.so` and calls its JNI entry point, which calls
+  `semaphore_net::init_android`, before the core is built.
 
-D2 does not wire `semaphore-net` into the core (that is D3), so the app has no requests to make
-with the verifier yet; the build proves the initialisation compiles and links, and a device run
-would be what proves it succeeds.
+The verifier's initialisation is only proven on a device, which waits for D6.
+
+Cleartext `http://` servers work too: Android's cleartext policy governs the platform's HTTP
+stacks, and the core's requests go through rustls and reqwest in Rust.
+
+## The core on Android
+
+- `SemaphoreHost` starts the core once per process (`semaphore_mobile::start`), and restores the
+  session on the server signed in to last (semaphore-mobile remembers it in `data_dir`).
+- Every core event bumps a counter the screen re-reads its views on. Events arrive on whatever
+  thread changed core state, so the listener does nothing else.
+- Lifecycle: `MainActivity.onStop` (not for a rotation) suspends the core, then waits up to
+  300 ms for the secret store to finish its queued writes, while Android still counts the app as
+  visible; `onStart` resumes it. Both are recorded before the core exists, so a core that finishes
+  starting in the background starts suspended. A default-network callback maps onto
+  `network_changed`.
+- `NativeLib.init` sends the library's log records and panics to logcat (tag `semaphore`). A secret
+  store that fails is logged there at error level once, and `MobileHost.secretStoreFailure()`
+  says so: the session then won't survive a restart.
+- `KeystoreSecretStore` keeps secrets as AES-256-GCM files under `noBackupFilesDir`, sealed with
+  a non-exportable Android Keystore key; `save` is durable when it returns (temp file, fsync,
+  rename, fsync of the directory), because a rotated refresh token lost to a crash ends the
+  session. A Keystore key that stops working is replaced (its secrets are lost: one new sign-in). It needs a device, so the JVM test uses an in-memory store and the Keystore store gets
+  its device test with D6.
+- Permissions: `INTERNET` and `ACCESS_NETWORK_STATE`, both granted at install.
 
 Once a minified release build type exists (R8 is off today), it needs the keep rule upstream's
 README asks for, or the verifier's Kotlin classes are stripped:
@@ -73,8 +102,8 @@ README asks for, or the verifier's Kotlin classes are stripped:
 unzip -l native/android/out/semaphore-android-debug.apk | grep -E 'lib/.*\.so|classes'
 ```
 
-It contains `lib/arm64-v8a/libsemaphore_ffi.so` (the core), `lib/arm64-v8a/libjnidispatch.so`
-(JNA) and `classes.dex`.
+It contains `lib/arm64-v8a/libsemaphore_mobile.so` (the core and its transports),
+`lib/arm64-v8a/libjnidispatch.so` (JNA) and `classes.dex`.
 
 Only arm64-v8a is built: `rust-toolchain.toml` installs `aarch64-linux-android` and the script
 asks cargo-ndk for that ABI alone, so the APK runs on devices but not on the x86_64 emulator.
@@ -88,12 +117,11 @@ adb install -r native/android/out/semaphore-android-debug.apk
 ```
 
 `-r` re-installs over an existing copy, which works because the debug key comes from the volume
-above. The app has one screen: "Semaphore core loaded" and the session state, connection state
-and community count that `SemaphoreCore` reports (a new core with no services reports
-`SIGNED_OUT`, `DISCONNECTED` and no communities).
+above. The app has one screen: a sign-in form (server, username, password), then the session,
+the connection and the communities' names.
 
 ## CI
 
 `.github/workflows/native-android.yml` runs the same script on pull requests that touch
-`native/**` and uploads the APK as an artifact. As in the other `native-*.yml` workflows, the
+`native/**`, the JVM test included, and uploads the APK as an artifact. As in the other `native-*.yml` workflows, the
 build's caches are the Docker volumes inside the run; there is no separate `actions/cache` step.

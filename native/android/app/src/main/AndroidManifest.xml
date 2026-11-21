@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Semaphore Chat's Android client (D1). SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
-     No permissions: D1 is one screen proving the Rust core loaded, nothing else. -->
+<!-- Semaphore Chat's Android client. SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
+     Two permissions, both normal (granted at install, no prompt): INTERNET for the server, and
+     ACCESS_NETWORK_STATE for the connectivity callback that tells the core when the network
+     comes and goes. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".SemaphoreApp"

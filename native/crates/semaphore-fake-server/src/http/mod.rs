@@ -229,6 +229,9 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
         inner.begin();
     }
     let response = next.run(request).await;
+    if let Some(hold) = inner.response_hold(operation) {
+        tokio::time::sleep(hold).await;
+    }
     if tracked {
         inner.end();
     }

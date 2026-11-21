@@ -47,34 +47,42 @@ pub fn idle_after_ms() -> u64 {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn friends(&self) -> FriendsView {
-        self.core.friends()
+        self.sync(move |core| core.friends())
     }
 
     pub async fn friendship_status(&self, user_id: String) -> Result<FriendshipState, CoreError> {
-        self.core.friendship_status(user_id).await
+        self.run(move |core| async move { core.friendship_status(user_id).await })
+            .await
     }
 
     pub async fn send_friend_request(&self, user_id: String) -> Result<(), CoreError> {
-        self.core.send_friend_request(user_id).await
+        self.run(move |core| async move { core.send_friend_request(user_id).await })
+            .await
     }
 
     pub async fn accept_friend_request(&self, friendship_id: String) -> Result<(), CoreError> {
-        self.core.accept_friend_request(friendship_id).await
+        self.run(move |core| async move { core.accept_friend_request(friendship_id).await })
+            .await
     }
 
     pub async fn decline_friend_request(&self, friendship_id: String) -> Result<(), CoreError> {
-        self.core.decline_friend_request(friendship_id).await
+        self.run(move |core| async move { core.decline_friend_request(friendship_id).await })
+            .await
     }
 
     pub async fn cancel_friend_request(&self, friendship_id: String) -> Result<(), CoreError> {
-        self.core.cancel_friend_request(friendship_id).await
+        self.run(move |core| async move { core.cancel_friend_request(friendship_id).await })
+            .await
     }
 
     pub async fn remove_friend(&self, friendship_id: String) -> Result<(), CoreError> {
-        self.core.remove_friend(friendship_id).await
+        self.run(move |core| async move { core.remove_friend(friendship_id).await })
+            .await
     }
 
     pub fn set_idle(&self, idle: bool) {
-        self.core.set_idle(idle);
+        self.sync(move |core| {
+            core.set_idle(idle);
+        })
     }
 }

@@ -1515,6 +1515,42 @@ fn a_sink_can_call_back_in_and_events_stay_in_order() {
     );
 }
 
+/// Panics on its first event, as a foreign listener that threw does through UniFFI.
+#[derive(Default)]
+struct ThrowsOnce {
+    thrown: std::sync::atomic::AtomicBool,
+    seen: Mutex<Vec<CoreEvent>>,
+}
+
+impl EventSink for ThrowsOnce {
+    fn on_event(&self, event: CoreEvent) {
+        if !self.thrown.swap(true, Ordering::SeqCst) {
+            panic!("the listener threw");
+        }
+        self.seen.lock().unwrap().push(event);
+    }
+}
+
+#[test]
+fn a_sink_that_panics_once_does_not_stop_later_deliveries() {
+    let sink = Arc::new(ThrowsOnce::default());
+    let rig = Rig::new();
+    let core = Core::new(rig.clock.clone(), sink.clone());
+    let thrown = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.suspend()));
+    assert!(thrown.is_err(), "the first delivery panicked");
+    // The change itself stands; only its event was lost with the panic.
+    assert_eq!(core.connection(), ConnectionState::Suspended);
+
+    core.resume();
+    assert_eq!(
+        sink.seen.lock().unwrap().clone(),
+        vec![CoreEvent::ConnectionChanged {
+            state: ConnectionState::Disconnected
+        }],
+        "the next change is delivered, not left in the outbox"
+    );
+}
+
 #[tokio::test]
 async fn drive_runs_until_shutdown() {
     let rig = Rig::new().signed_in().await;

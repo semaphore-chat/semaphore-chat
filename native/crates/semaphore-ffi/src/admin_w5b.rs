@@ -334,11 +334,11 @@ pub enum RemovalCause {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn roles(&self, community_id: String) -> RolesView {
-        self.core.roles(community_id)
+        self.sync(move |core| core.roles(community_id))
     }
 
     pub fn permission_catalog(&self) -> Vec<PermissionGroup> {
-        self.core.permission_catalog()
+        self.sync(move |core| core.permission_catalog())
     }
 
     pub async fn create_role(
@@ -346,7 +346,8 @@ impl SemaphoreCore {
         community_id: String,
         draft: RoleDraft,
     ) -> Result<String, CoreError> {
-        self.core.create_role(community_id, draft).await
+        self.run(move |core| async move { core.create_role(community_id, draft).await })
+            .await
     }
 
     pub async fn update_role(
@@ -355,7 +356,8 @@ impl SemaphoreCore {
         role_id: String,
         patch: RolePatch,
     ) -> Result<(), CoreError> {
-        self.core.update_role(community_id, role_id, patch).await
+        self.run(move |core| async move { core.update_role(community_id, role_id, patch).await })
+            .await
     }
 
     pub async fn delete_role(
@@ -363,7 +365,8 @@ impl SemaphoreCore {
         community_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
-        self.core.delete_role(community_id, role_id).await
+        self.run(move |core| async move { core.delete_role(community_id, role_id).await })
+            .await
     }
 
     pub async fn reorder_roles(
@@ -371,19 +374,21 @@ impl SemaphoreCore {
         community_id: String,
         role_ids: Vec<String>,
     ) -> Result<(), CoreError> {
-        self.core.reorder_roles(community_id, role_ids).await
+        self.run(move |core| async move { core.reorder_roles(community_id, role_ids).await })
+            .await
     }
 
     pub async fn reset_default_roles(&self, community_id: String) -> Result<(), CoreError> {
-        self.core.reset_default_roles(community_id).await
+        self.run(move |core| async move { core.reset_default_roles(community_id).await })
+            .await
     }
 
     pub fn role_members(&self, community_id: String, role_id: String) -> RoleMembersView {
-        self.core.role_members(community_id, role_id)
+        self.sync(move |core| core.role_members(community_id, role_id))
     }
 
     pub fn member_roles(&self, community_id: String, user_id: String) -> MemberRolesView {
-        self.core.member_roles(community_id, user_id)
+        self.sync(move |core| core.member_roles(community_id, user_id))
     }
 
     pub async fn assign_role(
@@ -392,7 +397,8 @@ impl SemaphoreCore {
         user_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
-        self.core.assign_role(community_id, user_id, role_id).await
+        self.run(move |core| async move { core.assign_role(community_id, user_id, role_id).await })
+            .await
     }
 
     pub async fn unassign_role(
@@ -401,13 +407,14 @@ impl SemaphoreCore {
         user_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
-        self.core
-            .unassign_role(community_id, user_id, role_id)
-            .await
+        self.run(
+            move |core| async move { core.unassign_role(community_id, user_id, role_id).await },
+        )
+        .await
     }
 
     pub fn channel_overwrites(&self, channel_id: String) -> ChannelOverwritesView {
-        self.core.channel_overwrites(channel_id)
+        self.sync(move |core| core.channel_overwrites(channel_id))
     }
 
     pub fn build_preset(
@@ -417,8 +424,9 @@ impl SemaphoreCore {
         post_role_ids: Vec<String>,
         members_can_attach: bool,
     ) -> BuiltPreset {
-        self.core
-            .build_preset(channel_id, preset, post_role_ids, members_can_attach)
+        self.sync(move |core| {
+            core.build_preset(channel_id, preset, post_role_ids, members_can_attach)
+        })
     }
 
     pub async fn replace_channel_overwrites(
@@ -426,17 +434,18 @@ impl SemaphoreCore {
         channel_id: String,
         draft: OverwritesDraft,
     ) -> Result<(), CoreError> {
-        self.core
-            .replace_channel_overwrites(channel_id, draft)
-            .await
+        self.run(
+            move |core| async move { core.replace_channel_overwrites(channel_id, draft).await },
+        )
+        .await
     }
 
     pub fn community_permissions(&self, community_id: String) -> CommunityPermissionsView {
-        self.core.community_permissions(community_id)
+        self.sync(move |core| core.community_permissions(community_id))
     }
 
     pub fn moderation_target(&self, community_id: String, user_id: String) -> ModerationTargetView {
-        self.core.moderation_target(community_id, user_id)
+        self.sync(move |core| core.moderation_target(community_id, user_id))
     }
 
     pub async fn ban_member(
@@ -445,7 +454,8 @@ impl SemaphoreCore {
         user_id: String,
         request: BanRequest,
     ) -> Result<(), CoreError> {
-        self.core.ban_member(community_id, user_id, request).await
+        self.run(move |core| async move { core.ban_member(community_id, user_id, request).await })
+            .await
     }
 
     pub async fn unban_member(
@@ -454,7 +464,8 @@ impl SemaphoreCore {
         user_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        self.core.unban_member(community_id, user_id, reason).await
+        self.run(move |core| async move { core.unban_member(community_id, user_id, reason).await })
+            .await
     }
 
     pub async fn timeout_member(
@@ -463,9 +474,10 @@ impl SemaphoreCore {
         user_id: String,
         request: TimeoutRequest,
     ) -> Result<(), CoreError> {
-        self.core
-            .timeout_member(community_id, user_id, request)
-            .await
+        self.run(
+            move |core| async move { core.timeout_member(community_id, user_id, request).await },
+        )
+        .await
     }
 
     pub async fn remove_timeout(
@@ -474,21 +486,22 @@ impl SemaphoreCore {
         user_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        self.core
-            .remove_timeout(community_id, user_id, reason)
-            .await
+        self.run(
+            move |core| async move { core.remove_timeout(community_id, user_id, reason).await },
+        )
+        .await
     }
 
     pub fn bans(&self, community_id: String) -> BanListView {
-        self.core.bans(community_id)
+        self.sync(move |core| core.bans(community_id))
     }
 
     pub fn timeouts(&self, community_id: String) -> TimeoutListView {
-        self.core.timeouts(community_id)
+        self.sync(move |core| core.timeouts(community_id))
     }
 
     pub fn moderation_log(&self, community_id: String) -> ModerationLogView {
-        self.core.moderation_log(community_id)
+        self.sync(move |core| core.moderation_log(community_id))
     }
 
     pub fn set_moderation_log_filter(
@@ -496,15 +509,16 @@ impl SemaphoreCore {
         community_id: String,
         filter: Option<ModerationActionKind>,
     ) {
-        self.core.set_moderation_log_filter(community_id, filter)
+        self.sync(move |core| core.set_moderation_log_filter(community_id, filter))
     }
 
     pub async fn more_moderation_log(&self, community_id: String) -> Result<(), CoreError> {
-        self.core.more_moderation_log(community_id).await
+        self.run(move |core| async move { core.more_moderation_log(community_id).await })
+            .await
     }
 
     pub fn timeout_elapsed(&self, community_id: String) {
-        self.core.timeout_elapsed(community_id)
+        self.sync(move |core| core.timeout_elapsed(community_id))
     }
 
     pub fn timeout_presets_seconds(&self) -> Vec<u32> {

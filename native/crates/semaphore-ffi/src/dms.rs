@@ -32,11 +32,11 @@ pub struct DmList {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn dm_list(&self) -> DmList {
-        self.core.dm_list()
+        self.sync(move |core| core.dm_list())
     }
 
     pub fn dm(&self, dm_id: String) -> Option<DmRow> {
-        self.core.dm(dm_id)
+        self.sync(move |core| core.dm(dm_id))
     }
 
     pub async fn search_users(
@@ -44,7 +44,8 @@ impl SemaphoreCore {
         query: String,
         limit: Option<u32>,
     ) -> Result<Vec<UserView>, CoreError> {
-        self.core.search_users(query, limit).await
+        self.run(move |core| async move { core.search_users(query, limit).await })
+            .await
     }
 
     pub async fn create_dm(
@@ -52,7 +53,8 @@ impl SemaphoreCore {
         user_ids: Vec<String>,
         name: Option<String>,
     ) -> Result<String, CoreError> {
-        self.core.create_dm(user_ids, name).await
+        self.run(move |core| async move { core.create_dm(user_ids, name).await })
+            .await
     }
 
     pub async fn add_dm_members(
@@ -60,10 +62,12 @@ impl SemaphoreCore {
         dm_id: String,
         user_ids: Vec<String>,
     ) -> Result<(), CoreError> {
-        self.core.add_dm_members(dm_id, user_ids).await
+        self.run(move |core| async move { core.add_dm_members(dm_id, user_ids).await })
+            .await
     }
 
     pub async fn leave_dm(&self, dm_id: String) -> Result<(), CoreError> {
-        self.core.leave_dm(dm_id).await
+        self.run(move |core| async move { core.leave_dm(dm_id).await })
+            .await
     }
 }

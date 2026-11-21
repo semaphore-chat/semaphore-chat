@@ -242,7 +242,7 @@ pub struct InviteDraft {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn community_settings(&self, community_id: String) -> CommunitySettingsView {
-        self.core.community_settings(community_id)
+        self.sync(move |core| core.community_settings(community_id))
     }
 
     pub async fn update_community(
@@ -250,11 +250,13 @@ impl SemaphoreCore {
         community_id: String,
         patch: CommunityPatch,
     ) -> Result<(), CoreError> {
-        self.core.update_community(community_id, patch).await
+        self.run(move |core| async move { core.update_community(community_id, patch).await })
+            .await
     }
 
     pub async fn delete_community(&self, community_id: String) -> Result<(), CoreError> {
-        self.core.delete_community(community_id).await
+        self.run(move |core| async move { core.delete_community(community_id).await })
+            .await
     }
 
     pub async fn create_channel(
@@ -262,7 +264,8 @@ impl SemaphoreCore {
         community_id: String,
         draft: ChannelDraft,
     ) -> Result<String, CoreError> {
-        self.core.create_channel(community_id, draft).await
+        self.run(move |core| async move { core.create_channel(community_id, draft).await })
+            .await
     }
 
     pub async fn update_channel(
@@ -270,11 +273,13 @@ impl SemaphoreCore {
         channel_id: String,
         draft: ChannelDraft,
     ) -> Result<(), CoreError> {
-        self.core.update_channel(channel_id, draft).await
+        self.run(move |core| async move { core.update_channel(channel_id, draft).await })
+            .await
     }
 
     pub async fn delete_channel(&self, channel_id: String) -> Result<(), CoreError> {
-        self.core.delete_channel(channel_id).await
+        self.run(move |core| async move { core.delete_channel(channel_id).await })
+            .await
     }
 
     pub async fn move_channel(
@@ -282,11 +287,12 @@ impl SemaphoreCore {
         channel_id: String,
         step: ChannelMove,
     ) -> Result<(), CoreError> {
-        self.core.move_channel(channel_id, step).await
+        self.run(move |core| async move { core.move_channel(channel_id, step).await })
+            .await
     }
 
     pub fn private_members(&self, channel_id: String) -> PrivateMembersView {
-        self.core.private_members(channel_id)
+        self.sync(move |core| core.private_members(channel_id))
     }
 
     pub async fn add_private_member(
@@ -294,7 +300,8 @@ impl SemaphoreCore {
         channel_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
-        self.core.add_private_member(channel_id, user_id).await
+        self.run(move |core| async move { core.add_private_member(channel_id, user_id).await })
+            .await
     }
 
     pub async fn remove_private_member(
@@ -302,7 +309,8 @@ impl SemaphoreCore {
         channel_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
-        self.core.remove_private_member(channel_id, user_id).await
+        self.run(move |core| async move { core.remove_private_member(channel_id, user_id).await })
+            .await
     }
 
     pub async fn search_users_to_add(
@@ -310,19 +318,21 @@ impl SemaphoreCore {
         community_id: String,
         query: String,
     ) -> Result<Vec<UserView>, CoreError> {
-        self.core.search_users_to_add(community_id, query).await
+        self.run(move |core| async move { core.search_users_to_add(community_id, query).await })
+            .await
     }
 
     pub async fn add_member(&self, community_id: String, user_id: String) -> Result<(), CoreError> {
-        self.core.add_member(community_id, user_id).await
+        self.run(move |core| async move { core.add_member(community_id, user_id).await })
+            .await
     }
 
     pub fn alias_groups(&self, community_id: String) -> AliasGroupsView {
-        self.core.alias_groups(community_id)
+        self.sync(move |core| core.alias_groups(community_id))
     }
 
     pub fn alias_group(&self, group_id: String) -> AliasGroupView {
-        self.core.alias_group(group_id)
+        self.sync(move |core| core.alias_group(group_id))
     }
 
     pub async fn create_alias_group(
@@ -331,9 +341,11 @@ impl SemaphoreCore {
         name: String,
         member_ids: Vec<String>,
     ) -> Result<String, CoreError> {
-        self.core
-            .create_alias_group(community_id, name, member_ids)
-            .await
+        self.run(move |core| async move {
+            core.create_alias_group(community_id, name, member_ids)
+                .await
+        })
+        .await
     }
 
     pub async fn rename_alias_group(
@@ -341,11 +353,13 @@ impl SemaphoreCore {
         group_id: String,
         name: String,
     ) -> Result<(), CoreError> {
-        self.core.rename_alias_group(group_id, name).await
+        self.run(move |core| async move { core.rename_alias_group(group_id, name).await })
+            .await
     }
 
     pub async fn delete_alias_group(&self, group_id: String) -> Result<(), CoreError> {
-        self.core.delete_alias_group(group_id).await
+        self.run(move |core| async move { core.delete_alias_group(group_id).await })
+            .await
     }
 
     pub async fn set_alias_group_members(
@@ -353,9 +367,10 @@ impl SemaphoreCore {
         group_id: String,
         member_ids: Vec<String>,
     ) -> Result<(), CoreError> {
-        self.core
-            .set_alias_group_members(group_id, member_ids)
-            .await
+        self.run(
+            move |core| async move { core.set_alias_group_members(group_id, member_ids).await },
+        )
+        .await
     }
 
     pub async fn add_alias_group_member(
@@ -363,7 +378,8 @@ impl SemaphoreCore {
         group_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
-        self.core.add_alias_group_member(group_id, user_id).await
+        self.run(move |core| async move { core.add_alias_group_member(group_id, user_id).await })
+            .await
     }
 
     pub async fn remove_alias_group_member(
@@ -371,11 +387,12 @@ impl SemaphoreCore {
         group_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
-        self.core.remove_alias_group_member(group_id, user_id).await
+        self.run(move |core| async move { core.remove_alias_group_member(group_id, user_id).await })
+            .await
     }
 
     pub fn custom_emoji(&self, community_id: String) -> CustomEmojiView {
-        self.core.custom_emoji(community_id)
+        self.sync(move |core| core.custom_emoji(community_id))
     }
 
     pub async fn add_custom_emoji(
@@ -384,7 +401,8 @@ impl SemaphoreCore {
         name: String,
         file: DraftFile,
     ) -> Result<(), CoreError> {
-        self.core.add_custom_emoji(community_id, name, file).await
+        self.run(move |core| async move { core.add_custom_emoji(community_id, name, file).await })
+            .await
     }
 
     pub async fn delete_custom_emoji(
@@ -392,7 +410,8 @@ impl SemaphoreCore {
         community_id: String,
         emoji_id: String,
     ) -> Result<(), CoreError> {
-        self.core.delete_custom_emoji(community_id, emoji_id).await
+        self.run(move |core| async move { core.delete_custom_emoji(community_id, emoji_id).await })
+            .await
     }
 
     pub async fn add_sound(
@@ -400,7 +419,8 @@ impl SemaphoreCore {
         community_id: String,
         draft: SoundDraft,
     ) -> Result<(), CoreError> {
-        self.core.add_sound(community_id, draft).await
+        self.run(move |core| async move { core.add_sound(community_id, draft).await })
+            .await
     }
 
     pub async fn delete_sound(
@@ -408,11 +428,12 @@ impl SemaphoreCore {
         community_id: String,
         sound_id: String,
     ) -> Result<(), CoreError> {
-        self.core.delete_sound(community_id, sound_id).await
+        self.run(move |core| async move { core.delete_sound(community_id, sound_id).await })
+            .await
     }
 
     pub fn webhooks(&self, channel_id: String) -> WebhooksView {
-        self.core.webhooks(channel_id)
+        self.sync(move |core| core.webhooks(channel_id))
     }
 
     pub async fn create_webhook(
@@ -421,7 +442,8 @@ impl SemaphoreCore {
         name: String,
         avatar_url: Option<String>,
     ) -> Result<CreatedWebhook, CoreError> {
-        self.core.create_webhook(channel_id, name, avatar_url).await
+        self.run(move |core| async move { core.create_webhook(channel_id, name, avatar_url).await })
+            .await
     }
 
     pub async fn delete_webhook(
@@ -429,11 +451,12 @@ impl SemaphoreCore {
         channel_id: String,
         webhook_id: String,
     ) -> Result<(), CoreError> {
-        self.core.delete_webhook(channel_id, webhook_id).await
+        self.run(move |core| async move { core.delete_webhook(channel_id, webhook_id).await })
+            .await
     }
 
     pub fn community_invites(&self, community_id: String) -> InvitesView {
-        self.core.community_invites(community_id)
+        self.sync(move |core| core.community_invites(community_id))
     }
 
     pub async fn create_invite(
@@ -441,10 +464,12 @@ impl SemaphoreCore {
         community_id: String,
         draft: InviteDraft,
     ) -> Result<String, CoreError> {
-        self.core.create_invite(community_id, draft).await
+        self.run(move |core| async move { core.create_invite(community_id, draft).await })
+            .await
     }
 
     pub async fn delete_invite(&self, code: String) -> Result<(), CoreError> {
-        self.core.delete_invite(code).await
+        self.run(move |core| async move { core.delete_invite(code).await })
+            .await
     }
 }
