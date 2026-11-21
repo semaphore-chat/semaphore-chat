@@ -96,12 +96,12 @@ type "x"
 wait core composer-text "x"
 press backspace
 
-# 8. Open again and pick the third GIF: its URL alone is the message, and the list draws the GIF.
+# 8. Open again and pick the third GIF: its medium URL alone is the message (#789), and the list draws the GIF.
 click composer-gif
 wait core w7 picker results >= 20 within 10
 click gif-gif-3
 wait core w7 picker closed
-wait core w7 sent-gif "/__fixtures/gif-3.gif" within 10
+wait core w7 sent-gif "/__fixtures/gif-3-medium.gif" within 10
 wait core requests sendMessage >= 1
 wait core w7 gif shown within 10
 wait idle
@@ -112,7 +112,7 @@ link-images on
 restart
 wait core session signed-in
 wait core channel $ID(cc-general)
-wait core w7 sent-gif "/__fixtures/gif-3.gif" within 10
+wait core w7 sent-gif "/__fixtures/gif-3-medium.gif" within 10
 wait core w7 gif shown within 10
 wait idle
 shot 09-sent-reloaded
