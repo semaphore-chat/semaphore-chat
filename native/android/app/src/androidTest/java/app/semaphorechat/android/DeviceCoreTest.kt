@@ -233,9 +233,12 @@ class DeviceCoreTest {
         val failed = host.core().session()
         assertTrue("expected the sign-in to fail, got $failed", failed is SessionState.SignInFailed)
         val message = (failed as SessionState.SignInFailed).error.message
-        assertTrue("no error message", message.isNotBlank())
-        // reqwest reports a refused handshake as a communication error, never as an HTTP answer.
+        // reqwest reports a refused handshake as a communication error, never as an HTTP answer;
+        // its text does not carry the verifier's reason, so the script checks the saved logcat
+        // for the verifier's `UnknownIssuer` (native/scripts/android-device-test.sh). The
+        // certificate names 10.0.2.2, so trust is the only thing left to refuse it for.
         assertTrue("not a transport failure: $message", message.contains("Communication Error"))
+        assertFalse("TLS was never set up: $message", message.contains("TLS isn't initialised"))
         host.shutdown()
     }
 
@@ -249,7 +252,9 @@ class DeviceCoreTest {
         val url = argument("trustedServer")
         // JSSE with the platform trust store, first: proves the device can reach the host and
         // trusts its chain, so a failure below is about the core's TLS path and not the network.
-        val leaf = handshake(url, trustEverything = false, verifyHostname = true)
+        // Three tries, 2 s then 4 s apart: a third party's host may blip, and a bounded retry
+        // is not a wait for a condition.
+        val leaf = retrying(3) { handshake(url, trustEverything = false, verifyHostname = true) }
         assertTrue("a SHA-256 in lowercase hex, got '$leaf'", leaf.length == 64)
 
         val host = launch(tempDir("tls-trusted"), MemorySecrets(), Recorder())
@@ -257,10 +262,16 @@ class DeviceCoreTest {
         val failed = host.core().session()
         assertTrue("expected the sign-in to fail, got $failed", failed is SessionState.SignInFailed)
         val message = (failed as SessionState.SignInFailed).error.message
-        assertTrue("not blank", message.isNotBlank())
+        // Nothing is asserted about the host's body: it is a third party's. What matters is that
+        // the failure is not a transport one, and not one from before any handshake.
         assertFalse(
             "the handshake did not complete: $message",
             message.contains("Communication Error"),
+        )
+        assertFalse("TLS was never set up: $message", message.contains("TLS isn't initialised"))
+        assertFalse(
+            "the platform trust store was not read: $message",
+            message.contains("cannot read the system's trusted certificates"),
         )
         host.shutdown()
     }
@@ -341,6 +352,19 @@ class DeviceCoreTest {
      * presented as lowercase hex: the form the script's `sha256sum` prints, and the form the store
      * names its files by.
      */
+    private fun <T> retrying(tries: Int, attempt: () -> T): T {
+        var last: Exception? = null
+        for (n in 1..tries) {
+            try {
+                return attempt()
+            } catch (e: java.io.IOException) {
+                last = e
+                if (n < tries) Thread.sleep(2_000L * n)
+            }
+        }
+        throw AssertionError("no handshake after $tries tries", last)
+    }
+
     private fun handshake(url: String, trustEverything: Boolean, verifyHostname: Boolean): String {
         val uri = URI(url)
         val secure = if (trustEverything) {

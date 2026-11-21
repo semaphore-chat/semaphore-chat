@@ -8,46 +8,46 @@
 # Built by native/scripts/android-device-test.sh, which passes BASE (the Android image's tag). The
 # build context is native/.
 #
-# Pins: both packages come from sdkmanager, which checks every file against the checksums in
-# Google's repository XML (which is also the only checksum Google publishes for them). sdkmanager
-# only offers the newest stable revision of each, so the build asserts the revision it got and
-# fails when Google moves one: the runtime the test runs on must not change behind a
-# `docker build`. Moving a pin is one argument.
+# Pins: both packages are downloaded by their build-numbered URLs and checked against a sha256
+# below, like cmdline-tools and Gradle in Dockerfile.android. Google publishes only a sha1 for
+# them (in repository2-3.xml and sys-img/android/sys-img2-3.xml); the sha256 here is of the file
+# whose sha1 matches that XML when it was pinned. They are unpacked where sdkmanager would put
+# them, with the package.xml that avdmanager and the emulator read (android-emulator/*.xml, taken
+# from a one-time sdkmanager install; the licence text is left out). Moving a pin is a new URL, a
+# new sha256 and the revision in the matching package.xml.
 ARG BASE
 FROM ${BASE}
 
-# Stable channel (channel-0) of https://dl.google.com/android/repository/repository2-3.xml.
-ARG EMULATOR_REVISION=37.3.10
-# Android 14, the AOSP ("default") image, x86_64: no Google APIs and no Play Store, because the app
-# must not depend on Google services.
-ARG SYSTEM_IMAGE=system-images;android-34;default;x86_64
-ARG SYSTEM_IMAGE_REVISION=4
+# Emulator 37.3.10 (stable channel, repository2-3.xml): build 16970787.
+ARG EMULATOR_BUILD=16970787
+ARG EMULATOR_SHA256=a4405349d8a9c52136ab7861e5331dc40e85574bd91cb8889a298a2ff4c52e26
+# Android 14, the AOSP ("default") image, x86_64, revision 4: no Google APIs and no Play Store,
+# because the app must not depend on Google services.
+ARG SYSTEM_IMAGE_ZIP=x86_64-34_r04.zip
+ARG SYSTEM_IMAGE_SHA256=b57f6386af25b0fe5488e77196b43c03778c6760e6f4311611d090391b9cb2b3
 
 # What the emulator needs beyond the X, GL, ALSA, NSS and Mesa libraries the build image already
 # carries (the GPUI rig installed those). libbsd is QEMU's and the emulator's own libc++'s.
 RUN pacman -S --noconfirm --needed libbsd libxext libxcursor libxi libpng bzip2 \
  && rm -rf /var/cache/pacman/pkg/*
 
-# The emulator package first: a system image depends on it, so sdkmanager would otherwise install a
-# second copy beside the one already there. The licences were accepted in the Android image, so
-# this does not stop at a prompt.
-RUN set -eu; \
-    sdkmanager --sdk_root="$ANDROID_HOME" emulator "$SYSTEM_IMAGE" >/dev/null; \
-    revision() { \
-      sed -n 's/.*<revision>\(.*\)<\/revision>.*/\1/p' "$1/package.xml" \
-        | sed 's/<[^>]*>/ /g' | tr -s ' ' | sed 's/^ //; s/ $//; s/ /./g'; \
-    }; \
-    expect() { \
-      got="$(revision "$1")"; \
-      if [ "$got" != "$2" ]; then \
-        echo "android-emulator: sdkmanager installed revision '$got' of $1, not the pinned '$2'" >&2; \
-        exit 1; \
-      fi; \
-    }; \
-    expect "$ANDROID_HOME/emulator" "$EMULATOR_REVISION"; \
-    expect "$ANDROID_HOME/system-images/android-34/default/x86_64" "$SYSTEM_IMAGE_REVISION"; \
-    "$ANDROID_HOME/emulator/emulator" -version; \
-    rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/.downloadIntermediates"
+COPY docker/android-emulator/emulator-package.xml /tmp/emulator-package.xml
+COPY docker/android-emulator/system-image-package.xml /tmp/system-image-package.xml
 
-# The AVD itself is created at run time, inside the HOME volume (ANDROID_USER_HOME, from the
-# Android image): it is per-run state, and /cache/home is mounted over whatever the image holds.
+RUN set -eu; \
+    base=https://dl.google.com/android/repository; \
+    curl -fsSL "$base/emulator-linux_x64-${EMULATOR_BUILD}.zip" -o /tmp/emulator.zip; \
+    echo "${EMULATOR_SHA256}  /tmp/emulator.zip" | sha256sum -c -; \
+    curl -fsSL "$base/sys-img/android/${SYSTEM_IMAGE_ZIP}" -o /tmp/sysimg.zip; \
+    echo "${SYSTEM_IMAGE_SHA256}  /tmp/sysimg.zip" | sha256sum -c -; \
+    unzip -q /tmp/emulator.zip -d "$ANDROID_HOME"; \
+    mv /tmp/emulator-package.xml "$ANDROID_HOME/emulator/package.xml"; \
+    imgdir="$ANDROID_HOME/system-images/android-34/default"; \
+    mkdir -p "$imgdir"; \
+    unzip -q /tmp/sysimg.zip -d "$imgdir"; \
+    mv /tmp/system-image-package.xml "$imgdir/x86_64/package.xml"; \
+    rm -f /tmp/emulator.zip /tmp/sysimg.zip; \
+    "$ANDROID_HOME/emulator/emulator" -version | head -5
+
+# The AVD itself is created at run time, under the container's /tmp (ANDROID_AVD_HOME): it is
+# per-run state and dies with the container.

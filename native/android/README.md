@@ -71,13 +71,17 @@ On the device, `DeviceCoreTest` (`app/src/androidTest`) proves both halves of th
 - `NativeLib.init` runs: the library loads, the JNI entry point is there, and
   `rustls-platform-verifier` accepts the JVM and `Context` it is given;
 - a self-signed certificate is refused: the core signs in to an HTTPS server the script starts
-  with a locally generated certificate, and the request fails as a transport error. The test
+  with a locally generated certificate (its name, `IP:10.0.2.2`, matches, so trust is the only
+  reason left to refuse it), and the request fails as a transport error. The script then checks
+  the test's saved logcat for the verifier's `UnknownIssuer`. The test
   reads that same certificate over JSSE first (trusting everything), and compares its SHA-256
   with the fingerprint the script computed, so a plain connection failure cannot pass for a
   refused one;
-- a certificate the platform store trusts is accepted: the core signs in to `https://example.com`,
-  the TLS handshake completes and the request comes back an HTTP/JSON answer, not a transport
-  error. That needs outbound HTTPS from the emulator container.
+- a certificate the platform store trusts is accepted: the core signs in to `https://dl.google.com`
+  (a host the run's own downloads need), the TLS handshake completes and the request comes back
+  as something other than a transport error, or a failure before any handshake (TLS not
+  initialised, trust store unreadable). Nothing is asserted about the host's body. The JSSE
+  pre-check is retried three times. That needs outbound HTTPS from the emulator container.
 
 Not proven: that a *locally installed* CA (a self-hoster's private CA in the device's trust
 store) is trusted, since the test does not write to the emulator's trust store; and the
@@ -116,7 +120,10 @@ README asks for, or the verifier's Kotlin classes are stripped:
 
 ## Where the APK lands
 
-`native/android/out/semaphore-android-debug.apk` (gitignored). To see what is in it:
+`native/android/out/semaphore-android-debug.apk` (gitignored) for the default ABI set, arm64-v8a:
+the one to sideload. Any other `ANDROID_ABIS` writes `semaphore-android-debug-<abis>.apk` beside
+it (`ANDROID_ABIS=x86_64` gives `semaphore-android-debug-x86_64.apk`, the emulator's, which a phone
+refuses), so the device test never replaces the sideloadable file. To see what is in it:
 
 ```
 unzip -l native/android/out/semaphore-android-debug.apk | grep -E 'lib/.*\.so|classes'
@@ -154,7 +161,10 @@ x86_64 system image — and runs one container on it, as the host user, with `--
 5. the results, one line per test, and a count that fails the script on any failure, any skip or
    no tests at all.
 
-The container is removed on exit (`EXIT`, `INT`, `TERM`), and with it the emulator and both
+The container is named per checkout (`native-android-device-<8 hex>`), removed on exit (`EXIT`,
+`INT`, `TERM`; a TERM removes it within seconds), labelled so `scripts/test-stack.sh ls` lists a
+leftover from a killed run, and removed again at the next run's start. The AVD lives under the
+container's `/tmp`, so it goes with it. With the container go the emulator and both
 servers; no network is created or removed and no other container is touched.
 
 **Why 10.0.2.2.** Inside an emulator, `10.0.2.2` is QEMU's user-mode network's alias for the
@@ -180,10 +190,10 @@ What it does not cover: a real device (the emulator has no hardware-backed Keyst
 software-backed there), screen behaviour, and a privately installed CA.
 
 Two dependencies outside the checkout: the emulator needs `/dev/kvm` on the host, and the
-trusted-certificate test needs outbound HTTPS from the container (`https://example.com`).
-`Dockerfile.android-emulator` pins the emulator's and the system image's revisions and fails the
-image build if sdkmanager installs a different one, so the runtime cannot change behind a
-`docker build`; sdkmanager verifies every file against the checksums in Google's repository XML.
+trusted-certificate test needs outbound HTTPS from the container (`https://dl.google.com`).
+`Dockerfile.android-emulator` pins the emulator (build 16970787, 37.3.10) and the system image
+(`x86_64-34_r04.zip`) by their build-numbered URLs and a sha256 each, like cmdline-tools and
+Gradle, so the runtime cannot change behind a `docker build`.
 
 ## Sideload
 

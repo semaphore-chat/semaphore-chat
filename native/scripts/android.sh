@@ -199,7 +199,13 @@ sys.exit(1 if failures or skipped or not tests else 0)
 PY
 
 mkdir -p "$ANDROID_DIR/out"
-apk="$ANDROID_DIR/out/semaphore-android-debug.apk"
+# The default ABI set is the sideloadable APK (a phone is arm64-v8a); any other set gets the ABIs in
+# its name, so the emulator's x86_64-only build never replaces the one for a phone.
+if [ "$ANDROID_ABIS" = arm64-v8a ]; then
+  apk="$ANDROID_DIR/out/semaphore-android-debug.apk"
+else
+  apk="$ANDROID_DIR/out/semaphore-android-debug-${ANDROID_ABIS//,/-}.apk"
+fi
 cp "$APP/build/outputs/apk/debug/app-debug.apk" "$apk"
 
 echo
