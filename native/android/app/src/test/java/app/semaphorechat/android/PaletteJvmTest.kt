@@ -7,6 +7,7 @@
 
 package app.semaphorechat.android
 
+import androidx.compose.ui.graphics.toArgb
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
@@ -73,6 +74,16 @@ class PaletteJvmTest {
                 got.warning, got.danger, got.onDanger, got.scrim,
             ).map { it.toLong() }
             assertEquals("$key", roles.map { packed(want.getValue(it)) }, gotRoles)
+            val kitRoles = listOf(
+                kit.ground, kit.surface, kit.fill, kit.hairline, kit.text, kit.textSecondary,
+                kit.textDim, kit.accent, kit.onAccent, kit.accentText, kit.focus, kit.positive,
+                kit.warning, kit.danger, kit.onDanger, kit.scrim,
+            ).map { it.toArgb() }
+            val wantKit = roles.map { packed(want.getValue(it)) }.map {
+                // 0xRRGGBBAA to ARGB.
+                (((it and 0xFF) shl 24) or (it ushr 8)).toInt()
+            }
+            assertEquals("$key", wantKit, kitRoles)
             assertEquals("$key", mode == "dark", kit.dark)
         }
     }

@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -78,13 +81,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** The server's defaults until the core has started (and while signed out, as the core says). */
+/**
+ * What the core's `Appearance::default()` is (semaphore-core's `model/account.rs`: dark, the
+ * server's default accent purple, minimal, base `DEFAULT_BASE` #8e75ff, no match-system), which
+ * `appearance()` returns while signed out. The first frames use it too, so a cold start does not
+ * change theme when the core arrives.
+ */
 private val DEFAULT_APPEARANCE = Appearance(
     mode = ThemeMode.DARK,
-    accent = uniffi.semaphore.AccentColor.TEAL,
+    accent = uniffi.semaphore.AccentColor.PURPLE,
     intensity = uniffi.semaphore.ThemeIntensity.MINIMAL,
-    base = uniffi.semaphore.Rgb(0x0Du, 0x94u, 0x88u),
-    matchSystem = true,
+    base = uniffi.semaphore.Rgb(0x8Eu, 0x75u, 0xFFu),
+    matchSystem = false,
     newDesign = false,
     baseColourSettings = true,
 )
@@ -112,6 +120,7 @@ private fun CoreScreen() {
             Column(
                 modifier = Modifier
                     .safeDrawingPadding()
+                    .verticalScroll(rememberScrollState())
                     .padding(Tokens.Space.Md),
                 verticalArrangement = Arrangement.spacedBy(Tokens.Space.Md),
             ) {
@@ -157,9 +166,27 @@ private fun SignInForm(core: SemaphoreCore, session: SessionState) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    TextField(server, { server = it }, label = "Server", type = TextFieldType.Url)
-    TextField(username, { username = it }, label = "Username")
-    TextField(password, { password = it }, label = "Password", type = TextFieldType.Password)
+    TextField(server, { server = it }, label = "Server", type = TextFieldType.Url, imeAction = ImeAction.Next)
+    val signIn = {
+        error = null
+        scope.launch {
+            try {
+                core.signIn(server.trim(), username.trim(), password)
+            } catch (failure: CoreException) {
+                error = failure.message
+            }
+        }
+        Unit
+    }
+    TextField(username, { username = it }, label = "Username", imeAction = ImeAction.Next)
+    TextField(
+        password,
+        { password = it },
+        label = "Password",
+        type = TextFieldType.Password,
+        imeAction = ImeAction.Done,
+        onImeAction = { if (session != SessionState.SigningIn) signIn() },
+    )
     (error ?: (session as? SessionState.SignInFailed)?.error?.message)?.let {
         Alert(AlertSeverity.Danger, it)
     }
@@ -169,16 +196,7 @@ private fun SignInForm(core: SemaphoreCore, session: SessionState) {
         size = ButtonSize.Lg,
         fullWidth = true,
         loading = session == SessionState.SigningIn,
-        onClick = {
-            error = null
-            scope.launch {
-                try {
-                    core.signIn(server.trim(), username.trim(), password)
-                } catch (failure: CoreException) {
-                    error = failure.message
-                }
-            }
-        },
+        onClick = signIn,
     )
 }
 

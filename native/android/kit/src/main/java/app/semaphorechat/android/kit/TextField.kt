@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -33,6 +34,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -71,6 +74,8 @@ fun TextField(
     shape: TextFieldShape = TextFieldShape.Field,
     type: TextFieldType = TextFieldType.Text,
     startIcon: ImageVector? = null,
+    imeAction: ImeAction = ImeAction.Default,
+    onImeAction: (() -> Unit)? = null,
 ) {
     val palette = Kit.palette
     val interaction = remember { MutableInteractionSource() }
@@ -102,7 +107,12 @@ fun TextField(
             singleLine = true,
             textStyle = text.copy(color = palette.text),
             cursorBrush = SolidColor(palette.accent),
-            keyboardOptions = KeyboardOptions(keyboardType = type.keyboard),
+            keyboardOptions = KeyboardOptions(keyboardType = type.keyboard, imeAction = imeAction),
+            keyboardActions = if (onImeAction != null) {
+                KeyboardActions(onAny = { onImeAction() })
+            } else {
+                KeyboardActions.Default
+            },
             visualTransformation = if (type == TextFieldType.Password) {
                 PasswordVisualTransformation()
             } else {
@@ -113,6 +123,7 @@ fun TextField(
                 .fillMaxWidth()
                 .semantics {
                     contentDescription = label
+                    if (required) stateDescription = "Required"
                     if (error != null) error(error)
                 },
             decorationBox = { inner ->

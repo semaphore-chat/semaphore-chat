@@ -30,6 +30,21 @@ object StoryPalettes {
         return if (digits.length == 6) (value shl 8) or 0xFF else value
     }
 
+    /** The 16 role colours of a vector, as written there (`#rrggbb[aa]`), in role order. */
+    fun vectorRoles(base: String, mode: String, intensity: String): List<String> {
+        for (i in 0 until cases.length()) {
+            val case = cases.getJSONObject(i)
+            if (case.getString("base").equals(base, ignoreCase = true) &&
+                case.getString("mode") == mode &&
+                case.getString("intensity") == intensity
+            ) {
+                val roles = case.getJSONObject("roles")
+                return ROLES.map { roles.getString(it) }
+            }
+        }
+        error("no vector for $base $mode $intensity")
+    }
+
     /** The vectors' palette for [base] (as written there) in [mode] at [intensity]. */
     fun palette(base: String, mode: String, intensity: String): KitPalette {
         for (i in 0 until cases.length()) {

@@ -89,10 +89,11 @@ fun Button(
     fullWidth: Boolean = false,
     loading: Boolean = false,
     enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     val palette = Kit.palette
     val look = palette.buttonLook(variant, Kit.surface)
-    val interaction = remember { MutableInteractionSource() }
+    val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val busy = loading && enabled
     val background = if (look.background == Color.Transparent) {
         val pressed = pressedColour(interaction, look.under, look.pressed)
@@ -125,8 +126,8 @@ fun Button(
                 .height(controlHeight(size))
                 .focusRing(interaction, CircleShape)
                 .clip(CircleShape)
-                .background(background)
                 .alpha(if (enabled) 1f else Tokens.State.Disabled)
+                .background(background)
                 .padding(horizontal = sidePadding(size)),
             horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
@@ -167,6 +168,7 @@ fun IconButton(
     loading: Boolean = false,
     enabled: Boolean = true,
     badge: Int? = null,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     val palette = Kit.palette
     val on = Kit.surface
@@ -181,11 +183,29 @@ fun IconButton(
     )
     val isSelected = selected == true
     val selectedFill = if (on == KitSurface.Accent) palette.fill else palette.standOutFill(on)
-    val resting = if (isSelected) selectedFill else look.background
-    val under = if (isSelected) selectedFill else look.under
-    val tint = if (isSelected) palette.accentText else look.label
-    val interaction = remember { MutableInteractionSource() }
-    val pressed = pressedColour(interaction, under, look.pressed)
+    // On the accent pill a ghost or soft button reads as the on-accent ink; a soft one keeps a faint
+    // on-accent tint for its fill, and its states are the on-fill ones (the web's `onAccent` branch).
+    val onAccentPill = on == KitSurface.Accent && !isSelected &&
+        (variant == IconButtonVariant.Ghost || variant == IconButtonVariant.Soft)
+    val accentTint = palette.standOutFill(KitSurface.Accent)
+    val soft = variant == IconButtonVariant.Soft
+    val resting = when {
+        isSelected -> selectedFill
+        onAccentPill -> if (soft) accentTint else Color.Transparent
+        else -> look.background
+    }
+    val under = when {
+        isSelected -> selectedFill
+        onAccentPill -> if (soft) accentTint else palette.accent
+        else -> look.under
+    }
+    val tint = when {
+        isSelected -> palette.accentText
+        onAccentPill -> palette.onAccent
+        else -> look.label
+    }
+    val interaction = interactionSource ?: remember { MutableInteractionSource() }
+    val pressed = pressedColour(interaction, under, if (onAccentPill) Tokens.State.PressedOnFill else look.pressed)
     val background = if (resting == Color.Transparent && pressed == under) Color.Transparent else pressed
     val busy = loading && enabled
     val side = controlHeight(size)
@@ -198,7 +218,12 @@ fun IconButton(
         modifier = modifier
             .minimumInteractiveComponentSize()
             .semantics {
-                contentDescription = label
+                // The count is part of the name: a bell with 3 on it is not just "Notifications".
+                contentDescription = if (badge != null && badge > 0) {
+                    "$label, ${if (badge > 99) "99+" else badge.toString()}"
+                } else {
+                    label
+                }
                 if (selected != null) this.selected = isSelected
                 if (busy) stateDescription = "Busy"
             }
@@ -216,8 +241,8 @@ fun IconButton(
                 .size(side)
                 .focusRing(interaction, CircleShape)
                 .clip(CircleShape)
-                .background(background)
-                .alpha(if (enabled) 1f else Tokens.State.Disabled),
+                .alpha(if (enabled) 1f else Tokens.State.Disabled)
+                .background(background),
             contentAlignment = Alignment.Center,
         ) {
             if (busy) {

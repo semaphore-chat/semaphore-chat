@@ -63,11 +63,12 @@ fun ListRow(
     busy: Boolean = false,
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     val palette = Kit.palette
     val on = Kit.surface
     val under = if (selected) palette.accent else palette.tintBase(on)
-    val interaction = remember { MutableInteractionSource() }
+    val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val pressed = pressedColour(
         interaction,
         under,
@@ -98,14 +99,27 @@ fun ListRow(
             .fillMaxWidth()
             .semantics {
                 if (selected) this.selected = true
-                if (busy) stateDescription = "Busy"
+                // Spoken state, as the web's name carries ", unread" and the trailing label.
+                val spoken = listOfNotNull(
+                    if (busy) "Busy" else null,
+                    if (unread && !selected) "unread" else null,
+                    trailingLabel,
+                )
+                if (spoken.isNotEmpty()) stateDescription = spoken.joinToString(", ")
             }
             .then(clickable)
             .heightIn(min = minHeight)
-            .focusRing(interaction, shape)
+            // Inside the row (an outer ring is clipped by a scrolling list); on the accent it is the
+            // on-accent ink, a ring's width further in, as the web's.
+            .focusRing(
+                interaction,
+                shape,
+                colour = if (selected) palette.onAccent else palette.focus,
+                offset = if (selected) -(Tokens.Border.Focus * 2) else -Tokens.Border.Focus,
+            )
             .clip(shape)
-            .background(background)
             .alpha(if (enabled) 1f else Tokens.State.Disabled)
+            .background(background)
             .padding(start = Tokens.Space.Xs, end = Tokens.Space.Md),
         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm),
         verticalAlignment = Alignment.CenterVertically,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
@@ -90,13 +91,14 @@ fun Card(
     padding: SurfacePadding = SurfacePadding.Md,
     selected: Boolean = false,
     onClick: (() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val palette = Kit.palette
     val on = Kit.surface
     val shape = RoundedCornerShape(Tokens.Radius.Card)
     val fill = palette.standOutFill(on)
-    val interaction = remember { MutableInteractionSource() }
+    val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val background = if (onClick != null) pressedColour(interaction, fill, Tokens.State.Pressed) else fill
     val clickable = if (onClick != null) {
         Modifier
@@ -109,6 +111,7 @@ fun Card(
         modifier = modifier
             .fillMaxWidth()
             .then(clickable)
+            .then(if (onClick != null) Modifier.heightIn(min = Kit.density.hitArea) else Modifier)
             .focusRing(interaction, shape)
             .clip(shape)
             .background(background)

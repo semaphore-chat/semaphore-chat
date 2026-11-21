@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import app.semaphorechat.android.design.Tokens
@@ -111,7 +112,10 @@ fun Avatar(
     val semantics = if (decorative) {
         Modifier.clearAndSetSemantics { }
     } else {
-        Modifier.clearAndSetSemantics { contentDescription = name }
+        Modifier.clearAndSetSemantics {
+            contentDescription = name
+            if (presence != null) stateDescription = presence.name.lowercase()
+        }
     }
     Box(modifier = modifier.size(size.side).then(semantics)) {
         Box(

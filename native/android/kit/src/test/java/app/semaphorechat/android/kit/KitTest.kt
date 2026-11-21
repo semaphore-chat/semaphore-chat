@@ -2,15 +2,20 @@
 
 package app.semaphorechat.android.kit
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
-import androidx.compose.ui.test.assertTouchHeightIsEqualTo
-import androidx.compose.ui.test.assertTouchWidthIsEqualTo
+import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -46,10 +51,15 @@ class KitTest {
 
     @Test
     fun paletteFromPackedKeepsTheRoleOrder() {
-        // The approved default palette (design/gen/test_colour_ref.py's DEFAULT).
-        assertEquals(Color(0xFF121214), palette.ground)
-        assertEquals(Color(0xFF1B1B1F), palette.surface)
-        assertEquals(Color(0xFF8E75FF), palette.accent)
+        // All 16 roles, against the vector for the default palette (#8E75FF, dark, minimal).
+        val want = StoryPalettes.vectorRoles("#8E75FF", "dark", "minimal")
+        val got = listOf(
+            palette.ground, palette.surface, palette.fill, palette.hairline, palette.text,
+            palette.textSecondary, palette.textDim, palette.accent, palette.onAccent, palette.accentText,
+            palette.focus, palette.positive, palette.warning, palette.danger, palette.onDanger, palette.scrim,
+        )
+        assertEquals(16, want.size)
+        assertEquals(want.map { rgbaColour(StoryPalettes.packed(it)) }, got)
         assertEquals(true, palette.dark)
     }
 
@@ -107,24 +117,28 @@ class KitTest {
     fun aSmallButtonStillHasATouchSizedHitArea() {
         var clicks = 0
         compose.setContent {
-            SemaphoreTheme(palette) { Button("Go", { clicks++ }, size = ButtonSize.Sm) }
+            SemaphoreTheme(palette) {
+                Box(Modifier.testTag("wrap")) { Button("Go", { clicks++ }, size = ButtonSize.Sm) }
+            }
         }
-        // It draws 40 high (density.touch.control.sm) and takes presses over the 48 hit area.
-        compose.onNodeWithText("Go")
-            .assertHeightIsEqualTo(40.dp)
-            .assertTouchHeightIsEqualTo(48.dp)
-            .performClick()
+        // It draws 40 high (density.touch.control.sm) and takes the 48 hit area in layout: the
+        // wrapping box is 48 high (the touch bounds Compose reports are widened anyway, so they
+        // would pass without the kit's own hit-area code).
+        compose.onNodeWithText("Go").assertHeightIsEqualTo(40.dp)
+        compose.onNodeWithTag("wrap").assertHeightIsEqualTo(48.dp).assertWidthIsAtLeast(48.dp)
+        compose.onNodeWithText("Go").performClick()
         assertEquals(1, clicks)
     }
 
     @Test
     fun anIconButtonIsNamedByItsLabelAndSizedForAFinger() {
         compose.setContent {
-            SemaphoreTheme(palette) { IconButton(Icons.Mic, "Mute", {}, size = ButtonSize.Sm, selected = true) }
+            SemaphoreTheme(palette) {
+                Box(Modifier.testTag("wrap")) { IconButton(Icons.Mic, "Mute", {}, size = ButtonSize.Sm, selected = true) }
+            }
         }
+        compose.onNodeWithTag("wrap").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
         compose.onNodeWithContentDescription("Mute")
-            .assertTouchWidthIsEqualTo(48.dp)
-            .assertTouchHeightIsEqualTo(48.dp)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
     }
 
@@ -154,6 +168,32 @@ class KitTest {
         compose.onNodeWithContentDescription("Password")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Wrong password"))
         compose.onNodeWithText("Wrong password").assertExists()
+    }
+
+    @Test
+    fun aClickableCardReservesTheHitArea() {
+        compose.setContent {
+            SemaphoreTheme(palette) { Card(padding = SurfacePadding.None, modifier = Modifier.testTag("card"), onClick = {}) { Text("x") } }
+        }
+        compose.onNodeWithTag("card").assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun stateReachesAccessibility() {
+        compose.setContent {
+            SemaphoreTheme(palette) {
+                Column {
+                    ListRow("general", unread = true, trailingLabel = "12:04", onClick = {})
+                    IconButton(Icons.Bell, "Notifications", {}, badge = 3)
+                    Avatar("Priya Raman", presence = Presence.Online)
+                    TextField("", {}, label = "Server", required = true)
+                }
+            }
+        }
+        compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "unread, 12:04")).assertExists()
+        compose.onNodeWithContentDescription("Notifications, 3").assertExists()
+        compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "online")).assertExists()
+        compose.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Required")).assertExists()
     }
 
     @Test

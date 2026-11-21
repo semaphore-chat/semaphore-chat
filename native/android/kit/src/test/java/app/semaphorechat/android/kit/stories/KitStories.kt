@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import app.semaphorechat.android.design.Icons
@@ -52,6 +56,24 @@ private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) 
         Text(title, variant = TextVariant.Meta, tone = TextTone.Dim)
         content()
     }
+}
+
+/**
+ * A page where the one control given the interaction source has keyboard focus, so the focus
+ * ring is rendered. Only one control can hold focus, so a focused story has one.
+ */
+@Composable
+private fun FocusedPage(content: @Composable ColumnScope.(MutableInteractionSource) -> Unit) {
+    // A real focus needs a window with focus, which the render has not; the control sees the same
+    // interaction a keyboard focus emits.
+    val source = remember { MutableInteractionSource() }
+    LaunchedEffect(Unit) {
+        // Frames, not a delay: the control must be collecting before the interaction is emitted.
+        androidx.compose.runtime.withFrameNanos { }
+        androidx.compose.runtime.withFrameNanos { }
+        source.emit(FocusInteraction.Focus())
+    }
+    Page { content(source) }
 }
 
 @Composable
@@ -124,6 +146,41 @@ val KIT_STORIES: List<Story> = listOf(
             }
         }
     },
+    Story("kit-focus-button") {
+        FocusedPage { focus ->
+            Section("Primary, focused") { Button("Sign in", none, interactionSource = focus, variant = ButtonVariant.Primary, size = ButtonSize.Lg, fullWidth = true) }
+            Section("Soft, not focused") { Button("Cancel", none) }
+        }
+    },
+    Story("kit-focus-icon-button") {
+        FocusedPage { focus ->
+            Section("Ghost, focused") { IconButton(Icons.Settings, "Settings", none, interactionSource = focus) }
+            Section("Primary, not focused") { IconButton(Icons.Send, "Send", none, variant = IconButtonVariant.Primary) }
+        }
+    },
+    Story("kit-focus-list-row") {
+        FocusedPage { focus ->
+            Section("Selected, focused") {
+                ListRow("design", leading = { app.semaphorechat.android.kit.Icon(Icons.Hash) }, selected = true, interactionSource = focus, onClick = none)
+            }
+            Section("Plain, not focused") {
+                ListRow("general", leading = { app.semaphorechat.android.kit.Icon(Icons.Hash) }, onClick = none)
+            }
+        }
+    },
+    Story("kit-focus-list-row-plain") {
+        FocusedPage { focus ->
+            Section("Plain, focused") {
+                ListRow("general", leading = { app.semaphorechat.android.kit.Icon(Icons.Hash) }, interactionSource = focus, onClick = none)
+            }
+            Section("Card, not focused") { Card(onClick = none) { Text("A card", variant = TextVariant.Name) } }
+        }
+    },
+    Story("kit-focus-card") {
+        FocusedPage { focus ->
+            Card(interactionSource = focus, onClick = none) { Text("Focused card", variant = TextVariant.Name) }
+        }
+    },
     Story("kit-text-field") {
         Page {
             TextField("", {}, label = "Server", placeholder = "https://chat.example.com", type = TextFieldType.Url, required = true)
@@ -139,6 +196,16 @@ val KIT_STORIES: List<Story> = listOf(
             ListRow("general", leading = { app.semaphorechat.android.kit.Icon(Icons.Hash) }, onClick = none)
             ListRow("announcements", leading = { app.semaphorechat.android.kit.Icon(Icons.Megaphone) }, unread = true, onClick = none)
             ListRow("design", leading = { app.semaphorechat.android.kit.Icon(Icons.Hash) }, selected = true, onClick = none)
+            ListRow(
+                "design",
+                leading = { app.semaphorechat.android.kit.Icon(Icons.Hash) },
+                selected = true,
+                trailing = {
+                    IconButton(Icons.Settings, "Settings", none, size = ButtonSize.Sm)
+                    IconButton(Icons.Bell, "Notifications", none, size = ButtonSize.Sm, variant = IconButtonVariant.Soft, badge = 3)
+                },
+                onClick = none,
+            )
             ListRow("archive", leading = { app.semaphorechat.android.kit.Icon(Icons.Hash) }, muted = true, onClick = none)
             ListRow(
                 "Priya Raman",
