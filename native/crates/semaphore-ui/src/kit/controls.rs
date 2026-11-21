@@ -467,6 +467,11 @@ impl IconButton {
         self
     }
 
+    /// Disabled: a keyboard list (the Dock) skips it.
+    pub fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self

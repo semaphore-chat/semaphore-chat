@@ -500,9 +500,19 @@ pub struct Menu {
     label: SharedString,
     entries: Vec<MenuEntry>,
     on_close: Option<ValueAction<MenuCloseReason>>,
+    /// A child after the items, for the surface tests.
+    #[cfg(test)]
+    probe: Option<AnyElement>,
 }
 
 impl Menu {
+    /// A child after the items, for the surface tests.
+    #[cfg(test)]
+    pub(crate) fn probe(mut self, element: impl IntoElement) -> Self {
+        self.probe = Some(element.into_any_element());
+        self
+    }
+
     pub fn new(
         label: impl Into<SharedString>,
         entries: impl IntoIterator<Item = impl Into<MenuEntry>>,
@@ -512,6 +522,8 @@ impl Menu {
             label: label.into(),
             entries: entries.into_iter().map(Into::into).collect(),
             on_close: None,
+            #[cfg(test)]
+            probe: None,
         }
     }
 
@@ -654,6 +666,8 @@ impl RenderOnce for Menu {
                 }
             })
             .children(items);
+        #[cfg(test)]
+        let list = list.children(self.probe);
         SurfaceScope::new(Surface::Surface, overlay_surface(list, &sem))
     }
 }

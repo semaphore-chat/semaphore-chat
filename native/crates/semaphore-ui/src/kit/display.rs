@@ -1983,9 +1983,19 @@ pub struct Toast {
     action: Option<(SharedString, Handler)>,
     on_close: Option<Handler>,
     announce: bool,
+    /// A child for the surface tests.
+    #[cfg(test)]
+    probe: Option<AnyElement>,
 }
 
 impl Toast {
+    /// A child after the message, for the surface tests.
+    #[cfg(test)]
+    pub(crate) fn probe(mut self, element: impl IntoElement) -> Self {
+        self.probe = Some(element.into_any_element());
+        self
+    }
+
     pub fn new(id: impl Into<ElementId>, message: impl Into<SharedString>) -> Self {
         Self {
             id: id.into(),
@@ -1994,6 +2004,8 @@ impl Toast {
             action: None,
             on_close: None,
             announce: true,
+            #[cfg(test)]
+            probe: None,
         }
     }
 
@@ -2044,6 +2056,11 @@ impl RenderOnce for Toast {
             .when_some(live_of(role), |toast, live| toast.aria_live(live))
             .children(mark.map(|(icon, tone)| Icon::lounge(icon).size(ICON_LG).color(tone)))
             .child(div().flex_1().min_w_0().child(self.message))
+            .map(|toast| {
+                #[cfg(test)]
+                let toast = toast.children(self.probe);
+                toast
+            })
             .children(self.action.map(|(label, handler)| {
                 div().flex_shrink_0().child(action_button(
                     format!("{base}-action").into(),

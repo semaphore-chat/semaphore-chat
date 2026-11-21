@@ -2,10 +2,11 @@
 //! the GPUI render order the context relies on, the naming rules, the dock's scroll arithmetic
 //! and keyboard, and the sheet's focus, close reasons and two layouts.
 
+use super::lounge::tab_stop_of;
 use super::{
     Button, Card, CountMeaning, Dialog, Dock, DockDivider, DockEntry, DockItem, IconButton, Island,
-    ListRow, PopoverPanel, Sheet, SheetCloseReason, Surface, SurfaceScope, Toast, card_name,
-    dock_fades, dock_item_name, reveal_scroll, sheet_is_bottom,
+    ListRow, Menu, MenuEntry, PopoverPanel, Sheet, SheetCloseReason, Snackbar, Surface,
+    SurfaceScope, Toast, card_name, dock_fades, dock_item_name, reveal_scroll, sheet_is_bottom,
 };
 use crate::dms::rig::{Rig, rig, rig_sized};
 use core::prelude::v1::test;
@@ -13,7 +14,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::*;
 use semaphore_design::Icon as I;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 type Log = Rc<RefCell<Vec<String>>>;
@@ -190,11 +191,20 @@ fn each_piece_hands_its_children_the_right_layer(cx: &mut TestAppContext) {
             )
             .child(
                 Card::new("toast-card")
-                    .child(Toast::new("toast", "Saved").action("Undo", |_, _| {})),
+                    .child(Toast::new("toast", "Saved").probe(probe("toast", log))),
+            )
+            .child(
+                Card::new("snackbar-card")
+                    .child(Snackbar::new("Saved").action(probe("snackbar", log))),
+            )
+            .child(
+                Card::new("menu-card")
+                    .child(Menu::new("Options", Vec::<MenuEntry>::new()).probe(probe("menu", log))),
             )
             .child(
                 Dock::new("dock", "Communities")
                     .item(DockItem::new("a", "Alpha"))
+                    .item(DockEntry::Probe(probe("dock", log).into_any_element()))
                     .end(DockEntry::button(
                         "all",
                         IconButton::new("all", I::Settings, "All"),
@@ -211,6 +221,10 @@ fn each_piece_hands_its_children_the_right_layer(cx: &mut TestAppContext) {
         ("row", "Surface"),
         ("ground-card", "Fill"),
         ("popover", "Surface"),
+        ("toast", "Surface"),
+        ("snackbar", "Surface"),
+        ("menu", "Surface"),
+        ("dock", "Surface"),
     ] {
         assert_eq!(logged(&log, name), format!("{name} {layer}"));
     }
@@ -227,6 +241,24 @@ fn a_dialog_opened_from_a_card_resets_to_the_surface(cx: &mut TestAppContext) {
     rig.with(cx, |_, _, _| {});
     assert_eq!(logged(&log, "card"), "card Fill");
     assert_eq!(logged(&log, "dialog"), "dialog Surface");
+}
+
+#[gpui_kit::test]
+fn a_sheet_opened_from_a_card_resets_to_the_surface(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log| {
+        Card::new("card")
+            .child(probe("card", log))
+            .child(
+                Sheet::new("from-card-sheet", "All communities")
+                    .top(probe("sheet-top", log))
+                    .body(probe("sheet", log)),
+            )
+            .into_any_element()
+    });
+    rig.with(cx, |_, _, _| {});
+    assert_eq!(logged(&log, "card"), "card Fill");
+    assert_eq!(logged(&log, "sheet"), "sheet Surface");
+    assert_eq!(logged(&log, "sheet-top"), "sheet-top Surface");
 }
 
 #[gpui_kit::test]
@@ -423,62 +455,146 @@ fn an_edge_fades_only_when_there_is_more_beyond_it() {
     assert_eq!(dock_fades(300., 300.), (true, false));
 }
 
-fn dock(current: usize, log: &Log) -> AnyElement {
+/// What a dock test can change between frames.
+struct DockSetup {
+    current: Cell<Option<usize>>,
+    width: Cell<f32>,
+    inbox_disabled: bool,
+}
+
+fn setup(current: Option<usize>) -> Rc<DockSetup> {
+    Rc::new(DockSetup {
+        current: Cell::new(current),
+        width: Cell::new(480.),
+        inbox_disabled: false,
+    })
+}
+
+fn recorded(
+    log: &Log,
+    what: impl Into<String>,
+) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
+    let log = log.clone();
+    let what = what.into();
+    move |_, _, _| log.borrow_mut().push(what.clone())
+}
+
+/// A button before the dock, the dock, and a button after it.
+fn dock_with(setup: &DockSetup, log: &Log) -> AnyElement {
+    let current = setup.current.get();
     let item = |n: usize| {
         let log = log.clone();
         DockItem::new(format!("c{n}"), format!("Community {n}"))
-            .current(n == current)
+            .current(Some(n) == current)
             .on_click(move |_, _| log.borrow_mut().push(format!("c{n}")))
     };
     div()
-        .w(px(480.))
+        .flex()
+        .flex_col()
+        .child(Button::new("before", "Before").on_click(recorded(log, "before")))
         .child(
-            Dock::new("dock", "Communities")
-                .start(DockEntry::button(
-                    "inbox",
-                    IconButton::new("inbox", I::Notifications, "Inbox").on_click({
-                        let log = log.clone();
-                        move |_, _, _| log.borrow_mut().push("inbox".into())
-                    }),
-                ))
-                .start(DockDivider)
-                .items((0..30).map(item))
-                .end(DockEntry::button(
-                    "all",
-                    IconButton::new("all", I::GridView, "All"),
-                )),
+            div().w(px(setup.width.get())).child(
+                Dock::new("dock", "Communities")
+                    .start(DockEntry::button(
+                        "inbox",
+                        IconButton::new("inbox", I::Notifications, "Inbox")
+                            .disabled(setup.inbox_disabled)
+                            .on_click(recorded(log, "inbox")),
+                    ))
+                    .start(DockDivider)
+                    .items((0..30).map(item))
+                    .end(DockEntry::button(
+                        "all",
+                        IconButton::new("all", I::GridView, "All").on_click(recorded(log, "all")),
+                    )),
+            ),
         )
+        .child(Button::new("after", "After").on_click(recorded(log, "after")))
         .into_any_element()
+}
+
+fn dock_host(cx: &mut TestAppContext, setup: Rc<DockSetup>) -> (Rig<Host, ()>, Log) {
+    host(cx, move |log| dock_with(&setup, log))
+}
+
+fn settle(rig: &Rig<Host, ()>, cx: &mut TestAppContext) {
+    for _ in 0..3 {
+        rig.with(cx, |_, window, _| window.refresh());
+    }
+}
+
+fn in_view(rig: &Rig<Host, ()>, cx: &mut TestAppContext, item: &str) -> bool {
+    let item = item.to_owned();
+    rig.with(cx, move |_, window, _| {
+        let view = window.find("dock-scroll").bounds();
+        let item = window.find(format!("dock-item-{item}")).bounds();
+        item.left() >= view.left() && item.right() <= view.right()
+    })
+}
+
+fn last(log: &Log) -> String {
+    log.borrow().last().cloned().unwrap_or_default()
 }
 
 #[gpui_kit::test]
 fn a_dock_brings_the_current_item_into_view(cx: &mut TestAppContext) {
-    let (rig, _) = host(cx, |log| dock(25, log));
-    for _ in 0..3 {
-        rig.with(cx, |_, _, _| {});
-    }
+    let (rig, _) = dock_host(cx, setup(Some(25)));
+    settle(&rig, cx);
+    assert!(in_view(&rig, cx, "c25"));
     rig.with(cx, |_, window, _| {
-        let view = window.find("dock-scroll").bounds();
-        let item = window.find("dock-item-c25").bounds();
-        assert!(
-            item.left() >= view.left() && item.right() <= view.right(),
-            "{item:?} in {view:?}"
-        );
         assert!(window.try_find_by_label("Community 25, current").is_some());
     });
 }
 
 #[gpui_kit::test]
-fn a_dock_is_one_tab_stop_moved_through_with_the_arrows(cx: &mut TestAppContext) {
-    let (rig, log) = host(cx, |log| {
-        div()
-            .child(dock(2, log))
-            .child(Button::new("after", "After").on_click({
-                let log = log.clone();
-                move |_, _, _| log.borrow_mut().push("after".into())
-            }))
-            .into_any_element()
+fn a_dock_follows_a_new_current_item(cx: &mut TestAppContext) {
+    let setup = setup(Some(1));
+    let (rig, _) = dock_host(cx, setup.clone());
+    settle(&rig, cx);
+    assert!(!in_view(&rig, cx, "c27"));
+    setup.current.set(Some(27));
+    settle(&rig, cx);
+    assert!(in_view(&rig, cx, "c27"));
+}
+
+#[gpui_kit::test]
+fn a_dock_reveals_the_current_item_again_when_its_width_changes(cx: &mut TestAppContext) {
+    let setup = setup(Some(12));
+    let (rig, _) = dock_host(cx, setup.clone());
+    settle(&rig, cx);
+    assert!(in_view(&rig, cx, "c12"));
+    setup.width.set(260.);
+    settle(&rig, cx);
+    let narrow = rig.with(cx, |_, window, _| {
+        window.find("dock-scroll").bounds().size.width
     });
+    assert!(narrow < px(200.), "the bar narrowed: {narrow:?}");
+    assert!(in_view(&rig, cx, "c12"));
+}
+
+#[gpui_kit::test]
+fn a_scroll_the_user_made_survives_a_rerender(cx: &mut TestAppContext) {
+    let (rig, _) = dock_host(cx, setup(Some(0)));
+    settle(&rig, cx);
+    assert!(in_view(&rig, cx, "c0"));
+    rig.with(cx, |_, window, cx| {
+        window.scroll(
+            "dock-scroll",
+            ScrollDelta::Pixels(point(px(-600.), px(0.))),
+            cx,
+        )
+    });
+    settle(&rig, cx);
+    assert!(
+        !in_view(&rig, cx, "c0"),
+        "the dock did not scroll back to the current item"
+    );
+}
+
+#[gpui_kit::test]
+fn a_dock_is_one_tab_stop_moved_through_with_the_arrows(cx: &mut TestAppContext) {
+    let (rig, log) = dock_host(cx, setup(Some(2)));
+    settle(&rig, cx);
     rig.click(cx, "dock-item-c2");
     assert_eq!(*log.borrow(), ["c2"]);
     press(&rig, cx, "right");
@@ -489,11 +605,99 @@ fn a_dock_is_one_tab_stop_moved_through_with_the_arrows(cx: &mut TestAppContext)
     press(&rig, cx, "end");
     press(&rig, cx, "left");
     press(&rig, cx, "enter");
-    assert_eq!(log.borrow().last().map(String::as_str), Some("c29"));
+    assert_eq!(last(&log), "c29");
     // Tab leaves the bar: no other entry of it is a stop.
     press(&rig, cx, "tab");
     press(&rig, cx, "enter");
-    assert_eq!(log.borrow().last().map(String::as_str), Some("after"));
+    assert_eq!(last(&log), "after");
+}
+
+#[gpui_kit::test]
+fn tab_into_the_dock_lands_on_the_current_item_after_arrowing_elsewhere(cx: &mut TestAppContext) {
+    let (rig, log) = dock_host(cx, setup(Some(2)));
+    settle(&rig, cx);
+    rig.click(cx, "before");
+    press(&rig, cx, "tab");
+    press(&rig, cx, "enter");
+    assert_eq!(last(&log), "c2", "Tab enters on the current item");
+    press(&rig, cx, "end");
+    press(&rig, cx, "tab");
+    press(&rig, cx, "enter");
+    assert_eq!(last(&log), "after");
+    press(&rig, cx, "shift-tab");
+    press(&rig, cx, "enter");
+    assert_eq!(
+        last(&log),
+        "c2",
+        "coming back, Tab enters on the current item again"
+    );
+}
+
+#[gpui_kit::test]
+fn shift_tab_after_a_click_leaves_the_dock(cx: &mut TestAppContext) {
+    let (rig, log) = dock_host(cx, setup(Some(2)));
+    settle(&rig, cx);
+    rig.click(cx, "dock-item-c5");
+    press(&rig, cx, "shift-tab");
+    press(&rig, cx, "enter");
+    assert_eq!(*log.borrow(), ["c5", "before"]);
+}
+
+#[gpui_kit::test]
+fn a_disabled_dock_entry_is_skipped(cx: &mut TestAppContext) {
+    let setup = Rc::new(DockSetup {
+        current: Cell::new(None),
+        width: Cell::new(480.),
+        inbox_disabled: true,
+    });
+    let (rig, log) = dock_host(cx, setup);
+    settle(&rig, cx);
+    rig.click(cx, "before");
+    press(&rig, cx, "tab");
+    press(&rig, cx, "enter");
+    assert_eq!(
+        last(&log),
+        "c0",
+        "with no current item, Tab enters on the first enabled entry"
+    );
+    press(&rig, cx, "right");
+    press(&rig, cx, "home");
+    press(&rig, cx, "enter");
+    assert_eq!(last(&log), "c0", "Home skips the disabled Inbox");
+}
+
+#[test]
+fn the_tab_stop_follows_the_web_rule() {
+    use semaphore_design::behaviour::list_focus::{Row, State};
+    let row = |id: &str, disabled| Row {
+        id: id.into(),
+        label: String::new(),
+        disabled,
+    };
+    let state = State {
+        rows: vec![row("inbox", true), row("a", false), row("b", false)],
+        focused: Some("b".into()),
+        selected: Some("a".into()),
+        typeahead: String::new(),
+        token: 0,
+    };
+    assert_eq!(tab_stop_of(&state, true).as_deref(), Some("b"));
+    assert_eq!(tab_stop_of(&state, false).as_deref(), Some("a"));
+    let none_selected = State {
+        selected: None,
+        ..state.clone()
+    };
+    assert_eq!(tab_stop_of(&none_selected, false).as_deref(), Some("b"));
+    let nothing = State {
+        selected: None,
+        focused: None,
+        ..state
+    };
+    assert_eq!(
+        tab_stop_of(&nothing, false).as_deref(),
+        Some("a"),
+        "the first enabled"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

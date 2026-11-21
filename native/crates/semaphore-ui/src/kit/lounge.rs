@@ -668,6 +668,9 @@ pub enum DockEntry {
     /// An icon button (Inbox, "All communities") with the key it has in the dock's keyboard list.
     Button(SharedString, IconButton),
     Divider,
+    /// Any element, for the surface tests.
+    #[cfg(test)]
+    Probe(AnyElement),
 }
 
 impl DockEntry {
@@ -680,7 +683,13 @@ impl DockEntry {
             DockEntry::Item(item) => Some(&item.key),
             DockEntry::Button(key, _) => Some(key),
             DockEntry::Divider => None,
+            #[cfg(test)]
+            DockEntry::Probe(_) => None,
         }
+    }
+
+    fn is_disabled(&self) -> bool {
+        matches!(self, DockEntry::Button(_, button) if button.is_disabled())
     }
 
     fn is_current(&self) -> bool {
@@ -704,6 +713,8 @@ impl DockEntry {
                 None => button.into_any_element(),
             },
             DockEntry::Divider => DockDivider.into_any_element(),
+            #[cfg(test)]
+            DockEntry::Probe(element) => element,
         }
     }
 }
@@ -754,10 +765,10 @@ struct DockState {
     list: list_focus::State,
     handles: Vec<(String, FocusHandle)>,
     scroll: ScrollHandle,
+    /// Focus is on one of the dock's entries.
+    inside: bool,
     /// The current item last brought into view, and the bar's width then.
     revealed: Option<(String, Pixels)>,
-    /// The keys of the scrolling part's children, by index (`None` for a divider).
-    middle: Vec<Option<String>>,
 }
 
 impl DockState {
@@ -769,6 +780,33 @@ impl DockState {
         self.handles.push((id.to_owned(), handle.clone()));
         handle
     }
+
+    fn step(&mut self, event: list_focus::Event) {
+        self.list = list_focus::step(&self.list, &event, &DOCK_PARAMS).0;
+    }
+}
+
+/// The entry that holds the dock's one Tab stop, as the web host's `tabStopOf` (`list_focus`
+/// rule 6): while focus is in the bar, the focused entry; while it is outside, the selected
+/// (current) entry if enabled, else the focused one if enabled, else the first enabled.
+pub(crate) fn tab_stop_of(state: &list_focus::State, inside: bool) -> Option<String> {
+    let usable = |id: &Option<String>| {
+        id.as_ref()
+            .filter(|id| state.rows.iter().any(|row| &row.id == *id && !row.disabled))
+            .cloned()
+    };
+    if inside && let Some(focused) = usable(&state.focused) {
+        return Some(focused);
+    }
+    usable(&state.selected)
+        .or_else(|| usable(&state.focused))
+        .or_else(|| {
+            state
+                .rows
+                .iter()
+                .find(|row| !row.disabled)
+                .map(|row| row.id.clone())
+        })
 }
 
 const DOCK_PARAMS: list_focus::Params = list_focus::Params {
@@ -876,22 +914,17 @@ impl RenderOnce for Dock {
             list: list_focus::initial(&DOCK_PARAMS),
             handles: Vec::new(),
             scroll: ScrollHandle::new(),
+            inside: false,
             revealed: None,
-            middle: Vec::new(),
         });
-        let keys: Vec<String> = self
-            .start
-            .iter()
-            .chain(&self.items)
-            .chain(&self.end)
-            .filter_map(|entry| entry.key().map(|key| key.to_string()))
-            .collect();
-        let rows: Vec<list_focus::Row> = keys
-            .iter()
-            .map(|key| list_focus::Row {
-                id: key.clone(),
-                label: String::new(),
-                disabled: false,
+        let entries = || self.start.iter().chain(&self.items).chain(&self.end);
+        let rows: Vec<list_focus::Row> = entries()
+            .filter_map(|entry| {
+                entry.key().map(|key| list_focus::Row {
+                    id: key.to_string(),
+                    label: String::new(),
+                    disabled: entry.is_disabled(),
+                })
             })
             .collect();
         let current = self
@@ -899,37 +932,53 @@ impl RenderOnce for Dock {
             .iter()
             .position(DockEntry::is_current)
             .and_then(|ix| self.items[ix].key().map(|key| (ix, key.to_string())));
-        let middle_keys: Vec<Option<String>> = self
-            .items
-            .iter()
-            .map(|entry| entry.key().map(|key| key.to_string()))
-            .collect();
-        let (handles, scroll) = state.update(cx, |state, cx| {
-            state.middle = middle_keys;
-            if state.list.rows != rows {
-                state.list = list_focus::step(
-                    &state.list,
-                    &list_focus::Event::SetRows { rows: rows.clone() },
-                    &DOCK_PARAMS,
-                )
-                .0;
-            }
-            let handles: Vec<(String, FocusHandle)> = keys
+        let middle_index = |key: &str| {
+            self.items
                 .iter()
-                .map(|key| (key.clone(), state.handle(key, cx)))
+                .position(|entry| entry.key().is_some_and(|known| known.as_ref() == key))
+        };
+        // What the web host feeds the reducer: the rows (with their disabled state), the
+        // selection (the current item), and where focus is. Focus moves (a click, Tab, an arrow)
+        // re-render the window, so the focused entry is read here.
+        let (handles, scroll, entered) = state.update(cx, |state, cx| {
+            if state.list.rows != rows {
+                state.step(list_focus::Event::SetRows { rows: rows.clone() });
+            }
+            let selected = current.as_ref().map(|(_, key)| key.clone());
+            if state.list.selected != selected {
+                state.step(list_focus::Event::SetSelected { id: selected });
+            }
+            let handles: Vec<(String, FocusHandle)> = rows
+                .iter()
+                .map(|row| (row.id.clone(), state.handle(&row.id, cx)))
                 .collect();
-            (handles, state.scroll.clone())
+            let focused = handles
+                .iter()
+                .find(|(_, handle)| handle.is_focused(window))
+                .map(|(key, _)| key.clone());
+            let mut entered = None;
+            match focused {
+                Some(key) => {
+                    if !state.inside || state.list.focused.as_deref() != Some(key.as_str()) {
+                        entered = Some(key.clone());
+                    }
+                    if state.list.focused.as_deref() != Some(key.as_str()) {
+                        state.step(list_focus::Event::FocusRow { id: key });
+                    }
+                    state.inside = true;
+                }
+                None if state.inside => {
+                    state.step(list_focus::Event::FocusOut);
+                    state.inside = false;
+                }
+                None => {}
+            }
+            (handles, state.scroll.clone(), entered)
         });
-        // The one Tab stop: the entry the keys last moved to, else the current item, else the
-        // first entry.
-        let stop = state
-            .read(cx)
-            .list
-            .focused
-            .clone()
-            .filter(|key| keys.contains(key))
-            .or_else(|| current.as_ref().map(|(_, key)| key.clone()))
-            .or_else(|| keys.first().cloned());
+        let stop = {
+            let state = state.read(cx);
+            tab_stop_of(&state.list, state.inside)
+        };
         let focus_of = |entry: &DockEntry| {
             entry.key().and_then(|key| {
                 handles
@@ -939,30 +988,40 @@ impl RenderOnce for Dock {
             })
         };
 
-        // Bring the current item into view once this frame has laid out, when it changed or the
-        // bar's width did.
+        // After the frame: bring the current item into view when it changed or the bar's width
+        // did, and a newly focused entry; and draw again once when the layout this render read
+        // (the width, the overflow) is not the one the frame laid out, so the reveal and the
+        // fades follow a resize. A bar that was not laid out (hidden) does nothing and retries
+        // on the next real frame.
         let width = scroll.bounds().size.width;
-        if let Some((index, key)) = current.clone() {
-            let due = state
+        let max_px = scroll.max_offset().x;
+        let reveal_current = current.clone().filter(|(_, key)| {
+            state
                 .read(cx)
                 .revealed
                 .as_ref()
-                .is_none_or(|(shown, shown_width)| *shown != key || *shown_width != width);
-            if due {
-                let (state, scroll) = (state.clone(), scroll.clone());
-                window.defer(cx, move |window, cx| {
-                    let width = scroll.bounds().size.width;
-                    // Not laid out yet (a hidden bar): try again on the next frame.
-                    if width <= px(0.) {
-                        window.refresh();
-                        return;
-                    }
-                    state.update(cx, |state, _| state.revealed = Some((key, width)));
-                    if reveal_index(&scroll, index) {
-                        window.refresh();
-                    }
-                });
-            }
+                .is_none_or(|(shown, shown_width)| shown != key || *shown_width != width)
+        });
+        let reveal_focused = entered.as_deref().and_then(middle_index);
+        {
+            let (state, scroll) = (state.clone(), scroll.clone());
+            window.defer(cx, move |window, cx| {
+                let laid_out = scroll.bounds().size.width;
+                if laid_out <= px(0.) {
+                    return;
+                }
+                let mut again = laid_out != width || scroll.max_offset().x != max_px;
+                if let Some((index, key)) = reveal_current {
+                    state.update(cx, |state, _| state.revealed = Some((key, laid_out)));
+                    again |= reveal_index(&scroll, index);
+                }
+                if let Some(index) = reveal_focused {
+                    again |= reveal_index(&scroll, index);
+                }
+                if again {
+                    window.refresh();
+                }
+            });
         }
 
         let max = f32::from(scroll.max_offset().x);
@@ -994,7 +1053,6 @@ impl RenderOnce for Dock {
             .collect();
         let key_state = state.clone();
         let key_handles = handles.clone();
-        let scroll_for_keys = scroll.clone();
         let fade = |left: bool| {
             let (from, to) = if left {
                 (surface, clear)
@@ -1062,28 +1120,15 @@ impl RenderOnce for Dock {
                 };
                 cx.stop_propagation();
                 let target = key_state.update(cx, |state, _| {
-                    let list = list_focus::step(
-                        &state.list,
-                        &list_focus::Event::FocusRow { id: focused },
-                        &DOCK_PARAMS,
-                    )
-                    .0;
-                    state.list = list_focus::step(&list, &event, &DOCK_PARAMS).0;
+                    state.step(list_focus::Event::FocusRow { id: focused });
+                    state.step(event);
                     state.list.focused.clone()
                 });
                 if let Some(target) = target
                     && let Some((_, handle)) = key_handles.iter().find(|(id, _)| *id == target)
                 {
+                    // The next render sees the focus move and brings the entry into view.
                     window.focus(handle, cx);
-                    // A focused item in the scrolling part comes into view.
-                    if let Some(index) = middle_index(&key_state, &target, cx) {
-                        let scroll = scroll_for_keys.clone();
-                        window.defer(cx, move |window, _| {
-                            if reveal_index(&scroll, index) {
-                                window.refresh();
-                            }
-                        });
-                    }
                 }
             })
             .children(start)
@@ -1091,13 +1136,4 @@ impl RenderOnce for Dock {
             .children(end);
         SurfaceScope::new(Surface::Surface, bar)
     }
-}
-
-/// The index of `key` among the dock's scrolling children, from the keys it was last given.
-fn middle_index(state: &Entity<DockState>, key: &str, cx: &App) -> Option<usize> {
-    state
-        .read(cx)
-        .middle
-        .iter()
-        .position(|known| known.as_deref() == Some(key))
 }

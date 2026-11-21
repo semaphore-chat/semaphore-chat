@@ -6,7 +6,18 @@
 //! subtree lays out and prepaints, and a piece reads the top of it with [`Surface::current`] when
 //! it renders. That works because GPUI renders a `RenderOnce` (and an uncached view) inside its
 //! parent's request-layout step (`ViewElement::request_layout` in `gpui-pre/src/view.rs`), so the
-//! children of a scope render while it is pushed. `surface_tests` pins that behaviour.
+//! children of a scope render while it is pushed.
+//! `tests_lounge::children_render_inside_their_scope_during_request_layout` pins that behaviour.
+//!
+//! Limits, for the first screen that needs them:
+//! - A cached view (`Entity::cached`) re-renders only when it is notified or its bounds, content
+//!   mask, text style or opacity change. A change of the layer around it (its row becomes
+//!   selected) does not re-render it, so it keeps the old colours until it is dirty: key or
+//!   notify it on that change, or give it its own scope inside.
+//! - A `deferred` element prepaints after the scope around it has popped. Its children render in
+//!   time (render happens in request-layout), but a cached view or a lazily rendered list
+//!   (`uniform_list`, `list`) inside it renders in prepaint and sees `Ground`. The kit's overlay
+//!   panels reset to `Surface` inside their deferred element, so they are not affected.
 //!
 //! Island and Dock give their children `Surface`, a Card `Fill` (`Surface` on a fill), a selected
 //! ListRow `Accent`, and every overlay panel resets to `Surface`. A piece's own `on_surface(..)`
@@ -63,8 +74,6 @@ impl Surface {
 #[derive(Default)]
 struct SurfaceStack {
     layers: Vec<Surface>,
-    /// A frame-end check is queued (debug builds).
-    check_queued: bool,
 }
 
 impl Global for SurfaceStack {}
@@ -80,22 +89,16 @@ fn with_surface<R>(
     let stack = cx.default_global::<SurfaceStack>();
     let depth = stack.layers.len();
     stack.layers.push(surface);
-    #[cfg(debug_assertions)]
-    if depth == 0 && !stack.check_queued {
-        stack.check_queued = true;
-        // Effects run once the frame is drawn: every scope has popped by then.
-        cx.defer(|cx| {
-            let stack = cx.default_global::<SurfaceStack>();
-            stack.check_queued = false;
-            debug_assert!(
-                stack.layers.is_empty(),
-                "kit surface stack not empty at frame end: {:?}",
-                stack.layers
-            );
-        });
-    }
     let result = f(window, cx);
-    cx.default_global::<SurfaceStack>().layers.truncate(depth);
+    let stack = cx.default_global::<SurfaceStack>();
+    // Every scope inside popped what it pushed: only this one's layer is left above `depth`.
+    debug_assert_eq!(
+        stack.layers.len(),
+        depth + 1,
+        "kit surface stack unbalanced: {:?}",
+        stack.layers
+    );
+    stack.layers.truncate(depth);
     result
 }
 
@@ -158,7 +161,7 @@ impl Element for SurfaceScope {
         window: &mut Window,
         cx: &mut App,
     ) {
-        // A view that re-renders in prepaint (a cached one) sees the layer too.
+        // A view that renders in prepaint (a cached view that is dirty) sees the layer too.
         let child = &mut self.child;
         with_surface(self.surface, window, cx, |window, cx| {
             child.prepaint(window, cx)
