@@ -108,6 +108,13 @@ export const tokens = {
     pressedOnFill: 0.24,
     disabled: 0.5,
   },
+  density: {
+    touch: {
+      control: { sm: 40, md: 48, lg: 56 },
+      listRow: { md: 56, lg: 72 },
+      hitArea: 48,
+    },
+  },
 } as const;
 
 export type Tokens = typeof tokens;

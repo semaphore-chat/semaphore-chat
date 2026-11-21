@@ -261,6 +261,28 @@ object Tokens {
         val Disabled: Float = 0.5f
     }
 
+    object Density {
+        /** `density.touch`: the values a touch client uses for these names. */
+        object Touch {
+            object Control {
+                /** `density.touch.control.sm`, dp. */
+                val Sm: Dp = 40.dp
+                /** `density.touch.control.md`, dp. */
+                val Md: Dp = 48.dp
+                /** `density.touch.control.lg`, dp. */
+                val Lg: Dp = 56.dp
+            }
+            object ListRow {
+                /** `density.touch.listRow.md`, dp. */
+                val Md: Dp = 56.dp
+                /** `density.touch.listRow.lg`, dp. */
+                val Lg: Dp = 72.dp
+            }
+            /** `density.touch.hitArea`, dp. */
+            val HitArea: Dp = 48.dp
+        }
+    }
+
     /** The fixed status colours, from `colour.status`. */
     object Status {
         /** `colour.status.positive`. */

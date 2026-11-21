@@ -23,6 +23,33 @@ import sys
 START = "<!-- native-ui-review:start -->"
 END = "<!-- native-ui-review:end -->"
 
+# The desktop review (ui-review.sh) and the Android one (android-ui-review.sh) share this script;
+# each has its own PR section, so a PR touching both keeps both. `--flavour` picks one.
+FLAVOURS = {
+    "native": {
+        "tool": "native-ui-review",
+        "title": "Native UI review",
+        "composites": "native/.ui-review/out/composites/",
+        "artifact": "native-ui-review",
+    },
+    "android": {
+        "tool": "android-ui-review",
+        "title": "Android UI review",
+        "composites": "native/android/.ui-review/out/composites/",
+        # No CI job renders the Android stories for a review yet: the composites stay local.
+        "artifact": None,
+    },
+}
+FLAVOUR = FLAVOURS["native"]
+
+
+def use_flavour(name):
+    """Set the markers and wording for one review."""
+    global START, END, FLAVOUR
+    FLAVOUR = FLAVOURS[name]
+    START = f"<!-- {FLAVOUR['tool']}:start -->"
+    END = f"<!-- {FLAVOUR['tool']}:end -->"
+
 STATUSES = ("changed", "new", "removed", "unstable", "unchanged", "failed")
 
 
@@ -144,7 +171,7 @@ def code(text):
 
 def render_block(report, repo_root):
     summary = report["summary"]
-    out = [START, "## Native UI review", ""]
+    out = [START, f"## {FLAVOUR['title']}", ""]
     counts = [
         f"**{summary['changed']} changed**",
         f"{summary['new']} new",
@@ -189,8 +216,12 @@ def render_block(report, repo_root):
             [
                 "> Composites are **before | after | diff** (the diff is the after shot dimmed, differing"
                 " pixels in red); new stories have only the after shot, removed ones only the before shot."
-                " They are local files under `native/.ui-review/out/composites/`, and CI uploads that"
-                " directory as the `native-ui-review` artifact.",
+                f" They are local files under `{FLAVOUR['composites']}`"
+                + (
+                    f", and CI uploads that directory as the `{FLAVOUR['artifact']}` artifact."
+                    if FLAVOUR["artifact"]
+                    else "."
+                ),
                 "",
             ]
         )
@@ -284,7 +315,7 @@ def cmd_report(args):
     else:
         mode = "exact pixels"
     report = {
-        "tool": "native-ui-review",
+        "tool": FLAVOUR["tool"],
         "generated": datetime.datetime.now(datetime.timezone.utc)
         .replace(microsecond=0)
         .isoformat()
@@ -310,7 +341,7 @@ def cmd_report(args):
     write(args.json, json.dumps(report, indent=2) + "\n")
     write(args.markdown, render_block(report, args.repo_root))
     print(
-        f"[native-ui-review] diff: {summary['changed']} changed, {summary['new']} new,"
+        f"[{FLAVOUR['tool']}] diff: {summary['changed']} changed, {summary['new']} new,"
         f" {summary['removed']} removed, {summary['unstable']} unstable,"
         f" {summary['unchanged']} unchanged, {summary['failed']} failed"
     )
@@ -423,7 +454,11 @@ def main(argv):
     splice_parser.add_argument("--out", required=True)
     splice_parser.set_defaults(run=cmd_splice)
 
+    for step in (report, splice_parser):
+        step.add_argument("--flavour", choices=sorted(FLAVOURS), default="native")
+
     args = parser.parse_args(argv)
+    use_flavour(getattr(args, "flavour", "native"))
     return args.run(args)
 
 

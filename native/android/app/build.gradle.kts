@@ -51,8 +51,46 @@ android {
         // library (libsemaphore_mobile.so) in jniLibs/<abi>/.
         java.srcDir(layout.buildDirectory.dir("generated/uniffi"))
         jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+        // open_source_licences.txt, written by openSourceLicences below.
+        assets.srcDir(layout.buildDirectory.dir("generated/licenceAssets"))
     }
 }
+
+/**
+ * The notices the bundled design files must travel with, as one text asset
+ * (`assets/open_source_licences.txt`): the fonts' SIL Open Font License (design/fonts) and the
+ * icons' licence (design/icons). An "Open source licences" screen can show it later.
+ */
+abstract class OpenSourceLicences : DefaultTask() {
+    @get:InputFiles
+    abstract val notices: ConfigurableFileCollection
+
+    @get:OutputFile
+    abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun write() {
+        val text = notices.files.sortedBy { it.path }.joinToString("\n\n") { file ->
+            val title = when (file.parentFile.name) {
+                "fonts" -> "Fonts: Figtree and Bricolage Grotesque"
+                "icons" -> "Icons: Lucide"
+                else -> file.parentFile.name
+            }
+            "$title\n${"=".repeat(title.length)}\n\n${file.readText().trim()}"
+        }
+        output.get().asFile.apply { parentFile.mkdirs() }.writeText(text + "\n")
+    }
+}
+
+val openSourceLicences by tasks.registering(OpenSourceLicences::class) {
+    // This is the app module, so ../../../ is the repository root.
+    notices.from(
+        layout.projectDirectory.file("../../../design/fonts/LICENSE-OFL.txt"),
+        layout.projectDirectory.file("../../../design/icons/LICENSE"),
+    )
+    output.set(layout.buildDirectory.file("generated/licenceAssets/open_source_licences.txt"))
+}
+tasks.named("preBuild") { dependsOn(openSourceLicences) }
 
 // The JVM test (src/test): the generated bindings over a host build of libsemaphore_mobile.so,
 // against semaphore-fake-server. native/scripts/android.sh passes where both are; without them the
@@ -108,6 +146,8 @@ val rustlsAndroidVersion = providers.of(RustlsAndroidVersion::class.java) {
 }
 
 dependencies {
+    // The Compose kit: the theme, the density, the fonts and the components (native/android/kit).
+    implementation(project(":kit"))
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")

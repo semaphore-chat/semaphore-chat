@@ -124,7 +124,9 @@ class RealFileTest(unittest.TestCase):
                 "disabled": 0.5,
             },
         )
-        self.assertEqual(list(t)[-4:], ["icon", "avatar", "border", "state"])  # after the old groups
+        self.assertEqual(
+            list(t)[-5:], ["icon", "avatar", "border", "state", "density"]
+        )  # after the old groups
         self.assertEqual(t["avatar"], {"xs": 20, "sm": 28, "md": 36, "lg": 44, "xl": 64})
 
 
@@ -366,6 +368,66 @@ class ColourLoadTest(TempSource):
             self.load_colour()
 
 
+class DensityTest(TempSource):
+    """`density.touch`: a second value set for the control names, for touch clients."""
+
+    def test_real_touch_density(self):
+        touch = gen.load(REAL)["density"]["touch"]
+        self.assertEqual(touch["control"], {"sm": 40, "md": 48, "lg": 56})
+        self.assertEqual(touch["listRow"], {"md": 56, "lg": 72})
+        self.assertEqual(touch["hitArea"], 48)
+
+    def test_control_keys_must_match_the_control_group(self):
+        self.edit(delete("density.touch.control.lg"))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.control"):
+            self.load()
+        self.edit(set_value("density.touch.control.lg", 56))
+        self.edit(set_value("density.touch.control.xl", 64))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.control"):
+            self.load()
+
+    def test_fields_are_exact(self):
+        self.edit(set_value("density.touch.spacing", 4))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch"):
+            self.load()
+
+    def test_list_row_sizes_are_exact(self):
+        self.edit(set_value("density.touch.listRow.sm", 40))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.listRow"):
+            self.load()
+
+    def test_values_are_lengths(self):
+        self.edit(set_value("density.touch.hitArea", -48))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.hitArea"):
+            self.load()
+        self.edit(set_value("density.touch.hitArea", 48))
+        self.edit(set_value("density.touch.control.md", "48"))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.control\.md"):
+            self.load()
+
+    def test_rendered_in_every_client(self):
+        tokens = gen.load(REAL)
+        ts = gen.render_ts(tokens)
+        self.assertIn("  density: {\n    touch: {\n      control: { sm: 40, md: 48, lg: 56 },", ts)
+        self.assertIn("      listRow: { md: 56, lg: 72 },\n      hitArea: 48,", ts)
+        rs = gen.render_rs(tokens)
+        for line in (
+            "pub const DENSITY_TOUCH_CONTROL_SM: f32 = 40.0;",
+            "pub const DENSITY_TOUCH_CONTROL_LG: f32 = 56.0;",
+            "pub const DENSITY_TOUCH_LIST_ROW_MD: f32 = 56.0;",
+            "pub const DENSITY_TOUCH_LIST_ROW_LG: f32 = 72.0;",
+            "pub const DENSITY_TOUCH_HIT_AREA: f32 = 48.0;",
+        ):
+            self.assertIn(line, rs)
+        kt = gen.render_kt(tokens, gen.load_colour(REAL_COLOUR))
+        density = kt[kt.index("    object Density {") :]
+        self.assertIn("        object Touch {\n            object Control {", density)
+        self.assertIn("                val Md: Dp = 48.dp", density)
+        self.assertIn("            object ListRow {", density)
+        self.assertIn("                val Lg: Dp = 72.dp", density)
+        self.assertIn("            val HitArea: Dp = 48.dp", density)
+
+
 class FmtNumTest(unittest.TestCase):
     def test_fmt_num(self):
         self.assertEqual(
@@ -483,9 +545,13 @@ class RenderKtTest(unittest.TestCase):
 
     def test_kt_covers_every_rust_token(self):
         # Every constant the Rust client gets, under its group's object in Kotlin style.
+        # Densities nest one level deeper; DensityTest covers them.
         rust = gen.render_rs(self.tokens)
         pairs = re.findall(r"^/// `([a-z]+)\.([A-Za-z0-9]+)`, ", rust, re.MULTILINE)
-        self.assertEqual(len(pairs), len(re.findall(r"^pub const ", rust, re.MULTILINE)))
+        densities = re.findall(r"^/// `density\.", rust, re.MULTILINE)
+        self.assertEqual(
+            len(pairs) + len(densities), len(re.findall(r"^pub const ", rust, re.MULTILINE))
+        )
         for group, key in pairs:
             self.assertIn(
                 gen._kt_name(group, key), self.members(KT_OBJECTS[group]), f"{group}.{key}"
@@ -541,7 +607,7 @@ class RenderKtTest(unittest.TestCase):
         self.assertEqual(
             gen.KT_OUTPUT,
             pathlib.Path(
-                "native/android/app/src/main/java/app/semaphorechat/android/design/Tokens.kt"
+                "native/android/kit/src/main/java/app/semaphorechat/android/design/Tokens.kt"
             ),
         )
 

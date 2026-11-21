@@ -269,3 +269,21 @@ pub const STATE_PRESSED_ON_FILL: f32 = 0.24;
 
 /// `state.disabled`, alpha, 0 to 1.
 pub const STATE_DISABLED: f32 = 0.5;
+
+/// `density.touch.control.sm`, px.
+pub const DENSITY_TOUCH_CONTROL_SM: f32 = 40.0;
+
+/// `density.touch.control.md`, px.
+pub const DENSITY_TOUCH_CONTROL_MD: f32 = 48.0;
+
+/// `density.touch.control.lg`, px.
+pub const DENSITY_TOUCH_CONTROL_LG: f32 = 56.0;
+
+/// `density.touch.listRow.md`, px.
+pub const DENSITY_TOUCH_LIST_ROW_MD: f32 = 56.0;
+
+/// `density.touch.listRow.lg`, px.
+pub const DENSITY_TOUCH_LIST_ROW_LG: f32 = 72.0;
+
+/// `density.touch.hitArea`, px.
+pub const DENSITY_TOUCH_HIT_AREA: f32 = 48.0;

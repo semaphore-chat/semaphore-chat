@@ -12,15 +12,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -30,18 +27,35 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
+import app.semaphorechat.android.design.Tokens
+import app.semaphorechat.android.kit.Alert
+import app.semaphorechat.android.kit.AlertSeverity
+import app.semaphorechat.android.kit.Avatar
+import app.semaphorechat.android.kit.AvatarShape
+import app.semaphorechat.android.kit.Button
+import app.semaphorechat.android.kit.ButtonSize
+import app.semaphorechat.android.kit.ButtonVariant
+import app.semaphorechat.android.kit.Island
+import app.semaphorechat.android.kit.KitRoot
+import app.semaphorechat.android.kit.ListRow
+import app.semaphorechat.android.kit.Spinner
+import app.semaphorechat.android.kit.Text
+import app.semaphorechat.android.kit.TextField
+import app.semaphorechat.android.kit.TextFieldType
+import app.semaphorechat.android.kit.TextTone
+import app.semaphorechat.android.kit.TextVariant
 import kotlinx.coroutines.launch
+import uniffi.semaphore.Appearance
 import uniffi.semaphore.ConnectionState
 import uniffi.semaphore.CoreException
 import uniffi.semaphore.SemaphoreCore
 import uniffi.semaphore.SessionState
+import uniffi.semaphore.ThemeMode
 
 /**
- * D3's one screen: sign in to a server and see the session, the connection and the communities,
- * read from the networked core. The real screens come with the design-system rows.
+ * D3's one screen, drawn with the kit (D4b): sign in to a server and see the session, the
+ * connection and the communities, read from the networked core, in the theme the account's
+ * appearance derives. The real screens come with D5 and D6.
  *
  * Lifecycle: going to the background suspends the core (the socket closes) and waits briefly for
  * its secrets to be written, since Android may end the process there without another word; coming
@@ -51,16 +65,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // TLS is initialised by SemaphoreApp.onCreate, before any component of this process starts.
-        setContent {
-            MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    CoreScreen()
-                }
-            }
-        }
+        setContent { CoreScreen() }
     }
 
     override fun onStart() {
@@ -76,6 +81,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * What the core's `Appearance::default()` is (semaphore-core's `model/account.rs`: dark, the
+ * server's default accent purple, minimal, base `DEFAULT_BASE` #8e75ff, no match-system), which
+ * `appearance()` returns while signed out. The first frames use it too, so a cold start does not
+ * change theme when the core arrives.
+ */
+private val DEFAULT_APPEARANCE = Appearance(
+    mode = ThemeMode.DARK,
+    accent = uniffi.semaphore.AccentColor.PURPLE,
+    intensity = uniffi.semaphore.ThemeIntensity.MINIMAL,
+    base = uniffi.semaphore.Rgb(0x8Eu, 0x75u, 0xFFu),
+    matchSystem = false,
+    newDesign = false,
+    baseColourSettings = true,
+)
+
 @Composable
 private fun CoreScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -88,34 +109,50 @@ private fun CoreScreen() {
     }
     // Re-read the views on every core event.
     val tick by SemaphoreHost.changed.collectAsState()
+    val loaded = core
+    // Read so the composition depends on it: every event redraws this.
+    @Suppress("UNUSED_VARIABLE")
+    val seen = tick
+    val appearance = loaded?.appearance()?.appearance ?: DEFAULT_APPEARANCE
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Semaphore Chat", style = MaterialTheme.typography.headlineSmall)
-        val loaded = core
-        when {
-            startError != null -> Text(
-                "core did not start: $startError",
-                color = MaterialTheme.colorScheme.error,
-            )
-            loaded == null -> Text("starting…")
-            else -> {
-                // Read so the composition depends on it: every event redraws this.
-                @Suppress("UNUSED_VARIABLE")
-                val seen = tick
-                val session = loaded.session()
-                Text("session: ${sessionLabel(session)}")
-                Text("connection: ${connectionLabel(loaded.connection())}")
-                if (session is SessionState.SignedIn) {
-                    val communities = loaded.communities()
-                    Text("communities: ${communities.size}")
-                    communities.forEach { Text("• ${it.name}") }
-                } else {
-                    SignInForm(loaded, session)
+    CoreTheme(appearance) {
+        KitRoot {
+            Column(
+                modifier = Modifier
+                    .safeDrawingPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(Tokens.Space.Md),
+                verticalArrangement = Arrangement.spacedBy(Tokens.Space.Md),
+            ) {
+                Island(modifier = Modifier.fillMaxWidth()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.Md)) {
+                        Text("Semaphore Chat", variant = TextVariant.Title, heading = true)
+                        when {
+                            startError != null -> Alert(
+                                AlertSeverity.Danger,
+                                "The core did not start: $startError",
+                                announce = false,
+                            )
+                            loaded == null -> Spinner(label = "Starting")
+                            else -> {
+                                val session = loaded.session()
+                                Text("Session: ${sessionLabel(session)}", tone = TextTone.Secondary)
+                                Text("Connection: ${connectionLabel(loaded.connection())}", tone = TextTone.Secondary)
+                                if (session is SessionState.SignedIn) {
+                                    loaded.communities().forEach {
+                                        ListRow(
+                                            it.name,
+                                            leading = {
+                                                Avatar(it.name, shape = AvatarShape.Rounded, decorative = true)
+                                            },
+                                        )
+                                    }
+                                } else {
+                                    SignInForm(loaded, session)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -129,46 +166,38 @@ private fun SignInForm(core: SemaphoreCore, session: SessionState) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    OutlinedTextField(
-        value = server,
-        onValueChange = { server = it },
-        label = { Text("Server") },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedTextField(
-        value = username,
-        onValueChange = { username = it },
-        label = { Text("Username") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedTextField(
-        value = password,
-        onValueChange = { password = it },
-        label = { Text("Password") },
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Button(
-        enabled = session != SessionState.SigningIn,
-        onClick = {
-            error = null
-            scope.launch {
-                try {
-                    core.signIn(server.trim(), username.trim(), password)
-                } catch (failure: CoreException) {
-                    error = failure.message
-                }
+    TextField(server, { server = it }, label = "Server", type = TextFieldType.Url, imeAction = ImeAction.Next)
+    val signIn = {
+        error = null
+        scope.launch {
+            try {
+                core.signIn(server.trim(), username.trim(), password)
+            } catch (failure: CoreException) {
+                error = failure.message
             }
-        },
-    ) { Text("Sign in") }
-    (error ?: (session as? SessionState.SignInFailed)?.error?.message)?.let {
-        Text(it, color = MaterialTheme.colorScheme.error)
+        }
+        Unit
     }
+    TextField(username, { username = it }, label = "Username", imeAction = ImeAction.Next)
+    TextField(
+        password,
+        { password = it },
+        label = "Password",
+        type = TextFieldType.Password,
+        imeAction = ImeAction.Done,
+        onImeAction = { if (session != SessionState.SigningIn) signIn() },
+    )
+    (error ?: (session as? SessionState.SignInFailed)?.error?.message)?.let {
+        Alert(AlertSeverity.Danger, it)
+    }
+    Button(
+        label = "Sign in",
+        variant = ButtonVariant.Primary,
+        size = ButtonSize.Lg,
+        fullWidth = true,
+        loading = session == SessionState.SigningIn,
+        onClick = signIn,
+    )
 }
 
 private fun sessionLabel(state: SessionState): String = when (state) {
