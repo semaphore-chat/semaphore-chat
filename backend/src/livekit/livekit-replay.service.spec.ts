@@ -254,6 +254,37 @@ describe('LivekitReplayService', () => {
       );
     });
 
+    it.each([
+      { width: 1280, height: 720, expectedKbps: 4608 },
+      { width: 1920, height: 1080, expectedKbps: 10368 },
+      { width: 2560, height: 1440, expectedKbps: 18432 },
+    ])(
+      'sends the bitrate for $widthx$height to egress in kbps',
+      async ({ width, height, expectedKbps }) => {
+        mockRoomServiceClient.getParticipant.mockResolvedValue({
+          tracks: [
+            { sid: 'video-track-1', type: 1, width, height },
+            { sid: 'audio-track-1', type: 0 /* AUDIO */ },
+          ],
+        });
+
+        await service.startReplayBuffer(startParams);
+
+        expect(mockEgressClient.startTrackCompositeEgress).toHaveBeenCalledWith(
+          'channel-456',
+          expect.objectContaining({ segments: expect.any(Object) }),
+          expect.objectContaining({
+            encodingOptions: expect.objectContaining({
+              width,
+              height,
+              videoBitrate: expectedKbps,
+              audioBitrate: 128,
+            }),
+          }),
+        );
+      },
+    );
+
     it('should throw BadRequestException when egress client fails to start', async () => {
       mockEgressClient.startTrackCompositeEgress.mockRejectedValue(
         new Error('LiveKit connection failed'),

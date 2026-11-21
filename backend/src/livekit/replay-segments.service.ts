@@ -557,8 +557,8 @@ export class ReplaySegmentsService {
 
   /**
    * Get a remuxed segment file path for HLS.js compatibility
-   * LiveKit egress creates HDMV-style MPEG-TS which HLS.js can't parse.
-   * This method remuxes the segment to standard MPEG-TS format.
+   * LiveKit egress v1.14.1 writes 188-byte MPEG-TS segments. This remuxes a
+   * segment with FFmpeg to standard MPEG-TS format, a stream copy.
    *
    * @param userId - ID of the user
    * @param segmentFile - Filename of the segment
@@ -594,7 +594,7 @@ export class ReplaySegmentsService {
       return originalPath;
     }
 
-    // Remux using FFmpeg to convert HDMV-TS to standard MPEG-TS
+    // Remux using FFmpeg to standard MPEG-TS
     // This is a fast stream copy operation, not transcoding
     this.logger.debug(`Remuxing segment ${segmentFile} for HLS.js`);
 
@@ -616,7 +616,7 @@ export class ReplaySegmentsService {
    * Remux a single segment file to standard MPEG-TS format
    * Uses stream copy for speed, no re-encoding needed
    *
-   * @param inputPath - Path to original HDMV-style segment
+   * @param inputPath - Path to original segment
    * @param outputPath - Path for remuxed segment
    * @private
    */
