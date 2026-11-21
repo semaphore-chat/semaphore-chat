@@ -13,14 +13,22 @@
 //!   them in).
 //! - **The parent** is the innermost [`LayerScope`] being drawn, a tree-scoped context kept the
 //!   way `SurfaceScope` keeps the surface.
-//! - **Focus.** A layer names the focus handles that are inside it. As it closes its handles are
-//!   gone, so focus that was inside it on its last frame reads as `lost` when nothing has focus,
-//!   when it is on the window's focus sink (the app root moves lost focus there) or on one of the
-//!   layer's own handles; anywhere else the user moved it (`outside`). An opener is a
-//!   `WeakFocusHandle`: it is on the page while the element that owns it is still drawn.
+//! - **Focus.** As a layer closes, focus is `lost` when nothing has focus, when it is on the
+//!   window's focus sink (the app root parks lost focus there) or on the root's own handle (a
+//!   press on nothing that takes focus), or on an element no longer drawn (it went with the
+//!   layer); anywhere else the user moved it (`outside`). This is the web's `focusPosition`: it
+//!   is read when the layer closes, not sampled while it renders. An opener is a
+//!   `WeakFocusHandle`, on the page while the root contains it.
 //! - **Presses.** Each layer writes its panel's bounds (and a popover its anchor's) in prepaint;
 //!   the root's capture-phase listeners find the innermost layer under a left press going down
-//!   and coming up, and send `pressOutside` when both are the same layer.
+//!   and coming up, among the layers open at the mouse-down (one opened by the press itself is
+//!   left out), and send `pressOutside` when both are the same. A press outside a topmost menu
+//!   goes no further (rule 8): its down and up stop in the capture phase.
+//! - **Escape** reaches the stack ahead of key bindings: every layer's element sets the
+//!   `KitLayer` key context, where Escape is bound to the host, so a binding of an ancestor
+//!   (a pane's `escape`) cannot take it while a layer has focus. A focused control that uses
+//!   Escape binds it in its own, deeper key context and has it first. With focus outside every
+//!   layer, the root's bubble-phase listener sends it.
 //!
 //! Tooltips are not layers: GPUI's own tooltips have no open or close the host could see. So an
 //! Escape pressed while a tooltip shows closes the layer under it (the web's tooltip takes that
@@ -63,8 +71,14 @@ struct Registration {
     focus_layer: Option<FocusLayer>,
     panel: Rc<Cell<Option<Bounds<Pixels>>>>,
     anchor: Rc<Cell<Option<Bounds<Pixels>>>>,
-    /// Focus was inside the layer when it last rendered.
-    focus_inside: bool,
+}
+
+/// A left press that is down: the innermost layer under it, the layers open then, and whether it
+/// was swallowed (outside a topmost menu).
+struct Press {
+    inside: Option<String>,
+    open: Vec<String>,
+    swallowed: bool,
 }
 
 /// The token whose life is the layer's.
@@ -90,8 +104,8 @@ pub(crate) struct OverlayHost {
     layers: HashMap<String, Registration>,
     openers: HashMap<String, WeakFocusHandle>,
     next_id: u64,
-    /// The innermost layer under the left press that is down, if one is.
-    press: Option<Option<String>>,
+    /// The left press that is down, while a layer is open.
+    press: Option<Press>,
     /// Layers gone this frame, reported together after it.
     released: Vec<String>,
     escapes: Vec<WeakEntity<ScreenEscape>>,
@@ -122,9 +136,12 @@ impl OverlayHost {
         &self.machine.state().layers
     }
 
-    /// The innermost layer whose panel (or anchor) holds `point`.
-    fn inside_at(&self, point: Point<Pixels>) -> Option<String> {
+    /// The innermost layer whose panel (or anchor) holds `point`, among `among` if given.
+    fn inside_at(&self, point: Point<Pixels>, among: Option<&[String]>) -> Option<String> {
         self.layers().iter().rev().find_map(|layer| {
+            if among.is_some_and(|among| !among.contains(&layer.id)) {
+                return None;
+            }
             let reg = self.layers.get(&layer.id)?;
             let hit = |cell: &Rc<Cell<Option<Bounds<Pixels>>>>| {
                 cell.get().is_some_and(|bounds| bounds.contains(&point))
@@ -324,10 +341,15 @@ pub(crate) fn use_layer(
         let (id, layer) = host.update(cx, |host, _| {
             let id = host.overlay.next("layer");
             let sink = host.sink();
-            let lost = focused.is_none() || focused.is_some() && focused == sink;
+            // Focus parked on the sink or the root is no opener: focus then returns to the
+            // layer's own fallback, else (none) to the screen's focus target.
+            let lost = match &focused {
+                None => true,
+                Some(handle) => Some(handle) == sink.as_ref() || *handle == host.root,
+            };
             let opener = spec.opener.clone().or_else(|| {
                 if lost {
-                    spec.fallback_opener.clone().or(focused)
+                    spec.fallback_opener.clone()
                 } else {
                     focused
                 }
@@ -365,10 +387,6 @@ pub(crate) fn use_layer(
             })
             .detach();
     }
-    let focus_inside = spec
-        .roots
-        .iter()
-        .any(|root| root.contains_focused(window, cx));
     let handle = host.update(cx, |host, _| {
         let reg = host
             .overlay
@@ -381,13 +399,11 @@ pub(crate) fn use_layer(
                 focus_layer: None,
                 panel: Rc::default(),
                 anchor: Rc::default(),
-                focus_inside: false,
             });
         reg.kind = spec.kind;
         reg.roots = spec.roots;
         reg.on_request_close = spec.on_request_close;
         reg.focus_layer = spec.focus_layer;
-        reg.focus_inside = focus_inside;
         LayerHandle {
             id: id.clone(),
             panel: reg.panel.clone(),
@@ -427,24 +443,21 @@ fn flush_released(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut Ap
         let event = {
             let host = host.read(cx);
             let overlay = &host.overlay;
-            let focus = match overlay.layers.get(&id) {
-                Some(reg) if reg.focus_inside => {
-                    // Focus on an element no longer drawn went with the layer; the sink is
-                    // where the app parks focus it lost.
-                    let focused = window.focused(cx);
-                    let lost = match &focused {
-                        None => true,
-                        Some(handle) => {
-                            Some(handle) == host.sink().as_ref() || !host.drawn(handle, window)
-                        }
-                    };
-                    if lost {
-                        CloseFocus::Lost
-                    } else {
-                        CloseFocus::Outside
-                    }
+            // The web's `focusPosition`: lost when nothing has focus, focus is parked (the
+            // sink, the root's own handle) or on an element no longer drawn.
+            let focused = window.focused(cx);
+            let lost = match &focused {
+                None => true,
+                Some(handle) => {
+                    Some(handle) == host.sink().as_ref()
+                        || *handle == host.root
+                        || !host.drawn(handle, window)
                 }
-                _ => CloseFocus::Outside,
+            };
+            let focus = if lost {
+                CloseFocus::Lost
+            } else {
+                CloseFocus::Outside
             };
             let opener_present = overlay
                 .layers()
@@ -606,11 +619,26 @@ pub(crate) fn listen(host: &Entity<BehaviourHost>, window: &mut Window) {
         if phase != DispatchPhase::Capture || event.button != MouseButton::Left {
             return;
         }
-        down.update(cx, |host, _| {
+        let swallowed = down.update(cx, |host, _| {
             let overlay = &mut host.overlay;
-            overlay.press =
-                (!overlay.layers().is_empty()).then(|| overlay.inside_at(event.position));
+            if overlay.layers().is_empty() {
+                overlay.press = None;
+                return false;
+            }
+            let inside = overlay.inside_at(event.position, None);
+            let open: Vec<String> = overlay.layers().iter().map(|l| l.id.clone()).collect();
+            let swallowed = outside_top_menu(overlay, inside.as_deref());
+            overlay.press = Some(Press {
+                inside,
+                open,
+                swallowed,
+            });
+            swallowed
         });
+        // Rule 8: a press outside a menu closes it and goes no further.
+        if swallowed {
+            cx.stop_propagation();
+        }
     });
     let up = host.clone();
     window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
@@ -619,13 +647,75 @@ pub(crate) fn listen(host: &Entity<BehaviourHost>, window: &mut Window) {
         }
         let press = up.update(cx, |host, _| {
             let overlay = &mut host.overlay;
-            let down = overlay.press.take()?;
-            (overlay.inside_at(event.position) == down).then_some(down)
+            let press = overlay.press.take()?;
+            // A layer opened by this press (on its mouse-down) is not part of it.
+            let at_up = overlay.inside_at(event.position, Some(&press.open));
+            Some((at_up == press.inside, press))
         });
-        if let Some(inside_id) = press {
-            send(&up, Event::PressOutside { inside_id }, window, cx);
+        let Some((same, press)) = press else { return };
+        if press.swallowed {
+            cx.stop_propagation();
+        }
+        if same {
+            send(
+                &up,
+                Event::PressOutside {
+                    inside_id: press.inside,
+                },
+                window,
+                cx,
+            );
         }
     });
+}
+
+/// The topmost layer under the tooltips is a menu, and the press is not in it (or a layer it
+/// owns).
+fn outside_top_menu(overlay: &OverlayHost, inside: Option<&str>) -> bool {
+    let layers = overlay.layers();
+    let Some(top) = layers.iter().rev().find(|l| l.kind != LayerKind::Tooltip) else {
+        return false;
+    };
+    if top.kind != LayerKind::Menu {
+        return false;
+    }
+    // Inside when the press is in the menu or in a layer opened from it.
+    let mut current = inside.map(str::to_owned);
+    while let Some(id) = current {
+        if id == top.id {
+            return false;
+        }
+        current = layers
+            .iter()
+            .find(|l| l.id == id)
+            .and_then(|l| l.parent.clone());
+    }
+    true
+}
+
+actions!(kit_layer, [LayerEscape]);
+
+/// The key context every layer's element sets: Escape there is the host's.
+pub(crate) const LAYER_CONTEXT: &str = "KitLayer";
+
+struct LayerKeysBound;
+impl Global for LayerKeysBound {}
+
+/// Gives a hosted layer's element the host's Escape. The element sets the `KitLayer` key context
+/// itself (with any context of its own: `"KitMenu KitLayer"`), where Escape goes to the stack
+/// ahead of any ancestor's binding. A control inside that binds Escape in its own context has it
+/// first.
+pub(crate) fn layer_keys<E: InteractiveElement>(element: E, cx: &mut App) -> E {
+    if !cx.has_global::<LayerKeysBound>() {
+        cx.bind_keys([KeyBinding::new("escape", LayerEscape, Some(LAYER_CONTEXT))]);
+        cx.set_global(LayerKeysBound);
+    }
+    element.on_action(|_: &LayerEscape, window, cx| {
+        let used = BehaviourHost::of(window, cx).is_some_and(|host| escape(&host, window, cx));
+        if !used {
+            cx.propagate();
+        }
+    })
 }
 
 /// Escape alone (Shift allowed), not a held repeat: Ctrl, Alt or Meta make another shortcut.
@@ -654,6 +744,18 @@ pub(crate) fn escape(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut
     )
 }
 
+/// For a screen's own Escape binding (a pane's `escape` in its key context): asks the stack
+/// first. True when a layer was open and the stack used the key; the screen then does nothing.
+pub fn escape_open_layer(window: &mut Window, cx: &mut App) -> bool {
+    let Some(host) = BehaviourHost::of(window, cx) else {
+        return false;
+    };
+    if host.read(cx).overlay.layers().is_empty() {
+        return false;
+    }
+    escape(&host, window, cx)
+}
+
 /// Tab or Shift+Tab in a menu. True when the stack closed the menu: the key is then consumed.
 pub(crate) fn tab(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut App) -> bool {
     send(host, Event::Tab, window, cx)
@@ -664,7 +766,10 @@ pub(crate) fn tab(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut Ap
 
 /// For screens: a step of the Escape chain, run when Escape reaches the screen (no layer is open).
 /// Steps run by ascending `priority` until one returns true (it used the key). Call it in every
-/// render of the screen; `key` names the step in the screen's element state.
+/// render of the screen; `key` names the step in the screen's element state. The host exists
+/// once the window's `BehaviourRoot` has been laid out: a view that calls this in the same render
+/// that builds the root (the root view itself) is registered from its next render, so register
+/// from a view inside the root.
 pub fn screen_escape(
     key: impl Into<ElementId>,
     priority: i32,
@@ -702,7 +807,8 @@ pub fn screen_escape(
 }
 
 /// For screens: where focus goes when the layer it would return to has gone (the composer on a
-/// chat screen). The last one drawn first wins; without one, the window's focus sink.
+/// chat screen). The last one drawn first wins; without one, the window's focus sink. Like
+/// [`screen_escape`], it takes effect from a view inside the window's `BehaviourRoot`.
 pub fn screen_focus_target(
     key: impl Into<ElementId>,
     handle: &FocusHandle,

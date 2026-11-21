@@ -16,6 +16,8 @@ use std::rc::Rc;
 
 type Log = Rc<RefCell<Vec<String>>>;
 
+actions!(behaviour_tests, [FieldEscape]);
+
 /// A screen with an opener, a screen focus target and the overlays a test switches on.
 struct Bench {
     log: Log,
@@ -94,13 +96,10 @@ impl Render for Bench {
                                 .test_support()
                                 .track_focus(&self.field)
                                 .size(px(20.))
-                                // A control that uses Escape itself (an open suggestion list).
-                                .on_key_down(move |event, _, cx| {
-                                    if event.keystroke.key == "escape" {
-                                        cx.stop_propagation();
-                                        push(&field_log, "field");
-                                    }
-                                }),
+                                // A control that uses Escape itself (an open suggestion list):
+                                // it binds it in its own key context, as GPUI's text fields do.
+                                .key_context("BenchField")
+                                .on_action(move |_: &FieldEscape, _, _| push(&field_log, "field")),
                         )
                         .children(inner),
                 )
@@ -172,6 +171,7 @@ impl Render for Bench {
 }
 
 fn bench(cx: &mut TestAppContext, hosted: bool) -> (Rig<Bench, ()>, Log) {
+    cx.update(|cx| cx.bind_keys([KeyBinding::new("escape", FieldEscape, Some("BenchField"))]));
     let log: Log = Rc::default();
     let shared = log.clone();
     let rig = rig(cx, 900., move |_, cx| Bench {
@@ -346,6 +346,11 @@ fn focus_is_never_restored_beneath_a_dialog_that_is_still_open(cx: &mut TestAppC
     assert!(
         !focused(&rig, cx, |b| &b.opener),
         "the menu's opener is under the dialog: focus stays in the dialog"
+    );
+    assert_eq!(
+        rig.with(cx, |_, window, _| window.find("dialog-ok").focused()),
+        Some(true),
+        "on the dialog's first control"
     );
     press(&rig, cx, "escape");
     assert!(

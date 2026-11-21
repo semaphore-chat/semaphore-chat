@@ -9,7 +9,8 @@
 
 use super::behaviour::list_focus::{ListFocusHost, ListKeys, ListOrientation, key_event, list_key};
 use super::behaviour::overlay::{
-    CloseReason, FocusLayer, LayerHandle, LayerKind, LayerScope, LayerSpec, use_layer,
+    CloseReason, FocusLayer, LAYER_CONTEXT, LayerHandle, LayerKind, LayerScope, LayerSpec,
+    layer_keys, use_layer,
 };
 use super::behaviour::{self, BehaviourHost};
 use super::modal::{ModalAlign, ModalClose, ModalReason, modal};
@@ -426,6 +427,9 @@ actions!(kit_menu, [MenuTab]);
 /// The key context of a [`Menu`]: Tab is the menu's there, ahead of the window's focus move.
 const MENU_CONTEXT: &str = "KitMenu";
 
+/// A hosted menu's contexts: its own, and the layer's (Escape goes to the stack).
+const MENU_LAYER_CONTEXT: &str = "KitMenu KitLayer";
+
 /// Binds the menu's Tab keys once per app.
 struct MenuKeysBound;
 impl Global for MenuKeysBound {}
@@ -659,7 +663,12 @@ impl RenderOnce for Menu {
             .relative()
             .flex()
             .flex_col()
-            .key_context(MENU_CONTEXT)
+            .key_context(if hosted {
+                MENU_LAYER_CONTEXT
+            } else {
+                MENU_CONTEXT
+            })
+            .map(|list| if hosted { layer_keys(list, cx) } else { list })
             .on_action({
                 let on_close = on_close.clone();
                 // Tab is reported, then moves focus as anywhere else: a menu that is a dialog's
@@ -804,6 +813,8 @@ struct PopoverState {
     placed: bool,
     /// What had focus as it opened, for a window without a behaviour host.
     opener: Option<FocusHandle>,
+    /// The owner passes `open`: the popover only asks to open or close.
+    controlled: bool,
 }
 
 impl Popover {
@@ -874,6 +885,16 @@ fn set_popover_open(
     window: &mut Window,
     cx: &mut App,
 ) {
+    // A controlled popover only asks: it opens or closes when its owner changes `open` (the
+    // owner may refuse, and focus stays where it is).
+    if state.read(cx).controlled {
+        if state.read(cx).open != open
+            && let Some(on_change) = on_change
+        {
+            on_change(open, window, cx);
+        }
+        return;
+    }
     let (was, focus, opener) = state.update(cx, |state, _| {
         let was = state.open;
         state.open = open;
@@ -906,15 +927,19 @@ impl RenderOnce for Popover {
             focus: cx.focus_handle(),
             placed: false,
             opener: None,
+            controlled: false,
         });
-        if let Some(open) = self.open {
-            state.update(cx, |state, _| {
-                if state.open != open {
-                    state.open = open;
-                    state.placed = false;
-                }
-            });
-        }
+        let controlled = self.open;
+        state.update(cx, |state, _| {
+            state.controlled = controlled.is_some();
+            // Only a change of the prop opens or closes a controlled popover.
+            if let Some(open) = controlled
+                && state.open != open
+            {
+                state.open = open;
+                state.placed = false;
+            }
+        });
         let (open, focus) = {
             let state = state.read(cx);
             (state.open, state.focus.clone())
@@ -962,7 +987,9 @@ impl RenderOnce for Popover {
         let popup = base::Popup::new(self.id, trigger)
             .anchor(self.placement.anchor())
             .offset(px(ANCHOR_GAP))
-            .on_mouse_down(MouseButton::Left, {
+            // On the click (the press coming up), after the stack has seen the press: a press on
+            // this trigger while another popover is open closes that one first (rule 7).
+            .on_click({
                 let (state, on_change) = (state.clone(), on_change.clone());
                 move |_, window, cx| {
                     cx.stop_propagation();
@@ -978,6 +1005,9 @@ impl RenderOnce for Popover {
             .unwrap_or_else(|| div().into_any_element());
         let panel = div()
             .id("popover-content")
+            .when(hosted, |panel| {
+                layer_keys(panel.key_context(LAYER_CONTEXT), cx)
+            })
             .relative()
             .occlude()
             .tab_group()

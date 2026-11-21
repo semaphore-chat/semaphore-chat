@@ -70,9 +70,14 @@ called a host.
   announcer (`native/crates/semaphore-ui/src/kit/behaviour/`). A
   `BehaviourRoot` around each window's content (the app's window and the story
   harness) holds one host per window. Every kit Menu, Popover, Dialog and Sheet
-  is a layer of its stack: the root sends Escape (in the bubble phase, so a
-  focused control that stops the key owns it) and presses, and the host asks
-  owners to close and returns focus. Screens add steps to the Escape chain with
+  is a layer of its stack. Escape reaches the stack through a key binding in
+  the `KitLayer` context each layer's element sets, so an ancestor's binding
+  (a pane's `escape`) cannot take it while focus is in a layer; a focused
+  control that uses Escape binds it in its own, deeper context and has it
+  first. With focus outside every layer, the root sends it, and a screen's own
+  Escape binding asks `kit::escape_open_layer` first. The root sends presses
+  (a press outside a topmost menu goes no further), and the host asks owners
+  to close and returns focus, reading where focus is as a layer closes. Screens add steps to the Escape chain with
   `kit::screen_escape` and name where lost focus goes with
   `kit::screen_focus_target`. A Menu that is part of another surface (a
   dialog's body) is `Menu::inline()` and not a layer of its own. Menu, Dock and
@@ -432,7 +437,10 @@ the live region inside the topmost layer run in real browsers
 Lounge on touch devices (`frontend/src/kit/behaviour/hosts/systemBack.ts`,
 tested in `frontend/src/__tests__/kit/behaviour/hosts/systemBack.test.tsx` and,
 on a phone-sized touch browser, `frontend/e2e/lounge-back.spec.ts`). The native
-client has no host yet.
+host (`native/crates/semaphore-ui/src/kit/behaviour/overlay.rs`) meets the same
+rows except tooltips (not layers natively, see "Where things stand") and the
+system Back (the Android rows); its GPUI tests drive the real kit Menu, Popover,
+Dialog and Sheet (`native/crates/semaphore-ui/src/kit/behaviour/tests.rs`).
 
 Two things the web host does because of how MUI works, not because the pattern
 asks for them. A native host need not copy them:

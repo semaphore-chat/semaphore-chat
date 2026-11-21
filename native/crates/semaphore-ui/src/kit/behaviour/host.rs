@@ -117,9 +117,10 @@ impl Element for BehaviourRoot {
     ) -> (LayoutId, Self::RequestLayoutState) {
         let host = window.use_keyed_state("kit-behaviour-host", cx, |_, cx| BehaviourHost::new(cx));
         let id = window.window_handle().window_id();
-        cx.default_global::<Hosts>()
-            .by_window
-            .insert(id, host.downgrade());
+        let hosts = &mut cx.default_global::<Hosts>().by_window;
+        // Windows that closed leave a dead entry: drop them as a host is recorded.
+        hosts.retain(|_, host| host.upgrade().is_some());
+        hosts.insert(id, host.downgrade());
         let sink = self.focus_sink.as_ref().map(FocusHandle::downgrade);
         let (live, root) = host.update(cx, |host, _| {
             host.focus_sink = sink;

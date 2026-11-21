@@ -18,7 +18,9 @@ pub(crate) mod overlay;
 pub(crate) mod stories;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_review;
 
 pub use announce::{Announcer, Politeness, announce};
 pub use host::{BehaviourHost, BehaviourRoot};
-pub use overlay::{CloseReason, LayerKind, screen_escape, screen_focus_target};
+pub use overlay::{CloseReason, LayerKind, escape_open_layer, screen_escape, screen_focus_target};

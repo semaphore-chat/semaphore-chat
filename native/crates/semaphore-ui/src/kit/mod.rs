@@ -42,7 +42,7 @@ mod typography;
 pub use assets::{UiAssets, icon_path, lounge_icon_path};
 pub use behaviour::{
     Announcer, BehaviourHost, BehaviourRoot, CloseReason, LayerKind, Politeness, announce,
-    screen_escape, screen_focus_target,
+    escape_open_layer, screen_escape, screen_focus_target,
 };
 pub use bus::{emit_core_event, on_core_event};
 pub use controls::{

@@ -9,7 +9,7 @@
 //! modal handles Escape and the scrim itself, as before.
 
 use super::behaviour::overlay::{
-    CloseReason, FocusLayer, LayerKind, LayerScope, LayerSpec, use_layer,
+    CloseReason, FocusLayer, LAYER_CONTEXT, LayerKind, LayerScope, LayerSpec, layer_keys, use_layer,
 };
 use super::{Surface, SurfaceScope};
 use crate::theme::SemTheme;
@@ -118,6 +118,10 @@ pub(crate) fn modal(
     let escape = on_close.clone();
     let scrim = on_close.clone();
     let popup = div()
+        // On the stack, Escape goes to the host ahead of any ancestor's binding.
+        .when(hosted, |popup| {
+            layer_keys(popup.key_context(LAYER_CONTEXT), cx)
+        })
         .absolute()
         .inset_0()
         // Escape is the modal's own, in the bubble phase, so a focused control that uses it
