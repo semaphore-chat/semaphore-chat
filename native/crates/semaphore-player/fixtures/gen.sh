@@ -60,9 +60,18 @@ head -c 600 h264-aac.mp4 > truncated.mp4
 # The replay preview (src/ts.rs, src/segments.rs): an HLS cut into three 10 s MPEG-TS segments,
 # as the backend serves the replay buffer (H.264 and stereo AAC, timestamps continuing across
 # segments). Segment 0 is red with a 440 Hz tone, 1 green with 660 Hz, 2 blue with 880 Hz; a
-# keyframe every 2 s. Then segment 1 as 192-byte M2TS packets (LiveKit egress's HDMV-style TS,
-# which the backend serves unremuxed when its remux fails), and 2 s of H.264 with Opus in TS (a
-# stream the player reports and refuses).
+# keyframe every 2 s. Then segment 1 as 192-byte M2TS packets (the BDAV/HDMV form the backend
+# serves unremuxed when its remux fails), and 2 s of H.264 with Opus in TS (a stream the player
+# reports and refuses).
+#
+# ts/egress-1080p.ts and ts/egress-1080p-m2ts.ts are NOT made here: they are 0.6 s of a real
+# LiveKit egress HLS segment (H.264 High 1920x1080 30 fps, AAC-LC 44.1 kHz stereo, one keyframe
+# per 10 s segment), cut by stream copy (no re-encode) and, for the second, remuxed to 192-byte
+# M2TS, where AAC is private stream 0x06 with no descriptor (tests/segments.rs). The cut, if it
+# ever needs remaking from a new egress segment:
+#   ffmpeg -i <egress-segment>.ts -map 0 -c copy -t 0.6 ts/egress-1080p.ts
+#   ffmpeg -i ts/egress-1080p.ts -map 0 -c copy -f mpegts -mpegts_m2ts_mode 1 \
+#     ts/egress-1080p-m2ts.ts
 mkdir -p ts
 tsv='color=c=red:s=64x64:r=10:d=10[r];color=c=green:s=64x64:r=10:d=10[g];color=c=blue:s=64x64:r=10:d=10[b];[r][g][b]concat=n=3:v=1:a=0,format=yuv420p[v]'
 tsa='sine=frequency=440:sample_rate=48000:duration=10[a0];sine=frequency=660:sample_rate=48000:duration=10[a1];sine=frequency=880:sample_rate=48000:duration=10[a2];[a0][a1][a2]concat=n=3:v=0:a=1,pan=stereo|c0=c0|c1=c0[a]'

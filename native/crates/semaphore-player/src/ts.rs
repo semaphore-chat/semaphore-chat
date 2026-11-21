@@ -2,13 +2,15 @@
 //! FFmpeg inside libwebrtc has no MPEG-TS demuxer (docs/player.md). A whole segment is in memory,
 //! so [`demux`] parses it at once into access units in file order.
 //!
-//! - **Packets** of 188 bytes, or 192 (M2TS, a 4-byte timestamp before each: LiveKit egress's
-//!   "HDMV-style" TS, which the backend serves as is when its remux fails), found by the sync
-//!   byte's spacing. Lost sync is found again; packets with the error bit or scrambling are
-//!   dropped.
+//! - **Packets** of 188 bytes (what LiveKit egress v1.14 writes), or 192 (M2TS, a 4-byte
+//!   timestamp before each: ffmpeg's BDAV/HDMV-style muxer, the form the backend's remux-failure
+//!   fallback serves), found by the sync byte's spacing. Lost sync is found again; packets with
+//!   the error bit or scrambling are dropped.
 //! - **PSI**: the PAT's first program, its PMT (sections may span packets; CRC-32 checked).
 //! - **Streams** by PMT stream type: H.264 (0x1B), AAC in ADTS (0x0F), Opus (0x06 with an
-//!   `Opus` registration descriptor). The rest are listed as [`StreamType::Other`].
+//!   `Opus` registration descriptor). A private stream (0x06) with no registration descriptor
+//!   whose first payload starts with an ADTS sync is AAC too: BDAV names AAC that way (see
+//!   `finish`). The rest are listed as [`StreamType::Other`].
 //! - **PES** reassembled per stream, 33-bit PTS and DTS read. A continuity-counter gap drops the
 //!   PES it broke (counted in [`Demuxed::skipped`]); a repeated counter is a duplicate packet.
 //! - **AAC**: one unit per ADTS frame, header included (FFmpeg's AAC decoder reads it), timed
@@ -24,6 +26,9 @@ pub const M2TS_PACKET: usize = 192;
 const SYNC: u8 = 0x47;
 const PID_PAT: u16 = 0;
 const PID_NULL: u16 = 0x1FFF;
+/// A PMT stream type that names no codec by itself: the payload (or a registration descriptor)
+/// has to say. MPEG-TS calls it private data; BDAV/HDMV writes AAC into it.
+const STREAM_TYPE_PRIVATE: u8 = 0x06;
 /// PTS and DTS wrap at 2^33 ticks of 90 kHz (about 26.5 hours).
 pub const PTS_WRAP: u64 = 1 << 33;
 
@@ -473,6 +478,8 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
     let mut pmt_pid: Option<u16> = None;
     let mut assemblies: HashMap<u16, Assembly> = HashMap::new();
     let mut adts: HashMap<u16, AdtsSplitter> = HashMap::new();
+    // A private stream's codec, once its first payload said.
+    let mut resolved: HashMap<u16, StreamType> = HashMap::new();
     let mut at = first;
     while at + TS_PACKET <= bytes.len() {
         if bytes[at] != SYNC {
@@ -545,9 +552,12 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
             }
             continue;
         }
-        let Some(info) = out.streams.iter().find(|s| s.pid == pid).copied() else {
+        let Some(mut info) = out.streams.iter().find(|s| s.pid == pid).copied() else {
             continue;
         };
+        if let Some(&stream_type) = resolved.get(&pid) {
+            info.stream_type = stream_type;
+        }
         let assembly = assemblies.entry(pid).or_default();
         if has_payload {
             if let Some(last) = assembly.last_cc
@@ -564,7 +574,13 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
             assembly.last_cc = Some(cc);
         }
         if unit_start {
-            finish(&mut out, info, assembly, adts.entry(pid).or_default());
+            finish(
+                &mut out,
+                info,
+                assembly,
+                adts.entry(pid).or_default(),
+                &mut resolved,
+            );
             assembly.buf.clear();
             assembly.good = true;
             assembly.random_access = random_access;
@@ -575,7 +591,18 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
     }
     for info in out.streams.clone() {
         if let Some(assembly) = assemblies.get_mut(&info.pid) {
-            finish(&mut out, info, assembly, adts.entry(info.pid).or_default());
+            finish(
+                &mut out,
+                info,
+                assembly,
+                adts.entry(info.pid).or_default(),
+                &mut resolved,
+            );
+        }
+    }
+    for stream in &mut out.streams {
+        if let Some(&stream_type) = resolved.get(&stream.pid) {
+            stream.stream_type = stream_type;
         }
     }
     if out.streams.is_empty() {
@@ -585,7 +612,13 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
 }
 
 /// The PES in `assembly` is complete: into units.
-fn finish(out: &mut Demuxed, info: EsInfo, assembly: &mut Assembly, adts: &mut AdtsSplitter) {
+fn finish(
+    out: &mut Demuxed,
+    info: EsInfo,
+    assembly: &mut Assembly,
+    adts: &mut AdtsSplitter,
+    resolved: &mut HashMap<u16, StreamType>,
+) {
     if assembly.buf.is_empty() {
         return;
     }
@@ -600,7 +633,23 @@ fn finish(out: &mut Demuxed, info: EsInfo, assembly: &mut Assembly, adts: &mut A
         adts.reset();
         return;
     };
-    match info.stream_type {
+    // A private stream (0x06) with no registration descriptor says its codec only by its payload:
+    // ffmpeg's M2TS (BDAV, HDMV-style) muxer writes AAC-LC as 0x06 on a Blu-ray audio PID, with
+    // an empty descriptor list, and an ADTS payload. Opus in TS is 0x06 too, but registered.
+    let stream_type = match resolved.get(&info.pid) {
+        Some(&stream_type) => stream_type,
+        None if info.stream_type == StreamType::Other(STREAM_TYPE_PRIVATE) => {
+            let decided = if adts_header(&pes.payload).is_some() {
+                StreamType::AacAdts
+            } else {
+                info.stream_type
+            };
+            resolved.insert(info.pid, decided);
+            decided
+        }
+        None => info.stream_type,
+    };
+    match stream_type {
         StreamType::AacAdts => {
             for frame in adts.push(&pes.payload, pes.pts) {
                 out.units.push(Unit {
@@ -614,7 +663,7 @@ fn finish(out: &mut Demuxed, info: EsInfo, assembly: &mut Assembly, adts: &mut A
         }
         _ => {
             let keyframe = assembly.random_access
-                || (info.stream_type == StreamType::H264 && h264_has_idr(&pes.payload));
+                || (stream_type == StreamType::H264 && h264_has_idr(&pes.payload));
             out.units.push(Unit {
                 pid: info.pid,
                 pts: pes.pts,

@@ -350,6 +350,85 @@ fn m2ts_packets_play_like_plain_ts() {
         Some(Colour::Blue)
     );
     assert_eq!(out.video.len(), 200);
+    // The M2TS PMT names this AAC as private data (0x06); its ADTS payload is what says AAC.
+    assert_eq!(media.streams()[1].codec, Codec::Aac);
+    if AAC {
+        assert!(
+            out.audio.len() > 400,
+            "10 s of AAC in the M2TS form decodes: {} frames",
+            out.audio.len()
+        );
+    }
+}
+
+/// A real LiveKit egress segment, cut to 0.6 s by stream copy (no re-encode), in both packet
+/// forms: `egress-1080p.ts` is egress's 188-byte TS (H.264 High 1920x1080 at 30 fps, AAC-LC
+/// 44.1 kHz stereo) and `egress-1080p-m2ts.ts` the same data as 192-byte M2TS, whose PMT names
+/// the AAC as private stream 0x06 with no descriptor, as ffmpeg's BDAV muxer writes it. Both
+/// forms must list and decode the same 20 video and 26 audio frames.
+#[test]
+fn a_real_egress_segment_plays_in_both_packet_forms() {
+    fn play(name: &str) -> (Media, Decoded) {
+        let mut media = Media::open_segments(
+            Segments::new(vec![Ok(fixture(name))]),
+            vec![S],
+            Duration::ZERO,
+            Cancel::default(),
+            None,
+        )
+        .unwrap();
+        let streams = media.streams();
+        assert_eq!(
+            (streams[0].kind, streams[0].codec),
+            (Kind::Video, Codec::H264),
+            "{name}"
+        );
+        assert_eq!(
+            (streams[0].width, streams[0].height),
+            (1920, 1080),
+            "{name}"
+        );
+        assert_eq!(
+            (streams[1].kind, streams[1].codec),
+            (Kind::Audio, Codec::Aac),
+            "{name}: egress's audio is ADTS AAC-LC, in either packet form"
+        );
+        assert_eq!((streams[1].sample_rate, streams[1].channels), (44_100, 2));
+        enable_all(&mut media);
+        let out = decode(&mut media, 1000);
+        assert_eq!(media.skipped_packets(), 0, "{name}");
+        (media, out)
+    }
+
+    let (plain_media, plain) = play("egress-1080p.ts");
+    let (_m2ts_media, m2ts) = play("egress-1080p-m2ts.ts");
+
+    assert_eq!(plain.video.len(), 20, "0.6 s at 30 fps");
+    assert!(
+        plain.video.windows(2).all(|w| {
+            let step = w[1].0 - w[0].0;
+            step >= Duration::from_micros(33_333) && step <= Duration::from_micros(33_334)
+        }),
+        "one 30 fps frame each 33.333 ms"
+    );
+    let times = |out: &Decoded| out.video.iter().map(|(t, _)| *t).collect::<Vec<_>>();
+    assert_eq!(times(&plain), times(&m2ts), "both forms, one timeline");
+    assert_eq!(plain_media.container(), "mpegts");
+
+    if AAC {
+        assert_eq!(plain.audio.len(), 26, "0.6 s of AAC-LC at 44.1 kHz");
+        assert_eq!((plain.rate, plain.channels), (44_100, 2));
+        assert_eq!(m2ts.audio.len(), plain.audio.len());
+        assert!(
+            m2ts.audio
+                .iter()
+                .zip(&plain.audio)
+                .all(|(a, b)| a.0.abs_diff(b.0) <= Duration::from_millis(1)),
+            "the M2TS form's frames are timed as the plain one's"
+        );
+    } else {
+        assert!(plain.audio.is_empty() && m2ts.audio.is_empty());
+    }
 }
 
 #[test]

@@ -479,6 +479,48 @@ fn opus_hdmv_and_unknown_streams_are_told_apart() {
 }
 
 #[test]
+fn a_private_stream_carrying_adts_is_aac() {
+    // HDMV/BDAV (ffmpeg's M2TS muxer) names AAC-LC as private data 0x06, with no registration
+    // descriptor: only the ADTS payload says what it is.
+    let frames: Vec<Vec<u8>> = (0..3).map(|i| adts(&[i; 20], false)).collect();
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &frames.concat(), true),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::AacAdts);
+    assert_eq!(out.units.len(), 3);
+    assert_eq!(out.units[1].data, frames[1]);
+    assert_eq!(out.units[1].pts, Some(91_920));
+}
+
+#[test]
+fn a_private_stream_without_adts_stays_private() {
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, b"\x0b\x77\x10\x40", true),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::Other(0x06));
+    assert_eq!(out.units.len(), 1);
+    assert_eq!(out.units[0].data, b"\x0b\x77\x10\x40");
+}
+
+#[test]
 fn a_continuity_gap_drops_the_broken_pes_only() {
     let payload = vec![7u8; 600];
     let mut cc = 0;
