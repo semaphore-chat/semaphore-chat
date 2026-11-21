@@ -448,7 +448,7 @@ export class LivekitController {
   /**
    * Serve individual HLS segment (.ts file) for preview
    * Segments are remuxed on-the-fly to standard MPEG-TS format
-   * for HLS.js compatibility (LiveKit egress creates HDMV-style TS)
+   * for HLS.js compatibility
    */
   @Get('replay/preview/segment/:segmentFile')
   @ApiOkResponse({

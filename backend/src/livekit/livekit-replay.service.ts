@@ -243,24 +243,24 @@ export class LivekitReplayService
       if (videoTrack?.width && videoTrack?.height) {
         // Calculate intelligent bitrate based on resolution
         // Screen content needs higher bitrates than camera for sharp text/edges
-        const videoBitrate = this.calculateVideoBitrate(
+        const videoBitrateKbps = this.calculateVideoBitrateKbps(
           videoTrack.width,
           videoTrack.height,
         );
 
-        // Create custom encoding options matching source track resolution
+        // LiveKit's EncodingOptions bitrates are in kbps
         encodingOptions = new EncodingOptions({
           width: videoTrack.width,
           height: videoTrack.height,
           framerate: 30, // Cap at 30fps for reasonable file sizes
           videoCodec: VideoCodec.H264_HIGH,
-          videoBitrate, // Intelligent bitrate based on resolution
-          audioBitrate: 128000, // 128kbps audio
+          videoBitrate: videoBitrateKbps, // Intelligent bitrate based on resolution
+          audioBitrate: 128, // 128kbps audio
           audioCodec: AudioCodec.AAC,
         });
 
         this.logger.log(
-          `Using source track: ${videoTrack.width}x${videoTrack.height} @ ${videoBitrate / 1000}kbps`,
+          `Using source track: ${videoTrack.width}x${videoTrack.height} @ ${videoBitrateKbps}kbps`,
         );
       } else {
         this.logger.warn(
@@ -1464,40 +1464,41 @@ export class LivekitReplayService
   }
 
   /**
-   * Calculate appropriate video bitrate based on resolution
+   * Calculate an appropriate video bitrate based on resolution, in kbps
+   * (LiveKit's EncodingOptions.videoBitrate unit).
    * Screen sharing content (text, UI) needs higher bitrates than camera video
    * for sharp, readable output.
    *
    * Bitrate recommendations for screen content (H.264):
-   * - 720p (1280x720): 4-5 Mbps
-   * - 1080p (1920x1080): 6-8 Mbps
-   * - 1440p (2560x1440): 10-12 Mbps
-   * - 4K (3840x2160): 15-20 Mbps
+   * - 720p (1280x720): 4,000-5,000 kbps
+   * - 1080p (1920x1080): 6,000-8,000 kbps
+   * - 1440p (2560x1440): 10,000-12,000 kbps
+   * - 4K (3840x2160): 15,000-20,000 kbps
    *
    * @param width - Video width in pixels
    * @param height - Video height in pixels
-   * @returns Bitrate in bits per second
+   * @returns Bitrate in kilobits per second
    */
-  private calculateVideoBitrate(width: number, height: number): number {
+  private calculateVideoBitrateKbps(width: number, height: number): number {
     const pixels = width * height;
 
     // Base calculation: ~5 bits per pixel for screen content at 30fps
     // This is higher than typical camera video (~2-3 bpp) due to
     // sharp edges, text, and high-contrast UI elements
     const bitsPerPixel = 5;
-    const baseBitrate = pixels * bitsPerPixel;
+    const baseKbps = (pixels * bitsPerPixel) / 1000;
 
     // Apply minimum and maximum bounds
-    const minBitrate = 3_000_000; // 3 Mbps minimum (decent 720p)
-    const maxBitrate = 20_000_000; // 20 Mbps maximum (high quality 4K)
+    const minKbps = 3_000; // 3 Mbps minimum (decent 720p)
+    const maxKbps = 20_000; // 20 Mbps maximum (high quality 4K)
 
-    const bitrate = Math.max(minBitrate, Math.min(maxBitrate, baseBitrate));
+    const kbps = Math.round(Math.max(minKbps, Math.min(maxKbps, baseKbps)));
 
     this.logger.debug(
-      `Calculated bitrate for ${width}x${height}: ${bitrate / 1_000_000} Mbps`,
+      `Calculated bitrate for ${width}x${height}: ${kbps} kbps`,
     );
 
-    return bitrate;
+    return kbps;
   }
 
   /**

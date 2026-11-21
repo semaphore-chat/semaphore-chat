@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Settings > Privacy: "Load pictures and previews from other sites".** On by default. Turn it off and the app stops loading pictures from other sites on its own: link previews show their title, site and description with a plain link icon, a GIF link stays a link, and webhooks show their initial instead of their avatar. Other sites then never see your IP address because of a message. GIFs you browse in the GIF picker still load. Both the current and the new design honour it. The setting is `loadRemoteContent` on `GET`/`PATCH /appearance-settings`; older app versions ignore it and keep loading pictures.
 
+### Fixed
+
+- **Replay recordings now use the intended bitrate.** They were stuck at the encoder default, about 2.4 Mbps, because the bitrate was sent to LiveKit in the wrong unit (bps instead of kbps). (#868)
+
+### Upgrade notes
+
+- **Replay buffers and clips get larger.** At 1080p expect about 945 MB per 12-minute buffer and 790 MB per 10-minute clip; at 1440p about 1.67 GB and 1.39 GB. Check the free space on the egress volume, and the per-user storage quota. (#868)
+
 ## [0.11.0] - 2026-11-18
 
 This release is a security fix for stored attachments and the first big step of a new design. The new design is hidden: nobody sees it unless they turn on a per-user setting that the app does not offer yet. Self-hosters should upgrade, because of the two attachment fixes under Security.
