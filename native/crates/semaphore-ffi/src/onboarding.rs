@@ -9,7 +9,8 @@ use semaphore_core::CoreError;
 use semaphore_core::model::{
     BrowserSignInFailure, BrowserSignInView, CreatedCommunity, ErrorView, InviteJoin,
     InvitePreview, InvitePreviewView, InviteSkipReason, JoinedCommunity, LoadState, NewCommunity,
-    RegisterForm, RegisterRequirements, RegistrationMode, ServerInfo, SkippedInviteCommunity,
+    ProbeOutcome, RegisterForm, RegisterRequirements, RegistrationMode, ServerInfo,
+    SkippedInviteCommunity,
 };
 
 #[uniffi::remote(Enum)]
@@ -30,6 +31,15 @@ pub struct ServerInfo {
     pub browser_sign_in: bool,
     pub gif_search: bool,
     pub needs_setup: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ProbeOutcome {
+    Ok { info: ServerInfo },
+    Unreachable { message: String },
+    TlsRefused { message: String },
+    NotSemaphore,
+    Failed { error: ErrorView },
 }
 
 #[uniffi::remote(Record)]
@@ -127,6 +137,13 @@ pub fn browser_sign_in_timeout_ms() -> u64 {
 impl SemaphoreCore {
     pub fn register_requirements(&self) -> RegisterRequirements {
         self.sync(move |core| core.register_requirements())
+    }
+
+    /// Asks a server about itself before signing in (`Core::check_server`): a connect screen's
+    /// answer to the address typed. `Err` only when the core has no backend or has shut down.
+    pub async fn probe_server(&self, server_url: String) -> Result<ProbeOutcome, CoreError> {
+        self.run(move |core| async move { core.check_server(server_url).await })
+            .await
     }
 
     pub fn server_info(&self) -> Option<ServerInfo> {

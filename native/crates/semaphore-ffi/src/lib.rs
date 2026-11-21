@@ -1269,7 +1269,7 @@ mod tests {
         }
         assert_eq!(asyncs, runs, "every async export awaits `self.run`");
         // Exact, so an export the check stops seeing fails here: change these with the exports.
-        assert_eq!(asyncs, 132, "async exports found");
+        assert_eq!(asyncs, 133, "async exports found");
         assert_eq!(syncs, 98, "sync exports found");
     }
 

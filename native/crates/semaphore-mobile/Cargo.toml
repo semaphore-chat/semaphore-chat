@@ -30,4 +30,4 @@ android_logger = { version = "0.15", default-features = false }
 semaphore-fake-server = { path = "../semaphore-fake-server" }
 reqwest.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
