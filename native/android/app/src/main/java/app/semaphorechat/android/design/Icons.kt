@@ -237,6 +237,15 @@ object Icons {
             "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z",
         ),
     )
+    val PinOff: ImageVector = strokeIcon(
+        name = "PinOff",
+        paths = listOf(
+            "M12 17v5",
+            "M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89",
+            "m2 2 20 20",
+            "M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11",
+        ),
+    )
     val Smile: ImageVector = strokeIcon(
         name = "Smile",
         paths = listOf(
@@ -244,6 +253,17 @@ object Icons {
             "M16.472 15a6 6 0 01-8.943 0",
             "M9 10V9",
             "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
+        ),
+    )
+    val SmilePlus: ImageVector = strokeIcon(
+        name = "SmilePlus",
+        paths = listOf(
+            "M13.267 2.08a10 10 0 108.653 8.653",
+            "M15 10V9",
+            "M16 5h6",
+            "M16.472 15a6 6 0 01-8.943 0",
+            "M19 2v6",
+            "M9 10V9",
         ),
     )
     val Paperclip: ImageVector = strokeIcon(
@@ -321,6 +341,15 @@ object Icons {
             "M5 3 H19 A2 2 0 0 1 21 5 V19 A2 2 0 0 1 19 21 H5 A2 2 0 0 1 3 19 V5 A2 2 0 0 1 5 3 Z",
             "M7 9 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 Z",
             "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21",
+        ),
+    )
+    val ImagePlay: ImageVector = strokeIcon(
+        name = "ImagePlay",
+        paths = listOf(
+            "M15 15.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997a1 1 0 0 1-1.517-.86z",
+            "M21 12.17V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6",
+            "m6 21 5-5",
+            "M7 9 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 Z",
         ),
     )
     val AtSign: ImageVector = strokeIcon(
