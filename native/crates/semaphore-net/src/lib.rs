@@ -140,10 +140,31 @@ pub fn http_client_with_timeouts(
         .tls_backend_preconfigured(tls)
         .connect_timeout(timeouts.connect)
         .read_timeout(timeouts.read)
+        .redirect(redirect_policy())
         .build()
         .map_err(|error| CoreError::Failed {
             message: error.to_string(),
         })
+}
+
+/// reqwest's default limit of 10 redirects, except that a redirect from `https` to `http` is
+/// never followed: the password or token in the request would be sent again in the clear, and
+/// the user was shown no warning because they typed `https`.
+fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let downgrade = attempt.url().scheme() == "http"
+            && attempt
+                .previous()
+                .last()
+                .is_some_and(|previous| previous.scheme() == "https");
+        if downgrade {
+            attempt.stop()
+        } else if attempt.previous().len() >= 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
 }
 
 /// Opens a raw WebSocket; the Socket.IO framing belongs on top of this.
