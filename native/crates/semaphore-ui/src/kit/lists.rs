@@ -5,7 +5,7 @@
 //! takes the focus handle and Tab stop the host gives it.
 
 use super::overlays::{state_over, type_text};
-use super::{Action, Icon, Spinner};
+use super::{Action, Icon, Spinner, Surface, SurfaceScope};
 use crate::theme::{Sem, SemTheme};
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
@@ -391,7 +391,13 @@ impl RenderOnce for ListRow {
             .into_any_element()
         };
         let hover = paint.hover;
-        div()
+        // A selected row is the accent pill: what it holds draws on the accent.
+        let layer = if self.selected {
+            Surface::Accent
+        } else {
+            Surface::current(cx)
+        };
+        let row = div()
             .w_full()
             .min_w_0()
             .min_h(px(height))
@@ -415,7 +421,8 @@ impl RenderOnce for ListRow {
                     .items_center()
                     .gap(px(SPACE_XS))
                     .child(trailing)
-            }))
+            }));
+        SurfaceScope::new(layer, row)
     }
 }
 

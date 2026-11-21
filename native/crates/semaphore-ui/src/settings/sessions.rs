@@ -288,7 +288,7 @@ impl Render for SessionsSettings {
                 let cancel = cx.weak_entity();
                 let confirm = cx.weak_entity();
                 let noun = if others == 1 { "device" } else { "devices" };
-                Dialog::new("Sign out other devices?")
+                Dialog::new("sign-out-other-devices-dialog", "Sign out other devices?")
                 .body(text(
                     Variant::Body2,
                     format!(

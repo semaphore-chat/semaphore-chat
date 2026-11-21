@@ -103,7 +103,7 @@ impl Render for CreateDmDialog {
             600.
         };
         let view = cx.weak_entity();
-        Dialog::new("Start a Direct Message")
+        Dialog::new("start-a-direct-message-dialog", "Start a Direct Message")
             .width(width)
             .on_close({
                 let view = view.clone();

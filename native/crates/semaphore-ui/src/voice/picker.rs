@@ -286,7 +286,7 @@ pub fn source_picker(model: &PickerModel, actions: PickerActions) -> impl IntoEl
 
     let selected = model.selected.clone();
     let cancel = on_cancel.clone();
-    Dialog::new("Share your screen")
+    Dialog::new("share-your-screen-dialog", "Share your screen")
         .width(640.)
         .body(div().flex().flex_col().child(tabs).child(body))
         .action(

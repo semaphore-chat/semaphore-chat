@@ -621,7 +621,7 @@ impl RolesPanel {
         let close = cx.weak_entity();
         let close_button = cx.weak_entity();
         Some(
-            Dialog::new(format!("Role Members: {name}"))
+            Dialog::new("role-members-dialog", format!("Role Members: {name}"))
                 .body(
                     div()
                         .id("role-members-body")

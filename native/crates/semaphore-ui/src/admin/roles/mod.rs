@@ -366,7 +366,7 @@ impl InstanceRolesPage {
         let close = cx.weak_entity();
         let close_button = cx.weak_entity();
         Some(
-            Dialog::new(format!("Role Users: {name}"))
+            Dialog::new("role-users-dialog", format!("Role Users: {name}"))
                 .body(
                     div()
                         .id("admin-roles-users-body")

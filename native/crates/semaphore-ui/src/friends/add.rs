@@ -236,7 +236,7 @@ impl Render for AddFriendDialog {
         let fields = self.form.read(cx).fields();
         let send = self.form.update(cx, |form, cx| form.send_button(false, cx));
         let view = cx.weak_entity();
-        Dialog::new("Add Friend")
+        Dialog::new("add-friend-dialog", "Add Friend")
             .width(width)
             .on_close({
                 let view = view.clone();

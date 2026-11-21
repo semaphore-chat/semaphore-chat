@@ -390,7 +390,7 @@ impl ClipLibrary {
                 .ok();
             }
         };
-        let dialog = Dialog::new("Delete Clip")
+        let dialog = Dialog::new("delete-clip-dialog", "Delete Clip")
             .on_close({
                 let cancel = cancel.clone();
                 move |_, cx| cancel(cx)

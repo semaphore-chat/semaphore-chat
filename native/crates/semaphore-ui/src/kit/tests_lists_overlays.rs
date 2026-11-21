@@ -332,7 +332,7 @@ fn a_menu_is_named_and_has_the_menu_role(cx: &mut TestAppContext) {
 
 fn dialog(log: &Log) -> AnyElement {
     let close = log.clone();
-    Dialog::new("Delete #memes?")
+    Dialog::new("delete-memes-dialog", "Delete #memes?")
         .description("This removes the channel for everyone.")
         .action(Button::new("dialog-cancel", "Cancel").ghost().on_click({
             let log = log.clone();
@@ -488,7 +488,7 @@ fn menu_in_dialog(owned: bool) -> impl Fn(&Log) -> AnyElement {
                 .on_close(move |reason, _, _| close.borrow_mut().push(format!("menu {reason:?}")));
         }
         let dialog_log = log.clone();
-        Dialog::new("Call options")
+        Dialog::new("call-options-dialog", "Call options")
             .body(menu)
             .action(Button::new("more-done", "Close").ghost().on_click({
                 let log = log.clone();
@@ -615,7 +615,7 @@ fn dialog_with_focused_body(log: &Log, window: &mut Window, cx: &mut App) -> Any
         once.update(cx, |done, _| *done = true);
         window.focus(&field, cx);
     }
-    Dialog::new("Rename")
+    Dialog::new("rename-dialog", "Rename")
         .body(
             gpui_kit::base::Button::new("field")
                 .track_focus(&field)

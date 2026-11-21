@@ -299,7 +299,7 @@ impl InvitesTab {
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let submit = cx.weak_entity();
-        Dialog::new("Create Invite")
+        Dialog::new("create-invite-dialog", "Create Invite")
             .width(480.)
             .body(
                 div()

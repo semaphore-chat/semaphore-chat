@@ -226,7 +226,7 @@ impl SoundboardTab {
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let submit = cx.weak_entity();
-        Dialog::new("Add Sound")
+        Dialog::new("add-sound-dialog", "Add Sound")
             .width(480.)
             .body(
                 div()

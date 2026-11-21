@@ -14,8 +14,8 @@ use crate::theme::{self, DEFAULT_BASE, SemTheme, ThemeInput};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_design::lounge::{
-    self as t, AVATAR_SM, LAYOUT_GUTTER, LAYOUT_LEFT_COLUMN, RADIUS_CARD, RADIUS_ISLAND, SPACE_3XL,
-    SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XL,
+    self as t, AVATAR_SM, LAYOUT_GUTTER, LAYOUT_LEFT_COLUMN, RADIUS_ISLAND, SPACE_3XL, SPACE_LG,
+    SPACE_MD, SPACE_SM, SPACE_XL,
 };
 use semaphore_design::{Icon as I, Intensity, Mode};
 
@@ -42,7 +42,7 @@ impl Render for StoryView {
 }
 
 /// Applies the story's mode on the design default base, then builds its view.
-fn view(
+pub(super) fn view(
     mode: Mode,
     cx: &mut App,
     body: impl Fn(&mut Window, &mut Context<StoryView>) -> AnyElement + 'static,
@@ -592,7 +592,7 @@ fn popover_inside_dialog(cx: &App) -> AnyElement {
         .size_full()
         .child(page_behind(cx))
         .child(
-            Dialog::new("Edit channel")
+            Dialog::new("edit-channel-dialog", "Edit channel")
                 .description("Rename it or change its colour.")
                 .body(
                     div().flex().child(
@@ -724,7 +724,7 @@ fn confirm_dialog(
             )
             .child(TextField::new("confirm-name-field", &name, "Channel name").placeholder("memes"))
     });
-    let mut dialog = Dialog::new("Delete #memes?")
+    let mut dialog = Dialog::new("delete-memes-dialog", "Delete #memes?")
         .description(
             "This removes the channel and its 1,204 messages for everyone in Couch Co-op. This can't be undone.",
         )
@@ -764,7 +764,7 @@ fn dialog_with_select(window: &mut Window, cx: &mut App) -> AnyElement {
         .size_full()
         .child(page_behind(cx))
         .child(
-            Dialog::new("Who can see #memes?")
+            Dialog::new("who-can-see-memes-dialog", "Who can see #memes?")
                 .description("Pick who may read and post in this channel.")
                 .body(SelectField::new("story-audience", &audience, "Audience"))
                 .action(Button::new("select-cancel", "Cancel").ghost())
@@ -778,24 +778,25 @@ fn dialog_from_card(window: &mut Window, cx: &mut App) -> AnyElement {
         .use_keyed_state("why", cx, |window, cx| text_state(window, cx, false))
         .read(cx)
         .clone();
-    let fill = cx.sem().role.fill;
+    // A real Card in a real Island: the dialog opened from it resets to the surface, while the
+    // card's own button draws on the fill.
     div()
         .size_full()
         .child(
-            island(320., cx).child(
-                div()
-                    .p(px(SPACE_MD))
-                    .rounded(px(RADIUS_CARD))
-                    .bg(fill)
-                    .flex()
-                    .flex_col()
-                    .gap(px(SPACE_SM))
-                    .child(type_text(t::TEXT_BODY_STRONG, "Squad Up"))
-                    .child(div().child(Button::new("leave-room", "Leave room").text())),
+            div().w(px(320.)).child(
+                super::Island::new("from-card-island")
+                    .padding(super::Padding::Md)
+                    .child(
+                        super::Card::new("squad-up-card")
+                            .label("Squad Up")
+                            .selected(true)
+                            .child(type_text(t::TEXT_BODY_STRONG, "Squad Up"))
+                            .child(div().child(Button::new("leave-room", "Leave room").text())),
+                    ),
             ),
         )
         .child(
-            Dialog::new("Leave Squad Up?")
+            Dialog::new("leave-squad-up-dialog", "Leave Squad Up?")
                 .description("You can rejoin any time while it is open.")
                 .body(TextField::new("why-field", &why, "Tell them why").placeholder("Optional"))
                 .action(Button::new("stay", "Stay").text())

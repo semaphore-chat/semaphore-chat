@@ -350,7 +350,7 @@ impl Confirm {
     ) -> Dialog {
         let on_cancel = std::rc::Rc::new(on_cancel);
         let close = on_cancel.clone();
-        Dialog::new(self.title)
+        Dialog::new("confirm-dialog", self.title)
             .body(text(Variant::Body2, self.message))
             .action(
                 Button::new(SharedString::from(format!("{}-cancel", self.id)), "Cancel")

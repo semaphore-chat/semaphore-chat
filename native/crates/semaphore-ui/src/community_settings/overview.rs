@@ -639,7 +639,7 @@ impl OverviewTab {
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();
-        Dialog::new("Delete Community")
+        Dialog::new("delete-community-dialog", "Delete Community")
             .width(480.)
             .body(
                 div()

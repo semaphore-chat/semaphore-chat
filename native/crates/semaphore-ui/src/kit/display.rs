@@ -9,7 +9,7 @@
 
 use super::controls::{Button, ButtonSize, IconButton};
 use super::live::LiveElement as _;
-use super::surface::{Surface, rail_fill, stand_out_fill, tint_base};
+use super::surface::{Surface, SurfaceScope, rail_fill, stand_out_fill, tint_base};
 use super::{icon_path, lounge_icon_path};
 use crate::theme::color::hsla_of;
 use crate::theme::{FONT_FAMILY, Sem, SemTheme};
@@ -424,7 +424,7 @@ pub struct Avatar {
     colour: Option<Token>,
     presence: Option<Presence>,
     decorative: bool,
-    on: Surface,
+    on: Option<Surface>,
     image: Option<ImageSource>,
     /// A file id to draw through the app's [`AvatarImages`], when it has one.
     file: Option<SharedString>,
@@ -457,7 +457,7 @@ impl Avatar {
             colour: None,
             presence: None,
             decorative: false,
-            on: Surface::Ground,
+            on: None,
             image: None,
             file: None,
             background: None,
@@ -503,7 +503,7 @@ impl Avatar {
 
     /// The layer it is drawn on: the colour of the presence and speaking rings.
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 
@@ -553,12 +553,15 @@ impl RenderOnce for Avatar {
             AvatarShape::Rounded if token == AvatarSize::Xl => RADIUS_CARD,
             AvatarShape::Rounded => RADIUS_MD,
         };
-        let behind = tint_base(&sem, self.on);
+        let behind = tint_base(&sem, Surface::or_current(self.on, cx));
         let own = self
             .colour
             .or(self.background.map(token_of))
             .and_then(|colour| readable_face(&sem, colour));
-        let (fill, ink) = own.unwrap_or((stand_out_fill(&sem, self.on), sem.role.text_secondary));
+        let (fill, ink) = own.unwrap_or((
+            stand_out_fill(&sem, Surface::or_current(self.on, cx)),
+            sem.role.text_secondary,
+        ));
         let ink = self.foreground.unwrap_or(ink);
 
         let initials = initials_of(&self.name);
@@ -793,7 +796,7 @@ pub struct AvatarStack {
     max: usize,
     size: AvatarSize,
     label: Option<SharedString>,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl AvatarStack {
@@ -804,7 +807,7 @@ impl AvatarStack {
             max: DEFAULT_STACK_MAX,
             size: AvatarSize::Sm,
             label: None,
-            on: Surface::Ground,
+            on: None,
         }
     }
 
@@ -826,7 +829,7 @@ impl AvatarStack {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 }
@@ -837,7 +840,7 @@ impl RenderOnce for AvatarStack {
             return div().into_any_element();
         }
         let sem = cx.sem().clone();
-        let behind = tint_base(&sem, self.on);
+        let behind = tint_base(&sem, Surface::or_current(self.on, cx));
         let label = self
             .label
             .clone()
@@ -875,7 +878,7 @@ impl RenderOnce for AvatarStack {
                         .colour(person.colour)
                         .file(person.file.as_deref())
                         .presence(person.speaking.then_some(Presence::Speaking))
-                        .on_surface(self.on)
+                        .on_surface(Surface::or_current(self.on, cx))
                         .decorative(true),
                 )
             })
@@ -892,7 +895,7 @@ impl RenderOnce for AvatarStack {
                     .items_center()
                     .justify_center()
                     .rounded_full()
-                    .bg(stand_out_fill(&sem, self.on))
+                    .bg(stand_out_fill(&sem, Surface::or_current(self.on, cx)))
                     .text_color(sem.role.text_secondary)
                     .child(styled(
                         weighted(style, tokens::TEXT_BODY_STRONG.weight),
@@ -961,7 +964,7 @@ pub struct Badge {
     max: u32,
     dot: bool,
     tone: BadgeTone,
-    on: Surface,
+    on: Option<Surface>,
     decorative: bool,
     id: Option<ElementId>,
     child: Option<AnyElement>,
@@ -976,7 +979,7 @@ impl Badge {
             max: DEFAULT_BADGE_MAX,
             dot: false,
             tone: BadgeTone::Danger,
-            on: Surface::Ground,
+            on: None,
             decorative: false,
             id: None,
             child: None,
@@ -1006,7 +1009,7 @@ impl Badge {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 
@@ -1035,7 +1038,8 @@ impl RenderOnce for Badge {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem();
         // An accent badge on the accent pill would vanish: it inverts.
-        let inverted = self.on == Surface::Accent && self.tone == BadgeTone::Accent;
+        let inverted =
+            Surface::or_current(self.on, cx) == Surface::Accent && self.tone == BadgeTone::Accent;
         let (background, ink) = match (inverted, self.tone) {
             (true, _) => (sem.role.on_accent, sem.role.accent),
             (false, BadgeTone::Accent) => (sem.role.accent, sem.role.on_accent),
@@ -1152,7 +1156,7 @@ pub struct Pill {
     dot: bool,
     icon: Option<LoungeIcon>,
     size: PillSize,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl Pill {
@@ -1163,7 +1167,7 @@ impl Pill {
             dot: false,
             icon: None,
             size: PillSize::Md,
-            on: Surface::Ground,
+            on: None,
         }
     }
 
@@ -1189,7 +1193,7 @@ impl Pill {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 }
@@ -1197,7 +1201,7 @@ impl Pill {
 impl RenderOnce for Pill {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem();
-        let (background, color) = pill_look(sem, self.tone, self.on);
+        let (background, color) = pill_look(sem, self.tone, Surface::or_current(self.on, cx));
         let (style, height, icon) = match self.size {
             PillSize::Sm => (tokens::TEXT_TAG, ICON_LG, ICON_XS),
             PillSize::Md => (
@@ -1455,7 +1459,7 @@ pub struct LinearProgress {
     value: Option<f32>,
     label: SharedString,
     tone: ProgressTone,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl LinearProgress {
@@ -1469,7 +1473,7 @@ impl LinearProgress {
             value,
             label: label.into(),
             tone: ProgressTone::Accent,
-            on: Surface::Ground,
+            on: None,
         }
     }
 
@@ -1479,7 +1483,7 @@ impl LinearProgress {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 }
@@ -1509,7 +1513,7 @@ impl RenderOnce for LinearProgress {
             .h(px(SPACE_XS))
             .overflow_hidden()
             .rounded_full()
-            .bg(rail_fill(sem, self.on));
+            .bg(rail_fill(sem, Surface::or_current(self.on, cx)));
         let bar = match percent {
             Some(percent) => bar.left_0().w(relative(percent / 100.)).into_any_element(),
             None if reduced_motion(cx) => bar
@@ -1575,7 +1579,7 @@ enum SkeletonShape {
 pub struct Skeleton {
     key: ElementId,
     shape: SkeletonShape,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl Skeleton {
@@ -1584,7 +1588,7 @@ impl Skeleton {
         Self {
             key: key.into(),
             shape: SkeletonShape::Lines(lines.clamp(1, MAX_SKELETON_LINES)),
-            on: Surface::Ground,
+            on: None,
         }
     }
 
@@ -1598,7 +1602,7 @@ impl Skeleton {
                 height: side,
                 radius: RADIUS_FULL,
             },
-            on: Surface::Ground,
+            on: None,
         }
     }
 
@@ -1611,7 +1615,7 @@ impl Skeleton {
                 height: height.px(),
                 radius: RADIUS_CARD,
             },
-            on: Surface::Ground,
+            on: None,
         }
     }
 
@@ -1624,19 +1628,19 @@ impl Skeleton {
                 height,
                 radius: RADIUS_SM,
             },
-            on: Surface::Ground,
+            on: None,
         }
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 }
 
 impl RenderOnce for Skeleton {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let colour = stand_out_fill(cx.sem(), self.on);
+        let colour = stand_out_fill(cx.sem(), Surface::or_current(self.on, cx));
         let shape = match self.shape {
             SkeletonShape::Lines(lines) => div().w_full().flex().flex_col().children(
                 // One line of body text each, the bar inset in it.
@@ -1767,7 +1771,7 @@ pub struct Alert {
     secondary_action: Option<(SharedString, Handler)>,
     on_close: Option<Handler>,
     announce: bool,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl Alert {
@@ -1787,7 +1791,7 @@ impl Alert {
             secondary_action: None,
             on_close: None,
             announce: true,
-            on: Surface::Ground,
+            on: None,
         }
     }
 
@@ -1831,7 +1835,7 @@ impl Alert {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 }
@@ -1910,7 +1914,7 @@ impl RenderOnce for Alert {
             .gap(px(SPACE_MD))
             .p(px(SPACE_LG))
             .rounded(px(RADIUS_CARD))
-            .bg(stand_out_fill(sem, self.on))
+            .bg(stand_out_fill(sem, Surface::or_current(self.on, cx)))
             .text_color(sem.role.text)
             .font_family(FONT_FAMILY)
             .text_size(px(tokens::TEXT_BODY.size))
@@ -1944,23 +1948,6 @@ impl ToastTone {
     }
 }
 
-/// `shadow.overlay` for the theme's mode.
-fn overlay_shadow(sem: &Sem) -> Vec<BoxShadow> {
-    let shadow = tokens::SHADOW_OVERLAY;
-    let alpha = if sem.is_dark {
-        shadow.alpha
-    } else {
-        shadow.alpha_light
-    };
-    vec![BoxShadow {
-        color: hsla(0., 0., 0., alpha),
-        offset: point(px(shadow.x), px(shadow.y)),
-        blur_radius: px(shadow.blur),
-        spread_radius: px(0.),
-        inset: false,
-    }]
-}
-
 /// The floating notice's frame, shared by Toast and the old screens' Snackbar.
 fn toast_frame(sem: &Sem) -> Div {
     div()
@@ -1976,7 +1963,10 @@ fn toast_frame(sem: &Sem) -> Div {
         .rounded(px(RADIUS_CARD))
         .bg(sem.role.surface)
         .text_color(sem.role.text)
-        .shadow(overlay_shadow(sem))
+        .shadow(super::overlays::shadow(
+            sem,
+            super::overlays::ShadowKind::Overlay,
+        ))
         .font_family(FONT_FAMILY)
         .text_size(px(tokens::TEXT_BODY.size))
         .line_height(px(tokens::TEXT_BODY.line_height))
@@ -2045,7 +2035,8 @@ impl RenderOnce for Toast {
         };
         let role = live_role(self.tone == ToastTone::Danger, self.announce);
         let base = self.id.to_string();
-        toast_frame(sem)
+        // A floating panel: what it holds draws on the surface, wherever it was opened from.
+        let toast = toast_frame(sem)
             .id(self.id)
             .test_support()
             .role(role)
@@ -2064,7 +2055,8 @@ impl RenderOnce for Toast {
                 div()
                     .flex_shrink_0()
                     .child(dismiss_button(format!("{base}-dismiss").into(), handler))
-            }))
+            }));
+        SurfaceScope::new(Surface::Surface, toast)
     }
 }
 
@@ -2092,9 +2084,12 @@ impl Snackbar {
 
 impl RenderOnce for Snackbar {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        toast_frame(cx.sem())
-            .justify_between()
-            .child(div().flex_1().min_w_0().child(self.message))
-            .children(self.action)
+        SurfaceScope::new(
+            Surface::Surface,
+            toast_frame(cx.sem())
+                .justify_between()
+                .child(div().flex_1().min_w_0().child(self.message))
+                .children(self.action),
+        )
     }
 }

@@ -133,7 +133,7 @@ impl Render for AboutDialog {
         });
         let close = cx.entity().downgrade();
         let backdrop = cx.entity().downgrade();
-        Dialog::new("About Semaphore Chat")
+        Dialog::new("about-semaphore-chat-dialog", "About Semaphore Chat")
             .width(width)
             .body(
                 div()

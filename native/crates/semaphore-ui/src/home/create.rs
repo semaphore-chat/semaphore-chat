@@ -152,7 +152,7 @@ impl Render for CreateCommunityForm {
         let view = cx.weak_entity();
         let cancel = view.clone();
         let close = view.clone();
-        Dialog::new("Create Community")
+        Dialog::new("create-community-dialog", "Create Community")
             .width(width)
             .on_close(move |_, cx| {
                 close

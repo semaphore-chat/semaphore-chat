@@ -6,7 +6,8 @@
 //! what happened (an item chosen, Escape, Tab, a press on the scrim) and the owner decides. Wiring
 //! them to the overlay stack's reducer is the behaviour hosts' job (epic #848, B8).
 
-use super::{Action, Icon, ValueAction};
+use super::modal::{ModalAlign, ModalClose, ModalReason, modal};
+use super::{Action, Icon, Surface, SurfaceScope, ValueAction};
 use crate::theme::color::{alpha, blend, hsla_of};
 use crate::theme::{Sem, SemTheme};
 use gpui_kit::base;
@@ -47,9 +48,19 @@ pub(crate) fn state_over(sem: &Sem, under: Token, amount: f32) -> Hsla {
 /// The colour `design/tokens.json`'s shadows are an alpha of.
 const SHADOW_BLACK: Token = Token(0x000000ff);
 
-/// `shadow.overlay`: deeper in dark mode, lighter in light.
-pub(crate) fn overlay_shadow(sem: &Sem) -> Vec<BoxShadow> {
-    let s = t::SHADOW_OVERLAY;
+/// Which of `design/tokens.json`'s shadows: an island's (and the dock's) or a floating panel's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShadowKind {
+    Island,
+    Overlay,
+}
+
+/// `shadow.island` or `shadow.overlay`: deeper in dark mode, lighter in light.
+pub(crate) fn shadow(sem: &Sem, kind: ShadowKind) -> Vec<BoxShadow> {
+    let s = match kind {
+        ShadowKind::Island => t::SHADOW_ISLAND,
+        ShadowKind::Overlay => t::SHADOW_OVERLAY,
+    };
     vec![BoxShadow {
         // `design/tokens.json` gives a shadow as an alpha of black, per mode.
         color: hsla_of(alpha(
@@ -72,7 +83,7 @@ pub(crate) fn overlay_surface<E: Styled>(element: E, sem: &Sem) -> E {
         .border(px(BORDER_HAIRLINE))
         .border_color(sem.role.hairline)
         .rounded(px(RADIUS_CARD))
-        .shadow(overlay_shadow(sem))
+        .shadow(shadow(sem, ShadowKind::Overlay))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -136,7 +147,9 @@ impl RenderOnce for Paper {
             .border_1()
             .border_color(sem.paper_border)
             .rounded(px(self.radius))
-            .when(self.elevated, |paper| paper.shadow(overlay_shadow(sem)))
+            .when(self.elevated, |paper| {
+                paper.shadow(shadow(sem, ShadowKind::Overlay))
+            })
             .children(self.children)
     }
 }
@@ -641,7 +654,7 @@ impl RenderOnce for Menu {
                 }
             })
             .children(items);
-        overlay_surface(list, &sem)
+        SurfaceScope::new(Surface::Surface, overlay_surface(list, &sem))
     }
 }
 
@@ -821,17 +834,21 @@ impl RenderOnce for PopoverPanel {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem();
         let most = window.viewport_size().width - px(2. * LAYOUT_GUTTER);
-        overlay_surface(
-            div()
-                .id("popover-panel")
-                .test_support()
-                .role(Role::Dialog)
-                .aria_label(self.label)
-                .max_w(most)
-                .p(px(self.padding.px())),
-            sem,
+        // An overlay panel is the surface, whatever it was opened from (a card).
+        SurfaceScope::new(
+            Surface::Surface,
+            overlay_surface(
+                div()
+                    .id("popover-panel")
+                    .test_support()
+                    .role(Role::Dialog)
+                    .aria_label(self.label)
+                    .max_w(most)
+                    .p(px(self.padding.px())),
+                sem,
+            )
+            .children(self.children),
         )
-        .children(self.children)
     }
 }
 
@@ -865,15 +882,6 @@ impl DialogSize {
     }
 }
 
-/// Where the dialog keeps its first focus: the host's handle, and whether focus was placed.
-struct DialogFocus {
-    host: FocusHandle,
-    actions: FocusHandle,
-    placed: bool,
-    /// A left press went down on the scrim and has not come up yet.
-    scrim_down: bool,
-}
-
 /// A modal dialog on gpui-kit's focus trap, Escape and backdrop handling, as the web's Dialog: the
 /// `surface` role, `radius.island`, the overlay shadow, a title, an optional description, the
 /// body, and the actions (safe action first). Focus starts on the first action, unless something
@@ -882,6 +890,7 @@ struct DialogFocus {
 /// Below the phone breakpoint the actions stack, one to a row, safe action on top.
 #[derive(IntoElement)]
 pub struct Dialog {
+    id: ElementId,
     title: SharedString,
     description: Option<SharedString>,
     body: Vec<AnyElement>,
@@ -891,8 +900,10 @@ pub struct Dialog {
 }
 
 impl Dialog {
-    pub fn new(title: impl Into<SharedString>) -> Self {
+    /// `id` keys the dialog's focus state: unique among the dialogs a screen can show at once.
+    pub fn new(id: impl Into<ElementId>, title: impl Into<SharedString>) -> Self {
         Self {
+            id: id.into(),
             title: title.into(),
             description: None,
             body: Vec::new(),
@@ -946,66 +957,44 @@ impl Dialog {
 
 impl RenderOnce for Dialog {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let on_close = self.on_close.clone();
         let sem = cx.sem().clone();
         let phone = window.viewport_size().width < px(t::BREAKPOINT_PHONE);
-        let focus = window.use_keyed_state(
-            ElementId::Name(format!("kit-dialog-{}", self.title).into()),
-            cx,
-            |_, cx| DialogFocus {
-                host: cx.focus_handle(),
-                actions: cx.focus_handle(),
-                placed: false,
-                scrim_down: false,
-            },
+        let on_close: Option<ModalClose> = self.on_close.clone().map(|close| {
+            Rc::new(
+                move |reason: ModalReason, window: &mut Window, cx: &mut App| {
+                    let reason = match reason {
+                        ModalReason::Escape => DialogCloseReason::Escape,
+                        ModalReason::Scrim => DialogCloseReason::Scrim,
+                    };
+                    close(reason, window, cx)
+                },
+            ) as ModalClose
+        });
+        let place_focus = !self.actions.is_empty();
+        let (title, description, body, actions, width) = (
+            self.title,
+            self.description,
+            self.body,
+            self.actions,
+            self.width,
         );
-        let (host, actions_focus, placed) = {
-            let focus = focus.read(cx);
-            (focus.host.clone(), focus.actions.clone(), focus.placed)
-        };
-        if !placed && !self.actions.is_empty() {
-            focus.update(cx, |focus, _| focus.placed = true);
-            let (host, actions_focus) = (host.clone(), actions_focus.clone());
-            // After this frame is drawn, when its Tab order exists.
-            window.defer(cx, move |window, cx| {
-                // The trap focuses its own host; a control inside that took focus keeps it.
-                if host.is_focused(window) || !host.contains_focused(window, cx) {
-                    window.focus(&actions_focus, cx);
-                    window.focus_next(cx);
-                }
-            });
-        }
-        let titled = self.title.clone();
-        let escape = on_close.clone();
-        let scrim = on_close.clone();
-        let popup = div()
-            .absolute()
-            .inset_0()
-            // Escape is the dialog's own, in the bubble phase, so a focused control that uses it
-            // (a field's IME, an open select list) has it first. gpui-kit's dialog keys are off:
-            // they would make Enter close the dialog instead of pressing the focused button.
-            .on_key_down(move |event, window, cx| {
-                if event.keystroke.key == "escape" && !event.keystroke.modifiers.modified() {
-                    cx.stop_propagation();
-                    if let Some(close) = &escape {
-                        close(DialogCloseReason::Escape, window, cx);
-                    }
-                }
-            })
-            .flex()
-            .items_center()
-            .justify_center()
-            .p(px(LAYOUT_GUTTER))
-            .child(
+        modal(
+            self.id,
+            ModalAlign::Centre,
+            place_focus,
+            on_close,
+            window,
+            cx,
+            move |first| {
                 div()
                     .id("dialog-panel")
                     .test_support()
-                    .aria_label(titled)
-                    .when_some(self.description.clone(), |panel, description| {
+                    .aria_label(title.clone())
+                    .when_some(description.clone(), |panel, description| {
                         panel.aria_description(description)
                     })
                     .occlude()
-                    .w(px(self.width))
+                    .w(px(width))
                     .max_w_full()
                     .max_h_full()
                     .overflow_y_scroll()
@@ -1017,24 +1006,24 @@ impl RenderOnce for Dialog {
                     .border(px(BORDER_HAIRLINE))
                     .border_color(sem.role.hairline)
                     .rounded(px(RADIUS_ISLAND))
-                    .shadow(overlay_shadow(&sem))
+                    .shadow(shadow(&sem, ShadowKind::Overlay))
                     .child(
-                        type_text(t::TEXT_TITLE, self.title)
+                        type_text(t::TEXT_TITLE, title)
                             .id("dialog-title")
                             .role(Role::Heading),
                     )
-                    .children(self.description.map(|description| {
+                    .children(description.map(|description| {
                         type_text(t::TEXT_BODY, description)
                             .mt(px(SPACE_SM))
                             .text_color(sem.role.text_secondary)
                     }))
-                    .when(!self.body.is_empty(), |panel| {
-                        panel.child(div().mt(px(SPACE_LG)).children(self.body))
+                    .when(!body.is_empty(), |panel| {
+                        panel.child(div().mt(px(SPACE_LG)).children(body))
                     })
-                    .when(!self.actions.is_empty(), |panel| {
+                    .when(!actions.is_empty(), |panel| {
                         panel.child(
                             div()
-                                .track_focus(&actions_focus)
+                                .track_focus(first)
                                 .tab_group()
                                 .mt(px(SPACE_XL))
                                 .flex()
@@ -1046,55 +1035,12 @@ impl RenderOnce for Dialog {
                                         row.flex_row().flex_wrap().justify_end().items_center()
                                     }
                                 })
-                                .children(self.actions),
+                                .children(actions),
                         )
-                    }),
-            );
-        base::Dialog::new(cx)
-            .focus_handle(host)
-            .close_on_escape(false)
-            .open(true)
-            .on_open_change(move |open, reason, window, cx| {
-                let reason = match reason {
-                    base::DialogChangeReason::BackdropPress => DialogCloseReason::Scrim,
-                    base::DialogChangeReason::Cancel => DialogCloseReason::Escape,
-                    _ => return,
-                };
-                if !open && let Some(on_close) = &on_close {
-                    on_close(reason, window, cx);
-                }
-            })
-            // The kit's own scrim takes the press: gpui-kit listens on a wrapper the occluding
-            // scrim hides from the hit test. A left press that starts and ends on the dimmed
-            // page asks to close.
-            .backdrop(
-                div()
-                    .id("dialog-scrim")
-                    .test_support()
-                    .absolute()
-                    .inset_0()
-                    .occlude()
-                    .bg(sem.role.scrim)
-                    .on_mouse_down(MouseButton::Left, {
-                        let focus = focus.clone();
-                        move |_, _, cx| {
-                            cx.stop_propagation();
-                            focus.update(cx, |focus, _| focus.scrim_down = true);
-                        }
                     })
-                    .on_mouse_up(MouseButton::Left, {
-                        let focus = focus.clone();
-                        move |_, window, cx| {
-                            let down = focus.update(cx, |focus, _| {
-                                std::mem::replace(&mut focus.scrim_down, false)
-                            });
-                            if down && let Some(close) = &scrim {
-                                close(DialogCloseReason::Scrim, window, cx);
-                            }
-                        }
-                    }),
-            )
-            .popup(popup)
+                    .into_any_element()
+            },
+        )
     }
 }
 

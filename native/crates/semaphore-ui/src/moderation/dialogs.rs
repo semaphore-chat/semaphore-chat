@@ -540,7 +540,7 @@ impl Render for ModerationDialog {
         let confirm = cx.listener(|dialog, _, _, cx| dialog.confirm(cx));
         let cancel = cx.listener(|dialog, _, _, cx| dialog.cancel(cx));
         let close = cx.entity().downgrade();
-        let dialog = Dialog::new(words.title)
+        let dialog = Dialog::new("moderation-dialog", words.title)
             .width(480.)
             .body(
                 div()

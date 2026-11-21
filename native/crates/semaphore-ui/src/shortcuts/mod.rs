@@ -301,7 +301,7 @@ impl Render for ShortcutSheet {
             );
         let close_button = cx.weak_entity();
         let close_dialog = cx.weak_entity();
-        Dialog::new("Keyboard shortcuts")
+        Dialog::new("keyboard-shortcuts-dialog", "Keyboard shortcuts")
             .width(600.)
             .body(body)
             .action(

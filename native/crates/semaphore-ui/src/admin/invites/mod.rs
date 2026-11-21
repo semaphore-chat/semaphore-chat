@@ -557,7 +557,7 @@ impl InstanceInvitesPage {
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let submit = cx.weak_entity();
-        Dialog::new("Create Instance Invite")
+        Dialog::new("create-instance-invite-dialog", "Create Instance Invite")
             .width(480.)
             .body(
                 div()
