@@ -3,12 +3,13 @@
 //! What lives here, and not in core: the tokens, their single-flight refresh, and their
 //! persistence in a [`SecretStore`].
 //!
-//! - **Client identity.** Sign-in and refresh carry `X-Client-Type: desktop-native`, the install's
-//!   `X-Device-Id` and an `X-Device-Name`, as the contract's header parameters on those
-//!   operations (the only ones the backend reads them on). The backend
-//!   (`backend/src/auth/client-type.util.ts`) answers them with the refresh token in the body, and
-//!   refuses a native one without the device id and a user agent. The contract doesn't model
-//!   `User-Agent`, so every request carries it as a default header.
+//! - **Client identity.** The host supplies a [`ClientInfo`]: sign-in and refresh carry its
+//!   `X-Client-Type` (`desktop-native` or `mobile-native`), the install's `X-Device-Id` and its
+//!   `X-Device-Name`, as the contract's header parameters on those operations (the only ones the
+//!   backend reads them on). The backend (`backend/src/auth/client-type.util.ts`,
+//!   `isNativeClientType`) answers them with the refresh token in the body, and refuses a native
+//!   one without the device id and a user agent. The contract doesn't model `User-Agent`, so every
+//!   request carries [`ClientInfo::user_agent`] as a default header.
 //! - **Authorization.** The generated client has no per-request hook, so the reqwest client
 //!   behind it carries `Authorization` as a default header, and is rebuilt when the access token
 //!   changes. That is at most once per refresh.
@@ -43,11 +44,18 @@ use tokio::time::timeout;
 
 use crate::{Timeouts, http_client_with_timeouts};
 
+mod client_info;
+pub use client_info::{ClientInfo, ClientInfoError, ClientKind};
+
 const DEVICE_ID_KEY: &str = "device-id";
 
-/// What `X-Device-Name` says: how this install shows in its owner's sessions list. ASCII, so it
-/// needs no percent-encoding, and well under the contract's 64 characters.
-pub const DEVICE_NAME: &str = if cfg!(windows) {
+/// What the desktop app puts in `User-Agent`: this crate's version, which the app's release
+/// version follows.
+pub const DESKTOP_USER_AGENT: &str = concat!("Semaphore-Native/", env!("CARGO_PKG_VERSION"));
+
+/// What `X-Device-Name` says for the desktop app: how this install shows in its owner's sessions
+/// list. ASCII, so it needs no percent-encoding, and well under the contract's 64 characters.
+pub const DESKTOP_DEVICE_NAME: &str = if cfg!(windows) {
     "Semaphore Desktop on Windows"
 } else if cfg!(target_os = "macos") {
     "Semaphore Desktop on macOS"
@@ -188,6 +196,8 @@ fn load_device_id(secrets: &dyn SecretStore) -> uuid::Uuid {
 struct Inner {
     store: mpsc::Sender<StoreJob>,
     device_id: uuid::Uuid,
+    /// The host's answer to "who is this", sent on every request and every sign-in.
+    client: ClientInfo,
     timeouts: Timeouts,
     state: Mutex<Session>,
     /// The session stored at the last run: its server and refresh token, until `set_server_url`
@@ -260,11 +270,6 @@ fn is_rejection(error: &BackendError) -> bool {
     matches!(error.status, 401 | 403)
 }
 
-/// [`DEVICE_NAME`] as the header type of whichever operation sends it.
-pub(crate) fn device_name<T: std::str::FromStr>() -> Option<T> {
-    DEVICE_NAME.parse().ok()
-}
-
 fn secret_key(url: &str) -> String {
     format!("refresh-token:{}", url.trim_end_matches('/'))
 }
@@ -276,12 +281,30 @@ impl Inner {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// [`ClientInfo::kind`] as the header type of whichever operation sends it.
+    fn client_type<T: std::str::FromStr>(&self) -> Option<T> {
+        self.client.kind().as_str().parse().ok()
+    }
+
+    /// [`ClientInfo::device_name`] as the header type of whichever operation sends it. A mobile
+    /// name is already encoded to fit the type, and the desktop one is a short constant, so the
+    /// parse only fails if one of those invariants is broken (the unit tests pin them).
+    fn device_name<T: std::str::FromStr>(&self) -> Option<T> {
+        self.client.device_name().parse().ok()
+    }
+
     fn base_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_static(concat!("Semaphore-Native/", env!("CARGO_PKG_VERSION"))),
-        );
+        match HeaderValue::from_str(self.client.user_agent()) {
+            Ok(user_agent) => {
+                headers.insert(USER_AGENT, user_agent);
+            }
+            // `ClientInfo` only holds visible ASCII, so this cannot happen; say so if it does
+            // rather than let a native sign-in be refused unnoticed.
+            Err(error) => log::error!(
+                "the client's user agent is not a valid header value, so requests carry none: {error}"
+            ),
+        }
         headers
     }
 
@@ -367,9 +390,9 @@ impl Inner {
                     };
                     match anon
                         .auth_controller_refresh(
-                            Some(wire::AuthControllerRefreshXClientType::DesktopNative),
+                            self.client_type(),
                             Some(&self.device_id),
-                            device_name().as_ref(),
+                            self.device_name().as_ref(),
                             &body,
                         )
                         .await
@@ -525,30 +548,46 @@ async fn send_logout(
 
 impl HttpBackend {
     /// `secrets` keeps the refresh token between runs, keyed per server URL, and this install's
-    /// device id. A store that fails costs the session its persistence, not its function.
+    /// device id. `client` is who this install says it is: the desktop app passes
+    /// [`ClientInfo::desktop`], unchanged from what it always sent; a mobile app passes
+    /// [`ClientInfo::mobile`]. A store that fails costs the session its persistence, not its
+    /// function.
     ///
     /// **Blocks until the store has read the device id**, which on a locked keyring means until
     /// its unlock prompt is answered. Don't call this on the UI thread: build the backend during
     /// startup, before the window opens, or on a thread of its own. After this returns, nothing
     /// here waits on the store except for a bounded time ([`Timeouts::store_wait`]).
-    pub fn new(secrets: Arc<dyn SecretStore>) -> Self {
-        Self::with_timeouts(secrets, Timeouts::default())
+    pub fn new(secrets: Arc<dyn SecretStore>, client: ClientInfo) -> Self {
+        Self::with_timeouts(secrets, Timeouts::default(), client)
     }
 
     /// [`new`](Self::new), and also reads the refresh token stored for `server`, in the same wait,
     /// so a later `set_server_url(server)` resumes that session: `Backend::has_stored_session`
     /// says so, and the first refresh uses it. The server is the app's to remember; it isn't a
     /// secret.
-    pub fn restoring(secrets: Arc<dyn SecretStore>, server: Option<String>) -> Self {
-        Self::build(secrets, Timeouts::default(), server)
+    pub fn restoring(
+        secrets: Arc<dyn SecretStore>,
+        server: Option<String>,
+        client: ClientInfo,
+    ) -> Self {
+        Self::build(secrets, Timeouts::default(), server, client)
     }
 
     /// [`new`](Self::new) with other limits. It blocks the same way.
-    pub fn with_timeouts(secrets: Arc<dyn SecretStore>, timeouts: Timeouts) -> Self {
-        Self::build(secrets, timeouts, None)
+    pub fn with_timeouts(
+        secrets: Arc<dyn SecretStore>,
+        timeouts: Timeouts,
+        client: ClientInfo,
+    ) -> Self {
+        Self::build(secrets, timeouts, None, client)
     }
 
-    fn build(secrets: Arc<dyn SecretStore>, timeouts: Timeouts, server: Option<String>) -> Self {
+    fn build(
+        secrets: Arc<dyn SecretStore>,
+        timeouts: Timeouts,
+        server: Option<String>,
+        client: ClientInfo,
+    ) -> Self {
         let server = server.map(|url| url.trim_end_matches('/').to_owned());
         let (store, jobs) = mpsc::channel();
         let (startup_sender, startup) = mpsc::channel();
@@ -567,6 +606,7 @@ impl HttpBackend {
             inner: Arc::new(Inner {
                 store,
                 device_id,
+                client,
                 timeouts,
                 state: Mutex::new(Session::default()),
                 stored: Mutex::new(server.zip(stored)),

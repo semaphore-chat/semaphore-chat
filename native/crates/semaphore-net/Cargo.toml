@@ -29,6 +29,11 @@ semaphore-wire.workspace = true
 uuid = { version = "1", features = ["v4"] }
 log.workspace = true
 
+[target.'cfg(target_os = "android")'.dependencies]
+# Android only, and already in rustls-platform-verifier's own tree there: `init_android` takes the
+# JVM handle as a `jni::Env`, so the type is part of this crate's public API on Android.
+jni = { version = "0.22", default-features = false }
+
 [dev-dependencies]
 # The update-signature tests decode a signature to tamper with it.
 base64 = "0.22"

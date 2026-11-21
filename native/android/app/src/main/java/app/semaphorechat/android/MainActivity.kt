@@ -37,6 +37,7 @@ import uniffi.semaphore.WallClock
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // TLS is initialised by SemaphoreApp.onCreate, before any component of this process starts.
         setContent {
             MaterialTheme {
                 Surface(

@@ -8330,7 +8330,9 @@ dependencies = [
 name = "semaphore-ffi"
 version = "0.0.0"
 dependencies = [
+ "jni 0.22.4",
  "semaphore-core",
+ "semaphore-net",
  "uniffi",
 ]
 
@@ -8364,6 +8366,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "futures-util",
+ "jni 0.22.4",
  "log",
  "rcgen",
  "reqwest 0.13.5",

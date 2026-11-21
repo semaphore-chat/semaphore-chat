@@ -12,3 +12,9 @@ crate-type = ["lib", "cdylib", "staticlib"]
 [dependencies]
 semaphore-core.workspace = true
 uniffi = "0.32"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Android only: `SemaphoreApp` calls the JNI entry point below, which initialises
+# rustls-platform-verifier through semaphore-net. Desktop builds of this crate stay core-only.
+semaphore-net.workspace = true
+jni = { version = "0.22", default-features = false }

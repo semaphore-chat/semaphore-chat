@@ -18,9 +18,11 @@ Everything runs in Docker; nothing is installed on the host. The script builds (
 Android image from `native/docker/Dockerfile.android`, layered on the pinned native build image,
 and inside it:
 
-1. `cargo ndk -t arm64-v8a --platform 26 build --locked -p semaphore-ffi --release`
-2. `uniffi-bindgen generate --language kotlin` over the resulting `libsemaphore_ffi.so`
-3. `./gradlew assembleDebug` in this directory
+1. `cargo ndk -t arm64-v8a --platform 26 check --locked -p semaphore-net`, which proves the
+   transport (D2) compiles for Android
+2. `cargo ndk -t arm64-v8a --platform 26 build --locked -p semaphore-ffi --release`
+3. `uniffi-bindgen generate --language kotlin` over the resulting `libsemaphore_ffi.so`
+4. `./gradlew assembleDebug` in this directory
 
 Both the generated Kotlin and the `.so` files are written under `app/build/`, which is not source:
 `app/build/generated/uniffi` and `app/build/rustJniLibs` are source directories of the `app`
@@ -42,6 +44,26 @@ copy (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Remove the volumes to start from sc
 ```
 docker volume rm semaphore-android-gradle semaphore-android-home
 ```
+
+## TLS
+
+`semaphore-net` builds its TLS client with rustls-platform-verifier, which on Android reads the
+system trust store through the JVM. That needs two pieces outside Rust, both in place already:
+
+- the crate's Kotlin component, `org.rustls:rustls-platform-verifier`, from the Maven
+  repository named in its README (`settings.gradle.kts`); `app/build.gradle.kts` reads its
+  version from `../Cargo.lock` so it can never disagree with the Rust crate;
+- an initialisation call carrying the JVM and an application `Context`. `SemaphoreApp` (the `Application`, so any process start) loads
+  `libsemaphore_ffi.so` and calls the JNI entry point in `semaphore-ffi`, which calls
+  `semaphore_net::init_android`, before building the core.
+
+D2 does not wire `semaphore-net` into the core (that is D3), so the app has no requests to make
+with the verifier yet; the build proves the initialisation compiles and links, and a device run
+would be what proves it succeeds.
+
+Once a minified release build type exists (R8 is off today), it needs the keep rule upstream's
+README asks for, or the verifier's Kotlin classes are stripped:
+`-keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }`
 
 ## Where the APK lands
 

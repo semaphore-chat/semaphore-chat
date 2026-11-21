@@ -15,7 +15,7 @@ use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, SecretSto
 use semaphore_core::{Core, Services};
 use semaphore_fake_server::{FakeServer, Record, ScenarioSource};
 use semaphore_net::socket::SocketConfig;
-use semaphore_net::{HttpBackend, SocketRealtime};
+use semaphore_net::{ClientInfo, HttpBackend, SocketRealtime};
 use semaphore_wire::types as wire;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -118,7 +118,7 @@ impl Rig {
             .await
             .expect("the scenario loads");
         let secrets = Arc::new(MemSecrets::default());
-        let backend = HttpBackend::new(secrets.clone());
+        let backend = HttpBackend::new(secrets.clone(), ClientInfo::desktop());
         let mut config = SocketConfig::new("unused");
         config.reconnect_delay = Duration::from_millis(50);
         config.reconnect_delay_max = Duration::from_millis(200);
@@ -393,6 +393,8 @@ async fn auth_lost_on_the_socket_signs_core_out() {
 struct Stub {
     url: String,
     requests: Arc<Mutex<Vec<(String, String)>>>,
+    /// The same request heads as `requests`, in the case they arrived in.
+    raw_heads: Arc<Mutex<Vec<String>>>,
 }
 
 async fn stub(respond: fn(&str) -> (u16, &'static str)) -> Stub {
@@ -400,12 +402,15 @@ async fn stub(respond: fn(&str) -> (u16, &'static str)) -> Stub {
     let url = format!("http://{}", listener.local_addr().unwrap());
     let requests = Arc::new(Mutex::new(Vec::new()));
     let seen = requests.clone();
+    let raw_heads = Arc::new(Mutex::new(Vec::new()));
+    let raw_seen = raw_heads.clone();
     tokio::spawn(async move {
         loop {
             let Ok((mut stream, _)) = listener.accept().await else {
                 return;
             };
             let seen = seen.clone();
+            let raw_seen = raw_seen.clone();
             tokio::spawn(async move {
                 let mut buffer = Vec::new();
                 let (head_end, length) = loop {
@@ -433,10 +438,12 @@ async fn stub(respond: fn(&str) -> (u16, &'static str)) -> Stub {
                     }
                     buffer.extend_from_slice(&chunk[..read]);
                 }
-                let head = String::from_utf8_lossy(&buffer[..head_end]).to_lowercase();
+                let raw_head = String::from_utf8_lossy(&buffer[..head_end]).into_owned();
+                let head = raw_head.to_lowercase();
                 let body = String::from_utf8_lossy(&buffer[head_end..]).into_owned();
                 let (status, reply) = respond(head.lines().next().unwrap_or_default());
                 seen.lock().unwrap().push((head, body));
+                raw_seen.lock().unwrap().push(raw_head);
                 let response = format!(
                     "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
                     reply.len()
@@ -445,7 +452,11 @@ async fn stub(respond: fn(&str) -> (u16, &'static str)) -> Stub {
             });
         }
     });
-    Stub { url, requests }
+    Stub {
+        url,
+        requests,
+        raw_heads,
+    }
 }
 
 fn auth_stub(line: &str) -> (u16, &'static str) {
@@ -471,7 +482,7 @@ fn auth_stub(line: &str) -> (u16, &'static str) {
 async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
     let stub = stub(auth_stub).await;
     let secrets = Arc::new(MemSecrets::default());
-    let backend = HttpBackend::new(secrets.clone());
+    let backend = HttpBackend::new(secrets.clone(), ClientInfo::desktop());
     backend.set_server_url(stub.url.clone());
 
     let login = backend
@@ -504,23 +515,22 @@ async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
         login_head.contains("x-client-type: desktop-native"),
         "{login_head}"
     );
+    // The desktop identity, as literals: changing the constants must fail this. The stub's
+    // `requests` are lowercased, so these lines are read from `raw_heads`, which keep their case.
+    let raw_login = stub.raw_heads.lock().unwrap()[0].clone();
+    let raw_lines: Vec<&str> = raw_login.split("\r\n").collect();
+    let user_agent = format!("user-agent: Semaphore-Native/{}", env!("CARGO_PKG_VERSION"));
+    assert!(raw_lines.contains(&user_agent.as_str()), "{raw_login}");
+    #[cfg(target_os = "linux")]
     assert!(
-        login_head.contains("user-agent: semaphore-native/"),
-        "{login_head}"
+        raw_lines.contains(&"x-device-name: Semaphore Desktop on Linux"),
+        "{raw_login}"
     );
     let device_id = login_head
         .lines()
         .find_map(|line| line.strip_prefix("x-device-id: "))
         .expect("a device id");
     assert!(device_id.parse::<uuid::Uuid>().is_ok(), "{device_id}");
-    assert!(
-        // The stub lowercases what it saw.
-        login_head.contains(&format!(
-            "x-device-name: {}",
-            semaphore_net::backend::DEVICE_NAME.to_lowercase()
-        )),
-        "{login_head}"
-    );
     assert!(!login_head.contains("authorization"), "{login_head}");
 
     let (profile_head, _) = &requests[1];
@@ -531,7 +541,11 @@ async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
     // The identity headers are the sign-in and refresh operations' parameters, nobody else's.
     assert!(!profile_head.contains("x-client-type"), "{profile_head}");
     assert!(!profile_head.contains("x-device-id"), "{profile_head}");
-    assert!(profile_head.contains("user-agent: semaphore-native/"));
+    let raw_profile = stub.raw_heads.lock().unwrap()[1].clone();
+    assert!(
+        raw_profile.split("\r\n").any(|line| line == user_agent),
+        "{raw_profile}"
+    );
 
     let (refresh_head, refresh_body) = &requests[2];
     assert!(refresh_body.contains("refresh-1"), "{refresh_body}");
@@ -556,7 +570,7 @@ async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
         Some("refresh-2")
     );
     // The same install keeps its device id.
-    let again = HttpBackend::new(secrets.clone());
+    let again = HttpBackend::new(secrets.clone(), ClientInfo::desktop());
     again.set_server_url(stub.url.clone());
     let _ = again
         .auth_controller_login(wire::LoginRequestDto {
@@ -572,9 +586,68 @@ async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
 }
 
 #[tokio::test]
+async fn a_mobile_client_sends_its_own_identity_on_every_operation_that_takes_one() {
+    let stub = stub(auth_stub).await;
+    let backend = HttpBackend::new(
+        Arc::new(MemSecrets::default()),
+        ClientInfo::mobile("Semaphore-Android/0.0.0", "María’s Galaxy").unwrap(),
+    );
+    backend.set_server_url(stub.url.clone());
+
+    backend
+        .auth_controller_login(wire::LoginRequestDto {
+            username: "me".into(),
+            password: "pw".into(),
+        })
+        .await
+        .unwrap();
+    backend
+        .auth_controller_refresh(wire::RefreshRequestDto {
+            refresh_token: None,
+        })
+        .await
+        .unwrap();
+    // The contract's third operation that takes the identity headers: its answer doesn't matter
+    // here, only that the headers went out.
+    let _ = backend
+        .auth_controller_redeem_desktop_login(wire::DesktopLoginTokenRequestDto {
+            code: "a".repeat(43).parse().expect("a code the contract accepts"),
+            code_verifier: "b".repeat(43).parse().expect("a verifier it accepts"),
+        })
+        .await;
+
+    let requests = stub.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 3, "{requests:?}");
+    let operations = [
+        "post /api/auth/login",
+        "post /api/auth/refresh",
+        "post /api/auth/desktop/token",
+    ];
+    for ((head, _), operation) in requests.iter().zip(operations) {
+        assert!(head.starts_with(operation), "{operation}: {head}");
+        // The backend's own spelling: `isNativeClientType` in
+        // backend/src/auth/client-type.util.ts.
+        assert!(head.contains("x-client-type: mobile-native"), "{head}");
+        assert!(
+            head.contains("user-agent: semaphore-android/0.0.0"),
+            "{head}"
+        );
+    }
+    // The name goes out as the contract's percent-encoded UTF-8, in the case it was encoded in.
+    let raw_heads = stub.raw_heads.lock().unwrap().clone();
+    for head in &raw_heads {
+        assert!(
+            head.split("\r\n")
+                .any(|line| line == "x-device-name: Mar%C3%ADa%E2%80%99s%20Galaxy"),
+            "{head}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn tokens_stay_out_of_debug_output_and_errors() {
     let stub = stub(auth_stub).await;
-    let backend = HttpBackend::new(Arc::new(MemSecrets::default()));
+    let backend = HttpBackend::new(Arc::new(MemSecrets::default()), ClientInfo::desktop());
     backend.set_server_url(stub.url.clone());
     backend
         .auth_controller_login(wire::LoginRequestDto {

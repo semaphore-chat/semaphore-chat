@@ -7,9 +7,14 @@
 # semaphore-core through the UniFFI surface in crates/semaphore-ffi and shows a value read back
 # from it. Steps, all inside the container:
 #
+#   cargo ndk -t arm64-v8a --platform 26 check -p semaphore-net
 #   cargo ndk -t arm64-v8a --platform 26 build -p semaphore-ffi --release
 #   uniffi-bindgen generate --language kotlin <libsemaphore_ffi.so>
 #   ./gradlew assembleDebug  (native/android)
+#
+# The check is the proof that the transport compiles for Android even though D2 doesn't wire it
+# into the app yet: the release build below pulls it in through semaphore-ffi's JNI initialiser,
+# but a `check` names the crate CI must keep portable.
 #
 # - On the shared semaphore-test network only. It creates and removes no network.
 # - The image tag hashes the base tag, the Dockerfile and the uid, so a change rebuilds it and an
@@ -67,6 +72,9 @@ ANDROID_DIR="$NATIVE_DIR/android"
 APP="$ANDROID_DIR/app"
 TARGET=aarch64-linux-android
 LIB="/cache/target/$TARGET/release/libsemaphore_ffi.so"
+
+echo "=== cargo ndk check semaphore-net ($TARGET)"
+cargo ndk -t arm64-v8a --platform 26 check --locked -p semaphore-net
 
 echo "=== cargo ndk build ($TARGET, release)"
 # The workspace's release profile strips symbols (Cargo.toml), and uniffi-bindgen reads the FFI
