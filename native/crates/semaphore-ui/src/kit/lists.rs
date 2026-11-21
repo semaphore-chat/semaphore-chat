@@ -587,7 +587,14 @@ impl TableRow {
     /// A cell of plain text.
     pub fn text(self, column: impl Into<SharedString>, content: impl Into<SharedString>) -> Self {
         let content: SharedString = content.into();
-        self.cell(column, div().child(content))
+        let column: SharedString = column.into();
+        // Named by its text, so assistive technology (and a test) reads the cell.
+        let cell = div()
+            .id(ElementId::Name(column.clone()))
+            .test_support()
+            .aria_label(content.clone())
+            .child(content);
+        self.cell(column, cell)
     }
 
     fn take(&mut self, column: &str) -> Option<AnyElement> {

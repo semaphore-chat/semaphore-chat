@@ -13,7 +13,9 @@ use crate::community_settings::common::{
 use crate::community_settings::rules::{act, date_label, failure, needs, running};
 use crate::dms::face::user_face;
 use crate::format::file_size;
-use crate::kit::{Button, IconButton, Menu, MenuItem, SecondaryTone, Variant, spacing, text};
+use crate::kit::{
+    Button, IconButton, Menu, MenuCloseReason, MenuItem, SecondaryTone, Variant, spacing, text,
+};
 use crate::theme::SemTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -444,7 +446,16 @@ impl UsersPage {
                                 .max_w_full()
                                 .occlude()
                                 .on_mouse_down_out(cx.listener(|page, _, _, cx| page.close(cx)))
-                                .child(Menu::new(format!("Actions for {name}"), items)),
+                                .child(Menu::new(format!("Actions for {name}"), items).on_close({
+                                    let page = cx.weak_entity();
+                                    // A choice runs its own action (a dialog may follow);
+                                    // Escape and Tab close the menu.
+                                    move |reason, _, cx| {
+                                        if reason != MenuCloseReason::Selected {
+                                            page.update(cx, |page, cx| page.close(cx)).ok();
+                                        }
+                                    }
+                                })),
                         ),
                 )
                 .with_priority(1),

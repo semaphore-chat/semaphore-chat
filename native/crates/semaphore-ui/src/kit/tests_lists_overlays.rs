@@ -5,12 +5,14 @@ use super::lists::{LineTone, RowPaint, line_tone, row_name};
 use super::overlays::{MenuKey, menu_key, state_over};
 use super::{
     Button, Dialog, DialogCloseReason, ListRow, Menu, MenuCloseReason, MenuEntry, MenuItem,
-    Placement, PopoverPadding, Table, TableColumn, TableRow,
+    Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel, Table, TableColumn, TableRow,
+    with_tip,
 };
 use crate::dms::rig::{Rig, rig};
 use crate::theme::color::hsla_of;
 use crate::theme::{Sem, ThemeInput};
 use core::prelude::v1::test;
+use gpui_kit::prelude::*;
 use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::*;
 use semaphore_design::behaviour::list_focus::Event as ListEvent;
@@ -18,6 +20,7 @@ use semaphore_design::lounge::{STATE_HOVER, STATE_HOVER_ON_FILL};
 use semaphore_design::{Intensity, Mode};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 fn sems() -> Vec<Sem> {
     let mut all = Vec::new();
@@ -193,22 +196,32 @@ fn placements_meet_the_anchor_at_the_matching_corner() {
 
 type Log = Rc<RefCell<Vec<String>>>;
 
+type Body = Box<dyn Fn(&Log, &mut Window, &mut App) -> AnyElement>;
+
 struct Host {
-    body: Box<dyn Fn(&Log) -> AnyElement>,
+    body: Body,
     log: Log,
 }
 
 impl EventEmitter<()> for Host {}
 
 impl Render for Host {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child((self.body)(&self.log))
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child((self.body)(&self.log, window, cx))
     }
 }
 
 fn host(
     cx: &mut TestAppContext,
     body: impl Fn(&Log) -> AnyElement + 'static,
+) -> (Rig<Host, ()>, Log) {
+    host_in(cx, move |log, _, _| body(log))
+}
+
+/// A host whose body also gets the window, for focus handles and element state.
+fn host_in(
+    cx: &mut TestAppContext,
+    body: impl Fn(&Log, &mut Window, &mut App) -> AnyElement + 'static,
 ) -> (Rig<Host, ()>, Log) {
     let log: Log = Rc::default();
     let shared = log.clone();
@@ -435,6 +448,11 @@ fn a_table_is_named_and_shows_its_cells(cx: &mut TestAppContext) {
         assert!(window.try_find("table").is_some());
         assert!(window.try_find_by_label("Members").is_some());
         assert!(window.try_find("table-empty").is_none());
+        assert!(window.try_find_by_label("aiko").is_some(), "a text cell");
+        assert!(
+            window.try_find_by_label("2026-01-12").is_some(),
+            "an end-aligned cell"
+        );
     });
 }
 
@@ -443,5 +461,227 @@ fn an_empty_table_says_so(cx: &mut TestAppContext) {
     let (rig, _) = host(cx, table(false));
     rig.with(cx, |_, window, _| {
         assert!(window.try_find("table-empty").is_some());
+    });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Overlays together, and the review's cases
+
+/// A dialog holding a menu, as the call bar's "Call options": with `owned`, the menu has an
+/// owner that closes the dialog on Escape (and logs every reason).
+fn menu_in_dialog(owned: bool) -> impl Fn(&Log) -> AnyElement {
+    move |log| {
+        let mut menu = Menu::new(
+            "Call options",
+            vec![
+                MenuItem::new("share", "Share screen", record(log, "share")),
+                MenuItem::new("settings", "Voice settings", record(log, "settings")),
+            ],
+        );
+        if owned {
+            let close = log.clone();
+            menu = menu
+                .on_close(move |reason, _, _| close.borrow_mut().push(format!("menu {reason:?}")));
+        }
+        let dialog_log = log.clone();
+        Dialog::new("Call options")
+            .body(menu)
+            .action(Button::new("more-done", "Close").on_click({
+                let log = log.clone();
+                move |_, _, _| log.borrow_mut().push("close".into())
+            }))
+            .on_request_close(move |reason, _, _| {
+                dialog_log.borrow_mut().push(format!("dialog {reason:?}"))
+            })
+            .into_any_element()
+    }
+}
+
+#[gpui_kit::test]
+fn a_menu_without_an_owner_leaves_escape_and_tab_to_its_dialog(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, menu_in_dialog(false));
+    press(&rig, cx, "escape");
+    assert_eq!(*log.borrow(), ["dialog Escape"], "Escape closes the dialog");
+    log.borrow_mut().clear();
+    press(&rig, cx, "tab");
+    press(&rig, cx, "enter");
+    assert_eq!(*log.borrow(), ["close"], "Tab reaches the dialog's Close");
+}
+
+#[gpui_kit::test]
+fn an_owned_menu_reports_escape_and_tab_and_tab_still_moves_on(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, menu_in_dialog(true));
+    press(&rig, cx, "escape");
+    assert_eq!(
+        *log.borrow(),
+        ["menu Escape"],
+        "the menu's owner has Escape"
+    );
+    log.borrow_mut().clear();
+    press(&rig, cx, "tab");
+    press(&rig, cx, "enter");
+    assert_eq!(*log.borrow(), ["menu Tab", "close"]);
+}
+
+/// A button that opens a menu below it; Escape or a choice closes it.
+fn menu_button(log: &Log, window: &mut Window, cx: &mut App) -> AnyElement {
+    let open = window.use_keyed_state("menu-open", cx, |_, _| true).clone();
+    let opener = window
+        .use_keyed_state("opener", cx, |_, cx| cx.focus_handle())
+        .read(cx)
+        .clone();
+    let focused_once = window.use_keyed_state("opener-focused", cx, |_, _| false);
+    if !*focused_once.read(cx) {
+        focused_once.update(cx, |done, _| *done = true);
+        window.focus(&opener, cx);
+    }
+    let shown = *open.read(cx);
+    let close = open.clone();
+    div()
+        .child(
+            gpui_kit::base::Button::new("opener")
+                .track_focus(&opener)
+                .on_click({
+                    let log = log.clone();
+                    move |_, _, _| log.borrow_mut().push("opener".into())
+                })
+                .child("More"),
+        )
+        .when(shown, |column| {
+            column.child(
+                Menu::new(
+                    "More",
+                    vec![MenuItem::new("copy", "Copy link", record(log, "copy"))],
+                )
+                .on_close(move |_, _, cx| {
+                    close.update(cx, |open, cx| {
+                        *open = false;
+                        cx.notify();
+                    })
+                }),
+            )
+        })
+        .into_any_element()
+}
+
+#[gpui_kit::test]
+fn focus_goes_back_to_the_menus_button_on_escape(cx: &mut TestAppContext) {
+    let (rig, log) = host_in(cx, menu_button);
+    press(&rig, cx, "escape");
+    press(&rig, cx, "enter");
+    assert_eq!(*log.borrow(), ["opener"]);
+}
+
+#[gpui_kit::test]
+fn focus_goes_back_to_the_menus_button_after_a_choice(cx: &mut TestAppContext) {
+    let (rig, log) = host_in(cx, menu_button);
+    press(&rig, cx, "enter");
+    press(&rig, cx, "enter");
+    assert_eq!(*log.borrow(), ["copy", "opener"]);
+}
+
+#[gpui_kit::test]
+fn a_press_on_the_scrim_asks_to_close(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, dialog);
+    rig.with(cx, |_, window, cx| {
+        window.click_at("dialog-scrim", point(px(5.), px(5.)), cx)
+    });
+    assert_eq!(*log.borrow(), [format!("{:?}", DialogCloseReason::Scrim)]);
+}
+
+#[gpui_kit::test]
+fn a_press_in_the_panel_or_a_drag_out_of_it_does_not_close(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, dialog);
+    rig.with(cx, |_, window, cx| {
+        let panel = window.find("dialog-panel").bounds();
+        window.click_at("dialog-panel", point(px(8.), px(8.)), cx);
+        window.drag(panel.center(), point(px(5.), px(5.)), cx);
+    });
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+}
+
+/// A dialog whose body focuses its own control as it opens, as a screen focuses a field.
+fn dialog_with_focused_body(log: &Log, window: &mut Window, cx: &mut App) -> AnyElement {
+    let field = window
+        .use_keyed_state("field", cx, |_, cx| cx.focus_handle())
+        .read(cx)
+        .clone();
+    let once = window.use_keyed_state("field-focused", cx, |_, _| false);
+    if !*once.read(cx) {
+        once.update(cx, |done, _| *done = true);
+        window.focus(&field, cx);
+    }
+    Dialog::new("Rename")
+        .body(
+            gpui_kit::base::Button::new("field")
+                .track_focus(&field)
+                .on_click({
+                    let log = log.clone();
+                    move |_, _, _| log.borrow_mut().push("field".into())
+                })
+                .child("Name"),
+        )
+        .action(Button::new("cancel", "Cancel").on_click({
+            let log = log.clone();
+            move |_, _, _| log.borrow_mut().push("cancel".into())
+        }))
+        .into_any_element()
+}
+
+#[gpui_kit::test]
+fn a_control_inside_that_took_focus_keeps_it(cx: &mut TestAppContext) {
+    let (rig, log) = host_in(cx, dialog_with_focused_body);
+    press(&rig, cx, "enter");
+    assert_eq!(*log.borrow(), ["field"]);
+}
+
+fn popover(log: &Log) -> AnyElement {
+    Popover::new("rename-popover")
+        .placement(Placement::BottomStart)
+        .default_open(true)
+        .trigger_element(Button::new("rename-trigger", "Rename channel"))
+        .content({
+            let log = log.clone();
+            move |_, _, _| {
+                PopoverPanel::new("Rename panel").child(
+                    Button::new("save", "Save")
+                        .on_click(move |_, _, _| log.borrow_mut().push("save".into())),
+                )
+            }
+        })
+        .into_any_element()
+}
+
+#[gpui_kit::test]
+fn a_popover_panel_is_named_and_escape_closes_it(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, popover);
+    rig.with(cx, |_, window, _| {
+        assert!(window.try_find("popover-panel").is_some());
+        assert!(window.try_find_by_label("Rename panel").is_some());
+    });
+    rig.click(cx, "save");
+    assert_eq!(*log.borrow(), ["save"], "its controls work");
+    press(&rig, cx, "escape");
+    assert!(!rig.has(cx, "popover-panel"), "Escape closed it");
+}
+
+#[gpui_kit::test]
+fn a_tooltip_shows_its_text_on_hover(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, |_| {
+        with_tip(
+            div().id("tipped").test_support().size(px(40.)),
+            "Mute microphone",
+        )
+        .into_any_element()
+    });
+    assert!(!rig.has(cx, "tooltip"), "hidden until hovered");
+    rig.with(cx, |_, window, cx| window.hover("tipped", cx));
+    cx.executor().advance_clock(Duration::from_secs(2));
+    rig.with(cx, |_, window, _| {
+        assert!(
+            window.try_find("tooltip").is_some(),
+            "shown after the delay"
+        );
+        assert!(window.try_find_by_label("Mute microphone").is_some());
     });
 }

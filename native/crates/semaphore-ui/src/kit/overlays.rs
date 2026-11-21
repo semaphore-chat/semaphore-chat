@@ -7,7 +7,7 @@
 //! them to the overlay stack's reducer is the behaviour hosts' job (epic #848, B8).
 
 use super::{Action, Icon, ValueAction};
-use crate::theme::color::{blend, hsla_of};
+use crate::theme::color::{alpha, blend, hsla_of};
 use crate::theme::{Sem, SemTheme};
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
@@ -17,9 +17,10 @@ use semaphore_design::Icon as IconName;
 use semaphore_design::Rgba as Token;
 use semaphore_design::behaviour::list_focus;
 use semaphore_design::lounge::{
-    self as t, BORDER_HAIRLINE, CONTROL_MD, ICON_MD, LAYOUT_DIALOG_MD, LAYOUT_DIALOG_SM,
-    LAYOUT_GUTTER, RADIUS_CARD, RADIUS_ISLAND, RADIUS_MD, RADIUS_SM, SPACE_2XS, SPACE_LG, SPACE_MD,
-    SPACE_SM, SPACE_XL, SPACE_XS, STATE_DISABLED, STATE_HOVER, STATE_PRESSED, TextStyle,
+    self as t, BORDER_FOCUS, BORDER_HAIRLINE, CONTROL_MD, ICON_MD, LAYOUT_DIALOG_MD,
+    LAYOUT_DIALOG_SM, LAYOUT_GUTTER, RADIUS_CARD, RADIUS_ISLAND, RADIUS_MD, RADIUS_SM, SPACE_2XS,
+    SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XL, SPACE_XS, STATE_DISABLED, STATE_HOVER, STATE_PRESSED,
+    TextStyle,
 };
 use std::rc::Rc;
 use std::time::Duration;
@@ -43,16 +44,18 @@ pub(crate) fn state_over(sem: &Sem, under: Token, amount: f32) -> Hsla {
     hsla_of(blend(sem.roles.text, under, amount))
 }
 
+/// The colour `design/tokens.json`'s shadows are an alpha of.
+const SHADOW_BLACK: Token = Token(0x000000ff);
+
 /// `shadow.overlay`: deeper in dark mode, lighter in light.
 pub(crate) fn overlay_shadow(sem: &Sem) -> Vec<BoxShadow> {
     let s = t::SHADOW_OVERLAY;
     vec![BoxShadow {
-        color: hsla(
-            0.,
-            0.,
-            0.,
+        // `design/tokens.json` gives a shadow as an alpha of black, per mode.
+        color: hsla_of(alpha(
+            SHADOW_BLACK,
             if sem.is_dark { s.alpha } else { s.alpha_light },
-        ),
+        )),
         offset: point(px(s.x), px(s.y)),
         blur_radius: px(s.blur),
         spread_radius: px(0.),
@@ -282,9 +285,10 @@ impl RenderOnce for MenuItem {
             SecondaryTone::Error => sem.role.danger,
         };
         let under = sem.roles.surface;
-        let (hover, pressed) = (
+        let (hover, pressed, ring) = (
             state_over(sem, under, STATE_HOVER),
             state_over(sem, under, STATE_PRESSED),
+            sem.role.focus,
         );
         let accessible = match &self.secondary {
             Some(secondary) => format!("{}, {secondary}", self.label),
@@ -306,7 +310,10 @@ impl RenderOnce for MenuItem {
             .role(Role::MenuItem)
             .disabled(self.disabled)
             .accessibility_label(accessible)
-            .when_some(self.focus.as_ref(), |row, focus| row.track_focus(focus))
+            // In a menu, focus moves by the arrow keys, not Tab: Tab leaves the menu.
+            .when_some(self.focus.as_ref(), |row, focus| {
+                row.track_focus(focus).tab_stop(false)
+            })
             .w_full()
             .min_h(px(self.min_height))
             .px(px(SPACE_MD))
@@ -317,6 +324,10 @@ impl RenderOnce for MenuItem {
             .gap(px(SPACE_SM))
             .text_color(label_color)
             .when(self.disabled, |row| row.opacity(STATE_DISABLED))
+            // The keyboard focus ring, inside the row: a constant-width border, so nothing
+            // shifts when it shows.
+            .border(px(BORDER_FOCUS))
+            .border_color(transparent_black())
             .children(
                 self.icon
                     .map(|icon| Icon::new(icon).size(ICON_MD).color(icon_color)),
@@ -337,7 +348,7 @@ impl RenderOnce for MenuItem {
                 row.cursor_pointer()
                     .hover(move |style| style.bg(hover))
                     .active(move |style| style.bg(pressed))
-                    .focus_visible(move |style| style.bg(pressed))
+                    .focus_visible(move |style| style.bg(pressed).border_color(ring))
                     .on_click(move |_, window, cx| {
                         handler(window, cx);
                         if let Some(after) = &after {
@@ -401,6 +412,8 @@ struct MenuKeys {
     list: list_focus::State,
     handles: Vec<(String, FocusHandle)>,
     focused_once: bool,
+    /// What had focus when the menu took it: focus goes back there on Escape or a choice.
+    opener: Option<FocusHandle>,
 }
 
 const MENU_PARAMS: list_focus::Params = list_focus::Params {
@@ -512,6 +525,7 @@ impl RenderOnce for Menu {
             list: list_focus::initial(&MENU_PARAMS),
             handles: Vec::new(),
             focused_once: false,
+            opener: None,
         });
         let rows: Vec<list_focus::Row> = self
             .entries
@@ -545,7 +559,11 @@ impl RenderOnce for Menu {
                 .find(|row| !row.disabled)
                 .and_then(|row| handles.iter().find(|(id, _)| *id == row.id))
                 .map(|(_, handle)| handle.clone());
-            keys.update(cx, |keys, _| keys.focused_once = true);
+            let opener = window.focused(cx);
+            keys.update(cx, |keys, _| {
+                keys.focused_once = true;
+                keys.opener = opener;
+            });
             if let Some(first) = first {
                 window.focus(&first, cx);
             }
@@ -553,7 +571,9 @@ impl RenderOnce for Menu {
 
         let on_close = self.on_close.clone();
         let after_select: Option<Action> = on_close.clone().map(|close| {
+            let keys = keys.clone();
             Rc::new(move |window: &mut Window, cx: &mut App| {
+                return_focus(&keys, window, cx);
                 close(MenuCloseReason::Selected, window, cx)
             }) as Action
         });
@@ -590,10 +610,13 @@ impl RenderOnce for Menu {
             .key_context(MENU_CONTEXT)
             .on_action({
                 let on_close = on_close.clone();
+                // Tab is reported, then moves focus as anywhere else: a menu that is a dialog's
+                // body stays open and Tab reaches the dialog's buttons.
                 move |_: &MenuTab, window, cx| {
                     if let Some(close) = &on_close {
                         close(MenuCloseReason::Tab, window, cx);
                     }
+                    cx.propagate();
                 }
             })
             .on_key_down(move |event, window, cx| {
@@ -601,20 +624,37 @@ impl RenderOnce for Menu {
                 let Some(key) = menu_key(&event.keystroke, typing) else {
                     return;
                 };
-                cx.stop_propagation();
                 match key {
+                    // Escape is the menu's only when it has an owner to ask; otherwise it goes on
+                    // to what holds the menu (a dialog closes).
                     MenuKey::Close(reason) => {
                         if let Some(close) = &on_close {
+                            cx.stop_propagation();
+                            return_focus(&key_state, window, cx);
                             close(reason, window, cx);
                         }
                     }
                     MenuKey::Move(event) => {
+                        cx.stop_propagation();
                         move_menu_focus(&key_state, &key_handles, event, window, cx)
                     }
                 }
             })
             .children(items);
         overlay_surface(list, &sem)
+    }
+}
+
+/// Focus back to what had it when the menu opened (the menu's button), while it is still on an
+/// item: the owner may move it elsewhere in its close handler.
+fn return_focus(keys: &Entity<MenuKeys>, window: &mut Window, cx: &mut App) {
+    let keys = keys.read(cx);
+    let inside = keys
+        .handles
+        .iter()
+        .any(|(_, handle)| handle.is_focused(window));
+    if inside && let Some(opener) = keys.opener.clone() {
+        window.focus(&opener, cx);
     }
 }
 
@@ -803,7 +843,8 @@ impl RenderOnce for PopoverPanel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DialogCloseReason {
     Escape,
-    /// A press that started and ended on the dimmed page.
+    /// A left press that started and ended on the dimmed page: a drag out of the panel does not
+    /// count.
     Scrim,
 }
 
@@ -829,6 +870,8 @@ struct DialogFocus {
     host: FocusHandle,
     actions: FocusHandle,
     placed: bool,
+    /// A left press went down on the scrim and has not come up yet.
+    scrim_down: bool,
 }
 
 /// A modal dialog on gpui-kit's focus trap, Escape and backdrop handling, as the web's Dialog: the
@@ -913,6 +956,7 @@ impl RenderOnce for Dialog {
                 host: cx.focus_handle(),
                 actions: cx.focus_handle(),
                 placed: false,
+                scrim_down: false,
             },
         );
         let (host, actions_focus, placed) = {
@@ -933,6 +977,7 @@ impl RenderOnce for Dialog {
         }
         let titled = self.title.clone();
         let escape = on_close.clone();
+        let scrim = on_close.clone();
         let popup = div()
             .absolute()
             .inset_0()
@@ -1019,7 +1064,36 @@ impl RenderOnce for Dialog {
                     on_close(reason, window, cx);
                 }
             })
-            .backdrop(div().absolute().inset_0().occlude().bg(sem.role.scrim))
+            // The kit's own scrim takes the press: gpui-kit listens on a wrapper the occluding
+            // scrim hides from the hit test. A left press that starts and ends on the dimmed
+            // page asks to close.
+            .backdrop(
+                div()
+                    .id("dialog-scrim")
+                    .test_support()
+                    .absolute()
+                    .inset_0()
+                    .occlude()
+                    .bg(sem.role.scrim)
+                    .on_mouse_down(MouseButton::Left, {
+                        let focus = focus.clone();
+                        move |_, _, cx| {
+                            cx.stop_propagation();
+                            focus.update(cx, |focus, _| focus.scrim_down = true);
+                        }
+                    })
+                    .on_mouse_up(MouseButton::Left, {
+                        let focus = focus.clone();
+                        move |_, window, cx| {
+                            let down = focus.update(cx, |focus, _| {
+                                std::mem::replace(&mut focus.scrim_down, false)
+                            });
+                            if down && let Some(close) = &scrim {
+                                close(DialogCloseReason::Scrim, window, cx);
+                            }
+                        }
+                    }),
+            )
             .popup(popup)
     }
 }
@@ -1034,10 +1108,14 @@ pub struct Tip(pub SharedString);
 
 impl Tip {
     /// The box itself, for a story or a screen that shows a tip without a pointer.
-    pub fn panel(label: impl Into<SharedString>, window: &Window, cx: &App) -> Div {
+    pub fn panel(label: impl Into<SharedString>, window: &Window, cx: &App) -> impl IntoElement {
         let sem = cx.sem();
         let most = window.viewport_size().width - px(2. * LAYOUT_GUTTER);
-        type_text(t::TEXT_SMALL, label)
+        let label: SharedString = label.into();
+        type_text(t::TEXT_SMALL, label.clone())
+            .id("tooltip")
+            .test_support()
+            .aria_label(label)
             .max_w(most)
             .px(px(SPACE_SM))
             .py(px(SPACE_XS))
