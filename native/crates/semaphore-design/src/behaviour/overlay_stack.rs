@@ -1,8 +1,8 @@
 //! The overlay stack: the layers floating above a screen, in the order they opened.
 //!
 //! A direct port of the `overlayStack` reducers in `design/gen/behaviour_ref.py`; the rule
-//! numbers below are that pattern's rules. Escape, a press outside and Tab are decided here,
-//! once, so no screen handles them by hand.
+//! numbers below are that pattern's rules. Escape, a press outside, Tab and the system Back are
+//! decided here, once, so no screen handles them by hand.
 
 /// What a layer is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +51,7 @@ pub enum CloseReason {
     PressOutside,
     Scrim,
     Tab,
+    Back,
     ParentClosed,
 }
 
@@ -78,6 +79,8 @@ pub enum Event {
         inside_id: Option<String>,
     },
     Tab,
+    /// The system Back: Android's Back gesture or button, a browser's Back while a layer is open.
+    Back,
 }
 
 /// What the stack asks of its surroundings.
@@ -93,6 +96,8 @@ pub enum Effect {
     },
     /// The screen gets the key; this pattern only ever passes `Escape`.
     PassToScreen,
+    /// Nothing under the tooltips took the Back: the platform goes back a screen.
+    PassToPlatform,
 }
 
 /// The overlay stack has no settings.
@@ -232,6 +237,32 @@ pub fn step(state: &State, event: &Event, _params: &Params) -> (State, Vec<Effec
                         break;
                     }
                 }
+            }
+        }
+        Event::Back => {
+            // Rule 20: a tooltip never takes the Back: every tooltip is asked to close, topmost
+            // first, and the Back carries on.
+            for layer in next.layers.iter().rev() {
+                if layer.kind == LayerKind::Tooltip {
+                    effects.push(Effect::RequestClose {
+                        id: layer.id.clone(),
+                        reason: CloseReason::Back,
+                    });
+                }
+            }
+            match next
+                .layers
+                .iter()
+                .rev()
+                .find(|layer| layer.kind != LayerKind::Tooltip)
+            {
+                // Rule 20: Back asks the topmost layer under the tooltips to close, one per Back.
+                Some(layer) => effects.push(Effect::RequestClose {
+                    id: layer.id.clone(),
+                    reason: CloseReason::Back,
+                }),
+                // Rule 21: with no layer open under the tooltips, the platform goes back.
+                None => effects.push(Effect::PassToPlatform),
             }
         }
         Event::Tab => {

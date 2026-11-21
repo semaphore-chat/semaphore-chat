@@ -14,6 +14,8 @@ import { fadeTransition, reducedMotion } from './surface';
  * parent may refuse), or `'parentClosed'`: the layer it was opened from closed,
  * so it has closed too (a command: it renders closed whatever `open` says until
  * `open` goes false).
+ *
+ * The system Back (Android) arrives as `'escape'`: to the owner the two are the same request.
  */
 export type DialogCloseReason = 'escape' | 'scrim' | 'parentClosed';
 
@@ -76,8 +78,10 @@ export function Modal({
     // A press on the scrim focuses the container: focus there is still in the modal.
     root,
     onRequestClose: (reason) => {
-      // 'pressOutside' and 'tab' never come for a dialog or sheet.
-      if (reason === 'escape' || reason === 'scrim' || reason === 'parentClosed') onClose(reason);
+      // 'pressOutside' and 'tab' never come for a dialog or sheet. The system Back is an Escape to the owner: it
+      // may refuse it the same way (a dialog whose action is running).
+      if (reason === 'back') onClose('escape');
+      else if (reason === 'escape' || reason === 'scrim' || reason === 'parentClosed') onClose(reason);
     },
   });
   return (
