@@ -323,7 +323,7 @@ impl Render for Gallery {
                         ListRow::new("l2", "A row with a very long name that has to stop before the badge at its end")
                             .secondary("And a secondary line")
                             .leading(Avatar::new("AB").size(32.).background(sem.primary))
-                            .trailing(Badge::new(3).compact()),
+                            .trailing(Badge::new("3 unread").count(3)),
                     )
                     .child(ListRow::new("l3", "Disabled row").disabled(true)),
             ))
@@ -332,12 +332,16 @@ impl Render for Gallery {
                 secondary,
                 row()
                     .gap(px(16.))
-                    .child(Badge::new(32).on(Avatar::new("MI").size(48.)))
-                    .child(Badge::new(150).on(Avatar::new("NC").background(sem.warning)))
+                    .child(Badge::new("32 unread").count(32).on(Avatar::new("MI").size(48.)))
+                    .child(
+                        Badge::new("150 unread")
+                            .count(150)
+                            .on(Avatar::new("NC").background(sem.warning)),
+                    )
                     .child(Avatar::new("PF").size(32.).background(sem.success))
                     .child(Chip::new("Connected"))
                     .child(Chip::new("With icon").icon(Icon::new(I::Check).size(16.)))
-                    .child(Badge::new(7)),
+                    .child(Badge::new("7 unread").count(7)),
             ))
             .child(section(
                 "Progress and skeleton",
@@ -358,8 +362,8 @@ impl Render for Gallery {
                                     .flex()
                                     .flex_col()
                                     .gap(px(6.))
-                                    .child(Skeleton::rect("sk2", relative(0.6), 14.))
-                                    .child(Skeleton::rect("sk3", relative(0.4), 12.)),
+                                    .child(Skeleton::sized("sk2", relative(0.6), 14.))
+                                    .child(Skeleton::sized("sk3", relative(0.4), 12.)),
                             ),
                     ),
             ))
@@ -370,7 +374,7 @@ impl Render for Gallery {
                     .flex()
                     .flex_col()
                     .gap(px(8.))
-                    .child(Alert::new(Severity::Error, "Login failed. Please try again."))
+                    .child(Alert::new(Severity::Danger, "Login failed. Please try again."))
                     .child(Alert::new(Severity::Warning, "Your session expires soon."))
                     .child(Alert::new(Severity::Info, "You've been signed out."))
                     .child(Alert::new(Severity::Success, "Saved.")),

@@ -346,12 +346,12 @@ impl Render for NotificationCenter {
                                     .flex()
                                     .flex_col()
                                     .gap(px(6.))
-                                    .child(Skeleton::rect(
+                                    .child(Skeleton::sized(
                                         ("notification-loading-name", index),
                                         relative(0.6),
                                         14.,
                                     ))
-                                    .child(Skeleton::rect(
+                                    .child(Skeleton::sized(
                                         ("notification-loading-text", index),
                                         relative(0.9),
                                         12.,

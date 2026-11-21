@@ -459,7 +459,7 @@ impl Render for ForgotPasswordScreen {
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
-                        Severity::Error,
+                        Severity::Danger,
                         if message.is_empty() {
                             "Something went wrong. Please try again.".to_owned()
                         } else {

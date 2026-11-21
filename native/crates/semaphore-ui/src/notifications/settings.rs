@@ -309,7 +309,7 @@ impl Render for NotificationSettingsSection {
                     .flex_col()
                     .gap(spacing(2.))
                     .children((0..6usize).map(|index| {
-                        Skeleton::rect(("settings-loading", index), relative(1.), 40.)
+                        Skeleton::sized(("settings-loading", index), relative(1.), 40.)
                     }))
                     .into_any_element(),
                 LoadState::Failed { .. } => error_block(

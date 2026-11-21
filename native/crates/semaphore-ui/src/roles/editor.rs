@@ -455,7 +455,7 @@ impl RolesPanel {
             .flex_col()
             .gap(spacing(2.))
             .child(heading)
-            .children(error.map(|error| Alert::new(Severity::Error, error.message)))
+            .children(error.map(|error| Alert::new(Severity::Danger, error.message)))
             .children(read_only.clone().map(|reason| {
                 Alert::new(
                     Severity::Info,

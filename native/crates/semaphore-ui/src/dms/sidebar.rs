@@ -103,8 +103,8 @@ impl DmSidebar {
             .focus_visible(move |style| style.bg(hover))
             .text_color(color)
             .child(
-                Badge::new(badge as u32)
-                    .compact()
+                Badge::new(format!("{badge} requests"))
+                    .count(badge as u32)
                     .on(design_icon(icon, 20., color)),
             )
             .child(text(Variant::Button, label).truncate())

@@ -503,9 +503,6 @@ apart, so the ring is whole and covers no one's initials; the stack is its own
 stacking context, so it never paints over anything outside it. (Avatar and MediaTile say ", speaking" in their
 names; the stack says "is talking" because it names a group.)
 
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
-
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`people`|a list of `name`, and optionally `src`, `colour` and `speaking`|none (required)|Who is in the group. `speaking` draws the speaking ring on that avatar and adds them to the name.|
@@ -747,9 +744,6 @@ Stories: `kit-alert--severities`, `kit-alert--severities-light`,
 `kit-alert--long-text`, `kit-alert--secondary-action`,
 `kit-alert--secondary-action-light`, `kit-alert--secondary-action-long`,
 `kit-alert--secondary-action-one-long`, `kit-alert--one-line`, `kit-alert--one-line-light`.
-
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
 
 ## LoadState
 

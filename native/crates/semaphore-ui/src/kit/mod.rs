@@ -8,12 +8,17 @@ mod assets;
 mod bus;
 mod controls;
 mod display;
+#[cfg(feature = "stories")]
+mod display_stories;
+#[cfg(test)]
+mod display_tests;
 mod fields;
 mod lists;
 mod live;
 mod overlays;
 #[cfg(feature = "stories")]
 mod stories;
+mod surface;
 mod typography;
 
 pub use assets::{UiAssets, icon_path, lounge_icon_path};
@@ -23,14 +28,17 @@ pub use controls::{
     Switch,
 };
 pub use display::{
-    Alert, Avatar, AvatarImages, Badge, Chip, Icon, LinearProgress, Severity, Skeleton, Snackbar,
-    Spinner, reduced_motion, set_reduced_motion,
+    Alert, Avatar, AvatarImages, AvatarShape, AvatarSize, AvatarStack, Badge, BadgeTone, Chip,
+    ControlHeight, CountMeaning, Dimension, Icon, IconSize, LinearProgress, Pill, PillSize,
+    PillTone, Presence, ProgressTone, Severity, Skeleton, Snackbar, Spinner, StackPerson, Toast,
+    ToastTone, count_words, reduced_motion, set_reduced_motion,
 };
 pub use fields::{SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
 pub use lists::{ListRow, Table, Tabs};
 pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
 pub use overlays::{Dialog, Menu, MenuItem, Paper, Popover, SecondaryTone, Tip, with_tip};
+pub use surface::Surface;
 pub use typography::{Variant, link, text};
 
 /// An action with no payload.
@@ -45,5 +53,7 @@ pub fn spacing(n: f32) -> gpui_kit::Pixels {
 
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
-    stories::stories()
+    let mut all = stories::stories();
+    all.extend(display_stories::stories());
+    all
 }

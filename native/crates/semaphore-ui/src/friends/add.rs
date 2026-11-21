@@ -164,7 +164,7 @@ impl AddFriendForm {
     fn fields(&self) -> Div {
         let alert = match &self.outcome {
             AddOutcome::Sent => Some(Alert::new(Severity::Success, "Friend request sent!")),
-            AddOutcome::Failed(error) => Some(Alert::new(Severity::Error, friendly_error(error))),
+            AddOutcome::Failed(error) => Some(Alert::new(Severity::Danger, friendly_error(error))),
             _ => None,
         };
         div()

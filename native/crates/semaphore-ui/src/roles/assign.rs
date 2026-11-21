@@ -166,7 +166,7 @@ impl RoleAssignmentDialog {
         };
         if let Some(error) = failed {
             return Alert::new(
-                Severity::Error,
+                Severity::Danger,
                 format!("Failed to load role information: {}", error.message),
             )
             .into_any_element();
@@ -254,7 +254,7 @@ impl RoleAssignmentDialog {
                             div()
                                 .pl(px(54.))
                                 .pt(px(2.))
-                                .child(Alert::new(Severity::Error, message)),
+                                .child(Alert::new(Severity::Danger, message)),
                         )
                     })
                     .when_some(block.filter(|_| !busy && whole.is_none()), |row, reason| {

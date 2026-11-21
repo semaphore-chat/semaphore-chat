@@ -104,29 +104,28 @@ impl AppearanceSettings {
 
 impl Render for AppearanceSettings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let body: AnyElement =
-            match &self.view.state {
-                LoadState::Loading => div()
-                    .id("appearance-loading")
-                    .test_support()
-                    .role(Role::ProgressIndicator)
-                    .aria_label("Loading appearance settings")
-                    .flex()
-                    .flex_col()
-                    .gap(spacing(2.))
-                    .children((0..4usize).map(|index| {
-                        Skeleton::rect(("appearance-skeleton", index), relative(1.), 48.)
-                    }))
-                    .into_any_element(),
-                LoadState::Failed { .. } => error_block(
-                    "appearance-retry",
-                    "Couldn't load your appearance settings",
-                    "Check your connection and try again.",
-                    cx.listener(|_, _, _, cx| cx.emit(AppearanceEvent::Retry)),
-                    cx,
-                ),
-                LoadState::Ready => self.form(cx).into_any_element(),
-            };
+        let body: AnyElement = match &self.view.state {
+            LoadState::Loading => div()
+                .id("appearance-loading")
+                .test_support()
+                .role(Role::ProgressIndicator)
+                .aria_label("Loading appearance settings")
+                .flex()
+                .flex_col()
+                .gap(spacing(2.))
+                .children((0..4usize).map(|index| {
+                    Skeleton::sized(("appearance-skeleton", index), relative(1.), 48.)
+                }))
+                .into_any_element(),
+            LoadState::Failed { .. } => error_block(
+                "appearance-retry",
+                "Couldn't load your appearance settings",
+                "Check your connection and try again.",
+                cx.listener(|_, _, _, cx| cx.emit(AppearanceEvent::Retry)),
+                cx,
+            ),
+            LoadState::Ready => self.form(cx).into_any_element(),
+        };
         tab_page(
             "appearance-settings",
             DesignIcon::Palette,

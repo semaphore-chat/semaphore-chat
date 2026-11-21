@@ -330,7 +330,7 @@ impl CaptureReplayDialog {
                     .child(text(Variant::Body2, line).text_color(sem.text_secondary))
                     .into_any_element()
             }
-            BufferStatus::Failed { .. } => Alert::new(Severity::Error, line).into_any_element(),
+            BufferStatus::Failed { .. } => Alert::new(Severity::Danger, line).into_any_element(),
             BufferStatus::WarmingUp | BufferStatus::Starting => {
                 Alert::new(Severity::Info, line).into_any_element()
             }
@@ -500,7 +500,7 @@ impl Render for CaptureReplayDialog {
             .children(self.failed.clone().map(|message| {
                 div()
                     .mt(px(16.))
-                    .child(Alert::new(Severity::Error, message))
+                    .child(Alert::new(Severity::Danger, message))
             }));
         let label = match (self.busy, self.target) {
             (true, CaptureTarget::Download) => "Downloading...",

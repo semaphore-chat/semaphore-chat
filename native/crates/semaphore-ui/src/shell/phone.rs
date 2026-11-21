@@ -2,7 +2,7 @@
 //! The rail opens over the list.
 
 use super::{Load, Shell, ShellEvent, community_avatar};
-use crate::kit::{Badge, Icon, IconButton, Variant, spacing, text};
+use crate::kit::{Badge, CountMeaning, Icon, IconButton, Variant, count_words, spacing, text};
 use crate::nav::Route;
 use crate::theme::SemTheme;
 use gpui_kit::base;
@@ -323,7 +323,11 @@ impl Shell {
             .cursor_pointer()
             .text_color(color)
             .on_click(move |_, _, cx| on_click(cx))
-            .child(Badge::new(badge).on(Icon::new(icon).color(color)))
+            .child(
+                Badge::new(count_words(badge, CountMeaning::Unread))
+                    .count(badge)
+                    .on(Icon::new(icon).color(color)),
+            )
             .child(text(Variant::Xs, label).font_weight(FontWeight(500.)))
             .into_any_element()
     }

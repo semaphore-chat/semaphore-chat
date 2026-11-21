@@ -57,7 +57,7 @@ impl StoragePage {
                 .items_start()
                 .gap(spacing(1.5))
                 .child(Alert::new(
-                    Severity::Error,
+                    Severity::Danger,
                     format!("Failed to load user storage data: {}", error.message),
                 ))
                 .child(
@@ -347,7 +347,7 @@ impl StoragePage {
             div()
                 .w_full()
                 .pb(spacing(1.))
-                .child(Alert::new(Severity::Error, message))
+                .child(Alert::new(Severity::Danger, message))
         });
         div()
             .id(SharedString::from(format!(

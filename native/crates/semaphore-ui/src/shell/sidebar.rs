@@ -2,7 +2,10 @@
 
 use super::{Load, Shell, ShellEvent, community_avatar, error_state, user_avatar};
 use crate::community_settings::rules::opens_settings;
-use crate::kit::{Badge, Button, Icon, IconButton, Skeleton, Variant, spacing, text, with_tip};
+use crate::kit::{
+    Badge, Button, CountMeaning, Icon, IconButton, Skeleton, Variant, count_words, spacing, text,
+    with_tip,
+};
 use crate::nav::Route;
 use crate::theme::{SemTheme, color::hsla_of};
 use crate::voice::{VoiceBadgeKind, voice_badges};
@@ -162,13 +165,13 @@ impl Shell {
                     .py(spacing(1.))
                     .flex()
                     .flex_col()
-                    .child(div().mb(spacing(1.)).child(Skeleton::rect(
+                    .child(div().mb(spacing(1.)).child(Skeleton::sized(
                         "channels-loading-title",
                         relative(0.4),
                         16.,
                     )))
                     .children((0..3usize).map(|index| {
-                        div().mb(px(4.)).child(Skeleton::rect(
+                        div().mb(px(4.)).child(Skeleton::sized(
                             ("channels-loading-row", index),
                             relative(1.),
                             32.,
@@ -493,13 +496,9 @@ impl Shell {
                 )
             })
             .when(mentions > 0, |row| {
-                row.child(
-                    div()
-                        .ml_auto()
-                        .pl(spacing(1.))
-                        .flex_shrink_0()
-                        .child(Badge::new(mentions).compact()),
-                )
+                row.child(div().ml_auto().pl(spacing(1.)).flex_shrink_0().child(
+                    Badge::new(count_words(mentions, CountMeaning::Mentions)).count(mentions),
+                ))
             });
 
         let users = if is_voice {

@@ -100,7 +100,7 @@ impl UpdateStatus {
                 Severity::Success,
                 format!("Version {version} was downloaded. Install it with: {command}"),
             ),
-            Self::Failed { message, .. } => (Severity::Error, message.clone()),
+            Self::Failed { message, .. } => (Severity::Danger, message.clone()),
         }
     }
 
@@ -218,7 +218,7 @@ impl Render for UpdateBanner {
                 Severity::Success,
                 format!("Version {version} is downloaded."),
             ),
-            UpdateStatus::Failed { message, .. } => (Severity::Error, message.clone()),
+            UpdateStatus::Failed { message, .. } => (Severity::Danger, message.clone()),
             UpdateStatus::Unknown | UpdateStatus::Checking | UpdateStatus::UpToDate => {
                 return div().id("update-banner-empty").into_any_element();
             }
@@ -434,7 +434,7 @@ mod tests {
             }
             .summary()
             .0,
-            crate::kit::Severity::Error
+            crate::kit::Severity::Danger
         );
     }
 

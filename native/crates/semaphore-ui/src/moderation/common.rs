@@ -149,8 +149,8 @@ pub(super) fn loading_rows(id: &'static str, label: &'static str, rows: usize) -
                         .flex()
                         .flex_col()
                         .gap(px(6.))
-                        .child(Skeleton::rect((id, index * 3 + 1), relative(0.5), 16.))
-                        .child(Skeleton::rect((id, index * 3 + 2), relative(0.3), 12.)),
+                        .child(Skeleton::sized((id, index * 3 + 1), relative(0.5), 16.))
+                        .child(Skeleton::sized((id, index * 3 + 2), relative(0.3), 12.)),
                 )
         }))
         .into_any_element()

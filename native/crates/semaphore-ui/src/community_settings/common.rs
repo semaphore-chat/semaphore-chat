@@ -225,7 +225,7 @@ pub(crate) fn locked_button(
 
 /// The server's message for the last change, over the tab.
 pub(crate) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
-    error.map(|error| Alert::new(Severity::Error, error.message.clone()))
+    error.map(|error| Alert::new(Severity::Danger, error.message.clone()))
 }
 
 /// A file on its way up: its name and a bar.
@@ -275,8 +275,8 @@ pub(crate) fn loading_rows(id: &'static str, label: &'static str, rows: usize) -
                         .flex()
                         .flex_col()
                         .gap(px(6.))
-                        .child(Skeleton::rect((id, index * 3 + 1), relative(0.5), 16.))
-                        .child(Skeleton::rect((id, index * 3 + 2), relative(0.3), 12.)),
+                        .child(Skeleton::sized((id, index * 3 + 1), relative(0.5), 16.))
+                        .child(Skeleton::sized((id, index * 3 + 2), relative(0.3), 12.)),
                 )
         }))
         .into_any_element()

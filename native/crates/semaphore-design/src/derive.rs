@@ -99,7 +99,7 @@ pub fn contrast_ratio(a: Rgba, b: Rgba) -> f64 {
 }
 
 /// The 8-bit `[r, g, b]` channels of a colour; the alpha byte is ignored.
-fn channels(colour: Rgba) -> [u8; 3] {
+pub(crate) fn channels(colour: Rgba) -> [u8; 3] {
     [
         (colour.0 >> 24) as u8,
         (colour.0 >> 16) as u8,
@@ -127,7 +127,7 @@ fn unlin(v: f64) -> f64 {
 }
 
 /// 8-bit sRGB to OKLab: `(L, C, h)`, with the hue in radians.
-fn to_oklch(rgb: [u8; 3]) -> (f64, f64, f64) {
+pub(crate) fn to_oklch(rgb: [u8; 3]) -> (f64, f64, f64) {
     let [r, g, b] = rgb.map(lin);
     let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
     let m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).cbrt();
@@ -153,7 +153,7 @@ fn to_linear(lightness: f64, chroma: f64, hue: f64) -> [f64; 3] {
 }
 
 /// OKLCH to an 8-bit sRGB colour; chroma is cut in 1% steps until it is in gamut.
-fn to_rgb(lightness: f64, chroma: f64, hue: f64) -> [u8; 3] {
+pub(crate) fn to_rgb(lightness: f64, chroma: f64, hue: f64) -> [u8; 3] {
     let lightness = lightness.clamp(0.0, 1.0);
     let mut rgb = [0.0; 3];
     for k in 0..=100 {
@@ -171,7 +171,7 @@ fn luminance(rgb: [u8; 3]) -> f64 {
 }
 
 /// The WCAG contrast ratio between two 8-bit sRGB colours.
-fn contrast(x: [u8; 3], y: [u8; 3]) -> f64 {
+pub(crate) fn contrast(x: [u8; 3], y: [u8; 3]) -> f64 {
     let (first, second) = (luminance(x), luminance(y));
     let (lighter, darker) = if first < second {
         (second, first)
@@ -205,7 +205,7 @@ fn ensure(
 }
 
 /// A colour as `0xRRGGBBAA`.
-fn rgba(rgb: [u8; 3], alpha: u8) -> Rgba {
+pub(crate) fn rgba(rgb: [u8; 3], alpha: u8) -> Rgba {
     Rgba(
         u32::from(rgb[0]) << 24
             | u32::from(rgb[1]) << 16

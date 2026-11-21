@@ -181,7 +181,7 @@ impl UsersPage {
                                 (!busy)
                                     .then(|| self.refusal(AdminActionKind::SetUserPassword))
                                     .flatten()
-                                    .map(|error| Alert::new(Severity::Error, error)),
+                                    .map(|error| Alert::new(Severity::Danger, error)),
                             )
                             .child(
                                 text(Variant::Body2, "Their sessions end.")
@@ -296,7 +296,7 @@ impl UsersPage {
                     .flex()
                     .flex_col()
                     .gap(spacing(2.))
-                    .children(refusal.map(|error| Alert::new(Severity::Error, error)))
+                    .children(refusal.map(|error| Alert::new(Severity::Danger, error)))
                     .child(text(Variant::Body2, message)),
             )
             .action(

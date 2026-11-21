@@ -404,7 +404,7 @@ impl MembersTab {
                 .child(Spinner::new("members-search-spinner").size(24.))
                 .into_any_element(),
             Found::Failed(message) => Alert::new(
-                Severity::Error,
+                Severity::Danger,
                 format!("Failed to search users: {message}"),
             )
             .into_any_element(),

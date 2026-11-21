@@ -437,7 +437,7 @@ impl AuthScreen {
                 .child(text(Variant::H5, "Login").mb(spacing(2.)))
                 .when(failed, |form| {
                     form.child(div().w_full().mb(spacing(2.)).child(Alert::new(
-                        Severity::Error,
+                        Severity::Danger,
                         "Login failed. Please try again.",
                     )))
                 })
@@ -456,11 +456,11 @@ impl AuthScreen {
                             Some((Severity::Info, "Sign-in was cancelled in the browser."))
                         }
                         BrowserLogin::TimedOut => Some((
-                            Severity::Error,
+                            Severity::Danger,
                             "The browser didn't finish signing in in time. Try again.",
                         )),
                         BrowserLogin::Failed => Some((
-                            Severity::Error,
+                            Severity::Danger,
                             "Couldn't sign in through the browser. Try again.",
                         )),
                         _ => None,

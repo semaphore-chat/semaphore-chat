@@ -122,7 +122,7 @@ impl Render for DmHeader {
                 .aria_label("Loading conversation")
                 .w(px(160.))
                 .max_w_full()
-                .child(Skeleton::rect("dm-header-skeleton", relative(1.), 20.))
+                .child(Skeleton::sized("dm-header-skeleton", relative(1.), 20.))
                 .into_any_element(),
             DmHeaderState::Unavailable => text(Variant::H6, "Conversation unavailable")
                 .font_weight(FontWeight(600.))

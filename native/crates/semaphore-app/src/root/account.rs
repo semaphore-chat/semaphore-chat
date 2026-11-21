@@ -932,7 +932,7 @@ impl AppRoot {
                 move |_, result, _, cx| {
                     let notice = result.err().map(|error| {
                         (
-                            Severity::Error,
+                            Severity::Danger,
                             failure("Couldn't sign that device out", &error),
                         )
                     });
@@ -953,7 +953,7 @@ impl AppRoot {
                             },
                         ),
                         Err(error) => (
-                            Severity::Error,
+                            Severity::Danger,
                             failure("Couldn't sign the other devices out", &error),
                         ),
                     };

@@ -477,7 +477,7 @@ impl Render for ClipLibrary {
                     .child(
                         div()
                             .mb(px(24.))
-                            .child(Skeleton::rect("clips-sub", px(200.), 16.)),
+                            .child(Skeleton::sized("clips-sub", px(200.), 16.)),
                     )
                     .child(
                         div()
@@ -490,17 +490,17 @@ impl Render for ClipLibrary {
                                     .flex()
                                     .flex_col()
                                     .gap(px(8.))
-                                    .child(Skeleton::rect(
+                                    .child(Skeleton::sized(
                                         SharedString::from(format!("clip-sk-{i}")),
                                         relative(1.),
                                         146.,
                                     ))
-                                    .child(Skeleton::rect(
+                                    .child(Skeleton::sized(
                                         SharedString::from(format!("clip-sk-t-{i}")),
                                         px(160.),
                                         16.,
                                     ))
-                                    .child(Skeleton::rect(
+                                    .child(Skeleton::sized(
                                         SharedString::from(format!("clip-sk-m-{i}")),
                                         px(100.),
                                         12.,
@@ -536,7 +536,7 @@ impl Render for ClipLibrary {
                 let error = self.view.error.as_ref().map(|error| {
                     div()
                         .mb(px(16.))
-                        .child(Alert::new(Severity::Error, error.message.clone()))
+                        .child(Alert::new(Severity::Danger, error.message.clone()))
                 });
                 div()
                     .flex()

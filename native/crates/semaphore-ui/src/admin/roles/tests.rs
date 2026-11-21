@@ -195,10 +195,11 @@ fn a_default_role_keeps_its_name(cx: &mut TestAppContext) {
     rig.click(cx, "admin-role-edit-r-admin");
     // The field is locked, but even a value put into it must not reach the server.
     type_name(&rig, cx, "Renamed");
-    rig.click(cx, "admin-role-action-BAN_USER");
+    // The first permission: the kit's taller alert pushes the later ones below the rig's window.
+    rig.click(cx, "admin-role-action-READ_INSTANCE_SETTINGS");
     rig.click(cx, "admin-role-editor-save");
     let mut expected = action_order();
-    expected.retain(|action| action != "BAN_USER");
+    expected.retain(|action| action != "READ_INSTANCE_SETTINGS");
     assert_eq!(
         rig.events(),
         [InstanceRolesEvent::Update {

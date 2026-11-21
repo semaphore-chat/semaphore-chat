@@ -129,7 +129,7 @@ impl Render for CreateDmDialog {
                     .children(
                         self.failed
                             .clone()
-                            .map(|message| Alert::new(Severity::Error, message)),
+                            .map(|message| Alert::new(Severity::Danger, message)),
                     ),
             )
             .action(Button::new("create-dm-cancel", "Cancel").on_click({

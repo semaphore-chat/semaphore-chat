@@ -162,7 +162,7 @@ pub(super) fn locked_button(
 
 /// The server's message for the last change.
 pub(super) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
-    error.map(|error| Alert::new(Severity::Error, error.message.clone()))
+    error.map(|error| Alert::new(Severity::Danger, error.message.clone()))
 }
 
 /// The web's `ConfirmDialog`: a sentence, Cancel, and the action (red when `danger`).
@@ -238,14 +238,14 @@ pub(super) fn loading_rows(id: &'static str, label: &'static str, rows: usize) -
                 .gap(spacing(2.))
                 .px(spacing(1.5))
                 .py(spacing(1.))
-                .child(Skeleton::rect((id, index * 2), px(24.), 24.))
+                .child(Skeleton::sized((id, index * 2), px(24.), 24.))
                 .child(
                     div()
                         .flex_1()
                         .flex()
                         .flex_col()
                         .gap(px(6.))
-                        .child(Skeleton::rect((id, index * 2 + 1), relative(0.4), 16.)),
+                        .child(Skeleton::sized((id, index * 2 + 1), relative(0.4), 16.)),
                 )
         }))
         .into_any_element()

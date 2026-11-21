@@ -1009,7 +1009,7 @@ fn add_people_dialog(add: &AddPeople, cx: &mut Context<AppRoot>) -> AnyElement {
         .children(
             add.failed
                 .clone()
-                .map(|message| Alert::new(Severity::Error, message)),
+                .map(|message| Alert::new(Severity::Danger, message)),
         );
     let cancel = cx.entity().downgrade();
     let close = cx.entity().downgrade();

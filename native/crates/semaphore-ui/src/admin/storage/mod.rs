@@ -286,7 +286,7 @@ impl StoragePage {
                         .children(
                             (!busy)
                                 .then(|| {
-                                    refusal.map(|message| Alert::new(Severity::Error, message))
+                                    refusal.map(|message| Alert::new(Severity::Danger, message))
                                 })
                                 .flatten(),
                         )

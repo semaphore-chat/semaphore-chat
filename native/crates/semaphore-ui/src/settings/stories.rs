@@ -573,7 +573,7 @@ pub fn stories() -> Vec<Story> {
             sessions_story(
                 sample_sessions(),
                 Some((
-                    Severity::Error,
+                    Severity::Danger,
                     "Couldn't sign out the other devices".into(),
                 )),
                 cx,

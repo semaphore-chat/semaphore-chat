@@ -547,7 +547,7 @@ impl Render for TrimTimeline {
                 .flex_col()
                 .gap(px(8.))
                 .child(Alert::new(
-                    Severity::Error,
+                    Severity::Danger,
                     format!("Couldn't load the replay: {}", error.message),
                 ))
                 .child(

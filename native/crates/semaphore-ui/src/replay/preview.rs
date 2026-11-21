@@ -401,7 +401,7 @@ impl TrimPreview {
                             div()
                                 .flex_1()
                                 .min_w(px(200.))
-                                .child(Alert::new(Severity::Error, PREVIEW_ERROR)),
+                                .child(Alert::new(Severity::Danger, PREVIEW_ERROR)),
                         )
                         .child(
                             Button::new("trim-preview-retry", "Retry")

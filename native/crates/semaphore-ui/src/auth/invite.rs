@@ -181,7 +181,7 @@ impl InviteScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(Severity::Error, message))
+                    .child(Alert::new(Severity::Danger, message))
             }))
             .child(
                 Button::new("invite-close", "Close")
@@ -321,7 +321,7 @@ impl InviteScreen {
                         div()
                             .id("invite-reason")
                             .test_support()
-                            .child(Alert::new(Severity::Error, message)),
+                            .child(Alert::new(Severity::Danger, message)),
                     ),
             )
             .child(self.leave_button(cx))

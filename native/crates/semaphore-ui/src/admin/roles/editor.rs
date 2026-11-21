@@ -388,7 +388,7 @@ impl InstanceRolesPage {
             .flex_col()
             .gap(spacing(2.))
             .child(heading)
-            .children(error.map(|error| Alert::new(Severity::Error, error.message)))
+            .children(error.map(|error| Alert::new(Severity::Danger, error.message)))
             .when(editor.is_default, |body| {
                 body.child(Alert::new(
                     Severity::Info,

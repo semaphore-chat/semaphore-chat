@@ -503,7 +503,7 @@ impl CommunitiesPage {
                 loading_rows("admin-community-detail-loading", "Loading community", 2)
             }
             LoadState::Failed { error } => {
-                Alert::new(Severity::Error, error.message.clone()).into_any_element()
+                Alert::new(Severity::Danger, error.message.clone()).into_any_element()
             }
             LoadState::Ready => match &detail.community {
                 Some(community) => self.detail_body(community, &detail, cx),
@@ -521,7 +521,7 @@ impl CommunitiesPage {
         let busy = running(&detail.op, &action);
         let matched = confirms_name(&self.delete_typed.read(cx).value(), &community.name);
         let error = failure(&detail.op, &action)
-            .map(|error| Alert::new(Severity::Error, error.message.clone()));
+            .map(|error| Alert::new(Severity::Danger, error.message.clone()));
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();

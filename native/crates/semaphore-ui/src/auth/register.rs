@@ -354,7 +354,7 @@ impl RegisterScreen {
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
-                        Severity::Error,
+                        Severity::Danger,
                         if message.is_empty() {
                             "Registration failed. Please try again.".to_owned()
                         } else {
