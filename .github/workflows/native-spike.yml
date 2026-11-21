@@ -8,11 +8,15 @@ on:
     branches: [main, spike/native-gpui]
     paths:
       - 'native/**'
+      # Android has its own workflow (native-android.yml); nothing in this one reads native/android.
+      - '!native/android/**'
       - 'scripts/native-baseline/**'
       - '.github/workflows/native-spike.yml'
   pull_request:
     paths:
       - 'native/**'
+      # Android has its own workflow (native-android.yml); nothing in this one reads native/android.
+      - '!native/android/**'
       - 'scripts/native-baseline/**'
       - '.github/workflows/native-spike.yml'
   workflow_dispatch:
@@ -56,8 +60,28 @@ jobs:
       # image as a local run (which the Verify step above has already built rig-shot for). Visual
       # changes do not fail this: the report is the review. A story that won't render does.
       # Docs: docs-site/docs/contributing/native-ui-review.md
+      # Only when the pull request touches something that can change what the desktop app draws
+      # (native/scripts/ui-review-needed.sh holds the list); pushes and manual runs always render.
+      - name: Does the native UI review need to run?
+        id: ui-review-needed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # fetch-depth: 0 above, so origin/$BASE_REF is already here.
+          decision="$(git diff --name-only "origin/$BASE_REF"...HEAD | native/scripts/ui-review-needed.sh)"
+          if [ "$decision" = "run" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Native UI review skipped: no rendering paths changed (see native/scripts/ui-review-needed.sh for the list)." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Native UI review (before/after story renders)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.ui-review-needed.outputs.run == 'true'
         env:
           UI_REVIEW_SHARDS: 4
         run: |
@@ -69,7 +93,7 @@ jobs:
           fi
           exit "$status"
       - uses: actions/upload-artifact@v7
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && steps.ui-review-needed.outputs.run == 'true'
         with:
           name: native-ui-review
           path: native/.ui-review/out/
