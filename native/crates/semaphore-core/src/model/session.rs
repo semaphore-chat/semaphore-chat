@@ -44,6 +44,21 @@ pub struct ServerInfo {
     pub needs_setup: bool,
 }
 
+/// How `Core::check_server` went: what a connect screen says about the address typed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProbeOutcome {
+    /// A Semaphore server answered. It may still need setting up (`ServerInfo::needs_setup`).
+    Ok { info: ServerInfo },
+    /// Nothing answered at that address: refused, no route, no DNS answer, or timed out.
+    Unreachable { message: String },
+    /// The TLS handshake failed: the certificate isn't trusted, or the port doesn't speak TLS.
+    TlsRefused { message: String },
+    /// Something answered, but not as a Semaphore server does.
+    NotSemaphore,
+    /// The server answered with an error.
+    Failed { error: ErrorView },
+}
+
 /// How `Core::restore_session` went.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestoreOutcome {

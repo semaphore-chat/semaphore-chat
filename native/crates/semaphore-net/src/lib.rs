@@ -185,3 +185,22 @@ mod tests {
         assert!(ensure_tls_ready(false, false).is_ok());
     }
 }
+
+#[cfg(test)]
+mod client_code_tests {
+    use semaphore_core::backend::client_codes as core_codes;
+
+    /// Core reads semaphore-api's client-side codes by value, as it can't name that crate.
+    #[test]
+    fn core_and_the_api_crate_agree_on_the_client_codes() {
+        assert_eq!(core_codes::CLIENT_TLS, semaphore_api::error::CLIENT_TLS);
+        assert_eq!(
+            core_codes::CLIENT_UNREACHABLE,
+            semaphore_api::error::CLIENT_UNREACHABLE
+        );
+        assert_eq!(
+            core_codes::CLIENT_INVALID_RESPONSE,
+            semaphore_api::error::CLIENT_INVALID_RESPONSE
+        );
+    }
+}

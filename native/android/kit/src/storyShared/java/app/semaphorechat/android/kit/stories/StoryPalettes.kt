@@ -2,6 +2,7 @@
 
 package app.semaphorechat.android.kit.stories
 
+import androidx.compose.runtime.Composable
 import app.semaphorechat.android.kit.KitPalette
 import java.io.File
 import org.json.JSONArray
@@ -89,3 +90,9 @@ data class StorySize(val name: String, val widthDp: Int, val heightDp: Int) {
 }
 
 val STORY_SIZES = listOf(StorySize("phone", 360, 800), StorySize("phone-large", 412, 915))
+
+/**
+ * A story: an id (`kit-<component>`, `screen-<screen>-<state>`) and what it draws on the ground.
+ * This file is shared by the kit's and the screens' story tests (src/storyShared).
+ */
+data class Story(val id: String, val content: @Composable () -> Unit)

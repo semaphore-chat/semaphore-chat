@@ -21,6 +21,18 @@ import app.semaphorechat.android.kit.Alert
 import app.semaphorechat.android.kit.AlertAction
 import app.semaphorechat.android.kit.AlertSeverity
 import app.semaphorechat.android.kit.Avatar
+import app.semaphorechat.android.kit.AvatarStack
+import app.semaphorechat.android.kit.Badge
+import app.semaphorechat.android.kit.BadgeTone
+import app.semaphorechat.android.kit.Dock
+import app.semaphorechat.android.kit.DockDivider
+import app.semaphorechat.android.kit.DockItem
+import app.semaphorechat.android.kit.Pill
+import app.semaphorechat.android.kit.PillTone
+import app.semaphorechat.android.kit.Sheet
+import app.semaphorechat.android.kit.Skeleton
+import app.semaphorechat.android.kit.SkeletonShape
+import app.semaphorechat.android.kit.StackPerson
 import app.semaphorechat.android.kit.AvatarShape
 import app.semaphorechat.android.kit.AvatarSize
 import app.semaphorechat.android.kit.Button
@@ -43,9 +55,6 @@ import app.semaphorechat.android.kit.TextFieldType
 import app.semaphorechat.android.kit.TextTone
 import app.semaphorechat.android.kit.TextVariant
 import app.semaphorechat.android.kit.personColour
-
-/** A kit story: an id (`kit-<component>`) and what it draws on the ground. */
-data class Story(val id: String, val content: @Composable () -> Unit)
 
 private val none: () -> Unit = {}
 
@@ -239,6 +248,29 @@ val KIT_STORIES: List<Story> = listOf(
                     Presence.entries.forEach { Avatar("Sam Lee", colour = personColour("u-sam"), presence = it) }
                 }
             }
+            Section("Speaking, rounded speaking, on a card") {
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Lg), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar("Sam Lee", colour = personColour("u-sam"), presence = Presence.Speaking)
+                    Avatar("Sam Lee", colour = personColour("u-sam"), size = AvatarSize.Lg, presence = Presence.Speaking)
+                    Avatar("Club", colour = personColour("c-club"), shape = AvatarShape.Rounded, size = AvatarSize.Lg, presence = Presence.Speaking)
+                }
+                Card {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Lg)) {
+                        Avatar("Noor Haddad", colour = personColour("u-noor"), presence = Presence.Speaking)
+                        Avatar("Noor Haddad", colour = personColour("u-noor"), presence = Presence.Online)
+                    }
+                }
+            }
+            Section("Readable ink on every people colour") {
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Xs)) {
+                    Tokens.People.Colours.forEachIndexed { index, colour -> Avatar("P $index", colour = colour, size = AvatarSize.Sm) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Xs)) {
+                    listOf(0xFFFFFF, 0x000000, 0x777777, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x808080).forEach {
+                        Avatar("Mid Grey", colour = androidx.compose.ui.graphics.Color(0xFF000000 or it.toLong()), size = AvatarSize.Sm)
+                    }
+                }
+            }
             Section("No colour, communities") {
                 Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Md), verticalAlignment = Alignment.CenterVertically) {
                     Avatar("No Colour")
@@ -322,6 +354,102 @@ val KIT_STORIES: List<Story> = listOf(
                     Button("Forgot password", none, variant = ButtonVariant.Text, fullWidth = true)
                 }
             }
+        }
+    },
+    Story("kit-badge") {
+        Page {
+            Section("Counts, accent and danger") {
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm), verticalAlignment = Alignment.CenterVertically) {
+                    listOf(1, 9, 42, 99, 100, 12345).forEach { Badge("$it mentions", count = it) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm), verticalAlignment = Alignment.CenterVertically) {
+                    listOf(1, 9, 42, 99, 100).forEach { Badge("$it mentions", count = it, tone = BadgeTone.Danger) }
+                    Badge("new messages", dot = true)
+                    Badge("new messages", dot = true, tone = BadgeTone.Danger)
+                }
+            }
+            Section("On a card") {
+                Card { Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) { Badge("3", count = 3); Badge("3", count = 3, tone = BadgeTone.Danger) } }
+            }
+        }
+    },
+    Story("kit-pill") {
+        Page {
+            PillTone.entries.forEach { tone ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm), verticalAlignment = Alignment.CenterVertically) {
+                    Pill("You're here", tone = tone)
+                    Pill("Live", tone = tone, dot = true)
+                    Pill("Small", tone = tone, small = true)
+                }
+            }
+            Pill("A pill with a label much too long to fit on the width of a phone screen at all")
+        }
+    },
+    Story("kit-skeleton") {
+        Page {
+            Section("Text, one and three lines") {
+                Skeleton(SkeletonShape.TextLines())
+                Skeleton(SkeletonShape.TextLines(3))
+            }
+            Section("Circles and a block") {
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                    AvatarSize.entries.forEach { Skeleton(SkeletonShape.Circle(it)) }
+                }
+                Skeleton(SkeletonShape.Rect(Tokens.Density.Touch.Control.Md))
+            }
+            Card { Skeleton(SkeletonShape.TextLines(2)) }
+        }
+    },
+    Story("kit-avatar-stack") {
+        val people = listOf("Priya Raman", "Sam Lee", "Noor Haddad", "Ivan Petrov", "Mae Chen").mapIndexed { i, n -> StackPerson("u-$i", n) }
+        Page {
+            Section("One, three, five (+2)") {
+                AvatarStack(people.take(1))
+                AvatarStack(people.take(3))
+                AvatarStack(people)
+            }
+            Section("Speaking: first, middle, last") {
+                AvatarStack(people.take(3).mapIndexed { i, p -> p.copy(speaking = i == 0) })
+                AvatarStack(people.take(3).mapIndexed { i, p -> p.copy(speaking = i == 1) })
+                AvatarStack(people.take(3).mapIndexed { i, p -> p.copy(speaking = i == 2) })
+                AvatarStack(people.map { it.copy(speaking = true) }, max = 4, size = AvatarSize.Md)
+            }
+            Section("On a card") { Card { AvatarStack(people, size = AvatarSize.Xs) } }
+        }
+    },
+    Story("kit-dock") {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(Tokens.Space.Md),
+            verticalArrangement = Arrangement.spacedBy(Tokens.Space.Lg),
+        ) {
+            Dock("Communities", end = {
+                DockDivider()
+                IconButton(Icons.LayoutGrid, label = "All communities", onClick = none, variant = IconButtonVariant.Soft)
+            }) {
+                DockItem("Couch Co-op", "c-couch", none, newMessages = true)
+                DockItem("Lumen Studio", "c-lumen", none, current = true, mentions = 1)
+                DockItem("Trailheads", "c-trail", none, mentions = 120)
+                DockItem("Synth Club", "c-synth", none)
+            }
+            Dock("Communities", end = {
+                DockDivider()
+                IconButton(Icons.LayoutGrid, label = "All communities", onClick = none, variant = IconButtonVariant.Soft)
+            }) {
+                (1..12).forEach { DockItem("Community $it", "c$it", none, current = it == 2, newMessages = it % 3 == 0) }
+            }
+            Dock("Communities", end = {
+                IconButton(Icons.LayoutGrid, label = "All communities", onClick = none, variant = IconButtonVariant.Soft)
+            }) {}
+        }
+    },
+    Story("kit-sheet") {
+        Column(Modifier.fillMaxWidth().padding(Tokens.Space.Md)) {
+            Text("The screen under the sheet")
+        }
+        Sheet(open = true, onClose = none, title = "All communities") {
+            ListRow("Lumen Studio", secondary = "1 mention", selected = true)
+            ListRow("Trailheads", secondary = "New messages", unread = true)
+            ListRow("Synth Club", secondary = "Quiet")
         }
     },
 )

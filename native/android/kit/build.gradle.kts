@@ -32,6 +32,10 @@ android {
         // files have one home in the repository.
         res.srcDir(layout.buildDirectory.dir("generated/designFonts"))
     }
+    // The story palettes, sizes and `Story`, shared with the screens module's stories.
+    sourceSets.getByName("test") {
+        java.srcDir("src/storyShared/java")
+    }
 
     testOptions {
         unitTests {
@@ -95,6 +99,8 @@ dependencies {
     api("androidx.compose.material3:material3")
     api("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
+    // BackHandler: an open Sheet takes the system Back (design/behaviour/overlay-stack, rule 20).
+    implementation("androidx.activity:activity-compose:1.9.3")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.18.1")
