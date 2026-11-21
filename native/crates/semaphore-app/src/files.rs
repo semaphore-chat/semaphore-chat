@@ -110,6 +110,28 @@ pub enum Have {
     Nothing,
 }
 
+/// What [`FileStore::finish`] did with a fetch's answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stored {
+    /// Kept as it came: a still, or an animation inside the frame budget.
+    Kept,
+    /// Over the frame budget: frame 0 alone was kept, as a PNG.
+    FirstFrame,
+    /// Not kept, and why: the fetch failed, or the image is too big or not one we decode.
+    Unavailable(String),
+}
+
+impl Stored {
+    /// The budget path, as a log line says it.
+    pub fn label(&self) -> String {
+        match self {
+            Self::Kept => "kept".into(),
+            Self::FirstFrame => "first frame only (over the frame budget)".into(),
+            Self::Unavailable(reason) => format!("not drawn: {reason}"),
+        }
+    }
+}
+
 impl FileStore {
     fn lock(&self) -> std::sync::MutexGuard<'_, StoreInner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
@@ -137,8 +159,9 @@ impl FileStore {
     /// Takes a fetch's answer, refusing an image that's too big to decode and passing every image
     /// (avatars, custom emoji, attachments, pictures from other sites) through the frame budget
     /// ([`budget::within_budget`]): kept, frame 0 alone, or refused. Reads headers only, unless
-    /// frame 0 must be re-encoded: call it off the async workers.
-    pub fn finish(&self, path: &str, fetched: Result<Vec<u8>, String>) {
+    /// frame 0 must be re-encoded: call it off the async workers. Says what it did, for the
+    /// caller's one log line; it logs nothing itself.
+    pub fn finish(&self, path: &str, fetched: Result<Vec<u8>, String>) -> Stored {
         let accepted = fetched
             .and_then(|bytes| match decodable(&bytes) {
                 Ok(()) => Ok(bytes),
@@ -147,7 +170,7 @@ impl FileStore {
             .and_then(budget::within_budget);
         let mut inner = self.lock();
         match accepted {
-            Ok(bytes) => {
+            Ok((bytes, plan)) => {
                 inner.tick += 1;
                 inner.bytes += bytes.len();
                 let used = inner.tick;
@@ -162,10 +185,14 @@ impl FileStore {
                     inner.bytes -= bytes.len();
                 }
                 Self::evict(&mut inner, path);
+                match plan {
+                    budget::Plan::FirstFrame => Stored::FirstFrame,
+                    _ => Stored::Kept,
+                }
             }
             Err(reason) => {
-                log::info!("not drawing {path}: {reason}");
                 inner.slots.insert(path.to_owned(), Slot::Unavailable);
+                Stored::Unavailable(reason)
             }
         }
     }
@@ -383,15 +410,20 @@ pub fn third_party(
         let handle = exec.handle().clone();
         let url = url.to_owned();
         exec.fire(async move {
-            let fetched = previews.fetch_limited(&url, kind.max_bytes()).await;
+            let report = previews.fetch_report(&url, kind.max_bytes()).await;
             let _ = handle
                 .spawn_blocking(move || {
-                    if previews.allowed() {
+                    let mut report = report;
+                    let result = std::mem::replace(&mut report.result, Ok(Vec::new()));
+                    let outcome = if previews.allowed() {
                         // The budget reads the header, and may decode one frame: off the workers.
-                        store.finish(&path, fetched);
+                        // A failed fetch comes back as "not drawn: <why>".
+                        store.finish(&path, result).label()
                     } else {
                         store.forget(&path);
-                    }
+                        "dropped: images from other sites were turned off meanwhile".into()
+                    };
+                    log::info!("{}", report.log_line(kind, &outcome));
                 })
                 .await;
             let _ = arrived.try_send(());
@@ -504,48 +536,136 @@ impl PreviewFetcher {
     /// The image at `url`, at most `max_bytes` (from Content-Length and while it streams), or why
     /// not. Makes no request unless allowed and the URL is http(s).
     pub async fn fetch_limited(&self, url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+        self.fetch_report(url, max_bytes).await.result
+    }
+
+    /// [`Self::fetch_limited`], with what a log line may say about it: the host, the status, the
+    /// content type and the byte count, never the URL's path or query.
+    pub async fn fetch_report(&self, url: &str, max_bytes: usize) -> FetchReport {
+        let mut report = FetchReport {
+            host: semaphore_core::text::gif::url_host(url),
+            ..FetchReport::default()
+        };
+        report.result = self.fetch_into(url, max_bytes, &mut report).await;
+        report
+    }
+
+    async fn fetch_into(
+        &self,
+        url: &str,
+        max_bytes: usize,
+        report: &mut FetchReport,
+    ) -> Result<Vec<u8>, String> {
         if !self.allowed() {
             return Err("link preview images are off".into());
         }
         let parsed = reqwest::Url::parse(url).map_err(|error| error.to_string())?;
         if !fetchable_url(&parsed) || !self.destinations.allows_url(&parsed) {
-            return Err(format!("not fetching {parsed}"));
+            return Err("not a URL this fetcher may ask for".into());
         }
         let client = self.client().ok_or("no HTTP client")?;
         self.requests.fetch_add(1, Ordering::SeqCst);
+        // `without_url`: reqwest's errors name the whole URL, query string included.
         let response = client
             .get(parsed)
             .send()
             .await
-            .map_err(|error| error.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!("status {}", response.status()));
+            .map_err(|error| error.without_url().to_string())?;
+        report.status = Some(response.status().as_u16());
+        let final_host = response.url().host_str().map(str::to_owned);
+        if final_host != report.host {
+            report.final_host = final_host;
         }
-        let is_image = response
+        report.content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.trim().to_ascii_lowercase().starts_with("image/"));
+            .map(|value| value.trim().chars().take(64).collect());
+        if !response.status().is_success() {
+            return Err(format!("status {}", response.status()));
+        }
+        let is_image = report
+            .content_type
+            .as_deref()
+            .is_some_and(|value| value.to_ascii_lowercase().starts_with("image/"));
         if !is_image {
             return Err("not an image".into());
         }
-        if response
-            .content_length()
-            .is_some_and(|length| length > max_bytes as u64)
+        if let Some(length) = response.content_length()
+            && length > max_bytes as u64
         {
+            report.bytes = Some(length);
             return Err("too big".into());
         }
         let mut body = Vec::new();
         let mut stream = response.bytes_stream();
         use futures_util::StreamExt as _;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|error| error.to_string())?;
+            let chunk = chunk.map_err(|error| error.without_url().to_string())?;
             if body.len() + chunk.len() > max_bytes {
+                report.bytes = Some((body.len() + chunk.len()) as u64);
                 return Err("too big".into());
             }
             body.extend_from_slice(&chunk);
         }
+        report.bytes = Some(body.len() as u64);
         Ok(body)
+    }
+}
+
+/// One third-party fetch, as far as it got: what its log line says, and its answer.
+#[derive(Debug)]
+pub struct FetchReport {
+    /// The asked URL's host, lower-case and without a port; never its path or query.
+    pub host: Option<String>,
+    /// Where redirects ended, when that's another host.
+    pub final_host: Option<String>,
+    pub status: Option<u16>,
+    /// At most 64 characters of it.
+    pub content_type: Option<String>,
+    /// The body's length, or as much of it as was seen before it went over the cap.
+    pub bytes: Option<u64>,
+    pub result: Result<Vec<u8>, String>,
+}
+
+impl Default for FetchReport {
+    fn default() -> Self {
+        Self {
+            host: None,
+            final_host: None,
+            status: None,
+            content_type: None,
+            bytes: None,
+            result: Err("not fetched".into()),
+        }
+    }
+}
+
+impl FetchReport {
+    /// The fetch's one log line: the host (never the URL), what came back and what the store did
+    /// with it (`outcome`, from [`Stored::label`], which carries a failed fetch's reason).
+    pub fn log_line(&self, kind: ThirdPartyKind, outcome: &str) -> String {
+        let mut line = format!(
+            "third-party {} from {}",
+            kind.folder(),
+            self.host.as_deref().unwrap_or("?")
+        );
+        if let Some(final_host) = &self.final_host {
+            line.push_str(&format!(" (redirected to {final_host})"));
+        }
+        match self.status {
+            Some(status) => line.push_str(&format!(": status {status}")),
+            None => line.push_str(": no response"),
+        }
+        line.push_str(&format!(
+            ", {}",
+            self.content_type.as_deref().unwrap_or("no content type")
+        ));
+        if let Some(bytes) = self.bytes {
+            line.push_str(&format!(", {bytes} bytes"));
+        }
+        line.push_str(&format!(", {outcome}"));
+        line
     }
 }
 
@@ -581,7 +701,12 @@ impl AppMedia {
                     .map_err(|error| error.to_string());
                 // The header check reads a little of the image: off the async workers.
                 let _ = handle
-                    .spawn_blocking(move || store.finish(&path, fetched))
+                    .spawn_blocking(move || {
+                        let stored = store.finish(&path, fetched);
+                        if stored != Stored::Kept {
+                            log::info!("{path}: {}", stored.label());
+                        }
+                    })
                     .await;
                 let _ = arrived.try_send(());
             });
@@ -1709,6 +1834,63 @@ mod tests {
                 .len(),
             six_mib.len()
         );
+    }
+
+    /// The per-fetch log line names the host, never the path or the query, and redaction has
+    /// nothing left to take out of it.
+    #[tokio::test]
+    async fn a_fetch_s_log_line_names_the_host_only() {
+        semaphore_net::install_crypto_provider();
+        let (base, _) = serve_bytes(vec![
+            binary_answer("image/gif", &animated_gif(4, 3, 2)),
+            answer("404 Not Found", "text/html", "gone").into_bytes(),
+        ])
+        .await;
+        let fetcher = local_fetcher(true);
+        let url = format!("{base}/media/abc/giphy.gif?cid=s3cr3t&access_token=t0k3n");
+        let assert_clean = |line: &str| {
+            for leak in ["s3cr3t", "t0k3n", "/media", "giphy.gif", "://"] {
+                assert!(!line.contains(leak), "{leak} in {line}");
+            }
+            assert_eq!(semaphore_core::redact::redact(line), line);
+        };
+
+        let mut report = fetcher.fetch_report(&url, GIF_MAX_BYTES).await;
+        let bytes = std::mem::replace(&mut report.result, Ok(Vec::new())).unwrap();
+        let store = FileStore::default();
+        let stored = store.finish("semaphore-file/gif/a", Ok(bytes.clone()));
+        assert_eq!(stored, Stored::Kept);
+        let line = report.log_line(ThirdPartyKind::Gif, &stored.label());
+        assert_eq!(
+            line,
+            format!(
+                "third-party gif from 127.0.0.1: status 200, image/gif, {} bytes, kept",
+                bytes.len()
+            )
+        );
+        assert_clean(&line);
+
+        let report = fetcher.fetch_report(&url, GIF_MAX_BYTES).await;
+        let stored = store.finish("semaphore-file/gif/b", report.result.clone());
+        let line = report.log_line(ThirdPartyKind::Gif, &stored.label());
+        assert_eq!(
+            line,
+            "third-party gif from 127.0.0.1: status 404, text/html, not drawn: status 404 Not Found"
+        );
+        assert_clean(&line);
+
+        // Nothing listens there: reqwest's error would name the whole URL, query and all.
+        let closed = "http://127.0.0.1:9/media/x.gif?access_token=t0k3n&cid=s3cr3t";
+        let report = fetcher.fetch_report(closed, GIF_MAX_BYTES).await;
+        let stored = store.finish("semaphore-file/gif/c", report.result.clone());
+        let line = report.log_line(ThirdPartyKind::Gif, &stored.label());
+        assert!(
+            line.starts_with(
+                "third-party gif from 127.0.0.1: no response, no content type, not drawn: "
+            ),
+            "{line}"
+        );
+        assert_clean(&line);
     }
 
     #[tokio::test]

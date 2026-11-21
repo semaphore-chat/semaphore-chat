@@ -11,15 +11,15 @@
 //! **Background work.** A command can't wait on what an event sets off, and core owns no runtime,
 //! so work queues up as [`Effect`]s for [`Core::drive`], which a host runs on its own executor.
 
-use crate::backend::Backend;
+use crate::backend::{Backend, BackendError};
 use crate::cache::{QueryCache, QueryKey, keys};
 use crate::lifecycle::{ConnectionState, NetworkState, ResyncPlan};
 use crate::model::{
-    Conversation, ErrorView, JoinFailureClass, SessionState, SignOutReason, UserView, ViewKey,
-    VoiceView,
+    Conversation, JoinFailureClass, SessionState, SignOutReason, UserView, ViewKey, VoiceView,
 };
 use crate::platform::{Clock, CoreEvent, EventSink, MediaEngine};
 use crate::realtime::Realtime;
+use crate::retry::FailedQueries;
 use crate::send::PendingSend;
 use crate::store::{Window, project};
 use std::collections::{HashMap, VecDeque};
@@ -114,9 +114,12 @@ pub(crate) struct State {
     pub cache: QueryCache,
     /// True while a fetch for this key runs and the answer is already out of date.
     pub fetching: HashMap<QueryKey, bool>,
-    /// Queries whose last fetch failed. Not fetched again until a retry or a new connection, so a UI
-    /// that reads on every frame can't turn one failure into a stream of requests.
-    pub failed_queries: HashMap<QueryKey, ErrorView>,
+    /// Queries whose last fetch failed, shown by a view or not: each waits out a backoff before
+    /// it's fetched again, so a UI that reads on every frame can't turn one failure into a stream
+    /// of requests (`crate::retry`).
+    pub failed_queries: FailedQueries,
+    /// Seeds the retry jitter: this core's start time, so clients that failed together spread out.
+    pub retry_seed: u64,
     /// Why the last session ended. Cleared by the next sign-in.
     pub sign_out_reason: Option<SignOutReason>,
     pub windows: HashMap<Conversation, Window>,
@@ -194,7 +197,8 @@ impl State {
         Self {
             cache: QueryCache::default(),
             fetching: HashMap::new(),
-            failed_queries: HashMap::new(),
+            failed_queries: FailedQueries::default(),
+            retry_seed: 0,
             sign_out_reason: None,
             windows: HashMap::new(),
             main_conversation: None,
@@ -293,7 +297,8 @@ impl State {
             return;
         }
         let fresh = self.cache.get(&key).is_some_and(|entry| !entry.stale);
-        if !fresh && !self.fetching.contains_key(&key) && !self.failed_queries.contains_key(&key) {
+        let waiting = self.failed_queries.waiting(&key, self.w4_platform.now_ms);
+        if !fresh && !self.fetching.contains_key(&key) && !waiting {
             self.fetching.insert(key.clone(), false);
             self.push_effect(Effect::FetchQuery(key));
         }
@@ -302,6 +307,14 @@ impl State {
     /// Marks matching queries and windows stale and refetches those in use. Keeps the data, so a
     /// UI can show it meanwhile.
     pub fn invalidate(&mut self, prefix: &QueryKey) -> Vec<QueryKey> {
+        // Failures under it may be asked again at once: the data they failed on has changed. One a
+        // view shows is fetched now; the rest wait for their next read.
+        for key in self.failed_queries.release_prefix(prefix) {
+            if self.has_services && self.me.is_some() && !self.fetching.contains_key(&key) {
+                self.fetching.insert(key.clone(), false);
+                self.effects.push_back(Effect::FetchQuery(key));
+            }
+        }
         let mut marked = self.cache.invalidate_prefix(prefix);
         for key in &marked {
             match self.fetching.get_mut(key) {
@@ -458,6 +471,9 @@ struct Inner {
 #[derive(Clone)]
 pub struct Core {
     inner: Arc<Inner>,
+    /// Set on the copy a query fetch runs on: the REST failure behind its error, which says how
+    /// long to wait before asking again (`crate::retry`). `None` everywhere else.
+    failure_probe: Option<Arc<Mutex<Option<BackendError>>>>,
 }
 
 type Task = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -481,9 +497,12 @@ impl Core {
         events: Arc<dyn EventSink>,
         services: Option<Services>,
     ) -> Self {
+        let mut state = State::new(services.is_some());
+        state.retry_seed = clock.now_ms();
         Self {
+            failure_probe: None,
             inner: Arc::new(Inner {
-                state: Mutex::new(State::new(services.is_some())),
+                state: Mutex::new(state),
                 clock,
                 events,
                 services,
@@ -530,6 +549,61 @@ impl Core {
 
     pub(crate) fn now_ms(&self) -> u64 {
         self.inner.clock.now_ms()
+    }
+
+    /// This core, recording the REST failure its next calls end in: a query fetch runs on one, so
+    /// its error says how long to wait (`crate::retry`).
+    pub(crate) fn probing(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            failure_probe: Some(Arc::new(Mutex::new(None))),
+        }
+    }
+
+    /// The REST failure recorded since [`Core::probing`], if any: the last one, which is the one
+    /// a fetch's `?` returned.
+    pub(crate) fn take_probed_failure(&self) -> Option<BackendError> {
+        self.failure_probe
+            .as_ref()?
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+    }
+
+    pub(crate) fn probe_failure(&self, error: &BackendError) {
+        if let Some(probe) = &self.failure_probe {
+            *probe
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(error.clone());
+        }
+    }
+
+    /// Fetches again the failed queries a view shows whose wait is over, so the view recovers
+    /// without being read. A host calls this on a timer; it returns how long until the next one
+    /// is due, by core's clock, or `None` when none waits. The host sleeps at most
+    /// [`crate::retry::MAX_TIMER_MS`] either way, to see failures recorded meanwhile.
+    pub fn retry_due_queries(&self) -> Option<u64> {
+        self.write(|state, now| {
+            if !state.has_services || state.me.is_none() {
+                return None;
+            }
+            for key in state.failed_queries.due_shown(now) {
+                if !state.fetching.contains_key(&key) {
+                    state.fetching.insert(key.clone(), false);
+                    state.push_effect(Effect::FetchQuery(key));
+                }
+            }
+            state
+                .failed_queries
+                .next_shown_retry(now)
+                .map(|at| at.saturating_sub(now))
+        })
+    }
+
+    /// When a failed query may be fetched again, by core's clock: `None` when its last fetch
+    /// didn't fail. For tests and diagnostics.
+    pub fn query_retry_at(&self, key: &QueryKey) -> Option<u64> {
+        self.read(|state| state.failed_queries.retry_at(key))
     }
 
     /// The only way state changes. See the module docs.

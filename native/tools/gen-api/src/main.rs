@@ -6,6 +6,7 @@
 
 mod enums;
 mod events;
+mod floor;
 mod spec;
 
 use std::path::{Path, PathBuf};
@@ -34,7 +35,17 @@ fn main() -> anyhow::Result<()> {
     let api_out = PathBuf::from(api_out);
     let events_out = PathBuf::from(events_out);
 
-    let openapi = spec::load(&contract.join("openapi.json"))?;
+    let mut openapi = spec::load(&contract.join("openapi.json"))?;
+    // Fields an older server (below the floor) doesn't send decode as `None`: `floor.rs`.
+    let floor_path = contract.join("floor-openapi.json");
+    let floor: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&floor_path)
+            .with_context(|| format!("reading {}", floor_path.display()))?,
+    )
+    .context("parsing floor-openapi.json")?;
+    for (schema, field) in floor::relax(&mut openapi, &floor)? {
+        eprintln!("gen-api: {schema}.{field} is missing below the floor, so optional");
+    }
     let named_enums = spec::enums(&openapi)?;
 
     let document: openapiv3::OpenAPI =

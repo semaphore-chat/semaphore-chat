@@ -600,6 +600,92 @@ fn a_blocked_gif_row_draws_the_card_and_no_text(cx: &mut TestAppContext) {
     assert_eq!(painted_seqs(&view, cx), [1]);
 }
 
+/// The row a GIF is drawn in, and the GIF's own frame.
+fn gif_row_and_frame(
+    view: &Entity<MessageList>,
+    ix: usize,
+    frame_id: &str,
+    cx: &mut VisualTestContext,
+) -> (Bounds<Pixels>, Option<Bounds<Pixels>>, Pixels) {
+    let (row, width) = view.read_with(cx, |view, _| {
+        (
+            view.list.bounds_for_item(ix).expect("the row is laid out"),
+            view.list.viewport_bounds().size.width,
+        )
+    });
+    let id = frame_id.to_owned();
+    let frame = cx.update(move |window, _| window.try_find(id).map(|found| found.bounds()));
+    (row, frame, width)
+}
+
+/// W25: in a list wider than the picture, a GIF's row is as tall as the picture plus the row's own
+/// chrome. The frame was `w_full` + `max_w` + `aspect_ratio`, and Taffy took its height from the
+/// column's whole width before `max_w` narrowed it: this 400x225 GIF in the 1920 px test window
+/// made an 1114 px row with the picture at its top, so a list of GIFs (every one of them at once
+/// after Load) drew mostly empty rows. On the owner's wide window that was the whole list: "the
+/// entire messages container just went black".
+#[gpui_kit::test]
+fn a_gif_row_is_as_tall_as_its_picture(cx: &mut TestAppContext) {
+    let rows = vec![
+        gif_message(1, sam(), 3, GIF_CAT),
+        text_message(2, sam(), 2, "after"),
+    ];
+    let (view, cx, _) = open(cx, rows, Rc::new(StoryMedia::new()), true);
+    let (row, frame, width) = gif_row_and_frame(&view, 0, "message-gif-1", cx);
+    let frame = frame.expect("the GIF is drawn");
+    assert!(
+        width > px(700.),
+        "the list is wider than the picture: {width:?}"
+    );
+    // 480x270 fits 400x300 as 400x225.
+    assert_eq!(frame.size, size(px(400.), px(225.)));
+    assert!(
+        row.bottom() - frame.bottom() < px(16.),
+        "a {:?} row for a {:?} picture",
+        row.size,
+        frame.size
+    );
+    // Nothing but the picture's own row between it and the next message.
+    let next_top = painted_blocks_of(&view, 2, cx)
+        .expect("the next row is drawn")
+        .top();
+    assert!(
+        next_top - frame.bottom() < px(24.),
+        "{next_top:?} {frame:?}"
+    );
+}
+
+/// The other side of it: in a list narrower than the picture (a phone), the frame narrows and
+/// keeps the picture's shape, and the row stays as tall as the frame, with no gap under it.
+#[gpui_kit::test]
+fn a_narrow_gif_row_keeps_the_picture_s_shape(cx: &mut TestAppContext) {
+    let rows = vec![gif_message(1, sam(), 3, GIF_CAT)];
+    let (view, cx, _) = open(cx, rows, Rc::new(StoryMedia::new()), true);
+    cx.simulate_resize(size(px(360.), px(700.)));
+    draw(cx);
+    draw(cx);
+    let (row, frame, width) = gif_row_and_frame(&view, 0, "message-gif-1", cx);
+    let frame = frame.expect("the GIF is drawn");
+    assert!(width < px(400.), "{width:?}");
+    assert!(frame.size.width < px(400.) && frame.size.width > px(200.));
+    let shape = frame.size.width / frame.size.height;
+    assert!((shape - 400. / 225.).abs() < 0.02, "{:?}", frame.size);
+    assert!(row.bottom() - frame.bottom() < px(16.), "{row:?} {frame:?}");
+}
+
+fn painted_blocks_of(
+    view: &Entity<MessageList>,
+    seq: i64,
+    cx: &mut VisualTestContext,
+) -> Option<Bounds<Pixels>> {
+    view.read_with(cx, |view, _| {
+        view.painted_blocks()
+            .into_iter()
+            .find(|(painted, _)| *painted == seq)
+            .map(|(_, bounds)| bounds)
+    })
+}
+
 #[gpui_kit::test]
 fn gif_failed_falls_back_to_text_and_preview(cx: &mut TestAppContext) {
     let rows = vec![gif_message(1, sam(), 2, GIF_BROKEN)];
@@ -631,6 +717,20 @@ fn a_loading_gif_holds_the_whole_box(cx: &mut TestAppContext) {
     // Not clickable yet, and the URL text isn't drawn while it loads.
     assert!(!has(cx, "message-gif-1"));
     assert!(painted_seqs(&view, cx).is_empty());
+    // W25: the row holds the 400x300 box under the author's line (about 80 px), not a box as
+    // tall as the list is wide (1459 px here before the fix).
+    let (row, width) = view.read_with(cx, |view, _| {
+        (
+            view.list.bounds_for_item(0).expect("the row is laid out"),
+            view.list.viewport_bounds().size.width,
+        )
+    });
+    assert!(width > px(700.), "{width:?}");
+    assert!(
+        row.size.height < px(GIF_MAX.1 + 100.),
+        "a loading GIF's row is {:?}",
+        row.size
+    );
 }
 
 fn run_idle(view: &Entity<MessageList>, millis: u64, cx: &mut VisualTestContext) -> u64 {

@@ -427,6 +427,83 @@ async fn see_removed_decides_who_keeps_a_removed_row() {
     assert!(rig.ids().is_empty());
 }
 
+// --- An older server's capabilities (v0.8.x, v0.9.0: no `pin`, `deleteAny`, `seeRemoved`) ---
+
+/// A rig like [`rig_with_capabilities`], but the list is what a server below v0.10.0 sends.
+async fn rig_with_old_capabilities(rows: Vec<MessageDto>, moderator: bool) -> Rig {
+    let rig = Rig::new();
+    *rig.backend.channels.lock().unwrap() = vec![channel_json("comm")];
+    let mut list = capabilities_json("comm", false, false, false);
+    for field in ["pin", "deleteAny", "seeRemoved"] {
+        list["channels"][0].as_object_mut().unwrap().remove(field);
+    }
+    *rig.backend.capabilities.lock().unwrap() = Some(list);
+    if moderator {
+        rig.backend.make_moderator();
+    }
+    let rig = rig.signed_in().await;
+    let rig = rig.open_channel(rows).await;
+    rig.core.channels("comm".into());
+    rig
+}
+
+#[tokio::test]
+async fn an_older_servers_capabilities_decode_and_leave_pin_and_removal_to_the_roles() {
+    let mut rig = rig_with_old_capabilities(vec![message(&uuid(1), "ava", "x")], true).await;
+    rig.settle().await;
+    // The list decoded: the channel's own flags are there.
+    let row = rig.core.channels("comm".into()).remove(0);
+    assert!(row.permissions.expect("the list decoded").post);
+    // Its pin and removal wait for the roles, then follow them.
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.settle().await;
+    let moderation = rig.core.channel_moderation(CHANNEL.into());
+    assert_eq!(moderation.state, LoadState::Ready);
+    assert_eq!(
+        moderation.allowed,
+        ChannelModeration {
+            pin: true,
+            unpin: true,
+            remove_any: true
+        }
+    );
+
+    // Not a moderator: the roles say no.
+    let mut rig = rig_with_old_capabilities(vec![message(&uuid(2), "ava", "y")], false).await;
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.settle().await;
+    let moderation = rig.core.channel_moderation(CHANNEL.into());
+    assert_eq!(moderation.state, LoadState::Ready);
+    assert_eq!(moderation.allowed, ChannelModeration::default());
+}
+
+#[tokio::test]
+async fn an_older_servers_capabilities_leave_see_removed_to_the_roles() {
+    // A moderator by role: the removed row stays, shown removed.
+    let id = uuid(1);
+    let mut rig = rig_with_old_capabilities(vec![message(&id, "ava", "kept")], true).await;
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.settle().await;
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({ "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null }),
+    ));
+    rig.sync();
+    assert!(rig.row(&id).removed, "kept, shown removed");
+
+    // No such role: the row goes.
+    let id = uuid(2);
+    let mut rig = rig_with_old_capabilities(vec![message(&id, "ava", "gone")], false).await;
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.settle().await;
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({ "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null }),
+    ));
+    rig.sync();
+    assert!(rig.ids().is_empty());
+}
+
 // --- Delete and removal ---
 
 #[tokio::test]

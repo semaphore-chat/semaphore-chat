@@ -329,7 +329,8 @@ fn over_budget_keeps_a_single_decodable_frame() {
     // 600x600 x 30 frames = 43 MB: over.
     let bytes = real_gif(600, 600, 30);
     assert_eq!(plan(&animation_cost(&bytes).unwrap()), Plan::FirstFrame);
-    let kept = within_budget(bytes).unwrap();
+    let (kept, kept_plan) = within_budget(bytes).unwrap();
+    assert_eq!(kept_plan, Plan::FirstFrame);
     let header = animation_cost(&kept).unwrap();
     assert_eq!(
         header,
@@ -348,11 +349,11 @@ fn over_budget_keeps_a_single_decodable_frame() {
 #[test]
 fn within_budget_keeps_small_animations_and_refuses_junk() {
     let small = real_gif(32, 32, 5);
-    assert_eq!(within_budget(small.clone()).unwrap(), small);
+    assert_eq!(within_budget(small.clone()).unwrap(), (small, Plan::Keep));
     assert!(within_budget(b"<html>".to_vec()).is_err());
     assert!(within_budget(gif_shape(10_000, 10_000, 2, true)).is_err());
     let still = png(5, 5);
-    assert_eq!(within_budget(still.clone()).unwrap(), still);
+    assert_eq!(within_budget(still.clone()).unwrap(), (still, Plan::Keep));
 }
 
 #[test]
@@ -367,7 +368,10 @@ fn a_real_still_webp_is_kept_and_its_first_frame_decodes() {
         (header.format, header.width, header.height, header.frames),
         (Format::WebP, 8, 6, 1)
     );
-    assert_eq!(within_budget(bytes.clone()).unwrap(), bytes);
+    assert_eq!(
+        within_budget(bytes.clone()).unwrap(),
+        (bytes.clone(), Plan::Keep)
+    );
     let png = first_frame_png(&bytes, Format::WebP).unwrap();
     assert_eq!(image::load_from_memory(&png).unwrap().width(), 8);
 }

@@ -3,7 +3,8 @@
 mod common;
 
 use common::*;
-use semaphore_core::model::{Conversation, SendState, ViewKey};
+use semaphore_core::cache::keys;
+use semaphore_core::model::{Conversation, LoadState, SendState, ViewKey};
 use semaphore_core::platform::CoreEvent;
 use semaphore_core::realtime::RealtimeError;
 use semaphore_core::store::MAX_ROWS;
@@ -545,23 +546,36 @@ async fn exactly_the_cap_is_not_truncated() {
 }
 
 #[tokio::test]
-async fn a_members_display_role_is_their_highest_that_isnt_the_default() {
+async fn a_members_display_role_is_their_highest_that_isnt_the_default_member_role() {
     let mut rig = Rig::new().signed_in().await;
+    // As the server makes a community: Community Admin, Moderator and Member are all default.
     *rig.backend.members.lock().unwrap() = vec![
         member(
             0,
             json!([
-                role("Everyone", 0, true),
+                role("Member", 100, true),
                 role("Admin", 2, false),
                 role("Mod", 5, false)
             ]),
         ),
-        member(1, json!([role("Everyone", 0, true)])),
+        member(1, json!([role("Member", 100, true)])),
+        member(
+            2,
+            json!([role("Member", 100, true), role("Community Admin", 10, true)]),
+        ),
+        member(3, json!([role("Moderator", 20, true)])),
     ];
     let list = read_members(&mut rig).await;
-    let display = list.members[0].display_role.as_ref().unwrap();
-    assert_eq!((display.name.as_str(), display.position), ("Admin", 2));
-    assert_eq!(list.members[1].display_role, None);
+    let display = |index: usize| {
+        list.members[index]
+            .display_role
+            .as_ref()
+            .map(|role| (role.name.as_str(), role.position))
+    };
+    assert_eq!(display(0), Some(("Admin", 2)));
+    assert_eq!(display(1), None);
+    assert_eq!(display(2), Some(("Community Admin", 10)));
+    assert_eq!(display(3), Some(("Moderator", 20)));
 }
 
 #[tokio::test]
@@ -602,6 +616,176 @@ async fn online_comes_from_presence_and_follows_events() {
             community_id: "comm".into()
         }
     ));
+}
+
+fn presence_error(status: u16) -> semaphore_core::backend::BackendError {
+    semaphore_core::backend::BackendError {
+        status,
+        code: semaphore_wire::enums::ErrorCode::Unknown("TOO_MANY_REQUESTS".into()),
+        message: format!("{status}"),
+        retryable: true,
+        retry_after_ms: None,
+    }
+}
+
+/// The owner's report: a 429'd presence read left everyone but them under Offline. Without the
+/// map the panel must not say anyone is offline: it isn't ready until the map is.
+#[tokio::test]
+async fn members_without_the_presence_map_are_not_ready() {
+    let mut rig = Rig::new().signed_in().await;
+    set_members(&rig, 2);
+    rig.backend
+        .bulk_presence
+        .lock()
+        .unwrap()
+        .insert("user-1".into(), true);
+    *rig.backend.presence_error.lock().unwrap() = Some(presence_error(429));
+    let list = read_members(&mut rig).await;
+    assert_eq!(list.members.len(), 2);
+    assert_ne!(rig.core.members_presence(), LoadState::Ready);
+    rig.settle().await;
+    assert_ne!(rig.core.members_presence(), LoadState::Ready);
+
+    *rig.backend.presence_error.lock().unwrap() = None;
+    rig.core.retry_failed();
+    rig.core.members_presence();
+    rig.settle().await;
+    assert_eq!(rig.core.members_presence(), LoadState::Ready);
+    assert!(rig.core.members("comm".into()).unwrap().members[1].online);
+}
+
+fn bulk_presence_requests(rig: &Rig) -> u64 {
+    rig.backend.bulk_presence_requests.load(Ordering::SeqCst)
+}
+
+/// Waits out the presence read's backoff and lets the host's retry timer fire once.
+async fn presence_timer_fires(rig: &mut Rig) -> Vec<CoreEvent> {
+    let at = rig
+        .core
+        .query_retry_at(&keys::op(keys::PRESENCE))
+        .expect("presence is waiting out a failure");
+    let now = rig.clock.0.load(Ordering::SeqCst);
+    rig.clock.advance(at.saturating_sub(now));
+    rig.sync();
+    rig.core.retry_due_queries();
+    rig.settle().await
+}
+
+/// A 429 on the presence read fails the panel, the timer retries it with no read, and the panel
+/// recovers by itself when the server answers again.
+#[tokio::test]
+async fn a_rate_limited_presence_fails_the_panel_and_recovers_on_the_timer() {
+    let mut rig = Rig::new().signed_in().await;
+    let panel = ViewKey::Members {
+        community_id: "comm".into(),
+    };
+    set_members(&rig, 2);
+    rig.backend
+        .bulk_presence
+        .lock()
+        .unwrap()
+        .insert("user-1".into(), true);
+    *rig.backend.presence_error.lock().unwrap() = Some(presence_error(429));
+    read_members(&mut rig).await;
+    assert!(matches!(
+        rig.core.members_presence(),
+        LoadState::Failed { .. }
+    ));
+    let before = bulk_presence_requests(&rig);
+
+    // Still refused: the timer's retry fails again, and the open panel is told.
+    let events = presence_timer_fires(&mut rig).await;
+    assert_eq!(bulk_presence_requests(&rig), before + 1);
+    assert!(view_changed(&events, panel.clone()));
+    assert!(matches!(
+        rig.core.members_presence(),
+        LoadState::Failed { .. }
+    ));
+
+    // The server answers: the timer alone brings the panel back, and tells it.
+    *rig.backend.presence_error.lock().unwrap() = None;
+    let events = presence_timer_fires(&mut rig).await;
+    assert_eq!(bulk_presence_requests(&rig), before + 2);
+    assert!(view_changed(&events, panel));
+    assert_eq!(rig.core.members_presence(), LoadState::Ready);
+    assert!(rig.core.members("comm".into()).unwrap().members[1].online);
+    assert_eq!(rig.core.query_retry_at(&keys::op(keys::PRESENCE)), None);
+}
+
+/// Members in, the presence map still on its way: the panel is loading, not "everyone offline".
+#[tokio::test]
+async fn members_loaded_with_presence_on_its_way_are_loading() {
+    let rig = Rig::new().signed_in().await;
+    set_members(&rig, 2);
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *rig.backend.presence_gate.lock().unwrap() = Some(gate);
+    assert_eq!(rig.core.members("comm".into()), None);
+    let core = rig.core.clone();
+    let settle = tokio::spawn(async move { core.run_until_idle().await });
+    while bulk_presence_requests(&rig) == 0 || rig.core.members("comm".into()).is_none() {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(rig.core.members_presence(), LoadState::Loading);
+    release.send(()).unwrap();
+    settle.await.unwrap();
+    assert_eq!(rig.core.members_presence(), LoadState::Ready);
+}
+
+/// An event that comes while the map is on its way goes on top of the answer, which is older.
+#[tokio::test]
+async fn presence_heard_before_the_map_is_not_lost() {
+    let rig = Rig::new().signed_in().await;
+    set_members(&rig, 2);
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *rig.backend.presence_gate.lock().unwrap() = Some(gate);
+    assert_eq!(rig.core.members("comm".into()), None);
+    let core = rig.core.clone();
+    let settle = tokio::spawn(async move { core.run_until_idle().await });
+    let requests = || rig.backend.bulk_presence_requests.load(Ordering::SeqCst);
+    while requests() == 0 {
+        tokio::task::yield_now().await;
+    }
+    // The answer on its way says user-1 is offline; then they come online.
+    rig.core
+        .ingest(event("userOnline", json!({ "userId": "user-1" })));
+    rig.backend
+        .bulk_presence
+        .lock()
+        .unwrap()
+        .insert("user-1".into(), true);
+    // Hold the read that follows the old answer, to look in between.
+    let (release_again, gate) = tokio::sync::oneshot::channel();
+    *rig.backend.presence_gate.lock().unwrap() = Some(gate);
+    release.send(()).unwrap();
+    while requests() < 2 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(rig.core.members_presence(), LoadState::Ready);
+    assert!(rig.core.members("comm".into()).unwrap().members[1].online);
+    release_again.send(()).unwrap();
+    settle.await.unwrap();
+    assert!(rig.core.members("comm".into()).unwrap().members[1].online);
+}
+
+/// Waiting events are dropped on a disconnect: the next answer is newer than any of them.
+#[tokio::test]
+async fn presence_heard_before_a_disconnect_is_dropped() {
+    let mut rig = Rig::new().signed_in().await;
+    set_members(&rig, 2);
+    *rig.backend.presence_error.lock().unwrap() = Some(presence_error(429));
+    read_members(&mut rig).await;
+    rig.core
+        .ingest(event("userOnline", json!({ "userId": "user-1" })));
+    rig.core
+        .ingest(semaphore_core::realtime::RealtimeEvent::Disconnected {
+            reason: "transport close".into(),
+        });
+    *rig.backend.presence_error.lock().unwrap() = None;
+    rig.core.retry_failed();
+    rig.core.members_presence();
+    rig.settle().await;
+    assert_eq!(rig.core.members_presence(), LoadState::Ready);
+    assert!(!rig.core.members("comm".into()).unwrap().members[1].online);
 }
 
 #[tokio::test]
@@ -780,6 +964,8 @@ async fn a_channel_row_has_slowmode_and_permissions_once_they_load() {
     *rig.backend.capabilities.lock().unwrap() = Some(json!({
         "communityId": "comm", "channels": [capability("a", false)],
     }));
+    // The 404 is asked again once its wait is over, not on the next read.
+    rig.clock.advance(semaphore_core::retry::PERMANENT_MS);
     rig.core.channels("comm".into());
     let events = rig.settle().await;
     assert!(view_changed(

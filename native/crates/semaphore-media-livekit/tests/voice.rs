@@ -324,6 +324,36 @@ async fn speaking_follows_the_mic_for_self_and_others() {
     .await;
 }
 
+/// The server sends only who changed. With two steady tones, b going quiet sends b alone, and the
+/// SDK's event lists no one: a, still talking, must stay lit for c.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_steady_speaker_stays_lit_when_another_stops() {
+    let url = server!();
+    let room = room_name("speakers-merge");
+    let a = Peer::join(&url, &room, "a", 523.0).await;
+    let b = Peer::join(&url, &room, "b", 743.0).await;
+    let c = Peer::join(&url, &room, "c", 300.0).await;
+    c.engine.set_muted(true);
+    let lit = |peer: &Peer, identity: &str| {
+        peer.snapshot()
+            .voice
+            .participants
+            .iter()
+            .any(|p| p.identity == identity && p.speaking)
+    };
+    eventually("c sees a and b speaking", WAIT, || {
+        lit(&c, "a") && lit(&c, "b")
+    })
+    .await;
+    b.engine.set_muted(true);
+    eventually("b goes out for c", WAIT, || !lit(&c, "b")).await;
+    holds("a stays lit for c", Duration::from_secs(2), || lit(&c, "a")).await;
+    // Our own ring is ours to work out: on for a, off for c (muted) and for b (now muted).
+    assert!(lit(&a, "a"));
+    assert!(!lit(&c, "c"));
+    eventually("b's own ring goes out", WAIT, || !lit(&b, "b")).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn push_to_talk_opens_the_mic_only_while_held() {
     let url = server!();

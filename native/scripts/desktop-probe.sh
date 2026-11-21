@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# W2-desktop's headless proof, in the desktop image (the build image plus weston and a passwd entry
+# W2-desktop's headless proof, in the desktop image (the build image plus weston, sway and a passwd entry
 # so dbus-daemon starts):
 #
 # - Close to tray's hide and show on the patched GPUI: rig-window-hide on X11 (Xvfb) and on Wayland
-#   (weston's headless backend), both on lavapipe.
+#   (weston's headless backend), both on lavapipe; and the compositor's close request (sway's
+#   headless backend: `swaymsg kill`), answered by hiding from the should-close callback or closing.
 # - The Linux tray on a private dbus-daemon with a fake StatusNotifierWatcher
 #   (crates/semaphore-platform-desktop/tests/tray_linux.rs), and the notifier on one with a fake
 #   org.freedesktop.Notifications (tests/notify_linux.rs: replace by tag, click with its activation
@@ -70,6 +71,39 @@ if command -v weston >/dev/null; then
   fi
 else
   echo "desktop-probe: no weston in this image" >&2
+  status=1
+fi
+
+# Weston can't ask a client to close; sway's `kill` sends the xdg_toplevel close that Hyprland's
+# `killactive` or a title bar's close button does. Its own runtime dir, so its sockets are the only
+# ones there.
+if command -v sway >/dev/null; then
+  echo "=== Wayland (sway, headless): the compositor's close request"
+  SWAY_RUNTIME="$XDG_RUNTIME_DIR/sway"
+  mkdir -p -m 700 "$SWAY_RUNTIME"
+  : >"$SWAY_RUNTIME/config"
+  env -u DISPLAY -u WAYLAND_DISPLAY XDG_RUNTIME_DIR="$SWAY_RUNTIME" WLR_BACKENDS=headless \
+    WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 sway -c "$SWAY_RUNTIME/config" \
+    >"$LOGS/sway.log" 2>&1 & pids+=($!)
+  sway_up() { compgen -G "$SWAY_RUNTIME/sway-ipc.*.sock" >/dev/null && compgen -G "$SWAY_RUNTIME/wayland-[0-9]" >/dev/null; }
+  if wait_for sway sway_up; then
+    sock="$(compgen -G "$SWAY_RUNTIME/sway-ipc.*.sock" | head -1)"
+    display="$(basename "$(compgen -G "$SWAY_RUNTIME/wayland-[0-9]" | head -1)")"
+    close_cmd="swaymsg -s '$sock' '[app_id=\"^app\\.semaphorechat\\.rig-window-hide$\"] kill'"
+    for on_close in hide quit; do
+      if ! env -u DISPLAY XDG_RUNTIME_DIR="$SWAY_RUNTIME" WAYLAND_DISPLAY="$display" \
+        RIG_CLOSE_CMD="$close_cmd" timeout 60 "$RIG" close-request "$on_close" \
+        | tee /dev/stderr | grep -q "CLOSE_REQUEST result=pass"; then
+        status=1
+        echo "--- sway log"; tail -20 "$LOGS/sway.log"
+      fi
+    done
+  else
+    status=1
+    echo "--- sway log"; tail -20 "$LOGS/sway.log"
+  fi
+else
+  echo "desktop-probe: no sway in this image" >&2
   status=1
 fi
 echo "=== tray and notifications on private session buses"

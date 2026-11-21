@@ -71,6 +71,10 @@ pub(crate) struct W2State {
     auto_read_attempted: HashSet<String>,
     /// Auto-marks on their way, so a redraw asks for nothing twice.
     auto_read_in_flight: HashSet<String>,
+    /// `userOnline`/`userOffline` that came before the presence map, by user, the latest winning:
+    /// laid over the map when it arrives (an answer started before them is older than they are).
+    /// Dropped on a disconnect, after which the next answer is newer than any of them.
+    pub pending_presence: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -341,8 +341,22 @@ async fn get_file_metadata(
     )
 }
 
-/// Unauthenticated images at a plain URL, standing in for a third-party site's link-preview image.
+/// A real animated GIF (200x150, four frames of 100 ms, looping, 5 KB) for every `*.gif` fixture
+/// name: the GIF service's media and previews (`gifs.rs`) and any GIF a script posts. The app then
+/// decodes, budgets and animates a GIF as it would one from the real service. Made once with
+/// Pillow; any small animated GIF of the same size does.
+const ANIMATED_GIF: &[u8] = include_bytes!("../../fixtures/animated.gif");
+
+/// `GET /__fixtures/{name}`: unauthenticated images at a plain URL, standing in for a third-party
+/// site: the animated GIF for a `.gif` name, else a generated PNG (a link preview's picture).
 async fn fixture_image(Path(name): Path<String>) -> Response {
+    if name.to_ascii_lowercase().ends_with(".gif") {
+        let mut response = Response::new(axum::body::Body::from(ANIMATED_GIF));
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/gif"));
+        return response;
+    }
     image_response(&name, "fixture")
 }
 

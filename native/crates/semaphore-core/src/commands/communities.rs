@@ -5,7 +5,8 @@ use crate::cache::{QueryKey, keys};
 use crate::client::{Core, user_view};
 use crate::model::{
     ChannelKind, ChannelPermissions, ChannelPreset, ChannelRow, CommunityRow, DisplayRole,
-    EmojiView, MemberList, MemberView, MentionCandidate, MentionKind, RailCounts, UserView,
+    EmojiView, LoadState, MemberList, MemberView, MentionCandidate, MentionKind, RailCounts,
+    UserView,
 };
 use semaphore_wire::enums::ChannelType;
 use semaphore_wire::types as wire;
@@ -141,10 +142,12 @@ impl Core {
                         .cache
                         .user(&keys::scoped(keys::USER, &member.user_id))
                         .or(member.user.as_ref());
+                    // The web's `computeDisplayRole`: every role but the default Member one. The
+                    // other default roles (Community Admin, Moderator) are default too, and group.
                     let display_role = member
                         .roles
                         .iter()
-                        .filter(|role| !role.is_default)
+                        .filter(|role| !super::roles::is_fixed(role))
                         .min_by_key(|role| role.position)
                         .map(|role| DisplayRole {
                             name: role.name.clone(),
@@ -171,6 +174,25 @@ impl Core {
                 members,
                 truncated: pages.truncated,
             })
+        })
+    }
+
+    /// Whether the online map the members panel reads has loaded: until it has, everyone but us
+    /// would read as offline, so the panel waits for it (as the web's counts its presence query).
+    /// `Failed` once its fetch is recorded as failed.
+    pub fn members_presence(&self) -> LoadState {
+        self.write(|state, _| {
+            let key = keys::op(keys::PRESENCE);
+            state.ensure_query(key.clone());
+            if state.cache.presence(&key).is_some() {
+                LoadState::Ready
+            } else if let Some(error) = state.failed_queries.get(&key) {
+                LoadState::Failed {
+                    error: error.clone(),
+                }
+            } else {
+                LoadState::Loading
+            }
         })
     }
 

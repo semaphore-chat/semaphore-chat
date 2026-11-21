@@ -217,8 +217,9 @@ impl State {
     ///
     /// Pin and remove come from the channel's effective capabilities when the community's list
     /// is loaded: those know the channel's own overwrites, which the roles alone don't. On an
-    /// older server, with no such flags, from the roles. Unpin has no capability of its own, so it
-    /// stays the roles' `UNPIN_MESSAGE` either way.
+    /// older server, whose list has no such flags (below the contract's floor), each missing flag
+    /// comes from the roles. Unpin has no capability of its own, so it stays the roles'
+    /// `UNPIN_MESSAGE` either way. `None` while a flag the roles must answer waits for them.
     pub(crate) fn moderation_of(&self, channel_id: &str) -> Option<ChannelModeration> {
         if self.is_instance_owner() {
             return Some(ChannelModeration {
@@ -230,28 +231,27 @@ impl State {
         let roles = self
             .cache
             .channel_roles(&keys::scoped(keys::CHANNEL_ROLES, channel_id));
+        // `None` until the roles are read.
         let has = |action: &RbacAction| {
-            roles.is_some_and(|roles| {
+            roles.map(|roles| {
                 roles
                     .roles
                     .iter()
                     .any(|role| role.actions.iter().any(|held| held == action))
             })
         };
-        let unpin = has(&RbacAction::UnpinMessage);
-        match self.channel_capability(channel_id) {
-            Some(capability) => Some(ChannelModeration {
-                pin: capability.pin,
-                unpin,
-                remove_any: capability.delete_any,
-            }),
-            None if roles.is_some() => Some(ChannelModeration {
-                pin: has(&RbacAction::PinMessage),
-                unpin,
-                remove_any: has(&RbacAction::DeleteAnyMessage),
-            }),
-            None => None,
-        }
+        let capability = self.channel_capability(channel_id);
+        let pin = capability
+            .and_then(|capability| capability.pin)
+            .or_else(|| has(&RbacAction::PinMessage))?;
+        let remove_any = capability
+            .and_then(|capability| capability.delete_any)
+            .or_else(|| has(&RbacAction::DeleteAnyMessage))?;
+        Some(ChannelModeration {
+            pin,
+            unpin: has(&RbacAction::UnpinMessage).unwrap_or(false),
+            remove_any,
+        })
     }
 
     /// This user's effective capabilities in a channel: the community's list, once it's loaded,
@@ -265,6 +265,11 @@ impl State {
             .find(|capability| capability.channel_id == channel_id)
     }
 
+    /// The channel capability's `seeRemoved`, when the list is loaded and the server sends it.
+    fn capability_sees_removed(&self, channel_id: &str) -> Option<bool> {
+        self.channel_capability(channel_id)?.see_removed
+    }
+
     /// Whether this user keeps seeing the text of a message a moderator removed in this channel.
     /// The channel's capability when the server sends one; on an older server the roles'
     /// `DELETE_ANY_MESSAGE`, which is the action the server's `canSeeRemovedMessages` asks for.
@@ -272,8 +277,8 @@ impl State {
         if self.is_instance_owner() {
             return true;
         }
-        if let Some(capability) = self.channel_capability(channel_id) {
-            return capability.see_removed;
+        if let Some(see_removed) = self.capability_sees_removed(channel_id) {
+            return see_removed;
         }
         self.cache
             .channel_roles(&keys::scoped(keys::CHANNEL_ROLES, channel_id))
@@ -347,9 +352,9 @@ impl State {
             .values()
             .any(|window| window.find(id).is_some());
         let allowed = self.may_see_removed(channel_id);
-        if !allowed && self.channel_capability(channel_id).is_none() {
+        if !allowed && self.capability_sees_removed(channel_id).is_none() {
             // For the next one: the roles weren't asked for yet, or say no. A channel whose
-            // capability list has already answered asks nothing.
+            // capability list has already answered (a server at the floor or newer) asks nothing.
             self.ensure_query(keys::scoped(keys::CHANNEL_ROLES, channel_id));
         }
         if !loaded || !allowed {

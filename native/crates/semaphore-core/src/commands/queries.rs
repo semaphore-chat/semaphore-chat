@@ -1,19 +1,24 @@
 //! Fetching queries into the cache, and what a UI reads about their load state.
 
-use super::{
-    MAX_MEMBERS, MEMBER_PAGE_SIZE, MENTION_SEARCH_LIMIT, core_error_view, key_for, view_for,
-};
+use super::{MAX_MEMBERS, MEMBER_PAGE_SIZE, MENTION_SEARCH_LIMIT, core_error_view, key_for};
 use crate::cache::{CacheValue, MemberPages, QueryKey, keys};
-use crate::client::Core;
+use crate::client::{Core, State};
 use crate::model::{LoadState, SessionState, SignOutReason, ViewKey};
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
 use crate::resync::{failed, unavailable};
+use crate::retry::RetryClass;
 
 impl Core {
     pub(crate) async fn fetch_query(&self, key: QueryKey) {
         let epoch = self.read(|state| state.session_epoch);
-        let result = self.fetch_value(&key).await;
+        let probe = self.probing();
+        let result = probe.fetch_value(&key).await;
+        // What the failure says about asking again; a failure core made itself (no backend, no
+        // fetch for the key) is permanent.
+        let class = probe
+            .take_probed_failure()
+            .map_or(RetryClass::Permanent, |error| RetryClass::of(&error));
         self.write(|state, now| {
             // A session has ended since: this answer, and the `fetching` mark, aren't the next one's.
             if state.session_epoch != epoch {
@@ -57,11 +62,20 @@ impl Core {
                     }
                 }
                 Err(error) => {
-                    log::warn!("fetching {key:?} failed: {error}");
-                    if let Some(view) = view_for(&key) {
-                        state
-                            .failed_queries
-                            .insert(key.clone(), core_error_view(&error));
+                    let shown = State::shows_failure(&key);
+                    let retry_at = state.failed_queries.record(
+                        key.clone(),
+                        shown.then(|| core_error_view(&error)),
+                        class,
+                        now,
+                        state.retry_seed,
+                    );
+                    log::warn!(
+                        "fetching {key:?} failed (try {}, again in {} ms): {error}",
+                        state.failed_queries.attempts(&key),
+                        retry_at.saturating_sub(now)
+                    );
+                    for view in state.views_showing(&key) {
                         state.view_changed(view);
                     }
                 }
@@ -311,6 +325,7 @@ impl Core {
     /// refused (`HttpBackend` refreshes on the first 401 and retries once), so the session is over:
     /// it ends as `AuthLost` would, rather than leaving a signed-in UI whose every call fails.
     pub(crate) fn backend_failed(&self, error: crate::backend::BackendError) -> CoreError {
+        self.probe_failure(&error);
         if error.status == 401 {
             let lost = self.write(|state, _| {
                 if !matches!(state.session, SessionState::SignedIn { .. }) {

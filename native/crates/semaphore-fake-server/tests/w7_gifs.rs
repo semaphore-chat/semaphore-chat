@@ -204,3 +204,33 @@ async fn the_control_makes_both_routes_unavailable() {
     let page: wire::GifSearchResponseDto = decode(&body);
     assert_eq!(page.results.len(), 20);
 }
+
+/// The fixture GIFs are real animated GIFs, as the GIF service's media are: an `image/gif` of
+/// more than one frame at the size the results declare. A `.png` name stays a generated PNG.
+#[tokio::test]
+async fn fixture_gifs_are_real_animated_gifs() {
+    let (_server, client, base) = showcase().await;
+    for name in ["gif-1.gif", "gif-1-preview.gif", "posted.GIF"] {
+        let response = client
+            .get(format!("{base}/__fixtures/{name}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200, "{name}");
+        assert_eq!(response.headers()["content-type"], "image/gif", "{name}");
+        let bytes = response.bytes().await.unwrap();
+        assert!(bytes.starts_with(b"GIF89a"), "{name}");
+        // The logical screen: 200x150, little-endian.
+        assert_eq!(&bytes[6..10], &[200, 0, 150, 0], "{name}");
+        // A graphic control extension (0x21 0xF9) per frame, with its delay.
+        let frames = bytes.windows(2).filter(|w| w == &[0x21, 0xF9]).count();
+        assert!(frames >= 2, "{name}: {frames} frames");
+        assert!(bytes.len() < 16 * 1024, "{name}: kept small");
+    }
+    let png = client
+        .get(format!("{base}/__fixtures/w7-preview.png"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(png.headers()["content-type"], "image/png");
+}
