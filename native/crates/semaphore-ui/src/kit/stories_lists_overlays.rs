@@ -3,9 +3,10 @@
 //! and light, on the design default base colour.
 
 use super::{
-    Align, Avatar, Badge, Button, ButtonTone, Dialog, DialogSize, Icon, IconButton, ListRow, Menu,
-    MenuEntry, MenuItem, MenuTone, Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel,
-    RowSize, SelectField, Table, TableColumn, TableRow, TextField, Tip, select_state, text_state,
+    Align, Avatar, Badge, BadgeTone, Button, ButtonTone, Dialog, DialogSize, Icon, IconButton,
+    ListRow, Menu, MenuEntry, MenuItem, MenuTone, Placement, Popover, PopoverExt, PopoverPadding,
+    PopoverPanel, RowSize, SelectField, Surface, Table, TableColumn, TableRow, TextField, Tip,
+    select_state, text_state,
 };
 use crate::kit::overlays::type_text;
 use crate::stories::Story;
@@ -97,6 +98,13 @@ fn avatar(name: &str, colour: u32) -> Avatar {
 
 fn noop(_: &mut Window, _: &mut App) {}
 
+/// An accent count badge, as the web stories' `<Badge count={n} tone="accent" label="n unread" />`.
+fn unread(count: u32) -> Badge {
+    Badge::new(format!("{count} unread"))
+        .count(count)
+        .tone(BadgeTone::Accent)
+}
+
 // ---------------------------------------------------------------------------------------------
 // ListRow
 
@@ -115,7 +123,7 @@ fn list_row_states(cx: &App) -> AnyElement {
                 .unread(true)
                 .trailing_label("2 unread")
                 .on_click(noop)
-                .trailing(Badge::new(2)),
+                .trailing(unread(2)),
         )
         .child(
             ListRow::new("old-news", "old-news")
@@ -154,7 +162,7 @@ fn list_row_states(cx: &App) -> AnyElement {
                 .leading(avatar("Diego", 0x808080))
                 .trailing_label("Mod")
                 .on_click(noop)
-                .trailing(Badge::new(1)),
+                .trailing(unread(1)),
         );
     div()
         .flex()
@@ -179,7 +187,7 @@ fn list_row_channels(cx: &App) -> AnyElement {
                 .unread(true)
                 .trailing_label("3 unread")
                 .on_click(noop)
-                .trailing(Badge::new(3)),
+                .trailing(unread(3)),
         )
         .child(
             ListRow::new("clips", "clips")
@@ -187,7 +195,7 @@ fn list_row_channels(cx: &App) -> AnyElement {
                 .unread(true)
                 .trailing_label("120 unread")
                 .on_click(noop)
-                .trailing(Badge::new(120)),
+                .trailing(unread(120)),
         )
         .child(
             ListRow::new("memes", "memes")
@@ -226,7 +234,7 @@ fn list_row_people(cx: &App) -> AnyElement {
                 .leading(avatar("Samira", 0x5ed1d1))
                 .trailing_label("admin")
                 .on_click(noop)
-                .trailing(Badge::new(1)),
+                .trailing(unread(1)),
         )
         .child(
             ListRow::new("dropbear", "dropbear")
@@ -269,7 +277,7 @@ fn list_row_long_names(cx: &App) -> AnyElement {
                 .leading(hash(cx))
                 .unread(true)
                 .on_click(noop)
-                .trailing(Badge::new(7)),
+                .trailing(unread(7)),
         )
         .child(
             ListRow::new("long-2", LONG)
@@ -295,7 +303,7 @@ fn list_row_selected_with_trailing(cx: &App) -> AnyElement {
                 .leading(hash(cx))
                 .selected(true)
                 .on_click(noop)
-                .trailing(Badge::new(3)),
+                .trailing(unread(3).on_surface(Surface::Accent)),
         )
         .child(
             ListRow::new("aiko", "aiko")
@@ -348,7 +356,7 @@ fn list_row_busy(cx: &App) -> AnyElement {
                 .unread(true)
                 .busy(true)
                 .on_click(noop)
-                .trailing(Badge::new(2)),
+                .trailing(unread(2)),
         )
         .child(
             ListRow::new("long", LONG)
