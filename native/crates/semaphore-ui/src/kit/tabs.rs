@@ -1,15 +1,16 @@
 //! Tabs: a row of choices where exactly one is selected (`frontend/src/kit/controls/Tabs.tsx`).
 
 use super::ValueAction;
-use super::controls::{radio_tab_stop, roving_target};
+use super::behaviour::list_focus::{ListFocusHost, ListKeys, ListOrientation, list_key};
 use super::look::{
-    Surface, c, focus_handle, focus_ring, mix, outer_focus_ring, shows_focus, stand_out_fill,
-    styled_text, tint_base,
+    Surface, c, focus_ring, mix, outer_focus_ring, shows_focus, stand_out_fill, styled_text,
+    tint_base,
 };
 use crate::theme::SemTheme;
 use gpui_kit::base;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use semaphore_design::behaviour::list_focus;
 use semaphore_design::lounge::{
     BORDER_FOCUS, BORDER_HAIRLINE, BORDER_SELECTED, CONTROL_MD, CONTROL_SM, RADIUS_FULL, SPACE_2XS,
     SPACE_LG, SPACE_SM, SPACE_XS, STATE_DISABLED, STATE_HOVER, STATE_HOVER_ON_FILL, STATE_PRESSED,
@@ -192,6 +193,27 @@ impl Tabs {
     }
 }
 
+/// The tab row's keyboard list.
+struct TabsFocus {
+    focus: ListFocusHost,
+}
+
+fn tabs_focus(state: &mut TabsFocus) -> &mut ListFocusHost {
+    &mut state.focus
+}
+
+const TABS_PARAMS: list_focus::Params = list_focus::Params {
+    wrap: true,
+    selection_follows_focus: true,
+    typeahead_ms: semaphore_design::lounge::MOTION_TYPEAHEAD_MS,
+};
+
+const TABS_KEYS: ListKeys = ListKeys {
+    orientation: ListOrientation::Horizontal,
+    typeahead: false,
+    allow_shift: false,
+};
+
 impl RenderOnce for Tabs {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = cx.sem().roles;
@@ -219,33 +241,55 @@ impl RenderOnce for Tabs {
             })
             .collect();
         let ty = label_type(variant);
-        let disabled: Vec<bool> = self.items.iter().map(|item| item.disabled).collect();
-        let stop = radio_tab_stop(&disabled, Some(selected_index));
-        let handles: Vec<FocusHandle> = (0..count)
-            .map(|index| focus_handle(&ids[index], window, cx).tab_stop(Some(index) == stop))
+        // The web's Tabs on `useListFocus`: horizontal, wrapping, selection follows focus, no
+        // typeahead. Rows are the tabs' indices.
+        let rows: Vec<list_focus::Row> = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| list_focus::Row {
+                id: index.to_string(),
+                label: item.label.to_string(),
+                disabled: item.disabled,
+            })
+            .collect();
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, _| TabsFocus {
+            focus: ListFocusHost::new(TABS_PARAMS, TABS_KEYS),
+        });
+        let (synced, stop) = state.update(cx, |state, cx| {
+            let synced = state
+                .focus
+                .sync(rows, Some(Some(selected_index.to_string())), window, cx);
+            (synced.handles, state.focus.tab_stop())
+        });
+        let handles: Vec<FocusHandle> = synced
+            .into_iter()
+            .map(|(id, handle)| handle.tab_stop(stop.as_deref() == Some(id.as_str())))
             .collect();
         let rings: Vec<bool> = handles
             .iter()
             .map(|handle| shows_focus(handle, window))
             .collect();
-        let keys = handles.clone();
         let on_key = on_select.clone();
+        let key_state = state.clone();
         base::Tabs::new(self.id)
             .on_key_down(move |event: &KeyDownEvent, window, cx| {
-                let key = event.keystroke.key.as_str();
-                let Some(current) = keys.iter().position(|handle| handle.is_focused(window)) else {
+                let Some(list_event) = key_state.read(cx).focus.event_for(&event.keystroke) else {
                     return;
                 };
-                let Some(next) = roving_target(&disabled, current, key) else {
+                let Some(effects) = list_key(&key_state, tabs_focus, list_event, window, cx) else {
                     return;
                 };
                 cx.stop_propagation();
-                keys[next].focus(window, cx);
                 // Selection follows focus; the selected tab does nothing.
-                if next != selected_index
-                    && let Some(on_select) = &on_key
-                {
-                    on_select(next, window, cx);
+                for effect in effects {
+                    if let list_focus::Effect::Select { id } = effect
+                        && let Ok(next) = id.parse::<usize>()
+                        && next != selected_index
+                        && let Some(on_select) = &on_key
+                    {
+                        on_select(next, window, cx);
+                    }
                 }
             })
             .flex()

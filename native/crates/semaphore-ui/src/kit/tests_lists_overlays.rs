@@ -5,8 +5,7 @@ use super::lists::{LineTone, RowPaint, line_tone, row_name};
 use super::overlays::{MenuKey, menu_key, state_over};
 use super::{
     Button, Dialog, DialogCloseReason, ListRow, Menu, MenuCloseReason, MenuEntry, MenuItem,
-    Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel, Table, TableColumn, TableRow,
-    with_tip,
+    Placement, Popover, PopoverPadding, PopoverPanel, Table, TableColumn, TableRow, with_tip,
 };
 use crate::dms::rig::{Rig, rig};
 use crate::theme::color::hsla_of;
@@ -646,7 +645,7 @@ fn popover(log: &Log) -> AnyElement {
         .trigger_element(Button::new("rename-trigger", "Rename channel").text())
         .content({
             let log = log.clone();
-            move |_, _, _| {
+            move |_, _| {
                 PopoverPanel::new("Rename panel").child(
                     Button::new("save", "Save")
                         .text()

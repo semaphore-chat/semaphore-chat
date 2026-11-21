@@ -1733,6 +1733,8 @@ impl AppRoot {
                     )])
                     .collect::<Vec<_>>(),
                 )
+                // The dialog's body, not a floating menu: not a layer of its own.
+                .inline()
                 .on_close({
                     // Escape closes the dialog the menu is; Tab goes on to its Close button.
                     move |reason, _, cx| {
@@ -1976,7 +1978,16 @@ fn content(
 }
 
 impl Render for AppRoot {
+    /// The app under the window's behaviour host: kit overlays are layers of its stack, and focus
+    /// that has nowhere else to go is on the root's own handle.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sink = self.root_focus.clone();
+        semaphore_ui::kit::BehaviourRoot::new(self.render_app(window, cx)).focus_sink(&sink)
+    }
+}
+
+impl AppRoot {
+    fn render_app(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.reconcile(window, cx);
         // Window keys (push to talk above all) dispatch along the focus path. Nothing focused means
         // the window's root node, outside this view: give the root the focus so they reach here.

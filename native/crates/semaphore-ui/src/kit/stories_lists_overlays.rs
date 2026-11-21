@@ -4,9 +4,8 @@
 
 use super::{
     Align, Avatar, Badge, BadgeTone, Button, Dialog, DialogSize, Icon, IconButton, ListRow, Menu,
-    MenuEntry, MenuItem, MenuTone, Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel,
-    RowSize, SelectField, Surface, Table, TableColumn, TableRow, TextField, Tip, select_state,
-    text_state,
+    MenuEntry, MenuItem, MenuTone, Placement, Popover, PopoverPadding, PopoverPanel, RowSize,
+    SelectField, Surface, Table, TableColumn, TableRow, TextField, Tip, select_state, text_state,
 };
 use crate::kit::overlays::type_text;
 use crate::stories::Story;
@@ -574,7 +573,7 @@ fn popover_open(padding: PopoverPadding, _: &mut Window, cx: &mut App) -> AnyEle
                         .placement(Placement::BottomStart)
                         .default_open(true)
                         .trigger_element(Button::new("rename-trigger", "Rename channel").soft())
-                        .content(move |_, window, cx| {
+                        .content(move |window, cx| {
                             PopoverPanel::new("Rename channel")
                                 .padding(padding)
                                 .child(rename_form(window, cx))
@@ -600,7 +599,7 @@ fn popover_inside_dialog(cx: &App) -> AnyElement {
                             .placement(Placement::BottomStart)
                             .default_open(true)
                             .trigger_element(Button::new("pick-colour", "Pick colour").soft())
-                            .content(|_, _, _| {
+                            .content(|_, _| {
                                 PopoverPanel::new("Colours").child(
                                     div().flex().gap(px(SPACE_SM)).children(
                                         SWATCHES

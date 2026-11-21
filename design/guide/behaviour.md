@@ -62,10 +62,37 @@ called a host.
   on screen announces (a route change, "Joined Squad Up"), not for a message that
   has a component (Alert, Toast announce themselves). Call it from an event
   handler or an effect, never while rendering (a re-render would say it again).
-  Two calls in the same frame at the same politeness say only the last one. Web
-  kit only so far; the native kit has not caught up (see
-  [Extending the system](extending.md#the-native-kit-is-catching-up)).
-- The native client has no hosts yet. They arrive with its new shell.
+  Two calls in the same frame at the same politeness say only the last one. The
+  native kit has it too: `kit::announce(text, Politeness::Polite, window, cx)`
+  does nothing in a window without a `BehaviourRoot`, and each call is read,
+  even the same text twice.
+- The native client has the overlay stack's host, the list focus host and the
+  announcer (`native/crates/semaphore-ui/src/kit/behaviour/`). A
+  `BehaviourRoot` around each window's content (the app's window and the story
+  harness) holds one host per window. Every kit Menu, Popover, Dialog and Sheet
+  is a layer of its stack. Escape reaches the stack through a key binding in
+  the `KitLayer` context each layer's element sets, so an ancestor's binding
+  (a pane's `escape`) cannot take it while focus is in a layer; a focused
+  control that uses Escape binds it in its own, deeper context and has it
+  first. With focus outside every layer, the root sends it, and a screen's own
+  Escape binding asks `kit::escape_open_layer` first. A held Escape closes one
+  layer, on either path. The root sends presses (a press outside a topmost
+  menu goes no further), and the host asks owners to close and returns focus,
+  reading where focus is as a layer closes. A native layer opens on click,
+  never on mouse-down: one opened by a press's own mouse-down is closed by that
+  press. Screens add steps to the Escape chain with
+  `kit::screen_escape` and name where lost focus goes with
+  `kit::screen_focus_target`. A Menu that is part of another surface (a
+  dialog's body) is `Menu::inline()` and not a layer of its own. Menu, Dock and
+  Tabs run on the list focus host. The native toast, confirm and load state
+  hosts come next.
+- Two native differences, for now. Native tooltips are not layers: GPUI's own
+  tooltips have no open or close a host can see, so an Escape pressed while a
+  native tooltip shows closes the layer below it (the same thing MUI does, see
+  below), where the web's kit tooltip takes that Escape. And GPUI's key event
+  has no composing flag: the native host sends `composing: false` and relies on
+  a text field with an input method composing to stop the key itself, which
+  still needs a check with a real input method.
 - Until then, today's screens still handle these things by hand, and they use
   MUI overlays, not the kit's. They behave as MUI does, which differs from these
   rules in places. For example, MUI lets an Escape pressed over a tooltip also
@@ -413,7 +440,10 @@ the live region inside the topmost layer run in real browsers
 Lounge on touch devices (`frontend/src/kit/behaviour/hosts/systemBack.ts`,
 tested in `frontend/src/__tests__/kit/behaviour/hosts/systemBack.test.tsx` and,
 on a phone-sized touch browser, `frontend/e2e/lounge-back.spec.ts`). The native
-client has no host yet.
+host (`native/crates/semaphore-ui/src/kit/behaviour/overlay.rs`) meets the same
+rows except tooltips (not layers natively, see "Where things stand") and the
+system Back (the Android rows); its GPUI tests drive the real kit Menu, Popover,
+Dialog and Sheet (`native/crates/semaphore-ui/src/kit/behaviour/tests.rs`).
 
 Two things the web host does because of how MUI works, not because the pattern
 asks for them. A native host need not copy them:
