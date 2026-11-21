@@ -1556,7 +1556,10 @@ async fn dm_deafening_is_member_only_and_tells_nobody() {
         .iter()
         .find(|user| user["id"] == id("me").as_str())
         .expect("in the call");
-    assert_eq!(mine["isDeafened"], false, "Samira's deafen is hers: {presence}");
+    assert_eq!(
+        mine["isDeafened"], false,
+        "Samira's deafen is hers: {presence}"
+    );
 
     // Not a member (and no such group): `assertDmMember` refuses before anything changes.
     let (status, body) = post(
