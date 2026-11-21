@@ -114,10 +114,12 @@ fn demuxed(units: Vec<Unit>) -> Demuxed {
             EsInfo {
                 pid: V,
                 stream_type: StreamType::H264,
+                registration: None,
             },
             EsInfo {
                 pid: A,
                 stream_type: StreamType::AacAdts,
+                registration: None,
             },
         ],
         units,
@@ -190,10 +192,12 @@ fn units_of_unknown_pids_go_and_a_moved_pid_is_matched_by_type() {
         EsInfo {
             pid: 0x300,
             stream_type: StreamType::H264,
+            registration: None,
         },
         EsInfo {
             pid: 0x555,
             stream_type: StreamType::Other(0x86),
+            registration: None,
         },
     ];
     let placed = place(&d, &tracks(), 0);

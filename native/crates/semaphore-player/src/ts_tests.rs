@@ -259,11 +259,13 @@ fn a_video_pes_across_packets_comes_out_whole_with_pts_and_dts() {
         vec![
             EsInfo {
                 pid: VIDEO,
-                stream_type: StreamType::H264
+                stream_type: StreamType::H264,
+                registration: None,
             },
             EsInfo {
                 pid: AUDIO,
-                stream_type: StreamType::AacAdts
+                stream_type: StreamType::AacAdts,
+                registration: None,
             }
         ]
     );
@@ -476,6 +478,219 @@ fn opus_hdmv_and_unknown_streams_are_told_apart() {
             StreamType::Other(0x81),
         ]
     );
+}
+
+#[test]
+fn a_private_stream_carrying_adts_is_aac() {
+    // HDMV/BDAV (ffmpeg's M2TS muxer) names AAC-LC as private data 0x06, with no registration
+    // descriptor: only the ADTS payload says what it is.
+    let frames: Vec<Vec<u8>> = (0..3).map(|i| adts(&[i; 20], false)).collect();
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &frames.concat(), true),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::AacAdts);
+    assert_eq!(out.units.len(), 3);
+    assert_eq!(out.units[1].data, frames[1]);
+    assert_eq!(out.units[1].pts, Some(91_920));
+}
+
+#[test]
+fn a_private_stream_that_starts_mid_frame_is_sniffed_on_a_later_pes() {
+    // The first PES holds the tail of a frame cut before it: no sync at its start. The second
+    // starts a frame, and the frame after it is enough to decide.
+    let a = adts(&[1; 30], false);
+    let b = adts(&[2; 30], false);
+    let c = adts(&[3; 30], false);
+    let cut = a[a.len() - 12..].to_vec();
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &cut, true),
+        &mut cc,
+        false,
+    ));
+    packets.extend(packetize(
+        AUDIO,
+        &pes(
+            0xC0,
+            Some(120_000),
+            None,
+            &[b.clone(), c.clone()].concat(),
+            true,
+        ),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::AacAdts);
+    assert_eq!(out.units.len(), 2, "the cut frame's tail is no frame");
+    assert_eq!(out.units[0].data, b);
+    assert_eq!(out.units[1].data, c);
+}
+
+#[test]
+fn one_adts_header_followed_by_junk_stays_private() {
+    // A header alone (about 15 significant bits) is what compressed data can hold by chance:
+    // the frame after it has to start where it says, and here it does not.
+    let mut payload = vec![0xFF, 0xF9, 0x50, 0x80, 0x03, 0x1F, 0xFC];
+    payload.extend(std::iter::repeat_n(0x00, 300));
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &payload, true),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::Other(0x06));
+    assert_eq!(out.units.len(), 1);
+    assert_eq!(out.units[0].data, payload);
+}
+
+#[test]
+fn a_registered_private_stream_is_not_sniffed() {
+    // A registration descriptor names the codec, so the payload is not looked at.
+    let frames: Vec<Vec<u8>> = (0..3).map(|i| adts(&[i; 20], false)).collect();
+    let bssd = [0x05, 4, b'B', b'S', b'S', b'D'];
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &bssd)])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &frames.concat(), true),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::Other(0x06));
+    assert_eq!(out.streams[1].registration, Some(*b"BSSD"));
+    assert_eq!(out.units.len(), 1);
+    assert_eq!(out.units[0].data, frames.concat());
+}
+
+#[test]
+fn a_private_stream_without_adts_stays_private() {
+    // An AC-3 sync frame, not ADTS: no payload ever looks like AAC, so after a few of them the
+    // stream is taken at its PMT's word.
+    let frame = [0x0B, 0x77, 0x10, 0x40, 0x00, 0x00, 0x00];
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    for i in 0..SNIFF_PES {
+        packets.extend(packetize(
+            AUDIO,
+            &pes(0xC0, Some(90_000 + 1_920 * i as u64), None, &frame, true),
+            &mut cc,
+            false,
+        ));
+    }
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::Other(0x06));
+    assert_eq!(out.units.len(), SNIFF_PES);
+    assert!(out.units.iter().all(|u| u.data == frame));
+}
+
+#[test]
+fn an_undecided_private_stream_still_emits_its_payloads() {
+    // One payload is not enough to decide either way, and the segment ends: the payload is not
+    // lost, and the stream is still listed as private.
+    let frame = [0x0B, 0x77, 0x10, 0x40, 0x00, 0x00, 0x00];
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &frame, true),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::Other(0x06));
+    assert_eq!(out.units.len(), 1);
+    assert_eq!(out.units[0].data, frame);
+}
+
+#[test]
+fn a_pmt_that_re_types_a_sniffed_pid_wins_over_the_sniff() {
+    // The PID was AAC under the first PMT; the second calls it H.264. The sniffed type and the
+    // frames split under it are dropped, and the H.264 PES come out whole.
+    let frames: Vec<Vec<u8>> = (0..3).map(|i| adts(&[i; 20], false)).collect();
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &frames.concat(), true),
+        &mut cc,
+        false,
+    ));
+    packets.push(psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x1B, AUDIO, &[])])));
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xE0, Some(120_000), None, IDR, true),
+        &mut cc,
+        true,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::H264);
+    let last = out.units.last().unwrap();
+    assert_eq!(last.data, IDR);
+    assert!(last.keyframe);
+}
+
+#[test]
+fn a_pmt_that_names_a_sniffed_pid_replaces_what_was_sniffed() {
+    // Undecided (not ADTS) under the private PMT; the second PMT says AAC in ADTS, and the
+    // stream is split as such.
+    let frames: Vec<Vec<u8>> = (0..3).map(|i| adts(&[i; 20], false)).collect();
+    let junk = [0x0B, 0x77, 0x10, 0x40, 0x00, 0x00, 0x00];
+    let mut cc = 0;
+    let mut packets = vec![
+        psi(0, &pat(PMT)),
+        psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x06, AUDIO, &[])])),
+    ];
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(90_000), None, &junk, true),
+        &mut cc,
+        false,
+    ));
+    packets.push(psi(PMT, &pmt(&[(0x1B, VIDEO, &[]), (0x0F, AUDIO, &[])])));
+    packets.extend(packetize(
+        AUDIO,
+        &pes(0xC0, Some(120_000), None, &frames.concat(), true),
+        &mut cc,
+        false,
+    ));
+    let out = demux(&join(packets)).unwrap();
+    assert_eq!(out.streams[1].stream_type, StreamType::AacAdts);
+    assert_eq!(out.units.len(), 3);
+    assert_eq!(out.units[0].data, frames[0]);
 }
 
 #[test]
