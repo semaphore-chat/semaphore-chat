@@ -72,7 +72,7 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.4",
     "swagger-ui-express": "^5.0.1",
-    "undici": "^7.30.1",
+    "undici": "^8.12.4",
     "uuid": "^14.0.3",
     "web-push": "^3.6.7"
   },
