@@ -157,7 +157,7 @@ impl RenderOnce for Icon {
 }
 
 /// A run of text in one of the design system's text styles.
-fn styled(style: TextStyle, content: impl Into<SharedString>) -> Div {
+pub(super) fn styled(style: TextStyle, content: impl Into<SharedString>) -> Div {
     div()
         .font_family(SharedString::from(style.family))
         .text_size(px(style.size))
@@ -168,7 +168,7 @@ fn styled(style: TextStyle, content: impl Into<SharedString>) -> Div {
 }
 
 /// A style at another weight: `text.meta` at `text.bodyStrong`'s weight, say.
-fn weighted(style: TextStyle, weight: u16) -> TextStyle {
+pub(super) fn weighted(style: TextStyle, weight: u16) -> TextStyle {
     TextStyle { weight, ..style }
 }
 
@@ -302,7 +302,7 @@ impl Presence {
 /// Name used when a person's name is blank, so an avatar (or a stack) is never unlabelled.
 pub const UNNAMED: &str = "Unknown user";
 
-fn shown_name(name: &str) -> &str {
+pub(super) fn shown_name(name: &str) -> &str {
     if name.trim().is_empty() {
         UNNAMED
     } else {
@@ -391,7 +391,7 @@ fn outset(by: f32, radius: f32) -> Div {
 /// The speaking ring, shared by Avatar and the stack: a gap in the colour of the layer behind,
 /// then a ring in the positive colour, both outside the box. Drawn before the face, so it is
 /// under it.
-fn speaking_ring(sem: &Sem, behind: Hsla, radius: f32) -> [Div; 2] {
+pub(super) fn speaking_ring(sem: &Sem, behind: Hsla, radius: f32) -> [Div; 2] {
     [
         outset(BORDER_SELECTED * 2., radius)
             .border(px(BORDER_SELECTED))

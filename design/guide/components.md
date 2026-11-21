@@ -598,10 +598,19 @@ Stories: `kit-media-tile--kinds`, `kit-media-tile--kinds-light`,
 `kit-media-tile--kinds-tinted`, `kit-media-tile--speaking`,
 `kit-media-tile--speaking-light`, `kit-media-tile--long-label`,
 `kit-media-tile--small-tiles`, `kit-media-tile--small-tiles-light`,
-`kit-media-tile--phone-pair`.
+`kit-media-tile--phone-pair`. The native kit adds `kit-media-tile--blank-label`,
+`kit-media-tile--blank-label-light` and `kit-media-tile--long-label-light`.
 
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
+**In the native kit** the tile is `MediaTile::new(id, label, kind)` with
+`.speaking(..)` and `.on_surface(..)`, and the video is a slot, not a ref:
+`.video(|slot| ...)` returns the element that paints the frames (a `canvas`
+over the call's frames). The tile lays it out over its whole box, under the
+caption chip, and hands it a `VideoSlot` with the `fit` (`Contain` for a
+`screen`, `Cover` for a `camera`), the corner `radius` and the `corners`
+colour (the layer behind the tile, for a covering frame painted oversized).
+Pass it only while the track is live; an `avatar` tile never builds it. GPUI
+has no container queries, so the avatar steps are chosen from the tile's
+laid-out width in the same frame, at the same widths as the web's.
 
 ## Badge
 
