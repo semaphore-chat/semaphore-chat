@@ -33,8 +33,11 @@ pub const DEFAULT_ERROR_MESSAGE: &str = "Couldn't finish that. Try again.";
 /// The result of a timed-out action is unknown, so the user checks before trying again.
 pub const TIMEOUT_MESSAGE: &str =
     "This is taking too long. It may still have worked, so check before you try again.";
-/// The toast id a failure without a dialog uses.
-pub const CONFIRM_NOTIFY_ID: &str = "confirm";
+/// The toast id a failure without a dialog uses: `confirm-<id>`, one per confirmation, so two
+/// screens' failures never replace each other.
+pub fn confirm_notify_id(id: &ElementId) -> String {
+    format!("confirm-{id}")
+}
 
 type Run = Rc<dyn Fn(&mut Window, &mut App) -> Task<Result<(), String>>>;
 type Done = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -91,8 +94,25 @@ pub struct ConfirmDestructive {
     pub request: ConfirmAction,
     /// What the dialog's confirm button does, for rigs and stories that drive it without a press.
     pub confirm: ConfirmAction,
-    pub dialog: Option<Dialog>,
+    pub dialog: Option<ConfirmDialog>,
     pub phase: Phase,
+}
+
+/// The confirmation's dialog, to draw anywhere in the screen. Drawn again after the layer it was
+/// opened from closed and reopened while the action runs, a failure shows in it again (the
+/// web's `viewBack()`).
+#[derive(IntoElement)]
+pub struct ConfirmDialog {
+    dialog: Dialog,
+    state: Entity<Confirm>,
+}
+
+impl RenderOnce for ConfirmDialog {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        self.state
+            .update(cx, |confirm, _| confirm.parent_gone = false);
+        self.dialog
+    }
 }
 
 type ConfirmMachine = Machine<State, Event, Effect, Params>;
@@ -104,8 +124,11 @@ struct Confirm {
     open: Option<u32>,
     /// The dialog went with its parent while the action worked: a failure has nowhere to show.
     parent_gone: bool,
-    /// The runs in flight; dropping one stops it.
-    tasks: Vec<Task<()>>,
+    /// The current attempt's run and its timeout; dropping the run stops it.
+    answer: Option<Task<()>>,
+    timer: Option<Task<()>>,
+    /// The toast id a failure without a dialog uses.
+    notify_id: String,
 }
 
 fn machine(confirm: &mut Confirm) -> &mut ConfirmMachine {
@@ -126,7 +149,9 @@ pub fn confirm_destructive(
         options: latest,
         open: None,
         parent_gone: false,
-        tasks: Vec::new(),
+        answer: None,
+        timer: None,
+        notify_id: confirm_notify_id(&id),
     });
     state.update(cx, |confirm, _| confirm.options = options.clone());
     let phase = state.read(cx).machine.state().phase;
@@ -138,6 +163,7 @@ pub fn confirm_destructive(
         let state = state.clone();
         Rc::new(move |window, cx| send(&state, Event::Confirm, window, cx))
     };
+    let dialog_state = state.clone();
     let dialog = (phase != Phase::Idle).then(|| {
         let working = phase == Phase::Working;
         let error = state.read(cx).machine.state().error.clone();
@@ -187,6 +213,10 @@ pub fn confirm_destructive(
                 ),
                 DialogCloseReason::ParentClosed => parent_closed(&close, window, cx),
             })
+    });
+    let dialog = dialog.map(|dialog| ConfirmDialog {
+        dialog,
+        state: dialog_state,
     });
     ConfirmDestructive {
         request,
@@ -243,6 +273,7 @@ fn apply(state: &Entity<Confirm>, effect: Effect, window: &mut Window, cx: &mut 
                                 },
                                 Err(message) => Event::Failed { attempt, message },
                             };
+                            state.update(cx, |confirm, _| confirm.timer = None);
                             report(&state, attempt, event, window, cx);
                         }
                     })
@@ -257,14 +288,18 @@ fn apply(state: &Entity<Confirm>, effect: Effect, window: &mut Window, cx: &mut 
                             attempt,
                             message: TIMEOUT_MESSAGE.into(),
                         };
+                        // The answer no longer counts: stop the run, as the web aborts its
+                        // signal, so a retry never runs alongside it.
+                        state.update(cx, |confirm, _| confirm.answer = None);
                         report(&state, attempt, event, window, cx);
                     }
                 })
                 .ok();
             });
+            // One run and one timer at a time: a new attempt drops the last one's.
             state.update(cx, |confirm, _| {
-                confirm.tasks.push(answer);
-                confirm.tasks.push(timer);
+                confirm.answer = Some(answer);
+                confirm.timer = Some(timer);
             });
         }
         Effect::Done => {
@@ -301,11 +336,9 @@ fn report(state: &Entity<Confirm>, attempt: u32, event: Event, window: &mut Wind
             window,
             cx,
         );
+        let id = state.read(cx).notify_id.clone();
         if let Some(toasts) = Toasts::of(window, cx) {
-            toasts.show(
-                ToastRequest::new(message).id(CONFIRM_NOTIFY_ID).danger(),
-                cx,
-            );
+            toasts.show(ToastRequest::new(message).id(id).danger(), cx);
         }
     }
 }

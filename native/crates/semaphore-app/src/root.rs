@@ -1087,6 +1087,15 @@ impl AppRoot {
                 self.drop_community();
                 self.drop_roles();
                 self.drop_moderation();
+                // This session's notices go with it: none waits on the sign-in screen.
+                let toasts = self.toasts();
+                for id in [
+                    replay::REPLAY_TOAST,
+                    prejoin::JOIN_FAILED_TOAST,
+                    account::INVITE_NOTICE,
+                ] {
+                    toasts.dismiss(id, cx);
+                }
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))

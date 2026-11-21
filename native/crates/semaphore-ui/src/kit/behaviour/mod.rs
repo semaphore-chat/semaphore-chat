@@ -29,7 +29,7 @@ mod tests_review;
 mod toasts;
 
 pub use announce::{Announcer, Politeness, announce};
-pub use confirm::{ConfirmDestructive, ConfirmOptions, confirm_destructive};
+pub use confirm::{ConfirmDestructive, ConfirmDialog, ConfirmOptions, confirm_destructive};
 pub use host::{BehaviourHost, BehaviourRoot};
 pub use load::{LoadResult, LoadState, LoadStateView, use_load_state};
 pub use overlay::{CloseReason, LayerKind, escape_open_layer, screen_escape, screen_focus_target};

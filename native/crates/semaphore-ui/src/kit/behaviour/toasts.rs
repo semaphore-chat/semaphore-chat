@@ -16,6 +16,7 @@ use super::BehaviourHost;
 use super::machine::{Machine, drive_app};
 use super::overlay::LayerKind;
 use crate::kit::{Toast, ToastTone};
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 pub use semaphore_design::behaviour::toast_queue::Tone as ToastQueueTone;
@@ -81,7 +82,7 @@ pub(crate) struct ToastHost {
     actions: HashMap<String, ToastAction>,
     next_id: u64,
     /// The region's own focus: focus in it is "focus inside the toast area".
-    region: Option<FocusHandle>,
+    pub(crate) region: Option<FocusHandle>,
     /// Focus was in the region when it last rendered.
     focus_inside: bool,
     /// The pointer is on the region.
@@ -227,9 +228,25 @@ impl Toasts {
     }
 
     fn send(&self, host: &Entity<BehaviourHost>, event: Event, cx: &mut App) {
+        let was_empty = host.read(cx).toasts.state().showing.is_none();
         let this = self.clone();
         drive_app(host, queue, event, cx, |effect, cx| this.apply(effect, cx));
         host.update(cx, |host, _| host.toasts.prune());
+        // Rule 13: a toast that shows from empty while a reason holds is paused at once, without
+        // waiting for a frame (a hidden window may draw none). Through the window, after this
+        // update: the caller may be updating it now.
+        if was_empty && host.read(cx).toasts.state().showing.is_some() {
+            let window = self.window;
+            cx.defer(move |cx| {
+                window
+                    .update(cx, |_, window, cx| {
+                        if let Some(host) = BehaviourHost::of(window, cx) {
+                            sync_pause(&host, window, cx);
+                        }
+                    })
+                    .ok();
+            });
+        }
         cx.refresh_windows();
     }
 
@@ -288,6 +305,31 @@ impl Toasts {
     }
 }
 
+/// Rule 15: one `pause` while any reason holds, one `resume` when none does. The reasons are the
+/// pointer on the region, focus in it (both as the region last saw them), the window inactive, and
+/// a dialog or sheet in the overlay stack. Called by the region as it renders, when a toast shows
+/// from empty, and when the window's activation changes.
+pub(crate) fn sync_pause(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut App) {
+    let (hold, paused, showing) = {
+        let host = host.read(cx);
+        let modal = host
+            .overlay
+            .layers()
+            .iter()
+            .any(|layer| matches!(layer.kind, LayerKind::Dialog | LayerKind::Sheet));
+        let toasts = &host.toasts;
+        (
+            toasts.pointer || toasts.focus_inside || !window.is_window_active() || modal,
+            toasts.state().paused,
+            toasts.state().showing.is_some(),
+        )
+    };
+    if showing && hold != paused {
+        let toasts = Toasts::for_window(window.window_handle());
+        toasts.send(host, if hold { Event::Pause } else { Event::Resume }, cx);
+    }
+}
+
 /// Focus back where it was before it entered the toast area, else the screen's focus target.
 fn return_focus(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut App) {
     let target = {
@@ -338,31 +380,20 @@ impl RenderOnce for ToastRegion {
         // Where focus is, read each render: focus inside, and the last place outside.
         let focus_inside = region.contains_focused(window, cx);
         let focused = window.focused(cx);
-        let modal = host
-            .read(cx)
-            .overlay
-            .layers()
-            .iter()
-            .any(|layer| matches!(layer.kind, LayerKind::Dialog | LayerKind::Sheet));
-        let (showing, paused, pointer) = host.update(cx, |host, _| {
+        let showing = host.update(cx, |host, _| {
             let toasts = &mut host.toasts;
             toasts.focus_inside = focus_inside;
             if !focus_inside && let Some(focused) = focused {
                 toasts.before = Some(focused.downgrade());
             }
-            let state = toasts.state();
-            (state.showing.clone(), state.paused, toasts.pointer)
+            toasts.state().showing.clone()
         });
         let Some(toast) = showing else {
             // The area went with the last toast: the pointer cannot be on it any more.
             host.update(cx, |host, _| host.toasts.pointer = false);
             return div().into_any_element();
         };
-        // Rule 15: one pause while any reason holds, one resume when none does.
-        let hold = pointer || focus_inside || !window.is_window_active() || modal;
-        if hold != paused {
-            toasts.send(&host, if hold { Event::Pause } else { Event::Resume }, cx);
-        }
+        sync_pause(&host, window, cx);
         let id = toast.id.clone();
         let (dismiss, act) = (toasts.clone(), toasts.clone());
         let (dismiss_id, act_id) = (id.clone(), id.clone());
@@ -386,14 +417,36 @@ impl RenderOnce for ToastRegion {
             .child(
                 div()
                     .id("kit-toast-region")
+                    .test_support()
                     .track_focus(&region)
-                    .on_hover(move |hovered, _, cx| {
-                        if let Some(host) = hover.upgrade() {
-                            host.update(cx, |host, _| host.toasts.pointer = *hovered);
-                            cx.refresh_windows();
-                        }
-                    })
-                    .child(piece),
+                    .relative()
+                    .child(piece)
+                    // The pointer on the area: from its painted bounds, as the toast's own
+                    // panel occludes the area's hitbox. A mouse or pen; GPUI has no touch here.
+                    .child(
+                        canvas(
+                            |bounds, _, _| bounds,
+                            move |_, bounds, window, _| {
+                                window.on_mouse_event(
+                                    move |event: &MouseMoveEvent, phase, _, cx| {
+                                        if phase != DispatchPhase::Capture {
+                                            return;
+                                        }
+                                        let inside = bounds.contains(&event.position);
+                                        let Some(host) = hover.upgrade() else { return };
+                                        if host.read(cx).toasts.pointer != inside {
+                                            host.update(cx, |host, _| host.toasts.pointer = inside);
+                                            cx.refresh_windows();
+                                        }
+                                    },
+                                );
+                            },
+                        )
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full(),
+                    ),
             )
             .into_any_element()
     }

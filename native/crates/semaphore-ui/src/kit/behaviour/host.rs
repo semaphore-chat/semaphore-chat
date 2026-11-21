@@ -35,6 +35,8 @@ pub struct BehaviourHost {
     pub(crate) last_focus: Option<WeakFocusHandle>,
     /// An Escape is down: its key repeats do nothing (one layer per press).
     pub(crate) escape_down: bool,
+    /// Follows the window's activation for the toast queue's "hidden" reason, frame or not.
+    _activation: Option<Subscription>,
 }
 
 #[derive(Default)]
@@ -54,6 +56,7 @@ impl BehaviourHost {
             root: cx.focus_handle(),
             last_focus: None,
             escape_down: false,
+            _activation: None,
         }
     }
 
@@ -133,7 +136,16 @@ impl Element for BehaviourRoot {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let host = window.use_keyed_state("kit-behaviour-host", cx, |_, cx| BehaviourHost::new(cx));
+        let host = window.use_keyed_state("kit-behaviour-host", cx, |window, cx| {
+            let mut host = BehaviourHost::new(cx);
+            host._activation = Some(cx.observe_window_activation(window, |_, window, cx| {
+                let host = cx.entity();
+                window.defer(cx, move |window, cx| {
+                    super::toasts::sync_pause(&host, window, cx)
+                });
+            }));
+            host
+        });
         let id = window.window_handle().window_id();
         let hosts = &mut cx.default_global::<Hosts>().by_window;
         // Windows that closed leave a dead entry: drop them as a host is recorded.

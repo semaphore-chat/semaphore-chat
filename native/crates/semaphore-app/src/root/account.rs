@@ -57,7 +57,7 @@ pub struct DesktopSignIn {
 
 /// How long the invite card's notice stays, as the web's snackbar.
 /// The invite card's notices' subject: one at a time, a newer one replaces the last.
-const INVITE_NOTICE: &str = "home-invite-notice";
+pub(super) const INVITE_NOTICE: &str = "home-invite-notice";
 
 #[derive(Default)]
 pub(super) struct Account {

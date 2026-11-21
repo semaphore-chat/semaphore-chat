@@ -66,17 +66,18 @@ pub fn use_load_state<T: Clone + 'static>(
     window: &mut Window,
     cx: &mut App,
 ) -> LoadResult<T> {
+    let id: ElementId = id.into();
     let reset_key = reset_key.into();
     let fetch: Fetch<T> = Rc::new(fetch);
+    // The toast a failed refresh shows: one per screen, so two screens' never replace each other.
+    let params = Params {
+        notify_id: format!("load-{id}"),
+    };
     let mut fresh = false;
-    let state = window.use_keyed_state(id, cx, |_, _| {
+    let state = window.use_keyed_state(id.clone(), cx, |_, _| {
         fresh = true;
         Load {
-            machine: Machine::new(
-                pattern::step,
-                pattern::initial(&Params::default()),
-                Params::default(),
-            ),
+            machine: Machine::new(pattern::step, pattern::initial(&params), params.clone()),
             reset_key: reset_key.clone(),
             data: None,
             fetch: fetch.clone(),
