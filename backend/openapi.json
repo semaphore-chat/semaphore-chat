@@ -5264,7 +5264,7 @@
             }
           }
         },
-        "summary": "Serve individual HLS segment (.ts file) for preview\nSegments are remuxed on-the-fly to standard MPEG-TS format\nfor HLS.js compatibility (LiveKit egress creates HDMV-style TS)",
+        "summary": "Serve individual HLS segment (.ts file) for preview\nSegments are remuxed on-the-fly to standard MPEG-TS format\nfor HLS.js compatibility",
         "tags": [
           "Livekit"
         ]
