@@ -1721,7 +1721,7 @@ impl AppRoot {
                             .ok();
                     },
                 )])
-                .collect(),
+                .collect::<Vec<_>>(),
             ))
             .action(Button::new("more-done", "Close").on_click(move |_, _, cx| {
                 done.update(cx, shut).ok();

@@ -19,6 +19,10 @@ mod overlays;
 #[cfg(feature = "stories")]
 mod stories;
 mod surface;
+#[cfg(feature = "stories")]
+mod stories_lists_overlays;
+#[cfg(test)]
+mod tests_lists_overlays;
 mod typography;
 
 pub use assets::{UiAssets, icon_path, lounge_icon_path};
@@ -35,10 +39,14 @@ pub use display::{
 };
 pub use fields::{SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
-pub use lists::{ListRow, Table, Tabs};
+pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow, Tabs};
 pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
-pub use overlays::{Dialog, Menu, MenuItem, Paper, Popover, SecondaryTone, Tip, with_tip};
 pub use surface::Surface;
+pub use overlays::{
+    ANCHOR_GAP, Dialog, DialogCloseReason, DialogSize, Menu, MenuCloseReason, MenuEntry, MenuItem,
+    MenuTone, Paper, Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel, SecondaryTone,
+    Tip, with_tip,
+};
 pub use typography::{Variant, link, text};
 
 /// An action with no payload.
@@ -55,5 +63,6 @@ pub fn spacing(n: f32) -> gpui_kit::Pixels {
 pub fn stories() -> Vec<crate::stories::Story> {
     let mut all = stories::stories();
     all.extend(display_stories::stories());
+    all.extend(stories_lists_overlays::stories());
     all
 }

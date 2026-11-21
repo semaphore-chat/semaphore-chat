@@ -3,8 +3,8 @@
 use super::{
     Alert, Avatar, Badge, Button, ButtonSize, ButtonTone, CheckState, Checkbox, Chip, Dialog, Icon,
     IconButton, LinearProgress, ListRow, Paper, Radio, SecondaryTone, SelectField, Severity,
-    Skeleton, Slider, Snackbar, Spinner, Switch, Table, Tabs, TextField, Tip, Variant, link,
-    select_state, text, text_state,
+    Skeleton, Slider, Snackbar, Spinner, Switch, Table, TableColumn, TableRow, Tabs, TextField,
+    Tip, Variant, link, select_state, text, text_state,
 };
 use super::{Menu as KitMenu, MenuItem as KitMenuItem};
 use crate::stories::Story;
@@ -384,10 +384,20 @@ impl Render for Gallery {
                 secondary,
                 Paper::new().child(Table::new(
                     "Members",
-                    vec!["Name".into(), "Role".into(), "Joined".into()],
                     vec![
-                        vec!["Mike".into(), "Owner".into(), "Sep 16".into()],
-                        vec!["Priya Nilsson".into(), "Member".into(), "Sep 18".into()],
+                        TableColumn::new("name", "Name"),
+                        TableColumn::new("role", "Role"),
+                        TableColumn::new("joined", "Joined"),
+                    ],
+                    vec![
+                        TableRow::new("mike")
+                            .text("name", "Mike")
+                            .text("role", "Owner")
+                            .text("joined", "Sep 16"),
+                        TableRow::new("priya")
+                            .text("name", "Priya Nilsson")
+                            .text("role", "Member")
+                            .text("joined", "Sep 18"),
                     ],
                 )),
             ))
