@@ -173,6 +173,9 @@ impl CommunitySettingsScreen {
                     22.,
                     if locked.is_some() {
                         sem.text_disabled
+                    } else if !phone && tab == self.tab {
+                        // The selected row is the accent pill: its ink reads on it.
+                        sem.role.on_accent
                     } else {
                         sem.action_active
                     },

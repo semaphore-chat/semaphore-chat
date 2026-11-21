@@ -72,7 +72,16 @@ impl SettingsScreen {
                 SharedString::from(format!("settings-tab-{}", tab.key())),
                 tab.label(),
             )
-            .leading(design_icon(tab_icon(tab), 22., sem.action_active))
+            .leading(design_icon(
+                tab_icon(tab),
+                22.,
+                // The selected row is the accent pill: its ink reads on it.
+                if !phone && tab == self.tab {
+                    sem.role.on_accent
+                } else {
+                    sem.action_active
+                },
+            ))
             .selected(!phone && tab == self.tab)
             .on_click(move |_, cx| {
                 view.update(cx, |screen, cx| screen.pick(tab, cx)).ok();

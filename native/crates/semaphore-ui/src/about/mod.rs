@@ -181,17 +181,18 @@ impl Render for AboutDialog {
                             .children(licences),
                     ),
             )
-            .action(
-                Button::new("about-copy-version", "Copy version").on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(clipboard_version.to_string()));
-                }),
-            )
+            // Close first: focus starts on the first action, so a stray Enter is safe.
             .action(
                 Button::new("about-close", "Close")
                     .contained()
                     .on_click(move |_, _, cx| {
                         close.update(cx, |dialog, cx| dialog.close(cx)).ok();
                     }),
+            )
+            .action(
+                Button::new("about-copy-version", "Copy version").on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(clipboard_version.to_string()));
+                }),
             )
             .on_close(move |_, cx| {
                 backdrop.update(cx, |dialog, cx| dialog.close(cx)).ok();

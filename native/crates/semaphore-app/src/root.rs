@@ -24,7 +24,8 @@ use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
 use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep};
 use semaphore_ui::kit::{
-    Button, Dialog, Menu, MenuItem, Spinner, Variant, emit_core_event, on_core_event, text,
+    Button, Dialog, Menu, MenuCloseReason, MenuItem, Spinner, Variant, emit_core_event,
+    on_core_event, text,
 };
 use semaphore_ui::messages::{LruImageCache, MediaRef};
 use semaphore_ui::nav::Route;
@@ -1498,6 +1499,17 @@ impl AppRoot {
                 Variant::Body2,
                 "Signing out forgets this session on this computer.",
             ))
+            // Cancel first: focus starts on the first action, so a stray Enter is safe.
+            .action(
+                Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
+                    cancel
+                        .update(cx, |this, cx| {
+                            this.account_open = false;
+                            cx.notify();
+                        })
+                        .ok();
+                }),
+            )
             .action(
                 Button::new("account-profile", "Profile").on_click(move |_, _, cx| {
                     profile
@@ -1543,16 +1555,6 @@ impl AppRoot {
                             .ok();
                     },
                 ),
-            )
-            .action(
-                Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
-                    cancel
-                        .update(cx, |this, cx| {
-                            this.account_open = false;
-                            cx.notify();
-                        })
-                        .ok();
-                }),
             )
             .action(
                 Button::new("account-sign-out", "Sign out")
@@ -1672,6 +1674,7 @@ impl AppRoot {
         let this = cx.entity().downgrade();
         let (share, settings, close, done) =
             (this.clone(), this.clone(), this.clone(), this.clone());
+        let escape = this.clone();
         let capture = this;
         let shut = |root: &mut AppRoot, cx: &mut Context<AppRoot>| {
             root.more_open = false;
@@ -1679,50 +1682,60 @@ impl AppRoot {
         };
         Dialog::new("Call options")
             .width(320.)
-            .body(Menu::new(
-                "Call options",
-                vec![
-                    MenuItem::new("more-share", share_label, move |_, cx| {
-                        share
-                            .update(cx, |root, cx| {
-                                shut(root, cx);
-                                if let Some(voice) = &root.voice {
-                                    voice.toggle_screen_share();
-                                }
-                            })
-                            .ok();
-                    })
-                    .disabled(!look.clickable()),
-                ]
-                .into_iter()
-                .chain(recording.then(|| {
-                    // W4: Capture, while the replay buffer records.
-                    MenuItem::new("more-capture", "Capture replay", move |window, cx| {
-                        capture
-                            .update(cx, |root, cx| {
-                                shut(root, cx);
-                                root.open_capture(window, cx);
-                            })
-                            .ok();
-                    })
-                }))
-                .chain([MenuItem::new(
-                    "more-settings",
-                    "Voice settings",
-                    move |_, cx| {
-                        settings
-                            .update(cx, |root, cx| {
-                                shut(root, cx);
-                                root.open_settings(
-                                    semaphore_ui::settings::SettingsTab::VoiceVideo,
-                                    cx,
-                                );
-                            })
-                            .ok();
-                    },
-                )])
-                .collect(),
-            ))
+            .body(
+                Menu::new(
+                    "Call options",
+                    vec![
+                        MenuItem::new("more-share", share_label, move |_, cx| {
+                            share
+                                .update(cx, |root, cx| {
+                                    shut(root, cx);
+                                    if let Some(voice) = &root.voice {
+                                        voice.toggle_screen_share();
+                                    }
+                                })
+                                .ok();
+                        })
+                        .disabled(!look.clickable()),
+                    ]
+                    .into_iter()
+                    .chain(recording.then(|| {
+                        // W4: Capture, while the replay buffer records.
+                        MenuItem::new("more-capture", "Capture replay", move |window, cx| {
+                            capture
+                                .update(cx, |root, cx| {
+                                    shut(root, cx);
+                                    root.open_capture(window, cx);
+                                })
+                                .ok();
+                        })
+                    }))
+                    .chain([MenuItem::new(
+                        "more-settings",
+                        "Voice settings",
+                        move |_, cx| {
+                            settings
+                                .update(cx, |root, cx| {
+                                    shut(root, cx);
+                                    root.open_settings(
+                                        semaphore_ui::settings::SettingsTab::VoiceVideo,
+                                        cx,
+                                    );
+                                })
+                                .ok();
+                        },
+                    )])
+                    .collect::<Vec<_>>(),
+                )
+                .on_close({
+                    // Escape closes the dialog the menu is; Tab goes on to its Close button.
+                    move |reason, _, cx| {
+                        if reason == MenuCloseReason::Escape {
+                            escape.update(cx, shut).ok();
+                        }
+                    }
+                }),
+            )
             .action(Button::new("more-done", "Close").on_click(move |_, _, cx| {
                 done.update(cx, shut).ok();
             }))

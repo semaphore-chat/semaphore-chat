@@ -40,6 +40,7 @@ impl DmHeader {
         let height = if touch { 48. } else { 36. };
         let add = cx.weak_entity();
         let leave = cx.weak_entity();
+        let close = cx.weak_entity();
         let items = vec![
             MenuItem::new("dm-add-people", "Add people", move |_, cx| {
                 add.update(cx, |header, cx| header.add_people(cx)).ok();
@@ -89,7 +90,16 @@ impl DmHeader {
                                             header.menu_open = false;
                                             cx.notify();
                                         }))
-                                        .child(Menu::new("Conversation actions", items)),
+                                        .child(Menu::new("Conversation actions", items).on_close(
+                                            move |_, _, cx| {
+                                                close
+                                                    .update(cx, |header, cx| {
+                                                        header.menu_open = false;
+                                                        cx.notify();
+                                                    })
+                                                    .ok();
+                                            },
+                                        )),
                                 ),
                         )
                         .with_priority(1),
