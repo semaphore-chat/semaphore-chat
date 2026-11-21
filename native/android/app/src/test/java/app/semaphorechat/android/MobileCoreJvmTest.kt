@@ -39,8 +39,8 @@ import uniffi.semaphore_mobile.start
  * semaphore-fake-server: what the app does, minus Android. native/scripts/android.sh builds both
  * and passes where they are; run alone, the test is skipped.
  *
- * The Keystore store needs a device: it gets its own test with the emulator (D6). Here the store
- * is in memory.
+ * The Keystore store needs a device: `DeviceCoreTest` (`src/androidTest`) covers it on the
+ * emulator. Here the store is in memory.
  */
 class MobileCoreJvmTest {
     private val server: String? = System.getProperty("semaphore.fakeServer")

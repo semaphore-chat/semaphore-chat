@@ -23,10 +23,16 @@ android {
         versionCode = 1
         versionName = "0.0.0"
 
-        // Only the ABI native/scripts/android.sh builds: rust-toolchain.toml installs
-        // aarch64-linux-android, and cargo-ndk is asked for arm64-v8a alone.
+        // The instrumented test (src/androidTest) runs on the emulator
+        // (native/scripts/android-device-test.sh).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Only the ABIs native/scripts/android.sh built, which it passes as `-Psemaphore.abis`.
+        // Its default is arm64-v8a alone: cargo-ndk is asked for that, and the image carries the
+        // Rust targets it needs (x86_64-linux-android for the emulator as well).
+        val abis = providers.gradleProperty("semaphore.abis").getOrElse("arm64-v8a")
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += abis.split(',').map { it.trim() }.filter { it.isNotEmpty() }
         }
     }
 
@@ -121,4 +127,10 @@ dependencies {
     // above leaves out.
     testImplementation("junit:junit:4.13.2")
     testImplementation("net.java.dev.jna:jna:5.15.0")
+
+    // The instrumented test (src/androidTest): JUnit on the device, and the runner that gives it
+    // InstrumentationRegistry (its arguments come from `adb shell am instrument -e`).
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

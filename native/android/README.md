@@ -20,12 +20,14 @@ Everything runs in Docker; nothing is installed on the host. The script builds (
 Android image from `native/docker/Dockerfile.android`, layered on the pinned native build image,
 and inside it:
 
-1. `cargo ndk -t arm64-v8a --platform 26 build --locked -p semaphore-mobile --release`
+1. `cargo ndk -t <each ABI> --platform 26 build --locked -p semaphore-mobile --release`, for
+   `arm64-v8a` alone unless `ANDROID_ABIS` names others (`ANDROID_ABIS=arm64-v8a,x86_64`, or
+   `ANDROID_ABIS=x86_64` for the emulator; the image has the Rust targets for both)
 2. `uniffi-bindgen generate --language kotlin` over the resulting `libsemaphore_mobile.so`, in
    library mode, which writes both crates' Kotlin: `uniffi.semaphore` (the core) and
    `uniffi.semaphore_mobile` (`start`, `MobileHost`, `SecretStore`)
-3. a symbol check: both crates' exports, the JNI entry point and every `external fun` the
-   bindings declare are in the shipped library
+3. a symbol check, per ABI: both crates' exports, the JNI entry point and every `external fun`
+   the bindings declare are in the shipped library
 4. the JVM test (`app/src/test`): a host build of `libsemaphore_mobile.so` and the generated
    bindings, against `semaphore-fake-server` on loopback, signing in, hearing a live message,
    going through suspend, resume and a network loss, and restoring the session on a second start
@@ -64,7 +66,23 @@ system trust store through the JVM. That needs two pieces outside Rust, both in 
   `Application`, so any process start) calls `NativeLib.init` (idempotent), which loads `libsemaphore_mobile.so` and calls its JNI entry point, which calls
   `semaphore_net::init_android`, before the core is built.
 
-The verifier's initialisation is only proven on a device, which waits for D6.
+On the device, `DeviceCoreTest` (`app/src/androidTest`) proves both halves of that:
+
+- `NativeLib.init` runs: the library loads, the JNI entry point is there, and
+  `rustls-platform-verifier` accepts the JVM and `Context` it is given;
+- a self-signed certificate is refused: the core signs in to an HTTPS server the script starts
+  with a locally generated certificate, and the request fails as a transport error. The test
+  reads that same certificate over JSSE first (trusting everything), and compares its SHA-256
+  with the fingerprint the script computed, so a plain connection failure cannot pass for a
+  refused one;
+- a certificate the platform store trusts is accepted: the core signs in to `https://example.com`,
+  the TLS handshake completes and the request comes back an HTTP/JSON answer, not a transport
+  error. That needs outbound HTTPS from the emulator container.
+
+Not proven: that a *locally installed* CA (a self-hoster's private CA in the device's trust
+store) is trusted, since the test does not write to the emulator's trust store; and the
+certificate is checked against the platform's store only, as the app configures no network
+security config.
 
 Cleartext `http://` servers work too: Android's cleartext policy governs the platform's HTTP
 stacks, and the core's requests go through rustls and reqwest in Rust.
@@ -86,8 +104,10 @@ stacks, and the core's requests go through rustls and reqwest in Rust.
 - `KeystoreSecretStore` keeps secrets as AES-256-GCM files under `noBackupFilesDir`, sealed with
   a non-exportable Android Keystore key; `save` is durable when it returns (temp file, fsync,
   rename, fsync of the directory), because a rotated refresh token lost to a crash ends the
-  session. A Keystore key that stops working is replaced (its secrets are lost: one new sign-in). It needs a device, so the JVM test uses an in-memory store and the Keystore store gets
-  its device test with D6.
+  session. A Keystore key that stops working is replaced (its secrets are lost: one new sign-in).
+  It needs a device, so the JVM test uses an in-memory store and `DeviceCoreTest` takes
+  the Keystore store through its paces: round trip, a new instance over the same directory,
+  delete, and a file renamed to another key must not decrypt.
 - Permissions: `INTERNET` and `ACCESS_NETWORK_STATE`, both granted at install.
 
 Once a minified release build type exists (R8 is off today), it needs the keep rule upstream's
@@ -105,10 +125,65 @@ unzip -l native/android/out/semaphore-android-debug.apk | grep -E 'lib/.*\.so|cl
 It contains `lib/arm64-v8a/libsemaphore_mobile.so` (the core and its transports),
 `lib/arm64-v8a/libjnidispatch.so` (JNA) and `classes.dex`.
 
-Only arm64-v8a is built: `rust-toolchain.toml` installs `aarch64-linux-android` and the script
-asks cargo-ndk for that ABI alone, so the APK runs on devices but not on the x86_64 emulator.
-Adding `x86_64-linux-android` to `rust-toolchain.toml`, `-t x86_64` in the script and `"x86_64"`
-to `abiFilters` is all it takes.
+`native/scripts/android.sh` builds arm64-v8a alone by default. `rust-toolchain.toml` installs
+`aarch64-linux-android` because the shared base image is also every other native tool; the Android
+image adds `x86_64-linux-android` itself (`Dockerfile.android`), and `ANDROID_ABIS` picks which
+ABIs cargo-ndk builds and `abiFilters` ships. The emulator's test passes `x86_64`
+(`native/scripts/android-device-test.sh`, below).
+
+## The instrumented test, on the emulator
+
+```
+native/scripts/android-device-test.sh
+```
+
+Docker-only as well, and on the same `semaphore-test` network. It builds
+`semaphore-native-android-emulator` from `native/docker/Dockerfile.android-emulator` — the Android
+image plus the pinned emulator and Android 14's AOSP (`default`, no Google APIs, no Play Store)
+x86_64 system image — and runs one container on it, as the host user, with `--device /dev/kvm`:
+
+1. `ANDROID_ABIS=x86_64 android.sh --inner`: the x86_64 libraries, the bindings, the debug APK and
+   the JVM test, as usual (the connected task then builds the instrumented test APK itself);
+2. an AVD, and the emulator headless (`-no-window -no-audio -gpu swiftshader_indirect`), started
+   before the build so the boot overlaps it;
+3. `semaphore-fake-server` on `127.0.0.1:18080` and a self-signed HTTPS server on
+   `127.0.0.1:18443`, both in the same container as the emulator;
+4. `adb wait-for-device`, then `sys.boot_completed`, then `./gradlew connectedDebugAndroidTest`,
+   with the addresses and the certificate's fingerprint as instrumentation arguments
+   (`-Pandroid.testInstrumentationRunnerArguments.*`);
+5. the results, one line per test, and a count that fails the script on any failure, any skip or
+   no tests at all.
+
+The container is removed on exit (`EXIT`, `INT`, `TERM`), and with it the emulator and both
+servers; no network is created or removed and no other container is touched.
+
+**Why 10.0.2.2.** Inside an emulator, `10.0.2.2` is QEMU's user-mode network's alias for the
+*emulator process's* loopback, so it reaches a server listening on `127.0.0.1` in the emulator's
+own container. A server in a second container would be a different host, reachable from the guest
+only as that container's bridge address, routed through the emulator's NAT: possible, but it needs
+address discovery and the guest's DNS. In one container it is one address, and the app dials it
+without knowing anything about Docker.
+
+`DeviceCoreTest` covers:
+
+- `NativeLib.init` (and that a second call is a no-op);
+- `KeystoreSecretStore`: round trip of a long non-ASCII value, a new instance over the same
+  directory, delete, and a file renamed to another key refused (the key is the GCM's associated
+  data);
+- the core against the fake server: sign in, communities, a message posted from another member
+  arriving live, suspend, resume, a network loss and recovery, then shutdown; the refresh token is
+  in Keystore-sealed files, and a second start with the same directory and a new store restores
+  the session;
+- the two TLS checks described under [TLS](#tls).
+
+What it does not cover: a real device (the emulator has no hardware-backed Keystore, so the key is
+software-backed there), screen behaviour, and a privately installed CA.
+
+Two dependencies outside the checkout: the emulator needs `/dev/kvm` on the host, and the
+trusted-certificate test needs outbound HTTPS from the container (`https://example.com`).
+`Dockerfile.android-emulator` pins the emulator's and the system image's revisions and fails the
+image build if sdkmanager installs a different one, so the runtime cannot change behind a
+`docker build`; sdkmanager verifies every file against the checksums in Google's repository XML.
 
 ## Sideload
 
@@ -123,5 +198,10 @@ the connection and the communities' names.
 ## CI
 
 `.github/workflows/native-android.yml` runs the same script on pull requests that touch
-`native/**`, the JVM test included, and uploads the APK as an artifact. As in the other `native-*.yml` workflows, the
-build's caches are the Docker volumes inside the run; there is no separate `actions/cache` step.
+`native/**`, the JVM test included, and uploads the APK as an artifact. A second job in the same
+workflow runs `native/scripts/android-device-test.sh`: GitHub's `ubuntu-latest` runners expose
+`/dev/kvm`, once the runner's udev rule makes it usable by the build user (see
+`ReactiveCircus/android-emulator-runner`'s README, "Running hardware accelerated emulators on
+Linux runners", which is also where the rule comes from). As in the other `native-*.yml`
+workflows, the build's caches are the Docker volumes inside the run; there is no separate
+`actions/cache` step.

@@ -1,0 +1,53 @@
+# D4c: the x86_64 emulator, layered on the Android image, for
+# native/scripts/android-device-test.sh.
+#
+# A layer, not part of Dockerfile.android: the emulator's zip is ~350 MB and its system image
+# ~1 GB, and an ordinary APK build (native/scripts/android.sh) has no use for either. The
+# device-test script builds this image only when it needs it.
+#
+# Built by native/scripts/android-device-test.sh, which passes BASE (the Android image's tag). The
+# build context is native/.
+#
+# Pins: both packages come from sdkmanager, which checks every file against the checksums in
+# Google's repository XML (which is also the only checksum Google publishes for them). sdkmanager
+# only offers the newest stable revision of each, so the build asserts the revision it got and
+# fails when Google moves one: the runtime the test runs on must not change behind a
+# `docker build`. Moving a pin is one argument.
+ARG BASE
+FROM ${BASE}
+
+# Stable channel (channel-0) of https://dl.google.com/android/repository/repository2-3.xml.
+ARG EMULATOR_REVISION=37.3.10
+# Android 14, the AOSP ("default") image, x86_64: no Google APIs and no Play Store, because the app
+# must not depend on Google services.
+ARG SYSTEM_IMAGE=system-images;android-34;default;x86_64
+ARG SYSTEM_IMAGE_REVISION=4
+
+# What the emulator needs beyond the X, GL, ALSA, NSS and Mesa libraries the build image already
+# carries (the GPUI rig installed those). libbsd is QEMU's and the emulator's own libc++'s.
+RUN pacman -S --noconfirm --needed libbsd libxext libxcursor libxi libpng bzip2 \
+ && rm -rf /var/cache/pacman/pkg/*
+
+# The emulator package first: a system image depends on it, so sdkmanager would otherwise install a
+# second copy beside the one already there. The licences were accepted in the Android image, so
+# this does not stop at a prompt.
+RUN set -eu; \
+    sdkmanager --sdk_root="$ANDROID_HOME" emulator "$SYSTEM_IMAGE" >/dev/null; \
+    revision() { \
+      sed -n 's/.*<revision>\(.*\)<\/revision>.*/\1/p' "$1/package.xml" \
+        | sed 's/<[^>]*>/ /g' | tr -s ' ' | sed 's/^ //; s/ $//; s/ /./g'; \
+    }; \
+    expect() { \
+      got="$(revision "$1")"; \
+      if [ "$got" != "$2" ]; then \
+        echo "android-emulator: sdkmanager installed revision '$got' of $1, not the pinned '$2'" >&2; \
+        exit 1; \
+      fi; \
+    }; \
+    expect "$ANDROID_HOME/emulator" "$EMULATOR_REVISION"; \
+    expect "$ANDROID_HOME/system-images/android-34/default/x86_64" "$SYSTEM_IMAGE_REVISION"; \
+    "$ANDROID_HOME/emulator/emulator" -version; \
+    rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/.downloadIntermediates"
+
+# The AVD itself is created at run time, inside the HOME volume (ANDROID_USER_HOME, from the
+# Android image): it is per-run state, and /cache/home is mounted over whatever the image holds.
