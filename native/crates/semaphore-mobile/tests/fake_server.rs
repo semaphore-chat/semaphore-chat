@@ -6,7 +6,7 @@
 //! from the thread, exactly as Kotlin or Swift would. A command that needed the caller to be
 //! inside a runtime would panic here.
 
-use semaphore_core::model::{Conversation, ListOp, RestoreOutcome, SessionState};
+use semaphore_core::model::{Conversation, ListOp, ProbeOutcome, RestoreOutcome, SessionState};
 use semaphore_core::{ConnectionState, CoreError, CoreEvent, NetworkState};
 use semaphore_fake_server::{FakeServer, Record, ScenarioSource, entity_uuid};
 use semaphore_ffi::{CoreListener, SemaphoreCore, WallClock};
@@ -180,6 +180,47 @@ impl Server {
                     if *op == operation && *answered == status)
             })
             .count()
+    }
+
+    /// A fake-server control with a JSON body (`POST /__control/{name}`).
+    fn control(&self, name: &str, body: serde_json::Value) {
+        let url = format!("{}/__control/{name}", self.url());
+        let status = self.runtime.block_on(async move {
+            reqwest::Client::new()
+                .post(url)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        });
+        assert!(status.is_success(), "{name}: {status}");
+    }
+
+    /// Something that answers HTTP, but isn't Semaphore: an HTML page for every path, with
+    /// `status`. Returns its base URL.
+    fn not_semaphore(&self, status: u16) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = self
+            .runtime
+            .block_on(tokio::net::TcpListener::bind("127.0.0.1:0"))
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        self.runtime.spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buffer = [0u8; 4096];
+                    let _ = stream.read(&mut buffer).await;
+                    let page = "<html><body>It works!</body></html>";
+                    let response = format!(
+                        "HTTP/1.1 {status} X\r\ncontent-type: text/html\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}",
+                        page.len()
+                    );
+                    let _ = stream.write_all(response.as_bytes()).await;
+                });
+            }
+        });
+        format!("http://{address}")
     }
 
     /// Another member posts in a channel (the fake server's `post_as` control).
@@ -693,4 +734,54 @@ fn the_last_server_file_is_replaced_whole() {
         Some("https://two.example")
     );
     assert!(!dir.join(format!("{LAST_SERVER_FILE}.tmp")).exists());
+}
+
+#[test]
+fn a_probe_says_what_answered_at_the_address() {
+    let server = Server::start();
+    let app = launch(&fresh_dir(), Arc::new(MemSecrets::default()));
+
+    match block_on(app.core.probe_server(format!("{}/", server.url()))).expect("probed") {
+        ProbeOutcome::Ok { info } => {
+            assert_eq!(info.url, server.url());
+            assert!(!info.needs_setup);
+        }
+        other => panic!("the fake server is a Semaphore server: {other:?}"),
+    }
+
+    server.control("onboarding", serde_json::json!({ "needsSetup": true }));
+    match block_on(app.core.probe_server(server.url())).expect("probed") {
+        ProbeOutcome::Ok { info } => assert!(info.needs_setup, "{info:?}"),
+        other => panic!("a fresh instance still answers: {other:?}"),
+    }
+
+    // A port nothing listens on.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let outcome = block_on(app.core.probe_server(format!("http://127.0.0.1:{closed}")));
+    assert!(
+        matches!(outcome, Ok(ProbeOutcome::Unreachable { .. })),
+        "{outcome:?}"
+    );
+
+    // A web server's page where the settings should be: a success that isn't JSON, and a 404.
+    for status in [200, 404] {
+        let other = server.not_semaphore(status);
+        let outcome = block_on(app.core.probe_server(other));
+        assert_eq!(outcome, Ok(ProbeOutcome::NotSemaphore), "status {status}");
+    }
+
+    // A TLS client hello to a plain-HTTP port fails the handshake.
+    let outcome = block_on(
+        app.core
+            .probe_server(server.url().replacen("http://", "https://", 1)),
+    );
+    assert!(
+        matches!(outcome, Ok(ProbeOutcome::TlsRefused { .. })),
+        "{outcome:?}"
+    );
+    app.host.shutdown();
 }

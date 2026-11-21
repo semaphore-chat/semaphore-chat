@@ -104,6 +104,17 @@ impl BackendError {
 
 pub type BackendResult<T> = Result<T, BackendError>;
 
+/// Client-side codes for a status-0 [`BackendError`]: `semaphore_api::error`'s constants of the
+/// same names, which core can't name (semaphore-net's tests check they match).
+pub mod client_codes {
+    /// The TLS handshake failed.
+    pub const CLIENT_TLS: &str = "CLIENT_TLS";
+    /// The server was never reached.
+    pub const CLIENT_UNREACHABLE: &str = "CLIENT_UNREACHABLE";
+    /// A success response that wasn't the JSON the contract describes.
+    pub const CLIENT_INVALID_RESPONSE: &str = "CLIENT_INVALID_RESPONSE";
+}
+
 /// REST, as core sees it: every area's calls, behind one object-safe trait.
 pub trait Backend:
     Send

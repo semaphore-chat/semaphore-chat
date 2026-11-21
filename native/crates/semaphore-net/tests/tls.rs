@@ -112,7 +112,9 @@ impl semaphore_core::platform::SecretStore for NoSecrets {
     }
 }
 
-async fn login(base: &str) -> Result<wire::LoginResponseDto, String> {
+async fn login(
+    base: &str,
+) -> Result<wire::LoginResponseDto, semaphore_core::backend::BackendError> {
     let backend = HttpBackend::new(Arc::new(NoSecrets), ClientInfo::desktop());
     backend.set_server_url(base.to_owned());
     backend
@@ -121,7 +123,6 @@ async fn login(base: &str) -> Result<wire::LoginResponseDto, String> {
             password: "pw".into(),
         })
         .await
-        .map_err(|error| error.message)
 }
 
 /// The socket session's first event for this server: connected, or refused.
@@ -203,7 +204,13 @@ fn rest_and_the_socket_trust_the_os_store_and_nothing_else() {
 
         // The same address and path, with a certificate from a CA the OS doesn't know.
         let base = format!("https://localhost:{untrusted}");
-        login(&base).await.expect_err("REST refuses an unknown CA");
+        let refused = login(&base).await.expect_err("REST refuses an unknown CA");
+        // The connect screen tells a TLS failure from a server that isn't there.
+        assert_eq!(
+            (refused.status, refused.code.as_str().as_ref()),
+            (0, semaphore_core::backend::client_codes::CLIENT_TLS),
+            "{refused}"
+        );
         let error = open_websocket(&websocket_url(&base))
             .await
             .expect_err("the WebSocket refuses an unknown CA");
