@@ -461,6 +461,7 @@ fn overlay_reason_text(reason: overlay::CloseReason) -> &'static str {
         overlay::CloseReason::PressOutside => "pressOutside",
         overlay::CloseReason::Scrim => "scrim",
         overlay::CloseReason::Tab => "tab",
+        overlay::CloseReason::Back => "back",
         overlay::CloseReason::ParentClosed => "parentClosed",
     }
 }
@@ -541,6 +542,7 @@ fn overlay_event_from_json(value: &Value) -> Result<overlay::Event, String> {
             inside_id: canon::optional_text(fields, "insideId")?.map(str::to_owned),
         },
         "tab" => overlay::Event::Tab,
+        "back" => overlay::Event::Back,
         other => return Err(format!("unknown event {other:?}")),
     })
 }
@@ -562,6 +564,7 @@ fn overlay_effect_to_json(effect: &overlay::Effect) -> Value {
             "passToScreen",
             Value::object([("key", Value::string("Escape"))]),
         )]),
+        overlay::Effect::PassToPlatform => Value::object([("passToPlatform", Value::object([]))]),
     }
 }
 

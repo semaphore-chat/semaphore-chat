@@ -32,7 +32,8 @@ called a host.
 - The web kit has the overlay stack's host (`frontend/src/kit/behaviour/hosts/`).
   Every kit Tooltip, Menu, Popover, Dialog, Sheet and SelectField list is a
   layer, and one set of page listeners sends Escape, Tab and presses to the
-  stack. MUI still draws the overlays, keeps Tab inside a modal, stops the page
+  stack. On a touch device the Lounge also sends the system Back (Android's
+  Back), through one history entry per open layer. MUI still draws the overlays, keeps Tab inside a modal, stops the page
   scrolling and hides it from screen readers. It no longer decides when a layer
   closes or where focus goes after.
 - Screens join the stack through two hooks from the kit: `useScreenEscape` adds
@@ -122,9 +123,10 @@ it does what the effect's description says to do instead.
 |`cancelTimer{token}`|Stop that timer and never send its `timerFired`. A late one is harmless: the reducer ignores a stale token.|
 |`announce{message, politeness, action}`|Have screen readers read the message, then the action's label if there is one ("Message deleted. Undo"). `assertive` interrupts; `polite` waits.|
 |`returnFocus{}`|Put focus back on the element that had it before focus entered the toast area. If that has gone, focus the screen's own focus target.|
-|`requestClose{id, reason}`|Tell the layer's owner. For `escape`, `pressOutside`, `scrim` and `tab`, the owner may refuse (unsaved changes). For `parentClosed`, the owner must close the layer: it has already left the stack.|
+|`requestClose{id, reason}`|Tell the layer's owner. For `escape`, `pressOutside`, `scrim`, `tab` and `back`, the owner may refuse (unsaved changes). For `parentClosed`, the owner must close the layer: it has already left the stack.|
 |`restoreFocus{to}`|Focus the element or layer named by `to`. A layer is focused through its first control that can take focus, or its panel. `to: null` means the screen's own focus target: the main content of the screen (on a chat screen, the message composer). If the element cannot take focus after all, focus the layer its opener was in. Never focus the screen while a dialog or sheet is still open: focus the topmost one instead.|
 |`passToScreen{key}`|Run the screen's own Escape chain: close the docked panel, then mark the channel as read.|
+|`passToPlatform{}`|Nothing above the screen took the system Back: go back a screen the platform's way (a native client pops its navigation). On the web the browser has already gone back, so there is nothing to do.|
 |`run{attempt}`|Start the action. Always report `succeeded{attempt}` or `failed{attempt, message}` for it, exactly once. A timeout, a lost connection or the screen going away is reported as `failed`. Without a result the dialog can never close.|
 |`done{}`|The confirmed action worked. The dialog is already closed; show its result if the screen does (for example a toast).|
 |`select{id}`|The row was chosen. Act on it (open the channel, choose the item).|
@@ -169,7 +171,35 @@ it does what the effect's description says to do instead.
   a dialog onto the dimmed page is not a press. `tab` for Tab or Shift+Tab.
   Escape and Tab with Ctrl, Alt or Meta held are other shortcuts (Ctrl+Tab
   switches tabs) and send nothing; a held Escape sends one `escape`, not one per
-  repeat.
+  repeat. `back` for the system Back (see "The system Back" below).
+- **The system Back.** Android's Back gesture or button sends `back`. One Back
+  sends one `back`; the owner may refuse it as it may refuse Escape (on the
+  web a kit Dialog or Sheet hands it to its owner as `'escape'`). When the step
+  returns `passToPlatform`, the platform goes back a screen. A native client
+  sends `back` from its Back handler while the stack holds a layer that is not
+  a tooltip, and lets the system handle Back otherwise. A browser has no Back
+  event, only history, so the web host
+  (`frontend/src/kit/behaviour/hosts/systemBack.ts`) keeps one history entry,
+  with the same URL, for each open layer a Back can close (not tooltips),
+  and its state lists the layers open when it was pushed. Leaving an entry is
+  the Back: each open layer the entry landed on does not list gets one `back`,
+  and its close is committed before the host goes on. A refused layer goes
+  forward again onto the entry just left: the host never pushes an entry right
+  after a traversal, because Chrome's Back button skips entries pushed without a
+  user gesture. A layer closed any other way (Escape, a press outside, its own
+  button) gives up its entry: the host steps back over it, and no route moves,
+  because the entry below has the same URL. When one layer closes as another
+  opens (a menu item that opens a sheet), the top entry is rewritten in place.
+  A navigation from inside a closing layer waits until the layer's entry is
+  gone (`navigateAfterLayers` in `frontend/src/data/systemBack.ts`), so a route
+  replace lands on the screen's own entry; a replace that rewrites a layer's
+  entry anyway is moved down onto the screen's entry. Entries that list layers
+  no longer open (left under a route an action pushed before its layer closed,
+  or from before a reload) are stepped over in the direction the user went, so
+  neither Back nor Forward lands on a dead entry. On
+  the web it is on for a touch pointer only, never in Electron: with a mouse,
+  the browser's Back keeps its plain meaning. The open thread is not a layer: it
+  has its own route entry (`?thread=`), so Back already closes it.
 - **The opener when nothing had focus.** Some platforms do not focus a button
   when it is clicked (Safari). When focus is on the page body as a layer opens,
   the opener is the layer's own fallback (a Menu's anchor), else the control the
@@ -300,7 +330,8 @@ arriving behind it would be dropped after waiting eight seconds.
 
 ## Overlay stack
 
-**What the user sees.** Escape closes the innermost thing first. A press
+**What the user sees.** Escape, and on Android the Back gesture or button,
+close the innermost thing first. A press
 outside a menu or popover closes it. A press on the dimmed page closes the
 dialog. When something closes and focus was in it, focus goes back where it
 came from.
@@ -349,6 +380,11 @@ Rules:
   that layer's opener. So a confirm dialog opened from a menu's Delete item
   returns focus to the menu's button.
 - Closing a tooltip does not move focus.
+- The system Back (Android's Back gesture or button) closes the topmost layer
+  that is not a tooltip, one layer per Back, and closes any tooltip with it: a
+  tooltip never takes the Back. The owner may refuse, as with Escape.
+- Back with no layer open goes back a screen, the platform's way. Back never
+  runs the screen's Escape chain, so it never marks a channel as read.
 
 Parameters: none.
 
@@ -362,6 +398,7 @@ user presses Escape: the dialog closes and focus goes back to the More button.
 |Escape|One handler sends `escape` with `composing` and `focusOwnsEscape`; a tooltip closed by Escape stays hidden until re-entered|
 |Presses|`pressOutside` with the innermost layer; the swallowed press is not passed on|
 |Tab|Consumed when it closes a menu|
+|Back|The system Back sends `back` while a layer that is not a tooltip is open; `passToPlatform` goes back a screen|
 |Closing|`closed` reports `openerPresent` and `focus`; `parentClosed` is always obeyed|
 |Focus|`restoreFocus` focuses the element, the layer, or (null) the screen's focus target|
 
@@ -372,8 +409,11 @@ and each rule has a test that drives the real components
 with layers inside a dialog, Escape during composition, a drag onto the dimmed
 page, the press a menu swallows, focus return when a click focuses nothing, and
 the live region inside the topmost layer run in real browsers
-(`frontend/browser-tests/overlay-stack.spec.ts`). The native client has no host
-yet.
+(`frontend/browser-tests/overlay-stack.spec.ts`). The system Back runs in the
+Lounge on touch devices (`frontend/src/kit/behaviour/hosts/systemBack.ts`,
+tested in `frontend/src/__tests__/kit/behaviour/hosts/systemBack.test.tsx` and,
+on a phone-sized touch browser, `frontend/e2e/lounge-back.spec.ts`). The native
+client has no host yet.
 
 Two things the web host does because of how MUI works, not because the pattern
 asks for them. A native host need not copy them:

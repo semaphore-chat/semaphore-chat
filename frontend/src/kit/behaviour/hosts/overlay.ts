@@ -27,7 +27,7 @@ import type { RouterHandlers } from './router';
  * The overlay-stack host (`design/guide/behaviour.md`, "Overlay stack" and
  * "What a host does"). Every kit overlay registers a layer through
  * `useOverlayLayer`. One set of document listeners turns Escape, Tab and
- * presses into the reducer's events, and the host applies its effects: it asks
+ * presses into the reducer's events (the system Back comes through `systemBack.ts`), and the host applies its effects: it asks
  * an owner to close, moves focus back, or runs the screen's Escape chain.
  *
  * MUI still draws the overlays, traps Tab inside a modal, locks the scroll and
@@ -110,6 +110,10 @@ export interface OverlayHost {
   /** A layer has gone (its owner closed it, or it unmounted). */
   closed(id: string): void;
   addScreenEscape(handler: () => boolean, priority: number): () => void;
+  /** The system Back reached the stack (see systemBack.ts): one Back, its effects applied before it returns. */
+  back(): void;
+  /** The ids of the open layers a Back can close (every kind but tooltips), bottom first. */
+  backLayers(): string[];
   addScreenFocusTarget(ref: RefObject<HTMLElement | null>): () => void;
   /** Focus the screen focus target, else the `main` landmark if it takes focus (the last fallback of a focus return). */
   focusScreen(): void;
@@ -246,6 +250,9 @@ export function createOverlayHost(options: {
     } else if ('passToScreen' in effect) {
       const chain = [...screenEscapes].sort((a, b) => a.priority - b.priority || a.order - b.order);
       screenTook = chain.some((entry) => guarded(() => entry.handler(), false));
+    } else if ('passToPlatform' in effect) {
+      // A browser has already gone back: the Back reached the stack as a history entry being left
+      // (see systemBack.ts), and nothing is left to do.
     }
   }
 
@@ -408,6 +415,15 @@ export function createOverlayHost(options: {
         const at = screenEscapes.indexOf(entry);
         if (at !== -1) screenEscapes.splice(at, 1);
       };
+    },
+    back() {
+      machine.send({ back: {} });
+    },
+    backLayers() {
+      return machine
+        .getState()
+        .layers.filter((layer) => layer.kind !== 'tooltip')
+        .map((layer) => layer.id);
     },
     addScreenFocusTarget(ref) {
       focusTargets.push(ref);
