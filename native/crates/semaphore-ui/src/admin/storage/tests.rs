@@ -153,6 +153,13 @@ fn storage_quota_converts_gb(cx: &mut TestAppContext) {
     );
 
     rig.clear();
+    // The dialog is still open (busy): the first press lands on its scrim and closes it, the
+    // second opens it again.
+    rig.click(cx, "admin-storage-quota-u-maple");
+    assert!(
+        !rig.has(cx, "admin-storage-quota-save"),
+        "a press on the scrim closed it"
+    );
     rig.click(cx, "admin-storage-quota-u-maple");
     type_quota(&rig, cx, "1.5");
     assert!(rig.has(cx, "admin-storage-quota-error"));
