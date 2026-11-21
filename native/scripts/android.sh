@@ -9,7 +9,7 @@
 # the real transports behind it (crates/semaphore-mobile, over crates/semaphore-net). Steps, all
 # inside the container:
 #
-#   cargo ndk -t arm64-v8a --platform 26 build -p semaphore-mobile --release
+#   cargo ndk -t <each ABI> --platform 26 build -p semaphore-mobile --release
 #   uniffi-bindgen generate --library --language kotlin <libsemaphore_mobile.so>
 #   ./gradlew assembleDebug  (native/android)
 #   the JVM test: the same Kotlin bindings over a host build of libsemaphore_mobile.so, against
@@ -22,6 +22,9 @@
 #   volumes. HOME carries ~/.android/debug.keystore, so every build signs the APK with the same
 #   debug key and a sideloaded update is not rejected for a changed signature.
 # - The repo is mounted at its own path, so paths in output work on the host too.
+# - ANDROID_ABIS is a comma-separated list of ABIs, arm64-v8a by default. The x86_64 emulator
+#   needs `ANDROID_ABIS=x86_64` (native/scripts/android-device-test.sh asks for it), and the image
+#   carries both Rust targets.
 set -euo pipefail
 
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,6 +51,10 @@ if [ "${1:-}" != --inner ]; then
       -t "$image" "$NATIVE_DIR" >/dev/null
   fi
 
+  # Prints the image it would run, for images layered on this one
+  # (native/scripts/android-device-test.sh adds the emulator).
+  if [ "${1:-}" = --print-image ]; then echo "$image"; exit 0; fi
+
   "$ROOT/scripts/test-net.sh" >/dev/null
 
   checkout="$(printf '%s' "$ROOT" | sha256sum | cut -c1-8)"
@@ -61,6 +68,7 @@ if [ "${1:-}" != --inner ]; then
     -v semaphore-android-gradle:/cache/gradle \
     -v semaphore-android-home:/cache/home \
     -e "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" \
+    -e "ANDROID_ABIS=${ANDROID_ABIS:-arm64-v8a}" \
     -w "$NATIVE_DIR" \
     "$image" bash scripts/android.sh --inner "$@"
 fi
@@ -69,15 +77,35 @@ fi
 
 ANDROID_DIR="$NATIVE_DIR/android"
 APP="$ANDROID_DIR/app"
-TARGET=aarch64-linux-android
+
+# The ABIs to build, named as cargo-ndk names them: arm64-v8a is a phone, x86_64 the emulator
+# (native/scripts/android-device-test.sh). Each has its Rust target in the image.
+ANDROID_ABIS="${ANDROID_ABIS:-arm64-v8a}"
+abis=()
+triples=()
+targets=()
+for abi in ${ANDROID_ABIS//,/ }; do
+  case "$abi" in
+    arm64-v8a) triple=aarch64-linux-android ;;
+    x86_64) triple=x86_64-linux-android ;;
+    *) echo "android.sh: no Rust target for ABI $abi" >&2; exit 1 ;;
+  esac
+  abis+=("$abi")
+  triples+=("$triple")
+  targets+=(-t "$abi")
+done
+# uniffi-bindgen reads one built library's metadata; every ABI carries the same crates.
+TARGET="${triples[0]}"
 LIB="/cache/target/$TARGET/release/libsemaphore_mobile.so"
 
-echo "=== cargo ndk build ($TARGET, release)"
+echo "=== cargo ndk build (${abis[*]}, release)"
 # The workspace's release profile strips symbols (Cargo.toml), and uniffi-bindgen reads the FFI
 # metadata out of the library's static symbol table, so this build keeps it: only debug
 # information is stripped. The copy that ships is stripped to its dynamic symbols below.
 export CARGO_PROFILE_RELEASE_STRIP=debuginfo
-cargo ndk -t arm64-v8a --platform 26 \
+# Cleared first: a library left by a run for another ABI would otherwise ship in this APK too.
+rm -rf "$APP/build/rustJniLibs"
+cargo ndk "${targets[@]}" --platform 26 \
   -o "$APP/build/rustJniLibs" \
   build --locked -p semaphore-mobile --release
 
@@ -91,31 +119,37 @@ uniffi-bindgen generate --no-format --language kotlin \
 
 # What the app loads needs nothing beyond the exported dynamic symbols.
 ndk_bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-shipped="$APP/build/rustJniLibs/arm64-v8a/libsemaphore_mobile.so"
-"$ndk_bin/llvm-strip" --strip-unneeded "$shipped"
+for abi in "${abis[@]}"; do
+  shipped="$APP/build/rustJniLibs/$abi/libsemaphore_mobile.so"
+  [ -f "$shipped" ] || { echo "android.sh: cargo ndk wrote no $abi library" >&2; exit 1; }
+  # cargo ndk also copies semaphore-ffi's own cdylib. Its code is already inside
+  # libsemaphore_mobile.so, and nothing loads it, so it must not ship: it is a second copy of core.
+  rm -f "$APP/build/rustJniLibs/$abi/libsemaphore_ffi.so"
+  "$ndk_bin/llvm-strip" --strip-unneeded "$shipped"
 
-echo "=== exported symbols"
-# Both crates' UniFFI exports, and the JNI entry point NativeLib calls, in the one library.
-symbols="$("$ndk_bin/llvm-nm" -D --defined-only "$shipped")"
-for prefix in uniffi_semaphore_ffi_fn_ uniffi_semaphore_mobile_fn_; do
-  count="$(printf '%s\n' "$symbols" | grep -c " T ${prefix}" || true)"
-  echo "$prefix*: $count"
-  [ "$count" -gt 0 ] || { echo "android.sh: no $prefix symbols in $shipped" >&2; exit 1; }
+  echo "=== exported symbols ($abi)"
+  # Both crates' UniFFI exports, and the JNI entry point NativeLib calls, in the one library.
+  symbols="$("$ndk_bin/llvm-nm" -D --defined-only "$shipped")"
+  for prefix in uniffi_semaphore_ffi_fn_ uniffi_semaphore_mobile_fn_; do
+    count="$(printf '%s\n' "$symbols" | grep -c " T ${prefix}" || true)"
+    echo "$prefix*: $count"
+    [ "$count" -gt 0 ] || { echo "android.sh: no $prefix symbols in $shipped" >&2; exit 1; }
+  done
+  # Here-strings, not pipes: grep -q exits at the first match, and the writer's SIGPIPE would fail
+  # the pipeline under pipefail.
+  grep -q ' T Java_app_semaphorechat_android_NativeLib_nativeInit$' <<<"$symbols" \
+    || { echo "android.sh: the JNI entry point is missing from $shipped" >&2; exit 1; }
+  echo "Java_app_semaphorechat_android_NativeLib_nativeInit: present"
+  # Every `external fun` the Kotlin bindings declare resolves in the shipped library.
+  missing=0
+  for name in $(grep -rhoE 'external fun [A-Za-z0-9_]+' "$APP/build/generated/uniffi" \
+    | awk '{print $3}' | sort -u); do
+    grep -q " T ${name}\$" <<<"$symbols" || { echo "missing: $name" >&2; missing=1; }
+  done
+  [ "$missing" = 0 ] || { echo "android.sh: bindings name symbols the library lacks" >&2; exit 1; }
+  echo "every external fun in the bindings is exported: $(grep -rhoE 'external fun [A-Za-z0-9_]+' \
+    "$APP/build/generated/uniffi" | sort -u | wc -l) symbols"
 done
-# Here-strings, not pipes: grep -q exits at the first match, and the writer's SIGPIPE would fail
-# the pipeline under pipefail.
-grep -q ' T Java_app_semaphorechat_android_NativeLib_nativeInit$' <<<"$symbols" \
-  || { echo "android.sh: the JNI entry point is missing from $shipped" >&2; exit 1; }
-echo "Java_app_semaphorechat_android_NativeLib_nativeInit: present"
-# Every `external fun` the Kotlin bindings declare resolves in the shipped library.
-missing=0
-for name in $(grep -rhoE 'external fun [A-Za-z0-9_]+' "$APP/build/generated/uniffi" \
-  | awk '{print $3}' | sort -u); do
-  grep -q " T ${name}\$" <<<"$symbols" || { echo "missing: $name" >&2; missing=1; }
-done
-[ "$missing" = 0 ] || { echo "android.sh: bindings name symbols the library lacks" >&2; exit 1; }
-echo "every external fun in the bindings is exported: $(grep -rhoE 'external fun [A-Za-z0-9_]+' \
-  "$APP/build/generated/uniffi" | sort -u | wc -l) symbols"
 
 echo "=== host build for the JVM test"
 # The same library for this machine, and the fake server it talks to.
@@ -146,6 +180,7 @@ entity() {
 cd "$ANDROID_DIR"
 echo "=== gradle assembleDebug testDebugUnitTest"
 ./gradlew --no-daemon --console=plain assembleDebug testDebugUnitTest \
+  -Psemaphore.abis="$ANDROID_ABIS" \
   -Psemaphore.hostLibDir="$HOST_LIB_DIR" \
   -Psemaphore.fakeServer="$fake_url" \
   -Psemaphore.channelId="$(entity cc-general)" \
@@ -164,7 +199,13 @@ sys.exit(1 if failures or skipped or not tests else 0)
 PY
 
 mkdir -p "$ANDROID_DIR/out"
-apk="$ANDROID_DIR/out/semaphore-android-debug.apk"
+# The default ABI set is the sideloadable APK (a phone is arm64-v8a); any other set gets the ABIs in
+# its name, so the emulator's x86_64-only build never replaces the one for a phone.
+if [ "$ANDROID_ABIS" = arm64-v8a ]; then
+  apk="$ANDROID_DIR/out/semaphore-android-debug.apk"
+else
+  apk="$ANDROID_DIR/out/semaphore-android-debug-${ANDROID_ABIS//,/-}.apk"
+fi
 cp "$APP/build/outputs/apk/debug/app-debug.apk" "$apk"
 
 echo
@@ -173,5 +214,11 @@ ls -l "$apk"
 # One listing: grepping it twice from a pipe would end in SIGPIPE under pipefail.
 listing="$(unzip -l "$apk")"
 printf '%s\n' "$listing" | grep -E 'lib/.*\.so|classes'
-printf '%s\n' "$listing" | grep -q 'lib/arm64-v8a/libsemaphore_mobile\.so' \
-  || { echo "android.sh: lib/arm64-v8a/libsemaphore_mobile.so is not in $apk" >&2; exit 1; }
+for abi in "${abis[@]}"; do
+  printf '%s\n' "$listing" | grep -q "lib/$abi/libsemaphore_mobile\.so" \
+    || { echo "android.sh: lib/$abi/libsemaphore_mobile.so is not in $apk" >&2; exit 1; }
+  if printf '%s\n' "$listing" | grep -q "lib/$abi/libsemaphore_ffi\.so"; then
+    echo "android.sh: $apk ships lib/$abi/libsemaphore_ffi.so, a second copy of core" >&2
+    exit 1
+  fi
+done

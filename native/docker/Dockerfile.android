@@ -30,6 +30,15 @@ RUN pacman -S --noconfirm --needed jdk17-openjdk unzip \
  && rm -rf /var/cache/pacman/pkg/*
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
+# The emulator's ABI (D4c). rust-toolchain.toml is the shared base image's file and every other
+# user of it stays arm64-and-desktop only, so the target is added here instead: the same channel,
+# one more target, nothing else moves.
+COPY rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' /tmp/rust-toolchain.toml)" \
+ && test -n "$channel" \
+ && rustup target add --toolchain "$channel" x86_64-linux-android \
+ && rm /tmp/rust-toolchain.toml
+
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk
 RUN curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
