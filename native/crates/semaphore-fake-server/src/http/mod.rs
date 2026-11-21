@@ -621,6 +621,12 @@ async fn control(
         "drop_connections" => {
             inner.close_connections();
         }
+        // `{ "on": bool }`: replay stops and restarts answer as servers before #876 do once the
+        // egress is ending (`calls::stop_replay`).
+        "replay_egress_ending" => {
+            lock(&inner.calls).egress_ending =
+                request.get("on").and_then(Value::as_bool).unwrap_or(true);
+        }
         "refuse_connections" => {
             lock(&inner.faults).refuse_connections = request
                 .get("refuse")

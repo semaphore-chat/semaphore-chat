@@ -46,12 +46,20 @@ impl SecretStore for MemSecrets {
     }
 }
 
-struct WallClock;
+/// The wall clock, plus whatever a test has stepped it forward by.
+#[derive(Default)]
+struct WallClock(std::sync::atomic::AtomicU64);
+impl WallClock {
+    fn advance(&self, ms: u64) {
+        self.0.fetch_add(ms, std::sync::atomic::Ordering::SeqCst);
+    }
+}
 impl Clock for WallClock {
     fn now_ms(&self) -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_millis() as u64)
+            + self.0.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -111,6 +119,7 @@ impl MediaEngine for StandInMedia {
 }
 
 struct Client {
+    clock: Arc<WallClock>,
     core: Core,
     events: Arc<Recorder>,
     media: Arc<StandInMedia>,
@@ -145,6 +154,10 @@ async fn signed_in(server: &FakeServer) -> Client {
 
 /// Signed in as `username`, which `FakeServer::sign_in_as` maps to a scenario user.
 async fn signed_in_as(server: &FakeServer, username: &str) -> Client {
+    signed_in_on(server, username, Arc::new(WallClock::default())).await
+}
+
+async fn signed_in_on(server: &FakeServer, username: &str, clock: Arc<WallClock>) -> Client {
     let backend = HttpBackend::new(Arc::new(MemSecrets::default()), ClientInfo::desktop());
     let mut config = SocketConfig::new("unused");
     config.reconnect_delay = Duration::from_millis(50);
@@ -152,7 +165,7 @@ async fn signed_in_as(server: &FakeServer, username: &str) -> Client {
     let events = Arc::new(Recorder::default());
     let media = Arc::new(StandInMedia::default());
     let core = Core::with_services(
-        Arc::new(WallClock),
+        clock.clone(),
         events.clone(),
         Services {
             backend: Arc::new(backend.clone()),
@@ -175,6 +188,7 @@ async fn signed_in_as(server: &FakeServer, username: &str) -> Client {
     })
     .await;
     Client {
+        clock,
         core,
         events,
         media,
@@ -631,6 +645,78 @@ async fn the_buffer_records_previews_captures_everywhere_and_stops_with_the_shar
     })
     .await;
     assert_eq!(core.voice().replay, ReplayState::Off);
+}
+
+/// Servers before #876 refuse a start while the last share's egress is ending, for up to a
+/// minute: the core asks again at its retry times and the buffer comes up, never `Failed`.
+#[tokio::test]
+async fn a_share_started_right_after_one_ended_records_once_the_old_servers_reconcile_runs() {
+    let server = server().await;
+    let client = recording(&server).await;
+    let core = &client.core;
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    reqwest::Client::new()
+        .post(format!(
+            "{}/__control/replay_egress_ending",
+            server.base_url()
+        ))
+        .json(&serde_json::json!({ "on": true }))
+        .send()
+        .await
+        .expect("the fake answers");
+
+    core.stop_screen_share().await.unwrap();
+    until("the refused stop", || {
+        statuses(&server, "LivekitController_stopReplayBuffer") == [400]
+    })
+    .await;
+    assert_eq!(core.voice().replay, ReplayState::Off);
+
+    core.start_screen_share(ScreenShareRequest {
+        audio: false,
+        ..ScreenShareRequest::default()
+    })
+    .await
+    .unwrap();
+    client.report_share("TR_v2");
+    until("the refused start", || {
+        statuses(&server, "LivekitController_startReplayBuffer").last() == Some(&400)
+    })
+    .await;
+    until("the retry wait", || {
+        core.voice().replay_retry_at_ms.is_some()
+    })
+    .await;
+
+    let mut refused = 1;
+    while let Some(at) = core.voice().replay_retry_at_ms {
+        assert_eq!(core.voice().replay, ReplayState::Starting);
+        let step = at.saturating_sub(client.clock.now_ms());
+        client.clock.advance(step);
+        server.advance_clock(Duration::from_millis(step));
+        core.retry_replay();
+        refused += 1;
+        until("the retried start", || {
+            count(&server, "LivekitController_startReplayBuffer") == 1 + refused
+        })
+        .await;
+        until("the retry to settle", || {
+            core.voice().replay_retry_at_ms != Some(at)
+        })
+        .await;
+    }
+    until("the buffer", || {
+        matches!(core.voice().replay, ReplayState::Recording { .. })
+    })
+    .await;
+    let starts = statuses(&server, "LivekitController_startReplayBuffer");
+    assert_eq!(starts.last(), Some(&201), "{starts:?}");
+    // The first 201 was the first share's; then only refusals, then the start that took.
+    assert!(
+        starts[1..starts.len() - 1]
+            .iter()
+            .all(|status| *status == 400)
+    );
 }
 
 #[tokio::test]
