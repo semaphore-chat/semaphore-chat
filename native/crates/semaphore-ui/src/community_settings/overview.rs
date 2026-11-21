@@ -785,13 +785,18 @@ impl OverviewTab {
             .gap(spacing(1.))
             .when(!self.caps.update_community, |col| {
                 col.child(Alert::new(
+                    "community-settings-overview-alert-1",
                     Severity::Warning,
                     "You don't have permission to update community settings.",
                 ))
             })
             .children(server_error(update_error.as_ref()))
             .when(self.saved, |col| {
-                col.child(Alert::new(Severity::Success, "Community updated."))
+                col.child(Alert::new(
+                    "community-settings-overview-alert-2",
+                    Severity::Success,
+                    "Community updated.",
+                ))
             });
         let settings = card(
             "Community",

@@ -458,7 +458,7 @@ impl Shell {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(Spinner::new("community-loading"))
+                        .child(Spinner::new("community-loading").size(40.).label("Loading"))
                         .into_any_element();
                 }
                 Load::Failed(_) => {

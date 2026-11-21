@@ -14,6 +14,9 @@
 //! The test-only `behaviour_vectors` holds the shared behaviour vectors from `design/behaviour/`,
 //! as canonical JSON strings, for the behaviour reducers' ports to be tested against.
 //!
+//! `people` is a person's avatar colour from their id and the readable-ink search for a data
+//! colour (ports of `frontend/src/kit/theme/{personColour,readable}.ts`).
+//!
 //! `lounge_icons` is the shared Lucide set from `design/icons/icons.json`, with one SVG asset per
 //! icon below `assets/lucide/`.
 //!
@@ -36,6 +39,9 @@ pub mod lounge_icons;
 mod lounge_icons_tests;
 #[cfg(test)]
 mod lounge_tests;
+pub mod people;
+#[cfg(test)]
+mod people_tests;
 #[cfg(test)]
 mod tests;
 pub mod type_scale;
@@ -43,6 +49,7 @@ pub mod type_scale;
 pub use derive::{Intensity, Mode, Palette, derive_palette, parse_base};
 pub use generated::Icon;
 pub use lounge_icons::LoungeIcon;
+pub use people::{Readable, person_colour, readable_background};
 
 /// A colour as the web resolves it, packed `0xRRGGBBAA`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

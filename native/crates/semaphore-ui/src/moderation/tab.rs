@@ -638,6 +638,7 @@ impl Render for ModerationTab {
             );
         let body: AnyElement = if !self.caps.view_bans && !self.caps.view_moderation_log {
             Alert::new(
+                "moderation-tab-alert",
                 Severity::Warning,
                 "You don't have permission to view moderation tools.",
             )

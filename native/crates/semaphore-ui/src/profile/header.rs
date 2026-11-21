@@ -97,6 +97,7 @@ pub(crate) fn ringed_avatar(
             .object_fit(ObjectFit::Cover)
             .into_any_element(),
         None => Avatar::new(profile_initials(name))
+            .decorative(true)
             .size(size)
             .file(file_id)
             .background(sem.primary)
@@ -210,8 +211,12 @@ pub(crate) fn profile_skeleton(size: HeaderSize, cx: &App) -> impl IntoElement +
                         .bg(sem.paper)
                         .child(Skeleton::circle("profile-loading-avatar", avatar)),
                 )
-                .child(Skeleton::rect("profile-loading-name", relative(0.6), 24.))
-                .child(Skeleton::rect("profile-loading-handle", relative(0.4), 16.)),
+                .child(Skeleton::sized("profile-loading-name", relative(0.6), 24.))
+                .child(Skeleton::sized(
+                    "profile-loading-handle",
+                    relative(0.4),
+                    16.,
+                )),
         )
 }
 

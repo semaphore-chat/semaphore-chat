@@ -334,6 +334,7 @@ impl MembersTab {
         };
         let truncated = members.truncated.then(|| {
             Alert::new(
+                "community-settings-members-alert-1",
                 Severity::Info,
                 "This community has more members than are shown here.",
             )
@@ -404,7 +405,8 @@ impl MembersTab {
                 .child(Spinner::new("members-search-spinner").size(24.))
                 .into_any_element(),
             Found::Failed(message) => Alert::new(
-                Severity::Error,
+                "community-settings-members-alert-2",
+                Severity::Danger,
                 format!("Failed to search users: {message}"),
             )
             .into_any_element(),

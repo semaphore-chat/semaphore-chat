@@ -202,12 +202,12 @@ impl SessionsSettings {
                                 .flex()
                                 .flex_col()
                                 .gap(px(6.))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("session-skeleton-a", index),
                                     relative(0.6),
                                     18.,
                                 ))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("session-skeleton-b", index),
                                     relative(0.4),
                                     14.,
@@ -279,7 +279,7 @@ impl Render for SessionsSettings {
             .children(
                 self.notice
                     .as_ref()
-                    .map(|(severity, message)| Alert::new(*severity, message.clone())),
+                    .map(|(severity, message)| Alert::new("settings-sessions-alert", *severity, message.clone())),
             )
             .child(self.list(cx))
             .children(sign_out_all);

@@ -62,6 +62,7 @@ pub fn community_avatar(id: &str, name: &str, file_id: Option<&str>, size: f32) 
         None => (community_initials(name).into(), string_to_color(id)),
     };
     Avatar::new(label)
+        .decorative(true)
         .size(size)
         .background(color)
         .file(file_id.filter(|id| !id.starts_with("avatar:")))
@@ -70,14 +71,20 @@ pub fn community_avatar(id: &str, name: &str, file_id: Option<&str>, size: f32) 
 /// `UserAvatar` falls back to the first letter on MUI's grey.
 pub fn user_avatar(name: &str, file_id: Option<&str>, size: f32) -> Avatar {
     match fixture_face(file_id) {
-        Some((initials, color)) => Avatar::new(initials).size(size).background(color),
+        Some((initials, color)) => Avatar::new(initials)
+            .decorative(true)
+            .size(size)
+            .background(color),
         None => {
             let initial = name
                 .chars()
                 .next()
                 .map(|c| c.to_uppercase().to_string())
                 .unwrap_or_else(|| "?".into());
-            Avatar::new(initial).size(size).file(file_id)
+            Avatar::new(initial)
+                .decorative(true)
+                .size(size)
+                .file(file_id)
         }
     }
 }

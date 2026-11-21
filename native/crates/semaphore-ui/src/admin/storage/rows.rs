@@ -57,7 +57,8 @@ impl StoragePage {
                 .items_start()
                 .gap(spacing(1.5))
                 .child(Alert::new(
-                    Severity::Error,
+                    "admin-storage-rows-alert-1",
+                    Severity::Danger,
                     format!("Failed to load user storage data: {}", error.message),
                 ))
                 .child(
@@ -344,10 +345,11 @@ impl StoragePage {
                 )
         };
         let error = error.map(|message| {
-            div()
-                .w_full()
-                .pb(spacing(1.))
-                .child(Alert::new(Severity::Error, message))
+            div().w_full().pb(spacing(1.)).child(Alert::new(
+                "admin-storage-rows-alert-2",
+                Severity::Danger,
+                message,
+            ))
         });
         div()
             .id(SharedString::from(format!(

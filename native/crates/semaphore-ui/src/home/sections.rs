@@ -83,7 +83,7 @@ fn skeleton(id: &'static str, label: &'static str) -> AnyElement {
                 .items_center()
                 .gap(spacing(2.))
                 .child(Skeleton::circle((id, index * 2), 32.))
-                .child(Skeleton::rect((id, index * 2 + 1), relative(0.6), 14.))
+                .child(Skeleton::sized((id, index * 2 + 1), relative(0.6), 14.))
         }))
         .into_any_element()
 }

@@ -221,7 +221,11 @@ impl PreJoinPanel {
             .gap(spacing(1.));
         match count_label(&self.view) {
             None => line
-                .child(Skeleton::rect("voice-prejoin-count-loading", px(140.), 20.))
+                .child(Skeleton::sized(
+                    "voice-prejoin-count-loading",
+                    px(140.),
+                    20.,
+                ))
                 .into_any_element(),
             Some(label) => line
                 .child(text(Variant::Body1, label).text_color(sem.text_secondary))

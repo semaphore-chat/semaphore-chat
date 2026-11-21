@@ -126,7 +126,8 @@ pub fn soundboard_popover(
                 .flex_col()
                 .gap(px(8.))
                 .child(Alert::new(
-                    Severity::Error,
+                    "voice-soundboard-alert-1",
+                    Severity::Danger,
                     format!("Couldn't load the sounds: {}", error.message),
                 ))
                 .child(
@@ -196,7 +197,8 @@ pub fn soundboard_popover(
                 .filter(|_| matches!(view.state, LoadState::Ready))
                 .map(|error| {
                     Alert::new(
-                        Severity::Error,
+                        "voice-soundboard-alert-2",
+                        Severity::Danger,
                         format!("Couldn't play that sound: {}", error.message),
                     )
                 }),

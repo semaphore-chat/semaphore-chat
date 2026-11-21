@@ -563,7 +563,7 @@ impl InstanceInvitesPage {
                     .flex()
                     .flex_col()
                     .gap(spacing(2.))
-                    .children(create_error.map(|error| Alert::new(Severity::Error, error.message)))
+                    .children(create_error.map(|error| Alert::new("admin-invites-alert", Severity::Danger, error.message)))
                     .child(
                         text(
                             Variant::Body2,

@@ -187,12 +187,12 @@ fn member_skeleton(index: usize) -> impl IntoElement {
                 .flex_col()
                 .gap(px(4.))
                 .py(spacing(0.5))
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     ("member-loading-name", index),
                     relative(0.6),
                     14.,
                 ))
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     ("member-loading-status", index),
                     relative(0.4),
                     12.,

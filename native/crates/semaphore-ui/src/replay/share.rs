@@ -256,7 +256,11 @@ impl Render for ShareClipDialog {
                     )
                     .child(div().mt(px(8.)).child(pickers))
                     .children(self.failed.clone().map(|message| {
-                        div().mt(px(8.)).child(Alert::new(Severity::Error, message))
+                        div().mt(px(8.)).child(Alert::new(
+                            "replay-share-alert",
+                            Severity::Danger,
+                            message,
+                        ))
                     })),
             )
             .action(

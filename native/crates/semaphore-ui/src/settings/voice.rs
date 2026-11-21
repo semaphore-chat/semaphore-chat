@@ -651,7 +651,7 @@ impl VoiceVideoSettings {
                 .test_support()
                 .role(Role::ProgressIndicator)
                 .aria_label(SharedString::from(format!("Loading {label}")))
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     SharedString::from(format!("{id}-skeleton")),
                     relative(1.),
                     56.,
@@ -758,7 +758,7 @@ impl VoiceVideoSettings {
                 .aria_label("Loading cameras")
                 .absolute()
                 .inset_0()
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     "voice-camera-test-skeleton",
                     relative(1.),
                     200.,

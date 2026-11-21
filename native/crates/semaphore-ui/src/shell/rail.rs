@@ -3,7 +3,9 @@
 use super::{
     Load, RAIL_EXPANDED_WIDTH, RAIL_WIDTH, Shell, ShellEvent, community_avatar, user_avatar,
 };
-use crate::kit::{Badge, Icon, IconButton, Variant, spacing, text, with_tip};
+use crate::kit::{
+    Badge, CountMeaning, Icon, IconButton, Variant, count_words, spacing, text, with_tip,
+};
 use crate::nav::Route;
 use crate::theme::{SemTheme, color::hsla_of};
 use gpui_kit::base;
@@ -234,7 +236,13 @@ impl Shell {
             .hover(move |style| style.bg(hover))
             .focus_visible(move |style| style.bg(hover))
             .on_click(move |_, _, cx| on_click(cx))
-            .child(Badge::new(nav.badge).on(icon))
+            .child(
+                Badge::new(count_words(nav.badge, CountMeaning::Unread))
+                    .count(nav.badge)
+                    // The button is named "Notifications, 3 unread" already.
+                    .decorative(true)
+                    .on(icon),
+            )
             .when(expanded, |this| {
                 this.child(
                     div()

@@ -932,7 +932,7 @@ impl AppRoot {
                 move |_, result, _, cx| {
                     let notice = result.err().map(|error| {
                         (
-                            Severity::Error,
+                            Severity::Danger,
                             failure("Couldn't sign that device out", &error),
                         )
                     });
@@ -953,7 +953,7 @@ impl AppRoot {
                             },
                         ),
                         Err(error) => (
-                            Severity::Error,
+                            Severity::Danger,
                             failure("Couldn't sign the other devices out", &error),
                         ),
                     };
@@ -1488,7 +1488,7 @@ impl AppRoot {
                     .rounded(px(8.))
                     .bg(cx.sem().paper)
                     .shadow_lg()
-                    .child(Alert::new(Severity::Warning, message))
+                    .child(Alert::new("root-account-alert", Severity::Warning, message))
                     .child(
                         div()
                             .flex()

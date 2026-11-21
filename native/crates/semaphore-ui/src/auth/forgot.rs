@@ -397,7 +397,7 @@ impl Render for ForgotPasswordScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(
+                    .child(Alert::new("auth-forgot-alert-1", 
                         Severity::Success,
                         "If an account with that email exists, we've sent a reset link. Open it to choose a new password, then sign in here.",
                     )),
@@ -459,7 +459,8 @@ impl Render for ForgotPasswordScreen {
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
-                        Severity::Error,
+                        "auth-forgot-alert-2",
+                        Severity::Danger,
                         if message.is_empty() {
                             "Something went wrong. Please try again.".to_owned()
                         } else {

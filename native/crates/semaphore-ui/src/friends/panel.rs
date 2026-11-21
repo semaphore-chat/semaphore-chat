@@ -460,7 +460,7 @@ impl Render for FriendsPanel {
                             .items_center()
                             .gap(spacing(2.))
                             .child(Skeleton::circle(("friend-loading-face", index), 40.))
-                            .child(Skeleton::rect(
+                            .child(Skeleton::sized(
                                 ("friend-loading-name", index),
                                 relative(0.6),
                                 14.,

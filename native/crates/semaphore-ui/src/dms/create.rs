@@ -127,9 +127,9 @@ impl Render for CreateDmDialog {
                         )
                     })
                     .children(
-                        self.failed
-                            .clone()
-                            .map(|message| Alert::new(Severity::Error, message)),
+                        self.failed.clone().map(|message| {
+                            Alert::new("dms-create-alert", Severity::Danger, message)
+                        }),
                     ),
             )
             .action(Button::new("create-dm-cancel", "Cancel").on_click({

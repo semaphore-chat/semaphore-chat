@@ -330,11 +330,15 @@ impl CaptureReplayDialog {
                     .child(text(Variant::Body2, line).text_color(sem.text_secondary))
                     .into_any_element()
             }
-            BufferStatus::Failed { .. } => Alert::new(Severity::Error, line).into_any_element(),
-            BufferStatus::WarmingUp | BufferStatus::Starting => {
-                Alert::new(Severity::Info, line).into_any_element()
+            BufferStatus::Failed { .. } => {
+                Alert::new("replay-capture-alert-1", Severity::Danger, line).into_any_element()
             }
-            BufferStatus::NotRecording => Alert::new(Severity::Warning, line).into_any_element(),
+            BufferStatus::WarmingUp | BufferStatus::Starting => {
+                Alert::new("replay-capture-alert-2", Severity::Info, line).into_any_element()
+            }
+            BufferStatus::NotRecording => {
+                Alert::new("replay-capture-alert-3", Severity::Warning, line).into_any_element()
+            }
         })
     }
 }
@@ -498,9 +502,11 @@ impl Render for CaptureReplayDialog {
             .children(picker.map(|picker| div().mt(px(12.)).child(picker)))
             .children(note)
             .children(self.failed.clone().map(|message| {
-                div()
-                    .mt(px(16.))
-                    .child(Alert::new(Severity::Error, message))
+                div().mt(px(16.)).child(Alert::new(
+                    "replay-capture-alert-4",
+                    Severity::Danger,
+                    message,
+                ))
             }));
         let label = match (self.busy, self.target) {
             (true, CaptureTarget::Download) => "Downloading...",

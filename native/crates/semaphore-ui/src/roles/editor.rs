@@ -455,15 +455,15 @@ impl RolesPanel {
             .flex_col()
             .gap(spacing(2.))
             .child(heading)
-            .children(error.map(|error| Alert::new(Severity::Error, error.message)))
+            .children(error.map(|error| Alert::new("roles-editor-alert-1", Severity::Danger, error.message)))
             .children(read_only.clone().map(|reason| {
-                Alert::new(
+                Alert::new("roles-editor-alert-2", 
                     Severity::Info,
                     format!("You can't change this role. {reason}."),
                 )
             }))
             .when(editor.is_default && read_only.is_none(), |body| {
-                body.child(Alert::new(
+                body.child(Alert::new("roles-editor-alert-3", 
                     Severity::Info,
                     "You are editing a default role. You can modify permissions but cannot change the role name.",
                 ))
@@ -471,7 +471,7 @@ impl RolesPanel {
             .child(name)
             .child(text(Variant::H6, "Permissions").text_color(sem.text_primary))
             .when(count == 0 && read_only.is_none(), |body| {
-                body.child(Alert::new(
+                body.child(Alert::new("roles-editor-alert-4", 
                     Severity::Warning,
                     "Role must have at least one permission",
                 ))

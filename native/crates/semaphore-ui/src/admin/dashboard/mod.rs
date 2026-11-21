@@ -239,7 +239,7 @@ impl DashboardPage {
                 .test_support()
                 .role(Role::ProgressIndicator)
                 .aria_label("Checking instance health")
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     "admin-attention-skeleton",
                     relative(1.),
                     48.,
@@ -575,7 +575,11 @@ impl DashboardPage {
                 .test_support()
                 .role(Role::ProgressIndicator)
                 .aria_label("Loading storage and server status")
-                .child(Skeleton::rect("admin-storage-skeleton", relative(1.), 220.))
+                .child(Skeleton::sized(
+                    "admin-storage-skeleton",
+                    relative(1.),
+                    220.,
+                ))
                 .into_any_element(),
         };
         Some(
@@ -796,12 +800,12 @@ fn tile_skeleton(index: usize, cx: &App) -> AnyElement {
                 .flex()
                 .flex_col()
                 .gap(px(6.))
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     ("admin-tile-skeleton", index * 3 + 1),
                     relative(0.5),
                     26.,
                 ))
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     ("admin-tile-skeleton", index * 3 + 2),
                     relative(0.7),
                     16.,

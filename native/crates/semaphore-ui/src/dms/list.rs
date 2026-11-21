@@ -3,7 +3,7 @@
 use super::face::{group_face, user_face};
 use super::names::{UnreadMark, dm_name, dm_preview, last_message_time, row_label, unread_mark};
 use super::{DmListEvent, DmListView};
-use crate::kit::{Badge, Button, Skeleton, Variant, spacing, text};
+use crate::kit::{Badge, Button, CountMeaning, Skeleton, Variant, count_words, spacing, text};
 use crate::panel::common::{design_icon, error_block, is_phone};
 use crate::theme::SemTheme;
 use gpui_kit::base;
@@ -60,7 +60,10 @@ impl DmListView {
                 .rounded_full()
                 .bg(error)
                 .into_any_element(),
-            UnreadMark::Count(count) => Badge::new(count).compact().into_any_element(),
+            UnreadMark::Count(count) => Badge::new(count_words(count, CountMeaning::Unread))
+                .count(count)
+                .decorative(true)
+                .into_any_element(),
         });
         let id = row.id.clone();
         base::Button::new(ElementId::Name(format!("dm-row-{}", row.id).into()))
@@ -171,12 +174,12 @@ impl Render for DmListView {
                                 .flex()
                                 .flex_col()
                                 .gap(px(6.))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("dm-loading-name", index),
                                     relative(0.6),
                                     14.,
                                 ))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("dm-loading-text", index),
                                     relative(0.9),
                                     12.,

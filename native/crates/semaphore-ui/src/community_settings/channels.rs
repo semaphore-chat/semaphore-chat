@@ -1006,7 +1006,7 @@ impl ChannelsTab {
                         .flex()
                         .flex_col()
                         .gap(spacing(1.5))
-                        .child(Alert::new(
+                        .child(Alert::new("community-settings-channels-alert", 
                             Severity::Warning,
                             "Copy this URL now \u{2014} for security, you won't be able to see it again.",
                         ))

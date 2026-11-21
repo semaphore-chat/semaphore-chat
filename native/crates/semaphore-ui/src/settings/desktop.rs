@@ -154,7 +154,7 @@ impl Render for DesktopAppSettings {
             );
         let (severity, summary) = state.update.summary();
         let (icon, tone) = match severity {
-            Severity::Error => (DesignIcon::ErrorOutline, sem.error),
+            Severity::Danger => (DesignIcon::ErrorOutline, sem.error),
             Severity::Warning => (DesignIcon::WarningAmber, sem.warning),
             Severity::Info => (DesignIcon::InfoOutlined, sem.info),
             Severity::Success => (DesignIcon::CheckCircleOutline, sem.success),

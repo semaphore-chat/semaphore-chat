@@ -584,7 +584,7 @@ impl Render for ProfileEditForm {
                         .id("profile-edit-error")
                         .test_support()
                         .w_full()
-                        .child(Alert::new(Severity::Error, message))
+                        .child(Alert::new("profile-edit-alert", Severity::Danger, message))
                 });
                 let can_save = !busy && !draft.display_name.trim().is_empty();
                 let buttons = div()
