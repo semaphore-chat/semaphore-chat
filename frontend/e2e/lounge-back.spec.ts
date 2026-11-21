@@ -208,4 +208,27 @@ test.describe('Android Back closes the top layer (412 px, touch)', () => {
       await context.close();
     }
   });
+
+  test('Back closes the emoji picker sheet, and the text typed so far stays', async ({ browser, request }) => {
+    const world = await loungeWorld(request);
+    const { context, page } = await openTouchSession(browser, world.member);
+    try {
+      const path = await openChat(page, world.c1.id, world.c1.lobbyId);
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      const field = page.getByRole('textbox', { name: 'Message #lobby' });
+      await field.fill('hello there');
+      await page.getByRole('button', { name: 'Add emoji' }).tap();
+      const picker = page.getByRole('dialog', { name: 'Add emoji' });
+      await expect(picker).toBeVisible(EVENTUAL);
+      await page.goBack();
+      await expect(picker).toHaveCount(0, EVENTUAL);
+      await expect(chatHeading(page, 'lobby')).toBeVisible();
+      await expect(page).toHaveURL(onChat(path));
+      await expect(field).toHaveValue('hello there');
+      await page.goBack();
+      await expect(page).not.toHaveURL(onChat(path), EVENTUAL);
+    } finally {
+      await context.close();
+    }
+  });
 });
