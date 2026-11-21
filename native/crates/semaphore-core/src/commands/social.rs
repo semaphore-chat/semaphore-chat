@@ -54,6 +54,12 @@ impl State {
 
     /// Presence changed: friends show it.
     pub(crate) fn w2_presence_changed(&mut self) {
+        // The map just arrived: what was heard while it was on its way goes on top.
+        if !self.w2.pending_presence.is_empty()
+            && let Some(presence) = self.cache.presence_mut(&keys::op(keys::PRESENCE))
+        {
+            presence.extend(self.w2.pending_presence.drain());
+        }
         if self.cache.friends(&keys::op(keys::FRIENDS)).is_some() {
             self.view_changed(ViewKey::Friends);
         }

@@ -63,7 +63,7 @@ function PinRow({
       leading={<Avatar name={name} colour={authorId && !pin.webhook ? personColour(authorId) : undefined} size="md" decorative />}
       label={`Show the message from ${name}: ${secondary}`}
       onClick={onJump}
-      trailing={canUnpin ? <IconButton icon="X" label={`Unpin the message from ${name}`} variant="ghost" onClick={onUnpin} /> : undefined}
+      trailing={canUnpin ? <IconButton icon="PinOff" label={`Unpin the message from ${name}`} variant="ghost" onClick={onUnpin} /> : undefined}
     />
   );
 }

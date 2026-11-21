@@ -15,15 +15,21 @@ struct Sections {
     offline: Vec<MemberRow>,
 }
 
-/// `MemberList`'s grouping: hoisted roles by position, then online, then offline, each by name.
+/// The web's `displayName || username`: an empty display name is no name.
+fn shown_name(member: &MemberRow) -> String {
+    member
+        .user
+        .display_name
+        .clone()
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| member.user.username.clone())
+}
+
+/// `MemberList`'s grouping: hoisted roles by position, each online first and then by name, then
+/// online, then offline, each by name.
 fn group(members: Vec<MemberRow>) -> Sections {
     fn name(member: &MemberRow) -> String {
-        member
-            .user
-            .display_name
-            .clone()
-            .unwrap_or_else(|| member.user.username.clone())
-            .to_lowercase()
+        shown_name(member).to_lowercase()
     }
     let mut roles: Vec<(String, i32, Vec<MemberRow>)> = Vec::new();
     let (mut online, mut offline) = (Vec::new(), Vec::new());
@@ -45,7 +51,7 @@ fn group(members: Vec<MemberRow>) -> Sections {
         .map(|(role, _, rows)| (role, rows))
         .collect();
     for (_, rows) in &mut roles {
-        rows.sort_by_key(name);
+        rows.sort_by_key(|member| (!member.online, name(member)));
     }
     online.sort_by_key(name);
     offline.sort_by_key(name);
@@ -206,11 +212,7 @@ fn section_header(label: &str, count: usize, cx: &mut Context<Shell>) -> impl In
 
 fn member_row(member: &MemberRow, cx: &mut Context<Shell>) -> impl IntoElement + use<> {
     let sem = cx.sem();
-    let name = member
-        .user
-        .display_name
-        .clone()
-        .unwrap_or_else(|| member.user.username.clone());
+    let name = shown_name(member);
     let hover = sem.overlay_light;
     let (paper, secondary, primary) = (sem.paper, sem.text_secondary, sem.text_primary);
     let mut accessible = name.clone();
@@ -405,6 +407,37 @@ mod tests {
         };
         assert_eq!(names(&sections.online), ["amy", "zoe"]);
         assert_eq!(names(&sections.offline), ["bob"]);
+    }
+
+    #[test]
+    fn a_role_lists_its_online_members_first_like_the_web() {
+        let mods = Some(("Mods", 3));
+        let sections = group(vec![
+            member("amy", false, mods),
+            member("zed", true, mods),
+            member("bob", true, mods),
+            member("cat", false, mods),
+        ]);
+        let names: Vec<String> = sections.roles[0]
+            .1
+            .iter()
+            .map(|row| row.user.username.clone())
+            .collect();
+        assert_eq!(names, ["bob", "zed", "amy", "cat"]);
+    }
+
+    #[test]
+    fn an_empty_display_name_falls_back_to_the_username_like_the_web() {
+        let mut blank = member("ana", true, None);
+        blank.user.display_name = Some(String::new());
+        assert_eq!(shown_name(&blank), "ana");
+        let mut named = member("bo", true, None);
+        named.user.display_name = Some("Bo Rivera".into());
+        assert_eq!(shown_name(&named), "Bo Rivera");
+        // And it sorts by what's shown.
+        let sections = group(vec![named, blank]);
+        let shown: Vec<String> = sections.online.iter().map(shown_name).collect();
+        assert_eq!(shown, ["ana", "Bo Rivera"]);
     }
 
     // ---- The long press, in a phone-width window. ----

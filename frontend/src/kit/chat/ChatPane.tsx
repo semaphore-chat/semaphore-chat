@@ -1,7 +1,15 @@
-import type { JSX, ReactNode } from 'react';
+import type { DragEventHandler, JSX, ReactNode } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
 import { visuallyHidden } from '../theme/a11y';
+
+/** The drag-and-drop handlers of a drop zone over the whole conversation (the shared `useDropZone`'s). */
+export interface ChatPaneDropZone {
+  onDragEnter: DragEventHandler<HTMLElement>;
+  onDragOver: DragEventHandler<HTMLElement>;
+  onDragLeave: DragEventHandler<HTMLElement>;
+  onDrop: DragEventHandler<HTMLElement>;
+}
 
 export interface ChatPaneProps {
   /** The conversation's header: Back, its name, its buttons. Stays at the top. */
@@ -27,6 +35,11 @@ export interface ChatPaneProps {
    * hidden and inert: nothing in it can be seen, focused, clicked or announced until the cover goes.
    */
   cover?: ReactNode;
+  /**
+   * Files dropped anywhere on the conversation go to its composer: the drop zone's handlers (the composer's
+   * `dropTarget` shows the drop look). Not on a covered pane: the cover has its own.
+   */
+  dropZone?: ChatPaneDropZone;
 }
 
 const Root = styled('div')({
@@ -96,11 +109,20 @@ const Live = styled('div')({ ...visuallyHidden });
  * The list region gets the room the header and the composer leave; only the list scrolls. A `cover` (a thread)
  * fills the pane over the conversation, which stays mounted, hidden and inert underneath.
  */
-export function ChatPane({ header, list, state, typing, jump, announcement, composer, cover }: ChatPaneProps): JSX.Element {
+export function ChatPane({ header, list, state, typing, jump, announcement, composer, cover, dropZone }: ChatPaneProps): JSX.Element {
   const covered = cover !== undefined;
+  const drop = covered ? undefined : dropZone;
   return (
     <Root>
-      <Base inert={covered || undefined} data-chat-pane-covered={covered || undefined}>
+      <Base
+        inert={covered || undefined}
+        data-chat-pane-covered={covered || undefined}
+        data-chat-pane-drop={drop !== undefined || undefined}
+        onDragEnter={drop?.onDragEnter}
+        onDragOver={drop?.onDragOver}
+        onDragLeave={drop?.onDragLeave}
+        onDrop={drop?.onDrop}
+      >
         {header !== undefined && <Head>{header}</Head>}
         <ListRegion>
           {state !== undefined ? <State>{state}</State> : list}

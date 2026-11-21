@@ -46,6 +46,58 @@ describe('Composer', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
+  it('inline in save mode has no Save button but the hint, whose words cancel and save', async () => {
+    const onSubmit = vi.fn();
+    const onCancel = vi.fn();
+    const { user } = renderWithKit(<Live onSubmit={onSubmit} onCancel={onCancel} initial="edited" mode="save" inline />);
+    expect(screen.getByText('escape to')).toBeInTheDocument();
+    expect(screen.getByText('enter to')).toBeInTheDocument();
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    expect(save).toHaveTextContent('save');
+    expect(save.querySelector('svg')).toBeNull();
+    await user.click(save);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: 'Cancel editing' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('inline save hint on touch (no Enter to save) reads "Cancel • Save", and save is unavailable while blank', async () => {
+    const onSubmit = vi.fn();
+    const { user } = renderWithKit(<Live onSubmit={onSubmit} onCancel={vi.fn()} mode="save" inline submitOnEnter={false} />);
+    expect(screen.queryByText('escape to')).toBeNull();
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    expect(save).toHaveTextContent('Save');
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    await user.click(save);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('inline save hint without onCancel offers only save, never a cancel that does nothing', () => {
+    renderWithKit(<Live initial="edited" mode="save" inline />);
+    expect(screen.queryByRole('button', { name: 'Cancel editing' })).toBeNull();
+    expect(screen.queryByText('escape to')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
+  });
+
+  it('hands pasted files to onPasteFiles and lets text paste as usual', () => {
+    const onPasteFiles = vi.fn();
+    renderWithKit(<Live onPasteFiles={onPasteFiles} />);
+    const picture = new File(['x'], 'shot.png', { type: 'image/png' });
+    fireEvent.paste(field(), {
+      clipboardData: { items: [{ kind: 'string', getAsFile: () => null }, { kind: 'file', getAsFile: () => picture }] },
+    });
+    expect(onPasteFiles).toHaveBeenCalledWith([picture]);
+    fireEvent.paste(field(), { clipboardData: { items: [{ kind: 'string', getAsFile: () => null }] } });
+    expect(onPasteFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws the drop target with its label while files are dragged over the conversation', () => {
+    const { rerender } = renderWithKit(<Live dropTarget={{ active: false, label: 'Drop files to attach them' }} />);
+    expect(screen.queryByText('Drop files to attach them')).toBeNull();
+    rerender(<Live dropTarget={{ active: true, label: 'Drop files to attach them' }} />);
+    expect(screen.getByText('Drop files to attach them')).toBeInTheDocument();
+  });
+
   it('in save mode the button is "Save changes" with a check, and Enter saves', () => {
     const onSubmit = vi.fn();
     renderWithKit(<Live onSubmit={onSubmit} initial="edited" mode="save" />);

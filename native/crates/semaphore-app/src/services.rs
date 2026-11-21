@@ -191,6 +191,19 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
             let frames = voice::wire(&engine, &core, &runtime, heartbeat, activity.clone());
             let driver = core.clone();
             runtime.spawn(async move { driver.drive().await });
+            // Failed queries a view shows come back when their wait is over, re-rendered or not
+            // (`semaphore_core::retry`). Never sleeps longer than `MAX_TIMER_MS`, so a failure
+            // recorded meanwhile is seen in time; with nothing failed it only looks.
+            let retrying = core.clone();
+            runtime.spawn(async move {
+                loop {
+                    let due_in = retrying
+                        .retry_due_queries()
+                        .unwrap_or(semaphore_core::retry::MAX_TIMER_MS)
+                        .clamp(1, semaphore_core::retry::MAX_TIMER_MS);
+                    tokio::time::sleep(Duration::from_millis(due_in)).await;
+                }
+            });
             let services = Services {
                 core,
                 exec: Exec::new(runtime.handle().clone(), activity.clone()),

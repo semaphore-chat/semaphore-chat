@@ -2,12 +2,18 @@
  * The chat's composer (PR 10c-2a): the kit `Composer` on the shared composer model (`data/chat/useChannelComposer`)
  * and the shared send (`hooks/useMessageFileUpload`). Its draft, mention list and queued files are its own state, so
  * typing re-renders only the composer, never a message row.
+ *
+ * The extras (PR 10d-C): the emoji button opens the emoji picker (it inserts at the caret), the GIF button the GIF
+ * search (a pick is sent at once; only when the server has GIF search on), a pasted picture or file goes to the
+ * tray, files dropped on the conversation too (`composerDrop`), and ↑ in the empty field edits the reader's last
+ * message (`onEditLastMessage`). Neither picker is offered while the reader cannot write (the notice shows instead).
  */
-import { useCallback, useId, type JSX, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type JSX, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AttachmentTile,
   Composer,
+  IconButton,
   SuggestionList,
   useAnnounce,
   useKeyboardInset,
@@ -19,7 +25,12 @@ import {
   type IconName,
   type Suggestion,
 } from '../../../../kit';
-import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
+import {
+  instanceControllerGetPublicSettingsOptions,
+  userControllerGetUserByIdOptions,
+} from '../../../../api-client/@tanstack/react-query.gen';
+import type { GifResultDto } from '../../../../api-client/types.gen';
+import { pickText, type EmojiPick } from '../../../../data/chat/useEmojiPicker';
 import { ACCEPTED_FILE_TYPES } from '../../../../constants/messages';
 import { VoiceSessionType } from '../../../../contexts/VoiceContext';
 import { useChannelComposer, type ComposerNoticeKind } from '../../../../data/chat/useChannelComposer';
@@ -29,6 +40,9 @@ import { useMessageFileUpload } from '../../../../hooks/useMessageFileUpload';
 import type { MentionSuggestion } from '../../../../hooks/useMentionAutocomplete';
 import type { Message, Span } from '../../../../types/message.type';
 import { spansToText } from '../../../../utils/mentionParser';
+import type { DropInto } from './composerDrop';
+import { EmojiPickerSheet } from './EmojiPickerSheet';
+import { GifPickerSheet, gifSendUrl } from './GifPickerSheet';
 
 const NOTICE_ICON: Record<ComposerNoticeKind, IconName> = {
   'read-only': 'Megaphone',
@@ -60,6 +74,12 @@ export interface ChatComposerProps {
    * `onSent` runs once the server has the reply.
    */
   thread?: { parentMessageId: string; onSent?: () => void };
+  /** Files dragged over the conversation: the composer is the drop target. */
+  dropActive?: boolean;
+  /** Where the conversation's drop zone puts dropped files (set by the composer while it can take them). */
+  dropInto?: DropInto;
+  /** ↑ in the empty field (hardware keyboard): edit the reader's last message; false when there is none. */
+  onEditLastMessage?: () => boolean;
 }
 
 function useReplyBanner(replyTo: Message | null, onCancel: () => void): ComposerBanner | undefined {
@@ -73,7 +93,18 @@ function useReplyBanner(replyTo: Message | null, onCancel: () => void): Composer
   return { kind: 'reply', title: `Replying to ${name}`, detail: line || undefined, cancelLabel: 'Cancel reply', onCancel };
 }
 
-export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, onCancelReply, thread }: ChatComposerProps): JSX.Element {
+export function ChatComposer({
+  communityId,
+  channelId,
+  me,
+  inputRef,
+  replyTo,
+  onCancelReply,
+  thread,
+  dropActive = false,
+  dropInto,
+  onEditLastMessage,
+}: ChatComposerProps): JSX.Element {
   const toasts = useToasts();
   const announce = useAnnounce();
   const onError = useCallback((message: string) => void toasts.show({ tone: 'danger', message }), [toasts]);
@@ -107,6 +138,7 @@ export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, on
     onError,
     touch,
     onCancelReply: replyTo !== null ? onCancelReply : undefined,
+    onEditLastMessage,
   });
   const banner = useReplyBanner(replyTo, onCancelReply);
   const listId = `${useId()}-mentions`;
@@ -115,6 +147,27 @@ export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, on
   const notice: ComposerNotice | undefined =
     composer.notice === null ? undefined : { text: composer.notice.text, icon: NOTICE_ICON[composer.notice.kind] };
   const { attach, mentions } = composer;
+
+  // Dropped files go to this composer's tray.
+  const addFiles = attach.add;
+  useEffect(() => {
+    if (dropInto === undefined) return;
+    dropInto.current = addFiles;
+    return () => {
+      if (dropInto.current === addFiles) dropInto.current = null;
+    };
+  }, [dropInto, addFiles]);
+
+  // The pickers: one open at a time, focus back on its button when it closes.
+  const [picker, setPicker] = useState<'emoji' | 'gif' | null>(null);
+  const emojiButton = useRef<HTMLButtonElement>(null);
+  const gifButton = useRef<HTMLButtonElement>(null);
+  const closePicker = useCallback(() => setPicker(null), []);
+  const { insertText, sendLink } = composer;
+  const pickEmoji = useCallback((pick: EmojiPick) => insertText(pickText(pick)), [insertText]);
+  const pickGif = useCallback((gif: GifResultDto) => void sendLink(gifSendUrl(gif)), [sendLink]);
+  const { data: publicSettings } = useQuery(instanceControllerGetPublicSettingsOptions());
+  const gifSearch = publicSettings?.gifSearchEnabled === true;
   const label = thread !== undefined ? 'Reply in thread' : composer.channelName ? `Message #${composer.channelName}` : 'Message';
 
   return (
@@ -127,6 +180,16 @@ export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, on
         onCaretMove={composer.onCaretMove}
         onKeyDown={composer.onKeyDown}
         onSubmit={() => void composer.send()}
+        onPasteFiles={attach.add}
+        dropTarget={{ active: dropActive, label: attach.allowed ? 'Drop files to attach them' : attach.unavailableText }}
+        emoji={
+          <>
+            {gifSearch && (
+              <IconButton ref={gifButton} icon="ImagePlay" label="Send a GIF" onClick={() => setPicker('gif')} />
+            )}
+            <IconButton ref={emojiButton} icon="Smile" label="Add emoji" onClick={() => setPicker('emoji')} />
+          </>
+        }
         canSend={composer.canSend}
         onSendUnavailablePress={() => announce('Write a message or attach a file first')}
         sending={composer.sending}
@@ -182,6 +245,19 @@ export function ChatComposer({ communityId, channelId, me, inputRef, replyTo, on
         onChange={attach.onPicked}
         data-testid="chat-composer-file-input"
       />
+      {picker === 'emoji' && composer.canCompose && (
+        <EmojiPickerSheet
+          title="Add emoji"
+          communityId={communityId}
+          touch={touch}
+          opener={emojiButton.current}
+          onPick={pickEmoji}
+          onDone={closePicker}
+        />
+      )}
+      {picker === 'gif' && composer.canCompose && gifSearch && (
+        <GifPickerSheet touch={touch} opener={gifButton.current} onPick={pickGif} onDone={closePicker} />
+      )}
     </>
   );
 }

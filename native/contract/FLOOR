@@ -1,0 +1,4 @@
+# The oldest server release the native client reads. Update only with scripts/pin-contract.sh --floor <tag>.
+ref=v0.8.0
+commit=4829144c699663171d056ec3fccec97fcd99bf65
+floor-openapi.json=15ac0687e879b7240b017c8c1da286324a2b5b385fc73160ceeb9eee3506a7ce

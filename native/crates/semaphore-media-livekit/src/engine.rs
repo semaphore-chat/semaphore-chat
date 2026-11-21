@@ -12,7 +12,7 @@ use crate::audio::mixer::{AudioSource, MAX_VOLUME_PERCENT, Mixer, MixerInput};
 use crate::audio::system::{
     CaptureScope, STEREO_FRAME_SAMPLES, SYSTEM_AUDIO_CHANNELS, StereoChunker, SystemAudioCapture,
 };
-use crate::audio::vad::{VadGate, VoiceLevel};
+use crate::audio::vad::{SpeakingIndicator, VadGate, VoiceLevel};
 use crate::audio::{
     AudioDevices, AudioIo, AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES, SAMPLE_RATE,
 };
@@ -53,7 +53,7 @@ use semaphore_core::model::{
 };
 use semaphore_core::platform::{CoreEvent, EventSink, MediaEngine, ScreenShareStarted};
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -227,6 +227,8 @@ struct Session {
     leave: watch::Sender<bool>,
     task: JoinHandle<()>,
     device_task: JoinHandle<()>,
+    /// Republishes the view when our own ring flips.
+    ring_task: JoinHandle<()>,
     mic_pump: JoinHandle<()>,
 }
 
@@ -256,7 +258,14 @@ struct Inner {
     video_sink: RwLock<Option<Arc<dyn VideoSink>>>,
     /// What we last told the SFU per track, so a layer isn't re-requested on every UI frame.
     applied_quality: Mutex<HashMap<String, VideoQuality>>,
-    speaking: Mutex<HashSet<String>>,
+    /// Our own ring, worked out on the mic's thread from the level it already has (as the web does
+    /// on its own mic): the server's speaker updates come late, and only for audio it heard loud.
+    local_speaking: Arc<AtomicBool>,
+    /// Rung by the mic's thread when `local_speaking` flips, never per frame.
+    local_speaking_changed: Arc<tokio::sync::Notify>,
+    /// What the ring is measured against: the voice-activity threshold as set (also in push to
+    /// talk, as on the web), with `RING_PTT` set in push-to-talk mode.
+    ring_config: Arc<AtomicU32>,
     snapshot: watch::Sender<MediaSnapshot>,
     event_sink: RwLock<Option<Arc<dyn EventSink>>>,
     token_source: RwLock<Option<Arc<dyn TokenSource>>>,
@@ -351,6 +360,8 @@ impl LocalVideo {
 }
 
 /// How long a source may take to give its first frame. A system picker waits for the user.
+/// `ring_config`'s push-to-talk bit, above the threshold's byte.
+const RING_PTT: u32 = 1 << 8;
 const FIRST_FRAME: Duration = Duration::from_secs(10);
 const FIRST_FRAME_AFTER_PICKER: Duration = Duration::from_secs(300);
 
@@ -412,7 +423,9 @@ impl LiveKitEngine {
                 video_pumps: Mutex::default(),
                 video_sink: RwLock::new(None),
                 applied_quality: Mutex::default(),
-                speaking: Mutex::default(),
+                local_speaking: Arc::new(AtomicBool::new(false)),
+                local_speaking_changed: Arc::new(tokio::sync::Notify::new()),
+                ring_config: Arc::new(AtomicU32::new(0)),
                 snapshot,
                 event_sink: RwLock::new(None),
                 token_source: RwLock::new(None),
@@ -1076,10 +1089,12 @@ impl Inner {
                 .supervise(room, events, url, token, call, leave_rx),
         );
         let device_task = tokio::spawn(self.clone().watch_devices());
+        let ring_task = tokio::spawn(self.clone().watch_ring());
         *self.session.lock().await = Some(Session {
             leave,
             task,
             device_task,
+            ring_task,
             mic_pump,
         });
         Ok(())
@@ -1098,6 +1113,7 @@ impl Inner {
         };
         let _ = session.leave.send(true);
         session.device_task.abort();
+        session.ring_task.abort();
         let _ = session.task.await;
         session.mic_pump.abort();
         // Leaving the call ends the share's audio, the camera and the screen with it.
@@ -1111,7 +1127,6 @@ impl Inner {
         self.clear_media();
         self.stop_audio();
         lock(&self.applied_quality).clear();
-        lock(&self.speaking).clear();
         self.set_status(call, VoiceStatus::Disconnected, None);
     }
 
@@ -1383,15 +1398,11 @@ impl Inner {
                 RoomEvent::TrackUnpublished { publication, .. } => {
                     self.stop_track(&publication.sid().to_string());
                 }
-                RoomEvent::ParticipantDisconnected(participant) => {
-                    lock(&self.speaking).remove(&participant.identity().to_string());
-                }
-                RoomEvent::ActiveSpeakersChanged { speakers } => {
-                    *lock(&self.speaking) = speakers
-                        .iter()
-                        .map(|speaker| speaker.identity().to_string())
-                        .collect();
-                }
+                // The snapshot below reads each participant's `is_speaking()`. Not the event's
+                // list: the server sends only who changed, and the SDK (0.10.1) lists only the
+                // active ones among those, so a speaker whose level held steady drops out of it
+                // whenever someone else starts or stops.
+                RoomEvent::ActiveSpeakersChanged { .. } => {}
                 RoomEvent::TrackMuted {
                     participant: Participant::Local(_),
                     publication,
@@ -1487,7 +1498,6 @@ impl Inner {
             pump.task.abort();
             self.notify_track_ended(&sid);
         }
-        lock(&self.speaking).clear();
     }
 
     /// Mutes the publication, for the SFU and other people's UIs, and closes the gate in front of
@@ -1499,15 +1509,17 @@ impl Inner {
         // The SDK's mute and unmute spawn on the ambient runtime, and callers can be UI threads.
         let _enter = self.runtime.enter();
         let server_muted = self.server_muted.load(Ordering::SeqCst);
-        let (open, threshold) = {
+        let (open, threshold, ring) = {
             let wanted = lock(&self.wanted);
             let threshold = if wanted.ptt_mode {
                 0
             } else {
                 wanted.vad_threshold
             };
-            (wanted.mic_open(), threshold)
+            let ring = u32::from(wanted.vad_threshold) | if wanted.ptt_mode { RING_PTT } else { 0 };
+            (wanted.mic_open(), threshold, ring)
         };
+        self.ring_config.store(ring, Ordering::Relaxed);
         self.mic_gate
             .store(open && !server_muted, Ordering::Relaxed);
         self.vad_threshold
@@ -1651,6 +1663,7 @@ impl Inner {
 
     fn stop_audio(&self) {
         *lock(&self.input_stream) = None;
+        self.local_speaking.store(false, Ordering::Relaxed);
         *lock(&self.output_stream) = None;
         *lock(&self.mic_source) = None;
         *lock(&self.mic_tx) = None;
@@ -1673,6 +1686,10 @@ impl Inner {
         let threshold = self.vad_threshold.clone();
         let mut level = VoiceLevel::default();
         let mut vad = VadGate::default();
+        let ring_config = self.ring_config.clone();
+        let mut ring = SpeakingIndicator::default();
+        let speaking = self.local_speaking.clone();
+        let speaking_changed = self.local_speaking_changed.clone();
         let result = self.io.open_input(
             device.as_deref(),
             Box::new(move |samples, capture_latency| {
@@ -1684,8 +1701,16 @@ impl Inner {
                     }
                     // The web gates on what it would send, after processing; so does this.
                     let threshold = threshold.load(Ordering::Relaxed) as u8;
-                    let voiced = threshold == 0 || vad.step(level.push(frame), threshold);
-                    if gate.load(Ordering::Relaxed) && voiced {
+                    let level = level.push(frame);
+                    let voiced = threshold == 0 || vad.step(level, threshold);
+                    let open = gate.load(Ordering::Relaxed);
+                    let config = ring_config.load(Ordering::Relaxed);
+                    let shown =
+                        ring.step(level, open, config & RING_PTT != 0, (config & 0xff) as u8);
+                    if speaking.swap(shown, Ordering::Relaxed) != shown {
+                        speaking_changed.notify_one();
+                    }
+                    if open && voiced {
                         // Never block the device thread: a full queue drops 10 ms instead.
                         let _ = mic_tx.try_send(frame.to_vec());
                     }
@@ -1749,6 +1774,15 @@ impl Inner {
         if self.output_lost.swap(false, Ordering::Relaxed) && lock(&self.apm).is_some() {
             *lock(&self.output_stream) = None;
             self.open_output();
+        }
+    }
+
+    /// Our own ring flipped on the mic's thread: the view says so. One wake-up may stand for
+    /// several flips; the snapshot reads the latest.
+    async fn watch_ring(self: Arc<Self>) {
+        loop {
+            self.local_speaking_changed.notified().await;
+            self.publish_snapshot();
         }
     }
 
@@ -1853,7 +1887,10 @@ impl Inner {
             wanted_muted = !wanted.mic_open();
             wanted_deafened = wanted.deafened;
         }
-        let speaking = lock(&self.speaking).clone();
+        let server_muted = self.server_muted.load(Ordering::SeqCst);
+        // The mic's thread catches up within 10 ms; a mute shows at once.
+        let local_speaking =
+            self.local_speaking.load(Ordering::Relaxed) && !wanted_muted && !server_muted;
         let local_media = self.local_media(room.as_deref());
         let (own_camera, own_screen) = room
             .as_deref()
@@ -1880,7 +1917,7 @@ impl Inner {
                 identity: local_identity.clone(),
                 user: user_view(&local_identity, &local.name()),
                 is_self: true,
-                speaking: speaking.contains(&local_identity),
+                speaking: local_speaking,
                 muted: wanted_muted,
                 deafened: wanted_deafened,
                 camera: own_camera,
@@ -1888,7 +1925,7 @@ impl Inner {
                 screen_share_audio: false,
                 quality: quality_view(local.connection_quality()),
                 // Presence knows a server mute and core merges it; the engine also sees its own.
-                server_muted: self.server_muted.load(Ordering::SeqCst),
+                server_muted,
                 volume_percent: 100,
                 screen_share_volume_percent: 100,
             }];
@@ -1903,7 +1940,7 @@ impl Inner {
                         identity.clone(),
                         quality_view(participant.connection_quality()),
                     );
-                    remote_view(participant, speaking.contains(&identity), identity)
+                    remote_view(participant, participant.is_speaking(), identity)
                 })
                 .collect();
             remote.sort_by(|a, b| a.identity.cmp(&b.identity));
@@ -2689,6 +2726,7 @@ mod tests {
         *engine.inner.session.lock().await = Some(Session {
             leave,
             device_task: tokio::spawn(async {}),
+            ring_task: tokio::spawn(async {}),
             task: tokio::spawn(async {}),
             mic_pump: tokio::spawn(async {}),
         });

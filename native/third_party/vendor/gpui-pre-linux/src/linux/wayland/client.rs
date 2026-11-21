@@ -658,6 +658,30 @@ impl WaylandClientStatePtr {
         }
     }
 
+    /// Semaphore patch: reports `surface_id`'s visibility on the next idle turn of the event loop.
+    /// `set_visible` runs inside app code (an `App` update, or the should-close callback), where
+    /// the visibility callback can't update the window and `callbacks` may be borrowed.
+    pub fn schedule_visibility_report(&self, surface_id: &ObjectId) {
+        let Some(client) = self.try_get_client() else {
+            return;
+        };
+        let Ok(state) = client.try_borrow() else {
+            log::error!("Failed to schedule a visibility report: client state is borrowed");
+            return;
+        };
+        let surface_id = surface_id.clone();
+        let this = self.clone();
+        state.loop_handle.insert_idle(move |_| {
+            let Some(client) = this.0.upgrade() else {
+                return;
+            };
+            let window = get_window(&mut client.borrow_mut(), &surface_id);
+            if let Some(window) = window {
+                window.report_current_visibility();
+            }
+        });
+    }
+
     pub fn get_serial(&self, kind: SerialKind) -> Serial {
         self.0.upgrade().unwrap().borrow().serial_tracker.get(kind)
     }

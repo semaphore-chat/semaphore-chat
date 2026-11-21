@@ -1,0 +1,61 @@
+# W24: "Load" on a GIF in the middle of a scrolled-back list, against the showcase scenario, as
+# alexk in Couch Co-op's #general. The owner saw the whole message list go blank after that press on
+# a real desktop; this keeps the list drawn through it, with real animated GIFs (the fake server's
+# `/__fixtures/*.gif` is a four-frame GIF, so the app decodes, budgets and animates it).
+# - Two GIF messages from priya and five text messages after them, then scrolled back so the first
+#   GIF's Load card is mid-screen. Third-party pictures are off: both are Load cards.
+# - Load: the setting goes on, the list keeps its place and the GIF draws in it (a blank list
+#   draws no element), then animates. Shots are taken on the rig's clock, so each run's frame is
+#   the same; the shots show the rows around it.
+# The ids name the rows' seqs, which a fresh showcase server gives the same every run: the two
+# GIFs posted here are 15728640 and 16777216 (the scenario's own GIF, from a host that never
+# resolves, is 14680064 and shows its URL).
+
+app 1280 800
+window activate
+wait idle
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core connection connected
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+
+# 1. Two GIFs and five messages after them; scrolled back to the first GIF's Load card.
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/first.gif\"}"
+wait core w7 gif blocked within 10
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"http://127.0.0.1:3999/__fixtures/second.gif\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"after one\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"after two\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"after three\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"after four\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"after five\"}"
+wait core text "after five"
+wait idle
+scroll message-gif-blocked-16777216 0 250
+wait idle
+wait core element message-gif-load-15728640
+shot 01-scrolled-blocked
+
+# 2. Load on the first GIF: on for everything, and the GIF drawn in place.
+w7 mark
+click message-gif-load-15728640
+wait core w7 third-party on
+expect settings /third_party_media true
+wait core element message-gif-15728640 within 10
+wait idle
+expect core w7 new-requests Fixture_image >= 1
+shot 02-loaded
+
+# 3. Later on the rig's clock: the GIF has moved on a frame and the list is still drawn.
+tick 250
+wait idle
+wait core element message-gif-15728640
+shot 03-animated

@@ -24,7 +24,8 @@
 //! attach rigs/slice/fixtures/notes.txt  # a file into the composer, as a dialog or drop would
 //! link-images on                      # the next start loads link previews' images
 //! livekit remove $ID(vc-squad) me    # LiveKit's server API removes someone (needs --livekit-http)
-//! wait core voice connected           # also frames, muted, deafened, participant ID
+//! wait core voice connected           # also frames, muted, deafened, self-speaking|self-quiet,
+//!                                     # participant ID
 //! wait core voice camera on            # camera|screen|screen-audio off|starting|on|failed
 //! wait core voice own-frames screen    # our own camera's or screen's preview reached the window
 //! video fail-next camera "why"         # the fake camera (or screen) refuses its next start
@@ -304,6 +305,8 @@ enum Condition {
     VoiceFrames,
     VoiceMuted(bool),
     VoiceDeafened(bool),
+    /// Our own row's speaking flag: `self-speaking` or `self-quiet`.
+    VoiceSelfSpeaking(bool),
     VoiceParticipant(String),
     /// What we send: `camera`, `screen` or `screen-audio`, as core's `LocalShare` says.
     VoiceLocal {
@@ -661,6 +664,8 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["voice", "unmuted"] => Condition::VoiceMuted(false),
         ["voice", "deafened"] => Condition::VoiceDeafened(true),
         ["voice", "undeafened"] => Condition::VoiceDeafened(false),
+        ["voice", "self-speaking"] => Condition::VoiceSelfSpeaking(true),
+        ["voice", "self-quiet"] => Condition::VoiceSelfSpeaking(false),
         ["voice", "participant", identity] => Condition::VoiceParticipant((*identity).into()),
         [
             "voice",
@@ -1949,6 +1954,7 @@ impl Rig {
             | Condition::VoiceFrames
             | Condition::VoiceMuted(_)
             | Condition::VoiceDeafened(_)
+            | Condition::VoiceSelfSpeaking(_)
             | Condition::VoiceParticipant(_)
             | Condition::VoiceLocal { .. }
             | Condition::VoiceOwnFrames(_)
@@ -2302,6 +2308,11 @@ impl Rig {
                     }))
                 }
                 Condition::VoiceMuted(muted) => Ok(voice.muted == *muted),
+                Condition::VoiceSelfSpeaking(speaking) => Ok(voice
+                    .participants
+                    .iter()
+                    .any(|participant| participant.is_self && participant.speaking)
+                    == *speaking),
                 Condition::VoiceDeafened(deafened) => Ok(voice.deafened == *deafened),
                 Condition::VoiceParticipant(identity) => Ok(voice
                     .participants
@@ -2346,6 +2357,7 @@ impl Rig {
                     | Condition::VoiceFrames
                     | Condition::VoiceMuted(_)
                     | Condition::VoiceDeafened(_)
+                    | Condition::VoiceSelfSpeaking(_)
                     | Condition::VoiceParticipant(_)
                     | Condition::VoiceLocal { .. }
                     | Condition::VoiceOwnFrames(_)

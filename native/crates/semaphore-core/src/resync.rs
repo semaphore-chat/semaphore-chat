@@ -97,7 +97,7 @@ impl State {
     }
 
     /// The views whose reads ask for the reconnect table's queries.
-    fn views_reading(&self, key: &QueryKey) -> Vec<ViewKey> {
+    pub(crate) fn views_reading(&self, key: &QueryKey) -> Vec<ViewKey> {
         let community_views = || {
             self.cache
                 .keys_with_op(keys::CHANNELS)
