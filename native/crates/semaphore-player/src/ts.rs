@@ -2,15 +2,19 @@
 //! FFmpeg inside libwebrtc has no MPEG-TS demuxer (docs/player.md). A whole segment is in memory,
 //! so [`demux`] parses it at once into access units in file order.
 //!
-//! - **Packets** of 188 bytes (what LiveKit egress v1.14 writes), or 192 (M2TS, a 4-byte
-//!   timestamp before each: ffmpeg's BDAV/HDMV-style muxer, the form the backend's remux-failure
-//!   fallback serves), found by the sync byte's spacing. Lost sync is found again; packets with
-//!   the error bit or scrambling are dropped.
+//! - **Packets** of 188 bytes (what LiveKit egress v1.14 writes, and what the backend's
+//!   `-f mpegts` remux writes too), or 192 (M2TS, a 4-byte timestamp before each: ffmpeg's
+//!   BDAV/HDMV-style muxer with `-mpegts_m2ts_mode 1`, and some other tools; the backend's
+//!   remux-failure fallback serves egress's original 188-byte file), found by the sync byte's
+//!   spacing. Lost sync is found again; packets with the error bit or scrambling are dropped.
 //! - **PSI**: the PAT's first program, its PMT (sections may span packets; CRC-32 checked).
 //! - **Streams** by PMT stream type: H.264 (0x1B), AAC in ADTS (0x0F), Opus (0x06 with an
 //!   `Opus` registration descriptor). A private stream (0x06) with no registration descriptor
-//!   whose first payload starts with an ADTS sync is AAC too: BDAV names AAC that way (see
-//!   `finish`). The rest are listed as [`StreamType::Other`].
+//!   is sniffed, since only its payload names the codec (BDAV writes AAC that way): a valid
+//!   ADTS header followed by another where its frame ends makes it AAC; anything else, after a
+//!   few payloads, stays [`StreamType::Other`]. The sniff applies only while the PMT still says
+//!   0x06 for that PID: a PMT that re-types it wins, and the sniffed type is dropped. The rest
+//!   are listed as [`StreamType::Other`].
 //! - **PES** reassembled per stream, 33-bit PTS and DTS read. A continuity-counter gap drops the
 //!   PES it broke (counted in [`Demuxed::skipped`]); a repeated counter is a duplicate packet.
 //! - **AAC**: one unit per ADTS frame, header included (FFmpeg's AAC decoder reads it), timed
@@ -29,6 +33,8 @@ const PID_NULL: u16 = 0x1FFF;
 /// A PMT stream type that names no codec by itself: the payload (or a registration descriptor)
 /// has to say. MPEG-TS calls it private data; BDAV/HDMV writes AAC into it.
 const STREAM_TYPE_PRIVATE: u8 = 0x06;
+/// How many PES of an unregistered private stream are sniffed before it is taken as not AAC.
+const SNIFF_PES: usize = 8;
 /// PTS and DTS wrap at 2^33 ticks of 90 kHz (about 26.5 hours).
 pub const PTS_WRAP: u64 = 1 << 33;
 
@@ -44,6 +50,9 @@ pub enum StreamType {
 pub struct EsInfo {
     pub pid: u16,
     pub stream_type: StreamType,
+    /// The format identifier of the stream's registration descriptor (PMT tag 5), if any. A
+    /// registered private stream names its codec there, so its payload is not sniffed.
+    pub registration: Option<[u8; 4]>,
 }
 
 /// One access unit: a video PES, or one ADTS frame.
@@ -430,13 +439,18 @@ fn parse_pmt(section: &[u8]) -> Option<Vec<EsInfo>> {
         let pid = u16::from_be_bytes([section[at + 1] & 0x1F, section[at + 2]]);
         let es_length = (usize::from(section[at + 3] & 0x0F) << 8) | usize::from(section[at + 4]);
         let descriptors = section.get(at + 5..(at + 5 + es_length).min(end))?;
+        let registration = registration(descriptors);
         let stream_type = match raw_type {
             0x1B => StreamType::H264,
             0x0F => StreamType::AacAdts,
-            0x06 if registration(descriptors) == Some(*b"Opus") => StreamType::Opus,
+            0x06 if registration == Some(*b"Opus") => StreamType::Opus,
             other => StreamType::Other(other),
         };
-        streams.push(EsInfo { pid, stream_type });
+        streams.push(EsInfo {
+            pid,
+            stream_type,
+            registration,
+        });
         at += 5 + es_length;
     }
     Some(streams)
@@ -465,6 +479,64 @@ struct Assembly {
     last_cc: Option<u8>,
 }
 
+/// An unregistered private stream's codec while its payloads say: it is only in the payload,
+/// and one payload alone may start mid-frame or hold a single fake header.
+#[derive(Debug, Default)]
+struct Private {
+    /// Payloads held back, in order, until the codec is decided.
+    pending: Vec<Pending>,
+    /// The codec, once decided. Only valid while the PMT still calls this PID private.
+    decided: Option<StreamType>,
+}
+
+/// One PES held while a private stream's codec is undecided.
+#[derive(Debug)]
+struct Pending {
+    pes: Pes,
+    random_access: bool,
+}
+
+/// What a private stream's payloads say so far.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    /// No ADTS frame with another after it yet: wait for more payloads.
+    Wait,
+    /// A complete ADTS frame, and no header where its next frame starts.
+    NotAdts,
+    /// An ADTS frame and the header of the frame after it.
+    AacAdts,
+}
+
+/// The verdict on `pending`: only its payload bytes matter, so a frame ending at a PES
+/// boundary finds its next header in the following payload.
+fn verdict(pending: &[Pending]) -> Verdict {
+    let mut buf: Vec<u8> = Vec::new();
+    for pending in pending {
+        buf.extend_from_slice(&pending.pes.payload);
+    }
+    // The first plausible header. Bytes before it are a frame cut by the PES boundary.
+    let Some((at, header)) = (0..buf.len()).find_map(|at| Some((at, adts_header(&buf[at..])?)))
+    else {
+        return Verdict::Wait;
+    };
+    let next = at + header.frame_length;
+    if next + 7 > buf.len() {
+        return Verdict::Wait;
+    }
+    if adts_header(&buf[next..]).is_some() {
+        Verdict::AacAdts
+    } else {
+        Verdict::NotAdts
+    }
+}
+
+/// Whether `info` is a private stream whose codec only its payload can name: no registration
+/// descriptor. An `Opus` registration is a codec of its own; any other registration names one
+/// too, so neither is sniffed.
+fn private(info: &EsInfo) -> bool {
+    info.stream_type == StreamType::Other(STREAM_TYPE_PRIVATE) && info.registration.is_none()
+}
+
 /// Parses a whole segment.
 pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
     let (size, first) = detect_packets(bytes).ok_or(TsError::NotTs)?;
@@ -478,8 +550,7 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
     let mut pmt_pid: Option<u16> = None;
     let mut assemblies: HashMap<u16, Assembly> = HashMap::new();
     let mut adts: HashMap<u16, AdtsSplitter> = HashMap::new();
-    // A private stream's codec, once its first payload said.
-    let mut resolved: HashMap<u16, StreamType> = HashMap::new();
+    let mut states: HashMap<u16, Private> = HashMap::new();
     let mut at = first;
     while at + TS_PACKET <= bytes.len() {
         if bytes[at] != SYNC {
@@ -546,18 +617,33 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
         if Some(pid) == pmt_pid {
             for section in pmt.push(payload, unit_start, &mut out.skipped) {
                 if let Some(streams) = parse_pmt(&section) {
-                    // A new version replaces the list.
+                    // A new version replaces the list. A stream it now names itself, or that is
+                    // now registered, drops the type sniffed under the old list, with the frames
+                    // split under it.
+                    for info in &streams {
+                        if !private(info)
+                            && let Some(mut state) = states.remove(&info.pid)
+                        {
+                            if state.decided.take() == Some(StreamType::AacAdts) {
+                                adts.entry(info.pid).or_default().reset();
+                            }
+                            drain(
+                                &mut out,
+                                *info,
+                                info.stream_type,
+                                &mut state,
+                                adts.entry(info.pid).or_default(),
+                            );
+                        }
+                    }
                     out.streams = streams;
                 }
             }
             continue;
         }
-        let Some(mut info) = out.streams.iter().find(|s| s.pid == pid).copied() else {
+        let Some(info) = out.streams.iter().find(|s| s.pid == pid).copied() else {
             continue;
         };
-        if let Some(&stream_type) = resolved.get(&pid) {
-            info.stream_type = stream_type;
-        }
         let assembly = assemblies.entry(pid).or_default();
         if has_payload {
             if let Some(last) = assembly.last_cc
@@ -579,7 +665,7 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
                 info,
                 assembly,
                 adts.entry(pid).or_default(),
-                &mut resolved,
+                states.entry(pid).or_default(),
             );
             assembly.buf.clear();
             assembly.good = true;
@@ -596,13 +682,28 @@ pub fn demux(bytes: &[u8]) -> Result<Demuxed, TsError> {
                 info,
                 assembly,
                 adts.entry(info.pid).or_default(),
-                &mut resolved,
+                states.entry(info.pid).or_default(),
+            );
+        }
+        // A private stream whose payloads never said: emit what was held, still listed as Other.
+        if let Some(state) = states.get_mut(&info.pid)
+            && state.decided.is_none()
+            && !state.pending.is_empty()
+        {
+            drain(
+                &mut out,
+                info,
+                info.stream_type,
+                state,
+                adts.entry(info.pid).or_default(),
             );
         }
     }
     for stream in &mut out.streams {
-        if let Some(&stream_type) = resolved.get(&stream.pid) {
-            stream.stream_type = stream_type;
+        if private(stream)
+            && let Some(decided) = states.get(&stream.pid).and_then(|state| state.decided)
+        {
+            stream.stream_type = decided;
         }
     }
     if out.streams.is_empty() {
@@ -617,7 +718,7 @@ fn finish(
     info: EsInfo,
     assembly: &mut Assembly,
     adts: &mut AdtsSplitter,
-    resolved: &mut HashMap<u16, StreamType>,
+    state: &mut Private,
 ) {
     if assembly.buf.is_empty() {
         return;
@@ -633,22 +734,60 @@ fn finish(
         adts.reset();
         return;
     };
+    let random_access = assembly.random_access;
     // A private stream (0x06) with no registration descriptor says its codec only by its payload:
     // ffmpeg's M2TS (BDAV, HDMV-style) muxer writes AAC-LC as 0x06 on a Blu-ray audio PID, with
     // an empty descriptor list, and an ADTS payload. Opus in TS is 0x06 too, but registered.
-    let stream_type = match resolved.get(&info.pid) {
-        Some(&stream_type) => stream_type,
-        None if info.stream_type == StreamType::Other(STREAM_TYPE_PRIVATE) => {
-            let decided = if adts_header(&pes.payload).is_some() {
-                StreamType::AacAdts
-            } else {
-                info.stream_type
-            };
-            resolved.insert(info.pid, decided);
-            decided
+    if !private(&info) {
+        // The PMT names the codec: a type sniffed under an earlier PMT no longer applies, and
+        // neither do the frames split under it.
+        if state.decided.take() == Some(StreamType::AacAdts) {
+            adts.reset();
         }
-        None => info.stream_type,
+        drain(out, info, info.stream_type, state, adts);
+        push(out, info, info.stream_type, pes, random_access, adts);
+        return;
+    }
+    if let Some(stream_type) = state.decided {
+        push(out, info, stream_type, pes, random_access, adts);
+        return;
+    }
+    state.pending.push(Pending { pes, random_access });
+    let decided = match verdict(&state.pending) {
+        Verdict::AacAdts => Some(StreamType::AacAdts),
+        Verdict::NotAdts => Some(info.stream_type),
+        // Still no ADTS frame: after a few payloads, take the PMT's word for it.
+        Verdict::Wait if state.pending.len() >= SNIFF_PES => Some(info.stream_type),
+        Verdict::Wait => None,
     };
+    if let Some(stream_type) = decided {
+        state.decided = Some(stream_type);
+        drain(out, info, stream_type, state, adts);
+    }
+}
+
+/// Emits the payloads held while a private stream's codec was undecided, as `stream_type`.
+fn drain(
+    out: &mut Demuxed,
+    info: EsInfo,
+    stream_type: StreamType,
+    state: &mut Private,
+    adts: &mut AdtsSplitter,
+) {
+    for Pending { pes, random_access } in std::mem::take(&mut state.pending) {
+        push(out, info, stream_type, pes, random_access, adts);
+    }
+}
+
+/// One PES into units as `stream_type`.
+fn push(
+    out: &mut Demuxed,
+    info: EsInfo,
+    stream_type: StreamType,
+    pes: Pes,
+    random_access: bool,
+    adts: &mut AdtsSplitter,
+) {
     match stream_type {
         StreamType::AacAdts => {
             for frame in adts.push(&pes.payload, pes.pts) {
@@ -662,8 +801,8 @@ fn finish(
             }
         }
         _ => {
-            let keyframe = assembly.random_access
-                || (stream_type == StreamType::H264 && h264_has_idr(&pes.payload));
+            let keyframe =
+                random_access || (stream_type == StreamType::H264 && h264_has_idr(&pes.payload));
             out.units.push(Unit {
                 pid: info.pid,
                 pts: pes.pts,

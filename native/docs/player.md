@@ -220,11 +220,14 @@ The trim preview plays the replay buffer's HLS (`GET /livekit/replay/preview/pla
 segments of MPEG-TS with H.264 and AAC, `#EXTINF:10.0` each). The FFmpeg here has no MPEG-TS
 demuxer, so:
 
-- **`src/ts.rs`** demuxes by hand: 188-byte packets (what egress writes) or 192-byte M2TS (the
-  BDAV/HDMV form the backend's remux-failure fallback serves), found by sync spacing, PAT and PMT
+- **`src/ts.rs`** demuxes by hand: 188-byte packets (what egress writes, and what the backend's
+  `-f mpegts` remux writes) or 192-byte M2TS (a 4-byte timestamp before each packet: ffmpeg's
+  BDAV/HDMV-style muxer and other tools; the backend's remux-failure fallback serves egress's
+  original 188-byte file), found by sync spacing, PAT and PMT
   with CRC-32, PES with 33-bit PTS/DTS, ADTS frames split and timed. H.264 (0x1B) and AAC (0x0F)
-  are read, and a private stream (0x06) with no registration descriptor whose payload is ADTS is
-  AAC too (BDAV names AAC that way); Opus in TS (0x06 with an `Opus` registration) and anything
+  are read, and an unregistered private stream (0x06) is sniffed for ADTS (BDAV names AAC that
+  way): a header followed by another where its frame ends makes it AAC, and the sniff is dropped
+  if a PMT re-types the PID; Opus in TS (0x06 with an `Opus` registration) and anything
   else is listed and refused. A continuity gap drops the PES it broke.
 - **The shim's `sp_decoder`** decodes those units with the same FFmpeg decoders (Annex B H.264,
   ADTS AAC, parameters in band). AAC-LC decodes (in every shipped build, above); a segment whose
@@ -238,8 +241,11 @@ demuxer, so:
   doesn't fetch the buffer's beginning.
 - **Fixtures**: `fixtures/ts/` (gen.sh): three 10 s segments cut by ffmpeg's HLS muxer (red, green,
   blue; 440, 660, 880 Hz; a keyframe every 2 s), segment 1 again as M2TS, and H.264 with Opus.
-  `egress-1080p.ts`/`egress-1080p-m2ts.ts` are 0.6 s of a real egress segment (below), cut by
-  stream copy, in both packet forms.
+  `egress-1080p-raw.ts` is 1.5 s of egress's own HLS segment (truncated on a packet boundary, no
+  re-mux, the form the backend's remux-failure fallback serves; its PAT/PMT arrive after the first
+  0.34 s of audio, which the demuxer cannot attribute); `egress-1080p-remuxed.ts` is
+  0.6 s of one cut by stream copy and `egress-1080p-m2ts.ts` the same data remuxed to 192-byte
+  M2TS, whose PMT names the AAC as private data 0x06 (a form the backend never serves).
 - **Core and the app (lane 2):** `PlaybackSource` is an enum, `Attachment(AttachmentSource)` (the
   old struct, renamed) or `ReplayBuffer { session_id, segments, start }`. The app's opener plays
   the latter as `Opened::Segments`: an empty `segments` is listed on the player's thread
@@ -271,8 +277,13 @@ demuxer, so:
     types 0x1B/0x0F; its PTS are shifted by ffmpeg's 1.4 s mux delay, which the player discards
     (it counts from a segment's first video PTS).
   - **The 192-byte form** (ffmpeg's BDAV muxer, from the same real segment) names the AAC as
-    private stream 0x06 with no descriptor: the demuxer used to list it as `Other` and the preview
-    lost its sound. It now recognises ADTS there (`a_private_stream_carrying_adts_is_aac`).
+    private stream 0x06 with no descriptor. Nothing in the backend produces that form: egress and
+    its `-f mpegts` remux both write 188-byte, and the remux-failure fallback returns egress's
+    file; the demuxer reads M2TS for files from other tools. One valid ADTS header is not enough
+    there (compressed data can hold one by chance): the next frame's header must follow it, and a
+    stream with a registration descriptor is never sniffed. It recognises ADTS there
+    (`a_private_stream_carrying_adts_is_aac`), and drops the sniffed type if a PMT re-types the
+    PID (`a_pmt_that_re_types_a_sniffed_pid_wins_over_the_sniff`).
   - **Timing.** Nine 10 s segments: every segment holds 300 video frames, and its first video PTS
     is exactly 10.000000 s after the previous one's, matching the playlist's `#EXTINF:10.0`;
     audio runs 10.006-10.016 s per segment. Played through `open_segments`, the boundary steps are
