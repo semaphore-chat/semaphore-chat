@@ -31,6 +31,7 @@ import { getHttpStatus } from '../../../../utils/httpError';
 import type { Message } from '../../../../types/message.type';
 import { ChatRow, ChatRowContext, repliesText, type ChatRowShared } from './ChatRow';
 import { ChatComposer } from './ChatComposer';
+import { useComposerDrop } from './composerDrop';
 
 export interface ThreadViewProps {
   communityId: string;
@@ -228,6 +229,8 @@ export function ThreadView({
 
   // The composer and Follow show together: only for a thread that is known to be this channel's and loaded.
   const interactive = writable && state === undefined;
+  // Files dropped on the thread go to its composer.
+  const drop = useComposerDrop();
 
   return (
     <ChatRowContext value={threadShared}>
@@ -260,6 +263,7 @@ export function ThreadView({
           ) : undefined
         }
         announcement={announcement}
+        dropZone={drop.dropZone}
         composer={
           interactive ? (
             <ChatComposer
@@ -270,6 +274,8 @@ export function ThreadView({
               replyTo={null}
               onCancelReply={noop}
               thread={{ parentMessageId, onSent }}
+              dropActive={drop.active}
+              dropInto={drop.into}
             />
           ) : undefined
         }

@@ -219,7 +219,7 @@ const sheetActions = (sheet: HTMLElement) =>
     .getAllByRole('button')
     .map((b) => b.getAttribute('aria-label') ?? b.textContent)
     .filter((name) => name !== 'Close');
-const QUICK = ['React with thumbs up', 'React with heart', 'React with laughing', 'React with surprised', 'React with sad', 'React with party'];
+const QUICK = ['React with thumbs up', 'React with heart', 'React with laughing', 'React with surprised', 'React with sad', 'React with party', 'More reactions'];
 
 async function openActionsWithEnter(text: string) {
   const row = rowOf(text);

@@ -9,18 +9,11 @@ import {
   Typography,
 } from "@mui/material";
 import { Search as SearchIcon, Clear as ClearIcon } from "@mui/icons-material";
-import { useInfiniteQuery } from "@tanstack/react-query";
 import { useResponsive } from "../../hooks/useResponsive";
-import { useDebounce } from "../../hooks/useDebounce";
 import { MobileSheet } from "../Mobile/common/MobileSheet";
-import {
-  gifsControllerSearch,
-  gifsControllerFeatured,
-} from "../../api-client/sdk.gen";
+import { useGifSearch } from "../../data/chat/useGifSearch";
 import type { GifResultDto } from "../../api-client/types.gen";
 
-const GIF_PAGE_LIMIT = 20;
-const SEARCH_DEBOUNCE_MS = 300;
 /** Start loading the next page once the user scrolls within this many px of the bottom. */
 const SCROLL_LOAD_THRESHOLD_PX = 80;
 
@@ -34,38 +27,8 @@ const GifPickerContent: React.FC<{
   touch?: boolean;
 }> = ({ onGifClick, touch = false }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedQuery = useDebounce(searchQuery.trim(), SEARCH_DEBOUNCE_MS);
-
-  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
-    useInfiniteQuery({
-      queryKey: debouncedQuery
-        ? (["gifs", "search", debouncedQuery] as const)
-        : (["gifs", "featured"] as const),
-      queryFn: async ({ pageParam, signal }) => {
-        if (debouncedQuery) {
-          const { data } = await gifsControllerSearch({
-            query: {
-              q: debouncedQuery,
-              limit: GIF_PAGE_LIMIT,
-              pos: pageParam || undefined,
-            },
-            throwOnError: true,
-            signal,
-          });
-          return data;
-        }
-        const { data } = await gifsControllerFeatured({
-          query: { limit: GIF_PAGE_LIMIT, pos: pageParam || undefined },
-          throwOnError: true,
-          signal,
-        });
-        return data;
-      },
-      initialPageParam: "",
-      getNextPageParam: (lastPage) => lastPage.next || undefined,
-    });
-
-  const gifs = data?.pages.flatMap((page) => page.results) ?? [];
+  const { gifs, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
+    useGifSearch(searchQuery);
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const el = event.currentTarget;

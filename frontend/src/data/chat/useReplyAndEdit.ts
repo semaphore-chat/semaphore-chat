@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { EditRequest, EditRequestContextValue } from "../../contexts/EditRequestContext";
-import { isOptimisticMessageId } from "../../utils/messageCacheUpdaters";
+import { findLastEditableMessage } from "./lastEditable";
 import type { Message, Span } from "../../types/message.type";
 import type { VoiceSessionType } from "../../contexts/VoiceContext";
 
@@ -63,10 +63,7 @@ export function useReplyAndEdit({
   const [editRequest, setEditRequest] = useState<EditRequest | null>(null);
   const editSeqRef = useRef(0);
   const handleEditLastMessage = useCallback((): boolean => {
-    if (!authorId) return false;
-    const last = messages.find(
-      (m) => m.authorId === authorId && !m.deletedAt && m.sendStatus === undefined && !isOptimisticMessageId(m.id),
-    );
+    const last = findLastEditableMessage(messages, authorId);
     if (!last) return false;
     editSeqRef.current += 1;
     setEditRequest({ messageId: last.id, seq: editSeqRef.current });
