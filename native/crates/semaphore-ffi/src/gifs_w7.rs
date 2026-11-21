@@ -9,6 +9,7 @@ pub struct GifView {
     pub id: String,
     pub title: String,
     pub url: String,
+    pub medium_url: Option<String>,
     pub preview_url: String,
     pub width: u32,
     pub height: u32,

@@ -348,6 +348,32 @@ async fn a_dm_call_uses_dm_presence_and_never_channel_presence() {
 }
 
 #[tokio::test]
+async fn deafening_in_a_dm_call_tells_the_dm_presence_route() {
+    // `POST /dm-groups/{id}/voice-presence/deafen`: the DM call's own route, never the channel's.
+    let mut rig = in_dm_call(&["bob"]).await;
+    rig.core.set_deafened(true).await.unwrap();
+    rig.settle().await;
+    assert!(rig.core.voice().deafened);
+    assert_eq!(
+        rig.backend.w4.calls().last().map(String::as_str),
+        Some("dm_deafen dm-1 true")
+    );
+    assert!(
+        voice_calls(&rig).is_empty(),
+        "no channel presence call: {:?}",
+        voice_calls(&rig)
+    );
+
+    rig.core.set_deafened(false).await.unwrap();
+    rig.settle().await;
+    assert!(!rig.core.voice().deafened);
+    assert_eq!(
+        rig.backend.w4.calls().last().map(String::as_str),
+        Some("dm_deafen dm-1 false")
+    );
+}
+
+#[tokio::test]
 async fn a_blocked_dm_fails_the_join_with_the_servers_message() {
     let mut rig = signed_in().await;
     rig.backend

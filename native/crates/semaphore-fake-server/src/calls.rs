@@ -238,6 +238,28 @@ pub(crate) fn dm_leave(inner: &Inner, group_id: &str, user_id: &str, members: &[
     true
 }
 
+/// `VoicePresenceService.updateDmDeafenState`: `assertDmMember` (403), then the caller's deafen
+/// state in the call, which the backend keeps in LiveKit metadata for the call's tiles. DM
+/// presence has no per-user update event: the fake records it on the listed user, so a later read
+/// names them deafened, and tells nobody.
+pub(crate) fn dm_deafen(
+    inner: &Inner,
+    group_id: &str,
+    user_id: &str,
+    deafened: bool,
+) -> Result<(), Refusal> {
+    dm_members_for(inner, group_id, user_id)?;
+    let mut calls = lock(&inner.calls);
+    if let Some(user) = calls
+        .dm_voice
+        .get_mut(group_id)
+        .and_then(|users| users.iter_mut().find(|listed| listed.id == user_id))
+    {
+        user.is_deafened = deafened;
+    }
+    Ok(())
+}
+
 /// `VoicePresenceService.declineDmVoiceCall`: `assertDmMember` (403), 409 with no active call,
 /// 409 when already in it, then the decline goes into the call's set. Only a new one sends
 /// `dmVoiceCallDeclined` to the DM group's room, with the server's `isGroup` (a DM it can't read

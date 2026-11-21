@@ -863,6 +863,19 @@ impl VoiceBackend for FakeBackend {
         self.w4.run("dm_decline", &[&dm_group_id]).await
     }
 
+    async fn dm_voice_presence_controller_update_dm_deafen_state(
+        &self,
+        dm_group_id: String,
+        body: wire::UpdateDeafenStateDto,
+    ) -> BackendResult<wire::RefreshDmPresenceResponseDto> {
+        self.w4.answers.lock().unwrap().insert(
+            "dm_deafen",
+            json!({ "dmGroupId": dm_group_id, "message": "ok", "success": true }),
+        );
+        let deafened = body.is_deafened.to_string();
+        self.w4.run("dm_deafen", &[&dm_group_id, &deafened]).await
+    }
+
     async fn livekit_controller_mute_participant(
         &self,
         channel_id: String,

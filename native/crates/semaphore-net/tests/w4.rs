@@ -290,6 +290,26 @@ async fn a_dm_call_rings_is_answered_and_ends_when_the_caller_leaves() {
 }
 
 #[tokio::test]
+async fn deafening_in_a_dm_call_goes_to_the_dm_presence_route() {
+    let server = server().await;
+    let client = signed_in(&server).await;
+    let dm = id("dm-priya");
+    client.core.join_dm_call(dm.clone()).await.unwrap();
+
+    client.core.set_deafened(true).await.unwrap();
+    assert!(client.core.voice().deafened);
+    assert_eq!(
+        statuses(&server, "DmVoicePresenceController_updateDmDeafenState"),
+        [201]
+    );
+    assert_eq!(
+        count(&server, "VoicePresenceController_updateDeafenState"),
+        0,
+        "the channel's route is not the DM call's"
+    );
+}
+
+#[tokio::test]
 async fn the_ring_stops_when_the_caller_gives_up() {
     let server = server().await;
     let client = signed_in(&server).await;

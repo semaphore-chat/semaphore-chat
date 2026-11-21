@@ -68,6 +68,15 @@ pub trait VoiceBackend: Send + Sync {
     ) -> BackendResult<wire::DeclineDmVoiceCallResponseDto> {
         Err(unsupported("declining a DM call"))
     }
+    /// The caller's deafen state in the DM call: LiveKit metadata, which the call's tiles read.
+    /// DM presence has no per-user update event, so nothing else changes.
+    async fn dm_voice_presence_controller_update_dm_deafen_state(
+        &self,
+        _dm_group_id: String,
+        _body: wire::UpdateDeafenStateDto,
+    ) -> BackendResult<wire::RefreshDmPresenceResponseDto> {
+        Err(unsupported("DM call deafen"))
+    }
     async fn livekit_controller_mute_participant(
         &self,
         _channel_id: String,

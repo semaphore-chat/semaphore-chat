@@ -52,6 +52,10 @@ async fn every_route_answers_the_contracts_shape() {
         first.preview_url,
         format!("{base}/__fixtures/gif-1-preview.gif")
     );
+    assert_eq!(
+        first.medium_url.as_deref(),
+        Some(format!("{base}/__fixtures/gif-1-medium.gif").as_str())
+    );
     assert_eq!((first.width, first.height), (200, 150));
 
     // Search: the same shape, and a title match.

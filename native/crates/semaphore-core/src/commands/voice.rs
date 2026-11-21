@@ -548,26 +548,34 @@ impl Core {
     }
 
     pub async fn set_deafened(&self, deafened: bool) -> Result<(), CoreError> {
-        let channel_id = self.write(|state, _| {
+        let room = self.write(|state, _| {
             state.voice.deafened = deafened;
             if let Some(media) = &mut state.media {
                 media.deafened = deafened;
             }
             state.view_changed(ViewKey::Voice);
-            state.voice.channel_id.clone()
+            state.voice.room.clone()
         });
         if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
             media.set_deafened(deafened);
         }
-        if let (Some(channel_id), Some(services)) = (channel_id, self.services()) {
+        if let (Some(room), Some(services)) = (room, self.services()) {
             let body = wire::UpdateDeafenStateDto {
                 is_deafened: deafened,
             };
-            services
-                .backend
-                .voice_presence_controller_update_deafen_state(channel_id, body)
-                .await
-                .map_err(|error| self.backend_failed(error))?;
+            let updated = match room {
+                VoiceRoom::Channel { channel_id, .. } => services
+                    .backend
+                    .voice_presence_controller_update_deafen_state(channel_id, body)
+                    .await
+                    .map(|_| ()),
+                VoiceRoom::Dm { dm_group_id } => services
+                    .backend
+                    .dm_voice_presence_controller_update_dm_deafen_state(dm_group_id, body)
+                    .await
+                    .map(|_| ()),
+            };
+            updated.map_err(|error| self.backend_failed(error))?;
         }
         Ok(())
     }

@@ -142,6 +142,14 @@ async fn featured_search_and_paging_over_http() {
         first.url
     );
     assert!(first.preview_url.ends_with("/gif-1-preview.gif"));
+    assert!(
+        first
+            .medium_url
+            .as_deref()
+            .is_some_and(|url| url.ends_with("/gif-1-medium.gif")),
+        "the medium rendition a pick sends: {:?}",
+        first.medium_url
+    );
     assert_eq!((first.width, first.height), (200, 150));
 
     // The next page is appended, and the cursor is gone.

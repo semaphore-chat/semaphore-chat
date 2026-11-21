@@ -97,6 +97,16 @@ impl VoiceBackend for HttpBackend {
         rpc!(self, c => c.dm_voice_presence_controller_decline_dm_voice_call(dm_group_id))
     }
 
+    async fn dm_voice_presence_controller_update_dm_deafen_state(
+        &self,
+        dm_group_id: String,
+        body: wire::UpdateDeafenStateDto,
+    ) -> BackendResult<wire::RefreshDmPresenceResponseDto> {
+        let dm_group_id = dm_group_id.as_str();
+        let body = &body;
+        rpc!(self, c => c.dm_voice_presence_controller_update_dm_deafen_state(dm_group_id, body))
+    }
+
     async fn voice_diagnostics_controller_report_join_failure(
         &self,
         body: wire::ReportJoinFailureDto,

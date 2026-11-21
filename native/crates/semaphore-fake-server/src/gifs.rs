@@ -41,14 +41,13 @@ impl Gifs {
                 id: format!("gif-{number}"),
                 title: format!("Fixture GIF {number}"),
                 url: format!("{base}/__fixtures/gif-{number}.gif"),
+                // The rendition a client should send, as a current server names it.
+                medium_url: Some(format!("{base}/__fixtures/gif-{number}-medium.gif")),
                 preview_url: format!("{base}/__fixtures/gif-{number}-preview.gif"),
                 width: 200,
                 height: 150,
-                // The fake serves one rendition, as a provider that offers no others: a client
-                // falls back to `url`.
                 medium_height: None,
                 medium_size_bytes: None,
-                medium_url: None,
                 medium_width: None,
                 original_size_bytes: None,
                 preview_height: None,
